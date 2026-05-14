@@ -82,18 +82,18 @@ specs/[###-feature]/
 -->
 
 ```text
-lib/
+frontend/lib/
 ├── app/
 ├── features/
 ├── services/
 └── widgets/
 
-test/
+frontend/test/
 ├── integration/
 ├── unit/
 └── widget/
 
-supabase/
+backend/
 ├── migrations/
 ├── functions/
 ├── seed/

@@ -13,7 +13,7 @@
 ### Project Structure (Feature-First Clean Architecture)
 
 ```
-lib/
+frontend/lib/
 ├── main.dart
 ├── app/
 │   ├── app.dart                    # MaterialApp, routing setup

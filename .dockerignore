@@ -1,0 +1,15 @@
+.git/
+.dart_tool/
+.idea/
+.vscode/
+frontend/.dart_tool/
+frontend/build/
+frontend/coverage/
+node_modules/
+frontend/windows/flutter/ephemeral/
+Dockerfile*
+*.log
+.env
+.env.*
+!.env.example
+!**/.env.example

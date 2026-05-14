@@ -1,0 +1,146 @@
+name: ai_clinic_local
+
+services:
+  postgres:
+    image: supabase/postgres:15.8.1.085
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      JWT_EXP: 3600
+    ports:
+      - "${SUPABASE_DB_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+
+  auth:
+    image: supabase/gotrue:v2.186.0
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL}
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres?search_path=auth
+      GOTRUE_SITE_URL: ${SUPABASE_SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${SUPABASE_SITE_URL}
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+    expose:
+      - "9999"
+
+  rest:
+    image: postgrest/postgrest:v14.8
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+    expose:
+      - "3000"
+
+  storage:
+    image: supabase/storage-api:v1.48.26
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - rest
+    env_file:
+      - .env
+    environment:
+      ANON_KEY: ${SUPABASE_ANON_KEY}
+      SERVICE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      POSTGREST_URL: http://rest:3000
+      AUTH_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: default
+      REGION: local
+      GLOBAL_S3_BUCKET: clinic-local
+    volumes:
+      - storage_data:/var/lib/storage
+    expose:
+      - "5000"
+
+  realtime:
+    image: supabase/realtime:v2.76.5
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      PORT: 4000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: postgres
+      DB_USER: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_SSL: "false"
+      API_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      SECRET_KEY_BASE: ${SUPABASE_SECRET_KEY_BASE}
+      APP_NAME: realtime
+      SEED_SELF_HOST: "true"
+    expose:
+      - "4000"
+
+  kong:
+    image: kong/kong:3.9.1
+    restart: unless-stopped
+    depends_on:
+      - auth
+      - rest
+      - storage
+      - realtime
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 127.0.0.1:8001
+    volumes:
+      - ./kong.yml:/home/kong/kong.yml:ro
+    ports:
+      - "${SUPABASE_HTTP_PORT}:8000"
+
+  studio:
+    image: supabase/studio:2026.04.27-sha-5f60601
+    restart: unless-stopped
+    depends_on:
+      - kong
+    env_file:
+      - .env
+    environment:
+      DEFAULT_ORGANIZATION_NAME: ${STUDIO_DEFAULT_ORGANIZATION}
+      DEFAULT_PROJECT_NAME: ${STUDIO_DEFAULT_PROJECT}
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+    ports:
+      - "${SUPABASE_STUDIO_PORT}:3000"
+
+volumes:
+  postgres_data:
+  storage_data:

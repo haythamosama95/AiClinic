@@ -23,8 +23,8 @@ behavior such as RLS, RPC validation, auditability, or AI approval gating.
 
 ## Path Conventions
 
-- **Flutter desktop app**: `lib/`, `test/`
-- **Supabase backend**: `supabase/migrations/`, `supabase/functions/`, `supabase/tests/`
+- **Flutter desktop app**: `frontend/lib/`, `frontend/test/`
+- **Supabase backend**: `backend/migrations/`, `backend/functions/`, `backend/tests/`
 - **AI service**: `ai/src/`, `ai/tests/`
 - Paths shown below assume the canonical AiClinic architecture - adjust to match
   `plan.md` while preserving layer boundaries
@@ -87,15 +87,15 @@ Examples of foundational tasks (adjust based on your project):
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T010 [P] [US1] Add Supabase policy/RPC test in `supabase/tests/[name].sql`
-- [ ] T011 [P] [US1] Add desktop integration test for [user journey] in `test/integration/[name]_test.dart`
+- [ ] T010 [P] [US1] Add Supabase policy/RPC test in `backend/tests/[name].sql`
+- [ ] T011 [P] [US1] Add desktop integration test for [user journey] in `frontend/test/integration/[name]_test.dart`
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Add schema or policy changes in `supabase/migrations/[timestamp]_[name].sql`
-- [ ] T013 [P] [US1] Add Flutter models/state in `lib/features/[feature]/`
-- [ ] T014 [US1] Implement RPC/function or AI interface changes in `supabase/functions/` or `ai/src/` (depends on T012, T013)
-- [ ] T015 [US1] Implement desktop workflow in `lib/features/[feature]/[file].dart`
+- [ ] T012 [P] [US1] Add schema or policy changes in `backend/migrations/[timestamp]_[name].sql`
+- [ ] T013 [P] [US1] Add Flutter models/state in `frontend/lib/features/[feature]/`
+- [ ] T014 [US1] Implement RPC/function or AI interface changes in `backend/functions/` or `ai/src/` (depends on T012, T013)
+- [ ] T015 [US1] Implement desktop workflow in `frontend/lib/features/[feature]/[file].dart`
 - [ ] T016 [US1] Add approval gating, validation, and degraded-state handling
 - [ ] T017 [US1] Add audit logging and operational telemetry for user story 1
 
@@ -111,13 +111,13 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
 
-- [ ] T018 [P] [US2] Add Supabase policy/RPC test in `supabase/tests/[name].sql`
-- [ ] T019 [P] [US2] Add desktop integration test for [user journey] in `test/integration/[name]_test.dart`
+- [ ] T018 [P] [US2] Add Supabase policy/RPC test in `backend/tests/[name].sql`
+- [ ] T019 [P] [US2] Add desktop integration test for [user journey] in `frontend/test/integration/[name]_test.dart`
 
 ### Implementation for User Story 2
 
-- [ ] T020 [P] [US2] Add schema, RPC, or policy changes in `supabase/migrations/` or `supabase/functions/`
-- [ ] T021 [US2] Implement Flutter workflow updates in `lib/features/[feature]/`
+- [ ] T020 [P] [US2] Add schema, RPC, or policy changes in `backend/migrations/` or `backend/functions/`
+- [ ] T021 [US2] Implement Flutter workflow updates in `frontend/lib/features/[feature]/`
 - [ ] T022 [US2] Implement AI-assisted or backend-integrated behavior through approved interfaces
 - [ ] T023 [US2] Integrate with User Story 1 components without violating layer ownership
 
@@ -133,8 +133,8 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
 
-- [ ] T024 [P] [US3] Add Supabase policy/RPC test in `supabase/tests/[name].sql`
-- [ ] T025 [P] [US3] Add desktop integration test for [user journey] in `test/integration/[name]_test.dart`
+- [ ] T024 [P] [US3] Add Supabase policy/RPC test in `backend/tests/[name].sql`
+- [ ] T025 [P] [US3] Add desktop integration test for [user journey] in `frontend/test/integration/[name]_test.dart`
 
 ### Implementation for User Story 3
 
@@ -204,12 +204,12 @@ Examples of foundational tasks (adjust based on your project):
 
 ```bash
 # Launch all tests for User Story 1 together (if tests requested):
-Task: "Supabase policy/RPC test in supabase/tests/[name].sql"
-Task: "Desktop integration test for [user journey] in test/integration/[name]_test.dart"
+Task: "Supabase policy/RPC test in backend/tests/[name].sql"
+Task: "Desktop integration test for [user journey] in frontend/test/integration/[name]_test.dart"
 
 # Launch all models for User Story 1 together:
-Task: "Add schema or policy changes in supabase/migrations/[timestamp]_[name].sql"
-Task: "Add Flutter models/state in lib/features/[feature]/"
+Task: "Add schema or policy changes in backend/migrations/[timestamp]_[name].sql"
+Task: "Add Flutter models/state in frontend/lib/features/[feature]/"
 ```
 
 ---
