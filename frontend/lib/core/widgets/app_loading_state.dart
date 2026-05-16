@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme/app_colors.dart';
+import 'package:ai_clinic/app/theme/app_colors.dart';
 
 /// Reusable centered loading panel for startup and other blocking transitions.
 class AppLoadingState extends StatelessWidget {

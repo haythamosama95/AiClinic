@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../errors/failures.dart';
+import 'package:ai_clinic/app/theme/app_colors.dart';
+import 'package:ai_clinic/core/errors/failures.dart';
 
 /// Full-width recoverable error surface for blocking or inline error states.
 class ErrorStatePanel extends StatelessWidget {

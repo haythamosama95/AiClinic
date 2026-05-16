@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../../shared/providers/connectivity_provider.dart';
-import '../../../../shared/services/startup_health_service.dart';
+import 'package:ai_clinic/shared/providers/connectivity_provider.dart';
+import 'package:ai_clinic/shared/services/startup_health_service.dart';
 
 /// Warns operators when the profile is valid but clinic-local services are not fully reachable.
 class DegradedStateNotice extends StatelessWidget {

@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../services/startup_health_service.dart';
-import 'startup_session_provider.dart';
+import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
+import 'package:ai_clinic/shared/services/startup_health_service.dart';
 
 /// Exposes clinic-local connectivity classification from the latest startup probe.
 final connectivityStatusProvider = Provider<StartupConnectivityStatus>((ref) {

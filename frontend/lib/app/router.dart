@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../features/foundation_demo/presentation/pages/foundation_demo_page.dart';
-import '../features/startup/presentation/pages/protected_placeholder_page.dart';
-import '../features/startup/presentation/pages/protected_route_blocked_page.dart';
-import '../features/startup/presentation/pages/setup_guidance_page.dart';
-import '../features/startup/presentation/pages/startup_check_page.dart';
-import '../features/startup/presentation/pages/startup_entry_page.dart';
-import '../shared/providers/startup_session_provider.dart';
-import 'app_routes.dart';
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/features/foundation_demo/presentation/pages/foundation_demo_page.dart';
+import 'package:ai_clinic/features/startup/presentation/pages/protected_placeholder_page.dart';
+import 'package:ai_clinic/features/startup/presentation/pages/protected_route_blocked_page.dart';
+import 'package:ai_clinic/features/startup/presentation/pages/setup_guidance_page.dart';
+import 'package:ai_clinic/features/startup/presentation/pages/startup_check_page.dart';
+import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
+import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 
 /// Rebuilds router redirects whenever startup session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {

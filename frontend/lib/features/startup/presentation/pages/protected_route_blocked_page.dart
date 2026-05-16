@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../app/app_routes.dart';
-import '../providers/startup_notifier.dart';
-import '../widgets/connection_status_card.dart';
-import '../widgets/startup_scaffold.dart';
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/features/startup/presentation/providers/startup_notifier.dart';
+import 'package:ai_clinic/features/startup/presentation/widgets/connection_status_card.dart';
+import 'package:ai_clinic/features/startup/presentation/widgets/startup_scaffold.dart';
 
 /// Explanation screen used when someone tries to open a protected route too early.
 class ProtectedRouteBlockedPage extends ConsumerWidget {

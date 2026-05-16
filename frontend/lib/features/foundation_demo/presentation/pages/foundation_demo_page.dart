@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../app/app_routes.dart';
-import '../../../../core/errors/failures.dart';
-import '../../../../core/widgets/app_button.dart';
-import '../../../../core/widgets/app_card.dart';
-import '../../../../core/widgets/app_data_table.dart';
-import '../../../../core/widgets/app_dialog.dart';
-import '../../../../core/widgets/app_form_field.dart';
-import '../../../../core/widgets/app_loading_state.dart';
-import '../../../../core/widgets/error_state_panel.dart';
-import '../../../../core/widgets/demo_scaffold.dart';
-import '../../../../core/widgets/snackbar_service.dart';
-import '../../../../shared/providers/connectivity_provider.dart';
-import '../../../../shared/providers/theme_provider.dart';
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/core/errors/failures.dart';
+import 'package:ai_clinic/core/widgets/app_button.dart';
+import 'package:ai_clinic/core/widgets/app_card.dart';
+import 'package:ai_clinic/core/widgets/app_data_table.dart';
+import 'package:ai_clinic/core/widgets/app_dialog.dart';
+import 'package:ai_clinic/core/widgets/app_form_field.dart';
+import 'package:ai_clinic/core/widgets/app_loading_state.dart';
+import 'package:ai_clinic/core/widgets/demo_scaffold.dart';
+import 'package:ai_clinic/core/widgets/error_state_panel.dart';
+import 'package:ai_clinic/core/widgets/snackbar_service.dart';
+import 'package:ai_clinic/shared/providers/connectivity_provider.dart';
+import 'package:ai_clinic/shared/providers/theme_provider.dart';
 
 /// Placeholder screen exercising shared foundations for US3 verification.
 class FoundationDemoPage extends ConsumerStatefulWidget {

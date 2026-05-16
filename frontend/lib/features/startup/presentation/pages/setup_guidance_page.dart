@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/config/deployment_profile.dart';
-import '../providers/startup_notifier.dart';
-import '../widgets/failure_banner.dart';
-import '../widgets/startup_scaffold.dart';
+import 'package:ai_clinic/core/config/deployment_profile.dart';
+import 'package:ai_clinic/features/startup/presentation/providers/startup_notifier.dart';
+import 'package:ai_clinic/features/startup/presentation/widgets/failure_banner.dart';
+import 'package:ai_clinic/features/startup/presentation/widgets/startup_scaffold.dart';
 
 const _kSetupGuidanceExampleJson =
     '{\n'

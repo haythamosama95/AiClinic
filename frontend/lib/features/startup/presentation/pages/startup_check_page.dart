@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/widgets/app_loading_state.dart';
-import '../widgets/startup_scaffold.dart';
+import 'package:ai_clinic/core/widgets/app_loading_state.dart';
+import 'package:ai_clinic/features/startup/presentation/widgets/startup_scaffold.dart';
 
 /// Splash-like page shown while configuration and connectivity are being checked.
 class StartupCheckPage extends StatelessWidget {

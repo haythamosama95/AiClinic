@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/errors/failures.dart';
+import 'package:ai_clinic/core/errors/failures.dart';
 
 /// Highlights configuration or connectivity failures without leaving the startup flow.
 class FailureBanner extends StatelessWidget {

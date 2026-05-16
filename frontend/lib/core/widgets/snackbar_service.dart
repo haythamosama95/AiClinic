@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme/app_colors.dart';
-import '../errors/failures.dart';
+import 'package:ai_clinic/app/theme/app_colors.dart';
+import 'package:ai_clinic/core/errors/failures.dart';
 
 /// Consistent transient feedback aligned with the shared snack bar theme.
 abstract final class SnackbarService {

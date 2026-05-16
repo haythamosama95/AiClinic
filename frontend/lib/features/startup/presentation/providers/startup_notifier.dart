@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/config/deployment_profile.dart';
-import '../../../../core/errors/failures.dart';
-import '../../../../shared/providers/connectivity_provider.dart';
-import '../../../../shared/providers/startup_session_provider.dart';
-import '../../../../shared/services/startup_health_service.dart';
+import 'package:ai_clinic/core/config/deployment_profile.dart';
+import 'package:ai_clinic/core/errors/failures.dart';
+import 'package:ai_clinic/shared/providers/connectivity_provider.dart';
+import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
+import 'package:ai_clinic/shared/services/startup_health_service.dart';
 
 /// Presentation-facing startup state derived from the shared session model.
 @immutable

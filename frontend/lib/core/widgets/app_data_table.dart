@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme/app_colors.dart';
+import 'package:ai_clinic/app/theme/app_colors.dart';
 
 /// Column definition for [AppDataTable].
 class AppDataColumn {

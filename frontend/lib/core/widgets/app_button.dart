@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme/app_colors.dart';
+import 'package:ai_clinic/app/theme/app_colors.dart';
 
 /// Shared action button variants for consistent interaction patterns.
 enum AppButtonVariant { primary, secondary, danger }

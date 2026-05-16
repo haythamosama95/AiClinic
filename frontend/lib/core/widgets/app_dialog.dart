@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'app_button.dart';
+import 'package:ai_clinic/core/widgets/app_button.dart';
 
 /// Standard confirmation or information dialog with shared actions.
 class AppDialog extends StatelessWidget {

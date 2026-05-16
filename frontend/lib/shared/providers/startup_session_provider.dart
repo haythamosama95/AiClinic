@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/config/deployment_profile.dart';
-import '../../core/config/supabase_config.dart';
-import '../../core/errors/exceptions.dart';
-import '../../core/errors/failures.dart';
-import '../services/startup_health_service.dart';
+import 'package:ai_clinic/core/config/deployment_profile.dart';
+import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/errors/exceptions.dart';
+import 'package:ai_clinic/core/errors/failures.dart';
+import 'package:ai_clinic/shared/services/startup_health_service.dart';
 
 // Sentinel used by copyWith so nullable fields can be preserved intentionally.
 const Object _noChange = Object();

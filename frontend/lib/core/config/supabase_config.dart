@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import '../errors/exceptions.dart';
-import 'deployment_profile.dart';
+import 'package:ai_clinic/core/config/deployment_profile.dart';
+import 'package:ai_clinic/core/errors/exceptions.dart';
 
 @immutable
 /// Startup-ready connection settings derived from a validated deployment profile.

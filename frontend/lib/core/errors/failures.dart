@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'exceptions.dart';
+import 'package:ai_clinic/core/errors/exceptions.dart';
 
 @immutable
 /// UI-friendly error model that can be rendered without exposing implementation details.

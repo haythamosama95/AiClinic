@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme/app_colors.dart';
+import 'package:ai_clinic/app/theme/app_colors.dart';
 
 /// Card shell with consistent padding and optional title for feature screens.
 class AppCard extends StatelessWidget {

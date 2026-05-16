@@ -1,3 +1,6 @@
+// Test-only helpers; not imported by production code.
+// ignore_for_file: depend_on_referenced_packages
+
 import 'package:ai_clinic/app/app.dart';
 import 'package:ai_clinic/core/config/deployment_profile.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';

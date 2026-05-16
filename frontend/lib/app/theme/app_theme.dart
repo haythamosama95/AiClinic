@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'app_colors.dart';
+import 'package:ai_clinic/app/theme/app_colors.dart';
 
 /// Centralizes the shared Material 3 theme used across startup and feature screens.
 class AppTheme {

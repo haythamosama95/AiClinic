@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-import '../errors/exceptions.dart';
+import 'package:ai_clinic/core/errors/exceptions.dart';
 
 /// Deployment modes supported by the checked-in bootstrap foundation.
 enum DeploymentMode { local }

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../shared/providers/startup_session_provider.dart';
-import '../shared/providers/theme_provider.dart';
-import 'router.dart';
-import 'theme/app_theme.dart';
+import 'package:ai_clinic/app/router.dart';
+import 'package:ai_clinic/app/theme/app_theme.dart';
+import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
+import 'package:ai_clinic/shared/providers/theme_provider.dart';
 
 /// Root widget that wires together startup state, routing, and theming.
 class AiClinicApp extends ConsumerStatefulWidget {

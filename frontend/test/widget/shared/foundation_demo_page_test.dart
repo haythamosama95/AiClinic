@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../support/startup_test_support.dart';
+import 'package:ai_clinic/testing/startup_test_support.dart';
 
 class _DemoStartupSessionNotifier extends StartupSessionNotifier {
   @override

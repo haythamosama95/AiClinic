@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-import '../../core/config/supabase_config.dart';
+import 'package:ai_clinic/core/config/supabase_config.dart';
 
 /// High-level connectivity classification for the clinic-local startup probes.
 enum StartupConnectivityStatus { unknown, healthy, degraded, unreachable }

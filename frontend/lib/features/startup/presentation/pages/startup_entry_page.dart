@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../app/app_routes.dart';
-import '../../../../shared/providers/theme_provider.dart';
-import '../providers/startup_notifier.dart';
-import '../widgets/connection_status_card.dart';
-import '../widgets/degraded_state_notice.dart';
-import '../widgets/failure_banner.dart';
-import '../widgets/startup_scaffold.dart';
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/features/startup/presentation/providers/startup_notifier.dart';
+import 'package:ai_clinic/features/startup/presentation/widgets/connection_status_card.dart';
+import 'package:ai_clinic/features/startup/presentation/widgets/degraded_state_notice.dart';
+import 'package:ai_clinic/features/startup/presentation/widgets/failure_banner.dart';
+import 'package:ai_clinic/features/startup/presentation/widgets/startup_scaffold.dart';
+import 'package:ai_clinic/shared/providers/theme_provider.dart';
 
 /// Main pre-auth entry experience with connection status and safe next-step guidance.
 class StartupEntryPage extends ConsumerWidget {
