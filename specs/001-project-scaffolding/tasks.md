@@ -80,16 +80,16 @@
 
 ### Tests for User Story 2
 
-- T018 [P] [US2] Add a local stack validation script in `backend/tests/validate_local_stack.sh`
-- T019 [P] [US2] Add a setup verification checklist in `docs/setup/verification-checklist.md`
+- [X] T018 [P] [US2] Add a local stack validation script in `backend/tests/validate_local_stack.sh`
+- [X] T019 [P] [US2] Add a setup verification checklist in `docs/setup/verification-checklist.md`
 
 ### Implementation for User Story 2
 
-- T020 [P] [US2] Document developer workstation setup in `docs/setup/developer-workstation.md`
-- T021 [P] [US2] Document receptionist server-node setup and LAN exposure in `docs/setup/server-node.md`
-- T022 [P] [US2] Document clinic client configuration and deployment-profile usage in `docs/setup/client-workstation.md`
-- T023 [US2] Document local backup expectations and troubleshooting flows in `docs/setup/troubleshooting.md`
-- T024 [US2] Align the feature quickstart and deployment profile contract with the final setup docs in `specs/001-project-scaffolding/quickstart.md` and `specs/001-project-scaffolding/contracts/deployment-profile.md`
+- [X] T020 [P] [US2] Document developer workstation setup in `docs/setup/developer-workstation.md`
+- [X] T021 [P] [US2] Document receptionist server-node setup and LAN exposure in `docs/setup/server-node.md`
+- [X] T022 [P] [US2] Document clinic client configuration and deployment-profile usage in `docs/setup/client-workstation.md`
+- [X] T023 [US2] Document local backup expectations and troubleshooting flows in `docs/setup/troubleshooting.md`
+- [X] T024 [US2] Align the feature quickstart and deployment profile contract with the final setup docs in `specs/001-project-scaffolding/quickstart.md` and `specs/001-project-scaffolding/contracts/deployment-profile.md`
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 

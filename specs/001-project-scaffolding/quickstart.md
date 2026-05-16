@@ -1,78 +1,104 @@
 # Quickstart: Project Scaffolding
 
-This quickstart describes the intended implementation and verification flow for `V1-0: Project Scaffolding`.
+This quickstart describes the implementation and verification flow for `V1-0: Project Scaffolding`. Detailed workstation guides live under [`docs/setup/`](../../docs/setup/).
 
 ## 1. Prepare the workstation
 
-Install and verify the tools required by the active spec:
+Follow the guide that matches your role:
 
-- Flutter stable with Windows desktop support enabled
-- Docker for the local Supabase stack
-- Supabase CLI or the repository-approved local stack wrapper
+| Role                                   | Guide                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------- |
+| Developer (stack + app on one machine) | [developer-workstation.md](../../docs/setup/developer-workstation.md) |
+| Receptionist / server node             | [server-node.md](../../docs/setup/server-node.md)                     |
+| Clinic desktop (app only)              | [client-workstation.md](../../docs/setup/client-workstation.md)       |
 
-Document these steps under `docs/setup/` as part of the feature deliverable.
+**Prerequisites:** Flutter stable (Windows desktop), Docker Engine, Git, and `curl`.
+
+Sign off with [verification-checklist.md](../../docs/setup/verification-checklist.md) when setup is complete.
 
 ## 2. Initialize the desktop application foundation
 
-Create the Flutter desktop project structure and establish the planned directories:
+The Flutter desktop scaffold and directory layout are checked in under `frontend/`:
 
 - `frontend/lib/app`
 - `frontend/lib/core`
 - `frontend/lib/shared`
 - `frontend/lib/features`
-- `frontend/test/unit`
-- `frontend/test/widget`
-- `frontend/test/integration`
+- `frontend/test/unit`, `widget`, `integration`
 
-Implement the shared theme, error/failure, configuration, and widget foundations before any domain workflows.
+Shared theme, error/failure, configuration, and widget foundations are in place for startup and later features.
 
 ## 3. Add local deployment configuration handling
 
-Implement startup resolution for a clinic-local deployment profile that validates:
+Startup loads `deployment-profile.json` per [contracts/deployment-profile.md](./contracts/deployment-profile.md).
 
-- `deployment_mode=local`
-- `supabase_url`
-- `supabase_anon_key`
+Required fields:
 
-Missing or invalid configuration must route users to setup guidance instead of protected flows.
+- `deployment_mode` = `local`
+- `supabase_url` — Kong gateway (loopback for dev, LAN IP for clinic clients)
+- `supabase_anon_key` — matches `SUPABASE_ANON_KEY` on the server node
+
+Missing or invalid configuration routes to setup guidance instead of protected flows.
+
+**Profile paths** (first match wins): `AICLINIC_DEPLOYMENT_PROFILE_PATH`, then `deployment-profile.json`, `lib/core/config/deployment-profile.json`, `frontend/lib/core/config/deployment-profile.json`.
 
 ## 4. Prepare the local Supabase stack
 
-Check in the local stack configuration under `backend/` and document how the receptionist PC exposes the gateway to clinic devices on the LAN.
+Stack configuration: `backend/local/` (Docker Compose).
 
-The implementation must support:
+```bash
+cd backend/local
+cp -n .env.example .env
+docker compose up -d
+```
 
-- the receptionist PC acting as the clinic server node
-- client access through the LAN-exposed Supabase gateway
-- visible degraded startup behavior when the backend cannot be reached
+Validate from repository root:
+
+```bash
+./backend/tests/validate_local_stack.sh
+./backend/tests/connectivity_smoke.sh
+```
+
+**Clinic LAN:** set `SUPABASE_PUBLIC_URL` on the server to the receptionist PC LAN address, open firewall for `SUPABASE_HTTP_PORT`, and distribute matching `supabase_url` / `supabase_anon_key` in client profiles. See [server-node.md](../../docs/setup/server-node.md).
 
 ## 5. Build the pre-auth startup experience
 
-Implement the unauthenticated entry experience with:
+Implemented under `frontend/lib/features/startup/`:
 
-- connection status visibility
-- next-step/setup guidance
-- guarded routing that redirects protected destinations back to the startup experience
-- shared loading and error patterns
+- Connection status on the unauthenticated entry screen
+- Setup guidance when the profile is missing or invalid
+- Guarded routing that redirects protected destinations to startup
+- Degraded/unreachable states when the backend is down or partial
 
-Do not expose the authenticated application shell in this feature.
+The authenticated application shell is out of scope for V1-0.
 
 ## 6. Add the minimal CI/CD skeleton
 
-Create a baseline workflow that verifies:
-
-- lint/static analysis
-- automated tests
-- desktop build readiness
-
-Keep release automation, signing, installers, and deployment promotion out of scope.
+Planned in User Story 3: baseline workflow for analyze, tests, and Windows build verification (`.github/workflows/ci.yml`). Not required to validate User Story 2.
 
 ## 7. Verify acceptance
 
-Confirm the feature using the following checks:
+### User Story 1 — safe pre-auth entry
 
 - Launch with a valid local deployment profile and reach the unauthenticated entry experience.
 - Launch with missing or invalid configuration and confirm setup guidance appears.
-- Launch with an unreachable local backend and confirm degraded status appears without exposing protected routes.
-- Attempt protected navigation without auth context and confirm redirection back to the startup experience.
-- Run the baseline quality commands and confirm analysis, tests, and desktop build verification all pass.
+- Launch with an unreachable local backend and confirm degraded status without exposing protected routes.
+- Attempt protected navigation without auth context and confirm redirection to startup.
+
+```bash
+cd frontend && flutter test
+```
+
+### User Story 2 — repeatable workstation setup
+
+- A new operator completes [verification-checklist.md](../../docs/setup/verification-checklist.md) using only linked guides.
+- `./backend/tests/validate_local_stack.sh` exits successfully with the stack running.
+- Client and server profiles use consistent gateway URL and anon key.
+
+### Quality gates (when CI is added)
+
+```bash
+cd frontend && flutter analyze && flutter test
+```
+
+For setup failures, see [troubleshooting.md](../../docs/setup/troubleshooting.md).
