@@ -21,9 +21,8 @@ Not implemented yet:
 
 - Supabase SDK initialization
 - authentication/session management
-- domain features under `frontend/lib/features`
-- persistent local settings such as stored theme mode
-- meaningful automated frontend test coverage
+- domain features beyond startup and the US3 foundation demo
+- persistent local settings such as stored theme mode (theme mode is in-memory via startup session only)
 
 ## Code map
 
@@ -424,15 +423,14 @@ flowchart TD
 - `SupabaseConfig` is only used for probe URLs; there is no `supabase_flutter` client wiring yet.
 - Theme mode is transient and app-local.
 - `AiClinicApp` watches the full startup session even though it mainly needs theme state.
-- There are no meaningful tests validating bootstrap, routing redirects, or degraded-state rendering.
+- Startup and shared-foundation behavior are covered by widget/integration tests; domain features are not.
 
 The most likely next structural evolution is:
 
-1. move startup pages out of `router.dart` into `features/startup`
-2. introduce authenticated session state alongside startup state
-3. initialize the actual Supabase client
-4. persist lightweight user/device preferences such as theme mode
-5. add unit and widget tests around bootstrap and redirect behavior
+1. introduce authenticated session state alongside startup state
+2. initialize the actual Supabase client
+3. persist lightweight user/device preferences such as theme mode
+4. adopt shared `core/widgets` primitives on startup pages where not yet migrated
 
 ## Summary
 
@@ -631,9 +629,221 @@ flutter test
 - Initialize `supabase_flutter` using the validated profile (no backend URL changes required).
 - Add authenticated session state and narrow the protected-route guard to real feature paths.
 - Persist `ThemeMode` locally.
-- Move shared primitives from Phase 5 (US3) into `core/widgets` and adopt them on startup pages.
+- Adopt shared `core/widgets` on startup pages where they still use feature-local scaffolds only.
 - Add storage/realtime probes if parity with `connectivity_smoke.sh` is required.
 
 ## Phase 3 summary
 
 Phase 3 delivers the MVP pre-auth startup UX as a proper feature module with tests. Runtime decisions still flow through `StartupSessionNotifier` and `GoRouter` redirects; the feature layer focuses on presentation, degraded-state visibility, and safe navigation boundaries until authentication exists.
+
+---
+
+# Phase 4
+
+**Commit:** `fdb28e09e420517e8fab246fe40bbb47d71ba92b` — *Phase 4 Implementation*
+
+## Frontend impact
+
+Phase 4 has **no Flutter code changes**. User Story 2 work is backend validation (`validate_local_stack.sh`) and operator documentation under `docs/setup/`.
+
+For frontend acceptance, Phase 4 only affects **how** operators prepare workstations (profile placement, stack URL, checklist in `docs/setup/verification-checklist.md` and `client-workstation.md`). The startup app behavior documented in Phase 3 is unchanged.
+
+---
+
+# Phase 5
+
+**Commit:** `ee2e62cff10cedde30f1b231ba465bc938bbceff` — *Phase 5 Implementation*
+
+## Purpose and scope
+
+Phase 5 implements **User Story 3 — Build New Features on Shared Foundations** (`specs/001-project-scaffolding/tasks.md`, T025–T032). It adds:
+
+- a shared Material 3 theme and semantic color tokens
+- reusable UI primitives under `core/widgets/`
+- cross-feature Riverpod providers for theme and connectivity
+- a placeholder **foundation demo** screen that exercises those building blocks
+- baseline CI (analyze, test, Windows release build) and quality-gate documentation
+
+Phase 5 does **not** add Supabase SDK init, authentication, or domain clinical features. Startup orchestration (`startup_session_provider.dart`, health probes, redirects) remains as in Phase 3.
+
+## What changed from Phase 3
+
+| Area                      | Phase 3                                   | Phase 5                                                                                                 |
+| ------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Theme                     | `AppTheme` light/dark from seed only      | `AppColors` + `AppSpacing` tokens; enhanced `app_theme.dart`                                            |
+| Shared widgets            | `AppLoadingState` only in `core/widgets/` | Full primitive set (button, card, dialog, form field, data table, error panel, snackbar, demo scaffold) |
+| Theme wiring in app root  | `startupSessionProvider.themeMode`        | `themeModeProvider` in `shared/providers/theme_provider.dart`                                           |
+| Connectivity for features | Only via `startupNotifierProvider`        | `connectivityStatusProvider` / `connectivityHealthResultProvider`                                       |
+| Routes                    | Startup + protected paths                 | Adds `/foundation-demo` allowed during `unauthenticatedEntry`                                           |
+| Tests                     | Startup widget/integration only           | `shared_foundations_test.dart`, `foundation_demo_page_test.dart`                                        |
+| CI                        | None in repo                              | `.github/workflows/ci.yml` (Windows: analyze, test, build)                                              |
+
+## New code map
+
+```text
+frontend/lib/
+├── app/
+│   ├── app.dart                    # CHANGED — watches themeModeProvider
+│   ├── app_routes.dart             # CHANGED — AppRoutes.foundationDemo
+│   ├── router.dart                 # CHANGED — FoundationDemoPage route + redirect allowlist
+│   └── theme/
+│       ├── app_colors.dart         # NEW — semantic colors + AppSpacing
+│       └── app_theme.dart          # CHANGED — uses AppColors / spacing
+├── core/widgets/
+│   ├── app_button.dart             # NEW
+│   ├── app_card.dart               # NEW
+│   ├── app_data_table.dart         # NEW
+│   ├── app_dialog.dart             # NEW
+│   ├── app_form_field.dart         # NEW
+│   ├── app_loading_state.dart      # CHANGED — aligned with theme tokens
+│   ├── demo_scaffold.dart          # NEW — scrollable demo/feature shell
+│   ├── error_state_panel.dart      # NEW
+│   └── snackbar_service.dart       # NEW — success/error/info snackbars
+├── features/foundation_demo/
+│   └── presentation/pages/
+│       └── foundation_demo_page.dart   # NEW — US3 placeholder screen (T030)
+└── shared/providers/
+    ├── theme_provider.dart         # NEW
+    └── connectivity_provider.dart  # NEW
+
+frontend/test/widget/shared/
+├── shared_foundations_test.dart    # NEW (T025)
+└── foundation_demo_page_test.dart  # NEW (T026)
+
+.github/workflows/ci.yml            # NEW (T031)
+docs/setup/quality-gates.md         # NEW (T032)
+frontend/test-results/flutter.json  # CI JSON reporter output (generated locally/CI)
+```
+
+## Theme system (T027)
+
+### `app_colors.dart`
+
+- **Seed:** teal `0xFF0F766E` (clinical / calm palette)
+- **Semantic:** `success`, `warning`, `info` with brightness-aware container/on-container pairs
+- **`AppSpacing`:** `xs`–`xxl` scale and `borderRadius` (16) for desktop layouts
+
+### `app_theme.dart`
+
+Builds light and dark `ThemeData` from the seed and `AppColors`, applying shared spacing to cards, inputs, and dialogs. `AiClinicApp` still sets `theme`, `darkTheme`, and `themeMode` from `themeModeProvider`.
+
+## Shared widgets (T028–T029)
+
+| Widget            | Role                                                    |
+| ----------------- | ------------------------------------------------------- |
+| `AppButton`       | Primary/outlined/text actions with consistent padding   |
+| `AppCard`         | Titled card sections for forms and status               |
+| `AppDialog`       | Confirmation and alert dialogs                          |
+| `AppFormField`    | Labeled text field wrapper                              |
+| `AppDataTable`    | Simple column/row table for desktop lists               |
+| `AppLoadingState` | Centered progress + message (updated styling)           |
+| `ErrorStatePanel` | Full-width error with optional retry action             |
+| `SnackbarService` | Static helpers for success, error, and info snackbars   |
+| `DemoScaffold`    | Title/subtitle scroll shell used by the foundation demo |
+
+New feature screens should import from `frontend/lib/core/widgets/` and `frontend/lib/app/theme/` per `docs/setup/quality-gates.md`.
+
+## Cross-feature providers (T030)
+
+### `theme_provider.dart`
+
+- `themeModeProvider` — reads `ThemeMode` from `startupSessionProvider` (single source of truth)
+- `setAppThemeMode(ref, mode)` — delegates to `StartupSessionNotifier.setThemeMode`
+- `themeModeLabel()` — shared labels for chips and demo UI
+
+`AiClinicApp` and `StartupEntryPage` use this provider instead of reaching into session state directly for theme.
+
+### `connectivity_provider.dart`
+
+- `connectivityStatusProvider` — `StartupConnectivityStatus` from session
+- `connectivityHealthResultProvider` — last `StartupHealthResult?` when bootstrap succeeded
+- `connectivityStatusLabel()` — Healthy / Degraded / Unreachable / Unknown
+
+Lets non-startup screens (e.g. foundation demo) show connectivity context without importing startup presentation types.
+
+## Foundation demo screen (T030)
+
+**Route:** `AppRoutes.foundationDemo` → `/foundation-demo`
+
+**Access:** While `StartupCurrentView.unauthenticatedEntry`, the router allows both `/` and `/foundation-demo` (see `router.dart` redirect). Entry page adds **View shared foundations** → `context.go(AppRoutes.foundationDemo)`.
+
+**`FoundationDemoPage`** (ConsumerStatefulWidget) demonstrates:
+
+- `DemoScaffold`, `AppCard`, `AppButton`, `AppFormField`, `AppDataTable`
+- `AppLoadingState` toggle, `ErrorStatePanel` with retry
+- `AppDialog` confirm flow, `SnackbarService` variants
+- `themeModeProvider` and `connectivityStatusProvider` read-only display
+
+No domain data or Supabase calls—only shared patterns for future features.
+
+## Routing update
+
+```dart
+// unauthenticatedEntry allows entry + foundation demo
+StartupCurrentView.unauthenticatedEntry =>
+  location == AppRoutes.startupEntry || location == AppRoutes.foundationDemo
+    ? null
+    : AppRoutes.startupEntry,
+```
+
+Protected-route guard (`/protected/...`) is unchanged from Phase 3.
+
+## `startup_notifier.dart` changes
+
+Theme label helpers moved to `theme_provider.dart`; notifier remains focused on startup UI projection (`StartupUiState`, degraded notice, profile/connectivity lines). `setThemeMode` still delegates to session notifier.
+
+## Automated tests (T025–T026)
+
+| Test file                                           | Covers                                                                                                                            |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `test/widget/shared/shared_foundations_test.dart`   | Theme brightness, `AppButton`, `AppCard`, `AppFormField`, `AppDataTable`, `ErrorStatePanel`, `AppLoadingState`, dialog + snackbar |
+| `test/widget/shared/foundation_demo_page_test.dart` | Demo page renders sections; loading toggle; dialog/snackbar interactions                                                          |
+
+Run with the rest of the suite:
+
+```bash
+cd frontend
+flutter analyze
+flutter test
+```
+
+## CI and quality gates (T031–T032)
+
+### `.github/workflows/ci.yml`
+
+Triggers on push/PR to `main`, `master`, `001-*`, and `feature/*`.
+
+**Job `frontend-quality`** (`windows-latest`, `working-directory: frontend`):
+
+1. `flutter pub get`
+2. `flutter analyze`
+3. `flutter test --file-reporter=json:test-results/flutter.json`
+4. Publish results via `dorny/test-reporter` (flutter-json)
+5. `flutter build windows --release`
+6. Upload `windows-build` artifact (7-day retention)
+
+Backend Docker validation is **not** in this workflow; stack checks remain manual or separate automation via `validate_local_stack.sh`.
+
+### `docs/setup/quality-gates.md`
+
+Documents local commands mirroring CI and maps feature needs to shared widgets. Referenced from updated `quickstart.md`.
+
+## Manual verification (Phase 5)
+
+1. Complete Phase 3/4 startup (valid profile, stack up).
+2. On entry screen, tap **View shared foundations**.
+3. Exercise buttons, loading toggle, dialog, snackbars, form field, data table.
+4. Confirm theme chips on entry still update demo “Theme:” line after return.
+5. Run `flutter analyze` and `flutter test` (or rely on CI on push).
+
+## Extension points after Phase 5
+
+- Initialize `supabase_flutter` using validated profile.
+- Replace `StartupScaffold` / feature-local cards with `DemoScaffold` / `AppCard` on startup pages for visual consistency.
+- Persist `ThemeMode` to local storage.
+- Add authenticated routes; keep using `core/widgets` for new surfaces.
+- Optional CI job for `validate_local_stack.sh` on a Linux runner with Docker.
+
+## Phase 5 summary
+
+Phase 5 establishes **shared visual and interaction foundations** plus **Windows desktop CI**. Startup behavior from Phase 3 is preserved; theme and connectivity are exposed through dedicated providers, and `/foundation-demo` proves the widget kit without touching domain logic.

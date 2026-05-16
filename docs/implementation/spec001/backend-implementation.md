@@ -30,7 +30,6 @@ Not implemented yet:
 - Edge Functions runtime in the Compose stack
 - email testing (Inbucket) in the Compose stack
 - connection pooler (Supavisor) in the Compose stack
-- `backend/tests/validate_local_stack.sh` (planned in tasks, not present yet)
 - production hardening (TLS termination, secret rotation, backups automation)
 - cloud Supabase project linkage
 
@@ -40,15 +39,16 @@ The backend exists so the Flutter client can validate `deployment-profile.json`,
 
 The backend is best understood as three cooperating areas:
 
-| Path                                  | Role                                                                                         |
-| ------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `backend/local/docker-compose.yml`    | Primary runtime definition: services, dependencies, ports, volumes                           |
-| `backend/local/.env` / `.env.example` | Host-visible ports, public URLs, JWT secret, demo anon/service keys                          |
-| `backend/local/init.sql`              | First-boot PostgreSQL bootstrap for Supabase roles and `auth` / `storage` schemas            |
-| `backend/local/kong.yml`              | Declarative Kong routes: `/auth/v1/`, `/rest/v1/`, `/storage/v1/`, `/realtime/v1/`           |
-| `backend/local/config.toml`           | Lightweight Supabase-style metadata aligned with local ports (documentation parity)          |
-| `backend/tests/connectivity_smoke.sh` | Post-start verification of auth, REST, and storage through the gateway                       |
-| `backend/supabase/config.toml`        | Full Supabase CLI project config (migrations, seeds, auth defaults) for future CLI workflows |
+| Path                                    | Role                                                                                         |
+| --------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `backend/local/docker-compose.yml`      | Primary runtime definition: services, dependencies, ports, volumes                           |
+| `backend/local/.env` / `.env.example`   | Host-visible ports, public URLs, JWT secret, demo anon/service keys                          |
+| `backend/local/init.sql`                | First-boot PostgreSQL bootstrap for Supabase roles and `auth` / `storage` schemas            |
+| `backend/local/kong.yml`                | Declarative Kong routes: `/auth/v1/`, `/rest/v1/`, `/storage/v1/`, `/realtime/v1/`           |
+| `backend/local/config.toml`             | Lightweight Supabase-style metadata aligned with local ports (documentation parity)          |
+| `backend/tests/connectivity_smoke.sh`   | Post-start verification of auth, REST, and storage through the gateway                       |
+| `backend/tests/validate_local_stack.sh` | End-to-end stack bring-up, readiness wait, smoke checks, optional teardown (US2, T018)       |
+| `backend/supabase/config.toml`          | Full Supabase CLI project config (migrations, seeds, auth defaults) for future CLI workflows |
 
 There is no `backend/src/`, no custom HTTP handlers, and no application-specific SQL beyond bootstrap roles/schemas.
 
@@ -65,6 +65,7 @@ Responsibility is split along constitution boundaries:
 7. **Realtime (`realtime`)** owns websocket endpoint under `/realtime/v1/`.
 8. **Supabase Studio (`studio`)** owns operator UI; it is not part of the clinic client data plane.
 9. **`connectivity_smoke.sh`** owns automated “is the gateway alive?” checks for CI and developers.
+10. **`validate_local_stack.sh`** owns full-stack validation: optional `compose up`, gateway readiness polling, smoke execution, Kong health assertion, optional `compose down`.
 
 Flutter remains responsible for startup UX, deployment-profile validation, and health probing. PostgreSQL will eventually own domain integrity via constraints, triggers, RLS, and RPC—none of that exists in this phase.
 
@@ -115,7 +116,8 @@ backend/
 │   ├── .env.example         # Committed defaults / template
 │   └── .env                 # Local overrides (gitignored)
 ├── tests/
-│   └── connectivity_smoke.sh
+│   ├── connectivity_smoke.sh
+│   └── validate_local_stack.sh
 └── supabase/
     ├── config.toml          # Supabase CLI project (future migrations)
     └── .gitignore
@@ -447,15 +449,14 @@ Before any real PHI or production clinic use:
 
 ## Testing and verification
 
-| Check              | Command / action                                   |
-| ------------------ | -------------------------------------------------- |
-| Containers running | `docker compose ps` in `backend/local`             |
-| Gateway smoke      | `./backend/tests/connectivity_smoke.sh`            |
-| Manual auth        | `curl -sS "${SUPABASE_PUBLIC_URL}/auth/v1/health"` |
-| Manual REST        | `curl -sS "${SUPABASE_PUBLIC_URL}/rest/v1/"`       |
-| Studio UI          | open `http://127.0.0.1:54323` (default)            |
-
-Planned but not yet in repo: `backend/tests/validate_local_stack.sh` (full stack validation per tasks.md T018).
+| Check                 | Command / action                                        |
+| --------------------- | ------------------------------------------------------- |
+| Containers running    | `docker compose ps` in `backend/local`                  |
+| Gateway smoke         | `./backend/tests/connectivity_smoke.sh`                 |
+| Full stack validation | `./backend/tests/validate_local_stack.sh` (see Phase 4) |
+| Manual auth           | `curl -sS "${SUPABASE_PUBLIC_URL}/auth/v1/health"`      |
+| Manual REST           | `curl -sS "${SUPABASE_PUBLIC_URL}/rest/v1/"`            |
+| Studio UI             | open `http://127.0.0.1:54323` (default)                 |
 
 ## What is intentionally out of scope
 
@@ -478,8 +479,7 @@ The likely evolution path:
 2. **RLS and roles** — grant `anon` / `authenticated` appropriate table privileges; never expose `service_role` to desktop clients
 3. **RPC functions** — domain writes via `supabase.rpc()` per `docs/architecture/04-backend.md`
 4. **Hardening** — TLS terminator in front of Kong, secret management, backup job for `postgres_data`
-5. **Validate script** — implement `validate_local_stack.sh` to compose-up, wait for health, run smoke tests, compose-down for CI
-6. **Realtime probe** — optional fourth Flutter probe for parity with smoke coverage
+5. **Realtime probe** — optional fourth Flutter probe for parity with smoke coverage
 
 ## Current design strengths
 
@@ -608,7 +608,6 @@ LAN client testing: set `SUPABASE_PUBLIC_URL` on the server to the receptionist 
 
 Still out of scope and tracked for later phases in `tasks.md`:
 
-- **T018** — `backend/tests/validate_local_stack.sh` (User Story 2)
 - Domain migrations, RLS, RPCs under `backend/supabase/migrations/`
 - Storage/realtime probes from Flutter (optional parity with smoke script)
 - Production hardening (TLS, secret rotation, backups)
@@ -616,3 +615,125 @@ Still out of scope and tracked for later phases in `tasks.md`:
 ## Phase 3 summary
 
 Phase 3 does not modify the backend implementation. The existing clinic-local Supabase Compose stack, Kong routing, and `connectivity_smoke.sh` remain the authoritative backend surface for startup. Phase 3 adds client-side startup UX and tests that **consume** those endpoints; verifying User Story 1 still requires a running stack (or deliberate unreachability) plus a valid deployment profile.
+
+---
+
+# Phase 4
+
+**Commit:** `fdb28e09e420517e8fab246fe40bbb47d71ba92b` — *Phase 4 Implementation*
+
+## Purpose and scope
+
+Phase 4 implements **User Story 2 — Prepare a Workstation Consistently** (`specs/001-project-scaffolding/tasks.md`, T018–T024). The backend contribution is **operational validation and documentation**, not new Compose services or application SQL.
+
+Goals:
+
+- give developers and operators a single script to prove the clinic-local stack is up and reachable
+- document repeatable setup for developer machines, receptionist server nodes, and clinic clients
+- align quickstart and deployment-profile contracts with those guides
+
+## What changed in the repository
+
+| Path                                                            | Phase 4 change                                      |
+| --------------------------------------------------------------- | --------------------------------------------------- |
+| `backend/tests/validate_local_stack.sh`                         | **NEW** — full-stack validation harness (T018)      |
+| `backend/local/docker-compose.yml`                              | None                                                |
+| `backend/local/kong.yml`                                        | None                                                |
+| `backend/local/init.sql`                                        | None                                                |
+| `backend/tests/connectivity_smoke.sh`                           | None (still invoked by validate script)             |
+| `docs/setup/developer-workstation.md`                           | **NEW** — developer setup (T020)                    |
+| `docs/setup/server-node.md`                                     | **NEW** — receptionist PC / LAN exposure (T021)     |
+| `docs/setup/client-workstation.md`                              | **NEW** — client profile and connectivity (T022)    |
+| `docs/setup/troubleshooting.md`                                 | **NEW** — backups and troubleshooting (T023)        |
+| `docs/setup/verification-checklist.md`                          | **NEW** — acceptance checklist (T019)               |
+| `specs/001-project-scaffolding/quickstart.md`                   | Updated to reference setup docs and validate script |
+| `specs/001-project-scaffolding/contracts/deployment-profile.md` | Expanded contract alignment (T024)                  |
+| `specs/001-project-scaffolding/tasks.md`                        | T018–T024 marked complete                           |
+
+No changes under `backend/local/` runtime definitions. Phase 4 adds **how to run and verify** the existing stack, not new services.
+
+## `validate_local_stack.sh` (T018)
+
+Executable at `backend/tests/validate_local_stack.sh`. It orchestrates bring-up, readiness, smoke checks, and optional teardown.
+
+### Behavior
+
+1. **Prerequisites** — requires `docker`, `curl`, and Docker Compose v2 plugin.
+2. **Environment** — loads `backend/local/.env`; copies from `.env.example` if missing.
+3. **Start (default)** — runs `docker compose up -d` in `backend/local/` unless `--no-start` is passed.
+4. **Readiness** — polls `{SUPABASE_PUBLIC_URL}/auth/v1/health` until HTTP is non-empty and not `000`, up to `--max-wait` seconds (default 120).
+5. **Smoke** — runs `./backend/tests/connectivity_smoke.sh` (auth, REST, storage probes).
+6. **Container check** — runs `docker compose ps` and fails if Kong is not in `running` state.
+7. **Teardown (optional)** — with `--teardown`, runs `docker compose down` after success.
+
+### CLI options
+
+| Flag             | Effect                                                 |
+| ---------------- | ------------------------------------------------------ |
+| `--no-start`     | Skip `compose up`; fail if gateway never becomes ready |
+| `--teardown`     | `compose down` after successful validation             |
+| `--max-wait SEC` | Override readiness timeout (default 120)               |
+| `-h`, `--help`   | Usage text                                             |
+
+### Typical commands
+
+```bash
+# Stack already running (developer loop)
+./backend/tests/validate_local_stack.sh --no-start
+
+# First-time or CI: start, validate, leave running
+./backend/tests/validate_local_stack.sh
+
+# CI: start, validate, tear down
+./backend/tests/validate_local_stack.sh --teardown
+```
+
+On success, the script prints gateway, Studio, Postgres host ports, and reminds operators to copy `SUPABASE_ANON_KEY` into `deployment-profile.json`.
+
+### Relationship to `connectivity_smoke.sh`
+
+| Script                    | Responsibility                                                                      |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `connectivity_smoke.sh`   | Assumes stack is up; curls auth, REST, storage; exits non-zero on failure           |
+| `validate_local_stack.sh` | Optional compose lifecycle, gateway wait loop, invokes smoke, verifies Kong running |
+
+Use smoke alone for quick checks; use validate for onboarding, checklist acceptance, and scripted CI (when a Docker host is available).
+
+## Operator documentation (`docs/setup/`)
+
+Phase 4 setup guides live outside `backend/` but define how the stack is installed and verified:
+
+| Document                    | Audience          | Backend relevance                                                   |
+| --------------------------- | ----------------- | ------------------------------------------------------------------- |
+| `developer-workstation.md`  | Engineers         | Flutter toolchain, clone, `validate_local_stack.sh`, profile paths  |
+| `server-node.md`            | Receptionist / IT | Compose on clinic PC, `SUPABASE_PUBLIC_URL`, firewall, LAN clients  |
+| `client-workstation.md`     | Clinic desktops   | `deployment-profile.json`, gateway URL, anon key from server `.env` |
+| `troubleshooting.md`        | All               | Logs, ports, volume reset, backup expectations                      |
+| `verification-checklist.md` | Acceptance        | Step-by-step US2 independent test                                   |
+
+`specs/001-project-scaffolding/quickstart.md` now points to these paths instead of duplicating full setup prose.
+
+## Testing matrix (Phase 4)
+
+| Step                | Command / action                                                          |
+| ------------------- | ------------------------------------------------------------------------- |
+| 1. Validate stack   | `./backend/tests/validate_local_stack.sh` (or `--no-start` if already up) |
+| 2. Quick smoke only | `./backend/tests/connectivity_smoke.sh`                                   |
+| 3. Checklist        | Follow `docs/setup/verification-checklist.md`                             |
+| 4. Client           | Valid profile + `flutter run` (Phase 3 startup UX)                        |
+
+## Phase 4 summary
+
+Phase 4 delivers **T018** (`validate_local_stack.sh`) and operator setup documentation. The clinic-local Supabase stack definition is unchanged; validation and written procedures make User Story 2 independently testable alongside User Story 1.
+
+---
+
+# Phase 5
+
+**Commit:** `ee2e62cff10cedde30f1b231ba465bc938bbceff` — *Phase 5 Implementation*
+
+## Backend impact
+
+Phase 5 has **no changes** under `backend/`. User Story 3 is entirely frontend shared foundations, foundation demo screen, and GitHub Actions CI for `flutter analyze` / `flutter test` / `flutter build windows`.
+
+The clinic-local Compose stack, Kong routes, and test scripts (`connectivity_smoke.sh`, `validate_local_stack.sh`) are unchanged. CI does not run Docker stack validation; operators still use Phase 4 scripts and setup docs for backend bring-up.
