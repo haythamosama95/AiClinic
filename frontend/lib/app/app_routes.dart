@@ -6,4 +6,5 @@ abstract final class AppRoutes {
   static const protectedBlocked = '/protected-blocked';
   static const protectedPlaceholder = '/protected/dashboard';
   static const protectedPrefix = '/protected';
+  static const foundationDemo = '/foundation-demo';
 }

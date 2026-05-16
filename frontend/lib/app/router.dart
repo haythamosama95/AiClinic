@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/foundation_demo/presentation/pages/foundation_demo_page.dart';
 import '../features/startup/presentation/pages/protected_placeholder_page.dart';
 import '../features/startup/presentation/pages/protected_route_blocked_page.dart';
 import '../features/startup/presentation/pages/setup_guidance_page.dart';
@@ -29,6 +30,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: AppRoutes.setupGuidance, builder: (context, state) => const SetupGuidancePage()),
       GoRoute(path: AppRoutes.protectedBlocked, builder: (context, state) => const ProtectedRouteBlockedPage()),
       GoRoute(path: AppRoutes.protectedPlaceholder, builder: (context, state) => const ProtectedPlaceholderPage()),
+      GoRoute(path: AppRoutes.foundationDemo, builder: (context, state) => const FoundationDemoPage()),
     ],
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);
@@ -47,7 +49,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         StartupCurrentView.setupGuidance => location == AppRoutes.setupGuidance ? null : AppRoutes.setupGuidance,
         StartupCurrentView.protectedRouteBlocked =>
           location == AppRoutes.protectedBlocked ? null : AppRoutes.protectedBlocked,
-        StartupCurrentView.unauthenticatedEntry => location == AppRoutes.startupEntry ? null : AppRoutes.startupEntry,
+        StartupCurrentView.unauthenticatedEntry =>
+          location == AppRoutes.startupEntry || location == AppRoutes.foundationDemo ? null : AppRoutes.startupEntry,
       };
     },
   );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../shared/providers/startup_session_provider.dart';
+import '../shared/providers/theme_provider.dart';
 import 'router.dart';
 import 'theme/app_theme.dart';
 
@@ -27,15 +28,14 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> {
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
-    final startupSession = ref.watch(startupSessionProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
-    // Theme mode comes from startup session state so it can be toggled early.
     return MaterialApp.router(
       title: 'AiClinic',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(),
       darkTheme: AppTheme.darkTheme(),
-      themeMode: startupSession.themeMode,
+      themeMode: themeMode,
       routerConfig: router,
     );
   }

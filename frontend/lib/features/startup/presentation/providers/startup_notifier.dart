@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/config/deployment_profile.dart';
 import '../../../../core/errors/failures.dart';
+import '../../../../shared/providers/connectivity_provider.dart';
 import '../../../../shared/providers/startup_session_provider.dart';
 import '../../../../shared/services/startup_health_service.dart';
 
@@ -94,24 +95,5 @@ String configurationStatusLabel(StartupConfigurationStatus status) {
     StartupConfigurationStatus.valid => 'Valid',
     StartupConfigurationStatus.missing => 'Missing',
     StartupConfigurationStatus.invalid => 'Invalid',
-  };
-}
-
-/// Converts connectivity state into human-readable UI copy.
-String connectivityStatusLabel(StartupConnectivityStatus status) {
-  return switch (status) {
-    StartupConnectivityStatus.unknown => 'Unknown',
-    StartupConnectivityStatus.healthy => 'Healthy',
-    StartupConnectivityStatus.degraded => 'Degraded',
-    StartupConnectivityStatus.unreachable => 'Unreachable',
-  };
-}
-
-/// Converts a Flutter theme mode into the label shown on the chips.
-String themeModeLabel(ThemeMode themeMode) {
-  return switch (themeMode) {
-    ThemeMode.system => 'System',
-    ThemeMode.light => 'Light',
-    ThemeMode.dark => 'Dark',
   };
 }

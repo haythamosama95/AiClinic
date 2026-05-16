@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/app_routes.dart';
+import '../../../../shared/providers/theme_provider.dart';
 import '../providers/startup_notifier.dart';
 import '../widgets/connection_status_card.dart';
 import '../widgets/degraded_state_notice.dart';
@@ -88,6 +89,12 @@ class StartupEntryPage extends ConsumerWidget {
                   context.go(AppRoutes.protectedPlaceholder);
                 },
                 child: const Text('Try a protected route'),
+              ),
+              OutlinedButton(
+                onPressed: () {
+                  context.go(AppRoutes.foundationDemo);
+                },
+                child: const Text('View shared foundations'),
               ),
             ],
           ),

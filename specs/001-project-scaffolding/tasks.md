@@ -103,17 +103,17 @@
 
 ### Tests for User Story 3
 
-- T025 [P] [US3] Add shared foundation widget tests in `frontend/test/widget/shared/shared_foundations_test.dart`
-- T026 [P] [US3] Add placeholder-screen widget tests in `frontend/test/widget/shared/foundation_demo_page_test.dart`
+- [X] T025 [P] [US3] Add shared foundation widget tests in `frontend/test/widget/shared/shared_foundations_test.dart`
+- [X] T026 [P] [US3] Add placeholder-screen widget tests in `frontend/test/widget/shared/foundation_demo_page_test.dart`
 
 ### Implementation for User Story 3
 
-- T027 [P] [US3] Implement the shared theme system in `frontend/lib/app/theme/app_theme.dart` and `frontend/lib/app/theme/app_colors.dart`
-- T028 [P] [US3] Implement reusable error and loading surfaces in `frontend/lib/core/widgets/error_state_panel.dart`, `frontend/lib/core/widgets/app_loading_state.dart`, and `frontend/lib/core/widgets/snackbar_service.dart`
-- T029 [P] [US3] Implement reusable UI primitives in `frontend/lib/core/widgets/app_button.dart`, `frontend/lib/core/widgets/app_card.dart`, `frontend/lib/core/widgets/app_dialog.dart`, `frontend/lib/core/widgets/app_form_field.dart`, and `frontend/lib/core/widgets/app_data_table.dart`
-- T030 [P] [US3] Implement shared theme and connectivity providers plus a demo screen in `frontend/lib/shared/providers/theme_provider.dart`, `frontend/lib/shared/providers/connectivity_provider.dart`, and `frontend/lib/features/foundation_demo/presentation/pages/foundation_demo_page.dart`
-- T031 [US3] Add the baseline CI workflow for analyze, tests, and Windows build verification in `.github/workflows/ci.yml`
-- T032 [US3] Document quality-gate commands and shared foundation usage in `docs/setup/quality-gates.md` and `specs/001-project-scaffolding/quickstart.md`
+- [X] T027 [P] [US3] Implement the shared theme system in `frontend/lib/app/theme/app_theme.dart` and `frontend/lib/app/theme/app_colors.dart`
+- [X] T028 [P] [US3] Implement reusable error and loading surfaces in `frontend/lib/core/widgets/error_state_panel.dart`, `frontend/lib/core/widgets/app_loading_state.dart`, and `frontend/lib/core/widgets/snackbar_service.dart`
+- [X] T029 [P] [US3] Implement reusable UI primitives in `frontend/lib/core/widgets/app_button.dart`, `frontend/lib/core/widgets/app_card.dart`, `frontend/lib/core/widgets/app_dialog.dart`, `frontend/lib/core/widgets/app_form_field.dart`, and `frontend/lib/core/widgets/app_data_table.dart`
+- [X] T030 [P] [US3] Implement shared theme and connectivity providers plus a demo screen in `frontend/lib/shared/providers/theme_provider.dart`, `frontend/lib/shared/providers/connectivity_provider.dart`, and `frontend/lib/features/foundation_demo/presentation/pages/foundation_demo_page.dart`
+- [X] T031 [US3] Add the baseline CI workflow for analyze, tests, and Windows build verification in `.github/workflows/ci.yml`
+- [X] T032 [US3] Document quality-gate commands and shared foundation usage in `docs/setup/quality-gates.md` and `specs/001-project-scaffolding/quickstart.md`
 
 **Checkpoint**: All user stories should now be independently functional
 

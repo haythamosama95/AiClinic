@@ -72,9 +72,22 @@ Implemented under `frontend/lib/features/startup/`:
 
 The authenticated application shell is out of scope for V1-0.
 
-## 6. Add the minimal CI/CD skeleton
+## 6. Shared foundations and CI
 
-Planned in User Story 3: baseline workflow for analyze, tests, and Windows build verification (`.github/workflows/ci.yml`). Not required to validate User Story 2.
+Reusable UI primitives live under `frontend/lib/core/widgets/` with theming in `frontend/lib/app/theme/`. Theme and connectivity state are exposed via `theme_provider.dart` and `connectivity_provider.dart`.
+
+Preview the building blocks on the **View shared foundations** screen from the startup entry page (`frontend/lib/features/foundation_demo/`).
+
+Baseline quality gates (local and CI):
+
+```bash
+cd frontend
+flutter analyze
+flutter test
+flutter build windows --release
+```
+
+Details: [quality-gates.md](../../docs/setup/quality-gates.md). Workflow: [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
 
 ## 7. Verify acceptance
 
@@ -95,10 +108,10 @@ cd frontend && flutter test
 - `./backend/tests/validate_local_stack.sh` exits successfully with the stack running.
 - Client and server profiles use consistent gateway URL and anon key.
 
-### Quality gates (when CI is added)
+### User Story 3 — shared foundations and quality gates
 
-```bash
-cd frontend && flutter analyze && flutter test
-```
+- Open **View shared foundations** from the startup entry screen and confirm theme, table, form, loading, and error samples render.
+- Run `flutter analyze`, `flutter test`, and `flutter build windows` successfully.
+- See [quality-gates.md](../../docs/setup/quality-gates.md) for the full checklist.
 
 For setup failures, see [troubleshooting.md](../../docs/setup/troubleshooting.md).

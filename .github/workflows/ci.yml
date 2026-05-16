@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, "001-*", "feature/*"]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  frontend-quality:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      checks: write
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test --file-reporter=json:test-results/flutter.json
+
+      - name: Publish test results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Flutter tests
+          path: frontend/test-results/*.json
+          reporter: flutter-json
+          fail-on-error: true
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: frontend/build/windows/x64/runner/Release/
+          retention-days: 7

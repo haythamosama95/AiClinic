@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../app/theme/app_colors.dart';
+
 /// Reusable centered loading panel for startup and other blocking transitions.
 class AppLoadingState extends StatelessWidget {
   const AppLoadingState({super.key, this.title = 'Preparing AiClinic', this.message});
@@ -11,20 +13,19 @@ class AppLoadingState extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
 
-    // Keep the loading message readable on wide desktop windows.
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(width: 36, height: 36, child: CircularProgressIndicator()),
-              const SizedBox(height: 20),
+              const SizedBox(height: AppSpacing.lg),
               Text(title, style: textTheme.headlineSmall, textAlign: TextAlign.center),
               if (message != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Text(message!, style: textTheme.bodyMedium, textAlign: TextAlign.center),
               ],
             ],

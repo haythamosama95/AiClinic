@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Centralizes the shared Material 3 theme used by the startup shell.
+import 'app_colors.dart';
+
+/// Centralizes the shared Material 3 theme used across startup and feature screens.
 class AppTheme {
   const AppTheme._();
 
@@ -12,9 +14,8 @@ class AppTheme {
 
   /// Applies the common visual language for cards, buttons, inputs, and feedback.
   static ThemeData _buildTheme(Brightness brightness) {
-    final colorScheme = ColorScheme.fromSeed(seedColor: const Color(0xFF0F766E), brightness: brightness);
-
-    final borderRadius = BorderRadius.circular(16);
+    final colorScheme = ColorScheme.fromSeed(seedColor: AppColors.seed, brightness: brightness);
+    final borderRadius = BorderRadius.circular(AppSpacing.borderRadius);
 
     return ThemeData(
       useMaterial3: true,
@@ -27,8 +28,17 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: borderRadius,
+          side: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        margin: EdgeInsets.zero,
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.md),
         border: OutlineInputBorder(borderRadius: borderRadius),
         enabledBorder: OutlineInputBorder(
           borderRadius: borderRadius,
@@ -42,14 +52,21 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           minimumSize: const Size(0, 44),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: borderRadius),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: borderRadius),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(0, 44),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: borderRadius),
         ),
       ),
@@ -59,7 +76,11 @@ class AppTheme {
         contentTextStyle: TextStyle(color: colorScheme.onInverseSurface),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(color: colorScheme.primary),
-      dividerTheme: DividerThemeData(color: colorScheme.outlineVariant),
+      dividerTheme: DividerThemeData(color: colorScheme.outlineVariant, space: AppSpacing.lg),
+      dataTableTheme: DataTableThemeData(
+        headingTextStyle: TextStyle(fontWeight: FontWeight.w600, color: colorScheme.onSurface),
+        dataTextStyle: TextStyle(color: colorScheme.onSurface),
+      ),
     );
   }
 }
