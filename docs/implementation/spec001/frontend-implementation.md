@@ -437,3 +437,203 @@ The most likely next structural evolution is:
 ## Summary
 
 The frontend is currently a startup-oriented orchestration layer rather than a full product surface. Its lifecycle is driven by one Riverpod notifier that loads clinic-local configuration, checks backend reachability, and feeds a router that strictly controls which page can render. The main interactions are simple and explicit, which makes the current codebase easy to extend as authentication, real feature modules, and persistent state are added.
+
+---
+
+# Phase 3
+
+## Purpose and scope
+
+Phase 3 implements **User Story 1 — Launch a Safe Pre-Auth Entry** (`specs/001-project-scaffolding/tasks.md`, T011–T017). The goal is a complete, testable startup experience that:
+
+- validates the local deployment profile at launch
+- shows connection status and actionable next-step guidance on the unauthenticated entry screen
+- surfaces degraded startup clearly when the clinic-local gateway is partially or fully unreachable
+- blocks protected routes and returns users to the safe entry flow
+
+Phase 3 does **not** add Supabase SDK initialization, authentication, domain features, or persistent theme storage. It moves startup UI out of the app shell into `features/startup` and adds automated widget and integration tests.
+
+## What changed from Phase 2
+
+| Area                  | Phase 2                                                              | Phase 3                                                                      |
+| --------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Startup pages         | Private widgets co-located in `app/router.dart`                      | Dedicated pages under `features/startup/presentation/pages/`                 |
+| Presentation state    | UI read `startupSessionProvider` directly                            | `startupNotifierProvider` exposes UI-ready labels and actions                |
+| Reusable startup UI   | `_StatusCard`, `_FailureBanner`, `_StartupScaffold` inline in router | Shared widgets under `features/startup/presentation/widgets/`                |
+| Route constants       | Defined in `router.dart`                                             | Extracted to `app/app_routes.dart` to avoid circular imports                 |
+| Tests                 | Placeholder directories only                                         | Widget + integration tests for entry, degraded, and protected-route behavior |
+| Protected-route guard | Any path starting with `/protected`                                  | Only paths under `/protected/` (e.g. `/protected/dashboard`)                 |
+
+The shared orchestration layer (`startup_session_provider.dart`, `startup_health_service.dart`, config, errors, theme) is unchanged in responsibility; Phase 3 consumes it from the feature module.
+
+## New code map
+
+```text
+frontend/lib/
+├── app/
+│   ├── app_routes.dart          # NEW — route name constants
+│   ├── router.dart              # CHANGED — routing + redirects only
+│   └── app.dart                 # unchanged bootstrap wiring
+└── features/startup/presentation/
+    ├── pages/
+    │   ├── startup_check_page.dart
+    │   ├── startup_entry_page.dart
+    │   ├── setup_guidance_page.dart
+    │   ├── protected_route_blocked_page.dart
+    │   └── protected_placeholder_page.dart
+    ├── providers/
+    │   └── startup_notifier.dart
+    └── widgets/
+        ├── startup_scaffold.dart
+        ├── connection_status_card.dart
+        ├── degraded_state_notice.dart
+        └── failure_banner.dart
+
+frontend/test/
+├── support/startup_test_support.dart
+├── widget/startup/startup_entry_page_test.dart
+└── integration/startup/
+    ├── protected_route_redirect_test.dart
+    └── degraded_startup_test.dart
+```
+
+## Presentation layer: `startup_notifier.dart`
+
+`StartupNotifier` watches `startupSessionProvider` and projects `StartupUiState` for widgets. It does not duplicate bootstrap logic; it delegates to `StartupSessionNotifier` for:
+
+- `bootstrap()` / `retryStartup()`
+- `setThemeMode()`
+- `blockProtectedRoute()` / `acknowledgeProtectedRouteBlock()`
+
+`StartupUiState` adds presentation helpers used by pages:
+
+- `showDegradedNotice` — valid configuration plus `degraded` or `unreachable` connectivity
+- `deploymentProfileLines` / `connectivityLines` — labeled status lines for cards
+- `configurationStatusLabel()` / `connectivityStatusLabel()` / `themeModeLabel()` — human-readable enums
+
+Pages should prefer `startupNotifierProvider` for rendering and actions. `startupSessionProvider` remains the source of truth for routing (`appRouterProvider` still listens to session state).
+
+## Screens and widgets
+
+### `StartupCheckPage`
+
+Shown while `StartupCurrentView.startupCheck` is active during bootstrap. Uses `StartupScaffold` + `AppLoadingState` with copy that protected routes stay blocked until configuration and connectivity are known.
+
+### `StartupEntryPage`
+
+Main **unauthenticated entry** experience after a valid profile is loaded (`StartupCurrentView.unauthenticatedEntry`). Renders:
+
+- `DegradedStateNotice` when connectivity is degraded or unreachable (profile still valid)
+- `FailureBanner` for `ConnectivityFailure` when present
+- `ConnectionStatusCard` for deployment profile and clinic-local connectivity
+- a **Next steps** card with workstation setup guidance (no domain navigation)
+- theme `ChoiceChip`s wired to `setThemeMode()`
+- **Refresh startup checks** → `retryStartup()`
+- **Try a protected route** → `context.go(AppRoutes.protectedPlaceholder)` to exercise the guard
+
+Connectivity failure does **not** redirect to setup guidance; the entry screen stays visible for troubleshooting, matching the startup-experience contract.
+
+### `SetupGuidancePage`
+
+Shown when the profile is missing or invalid (`StartupCurrentView.setupGuidance`). Displays `FailureBanner`, file-location instructions, required JSON fields, an example profile, and **Retry bootstrap**.
+
+### `ProtectedRouteBlockedPage`
+
+Shown when navigation targets a protected **feature** route (`/protected/...`) without auth context. Explains the redirect and offers **Return to startup**, which calls `acknowledgeProtectedRouteBlock()` and `context.go(AppRoutes.startupEntry)`.
+
+### `ProtectedPlaceholderPage`
+
+Safety placeholder for `/protected/dashboard`. The redirect layer should send users to `/protected-blocked` before this widget renders; integration tests assert the placeholder text never appears.
+
+### Shared widgets
+
+| Widget                 | Role                                                                       |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `StartupScaffold`      | Centered, scrollable shell (title, subtitle, body) for all startup screens |
+| `ConnectionStatusCard` | Card listing status lines (profile or connectivity)                        |
+| `DegradedStateNotice`  | Tertiary-container banner for degraded/unreachable clinic-local services   |
+| `FailureBanner`        | Error-container banner for `AppFailure` (configuration or connectivity)    |
+
+## Routing updates
+
+### `app_routes.dart`
+
+Route constants moved out of `router.dart` so feature pages can import paths without importing the router (which imports those pages).
+
+| Constant               | Path                   |
+| ---------------------- | ---------------------- |
+| `startupEntry`         | `/`                    |
+| `startupCheck`         | `/startup-check`       |
+| `setupGuidance`        | `/setup-guidance`      |
+| `protectedBlocked`     | `/protected-blocked`   |
+| `protectedPlaceholder` | `/protected/dashboard` |
+| `protectedPrefix`      | `/protected`           |
+
+### Redirect rules (unchanged intent, fixed guard)
+
+1. **Protected feature routes** — `location.startsWith('${AppRoutes.protectedPrefix}/')` (note trailing slash). Intercepts e.g. `/protected/dashboard`, calls `blockProtectedRoute(location)`, redirects to `/protected-blocked`.
+   **Fix:** `/protected-blocked` no longer matches this prefix, so acknowledging a block and returning to `/` works correctly.
+
+2. **Startup view enforcement** — `StartupCurrentView` still maps to exactly one allowed location; other locations redirect to the canonical screen.
+
+`app.dart` and `main.dart` are unchanged: `ProviderScope` → `AiClinicApp` → microtask `bootstrap()`.
+
+## State machine (Phase 3 behavior)
+
+The state machine in Phase 2 is unchanged; Phase 3 only changes **where** screens live and **how** degraded status is shown on the entry page.
+
+```mermaid
+stateDiagram-v2
+    [*] --> startupCheck
+    startupCheck --> setupGuidance : missing or invalid profile
+    startupCheck --> unauthenticatedEntry : valid profile (any connectivity)
+    unauthenticatedEntry --> startupCheck : retryStartup()
+    setupGuidance --> startupCheck : retryStartup()
+    unauthenticatedEntry --> protectedRouteBlocked : /protected/* navigation
+    protectedRouteBlocked --> unauthenticatedEntry : acknowledge + go entry
+    protectedRouteBlocked --> setupGuidance : acknowledge, config invalid
+```
+
+## Automated tests (T011–T013)
+
+| Test file                                                     | Covers                                                                                               |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `test/widget/startup/startup_entry_page_test.dart`            | Entry page shows profile/connectivity cards, healthy labels, degraded notice with overridden session |
+| `test/integration/startup/protected_route_redirect_test.dart` | **Try a protected route** flow; direct `router.go` to placeholder never renders placeholder          |
+| `test/integration/startup/degraded_startup_test.dart`         | Unreachable and degraded health results; missing profile → setup guidance                            |
+
+`test/support/startup_test_support.dart` provides:
+
+- `FakeDeploymentProfileStore` / `FakeStartupHealthService`
+- `sampleDeploymentProfile()` / `sampleHealthResult()`
+- `pumpStartupApp()` — full app with provider overrides
+- `completeStartupBootstrap()` — `pumpAndSettle()` after bootstrap
+
+Run:
+
+```bash
+cd frontend
+flutter analyze
+flutter test
+```
+
+## Manual verification checklist
+
+1. Place a valid `deployment-profile.json` (see Phase 2 path resolution).
+2. Start the local Supabase stack (`backend/local/docker compose up -d`).
+3. `flutter run` — expect startup check, then entry screen with **Healthy** connectivity.
+4. Stop the stack or point `supabase_url` at an unreachable host — entry screen remains with **Degraded** or **Unreachable** notice.
+5. Tap **Try a protected route** — blocked screen, then **Return to startup** — entry screen again.
+6. Remove or invalidate the profile — setup guidance with retry.
+
+## Extension points after Phase 3
+
+- Initialize `supabase_flutter` using the validated profile (no backend URL changes required).
+- Add authenticated session state and narrow the protected-route guard to real feature paths.
+- Persist `ThemeMode` locally.
+- Move shared primitives from Phase 5 (US3) into `core/widgets` and adopt them on startup pages.
+- Add storage/realtime probes if parity with `connectivity_smoke.sh` is required.
+
+## Phase 3 summary
+
+Phase 3 delivers the MVP pre-auth startup UX as a proper feature module with tests. Runtime decisions still flow through `StartupSessionNotifier` and `GoRouter` redirects; the feature layer focuses on presentation, degraded-state visibility, and safe navigation boundaries until authentication exists.

@@ -57,16 +57,16 @@
 
 ### Tests for User Story 1
 
-- T011 [P] [US1] Add startup configuration widget tests in `frontend/test/widget/startup/startup_entry_page_test.dart`
-- T012 [P] [US1] Add protected-route redirect integration tests in `frontend/test/integration/startup/protected_route_redirect_test.dart`
-- T013 [P] [US1] Add degraded connectivity integration tests in `frontend/test/integration/startup/degraded_startup_test.dart`
+- [X] T011 [P] [US1] Add startup configuration widget tests in `frontend/test/widget/startup/startup_entry_page_test.dart`
+- [X] T012 [P] [US1] Add protected-route redirect integration tests in `frontend/test/integration/startup/protected_route_redirect_test.dart`
+- [X] T013 [P] [US1] Add degraded connectivity integration tests in `frontend/test/integration/startup/degraded_startup_test.dart`
 
 ### Implementation for User Story 1
 
-- T014 [P] [US1] Implement the unauthenticated entry page and startup-check view in `frontend/lib/features/startup/presentation/pages/startup_entry_page.dart` and `frontend/lib/features/startup/presentation/pages/startup_check_page.dart`
-- T015 [P] [US1] Implement setup-guidance and degraded-state widgets in `frontend/lib/features/startup/presentation/pages/setup_guidance_page.dart`, `frontend/lib/features/startup/presentation/widgets/connection_status_card.dart`, and `frontend/lib/features/startup/presentation/widgets/degraded_state_notice.dart`
-- T016 [US1] Implement startup presentation state and validation flow in `frontend/lib/features/startup/presentation/providers/startup_notifier.dart`
-- T017 [US1] Wire startup routing, guarded redirects, and bootstrap state into `frontend/lib/app/router.dart`, `frontend/lib/app/app.dart`, and `frontend/lib/main.dart`
+- [X] T014 [P] [US1] Implement the unauthenticated entry page and startup-check view in `frontend/lib/features/startup/presentation/pages/startup_entry_page.dart` and `frontend/lib/features/startup/presentation/pages/startup_check_page.dart`
+- [X] T015 [P] [US1] Implement setup-guidance and degraded-state widgets in `frontend/lib/features/startup/presentation/pages/setup_guidance_page.dart`, `frontend/lib/features/startup/presentation/widgets/connection_status_card.dart`, and `frontend/lib/features/startup/presentation/widgets/degraded_state_notice.dart`
+- [X] T016 [US1] Implement startup presentation state and validation flow in `frontend/lib/features/startup/presentation/providers/startup_notifier.dart`
+- [X] T017 [US1] Wire startup routing, guarded redirects, and bootstrap state into `frontend/lib/app/router.dart`, `frontend/lib/app/app.dart`, and `frontend/lib/main.dart`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 

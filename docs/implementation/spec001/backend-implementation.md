@@ -527,3 +527,92 @@ sequenceDiagram
 ## Summary
 
 The backend implementation is a **self-hosted Supabase-compatible stack** under `backend/local/`, not application source code. Docker Compose runs PostgreSQL, GoTrue, PostgREST, Storage, Realtime, and Kong; Kong publishes one clinic gateway URL that matches what the Flutter deployment profile and health probes expect. `init.sql` seeds only Supabase prerequisites; domain data and security rules come later via migrations and RLS. `connectivity_smoke.sh` provides a minimal automated guarantee that the gateway and core APIs are reachable before developers or CI rely on the frontend startup flow.
+
+---
+
+# Phase 3
+
+## Purpose and scope
+
+Phase 3 in `specs/001-project-scaffolding/tasks.md` covers **User Story 1** on the Flutter client only (T011–T017). There are **no Phase 3 backend tasks**: no new Compose services, SQL migrations, Kong routes, environment variables, or changes to `backend/tests/connectivity_smoke.sh`.
+
+The clinic-local stack delivered in Phase 1 and Phase 2 is the **runtime dependency** for Phase 3 acceptance testing. Phase 3 frontend behavior assumes the gateway URLs and reachability semantics documented above remain stable.
+
+## What changed in the repository
+
+| Path                                  | Phase 3 change |
+| ------------------------------------- | -------------- |
+| `backend/local/docker-compose.yml`    | None           |
+| `backend/local/kong.yml`              | None           |
+| `backend/local/init.sql`              | None           |
+| `backend/local/.env.example`          | None           |
+| `backend/local/config.toml`           | None           |
+| `backend/tests/connectivity_smoke.sh` | None           |
+| `backend/supabase/`                   | None           |
+
+No new files were added under `backend/` for Phase 3.
+
+## How Phase 3 uses the existing stack
+
+The Flutter startup flow (Phase 3) exercises the same three HTTP surfaces the backend already exposes through Kong:
+
+| Frontend probe (`StartupHealthService`)    | Backend endpoint (via gateway) | Used in smoke script              |
+| ------------------------------------------ | ------------------------------ | --------------------------------- |
+| `gatewayProbeUrl` (profile `supabase_url`) | Kong root / gateway            | No (Flutter only)                 |
+| `authHealthUrl` → `{base}/auth/v1/health`  | GoTrue health                  | Yes                               |
+| `restProbeUrl` → `{base}/rest/v1/`         | PostgREST                      | Yes                               |
+| —                                          | `{base}/storage/v1/`           | Yes (smoke only; not Flutter yet) |
+
+Reachability rules are aligned between client and smoke harness:
+
+- HTTP status **&lt; 500** counts as reachable (includes `401`, `404`)
+- Timeouts count as unreachable
+- Flutter aggregate: 3/3 → healthy, 0/3 → unreachable, otherwise → degraded
+
+So operators validating Phase 3 should still bring up the stack the same way as Phase 2:
+
+```bash
+cd backend/local
+cp -n .env.example .env   # if needed
+docker compose up -d
+cd ../..
+./backend/tests/connectivity_smoke.sh
+```
+
+Then point the client `deployment-profile.json` at the same gateway URL and anon key as `SUPABASE_PUBLIC_URL` / `SUPABASE_ANON_KEY` in `backend/local/.env`.
+
+## Operator scenarios for Phase 3 acceptance
+
+| Scenario                            | Backend expectation                               | Expected client behavior                                                     |
+| ----------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Stack up, valid profile             | Smoke script passes; auth + REST respond via Kong | Entry screen, connectivity **Healthy**                                       |
+| Stack stopped or wrong LAN URL      | Probes time out or fail                           | Entry screen remains (valid profile), **Unreachable** or **Degraded** notice |
+| Partial failure (e.g. only auth up) | Some probes &lt; 500, not all three               | **Degraded** on entry screen                                                 |
+| Invalid/missing profile             | Backend irrelevant until profile fixed            | Setup guidance (no dependency on stack)                                      |
+
+Protected-route blocking is entirely a **frontend routing** concern; the backend does not participate in `/protected/*` guards in V1-0.
+
+## Testing matrix (backend + Phase 3 frontend)
+
+| Step              | Command / action                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------- |
+| 1. Start stack    | `docker compose up -d` in `backend/local`                                                    |
+| 2. Backend smoke  | `./backend/tests/connectivity_smoke.sh`                                                      |
+| 3. Client profile | `supabase_url` = gateway (default `http://127.0.0.1:54321`), `supabase_anon_key` from `.env` |
+| 4. Client tests   | `cd frontend && flutter test`                                                                |
+| 5. Manual UI      | `flutter run` — entry, degraded (stack down), protected-route guard                          |
+
+LAN client testing: set `SUPABASE_PUBLIC_URL` on the server to the receptionist PC’s LAN IP, open firewall for `SUPABASE_HTTP_PORT`, distribute the same URL and anon key in client profiles (unchanged from Phase 2).
+
+## Planned backend work (not Phase 3)
+
+Still out of scope and tracked for later phases in `tasks.md`:
+
+- **T018** — `backend/tests/validate_local_stack.sh` (User Story 2)
+- Domain migrations, RLS, RPCs under `backend/supabase/migrations/`
+- Storage/realtime probes from Flutter (optional parity with smoke script)
+- Production hardening (TLS, secret rotation, backups)
+
+## Phase 3 summary
+
+Phase 3 does not modify the backend implementation. The existing clinic-local Supabase Compose stack, Kong routing, and `connectivity_smoke.sh` remain the authoritative backend surface for startup. Phase 3 adds client-side startup UX and tests that **consume** those endpoints; verifying User Story 1 still requires a running stack (or deliberate unreachability) plus a valid deployment profile.
