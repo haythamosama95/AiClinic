@@ -157,62 +157,29 @@ class DeploymentProfile {
   }
 }
 
-/// Resolves where the app should look for the local deployment profile file.
+/// Loads the local deployment profile from [fileName] in the process working directory.
 class DeploymentProfileStore {
-  const DeploymentProfileStore({Map<String, String>? environment}) : _environment = environment;
+  const DeploymentProfileStore();
 
-  static const environmentVariable = 'AICLINIC_DEPLOYMENT_PROFILE_PATH';
-  static const defaultFileName = 'deployment-profile.json';
-  static const defaultConfigDirectory = 'lib/core/config';
-  static const repoRelativeConfigDirectory = 'frontend/lib/core/config';
+  static const fileName = 'deployment-profile.json';
 
-  final Map<String, String>? _environment;
+  /// Back-compat alias for UI copy that references the profile file name.
+  static const defaultFileName = fileName;
 
-  Map<String, String> get _resolvedEnvironment => _environment ?? Platform.environment;
+  /// Returns the profile path resolved against the process working directory.
+  String resolvePath() => fileName;
 
-  /// Returns candidate profile paths in priority order.
-  List<String> resolveCandidatePaths({String? overridePath}) {
-    final explicitPath = overridePath?.trim();
-    if (explicitPath != null && explicitPath.isNotEmpty) {
-      return [explicitPath];
+  /// Loads and validates [fileName] from the process working directory.
+  Future<DeploymentProfile> load() async {
+    final file = File(fileName);
+    if (!await file.exists()) {
+      throw MissingDeploymentProfileException(
+        'No deployment profile was found. Expected `$fileName` in the process working directory. '
+        'Create a local profile before startup can continue.',
+      );
     }
 
-    // Environment configuration wins over built-in fallback locations.
-    final environmentPath = _resolvedEnvironment[environmentVariable]?.trim();
-    if (environmentPath != null && environmentPath.isNotEmpty) {
-      return [environmentPath];
-    }
-
-    return [
-      defaultFileName,
-      '$defaultConfigDirectory/$defaultFileName',
-      '$repoRelativeConfigDirectory/$defaultFileName',
-    ];
-  }
-
-  /// Returns the highest-priority path that would be checked for a profile.
-  String resolvePath({String? overridePath}) {
-    return resolveCandidatePaths(overridePath: overridePath).first;
-  }
-
-  /// Loads the first profile file that exists and passes validation.
-  Future<DeploymentProfile> load({String? overridePath}) async {
-    final candidatePaths = resolveCandidatePaths(overridePath: overridePath);
-
-    for (final path in candidatePaths) {
-      final file = File(path);
-      if (!await file.exists()) {
-        continue;
-      }
-
-      final contents = await file.readAsString();
-      return DeploymentProfile.fromJsonString(contents, sourcePath: file.path);
-    }
-
-    final checkedPaths = candidatePaths.map((path) => '`$path`').join(', ');
-    throw MissingDeploymentProfileException(
-      'No deployment profile was found. Checked: $checkedPaths. '
-      'Create a local profile before startup can continue.',
-    );
+    final contents = await file.readAsString();
+    return DeploymentProfile.fromJsonString(contents, sourcePath: file.path);
   }
 }

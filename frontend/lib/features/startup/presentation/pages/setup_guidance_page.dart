@@ -39,14 +39,8 @@ class SetupGuidancePage extends ConsumerWidget {
                   Text('Next step', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   Text(
-                    'Create `${DeploymentProfileStore.defaultConfigDirectory}/${DeploymentProfileStore.defaultFileName}` when running from `frontend/`.',
+                    'Create `${DeploymentProfileStore.fileName}` in the process working directory (for example `frontend/${DeploymentProfileStore.fileName}` when running the app from `frontend/`).',
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Use `frontend/lib/core/config/${DeploymentProfileStore.defaultFileName}` when running from the repository root.',
-                  ),
-                  const SizedBox(height: 4),
-                  Text('Or set `${DeploymentProfileStore.environmentVariable}` to an absolute profile path.'),
                   const SizedBox(height: 8),
                   const Text('Required fields: deployment_mode=local, supabase_url, and supabase_anon_key.'),
                   const SizedBox(height: 8),

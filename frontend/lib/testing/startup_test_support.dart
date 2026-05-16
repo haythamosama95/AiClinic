@@ -59,7 +59,7 @@ class FakeDeploymentProfileStore extends DeploymentProfileStore {
   final DeploymentProfileException? error;
 
   @override
-  Future<DeploymentProfile> load({String? overridePath}) async {
+  Future<DeploymentProfile> load() async {
     if (error != null) {
       throw error!;
     }

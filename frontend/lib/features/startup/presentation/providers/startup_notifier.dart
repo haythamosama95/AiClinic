@@ -69,8 +69,8 @@ class StartupNotifier extends Notifier<StartupUiState> {
     return StartupUiState(session: session);
   }
 
-  Future<void> bootstrap({String? profilePath}) {
-    return ref.read(startupSessionProvider.notifier).bootstrap(profilePath: profilePath);
+  Future<void> bootstrap() {
+    return ref.read(startupSessionProvider.notifier).bootstrap();
   }
 
   Future<void> retryStartup() => bootstrap();

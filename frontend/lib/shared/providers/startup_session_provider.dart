@@ -99,12 +99,12 @@ class StartupSessionNotifier extends Notifier<StartupSessionState> {
   StartupSessionState build() => StartupSessionState.initial();
 
   /// Re-runs startup from scratch, loading config first and then probing connectivity.
-  Future<void> bootstrap({String? profilePath}) async {
+  Future<void> bootstrap() async {
     final preservedThemeMode = state.themeMode;
     state = StartupSessionState.initial().copyWith(themeMode: preservedThemeMode);
 
     try {
-      final profile = await ref.read(deploymentProfileStoreProvider).load(overridePath: profilePath);
+      final profile = await ref.read(deploymentProfileStoreProvider).load();
       final healthResult = await ref
           .read(startupHealthServiceProvider)
           .check(SupabaseConfig.fromDeploymentProfile(profile));
