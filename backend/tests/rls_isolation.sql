@@ -72,6 +72,16 @@ BEGIN
     (v_staff_b, v_branch_b, true, v_user_b, v_user_b)
   ON CONFLICT (staff_member_id, branch_id) DO NOTHING;
 
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name)
+  VALUES
+    (v_user_a, v_org_a, 'test.audit', 'organizations'),
+    (v_user_b, v_org_b, 'test.audit', 'organizations');
+
+  INSERT INTO public.app_settings (organization_id, branch_id, key, value_json, created_by, updated_by)
+  VALUES
+    (v_org_a, NULL, 'org_wide', '{"org":"a"}'::jsonb, v_user_a, v_user_a),
+    (v_org_b, NULL, 'org_wide', '{"org":"b"}'::jsonb, v_user_b, v_user_b);
+
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
     'request.jwt.claims',
@@ -152,6 +162,49 @@ BEGIN
     'cross_org_branch_denied_user_b',
     v_visible = 0,
     format('user B sees %s rows for org A branch (expected 0)', v_visible)
+  );
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_b::text,
+      'role', 'authenticated',
+      'organization_id', v_org_b::text,
+      'branch_ids', v_branch_b::text,
+      'staff_member_id', v_staff_b::text,
+      'setup_required', false
+    )::text,
+    true
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  SELECT count(*)::int
+  INTO v_visible
+  FROM public.audit_log
+  WHERE organization_id = v_org_a;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO rls_test_results (test_name, passed, detail)
+  VALUES (
+    'audit_log_isolation_user_b',
+    v_visible = 0,
+    format('user B sees %s org A audit rows (expected 0)', v_visible)
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+
+  SELECT count(*)::int
+  INTO v_visible
+  FROM public.app_settings
+  WHERE organization_id = v_org_a
+    AND is_deleted = false;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO rls_test_results (test_name, passed, detail)
+  VALUES (
+    'app_settings_isolation_user_b',
+    v_visible = 0,
+    format('user B sees %s org A app_settings rows (expected 0)', v_visible)
   );
 END;
 $$;

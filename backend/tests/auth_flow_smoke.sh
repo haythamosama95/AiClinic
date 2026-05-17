@@ -90,7 +90,12 @@ fi
 printf 'Auth smoke: bootstrap_create_organization guard\n'
 
 PGPASSWORD="${db_password}" psql -h 127.0.0.1 -p "${db_port}" -U postgres -d postgres -Atqc \
-  "SELECT set_config('request.jwt.claim.sub', '${bootstrap_user_id}', true);
+  "BEGIN;
+   SELECT set_config(
+     'request.jwt.claims',
+     json_build_object('sub', '${bootstrap_user_id}', 'role', 'authenticated')::text,
+     true
+   );
    SELECT set_config('role', 'authenticated', true);
    SELECT (public.bootstrap_create_organization('Smoke Org')::public.rpc_result).error_code;" \
   | while read -r code; do

@@ -283,9 +283,10 @@ BEGIN
   )
   RETURNING id INTO v_org_id;
 
-  INSERT INTO public.audit_log (user_id, action, table_name, record_id, new_data_json)
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
   VALUES (
     auth.uid(),
+    v_org_id,
     'organization.bootstrap_create',
     'organizations',
     v_org_id,
@@ -385,9 +386,10 @@ BEGIN
     VALUES (v_staff.id, v_branch_id, true, auth.uid(), auth.uid());
   END IF;
 
-  INSERT INTO public.audit_log (user_id, action, table_name, record_id, new_data_json)
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
   VALUES (
     auth.uid(),
+    p_organization_id,
     'branch.bootstrap_create',
     'branches',
     v_branch_id,
@@ -600,9 +602,10 @@ BEGIN
     );
   END LOOP;
 
-  INSERT INTO public.audit_log (user_id, action, table_name, record_id, new_data_json)
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
   VALUES (
     auth.uid(),
+    public.jwt_organization_id(),
     'staff.create',
     'staff_members',
     v_staff_id,
@@ -672,6 +675,17 @@ BEGIN
     RETURN public.rpc_error('CROSS_ORG_DENIED', 'Staff member is outside your organization scope.');
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.staff_branch_assignments sba
+    JOIN public.branches b ON b.id = sba.branch_id
+    WHERE sba.staff_member_id = v_target.id
+      AND sba.is_deleted = false
+      AND b.organization_id = public.jwt_organization_id()
+  ) THEN
+    RETURN public.rpc_error('CROSS_ORG_DENIED', 'Staff member is outside your organization scope.');
+  END IF;
+
   v_auth_user_id := v_target.auth_user_id;
 
   UPDATE auth.users
@@ -680,9 +694,10 @@ BEGIN
     updated_at = now()
   WHERE id = v_auth_user_id;
 
-  INSERT INTO public.audit_log (user_id, action, table_name, record_id, new_data_json)
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
   VALUES (
     auth.uid(),
+    public.jwt_organization_id(),
     'staff.password_reset',
     'staff_members',
     p_staff_member_id,
@@ -702,7 +717,7 @@ $$;
 -- -----------------------------------------------------------------------------
 -- Grant Flutter clients permission to call these RPCs (authenticated role only)
 -- -----------------------------------------------------------------------------
-GRANT EXECUTE ON FUNCTION public.bootstrap_create_organization(text, jsonb) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.bootstrap_create_branch(uuid, text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.bootstrap_create_organization(text, jsonb, text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.bootstrap_create_branch(uuid, text, text, text, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_staff_account(text, text, text, public.staff_role, uuid[], uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_reset_staff_password(uuid, text) TO authenticated;

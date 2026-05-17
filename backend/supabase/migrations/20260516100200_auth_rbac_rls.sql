@@ -240,7 +240,13 @@ CREATE POLICY staff_branch_assignments_select ON public.staff_branch_assignments
   TO authenticated
   USING (
     is_deleted = false
-    AND branch_id = ANY (public.jwt_branch_ids())
+    AND (
+      branch_id = ANY (public.jwt_branch_ids())
+      OR (
+        public.jwt_setup_required()
+        AND staff_member_id = public.jwt_staff_member_id()
+      )
+    )
   );
 
 CREATE POLICY staff_branch_assignments_insert ON public.staff_branch_assignments
@@ -262,25 +268,29 @@ CREATE POLICY roles_permissions_select ON public.roles_permissions
 -- TABLE: audit_log
 -- =============================================================================
 
--- See your own actions OR any row when you have an organization in JWT (org staff)
+-- See your own actions OR audit rows for your organization
 CREATE POLICY audit_log_select ON public.audit_log
   FOR SELECT
   TO authenticated
   USING (
     user_id = auth.uid()
-    OR public.jwt_organization_id() IS NOT NULL
+    OR (
+      organization_id IS NOT NULL
+      AND organization_id = public.jwt_organization_id()
+    )
   );
 
 -- =============================================================================
 -- TABLE: app_settings
 -- =============================================================================
 
--- Org-wide settings (branch_id NULL) or settings for branches you can access
+-- Org-scoped settings: org-wide (branch_id NULL) or branch rows you are assigned to
 CREATE POLICY app_settings_select ON public.app_settings
   FOR SELECT
   TO authenticated
   USING (
     is_deleted = false
+    AND organization_id = public.jwt_organization_id()
     AND (
       branch_id IS NULL
       OR branch_id = ANY (public.jwt_branch_ids())

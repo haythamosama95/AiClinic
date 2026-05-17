@@ -68,29 +68,37 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_table_name text := p_table::text;
+  v_table_only text;
+  trg_updated text;
+  trg_audit text;
 BEGIN
-  -- Drop if re-running migration (idempotent)
+  -- regclass::text may be schema-qualified (e.g. public.organizations); dots are invalid in trigger names.
+  IF position('.' IN v_table_name) > 0 THEN
+    v_table_only := split_part(v_table_name, '.', 2);
+  ELSE
+    v_table_only := v_table_name;
+  END IF;
+
+  trg_updated := format('trg_%s_set_updated_at', v_table_only);
+  trg_audit := format('trg_%s_set_audit_user', v_table_only);
+
+  EXECUTE format('DROP TRIGGER IF EXISTS %I ON %s', trg_updated, v_table_name);
   EXECUTE format(
-    'DROP TRIGGER IF EXISTS trg_%1$s_set_updated_at ON %1$s',
-    v_table_name
-  );
-  EXECUTE format(
-    'CREATE TRIGGER trg_%1$s_set_updated_at
-       BEFORE UPDATE ON %1$s
+    'CREATE TRIGGER %I
+       BEFORE UPDATE ON %s
        FOR EACH ROW
        EXECUTE FUNCTION public.set_updated_at()',
+    trg_updated,
     v_table_name
   );
 
+  EXECUTE format('DROP TRIGGER IF EXISTS %I ON %s', trg_audit, v_table_name);
   EXECUTE format(
-    'DROP TRIGGER IF EXISTS trg_%1$s_set_audit_user ON %1$s',
-    v_table_name
-  );
-  EXECUTE format(
-    'CREATE TRIGGER trg_%1$s_set_audit_user
-       BEFORE INSERT OR UPDATE ON %1$s
+    'CREATE TRIGGER %I
+       BEFORE INSERT OR UPDATE ON %s
        FOR EACH ROW
        EXECUTE FUNCTION public.set_audit_user()',
+    trg_audit,
     v_table_name
   );
 END;

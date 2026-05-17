@@ -183,6 +183,7 @@ CREATE TABLE public.roles_permissions (
 CREATE TABLE public.audit_log (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES auth.users (id),        -- Actor (nullable for system actions)
+  organization_id uuid REFERENCES public.organizations (id),  -- Tenant scope for RLS (nullable pre-org bootstrap)
   action text NOT NULL,                           -- e.g. 'staff.create', 'organization.bootstrap_create'
   table_name text NOT NULL,                       -- Which table was affected
   record_id uuid,                                 -- Primary key of affected row
@@ -193,6 +194,7 @@ CREATE TABLE public.audit_log (
 );
 
 CREATE INDEX audit_log_timestamp_idx ON public.audit_log (timestamp DESC);
+CREATE INDEX audit_log_organization_id_idx ON public.audit_log (organization_id);
 
 -- -----------------------------------------------------------------------------
 -- TABLE: app_settings
@@ -201,6 +203,7 @@ CREATE INDEX audit_log_timestamp_idx ON public.audit_log (timestamp DESC);
 -- value_json stores structured data (numbers, objects, arrays) as JSON.
 CREATE TABLE public.app_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES public.organizations (id),
   branch_id uuid REFERENCES public.branches (id),
   key text NOT NULL,
   value_json jsonb NOT NULL,

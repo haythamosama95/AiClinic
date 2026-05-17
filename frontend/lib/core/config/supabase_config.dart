@@ -87,11 +87,17 @@ Map<String, dynamic> decodeAccessTokenClaims(String accessToken) {
     return const {};
   }
 
-  final normalized = base64Url.normalize(parts[1]);
-  final payload = utf8.decode(base64Url.decode(normalized));
-  final decoded = jsonDecode(payload);
-  if (decoded is! Map<String, dynamic>) {
+  try {
+    final normalized = base64Url.normalize(parts[1]);
+    final payload = utf8.decode(base64Url.decode(normalized));
+    final decoded = jsonDecode(payload);
+    if (decoded is! Map<String, dynamic>) {
+      return const {};
+    }
+    return decoded;
+  } on FormatException {
+    return const {};
+  } on Exception {
     return const {};
   }
-  return decoded;
 }
