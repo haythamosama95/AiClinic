@@ -26,11 +26,11 @@
 
 **Purpose**: Create auth feature module layout and migration workspace before schema work
 
-- [ ] T001 Create Supabase migrations workspace in `backend/supabase/migrations/`
-- [ ] T002 Create auth feature module directories in `frontend/lib/features/auth/data/`, `frontend/lib/features/auth/domain/`, and `frontend/lib/features/auth/presentation/pages/`, `frontend/lib/features/auth/presentation/providers/`, `frontend/lib/features/auth/presentation/widgets/`
-- [ ] T003 [P] Create shared auth utilities directory in `frontend/lib/core/auth/`
-- [ ] T004 [P] Add bootstrap administrator credential template in `backend/seed/bootstrap_admin.env.example`
-- [ ] T005 [P] Add auth route constants in `frontend/lib/app/app_routes.dart` (`/login`, `/bootstrap`, `/home`, `/forgot-password`)
+- [X] T001 Create Supabase migrations workspace in `backend/supabase/migrations/`
+- [X] T002 Create auth feature module directories in `frontend/lib/features/auth/data/`, `frontend/lib/features/auth/domain/`, and `frontend/lib/features/auth/presentation/pages/`, `frontend/lib/features/auth/presentation/providers/`, `frontend/lib/features/auth/presentation/widgets/`
+- [X] T003 [P] Create shared auth utilities directory in `frontend/lib/core/auth/`
+- [X] T004 [P] Add bootstrap administrator credential template in `backend/seed/bootstrap_admin.env.example`
+- [X] T005 [P] Add auth route constants in `frontend/lib/app/app_routes.dart` (`/login`, `/bootstrap`, `/home`, `/forgot-password`)
 
 ---
 
