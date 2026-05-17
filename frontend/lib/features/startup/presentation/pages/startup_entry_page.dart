@@ -79,6 +79,12 @@ class StartupEntryPage extends ConsumerWidget {
             runSpacing: 12,
             children: [
               FilledButton(
+                onPressed: () {
+                  context.go(AppRoutes.login);
+                },
+                child: const Text('Continue to sign in'),
+              ),
+              OutlinedButton(
                 onPressed: () async {
                   await notifier.retryStartup();
                 },

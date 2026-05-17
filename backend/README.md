@@ -1,3 +1,27 @@
+# AiClinic Backend
+
+Auth/RBAC migrations live in `supabase/migrations/`. Apply them against the clinic-local stack (see `specs/002-auth-rbac/quickstart.md`):
+
+```bash
+cd backend
+supabase db reset   # or: supabase migration up
+```
+
+## GoTrue custom claims hook
+
+`supabase/config.toml` registers the `get_custom_claims` custom access token hook (`pg-functions://postgres/public/get_custom_claims`). After changing migrations or hook configuration:
+
+1. Re-apply migrations if needed (`supabase db reset` or `supabase migration up`).
+2. Restart the auth service so GoTrue reloads hooks:
+   - **Supabase CLI local stack**: `supabase stop` then `supabase start`
+   - **Docker Compose stack** (`backend/local`): `docker compose restart auth` from `backend/local`
+
+Verification scripts: `backend/tests/auth_flow_smoke.sh`, `backend/tests/rls_isolation.sql`.
+
+Bootstrap administrator defaults: `backend/seed/bootstrap_admin.env.example`.
+
+---
+
 # Supabase CLI
 
 [![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=develop)](https://coveralls.io/github/supabase/cli?branch=develop) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
@@ -42,12 +66,12 @@ For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency
   ```
 
   To install the beta release channel:
-  
+
   ```sh
   brew install supabase/tap/supabase-beta
   brew link --overwrite supabase-beta
   ```
-  
+
   To upgrade:
 
   ```sh

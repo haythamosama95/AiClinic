@@ -21,6 +21,9 @@ Defines RPC and UI contracts for first-time clinic setup and minimal staff admin
 | ----------------- | ----- | -------- |
 | `p_name`          | text  | Yes      |
 | `p_settings_json` | jsonb | No       |
+| `p_logo_url`      | text  | No       |
+| `p_currency_code` | text  | No       |
+| `p_timezone`      | text  | No       |
 
 **Returns**: `rpc_result` with `data.organization_id`
 
@@ -34,8 +37,10 @@ Defines RPC and UI contracts for first-time clinic setup and minimal staff admin
 | ------------------- | ---- | -------- |
 | `p_organization_id` | uuid | Yes      |
 | `p_name`            | text | Yes      |
+| `p_code`            | text | No       |
 | `p_address`         | text | No       |
 | `p_phone`           | text | No       |
+| `p_maps_url`        | text | No       |
 
 **Side effect**: Assign bootstrap admin to branch with `is_primary=true` when first branch for org.
 
@@ -87,8 +92,8 @@ Defines RPC and UI contracts for first-time clinic setup and minimal staff admin
 
 ### Clinic bootstrap wizard
 
-1. Organization name (single org)
-2. First branch details
+1. Organization details (name; optional logo URL, currency code, timezone)
+2. First branch details (name; optional code, address, phone, maps URL)
 3. On success → enable staff provisioning entry point
 
 ### Staff account create form
@@ -105,6 +110,6 @@ Defines RPC and UI contracts for first-time clinic setup and minimal staff admin
 ## Out of Scope
 
 - Edit/deactivate staff
-- Organization settings beyond initial name
+- Organization settings beyond initial bootstrap fields (logo, currency, timezone)
 - Branch deactivate/list management UI
 - Permission matrix editor

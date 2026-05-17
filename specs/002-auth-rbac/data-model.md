@@ -8,24 +8,29 @@ All tables use shared conventions: `id uuid PK`, audit columns (`created_at`, `c
 
 ## Table: `organizations`
 
-| Column                     | Type        | Notes              |
-| -------------------------- | ----------- | ------------------ |
-| `name`                     | text        | NOT NULL           |
-| `subscription_tier`        | text        | Default `standard` |
-| `subscription_valid_until` | timestamptz | Nullable           |
-| `settings_json`            | jsonb       | Default `{}`       |
+| Column                     | Type        | Notes                                          |
+| -------------------------- | ----------- | ---------------------------------------------- |
+| `name`                     | text        | NOT NULL                                       |
+| `logo_url`                 | text        | Nullable — clinic logo URL or storage path     |
+| `currency_code`            | text        | Nullable — ISO 4217 (e.g. `EGP`, `USD`)        |
+| `timezone`                 | text        | Nullable — IANA timezone (e.g. `Africa/Cairo`) |
+| `subscription_tier`        | text        | Default `standard`                             |
+| `subscription_valid_until` | timestamptz | Nullable                                       |
+| `settings_json`            | jsonb       | Default `{}`                                   |
 
 **Constraints**: At most one row may exist in V1-1 (enforced by RPC, not DB CHECK — allows test flexibility).
 
 ## Table: `branches`
 
-| Column            | Type | Notes                        |
-| ----------------- | ---- | ---------------------------- |
-| `organization_id` | uuid | FK → organizations, NOT NULL |
-| `name`            | text | NOT NULL                     |
-| `address`         | text | Nullable                     |
-| `phone`           | text | Nullable                     |
-| `is_active`       | bool | Default true                 |
+| Column            | Type | Notes                                             |
+| ----------------- | ---- | ------------------------------------------------- |
+| `organization_id` | uuid | FK → organizations, NOT NULL                      |
+| `name`            | text | NOT NULL                                          |
+| `code`            | text | Nullable — short internal or business branch code |
+| `address`         | text | Nullable                                          |
+| `phone`           | text | Nullable                                          |
+| `maps_url`        | text | Nullable — GPS / maps link for branch location    |
+| `is_active`       | bool | Default true                                      |
 
 **Rules**: Only table with direct `organization_id` FK per tenancy model.
 

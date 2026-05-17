@@ -254,8 +254,8 @@ As a clinic operator, the application prevents access to protected areas until a
 
 This feature introduces the foundational tenancy, staff, permission, audit, and settings data required before operational modules.
 
-- **Organization**: Tenant root for a clinic business; holds name, subscription metadata, and organization-wide settings payload.
-- **Branch**: A clinic location under an organization; the only table that directly holds organization reference; includes contact and active status.
+- **Organization**: Tenant root for a clinic business; holds name, logo URL, currency code, timezone, subscription metadata, and organization-wide settings payload.
+- **Branch**: A clinic location under an organization; the only table that directly holds organization reference; includes short branch code, contact fields, GPS/maps URL, and active status.
 - **Staff Member**: A person working for the clinic; linked to platform identity; holds display name, role, contact, and active flag; organization context derived from branch assignments.
 - **Staff Branch Assignment**: Many-to-many link between staff and branches, including which branch is primary for default session context.
 - **Role Permission**: Mapping of role to permission keys with grant/deny state; used to resolve what each role may do.
@@ -399,8 +399,8 @@ This feature introduces no AI-assisted workflow. Permission keys related to futu
 
 ### Key Entities *(include if feature involves data)*
 
-- **Organization**: The clinic tenant root used to isolate all downstream data.
-- **Branch**: A location within an organization; scope anchor for staff assignments and future operational data.
+- **Organization**: The clinic tenant root used to isolate all downstream data; includes branding and locale context (logo URL, currency code, timezone).
+- **Branch**: A location within an organization; scope anchor for staff assignments and future operational data; includes a short branch code and optional maps link.
 - **Staff Member**: An authenticated clinic worker linked to platform identity and a single role.
 - **Staff Branch Assignment**: Defines which branches a staff member may access and which is primary.
 - **Role Permission**: Defines granular capabilities granted to each role.

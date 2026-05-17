@@ -40,21 +40,21 @@
 
 **⚠️ CRITICAL**: No user story phase work until this phase is complete
 
-- [ ] T006 Add schema migration for `staff_role` enum and tables (`organizations`, `branches`, `staff_members`, `staff_branch_assignments`, `roles_permissions`, `audit_log`, `app_settings`, `subscription_cache`) in `backend/supabase/migrations/20260516100000_auth_rbac_schema.sql`
-- [ ] T007 Add audit triggers (`set_updated_at`, audit user columns) in `backend/supabase/migrations/20260516100100_auth_rbac_audit_triggers.sql`
-- [ ] T008 Add RLS policies for all auth feature tables in `backend/supabase/migrations/20260516100200_auth_rbac_rls.sql`
-- [ ] T009 Implement `get_custom_claims`, bootstrap RPCs, and staff RPCs in `backend/supabase/migrations/20260516100300_auth_rbac_functions.sql`
-- [ ] T010 Seed `roles_permissions` matrix, bootstrap admin auth user, and `staff_members` row (`is_bootstrap_admin`) in `backend/supabase/migrations/20260516100400_auth_rbac_seed.sql`
-- [ ] T011 [P] Register GoTrue custom access token hook for `get_custom_claims` in `backend/supabase/config.toml` and document restart steps in `backend/README.md`
-- [ ] T012 [P] Implement `AuthRepository` (signIn, signOut, session stream, no local persistence on cold start) in `frontend/lib/features/auth/data/auth_repository.dart`
-- [ ] T013 [P] Define `AuthSessionContext`, `StaffProfile`, and related domain types in `frontend/lib/features/auth/domain/auth_session.dart`
-- [ ] T014 Implement `AuthSessionNotifier` and `authSessionProvider` in `frontend/lib/shared/providers/auth_session_provider.dart`
-- [ ] T015 [P] Implement `PermissionService` (`hasPermission`, `requirePermission`) in `frontend/lib/core/auth/permission_service.dart`
-- [ ] T016 Configure Supabase client initialization to avoid restoring sessions after app restart in `frontend/lib/core/config/supabase_config.dart`
-- [ ] T017 [P] Add RLS isolation verification script in `backend/tests/rls_isolation.sql`
-- [ ] T018 [P] Add auth flow smoke script (sign-in, claims, bootstrap RPCs) in `backend/tests/auth_flow_smoke.sh`
-- [ ] T019 Integrate auth-aware `GoRouter` redirect scaffold in `frontend/lib/app/router.dart` (listen to `authSessionProvider`)
-- [ ] T020 Add navigation from startup entry to login in `frontend/lib/features/startup/presentation/pages/startup_entry_page.dart`
+- [X] T006 Add schema migration for `staff_role` enum and tables (`organizations`, `branches`, `staff_members`, `staff_branch_assignments`, `roles_permissions`, `audit_log`, `app_settings`, `subscription_cache`) in `backend/supabase/migrations/20260516100000_auth_rbac_schema.sql`
+- [X] T007 Add audit triggers (`set_updated_at`, audit user columns) in `backend/supabase/migrations/20260516100100_auth_rbac_audit_triggers.sql`
+- [X] T008 Add RLS policies for all auth feature tables in `backend/supabase/migrations/20260516100200_auth_rbac_rls.sql`
+- [X] T009 Implement `get_custom_claims`, bootstrap RPCs, and staff RPCs in `backend/supabase/migrations/20260516100300_auth_rbac_functions.sql`
+- [X] T010 Seed `roles_permissions` matrix, bootstrap admin auth user, and `staff_members` row (`is_bootstrap_admin`) in `backend/supabase/migrations/20260516100400_auth_rbac_seed.sql`
+- [X] T011 [P] Register GoTrue custom access token hook for `get_custom_claims` in `backend/supabase/config.toml` and document restart steps in `backend/README.md`
+- [X] T012 [P] Implement `AuthRepository` (signIn, signOut, session stream, no local persistence on cold start) in `frontend/lib/features/auth/data/auth_repository.dart`
+- [X] T013 [P] Define `AuthSessionContext`, `StaffProfile`, and related domain types in `frontend/lib/features/auth/domain/auth_session.dart`
+- [X] T014 Implement `AuthSessionNotifier` and `authSessionProvider` in `frontend/lib/shared/providers/auth_session_provider.dart`
+- [X] T015 [P] Implement `PermissionService` (`hasPermission`, `requirePermission`) in `frontend/lib/core/auth/permission_service.dart`
+- [X] T016 Configure Supabase client initialization to avoid restoring sessions after app restart in `frontend/lib/core/config/supabase_config.dart`
+- [X] T017 [P] Add RLS isolation verification script in `backend/tests/rls_isolation.sql`
+- [X] T018 [P] Add auth flow smoke script (sign-in, claims, bootstrap RPCs) in `backend/tests/auth_flow_smoke.sh`
+- [X] T019 Integrate auth-aware `GoRouter` redirect scaffold in `frontend/lib/app/router.dart` (listen to `authSessionProvider`)
+- [X] T020 Add navigation from startup entry to login in `frontend/lib/features/startup/presentation/pages/startup_entry_page.dart`
 
 **Checkpoint**: Migrations apply cleanly; bootstrap admin can authenticate; router distinguishes unauthenticated vs authenticated paths
 
