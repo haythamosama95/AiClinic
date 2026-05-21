@@ -35,8 +35,8 @@ class ForgotPasswordPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'If you are the clinic administrator, sign in with an owner or administrator account and use '
-                  'Reset staff password from the home screen.',
+                  'If you are the clinic administrator, sign in with an owner or administrator account, open '
+                  'Settings → Staff, select the staff member, and use Reset password.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),

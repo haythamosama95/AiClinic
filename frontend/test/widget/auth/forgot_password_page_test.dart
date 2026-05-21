@@ -53,10 +53,12 @@ void main() {
     expect(find.text('Login screen'), findsOneWidget);
   });
 
-  testWidgets('page explains administrators use reset staff password from home', (tester) async {
+  testWidgets('page explains administrators reset passwords from settings staff', (tester) async {
     await pumpForgotPage(tester);
 
-    expect(find.textContaining('Reset staff password'), findsOneWidget);
+    expect(find.textContaining('Settings'), findsOneWidget);
+    expect(find.textContaining('Staff'), findsOneWidget);
+    expect(find.textContaining('Reset password'), findsOneWidget);
     expect(find.textContaining('owner or administrator'), findsWidgets);
   });
 

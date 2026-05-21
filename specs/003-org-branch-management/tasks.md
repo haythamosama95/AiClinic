@@ -110,15 +110,15 @@
 
 - [x] T029 [P] [US3] Add staff lifecycle RPC tests in `backend/tests/org_branch_management_crud.sql`
 - [x] T030 [P] [US3] Add unit tests for `StaffAdminRepository` in `frontend/test/unit/settings/staff_admin_repository_test.dart`
-- [ ] T031 [P] [US3] Add widget tests for staff list/form in `frontend/test/widget/settings/staff_list_page_test.dart` and `frontend/test/widget/settings/staff_form_page_test.dart`
+- [x] T031 [P] [US3] Add widget tests for staff list/form in `frontend/test/widget/settings/staff_list_page_test.dart` and `frontend/test/widget/settings/staff_form_page_test.dart`
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Implement `StaffAdminRepository` list/update/setActive and wire existing `create_staff_account` / `admin_reset_staff_password` in `frontend/lib/features/settings/data/staff_admin_repository.dart`
-- [ ] T033 [US3] Implement `StaffListPage` in `frontend/lib/features/settings/presentation/pages/staff_list_page.dart`
-- [ ] T034 [US3] Implement `StaffFormPage` (create + edit, branch multi-select, primary branch, owner-creation guard) in `frontend/lib/features/settings/presentation/pages/staff_form_page.dart`
-- [ ] T035 [US3] Add staff password reset navigation from staff detail reusing `ProvisioningRepository` in `frontend/lib/features/settings/presentation/pages/staff_form_page.dart` and route `/settings/staff/:id/reset-password`
-- [ ] T036 [US3] Gate staff routes with `settings.manage_staff` in `frontend/lib/app/router.dart`
+- [x] T032 [US3] Implement `StaffAdminRepository` list/update/setActive and wire existing `create_staff_account` / `admin_reset_staff_password` in `frontend/lib/features/settings/data/staff_admin_repository.dart`
+- [x] T033 [US3] Implement `StaffListPage` in `frontend/lib/features/settings/presentation/pages/staff_list_page.dart`
+- [x] T034 [US3] Implement `StaffFormPage` (create + edit, branch multi-select, primary branch, owner-creation guard) in `frontend/lib/features/settings/presentation/pages/staff_form_page.dart`
+- [x] T035 [US3] Add staff password reset navigation from staff detail reusing `ProvisioningRepository` in `frontend/lib/features/settings/presentation/pages/staff_form_page.dart` and route `/settings/staff/:id/reset-password`
+- [x] T036 [US3] Gate staff routes with `settings.manage_staff` in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 5–7, 13 (inactive-branch-only assignments → blocked shell after sign-in)
 

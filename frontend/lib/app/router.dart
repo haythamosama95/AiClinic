@@ -20,6 +20,9 @@ import 'package:ai_clinic/features/settings/presentation/pages/branch_list_page.
 import 'package:ai_clinic/features/settings/presentation/pages/organization_settings_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_admin_placeholder_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/staff_form_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/staff_settings_password_reset_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
@@ -63,23 +66,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '${AppRoutes.settingsBranches}/:branchId/edit',
         builder: (context, state) => BranchFormPage(branchId: state.pathParameters['branchId']),
       ),
-      GoRoute(
-        path: AppRoutes.settingsStaff,
-        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'Staff'),
-      ),
-      GoRoute(
-        path: AppRoutes.settingsStaffNew,
-        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'New staff member'),
-      ),
+      GoRoute(path: AppRoutes.settingsStaff, builder: (context, state) => const StaffListPage()),
+      GoRoute(path: AppRoutes.settingsStaffNew, builder: (context, state) => const StaffFormPage()),
       GoRoute(
         path: '${AppRoutes.settingsStaff}/:staffId',
-        builder: (context, state) =>
-            SettingsAdminPlaceholderPage(title: 'Staff member ${state.pathParameters['staffId']}'),
+        builder: (context, state) => StaffFormPage(staffId: state.pathParameters['staffId']),
       ),
       GoRoute(
         path: '${AppRoutes.settingsStaff}/:staffId/reset-password',
-        builder: (context, state) =>
-            SettingsAdminPlaceholderPage(title: 'Reset password ${state.pathParameters['staffId']}'),
+        builder: (context, state) => StaffSettingsPasswordResetPage(staffId: state.pathParameters['staffId']!),
       ),
       GoRoute(
         path: AppRoutes.settingsPermissions,

@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/features/settings/domain/idle_timeout_config.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/branch_list_notifier.dart';
+import 'package:ai_clinic/features/settings/presentation/providers/staff_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
@@ -58,7 +59,10 @@ class SettingsPage extends ConsumerWidget {
                 title: const Text('Staff'),
                 subtitle: const Text('Manage staff accounts and branch assignments'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.go(AppRoutes.settingsStaff),
+                onTap: () {
+                  ref.read(staffListProvider.notifier).reload();
+                  context.go(AppRoutes.settingsStaff);
+                },
               ),
             if (AuthRouteGuard.canAccessPermissionMatrix(auth))
               ListTile(

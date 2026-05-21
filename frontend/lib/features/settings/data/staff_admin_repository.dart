@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 
 /// Filter for staff list queries.
 enum StaffListFilter { active, inactive, all }
@@ -59,7 +60,68 @@ class StaffAdminRepository with SettingsRpcInvoker {
         items.add(item);
       }
     }
-    return items;
+
+    if (items.isEmpty) {
+      return items;
+    }
+
+    final branchNamesByStaff = await _loadBranchNamesByStaffId(items.map((s) => s.id).toList());
+    return [for (final item in items) item.copyWith(branchNames: branchNamesByStaff[item.id] ?? const [])];
+  }
+
+  Future<StaffMemberDetail?> fetchStaffMember(String staffMemberId) async {
+    final row = await _client
+        .from('staff_members')
+        .select('id, full_name, role, phone, is_active, staff_branch_assignments(branch_id, is_primary, is_deleted)')
+        .eq('id', staffMemberId)
+        .eq('is_deleted', false)
+        .maybeSingle();
+
+    if (row == null) {
+      return null;
+    }
+    return StaffMemberDetail.fromRow(Map<String, dynamic>.from(row));
+  }
+
+  /// Whether the organization already has at least one owner account.
+  Future<bool> organizationHasOwner() async {
+    final rows = await _client
+        .from('staff_members')
+        .select('id')
+        .eq('role', StaffRole.owner.wireValue)
+        .eq('is_deleted', false)
+        .eq('is_active', true);
+    return rows.isNotEmpty;
+  }
+
+  Future<Map<String, List<String>>> _loadBranchNamesByStaffId(List<String> staffIds) async {
+    if (staffIds.isEmpty) {
+      return const {};
+    }
+
+    final rows = await _client
+        .from('staff_branch_assignments')
+        .select('staff_member_id, branches(name)')
+        .inFilter('staff_member_id', staffIds)
+        .eq('is_deleted', false);
+
+    final map = <String, List<String>>{};
+    for (final row in rows) {
+      final staffId = row['staff_member_id']?.toString();
+      if (staffId == null || staffId.isEmpty) {
+        continue;
+      }
+      final branch = row['branches'];
+      String? name;
+      if (branch is Map) {
+        name = branch['name']?.toString().trim();
+      }
+      if (name == null || name.isEmpty) {
+        continue;
+      }
+      map.putIfAbsent(staffId, () => <String>[]).add(name);
+    }
+    return map;
   }
 
   Future<String> updateStaffMember(UpdateStaffMemberInput input) async {

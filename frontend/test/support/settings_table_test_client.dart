@@ -37,6 +37,13 @@ class _FilterBuilder extends Fake implements PostgrestFilterBuilder<List<Map<Str
   }
 
   @override
+  PostgrestFilterBuilder<List<Map<String, dynamic>>> inFilter(String column, List values) {
+    final set = values.map((v) => v.toString()).toSet();
+    _rows = _rows.where((row) => set.contains(row[column]?.toString())).toList();
+    return this;
+  }
+
+  @override
   PostgrestFilterBuilder<List<Map<String, dynamic>>> order(
     String column, {
     bool ascending = false,

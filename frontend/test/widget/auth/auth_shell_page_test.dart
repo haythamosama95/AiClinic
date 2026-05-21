@@ -119,22 +119,10 @@ void main() {
     expect(harness.signOutCalls, 1);
   });
 
-  testWidgets('owner sees reset staff password action', (tester) async {
+  testWidgets('home screen does not show reset staff password action', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [authSessionProvider.overrideWith(_OwnerShellNotifier.new)],
-        child: const MaterialApp(home: AuthShellPage()),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Reset staff password'), findsOneWidget);
-  });
-
-  testWidgets('doctor does not see reset staff password action', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [authSessionProvider.overrideWith(_DoctorShellNotifier.new)],
         child: const MaterialApp(home: AuthShellPage()),
       ),
     );

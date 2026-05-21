@@ -23,3 +23,17 @@ String branchMessageForRpc(RpcFailure failure) {
     _ => 'Unable to complete the branch action. Check connectivity and try again.',
   };
 }
+
+/// User-facing messages for staff management RPC error codes.
+String staffMessageForRpc(RpcFailure failure) {
+  return switch (failure.code) {
+    'FORBIDDEN_OWNER_CREATE' => failure.message,
+    'FORBIDDEN' => 'You do not have permission to manage staff.',
+    'STAFF_NOT_FOUND' => 'That staff member was not found. Refresh the list and try again.',
+    'CROSS_ORG_DENIED' => 'That staff member is outside your clinic organization.',
+    'INVALID_BRANCH' => 'One or more selected branches are invalid or inactive.',
+    'INVALID_INPUT' => failure.message,
+    'RPC_NOT_APPLIED' => failure.message,
+    _ => 'Unable to complete the staff action. Check connectivity and try again.',
+  };
+}

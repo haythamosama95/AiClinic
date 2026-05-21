@@ -86,6 +86,28 @@ void main() {
       expect(inactive.map((s) => s.fullName), ['Inactive User']);
     });
 
+    test('organizationHasOwner returns true when owner row exists', () async {
+      final client = SettingsTableTestClient({
+        'staff_members': [
+          {'id': 'o1', 'full_name': 'Owner', 'role': 'owner', 'is_active': true, 'is_deleted': false},
+        ],
+      });
+      final repo = StaffAdminRepository(client);
+
+      expect(await repo.organizationHasOwner(), isTrue);
+    });
+
+    test('organizationHasOwner returns false when no owner', () async {
+      final client = SettingsTableTestClient({
+        'staff_members': [
+          {'id': 'd1', 'full_name': 'Doc', 'role': 'doctor', 'is_active': true, 'is_deleted': false},
+        ],
+      });
+      final repo = StaffAdminRepository(client);
+
+      expect(await repo.organizationHasOwner(), isFalse);
+    });
+
     test('advanced: cross-org denial surfaces from RPC', () async {
       client.rpcResults['update_staff_member'] = {
         'success': false,
