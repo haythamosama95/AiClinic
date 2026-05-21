@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/auth/presentation/pages/auth_shell_page.dart'
 import 'package:ai_clinic/features/auth/presentation/pages/clinic_bootstrap_page.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/forgot_password_page.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
+import 'package:ai_clinic/features/auth/presentation/pages/staff_provisioning_placeholder_page.dart';
 import 'package:ai_clinic/features/foundation_demo/presentation/pages/foundation_demo_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/protected_placeholder_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/protected_route_blocked_page.dart';
@@ -43,6 +44,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: AppRoutes.login, builder: (context, state) => const LoginPage()),
       GoRoute(path: AppRoutes.forgotPassword, builder: (context, state) => const ForgotPasswordPage()),
       GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const ClinicBootstrapPage()),
+      GoRoute(
+        path: AppRoutes.staffCreate,
+        builder: (context, state) => const StaffProvisioningPlaceholderPage(title: 'Create staff'),
+      ),
+      GoRoute(
+        path: AppRoutes.staffPasswordReset,
+        builder: (context, state) => const StaffProvisioningPlaceholderPage(title: 'Reset staff password'),
+      ),
       GoRoute(path: AppRoutes.home, builder: (context, state) => const AuthShellPage()),
     ],
     redirect: (context, state) {

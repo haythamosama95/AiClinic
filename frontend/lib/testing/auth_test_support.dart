@@ -60,4 +60,7 @@ class TestAuthSessionNotifier extends AuthSessionNotifier {
 
   @override
   Future<void> syncAfterSignIn() async {}
+
+  @override
+  Future<void> refreshSessionContext() async {}
 }

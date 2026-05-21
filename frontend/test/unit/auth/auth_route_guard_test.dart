@@ -46,6 +46,32 @@ void main() {
       );
     });
 
+    test('setup_required staff create redirects to bootstrap', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(
+          location: AppRoutes.staffCreate,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: true),
+          ),
+        ),
+        AppRoutes.bootstrap,
+      );
+    });
+
+    test('setup_complete staff create does not redirect away', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(
+          location: AppRoutes.staffCreate,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: false),
+          ),
+        ),
+        isNull,
+      );
+    });
+
     test('unauthenticated non-public route redirects to login', () {
       expect(
         AuthRouteGuard.resolveRedirect(

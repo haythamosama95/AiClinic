@@ -28,29 +28,22 @@ StartupHealthResult sampleHealthResult({
   final checked = checkedAt ?? DateTime(2026, 5, 16, 12);
   final checks = [
     StartupDependencyCheck(
-      name: 'gateway',
-      uri: Uri.parse('http://127.0.0.1:54321'),
-      reachable: status != StartupConnectivityStatus.unreachable,
-      statusCode: 200,
-      detail: 'HTTP 200',
-    ),
-    StartupDependencyCheck(
-      name: 'auth',
-      uri: Uri.parse('http://127.0.0.1:54321/auth/v1/health'),
-      reachable: status == StartupConnectivityStatus.healthy || status == StartupConnectivityStatus.degraded,
-      statusCode: status == StartupConnectivityStatus.degraded ? 503 : 200,
-      detail: status == StartupConnectivityStatus.degraded ? 'HTTP 503' : 'HTTP 200',
-    ),
-    StartupDependencyCheck(
-      name: 'rest',
+      name: 'api',
       uri: Uri.parse('http://127.0.0.1:54321/rest/v1/'),
       reachable: status == StartupConnectivityStatus.healthy,
       statusCode: status == StartupConnectivityStatus.healthy ? 200 : 503,
       detail: status == StartupConnectivityStatus.healthy ? 'HTTP 200' : 'HTTP 503',
     ),
+    StartupDependencyCheck(
+      name: 'auth',
+      uri: Uri.parse('http://127.0.0.1:54321/auth/v1/health'),
+      reachable: status != StartupConnectivityStatus.unreachable,
+      statusCode: status == StartupConnectivityStatus.unreachable ? 502 : 200,
+      detail: status == StartupConnectivityStatus.unreachable ? 'HTTP 502' : 'HTTP 200',
+    ),
   ];
 
-  return StartupHealthResult(status: status, checkedAt: checked, checks: checks);
+  return StartupHealthResult(status: classifyStartupConnectivity(checks), checkedAt: checked, checks: checks);
 }
 
 class FakeDeploymentProfileStore extends DeploymentProfileStore {

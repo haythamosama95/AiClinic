@@ -22,6 +22,14 @@ class AuthRepository {
   Future<void> signOut() async {
     await _client.auth.signOut();
   }
+
+  /// Refreshes the JWT so custom claims reflect post-bootstrap org/branch state.
+  Future<void> refreshSession() async {
+    final response = await _client.auth.refreshSession();
+    if (response.session == null) {
+      throw const AuthException('Session refresh failed.');
+    }
+  }
 }
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {

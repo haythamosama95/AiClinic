@@ -108,15 +108,15 @@
 
 ### Tests for User Story 5
 
-- [ ] T029 [P] [US5] Add bootstrap RPC SQL tests in `backend/tests/bootstrap_rpc.sql`
-- [ ] T030 [P] [US5] Add clinic bootstrap wizard widget tests in `frontend/test/widget/auth/clinic_bootstrap_page_test.dart`
+- [X] T029 [P] [US5] Add bootstrap RPC SQL tests in `backend/tests/bootstrap_rpc.sql`
+- [X] T030 [P] [US5] Add clinic bootstrap wizard widget tests in `frontend/test/widget/auth/clinic_bootstrap_page_test.dart`
 
 ### Implementation for User Story 5
 
-- [ ] T031 [P] [US5] Implement `BootstrapRepository` calling `bootstrap_create_organization` and `bootstrap_create_branch` in `frontend/lib/features/auth/data/bootstrap_repository.dart`
-- [ ] T032 [US5] Implement `ClinicBootstrapPage` wizard in `frontend/lib/features/auth/presentation/pages/clinic_bootstrap_page.dart`
-- [ ] T033 [US5] Redirect `setup_required` sessions to bootstrap and block staff provisioning routes in `frontend/lib/app/router.dart`
-- [ ] T034 [P] [US5] Implement first-sign-in shipped-password warning dialog in `frontend/lib/features/auth/presentation/widgets/first_sign_in_warning_dialog.dart`
+- [X] T031 [P] [US5] Implement `BootstrapRepository` calling `bootstrap_create_organization` and `bootstrap_create_branch` in `frontend/lib/features/auth/data/bootstrap_repository.dart`
+- [X] T032 [US5] Implement `ClinicBootstrapPage` wizard in `frontend/lib/features/auth/presentation/pages/clinic_bootstrap_page.dart`
+- [X] T033 [US5] Redirect `setup_required` sessions to bootstrap and block staff provisioning routes in `frontend/lib/app/router.dart`
+- [X] T034 [P] [US5] Implement first-sign-in shipped-password warning dialog in `frontend/lib/features/auth/presentation/widgets/first_sign_in_warning_dialog.dart`
 
 **Checkpoint**: Fresh install can create single org + branch; second organization creation is blocked
 

@@ -53,7 +53,8 @@ class DegradedStateNotice extends StatelessWidget {
       StartupConnectivityStatus.degraded => (
         'Degraded clinic-local startup',
         message ??
-            'Some clinic-local services responded, but startup remains degraded. Protected workflows stay blocked until connectivity improves.',
+            'PostgREST responded but another required service failed. Sign-in may not work until API and Auth both return success. '
+                'Try Refresh startup checks after `supabase stop` and `supabase start` in the backend folder.',
         Icons.cloud_off_outlined,
       ),
       StartupConnectivityStatus.unreachable => (

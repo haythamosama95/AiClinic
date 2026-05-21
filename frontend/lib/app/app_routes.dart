@@ -13,4 +13,8 @@ abstract final class AppRoutes {
   static const bootstrap = '/bootstrap';
   static const home = '/home';
   static const forgotPassword = '/forgot-password';
+
+  /// Minimal staff provisioning (US6); blocked while `setup_required` is true.
+  static const staffCreate = '/staff/create';
+  static const staffPasswordReset = '/staff/reset-password';
 }

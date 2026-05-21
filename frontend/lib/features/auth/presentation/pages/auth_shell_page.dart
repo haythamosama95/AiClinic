@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/dev_reset_clinic_button.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
 /// Placeholder authenticated shell (full shell in US3).
@@ -15,6 +17,8 @@ class AuthShellPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('AiClinic'),
         actions: [
+          const DevFillDummyClinicButton(),
+          const DevResetClinicButton(),
           TextButton(onPressed: () => ref.read(authSessionProvider.notifier).signOut(), child: const Text('Sign out')),
         ],
       ),

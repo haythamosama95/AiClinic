@@ -33,13 +33,10 @@ class SupabaseConfig {
     );
   }
 
-  /// Root gateway URL used as the broadest startup reachability probe.
-  Uri get gatewayProbeUrl => url;
-
-  /// Health endpoint used to verify the auth service behind the gateway.
+  /// GoTrue health endpoint (required for staff sign-in).
   Uri get authHealthUrl => appendPath('auth/v1/health');
 
-  /// REST endpoint used to verify PostgREST availability.
+  /// PostgREST OpenAPI root used as the API availability probe (Kong root often returns 404).
   Uri get restProbeUrl => appendPath('rest/v1/');
 
   /// Appends a path segment without losing the base profile URL context.

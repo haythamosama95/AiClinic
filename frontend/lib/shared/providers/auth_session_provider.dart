@@ -244,6 +244,26 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     await _handleAuthState(AuthState(AuthChangeEvent.signedIn, session));
   }
 
+  /// Reloads session context after bootstrap RPCs change organization/branch claims.
+  Future<void> refreshSessionContext() async {
+    await ref.read(authRepositoryProvider).refreshSession();
+    final session = ref.read(authRepositoryProvider).currentSession;
+    if (session == null) {
+      state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
+      return;
+    }
+
+    state = state.copyWith(status: AuthSessionStatus.loading, clearFailure: true);
+    try {
+      final context = await _loadSessionContext(session);
+      state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+    } catch (error) {
+      AppLog.warning('auth.session.refresh_failed reason=${_contextFailureReason(error)}');
+      await ref.read(authRepositoryProvider).signOut();
+      state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
+    }
+  }
+
   /// Waits until startup config is loaded and the Supabase client is ready for password sign-in.
   Future<void> ensureReadyForSignIn() async {
     final startup = ref.read(startupSessionProvider);

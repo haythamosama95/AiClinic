@@ -117,7 +117,7 @@ void main() {
     expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
   });
 
-  testWidgets('setup_required user on home redirects to bootstrap stub', (tester) async {
+  testWidgets('setup_required user on home redirects to clinic bootstrap', (tester) async {
     await pumpAuthApp(tester, extraOverrides: [authSessionProvider.overrideWith(TestAuthSessionNotifier.new)]);
     await completeStartupBootstrap(tester);
 
@@ -127,6 +127,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.bootstrap);
-    expect(find.textContaining('Organization and first-branch setup'), findsOneWidget);
+    expect(find.text('Clinic setup'), findsOneWidget);
   });
 }

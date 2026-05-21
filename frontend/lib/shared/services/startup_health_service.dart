@@ -39,44 +39,85 @@ class StartupHealthResult {
   String get userMessage => switch (status) {
     StartupConnectivityStatus.unknown => 'Startup health has not been checked yet.',
     StartupConnectivityStatus.healthy => 'Clinic-local services are reachable.',
-    StartupConnectivityStatus.degraded => 'Some clinic-local services are reachable, but startup is degraded.',
-    StartupConnectivityStatus.unreachable =>
-      'Clinic-local services are currently unreachable. Startup can remain visible, but protected work must stay blocked.',
+    StartupConnectivityStatus.degraded =>
+      'Some clinic-local services responded, but sign-in may not work until all probes succeed.',
+    StartupConnectivityStatus.unreachable => _unreachableMessage(),
   };
+
+  static String _unreachableMessage() {
+    return 'Clinic-local services are unreachable. If using Supabase CLI, run '
+        '`supabase stop` then `supabase start` in the backend folder, then tap Refresh startup checks.';
+  }
 }
 
-/// Probes the local Supabase gateway endpoints used by the startup shell.
+/// Classifies startup probe results: auth and REST must both respond for a healthy clinic-local stack.
+StartupConnectivityStatus classifyStartupConnectivity(List<StartupDependencyCheck> checks) {
+  final byName = {for (final check in checks) check.name: check};
+  final auth = byName['auth'];
+  final api = byName['api'];
+
+  if (auth == null || api == null) {
+    return StartupConnectivityStatus.unknown;
+  }
+
+  if (!auth.reachable) {
+    return StartupConnectivityStatus.unreachable;
+  }
+
+  if (!api.reachable) {
+    return StartupConnectivityStatus.degraded;
+  }
+
+  return StartupConnectivityStatus.healthy;
+}
+
+/// Probes the local Supabase API and Auth endpoints used by the startup shell.
 class StartupHealthService {
-  const StartupHealthService({this.timeout = const Duration(seconds: 3)});
+  const StartupHealthService({
+    this.timeout = const Duration(seconds: 3),
+    this.authRetryDelay = const Duration(seconds: 2),
+  });
 
   final Duration timeout;
+  final Duration authRetryDelay;
 
-  /// Checks the key gateway, auth, and REST endpoints in parallel.
+  /// Checks REST and Auth health endpoints (auth is required for sign-in).
   Future<StartupHealthResult> check(SupabaseConfig config) async {
-    final checks = await Future.wait([
-      _probeEndpoint(name: 'gateway', uri: config.gatewayProbeUrl),
-      _probeEndpoint(name: 'auth', uri: config.authHealthUrl),
-      _probeEndpoint(name: 'rest', uri: config.restProbeUrl),
-    ]);
+    var authCheck = await _probeEndpoint(name: 'auth', uri: config.authHealthUrl, apiKey: config.anonKey);
 
-    // The startup UI only needs a simple overall status based on how many probes succeeded.
-    final reachableCount = checks.where((check) => check.reachable).length;
-    final status = switch (reachableCount) {
-      0 => StartupConnectivityStatus.unreachable,
-      3 => StartupConnectivityStatus.healthy,
-      _ => StartupConnectivityStatus.degraded,
-    };
+    if (!authCheck.reachable && authCheck.statusCode == HttpStatus.badGateway) {
+      await Future<void>.delayed(authRetryDelay);
+      authCheck = await _probeEndpoint(name: 'auth', uri: config.authHealthUrl, apiKey: config.anonKey);
+    }
 
-    return StartupHealthResult(status: status, checkedAt: DateTime.now(), checks: checks);
+    final apiCheck = await _probeEndpoint(name: 'api', uri: config.restProbeUrl, apiKey: config.anonKey);
+
+    final checks = [apiCheck, authCheck];
+    return StartupHealthResult(status: classifyStartupConnectivity(checks), checkedAt: DateTime.now(), checks: checks);
   }
 
   /// Performs a lightweight GET request and captures the reachability outcome.
-  Future<StartupDependencyCheck> _probeEndpoint({required String name, required Uri uri}) async {
+  @visibleForTesting
+  Future<StartupDependencyCheck> probeEndpointForTest({
+    required String name,
+    required Uri uri,
+    required String apiKey,
+  }) {
+    return _probeEndpoint(name: name, uri: uri, apiKey: apiKey);
+  }
+
+  Future<StartupDependencyCheck> _probeEndpoint({
+    required String name,
+    required Uri uri,
+    required String apiKey,
+  }) async {
     final client = HttpClient()..connectionTimeout = timeout;
 
     try {
       final request = await client.getUrl(uri).timeout(timeout);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set('apikey', apiKey);
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
 
       final response = await request.close().timeout(timeout);
       await response.drain();
@@ -85,7 +126,6 @@ class StartupHealthService {
       return StartupDependencyCheck(
         name: name,
         uri: uri,
-        // Any non-5xx response proves the service is reachable enough for startup diagnostics.
         reachable: statusCode < HttpStatus.internalServerError,
         statusCode: statusCode,
         detail: 'HTTP $statusCode',
