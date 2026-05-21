@@ -41,8 +41,8 @@ $$;
 -- Inactive staff: empty claims.
 DO $$
 DECLARE
-  v_inactive_user uuid := 'f1000000-0000-4000-8000-00000000f01';
-  v_inactive_staff uuid := 'f2000000-0000-4000-8000-00000000f02';
+  v_inactive_user uuid := 'f1000000-0000-4000-8000-000000000f01';
+  v_inactive_staff uuid := 'f2000000-0000-4000-8000-000000000f02';
   v_claims jsonb;
 BEGIN
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
@@ -84,7 +84,7 @@ $$;
 -- Auth user without staff row: empty claims.
 DO $$
 DECLARE
-  v_orphan_user uuid := 'f1000000-0000-4000-8000-00000000f03';
+  v_orphan_user uuid := 'f1000000-0000-4000-8000-000000000f03';
   v_claims jsonb;
 BEGIN
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
@@ -117,11 +117,12 @@ DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
   v_claims jsonb;
 BEGIN
-  INSERT INTO public.subscription_cache (organization_id, status, expires_at, created_by, updated_by)
-  SELECT o.id, 'expired', now() - interval '1 day', v_bootstrap_user, v_bootstrap_user
+  INSERT INTO public.subscription_cache (organization_id, tier, valid_until, last_checked_at)
+  SELECT o.id, 'expired', now() - interval '1 day', now()
   FROM public.organizations o
   LIMIT 1
-  ON CONFLICT DO NOTHING;
+  ON CONFLICT (organization_id) DO UPDATE
+  SET tier = EXCLUDED.tier, valid_until = EXCLUDED.valid_until, last_checked_at = EXCLUDED.last_checked_at;
 
   v_claims := auth_internal.build_staff_claims(v_bootstrap_user);
 
@@ -139,8 +140,11 @@ BEGIN
   SET LOCAL role anon;
   BEGIN
     PERFORM public.bootstrap_create_organization('Anon Org');
+    PERFORM set_config('role', 'postgres', true);
     INSERT INTO auth_security_results VALUES ('anon_bootstrap_denied', false, 'rpc succeeded');
+    PERFORM set_config('role', 'postgres', true);
   EXCEPTION WHEN insufficient_privilege OR OTHERS THEN
+    PERFORM set_config('role', 'postgres', true);
     INSERT INTO auth_security_results VALUES ('anon_bootstrap_denied', true, SQLERRM);
   END;
 END;

@@ -130,14 +130,14 @@
 
 ### Tests for User Story 6
 
-- [ ] T035 [P] [US6] Add `create_staff_account` RPC tests including owner-creation rules in `backend/tests/create_staff_rpc.sql`
-- [ ] T036 [P] [US6] Add staff provisioning widget tests in `frontend/test/widget/auth/staff_create_page_test.dart`
+- [X] T035 [P] [US6] Add `create_staff_account` RPC tests including owner-creation rules in `backend/tests/create_staff_rpc.sql`
+- [X] T036 [P] [US6] Add staff provisioning widget tests in `frontend/test/widget/auth/staff_create_page_test.dart`
 
 ### Implementation for User Story 6
 
-- [ ] T037 [P] [US6] Implement `ProvisioningRepository` in `frontend/lib/features/auth/data/provisioning_repository.dart`
-- [ ] T038 [US6] Implement `StaffCreatePage` with credential confirmation display in `frontend/lib/features/auth/presentation/pages/staff_create_page.dart`
-- [ ] T039 [US6] Enforce FR-022c owner-creation rules in `backend/supabase/migrations/20260516100300_auth_rbac_functions.sql` and client-side guards in `frontend/lib/features/auth/presentation/providers/provisioning_notifier.dart`
+- [X] T037 [P] [US6] Implement `ProvisioningRepository` in `frontend/lib/features/auth/data/provisioning_repository.dart`
+- [X] T038 [US6] Implement `StaffCreatePage` with credential confirmation display in `frontend/lib/features/auth/presentation/pages/staff_create_page.dart`
+- [X] T039 [US6] Enforce FR-022c owner-creation rules in `backend/supabase/migrations/20260516100300_auth_rbac_functions.sql` and client-side guards in `frontend/lib/features/auth/presentation/providers/provisioning_notifier.dart`
 
 **Checkpoint**: Staff creation blocked until org/branch exist; owner-creation rules enforced
 

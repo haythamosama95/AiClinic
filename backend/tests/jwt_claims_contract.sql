@@ -12,10 +12,21 @@ CREATE TEMP TABLE jwt_claims_results (
 DO $$
 DECLARE
   v_bootstrap_user_id uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_bootstrap_staff_id uuid := 'b0000000-0000-4000-8000-000000000001';
   v_claims jsonb;
   v_staff_role text;
   v_setup_required text;
 BEGIN
+  DELETE FROM public.staff_branch_assignments;
+  DELETE FROM public.staff_members WHERE id <> v_bootstrap_staff_id;
+  DELETE FROM public.audit_log;
+  DELETE FROM auth.users
+  WHERE email IN ('owner-one@clinic.local', 'owner-two@clinic.local', 'reception@clinic.local')
+     OR email LIKE 'us6-%@clinic.local';
+  DELETE FROM public.subscription_cache;
+  DELETE FROM public.branches;
+  DELETE FROM public.organizations;
+
   v_claims := auth_internal.build_staff_claims(v_bootstrap_user_id);
   v_staff_role := v_claims ->> 'staff_role';
   v_setup_required := v_claims ->> 'setup_required';
@@ -39,6 +50,16 @@ BEGIN
     'bootstrap_admin_setup_required_without_org',
     v_setup_required = 'true',
     'setup_required=' || COALESCE(v_setup_required, '<null>')
+  );
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_bootstrap_user_id::text,
+      'role', 'authenticated',
+      'staff_role', v_staff_role
+    )::text,
+    true
   );
 
   INSERT INTO jwt_claims_results (test_name, passed, detail)
