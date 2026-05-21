@@ -18,7 +18,7 @@ supabase db reset   # or: supabase migration up
 
 Verification scripts: `backend/tests/auth_flow_smoke.sh`, `backend/tests/rls_isolation.sql`.
 
-Bootstrap administrator defaults: `backend/seed/bootstrap_admin.env.example`.
+Bootstrap administrator defaults: `backend/seed/bootstrap_admin.env.example`. First-run guide: `docs/setup/bootstrap-admin.md`.
 
 ---
 

@@ -78,6 +78,64 @@ BEGIN
 END;
 $$;
 
+-- Non-bootstrap staff must not reset installation (public wrapper is SECURITY INVOKER).
+DO $$
+DECLARE
+  v_non_bootstrap_user uuid := 'f1000000-0000-4000-8000-000000000f04';
+  v_non_bootstrap_staff uuid := 'f2000000-0000-4000-8000-000000000f05';
+  v_result public.rpc_result;
+  v_passed boolean;
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+  VALUES (
+    v_non_bootstrap_user,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'nonbootstrap@clinic.local',
+    extensions.crypt('test-password', extensions.gen_salt('bf')),
+    now(),
+    now(),
+    now()
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_active, is_bootstrap_admin, created_by, updated_by)
+  VALUES (
+    v_non_bootstrap_staff,
+    v_non_bootstrap_user,
+    'Non Bootstrap Admin',
+    'administrator',
+    true,
+    false,
+    'a0000000-0000-4000-8000-000000000001',
+    'a0000000-0000-4000-8000-000000000001'
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET is_bootstrap_admin = false, is_active = true, is_deleted = false;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_non_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.dev_reset_clinic_installation();
+  v_passed := NOT v_result.success AND v_result.error_code = 'NOT_BOOTSTRAP_ADMIN';
+
+  PERFORM set_config('role', 'postgres', true);
+
+  INSERT INTO dev_reset_results VALUES (
+    'non_bootstrap_denied_dev_reset',
+    v_passed,
+    COALESCE(v_result.error_code, 'unexpected success')
+  );
+END;
+$$;
+
 DO $$
 DECLARE
   v_failures int;

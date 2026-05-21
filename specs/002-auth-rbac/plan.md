@@ -48,6 +48,14 @@ Deliver V1-1 authentication and RBAC for AiClinic: introduce tenancy and staff s
 - [x] Bootstrap path documented for pre-organization administrator without weakening post-setup isolation
 - [x] Session policy (no restore on close + idle timeout) documented without bypassing backend auth
 
+### Post-Implementation Notes (Phase 11, 2026-05-21)
+
+- [x] **Constitution III (backend authority)**: RLS, `auth_internal` DEFINER RPCs, and JWT claims remain authoritative; Flutter repositories send contract-aligned RPC params only.
+- [x] **Constitution IV (secure operations)**: Bootstrap credentials documented in `docs/setup/bootstrap-admin.md`; no subscription gate on login (FR-014a verified in `subscription_cache_nonblocking.sql`).
+- [x] **FR-014a / SC-008**: Expired, missing, and null `subscription_cache` rows do not remove `staff_member_id` from claims; `get_custom_claims(event)` path covered in tests.
+- [x] **Contracts**: `bootstrap_create_branch` parameter order aligned with migration `20260521110000` and `BootstrapRepository`; `rpc_contract_alignment.sql` guards regressions.
+- [x] **Deferred scope unchanged**: No subscription enforcement UI, permission-matrix editor, or full staff/org management in V1-1.
+
 ## Project Structure
 
 ### Documentation (this feature)

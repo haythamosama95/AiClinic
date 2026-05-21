@@ -56,8 +56,14 @@ Required custom claims after setup complete:
 - UI shows static message: contact clinic administrator
 - No API call to self-service reset
 
+## Subscription cache (V1-1)
+
+- Table `subscription_cache` may hold expired `valid_until` values
+- `build_staff_claims` / `get_custom_claims` MUST NOT block or strip auth claims based on subscription state (FR-014a)
+- Enforcement is deferred to a later billing feature
+
 ## Out of Scope
 
 - SSO, MFA, email reset links
-- Subscription-based login block
+- Subscription-based login block in V1-1
 - Persisted “remember me” across restarts

@@ -37,10 +37,12 @@ Defines RPC and UI contracts for first-time clinic setup and minimal staff admin
 | ------------------- | ---- | -------- |
 | `p_organization_id` | uuid | Yes      |
 | `p_name`            | text | Yes      |
-| `p_code`            | text | No       |
 | `p_address`         | text | No       |
 | `p_phone`           | text | No       |
+| `p_code`            | text | No       |
 | `p_maps_url`        | text | No       |
+
+Parameter order matches `public.bootstrap_create_branch` in migration `20260521110000_auth_rbac_definer_internal_schema.sql` and `BootstrapRepository.createBranch` in Flutter.
 
 **Side effect**: Assign bootstrap admin to branch with `is_primary=true` when first branch for org.
 

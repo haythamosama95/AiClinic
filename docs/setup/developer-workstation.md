@@ -4,6 +4,8 @@ This guide prepares a machine for **local development** of AiClinic: run the cli
 
 For clinic LAN deployment (receptionist server + client PCs), also read [server-node.md](./server-node.md) and [client-workstation.md](./client-workstation.md).
 
+For V1-1 first-time clinic setup credentials, see [bootstrap-admin.md](./bootstrap-admin.md).
+
 ## What you are building
 
 | Role on a dev machine | Typical setup                                                                 |

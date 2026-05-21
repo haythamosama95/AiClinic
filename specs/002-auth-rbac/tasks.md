@@ -230,11 +230,11 @@
 
 **Purpose**: Documentation, subscription non-blocking verification, quickstart validation, governance
 
-- [ ] T059 [P] Document bootstrap administrator credentials and first-run flow in `docs/setup/bootstrap-admin.md`
-- [ ] T060 [P] Add subscription-cache non-blocking login verification to `backend/tests/auth_flow_smoke.sh`
-- [ ] T061 Run full `specs/002-auth-rbac/quickstart.md` validation and update acceptance notes in `specs/002-auth-rbac/quickstart.md`
-- [ ] T062 [P] Align `specs/002-auth-rbac/contracts/` with final RPC signatures if implementation diverges during build
-- [ ] T063 Review constitution compliance and mark post-implementation notes in `specs/002-auth-rbac/plan.md`
+- [X] T059 [P] Document bootstrap administrator credentials and first-run flow in `docs/setup/bootstrap-admin.md`
+- [X] T060 [P] Add subscription-cache non-blocking login verification to `backend/tests/auth_flow_smoke.sh`
+- [X] T061 Run full `specs/002-auth-rbac/quickstart.md` validation and update acceptance notes in `specs/002-auth-rbac/quickstart.md`
+- [X] T062 [P] Align `specs/002-auth-rbac/contracts/` with final RPC signatures if implementation diverges during build
+- [X] T063 Review constitution compliance and mark post-implementation notes in `specs/002-auth-rbac/plan.md`
 
 ---
 

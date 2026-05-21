@@ -28,7 +28,13 @@ Ensure `backend/supabase/config.toml` (or local stack equivalent) registers the 
 
 ```bash
 ./backend/tests/auth_flow_smoke.sh
-psql "$DATABASE_URL" -f backend/tests/rls_isolation.sql
+./backend/tests/run_auth_backend_tests.sh
+```
+
+Or individual SQL files:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/tests/rls_isolation.sql
 ```
 
 Expected: sign-in succeeds; claims populated after setup; cross-organization reads denied.
@@ -74,6 +80,21 @@ Sign in as each seeded role (after provisioning test users) and confirm:
 
 - Permission cache matches `data-model.md` matrix for sample keys
 - Unauthorized demo action shows permission-denied message
+
+## 8. Phase 11 acceptance notes (2026-05-21)
+
+Automated verification for polish/cross-cutting tasks:
+
+| Check                     | Command / artifact                                                                  | Expected                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Bootstrap admin docs      | [docs/setup/bootstrap-admin.md](../../docs/setup/bootstrap-admin.md)                | First-run credentials and flow documented                                |
+| Subscription non-blocking | `backend/tests/subscription_cache_nonblocking.sql` (via `auth_flow_smoke.sh`)       | All `passed = t`; expired/missing cache does not strip `staff_member_id` |
+| RPC contract alignment    | `backend/tests/rpc_contract_alignment.sql`                                          | Public RPC signatures match contracts                                    |
+| JWT hook contract         | `backend/tests/jwt_claims_contract.sql`                                             | `staff_role` claim; no ambiguous `get_custom_claims(uuid)`               |
+| Full backend suite        | `backend/tests/run_auth_backend_tests.sh`                                           | Exit 0                                                                   |
+| Flutter auth tests        | `cd frontend && flutter test test/unit/auth test/widget/auth test/integration/auth` | All green                                                                |
+
+Manual quickstart steps (§4–§5) still require a running local stack and interactive Flutter run; record pass/fail in your release checklist when cutting a build.
 
 ## References
 

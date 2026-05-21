@@ -16,6 +16,7 @@ DECLARE
   v_claims jsonb;
   v_staff_role text;
   v_setup_required text;
+  v_bootstrap_result public.rpc_result;
 BEGIN
   DELETE FROM public.staff_branch_assignments;
   DELETE FROM public.staff_members WHERE id <> v_bootstrap_staff_id;
@@ -50,6 +51,32 @@ BEGIN
     'bootstrap_admin_setup_required_without_org',
     v_setup_required = 'true',
     'setup_required=' || COALESCE(v_setup_required, '<null>')
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user_id::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_bootstrap_result := public.bootstrap_create_organization(
+    'Claims Org Test', '{}'::jsonb, NULL, 'EGP', 'UTC'
+  );
+  IF NOT v_bootstrap_result.success THEN
+    RAISE EXCEPTION 'bootstrap_create_organization failed: %', v_bootstrap_result.error_code;
+  END IF;
+
+  PERFORM set_config('role', 'postgres', true);
+
+  v_claims := auth_internal.build_staff_claims(v_bootstrap_user_id);
+
+  INSERT INTO jwt_claims_results (test_name, passed, detail)
+  VALUES (
+    'unassigned_staff_still_gets_organization_id',
+    (v_claims ->> 'organization_id') IS NOT NULL
+      AND (v_claims ->> 'organization_id') = (v_bootstrap_result.data ->> 'organization_id'),
+    'organization_id=' || COALESCE(v_claims ->> 'organization_id', '<null>')
   );
 
   PERFORM set_config(

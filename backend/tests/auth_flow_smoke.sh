@@ -117,6 +117,14 @@ if command -v psql >/dev/null 2>&1; then
   printf 'Auth smoke: running jwt_claims_contract.sql\n'
   PGPASSWORD="${db_password}" psql -h 127.0.0.1 -p "${db_port}" -U postgres -d postgres \
     -v ON_ERROR_STOP=1 -f "${script_dir}/jwt_claims_contract.sql" >/dev/null
+
+  printf 'Auth smoke: subscription cache must not block login (FR-014a)\n'
+  PGPASSWORD="${db_password}" psql -h 127.0.0.1 -p "${db_port}" -U postgres -d postgres \
+    -v ON_ERROR_STOP=1 -f "${script_dir}/subscription_cache_nonblocking.sql" >/dev/null
+
+  printf 'Auth smoke: RPC contract alignment\n'
+  PGPASSWORD="${db_password}" psql -h 127.0.0.1 -p "${db_port}" -U postgres -d postgres \
+    -v ON_ERROR_STOP=1 -f "${script_dir}/rpc_contract_alignment.sql" >/dev/null
 fi
 
 printf 'Auth smoke checks completed.\n'
