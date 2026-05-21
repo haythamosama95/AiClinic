@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Settings module structure (phase 1)', () {
-    testWidgets('SettingsPage still renders idle timeout entry without admin routes registered', (tester) async {
+    testWidgets('SettingsPage renders idle timeout entry', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [idleTimeoutSettingsProvider.overrideWith(() => _IdleTimeoutReadyNotifier())],
@@ -22,8 +22,7 @@ void main() {
       expect(find.text('Organization'), findsNothing);
     });
 
-    test('admin route constants are not yet wired in router (phase 2)', () {
-      // Documents expectation: phase 1 only adds constants; router registration is T014.
+    test('admin route constants are defined for settings hub', () {
       expect(AppRoutes.settingsOrganization, isNot(AppRoutes.settings));
       expect(AppRoutes.adminSettingsPaths.length, 6);
     });

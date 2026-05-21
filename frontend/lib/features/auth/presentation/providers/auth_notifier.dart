@@ -154,4 +154,9 @@ class AuthNotifier extends Notifier<AuthUiState> {
   Future<void> signOut() async {
     await ref.read(authSessionProvider.notifier).signOut();
   }
+
+  /// Reloads staff profile and permission grants without signing out (V1-2 matrix / resume).
+  Future<void> reloadContext() async {
+    await ref.read(authSessionProvider.notifier).reloadContext();
+  }
 }

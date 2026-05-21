@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/startup/presentation/pages/protected_route_bl
 import 'package:ai_clinic/features/startup/presentation/pages/setup_guidance_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_check_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/idle_timeout_settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/settings_admin_placeholder_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
@@ -52,6 +53,45 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: AppRoutes.home, builder: (context, state) => const AuthShellPage()),
       GoRoute(path: AppRoutes.settings, builder: (context, state) => const SettingsPage()),
       GoRoute(path: AppRoutes.settingsIdleTimeout, builder: (context, state) => const IdleTimeoutSettingsPage()),
+      GoRoute(
+        path: AppRoutes.settingsOrganization,
+        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'Organization'),
+      ),
+      GoRoute(
+        path: AppRoutes.settingsBranches,
+        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'Branches'),
+      ),
+      GoRoute(
+        path: AppRoutes.settingsBranchesNew,
+        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'New branch'),
+      ),
+      GoRoute(
+        path: '${AppRoutes.settingsBranches}/:branchId/edit',
+        builder: (context, state) =>
+            SettingsAdminPlaceholderPage(title: 'Edit branch ${state.pathParameters['branchId']}'),
+      ),
+      GoRoute(
+        path: AppRoutes.settingsStaff,
+        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'Staff'),
+      ),
+      GoRoute(
+        path: AppRoutes.settingsStaffNew,
+        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'New staff member'),
+      ),
+      GoRoute(
+        path: '${AppRoutes.settingsStaff}/:staffId',
+        builder: (context, state) =>
+            SettingsAdminPlaceholderPage(title: 'Staff member ${state.pathParameters['staffId']}'),
+      ),
+      GoRoute(
+        path: '${AppRoutes.settingsStaff}/:staffId/reset-password',
+        builder: (context, state) =>
+            SettingsAdminPlaceholderPage(title: 'Reset password ${state.pathParameters['staffId']}'),
+      ),
+      GoRoute(
+        path: AppRoutes.settingsPermissions,
+        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'Role permissions'),
+      ),
     ],
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);
@@ -107,7 +147,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (session.currentView == StartupCurrentView.unauthenticatedEntry) {
-        return AuthRouteGuard.resolveRedirect(location: location, auth: auth);
+        final authRedirect = AuthRouteGuard.resolveRedirect(location: location, auth: auth);
+        if (authRedirect != null) {
+          return authRedirect;
+        }
+
+        final adminRedirect = AuthRouteGuard.adminSettingsRedirect(location: location, auth: auth);
+        if (adminRedirect != null) {
+          return adminRedirect;
+        }
+
+        return null;
       }
 
       return null;

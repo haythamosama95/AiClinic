@@ -297,6 +297,9 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     await _handleAuthState(AuthState(AuthChangeEvent.signedIn, session));
   }
 
+  /// Reloads staff profile and permission cache (FR-011; after matrix save or app resume).
+  Future<void> reloadContext() => refreshSessionContext();
+
   /// Reloads session context after bootstrap RPCs change organization/branch claims.
   Future<void> refreshSessionContext() async {
     await ref.read(authRepositoryProvider).refreshSession();

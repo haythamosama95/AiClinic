@@ -67,6 +67,9 @@ class TestAuthSessionNotifier extends AuthSessionNotifier {
   Future<void> refreshSessionContext() async {}
 
   @override
+  Future<void> reloadContext() async {}
+
+  @override
   Future<void> signOutDueToInactivity() async {
     setUnauthenticated(failureMessage: kIdleTimeoutSignOutMessage);
   }

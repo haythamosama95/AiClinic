@@ -39,17 +39,17 @@
 
 **⚠️ CRITICAL**: No user story phase work until this phase is complete
 
-- [ ] T005 Add migration `backend/supabase/migrations/20260522100000_org_branch_management.sql` with partial unique index `branches_organization_code_unique`, `auth_internal.assert_owner_or_administrator()`, `auth_internal.assert_permission()`, and RPCs `update_organization`, `manage_create_branch`, `update_branch`, `set_branch_active`, `update_staff_member`, `set_staff_active`, `update_role_permission` per `contracts/`
-- [ ] T006 [P] Add CRUD verification SQL in `backend/tests/org_branch_management_crud.sql` (org update, branch lifecycle, `LAST_ACTIVE_BRANCH`, staff update/deactivate, permission toggle, owner-only matrix write)
-- [ ] T007 [P] Add RLS isolation SQL in `backend/tests/org_branch_management_rls.sql` (cross-org denial for management operations)
-- [ ] T008 [P] Add test runner `backend/tests/run_org_branch_management_tests.sh`
-- [ ] T009 [P] Implement `OrganizationRepository` RPC wrapper in `frontend/lib/features/settings/data/organization_repository.dart`
-- [ ] T010 [P] Implement `BranchRepository` in `frontend/lib/features/settings/data/branch_repository.dart`
-- [ ] T011 [P] Implement `StaffAdminRepository` in `frontend/lib/features/settings/data/staff_admin_repository.dart`
-- [ ] T012 [P] Implement `RolePermissionsRepository` in `frontend/lib/features/settings/data/role_permissions_repository.dart`
-- [ ] T013 Implement `AuthSessionNotifier.reloadContext()` (reload staff profile + permission cache) in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart` and expose via `frontend/lib/shared/providers/auth_session_provider.dart`
-- [ ] T014 [P] Register settings sub-routes with owner/admin or permission guards in `frontend/lib/app/router.dart`
-- [ ] T015 [P] Extend `SettingsPage` as admin hub with navigation tiles in `frontend/lib/features/settings/presentation/pages/settings_page.dart`
+- [x] T005 Add migration `backend/supabase/migrations/20260522100000_org_branch_management.sql` with partial unique index `branches_organization_code_unique`, `auth_internal.assert_owner_or_administrator()`, `auth_internal.assert_permission()`, and RPCs `update_organization`, `manage_create_branch`, `update_branch`, `set_branch_active`, `update_staff_member`, `set_staff_active`, `update_role_permission` per `contracts/`
+- [x] T006 [P] Add CRUD verification SQL in `backend/tests/org_branch_management_crud.sql` (org update, branch lifecycle, `LAST_ACTIVE_BRANCH`, staff update/deactivate, permission toggle, owner-only matrix write)
+- [x] T007 [P] Add RLS isolation SQL in `backend/tests/org_branch_management_rls.sql` (cross-org denial for management operations)
+- [x] T008 [P] Add test runner `backend/tests/run_org_branch_management_tests.sh`
+- [x] T009 [P] Implement `OrganizationRepository` RPC wrapper in `frontend/lib/features/settings/data/organization_repository.dart`
+- [x] T010 [P] Implement `BranchRepository` in `frontend/lib/features/settings/data/branch_repository.dart`
+- [x] T011 [P] Implement `StaffAdminRepository` in `frontend/lib/features/settings/data/staff_admin_repository.dart`
+- [x] T012 [P] Implement `RolePermissionsRepository` in `frontend/lib/features/settings/data/role_permissions_repository.dart`
+- [x] T013 Implement `AuthSessionNotifier.reloadContext()` (reload staff profile + permission cache) in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart` and expose via `frontend/lib/shared/providers/auth_session_provider.dart`
+- [x] T014 [P] Register settings sub-routes with owner/admin or permission guards in `frontend/lib/app/router.dart`
+- [x] T015 [P] Extend `SettingsPage` as admin hub with navigation tiles in `frontend/lib/features/settings/presentation/pages/settings_page.dart`
 
 **Checkpoint**: `supabase migration up` succeeds; `run_org_branch_management_tests.sh` passes; settings routes reachable when authenticated with setup complete
 
@@ -63,7 +63,7 @@
 
 ### Tests for User Story 1
 
-- [ ] T016 [P] [US1] Add unit tests for `OrganizationRepository` in `frontend/test/unit/settings/organization_repository_test.dart`
+- [x] T016 [P] [US1] Add unit tests for `OrganizationRepository` in `frontend/test/unit/settings/organization_repository_test.dart`
 - [ ] T017 [P] [US1] Add widget tests for organization settings states in `frontend/test/widget/settings/organization_settings_page_test.dart`
 
 ### Implementation for User Story 1
@@ -84,8 +84,8 @@
 
 ### Tests for User Story 2
 
-- [ ] T021 [P] [US2] Add branch RPC tests for `LAST_ACTIVE_BRANCH` and code uniqueness in `backend/tests/org_branch_management_crud.sql`
-- [ ] T022 [P] [US2] Add unit tests for `BranchRepository` in `frontend/test/unit/settings/branch_repository_test.dart`
+- [x] T021 [P] [US2] Add branch RPC tests for `LAST_ACTIVE_BRANCH` and code uniqueness in `backend/tests/org_branch_management_crud.sql`
+- [x] T022 [P] [US2] Add unit tests for `BranchRepository` in `frontend/test/unit/settings/branch_repository_test.dart`
 - [ ] T023 [P] [US2] Add widget tests for branch list and form in `frontend/test/widget/settings/branch_list_page_test.dart` and `frontend/test/widget/settings/branch_form_page_test.dart`
 
 ### Implementation for User Story 2
@@ -108,8 +108,8 @@
 
 ### Tests for User Story 3
 
-- [ ] T029 [P] [US3] Add staff lifecycle RPC tests in `backend/tests/org_branch_management_crud.sql`
-- [ ] T030 [P] [US3] Add unit tests for `StaffAdminRepository` in `frontend/test/unit/settings/staff_admin_repository_test.dart`
+- [x] T029 [P] [US3] Add staff lifecycle RPC tests in `backend/tests/org_branch_management_crud.sql`
+- [x] T030 [P] [US3] Add unit tests for `StaffAdminRepository` in `frontend/test/unit/settings/staff_admin_repository_test.dart`
 - [ ] T031 [P] [US3] Add widget tests for staff list/form in `frontend/test/widget/settings/staff_list_page_test.dart` and `frontend/test/widget/settings/staff_form_page_test.dart`
 
 ### Implementation for User Story 3

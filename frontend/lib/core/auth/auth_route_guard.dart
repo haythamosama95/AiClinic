@@ -1,5 +1,6 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
 /// Route guard rules for auth session states (see `contracts/auth-session.md`).
@@ -25,7 +26,80 @@ abstract final class AuthRouteGuard {
   }
 
   static bool isSettingsRoute(String location) {
-    return location == AppRoutes.settings || location == AppRoutes.settingsIdleTimeout;
+    return location == AppRoutes.settings ||
+        location == AppRoutes.settingsIdleTimeout ||
+        isAdminSettingsRoute(location);
+  }
+
+  /// V1-2 administration sub-routes under the settings hub.
+  static bool isAdminSettingsRoute(String location) {
+    if (AppRoutes.adminSettingsPaths.contains(location)) {
+      return true;
+    }
+    if (location.startsWith('${AppRoutes.settingsBranches}/') && location.endsWith('/edit')) {
+      return true;
+    }
+    if (location.startsWith('${AppRoutes.settingsStaff}/') && location != AppRoutes.settingsStaffNew) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool canAccessOrganizationSettings(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    final role = auth.context!.staffProfile.role;
+    return role == StaffRole.owner || role == StaffRole.administrator;
+  }
+
+  static bool canAccessBranchManagement(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return auth.context!.permissions.contains('settings.manage_branches');
+  }
+
+  static bool canAccessStaffManagement(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return auth.context!.permissions.contains('settings.manage_staff');
+  }
+
+  static bool canAccessPermissionMatrix(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    final role = auth.context!.staffProfile.role;
+    return role == StaffRole.owner || role == StaffRole.administrator;
+  }
+
+  /// Returns redirect target when [location] is an admin settings route the session cannot access.
+  static String? adminSettingsRedirect({required String location, required AuthSessionState auth}) {
+    if (!isAdminSettingsRoute(location)) {
+      return null;
+    }
+
+    if (!auth.isAuthenticated) {
+      return AppRoutes.login;
+    }
+
+    if (auth.context!.setupRequired) {
+      return AppRoutes.bootstrap;
+    }
+
+    final allowed = switch (location) {
+      AppRoutes.settingsOrganization => canAccessOrganizationSettings(auth),
+      AppRoutes.settingsBranches || AppRoutes.settingsBranchesNew => canAccessBranchManagement(auth),
+      AppRoutes.settingsStaff || AppRoutes.settingsStaffNew => canAccessStaffManagement(auth),
+      AppRoutes.settingsPermissions => canAccessPermissionMatrix(auth),
+      _ when location.startsWith('${AppRoutes.settingsBranches}/') => canAccessBranchManagement(auth),
+      _ when location.startsWith('${AppRoutes.settingsStaff}/') => canAccessStaffManagement(auth),
+      _ => false,
+    };
+
+    return allowed ? null : AppRoutes.settings;
   }
 
   /// Staff account administration routes (blocked until clinic bootstrap completes).
