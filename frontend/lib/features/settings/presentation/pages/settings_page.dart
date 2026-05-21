@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/features/settings/domain/idle_timeout_config.dart';
+import 'package:ai_clinic/features/settings/presentation/providers/branch_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
@@ -46,7 +47,10 @@ class SettingsPage extends ConsumerWidget {
                 title: const Text('Branches'),
                 subtitle: const Text('Create, edit, and deactivate branches'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.go(AppRoutes.settingsBranches),
+                onTap: () {
+                  ref.read(branchListProvider.notifier).reload();
+                  context.go(AppRoutes.settingsBranches);
+                },
               ),
             if (AuthRouteGuard.canAccessStaffManagement(auth))
               ListTile(

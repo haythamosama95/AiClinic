@@ -64,13 +64,13 @@
 ### Tests for User Story 1
 
 - [x] T016 [P] [US1] Add unit tests for `OrganizationRepository` in `frontend/test/unit/settings/organization_repository_test.dart`
-- [ ] T017 [P] [US1] Add widget tests for organization settings states in `frontend/test/widget/settings/organization_settings_page_test.dart`
+- [x] T017 [P] [US1] Add widget tests for organization settings states in `frontend/test/widget/settings/organization_settings_page_test.dart`
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Implement `OrganizationRepository.fetchProfile()` and `updateOrganization()` per `contracts/organization-management.md` in `frontend/lib/features/settings/data/organization_repository.dart`
-- [ ] T019 [US1] Implement `OrganizationSettingsPage` (loading, validation, save, permission denied) in `frontend/lib/features/settings/presentation/pages/organization_settings_page.dart`
-- [ ] T020 [US1] Gate organization settings route to `owner` and `administrator` roles in `frontend/lib/app/router.dart` and hub tile in `frontend/lib/features/settings/presentation/pages/settings_page.dart`
+- [x] T018 [US1] Implement `OrganizationRepository.fetchProfile()` and `updateOrganization()` per `contracts/organization-management.md` in `frontend/lib/features/settings/data/organization_repository.dart`
+- [x] T019 [US1] Implement `OrganizationSettingsPage` (loading, validation, save, permission denied) in `frontend/lib/features/settings/presentation/pages/organization_settings_page.dart`
+- [x] T020 [US1] Gate organization settings route to `owner` and `administrator` roles in `frontend/lib/app/router.dart` and hub tile in `frontend/lib/features/settings/presentation/pages/settings_page.dart`
 
 **Checkpoint**: Test case 1–2 from spec (org update; second org rejected at RPC if exposed)
 
@@ -86,15 +86,15 @@
 
 - [x] T021 [P] [US2] Add branch RPC tests for `LAST_ACTIVE_BRANCH` and code uniqueness in `backend/tests/org_branch_management_crud.sql`
 - [x] T022 [P] [US2] Add unit tests for `BranchRepository` in `frontend/test/unit/settings/branch_repository_test.dart`
-- [ ] T023 [P] [US2] Add widget tests for branch list and form in `frontend/test/widget/settings/branch_list_page_test.dart` and `frontend/test/widget/settings/branch_form_page_test.dart`
+- [x] T023 [P] [US2] Add widget tests for branch list and form in `frontend/test/widget/settings/branch_list_page_test.dart` and `frontend/test/widget/settings/branch_form_page_test.dart`
 
 ### Implementation for User Story 2
 
-- [ ] T024 [US2] Implement `BranchRepository` list/create/update/setActive per `contracts/branch-management.md` in `frontend/lib/features/settings/data/branch_repository.dart`
-- [ ] T025 [US2] Implement `BranchListPage` with active/inactive filters in `frontend/lib/features/settings/presentation/pages/branch_list_page.dart`
-- [ ] T026 [US2] Implement `BranchFormPage` create/edit in `frontend/lib/features/settings/presentation/pages/branch_form_page.dart`
-- [ ] T027 [US2] Implement last-active-branch blocked dialog with **Edit branch** action in `frontend/lib/features/settings/presentation/widgets/last_active_branch_blocked_dialog.dart`
-- [ ] T028 [US2] Gate branch management routes with `settings.manage_branches` in `frontend/lib/core/auth/permission_service.dart` and `frontend/lib/app/router.dart`
+- [x] T024 [US2] Implement `BranchRepository` list/create/update/setActive per `contracts/branch-management.md` in `frontend/lib/features/settings/data/branch_repository.dart`
+- [x] T025 [US2] Implement `BranchListPage` with active/inactive filters in `frontend/lib/features/settings/presentation/pages/branch_list_page.dart`
+- [x] T026 [US2] Implement `BranchFormPage` create/edit in `frontend/lib/features/settings/presentation/pages/branch_form_page.dart`
+- [x] T027 [US2] Implement last-active-branch blocked dialog with **Edit branch** action in `frontend/lib/features/settings/presentation/widgets/last_active_branch_blocked_dialog.dart`
+- [x] T028 [US2] Gate branch management routes with `settings.manage_branches` in `frontend/lib/core/auth/permission_service.dart` and `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 3–4; acceptance criteria 3–4
 

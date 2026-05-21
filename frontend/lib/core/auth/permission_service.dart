@@ -29,6 +29,12 @@ class PermissionService {
     return false;
   }
 
+  /// V1-2 branch administration (`settings.manage_branches`).
+  bool canManageBranches() => hasPermission('settings.manage_branches');
+
+  /// V1-2 staff administration (`settings.manage_staff`).
+  bool canManageStaff() => hasPermission('settings.manage_staff');
+
   void requirePermission(String key) {
     if (!hasPermission(key)) {
       throw const PermissionDeniedException('You do not have permission to perform this action.');

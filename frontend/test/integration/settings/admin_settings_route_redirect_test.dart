@@ -7,8 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/pump_auth_app.dart';
+import '../../support/settings_rpc_test_client.dart';
+import 'package:ai_clinic/features/settings/data/organization_repository.dart';
+import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/testing/auth_test_support.dart';
 import 'package:ai_clinic/testing/startup_test_support.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   group('admin settings router redirects', () {
@@ -26,7 +30,22 @@ void main() {
     });
 
     testWidgets('owner can open organization admin route', (tester) async {
-      await pumpAuthApp(tester, extraOverrides: [authSessionProvider.overrideWith(_OwnerSessionNotifier.new)]);
+      final fetchClient = OrganizationFetchTestClient({
+        'id': '00000000-0000-4000-8000-000000000020',
+        'name': 'Test Clinic',
+        'currency_code': 'USD',
+        'timezone': 'UTC',
+        'settings_json': {},
+      });
+      await pumpAuthApp(
+        tester,
+        extraOverrides: [
+          authSessionProvider.overrideWith(_OwnerSessionNotifier.new),
+          organizationRepositoryProvider.overrideWithValue(
+            _IntegrationOrganizationRepository(fetchClient: fetchClient, rpcClient: SettingsRpcTestClient()),
+          ),
+        ],
+      );
       await completeStartupBootstrap(tester);
 
       final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
@@ -38,7 +57,7 @@ void main() {
         container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path,
         AppRoutes.settingsOrganization,
       );
-      expect(find.text('Organization'), findsWidgets);
+      expect(find.text('Organization name'), findsOneWidget);
     });
 
     testWidgets('setup_required user is redirected to bootstrap from staff admin route', (tester) async {
@@ -83,6 +102,19 @@ class _DoctorSessionNotifier extends TestAuthSessionNotifier {
         context: sampleAuthSessionContext(role: StaffRole.doctor, permissions: {'patients.view'}),
       ),
     );
+  }
+}
+
+class _IntegrationOrganizationRepository extends OrganizationRepository {
+  _IntegrationOrganizationRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
+    : _fetchClient = fetchClient,
+      super(rpcClient);
+
+  final SupabaseClient _fetchClient;
+
+  @override
+  Future<OrganizationProfile?> fetchProfile({required String organizationId}) {
+    return OrganizationRepository(_fetchClient).fetchProfile(organizationId: organizationId);
   }
 }
 

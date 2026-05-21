@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/widgets/app_form_field.dart';
 import 'package:ai_clinic/core/widgets/app_searchable_dropdown_field.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/branch_form_fields.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/bootstrap_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
@@ -360,55 +361,14 @@ class _BranchStep extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AppFormField(
-            label: 'Branch name',
-            infoTooltip: 'Name staff recognize (e.g. Main Clinic, Downtown Branch).',
-            controller: nameController,
+          BranchFormFields(
+            mode: BranchFormFieldsMode.bootstrap,
+            nameController: nameController,
+            codeController: codeController,
+            addressController: addressController,
+            phoneController: phoneController,
+            mapsUrlController: mapsController,
             enabled: !isBusy,
-            validator: _requiredValidator('Branch name'),
-          ),
-          const SizedBox(height: 16),
-          AppFormField(
-            label: 'Branch code',
-            infoTooltip: 'Short internal code for reports and branch switching (e.g. MAIN, DT01).',
-            controller: codeController,
-            enabled: !isBusy,
-            validator: _requiredValidator('Branch code'),
-          ),
-          const SizedBox(height: 16),
-          AppFormField(
-            label: 'Address',
-            infoTooltip: 'Street address shown to staff and on patient communications.',
-            controller: addressController,
-            enabled: !isBusy,
-            validator: _requiredValidator('Address'),
-          ),
-          const SizedBox(height: 16),
-          AppFormField(
-            label: 'Phone',
-            infoTooltip: 'Branch reception or main line including country code.',
-            controller: phoneController,
-            enabled: !isBusy,
-            keyboardType: TextInputType.phone,
-            validator: _requiredValidator('Phone'),
-          ),
-          const SizedBox(height: 16),
-          AppFormField(
-            label: 'Maps URL',
-            infoTooltip: 'Google Maps or similar link patients can open for directions.',
-            controller: mapsController,
-            enabled: !isBusy,
-            keyboardType: TextInputType.url,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Maps URL is required';
-              }
-              final trimmed = value.trim();
-              if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-                return 'Enter a valid URL starting with https://';
-              }
-              return null;
-            },
           ),
           const SizedBox(height: 24),
           Row(
@@ -426,15 +386,6 @@ class _BranchStep extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  static String? Function(String?) _requiredValidator(String fieldName) {
-    return (value) {
-      if (value == null || value.trim().isEmpty) {
-        return '$fieldName is required';
-      }
-      return null;
-    };
   }
 }
 

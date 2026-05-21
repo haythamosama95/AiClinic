@@ -15,6 +15,9 @@ import 'package:ai_clinic/features/startup/presentation/pages/protected_route_bl
 import 'package:ai_clinic/features/startup/presentation/pages/setup_guidance_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_check_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/idle_timeout_settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/branch_form_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/branch_list_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/organization_settings_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_admin_placeholder_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
@@ -53,22 +56,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: AppRoutes.home, builder: (context, state) => const AuthShellPage()),
       GoRoute(path: AppRoutes.settings, builder: (context, state) => const SettingsPage()),
       GoRoute(path: AppRoutes.settingsIdleTimeout, builder: (context, state) => const IdleTimeoutSettingsPage()),
-      GoRoute(
-        path: AppRoutes.settingsOrganization,
-        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'Organization'),
-      ),
-      GoRoute(
-        path: AppRoutes.settingsBranches,
-        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'Branches'),
-      ),
-      GoRoute(
-        path: AppRoutes.settingsBranchesNew,
-        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'New branch'),
-      ),
+      GoRoute(path: AppRoutes.settingsOrganization, builder: (context, state) => const OrganizationSettingsPage()),
+      GoRoute(path: AppRoutes.settingsBranches, builder: (context, state) => const BranchListPage()),
+      GoRoute(path: AppRoutes.settingsBranchesNew, builder: (context, state) => const BranchFormPage()),
       GoRoute(
         path: '${AppRoutes.settingsBranches}/:branchId/edit',
-        builder: (context, state) =>
-            SettingsAdminPlaceholderPage(title: 'Edit branch ${state.pathParameters['branchId']}'),
+        builder: (context, state) => BranchFormPage(branchId: state.pathParameters['branchId']),
       ),
       GoRoute(
         path: AppRoutes.settingsStaff,

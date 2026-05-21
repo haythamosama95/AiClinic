@@ -307,7 +307,7 @@ void main() {
       await _tapScrollable(tester, find.widgetWithText(FilledButton, 'Finish setup'));
 
       expect(bootstrap.finishSetupCalls, 0);
-      expect(find.text('Branch name is required'), findsOneWidget);
+      expect(find.text('Branch name is required.'), findsOneWidget);
     });
 
     testWidgets('successful branch step shows completion actions', (tester) async {
