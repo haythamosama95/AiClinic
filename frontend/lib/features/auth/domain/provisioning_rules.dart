@@ -7,6 +7,11 @@ abstract final class ProvisioningRules {
     return caller.role == StaffRole.owner || caller.role == StaffRole.administrator || caller.isBootstrapAdmin;
   }
 
+  /// Whether the signed-in staff member may reset another staff member's password (FR-024).
+  static bool canResetStaffPassword(StaffProfile caller) {
+    return caller.role == StaffRole.owner || caller.role == StaffRole.administrator;
+  }
+
   /// Roles offered in the create-staff form for the current caller.
   ///
   /// [ownerAlreadyExists] should be `true` once at least one owner account exists in the clinic.

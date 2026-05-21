@@ -149,4 +149,9 @@ class AuthNotifier extends Notifier<AuthUiState> {
   void showExternalMessage(String message) {
     state = state.copyWith(errorMessage: message);
   }
+
+  /// Explicit sign-out (US4): clears Supabase session and in-memory permission cache.
+  Future<void> signOut() async {
+    await ref.read(authSessionProvider.notifier).signOut();
+  }
 }

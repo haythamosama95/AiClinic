@@ -5,6 +5,8 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_reset_clinic_button.dart';
@@ -39,23 +41,31 @@ class AuthShellPage extends ConsumerWidget {
             ),
           const DevFillDummyClinicButton(),
           const DevResetClinicButton(),
-          TextButton(onPressed: () => ref.read(authSessionProvider.notifier).signOut(), child: const Text('Sign out')),
+          TextButton(onPressed: () => ref.read(authNotifierProvider.notifier).signOut(), child: const Text('Sign out')),
         ],
       ),
       body: auth == null
           ? const Center(child: Text('Loading session context…'))
           : !auth.hasBranchAssignment
           ? NoBranchBlockedPanel(staffName: auth.staffProfile.fullName)
-          : _ShellHomeBody(auth: auth, branchesAsync: branchesAsync),
+          : _ShellHomeBody(
+              auth: auth,
+              branchesAsync: branchesAsync,
+              onOpenResetPassword: () {
+                ref.invalidate(staffResetCandidatesProvider);
+                context.go(AppRoutes.staffPasswordReset);
+              },
+            ),
     );
   }
 }
 
 class _ShellHomeBody extends StatelessWidget {
-  const _ShellHomeBody({required this.auth, required this.branchesAsync});
+  const _ShellHomeBody({required this.auth, required this.branchesAsync, required this.onOpenResetPassword});
 
   final AuthSessionContext auth;
   final AsyncValue<List<BranchSummary>> branchesAsync;
+  final VoidCallback onOpenResetPassword;
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +123,10 @@ class _ShellHomeBody extends StatelessWidget {
                   onPressed: () => context.go(AppRoutes.staffCreate),
                   child: const Text('Create staff account'),
                 ),
+              ],
+              if (!auth.setupRequired && ProvisioningRules.canResetStaffPassword(auth.staffProfile)) ...[
+                const SizedBox(height: 12),
+                OutlinedButton(onPressed: onOpenResetPassword, child: const Text('Reset staff password')),
               ],
             ],
           ),

@@ -3,6 +3,7 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/auth_shell_page.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 import 'package:ai_clinic/testing/auth_test_support.dart';
@@ -20,13 +21,13 @@ _shellOverrides(AuthSessionNotifier notifier, {List<BranchSummary> branches = co
   staffAssignableBranchesProvider.overrideWith((ref) async => branches),
 ];
 
-class _SignOutTrackingNotifier extends TestAuthSessionNotifier {
+class _AuthNotifierSignOutHarness extends AuthNotifier {
   int signOutCalls = 0;
 
   @override
   Future<void> signOut() async {
     signOutCalls++;
-    setUnauthenticated();
+    (ref.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setUnauthenticated();
   }
 }
 
@@ -95,23 +96,51 @@ void main() {
     expect(find.textContaining('Loading session context'), findsOneWidget);
   });
 
-  testWidgets('sign out button invokes session notifier', (tester) async {
-    final notifier = _SignOutTrackingNotifier();
+  testWidgets('sign out button invokes auth notifier', (tester) async {
+    final harness = _AuthNotifierSignOutHarness();
+    final session = TestAuthSessionNotifier();
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: _shellOverrides(notifier, branches: [_branchA]),
+        overrides: [
+          ..._shellOverrides(session, branches: [_branchA]),
+          authNotifierProvider.overrideWith(() => harness),
+        ],
         child: const MaterialApp(home: AuthShellPage()),
       ),
     );
 
-    notifier.setAuthenticated();
+    session.setAuthenticated();
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Sign out'));
     await tester.pump();
 
-    expect(notifier.signOutCalls, 1);
+    expect(harness.signOutCalls, 1);
+  });
+
+  testWidgets('owner sees reset staff password action', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [authSessionProvider.overrideWith(_OwnerShellNotifier.new)],
+        child: const MaterialApp(home: AuthShellPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reset staff password'), findsOneWidget);
+  });
+
+  testWidgets('doctor does not see reset staff password action', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [authSessionProvider.overrideWith(_DoctorShellNotifier.new)],
+        child: const MaterialApp(home: AuthShellPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reset staff password'), findsNothing);
   });
 
   testWidgets('no branch assignment shows blocked panel with administrator guidance', (tester) async {

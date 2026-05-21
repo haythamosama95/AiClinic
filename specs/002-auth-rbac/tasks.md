@@ -195,11 +195,11 @@
 
 ### Tests for User Story 4
 
-- [ ] T052 [P] [US4] Add logout integration test in `frontend/test/integration/auth/sign_out_test.dart`
+- [X] T052 [P] [US4] Add logout integration test in `frontend/test/integration/auth/sign_out_test.dart`
 
 ### Implementation for User Story 4
 
-- [ ] T053 [US4] Wire logout action in `AuthShellPage` through `auth_notifier` in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart`
+- [X] T053 [US4] Wire logout action in `AuthShellPage` through `auth_notifier` in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart`
 
 **Checkpoint**: Logout clears session and permission cache (SC-005)
 
@@ -213,14 +213,14 @@
 
 ### Tests for User Story 7
 
-- [ ] T054 [P] [US7] Add forgot-password widget test in `frontend/test/widget/auth/forgot_password_page_test.dart`
-- [ ] T055 [P] [US7] Add admin password reset integration test in `frontend/test/integration/auth/password_reset_test.dart`
+- [X] T054 [P] [US7] Add forgot-password widget test in `frontend/test/widget/auth/forgot_password_page_test.dart`
+- [X] T055 [P] [US7] Add admin password reset integration test in `frontend/test/integration/auth/password_reset_test.dart`
 
 ### Implementation for User Story 7
 
-- [ ] T056 [P] [US7] Implement `ForgotPasswordPage` (contact administrator message only) in `frontend/lib/features/auth/presentation/pages/forgot_password_page.dart`
-- [ ] T057 [US7] Implement `StaffPasswordResetPage` in `frontend/lib/features/auth/presentation/pages/staff_password_reset_page.dart`
-- [ ] T058 [US7] Wire `admin_reset_staff_password` RPC in `frontend/lib/features/auth/data/provisioning_repository.dart`
+- [X] T056 [P] [US7] Implement `ForgotPasswordPage` (contact administrator message only) in `frontend/lib/features/auth/presentation/pages/forgot_password_page.dart`
+- [X] T057 [US7] Implement `StaffPasswordResetPage` in `frontend/lib/features/auth/presentation/pages/staff_password_reset_page.dart`
+- [X] T058 [US7] Wire `admin_reset_staff_password` RPC in `frontend/lib/features/auth/data/provisioning_repository.dart`
 
 **Checkpoint**: No self-service reset; admin reset flow end-to-end works
 

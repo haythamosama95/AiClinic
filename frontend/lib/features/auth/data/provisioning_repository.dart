@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
+import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
 
 /// Input for `create_staff_account` RPC.
 class CreateStaffAccountInput {
@@ -35,6 +36,14 @@ class CreateStaffAccountResult {
   final String assignedPassword;
 }
 
+/// Successful administrator password reset payload.
+class AdminResetStaffPasswordResult {
+  const AdminResetStaffPasswordResult({required this.staffMemberId, required this.assignedPassword});
+
+  final String staffMemberId;
+  final String assignedPassword;
+}
+
 /// Maps provisioning RPC PostgREST failures to [RpcFailure], or returns null to rethrow.
 RpcFailure? provisioningRpcFailureFromPostgrest(PostgrestException error, String functionName) {
   if (error.code == 'PGRST202' || error.message.contains('Could not find the function')) {
@@ -49,11 +58,31 @@ RpcFailure? provisioningRpcFailureFromPostgrest(PostgrestException error, String
   return null;
 }
 
-/// Calls staff provisioning RPCs (`create_staff_account`, later `admin_reset_staff_password`).
+/// Calls staff provisioning RPCs (`create_staff_account`, `admin_reset_staff_password`).
 class ProvisioningRepository {
   ProvisioningRepository(this._client);
 
   final SupabaseClient _client;
+
+  /// Lists active staff in the caller's organization (RLS-scoped) for password reset picker.
+  Future<List<StaffMemberSummary>> listOrgStaffMembers() async {
+    final rows = await _client
+        .from('staff_members')
+        .select('id, full_name, role')
+        .eq('is_deleted', false)
+        .eq('is_active', true)
+        .order('full_name');
+
+    final summaries = <StaffMemberSummary>[];
+    for (final row in rows) {
+      final summary = StaffMemberSummary.fromRow(Map<String, dynamic>.from(row));
+      if (summary != null) {
+        summaries.add(summary);
+      }
+    }
+
+    return summaries;
+  }
 
   /// Loads branch display fields for IDs the caller is allowed to see (org RLS).
   Future<List<BranchSummary>> listBranchesByIds(List<String> branchIds) async {
@@ -103,6 +132,23 @@ class ProvisioningRepository {
       email: input.email.trim().toLowerCase(),
       assignedPassword: assignedPassword,
     );
+  }
+
+  Future<AdminResetStaffPasswordResult> resetStaffPassword({
+    required String staffMemberId,
+    required String newPassword,
+  }) async {
+    final result = await _invoke('admin_reset_staff_password', {
+      'p_staff_member_id': staffMemberId,
+      'p_new_password': newPassword,
+    });
+
+    final assignedPassword = result.data?['assigned_password']?.toString();
+    if (assignedPassword == null || assignedPassword.isEmpty) {
+      throw StateError('Password was reset but the response was incomplete.');
+    }
+
+    return AdminResetStaffPasswordResult(staffMemberId: staffMemberId, assignedPassword: assignedPassword);
   }
 
   Future<RpcResult> _invoke(String functionName, Map<String, dynamic> params) async {

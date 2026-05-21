@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
 /// User-facing messages for provisioning RPC error codes.
@@ -22,6 +23,18 @@ String provisioningMessageForRpc(RpcFailure failure) {
   };
 }
 
+/// User-facing messages for password-reset RPC error codes.
+String passwordResetMessageForRpc(RpcFailure failure) {
+  return switch (failure.code) {
+    'FORBIDDEN' => 'You do not have permission to reset staff passwords.',
+    'STAFF_NOT_FOUND' => 'That staff member was not found. Refresh the list and try again.',
+    'CROSS_ORG_DENIED' => 'That staff member is outside your clinic organization.',
+    'INVALID_INPUT' => failure.message,
+    'RPC_NOT_APPLIED' => failure.message,
+    _ => 'Unable to reset the password. Check connectivity and try again.',
+  };
+}
+
 @immutable
 class ProvisioningUiState {
   const ProvisioningUiState({
@@ -29,12 +42,14 @@ class ProvisioningUiState {
     this.errorMessage,
     this.ownerAlreadyExists = false,
     this.lastCreated,
+    this.lastPasswordReset,
   });
 
   final bool isSubmitting;
   final String? errorMessage;
   final bool ownerAlreadyExists;
   final CreateStaffAccountResult? lastCreated;
+  final AdminResetStaffPasswordResult? lastPasswordReset;
 
   ProvisioningUiState copyWith({
     bool? isSubmitting,
@@ -43,12 +58,15 @@ class ProvisioningUiState {
     bool? ownerAlreadyExists,
     CreateStaffAccountResult? lastCreated,
     bool clearLastCreated = false,
+    AdminResetStaffPasswordResult? lastPasswordReset,
+    bool clearLastPasswordReset = false,
   }) {
     return ProvisioningUiState(
       isSubmitting: isSubmitting ?? this.isSubmitting,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       ownerAlreadyExists: ownerAlreadyExists ?? this.ownerAlreadyExists,
       lastCreated: clearLastCreated ? null : (lastCreated ?? this.lastCreated),
+      lastPasswordReset: clearLastPasswordReset ? null : (lastPasswordReset ?? this.lastPasswordReset),
     );
   }
 }
@@ -74,6 +92,12 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
   void clearLastCreated() {
     if (state.lastCreated != null) {
       state = state.copyWith(clearLastCreated: true);
+    }
+  }
+
+  void clearLastPasswordReset() {
+    if (state.lastPasswordReset != null) {
+      state = state.copyWith(clearLastPasswordReset: true);
     }
   }
 
@@ -166,6 +190,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       }
 
       state = state.copyWith(isSubmitting: false, lastCreated: result);
+      ref.invalidate(staffResetCandidatesProvider);
       AppLog.info('provisioning.create_staff.ok staff_id=${result.staffMemberId}');
       return result;
     } on RpcFailure catch (error) {
@@ -181,4 +206,76 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
   }
+
+  /// Validates administrator password reset before invoking the RPC.
+  Future<AdminResetStaffPasswordResult?> resetStaffPassword({
+    required String staffMemberId,
+    required String newPassword,
+  }) async {
+    final session = ref.read(authSessionProvider).context;
+    if (session == null) {
+      state = state.copyWith(errorMessage: 'Sign in again to reset staff passwords.');
+      return null;
+    }
+
+    if (session.setupRequired) {
+      state = state.copyWith(errorMessage: 'Finish clinic setup before resetting staff passwords.');
+      return null;
+    }
+
+    if (!ProvisioningRules.canResetStaffPassword(session.staffProfile)) {
+      state = state.copyWith(errorMessage: 'Only clinic owners and administrators can reset staff passwords.');
+      return null;
+    }
+
+    final trimmedId = staffMemberId.trim();
+    final trimmedPassword = newPassword.trim();
+
+    if (trimmedId.isEmpty) {
+      state = state.copyWith(errorMessage: 'Select a staff member to reset.');
+      return null;
+    }
+    if (trimmedPassword.isEmpty) {
+      state = state.copyWith(errorMessage: 'Enter a new password for the staff member.');
+      return null;
+    }
+    if (trimmedPassword.length < 6) {
+      state = state.copyWith(errorMessage: 'Password must be at least 6 characters.');
+      return null;
+    }
+
+    state = state.copyWith(isSubmitting: true, clearError: true, clearLastPasswordReset: true);
+    AppLog.info('provisioning.reset_password.start staff_id=$trimmedId');
+
+    try {
+      final result = await ref
+          .read(provisioningRepositoryProvider)
+          .resetStaffPassword(staffMemberId: trimmedId, newPassword: trimmedPassword);
+
+      state = state.copyWith(isSubmitting: false, lastPasswordReset: result);
+      AppLog.info('provisioning.reset_password.ok staff_id=${result.staffMemberId}');
+      return result;
+    } on RpcFailure catch (error) {
+      AppLog.warning('provisioning.reset_password.rpc_failed code=${error.code}');
+      state = state.copyWith(isSubmitting: false, errorMessage: passwordResetMessageForRpc(error));
+      return null;
+    } catch (error) {
+      AppLog.warning('provisioning.reset_password.failed reason=${error.runtimeType}');
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: 'Unable to reset the password. Check connectivity and try again.',
+      );
+      return null;
+    }
+  }
 }
+
+/// Staff picker for password reset; auto-disposes when leaving the reset screen.
+final staffResetCandidatesProvider = FutureProvider.autoDispose<List<StaffMemberSummary>>((ref) async {
+  final session = ref.watch(authSessionProvider).context?.staffProfile;
+  if (session == null || !ProvisioningRules.canResetStaffPassword(session)) {
+    return const [];
+  }
+
+  return ref.read(provisioningRepositoryProvider).listOrgStaffMembers();
+});
