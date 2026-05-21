@@ -13,45 +13,9 @@ import 'package:ai_clinic/features/startup/presentation/pages/protected_route_bl
 import 'package:ai_clinic/features/startup/presentation/pages/setup_guidance_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_check_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
+import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
-
-bool _isPublicAuthRoute(String location) {
-  return location == AppRoutes.login || location == AppRoutes.forgotPassword;
-}
-
-bool _isAuthenticatedDestination(String location) {
-  return location == AppRoutes.home || location == AppRoutes.bootstrap;
-}
-
-String? _authRedirect({required String location, required AuthSessionState auth}) {
-  if (auth.status == AuthSessionStatus.unknown || auth.status == AuthSessionStatus.loading) {
-    return null;
-  }
-
-  if (auth.isAuthenticated) {
-    final context = auth.context!;
-    if (context.setupRequired) {
-      return location == AppRoutes.bootstrap ? null : AppRoutes.bootstrap;
-    }
-
-    if (location == AppRoutes.login || location == AppRoutes.bootstrap || location == AppRoutes.forgotPassword) {
-      return AppRoutes.home;
-    }
-
-    return null;
-  }
-
-  if (_isPublicAuthRoute(location)) {
-    return null;
-  }
-
-  if (_isAuthenticatedDestination(location)) {
-    return AppRoutes.login;
-  }
-
-  return null;
-}
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -86,12 +50,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final auth = ref.read(authSessionProvider);
       final location = state.matchedLocation;
 
-      final isProtectedFeatureRoute = location.startsWith('${AppRoutes.protectedPrefix}/');
+      final isProtectedFeatureRoute = AuthRouteGuard.requiresProtectedSetupComplete(location);
       if (isProtectedFeatureRoute) {
         if (session.configurationStatus == StartupConfigurationStatus.valid) {
-          final authTarget = _authRedirect(location: location, auth: auth);
+          final authTarget = AuthRouteGuard.resolveRedirect(location: location, auth: auth);
           if (authTarget != null) {
             return authTarget;
+          }
+
+          if (!AuthRouteGuard.canAccessProtectedFeatureRoute(auth)) {
+            return auth.isAuthenticated ? AppRoutes.bootstrap : AppRoutes.login;
           }
         }
 
@@ -106,12 +74,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         StartupCurrentView.setupGuidance => location == AppRoutes.setupGuidance ? null : AppRoutes.setupGuidance,
         StartupCurrentView.protectedRouteBlocked =>
           location == AppRoutes.protectedBlocked ? null : AppRoutes.protectedBlocked,
-        StartupCurrentView.unauthenticatedEntry =>
-          location == AppRoutes.startupEntry || location == AppRoutes.foundationDemo || _isPublicAuthRoute(location)
-              ? null
-              : (location == AppRoutes.login || _isAuthenticatedDestination(location))
-              ? _authRedirect(location: location, auth: auth)
-              : AppRoutes.startupEntry,
+        StartupCurrentView.unauthenticatedEntry => () {
+          final authRedirect = AuthRouteGuard.resolveRedirect(location: location, auth: auth);
+          if (authRedirect != null) {
+            return authRedirect;
+          }
+
+          if (auth.isAuthenticated) {
+            return null;
+          }
+
+          const preAuthShellRoutes = {
+            AppRoutes.startupEntry,
+            AppRoutes.foundationDemo,
+            AppRoutes.login,
+            AppRoutes.forgotPassword,
+          };
+          return preAuthShellRoutes.contains(location) ? null : AppRoutes.startupEntry;
+        }(),
       };
 
       if (startupRedirect != null) {
@@ -119,7 +99,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (session.currentView == StartupCurrentView.unauthenticatedEntry) {
-        return _authRedirect(location: location, auth: auth);
+        return AuthRouteGuard.resolveRedirect(location: location, auth: auth);
       }
 
       return null;

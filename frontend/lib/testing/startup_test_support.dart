@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 import 'package:ai_clinic/shared/services/startup_health_service.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -75,6 +76,21 @@ class FakeStartupHealthService extends StartupHealthService {
 
   @override
   Future<StartupHealthResult> check(SupabaseConfig config) async => result;
+}
+
+/// Startup notifier that reports a valid local profile (for isolated auth widget tests).
+class TestValidStartupSessionNotifier extends StartupSessionNotifier {
+  @override
+  StartupSessionState build() {
+    return StartupSessionState(
+      configurationStatus: StartupConfigurationStatus.valid,
+      connectivityStatus: StartupConnectivityStatus.healthy,
+      currentView: StartupCurrentView.unauthenticatedEntry,
+      themeMode: ThemeMode.system,
+      deploymentProfile: sampleDeploymentProfile(),
+      healthResult: sampleHealthResult(),
+    );
+  }
 }
 
 /// Boots the full app with deterministic startup dependencies for tests.

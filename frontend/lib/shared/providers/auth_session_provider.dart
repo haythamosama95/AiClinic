@@ -70,9 +70,13 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     }
 
     try {
-      if (!Supabase.instance.isInitialized) {
+      if (!SupabaseBootstrap.isReady) {
         state = state.copyWith(status: AuthSessionStatus.loading, clearFailure: true);
         await SupabaseBootstrap.ensureInitialized(SupabaseConfig.fromDeploymentProfile(profile));
+      }
+
+      if (!SupabaseBootstrap.isReady) {
+        return;
       }
 
       await _bindAuthListener();
@@ -113,6 +117,11 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   }
 
   Future<void> _syncFromCurrentSession() async {
+    if (!SupabaseBootstrap.isReady) {
+      state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
+      return;
+    }
+
     final session = ref.read(authRepositoryProvider).currentSession;
     if (session == null) {
       state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
@@ -125,7 +134,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   Future<AuthSessionContext> _loadSessionContext(Session session) async {
     final claims = decodeAccessTokenClaims(session.accessToken);
     final staffMemberId = claims['staff_member_id']?.toString();
-    final role = StaffRole.tryParse(claims['role']?.toString());
+    final role = StaffRole.tryParse(claims['staff_role']?.toString());
 
     if (staffMemberId == null || role == null) {
       throw StateError('Authenticated session is missing staff claims.');
@@ -198,6 +207,30 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   Future<void> signOut() async {
     await ref.read(authRepositoryProvider).signOut();
     state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
+  }
+
+  /// Loads session context immediately after password sign-in (avoids missing auth stream events).
+  Future<void> syncAfterSignIn() async {
+    await _bindAuthListener();
+    final session = ref.read(authRepositoryProvider).currentSession;
+    if (session == null) {
+      return;
+    }
+
+    await _handleAuthState(AuthState(AuthChangeEvent.signedIn, session));
+  }
+
+  /// Waits until startup config is loaded and the Supabase client is ready for password sign-in.
+  Future<void> ensureReadyForSignIn() async {
+    final startup = ref.read(startupSessionProvider);
+    if (startup.configurationStatus != StartupConfigurationStatus.valid || startup.deploymentProfile == null) {
+      throw StateError('Startup configuration is not ready for sign-in.');
+    }
+
+    await _ensureSupabaseReady(startup);
+    if (!SupabaseBootstrap.isReady) {
+      throw StateError('Supabase client is not initialized.');
+    }
   }
 }
 

@@ -68,12 +68,12 @@
 
 ### Tests for User Story 8
 
-- [ ] T021 [P] [US8] Add auth route guard integration tests in `frontend/test/integration/auth/auth_route_guard_test.dart`
+- [X] T021 [P] [US8] Add auth route guard integration tests in `frontend/test/integration/auth/auth_route_guard_test.dart`
 
 ### Implementation for User Story 8
 
-- [ ] T022 [P] [US8] Implement `AuthRouteGuard` helpers in `frontend/lib/core/auth/auth_route_guard.dart`
-- [ ] T023 [US8] Complete authenticated vs unauthenticated redirect rules in `frontend/lib/app/router.dart` per `specs/002-auth-rbac/contracts/auth-session.md`
+- [X] T022 [P] [US8] Implement `AuthRouteGuard` helpers in `frontend/lib/core/auth/auth_route_guard.dart`
+- [X] T023 [US8] Complete authenticated vs unauthenticated redirect rules in `frontend/lib/app/router.dart` per `specs/002-auth-rbac/contracts/auth-session.md`
 
 **Checkpoint**: Unauthenticated protected access always lands on login
 
@@ -87,14 +87,14 @@
 
 ### Tests for User Story 1
 
-- [ ] T024 [P] [US1] Add login page widget tests in `frontend/test/widget/auth/login_page_test.dart`
-- [ ] T025 [P] [US1] Add sign-in integration test in `frontend/test/integration/auth/sign_in_test.dart`
+- [X] T024 [P] [US1] Add login page widget tests in `frontend/test/widget/auth/login_page_test.dart`
+- [X] T025 [P] [US1] Add sign-in integration test in `frontend/test/integration/auth/sign_in_test.dart`
 
 ### Implementation for User Story 1
 
-- [ ] T026 [P] [US1] Implement `LoginPage` UI in `frontend/lib/features/auth/presentation/pages/login_page.dart`
-- [ ] T027 [US1] Implement sign-in and post-login context loading in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart`
-- [ ] T028 [US1] Register `/login` route and wire `LoginPage` in `frontend/lib/app/router.dart`
+- [X] T026 [P] [US1] Implement `LoginPage` UI in `frontend/lib/features/auth/presentation/pages/login_page.dart`
+- [X] T027 [US1] Implement sign-in and post-login context loading in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart`
+- [X] T028 [US1] Register `/login` route and wire `LoginPage` in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Valid credentials reach authenticated destination; invalid credentials show generic error
 

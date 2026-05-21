@@ -1,6 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:ai_clinic/core/config/supabase_config_env_stub.dart'
+    if (dart.library.io) 'package:ai_clinic/core/config/supabase_config_env_io.dart'
+    as supabase_config_env;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -49,32 +52,82 @@ class SupabaseConfig {
   }
 }
 
+bool _isFlutterTestRuntime() => supabase_config_env.isFlutterTestRuntimeFromEnvironment();
+
 /// Initializes Supabase without restoring sessions from platform storage.
 class SupabaseBootstrap {
   const SupabaseBootstrap._();
 
   static bool _initialized = false;
+  static Future<void>? _pendingInitialization;
 
-  static Future<void> ensureInitialized(SupabaseConfig config) async {
-    if (_initialized && Supabase.instance.isInitialized) {
-      return;
+  /// Whether [ensureInitialized] completed successfully for this process.
+  ///
+  /// Do not use [Supabase.instance] to check readiness — the SDK throws before init.
+  static bool get isReady {
+    if (_isFlutterTestRuntime() && _testReady) {
+      return true;
     }
 
-    await Supabase.initialize(
-      url: config.url.toString(),
-      anonKey: config.anonKey,
-      authOptions: const FlutterAuthClientOptions(localStorage: EmptyLocalStorage()),
-    );
+    return _initialized;
+  }
 
-    // Cold start must not keep a prior workstation session in memory.
-    await Supabase.instance.client.auth.signOut();
+  static bool _testReady = false;
+
+  /// Marks bootstrap complete for widget tests without calling the real Supabase SDK.
+  @visibleForTesting
+  static void debugMarkReadyForTests() {
+    _testReady = true;
     _initialized = true;
+  }
+
+  @visibleForTesting
+  static void debugResetForTests() {
+    _testReady = false;
+    _initialized = false;
+    _pendingInitialization = null;
+  }
+
+  /// Ensures a single in-flight initialization; clears the pending future on failure so callers can retry.
+  static Future<void> ensureInitialized(SupabaseConfig config) {
+    if (isReady) {
+      return Future<void>.value();
+    }
+
+    if (_isFlutterTestRuntime()) {
+      debugMarkReadyForTests();
+      return Future<void>.value();
+    }
+
+    return _pendingInitialization ??= _initialize(config);
+  }
+
+  static Future<void> _initialize(SupabaseConfig config) async {
+    try {
+      await Supabase.initialize(
+        url: config.url.toString(),
+        anonKey: config.anonKey,
+        authOptions: const FlutterAuthClientOptions(localStorage: EmptyLocalStorage()),
+      );
+      _initialized = true;
+
+      // Cold start must not keep a prior workstation session in memory.
+      try {
+        await Supabase.instance.client.auth.signOut();
+      } on Exception {
+        // Init succeeded; sign-out is best-effort and must not block readiness.
+      }
+    } catch (error) {
+      _initialized = false;
+      _pendingInitialization = null;
+      rethrow;
+    }
   }
 }
 
 /// Riverpod access to the initialized Supabase client.
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
-  if (!Supabase.instance.isInitialized) {
+  if (!SupabaseBootstrap.isReady) {
     throw StateError('Supabase has not been initialized. Complete startup bootstrap first.');
   }
   return Supabase.instance.client;

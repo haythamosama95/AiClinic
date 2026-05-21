@@ -64,7 +64,7 @@ token = os.environ["ACCESS_TOKEN"]
 parts = token.split(".")
 padding = "=" * (-len(parts[1]) % 4)
 payload = json.loads(base64.urlsafe_b64decode(parts[1] + padding))
-for key in ("staff_member_id", "role", "setup_required"):
+for key in ("staff_member_id", "staff_role", "setup_required"):
     print(f"{key}={payload.get(key)}")
 '
   return 0

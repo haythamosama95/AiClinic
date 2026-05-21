@@ -17,14 +17,14 @@ void main() {
     await tester.tap(find.text('Try a protected route'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Protected route blocked'), findsOneWidget);
-    expect(find.textContaining('Protected route'), findsWidgets);
+    expect(find.text('Sign in with your clinic staff account'), findsOneWidget);
+    expect(find.text('Protected route blocked'), findsNothing);
 
-    await tester.tap(find.text('Return to startup'));
+    await tester.tap(find.text('Back to startup'));
     await tester.pumpAndSettle();
 
     expect(find.text('AiClinic clinic-local startup'), findsOneWidget);
-    expect(find.text('Protected route blocked'), findsNothing);
+    expect(find.text('Sign in with your clinic staff account'), findsNothing);
   });
 
   testWidgets('blocks direct protected route entry without rendering the placeholder', (tester) async {
@@ -35,7 +35,7 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.protectedPlaceholder);
     await tester.pumpAndSettle();
 
-    expect(find.text('Protected route blocked'), findsOneWidget);
+    expect(find.text('Sign in with your clinic staff account'), findsOneWidget);
     expect(find.text('This route should never render before authentication.'), findsNothing);
   });
 }

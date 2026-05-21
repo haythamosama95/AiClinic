@@ -105,9 +105,9 @@ class StartupSessionNotifier extends Notifier<StartupSessionState> {
 
     try {
       final profile = await ref.read(deploymentProfileStoreProvider).load();
-      final healthResult = await ref
-          .read(startupHealthServiceProvider)
-          .check(SupabaseConfig.fromDeploymentProfile(profile));
+      final supabaseConfig = SupabaseConfig.fromDeploymentProfile(profile);
+      await SupabaseBootstrap.ensureInitialized(supabaseConfig);
+      final healthResult = await ref.read(startupHealthServiceProvider).check(supabaseConfig);
 
       // A valid profile always advances to the startup dashboard, even if health is degraded.
       state = state.copyWith(

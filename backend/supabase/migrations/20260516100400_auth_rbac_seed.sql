@@ -92,8 +92,8 @@ DO $$
 DECLARE
   v_user_id uuid := 'a0000000-0000-4000-8000-000000000001';   -- Stable auth user id
   v_staff_id uuid := 'b0000000-0000-4000-8000-000000000001';  -- Stable staff_members id
-  v_email text := 'admin@clinic.local';
-  v_password text := 'ChangeMeOnFirstSignIn!';
+  v_email text := 'admin@admin';
+  v_password text := 'admin';
   v_full_name text := 'Clinic Administrator';
 BEGIN
   -- Login row in Supabase Auth (skip if already present from prior migration run)
@@ -106,6 +106,10 @@ BEGIN
       email,
       encrypted_password,
       email_confirmed_at,
+      confirmation_token,
+      recovery_token,
+      email_change,
+      email_change_token_new,
       raw_app_meta_data,
       raw_user_meta_data,
       created_at,
@@ -119,6 +123,10 @@ BEGIN
       v_email,
       extensions.crypt(v_password, extensions.gen_salt('bf')),
       now(),
+      '',
+      '',
+      '',
+      '',
       jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
       jsonb_build_object('full_name', v_full_name),
       now(),
