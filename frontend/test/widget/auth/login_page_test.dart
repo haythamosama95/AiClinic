@@ -129,5 +129,72 @@ void main() {
 
       expect(tester.widget<TextFormField>(find.byType(TextFormField).at(0)).enabled, isFalse);
     });
+
+    testWidgets('empty email blocks submit without calling signIn', (tester) async {
+      final notifier = _LoginTestAuthNotifier();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            startupSessionProvider.overrideWith(TestValidStartupSessionNotifier.new),
+            authNotifierProvider.overrideWith(() => notifier),
+            authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
+          ],
+          child: const MaterialApp(home: LoginPage()),
+        ),
+      );
+
+      await tester.enterText(find.byType(TextFormField).at(1), 'password');
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+
+      expect(notifier.signInCalls, 0);
+      expect(find.text('Enter a valid email address'), findsOneWidget);
+    });
+
+    testWidgets('password field is obscured', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            startupSessionProvider.overrideWith(TestValidStartupSessionNotifier.new),
+            authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
+          ],
+          child: const MaterialApp(home: LoginPage()),
+        ),
+      );
+
+      final editable = tester.widget<EditableText>(
+        find.descendant(of: find.byType(TextFormField).at(1), matching: find.byType(EditableText)),
+      );
+      expect(editable.obscureText, isTrue);
+    });
+
+    testWidgets('dismiss error then fail again shows new error', (tester) async {
+      final notifier = _LoginTestAuthNotifier()..failSignIn = true;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            startupSessionProvider.overrideWith(TestValidStartupSessionNotifier.new),
+            authNotifierProvider.overrideWith(() => notifier),
+            authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
+          ],
+          child: const MaterialApp(home: LoginPage()),
+        ),
+      );
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'a@b.co');
+      await tester.enterText(find.byType(TextFormField).at(1), 'wrong');
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dismiss'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kGenericSignInFailureMessage), findsOneWidget);
+      expect(notifier.signInCalls, 2);
+    });
   });
 }

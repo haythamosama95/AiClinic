@@ -18,13 +18,13 @@ Defines client and backend behavior for staff authentication, session lifecycle,
 
 Required custom claims after setup complete:
 
-| Claim             | Type   | Notes                                     |
-| ----------------- | ------ | ----------------------------------------- |
-| `organization_id` | uuid   | Null only during bootstrap/setup          |
-| `branch_ids`      | string | Comma-separated UUIDs                     |
-| `role`            | string | `staff_role` enum value                   |
-| `staff_member_id` | uuid   |                                           |
-| `setup_required`  | bool   | True when org missing and bootstrap admin |
+| Claim             | Type   | Notes                                                   |
+| ----------------- | ------ | ------------------------------------------------------- |
+| `organization_id` | uuid   | Null only during bootstrap/setup                        |
+| `branch_ids`      | string | Comma-separated UUIDs                                   |
+| `staff_role`      | string | `staff_role` enum value (not PostgreSQL session `role`) |
+| `staff_member_id` | uuid   |                                                         |
+| `setup_required`  | bool   | True when org missing and bootstrap admin               |
 
 ## Session Lifecycle
 

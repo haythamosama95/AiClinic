@@ -1,4 +1,5 @@
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
 /// Route guard rules for auth session states (see `contracts/auth-session.md`).
@@ -32,6 +33,14 @@ abstract final class AuthRouteGuard {
 
   /// Returns a redirect target path, or `null` when [location] may render.
   static String? resolveRedirect({required String location, required AuthSessionState auth}) {
+    final redirect = _resolveRedirect(location: location, auth: auth);
+    if (redirect != null) {
+      AppLog.fine('auth.route.redirect from=$location to=$redirect');
+    }
+    return redirect;
+  }
+
+  static String? _resolveRedirect({required String location, required AuthSessionState auth}) {
     if (auth.status == AuthSessionStatus.unknown || auth.status == AuthSessionStatus.loading) {
       return null;
     }

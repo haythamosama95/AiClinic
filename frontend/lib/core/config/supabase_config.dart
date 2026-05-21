@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/deployment_profile.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
+import 'package:ai_clinic/core/logging/app_log.dart';
 
 @immutable
 /// Startup-ready connection settings derived from a validated deployment profile.
@@ -110,16 +111,18 @@ class SupabaseBootstrap {
         authOptions: const FlutterAuthClientOptions(localStorage: EmptyLocalStorage()),
       );
       _initialized = true;
+      AppLog.info('supabase.bootstrap.ready');
 
       // Cold start must not keep a prior workstation session in memory.
       try {
         await Supabase.instance.client.auth.signOut();
-      } on Exception {
-        // Init succeeded; sign-out is best-effort and must not block readiness.
+      } on Exception catch (error) {
+        AppLog.warning('supabase.bootstrap.cold_sign_out_failed reason=${error.runtimeType}');
       }
     } catch (error) {
       _initialized = false;
       _pendingInitialization = null;
+      AppLog.warning('supabase.bootstrap.failed reason=${error.runtimeType}');
       rethrow;
     }
   }

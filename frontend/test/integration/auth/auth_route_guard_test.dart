@@ -81,5 +81,17 @@ void main() {
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
       expect(find.textContaining('Signed in as Test Staff'), findsOneWidget);
     });
+
+    testWidgets('authenticated user navigating to login bounces to home', (tester) async {
+      await pumpAuthApp(tester, extraOverrides: [authSessionProvider.overrideWith(TestAuthSessionNotifier.new)]);
+      await completeStartupBootstrap(tester);
+
+      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+      (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setAuthenticated();
+      container.read(appRouterProvider).go(AppRoutes.login);
+      await tester.pumpAndSettle();
+
+      expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
+    });
   });
 }

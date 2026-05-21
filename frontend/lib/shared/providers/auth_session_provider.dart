@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
@@ -85,6 +86,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
         await _syncFromCurrentSession();
       }
     } catch (error) {
+      AppLog.warning('auth.session.bootstrap_failed reason=${error.runtimeType}');
       state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
     }
   }
@@ -110,10 +112,32 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     try {
       final context = await _loadSessionContext(authState.session!);
       state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+      AppLog.fine(
+        'auth.session.authenticated role=${context.staffProfile.role.wireValue} '
+        'setup=${context.setupRequired}',
+      );
     } catch (error) {
+      AppLog.warning('auth.session.context_failed reason=${_contextFailureReason(error)}');
       await ref.read(authRepositoryProvider).signOut();
       state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
     }
+  }
+
+  static String _contextFailureReason(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('missing staff claims')) {
+      if (message.contains('staff_role') || message.contains('staff claims')) {
+        return 'missing_staff_claims';
+      }
+      return 'missing_staff_claims';
+    }
+    if (message.contains('inactive')) {
+      return 'inactive_staff';
+    }
+    if (message.contains('no active staff profile')) {
+      return 'staff_profile_missing';
+    }
+    return error.runtimeType.toString();
   }
 
   Future<void> _syncFromCurrentSession() async {

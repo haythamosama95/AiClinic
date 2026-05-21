@@ -8,6 +8,7 @@ AuthSessionContext sampleAuthSessionContext({
   bool setupRequired = false,
   StaffRole role = StaffRole.owner,
   List<String> branchIds = const ['00000000-0000-4000-8000-000000000001'],
+  Set<String> permissions = const {'patients.read'},
 }) {
   return AuthSessionContext(
     staffProfile: StaffProfile(
@@ -20,7 +21,7 @@ AuthSessionContext sampleAuthSessionContext({
     organizationId: setupRequired ? null : '00000000-0000-4000-8000-000000000020',
     branchIds: branchIds,
     activeBranchId: branchIds.isEmpty ? null : branchIds.first,
-    permissions: const {'patients.read'},
+    permissions: permissions,
     setupRequired: setupRequired,
   );
 }
@@ -49,4 +50,14 @@ class TestAuthSessionNotifier extends AuthSessionNotifier {
   void setUnauthenticated({String? failureMessage}) {
     setSession(AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: failureMessage));
   }
+
+  void setLoading() {
+    setSession(const AuthSessionState(status: AuthSessionStatus.loading));
+  }
+
+  @override
+  Future<void> ensureReadyForSignIn() async {}
+
+  @override
+  Future<void> syncAfterSignIn() async {}
 }

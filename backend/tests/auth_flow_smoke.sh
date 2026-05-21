@@ -59,13 +59,24 @@ import json, os
 print(json.loads(os.environ["SIGN_IN_RESPONSE"])["access_token"])
 ')"
   ACCESS_TOKEN="${access_token}" python3 -c '
-import base64, json, os
+import base64, json, os, sys
 token = os.environ["ACCESS_TOKEN"]
 parts = token.split(".")
 padding = "=" * (-len(parts[1]) % 4)
 payload = json.loads(base64.urlsafe_b64decode(parts[1] + padding))
 for key in ("staff_member_id", "staff_role", "setup_required"):
     print(f"{key}={payload.get(key)}")
+pg_role = payload.get("role")
+if pg_role != "authenticated":
+    print(f"ERROR: JWT role must be authenticated, got {pg_role!r}", file=sys.stderr)
+    sys.exit(1)
+if not payload.get("staff_role"):
+    print("ERROR: JWT missing staff_role claim", file=sys.stderr)
+    sys.exit(1)
+job_title_keys = ("owner", "administrator", "doctor", "receptionist", "lab_staff")
+if pg_role in job_title_keys:
+    print("ERROR: staff job title must not occupy role claim", file=sys.stderr)
+    sys.exit(1)
 '
   return 0
 }
@@ -101,5 +112,11 @@ PGPASSWORD="${db_password}" psql -h 127.0.0.1 -p "${db_port}" -U postgres -d pos
   | while read -r code; do
     printf 'bootstrap_create_organization error_code=%s (expect ORG_ALREADY_EXISTS when org exists)\n' "${code}"
   done
+
+if command -v psql >/dev/null 2>&1; then
+  printf 'Auth smoke: running jwt_claims_contract.sql\n'
+  PGPASSWORD="${db_password}" psql -h 127.0.0.1 -p "${db_port}" -U postgres -d postgres \
+    -v ON_ERROR_STOP=1 -f "${script_dir}/jwt_claims_contract.sql" >/dev/null
+fi
 
 printf 'Auth smoke checks completed.\n'

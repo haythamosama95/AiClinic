@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
@@ -58,16 +59,37 @@ class AuthNotifier extends Notifier<AuthUiState> {
       await ref.read(authSessionProvider.notifier).syncAfterSignIn();
       await _waitForPostLoginResolution();
     } on AuthException catch (error) {
+      AppLog.warning('auth.sign_in.failed category=${_authExceptionCategory(error)}');
       state = state.copyWith(isSubmitting: false, errorMessage: _messageForAuthException(error));
     } on StateError {
+      AppLog.warning('auth.sign_in.failed category=not_ready');
       state = state.copyWith(isSubmitting: false, errorMessage: kSignInNotReadyMessage);
     } catch (error) {
+      AppLog.warning('auth.sign_in.failed category=${_unexpectedErrorCategory(error)}');
       state = state.copyWith(isSubmitting: false, errorMessage: _messageForUnexpectedSignInError(error));
-      assert(() {
-        debugPrint('Sign-in failed: $error');
-        return true;
-      }());
     }
+  }
+
+  static String _authExceptionCategory(AuthException error) {
+    final details = '${error.code ?? ''} ${error.message}'.toLowerCase();
+    if (details.contains('invalid') || details.contains('credential') || details.contains('password')) {
+      return 'invalid_credentials';
+    }
+    if (details.contains('network') || details.contains('503') || details.contains('timeout')) {
+      return 'unavailable';
+    }
+    return 'auth_error';
+  }
+
+  static String _unexpectedErrorCategory(Object error) {
+    final details = error.toString().toLowerCase();
+    if (details.contains('staff claims') || details.contains('staff profile')) {
+      return 'missing_staff_permissions';
+    }
+    if (details.contains('postgrest') || details.contains('jwt') || details.contains('permission denied')) {
+      return 'unavailable';
+    }
+    return 'unexpected';
   }
 
   String _messageForUnexpectedSignInError(Object error) {
@@ -109,6 +131,7 @@ class AuthNotifier extends Notifier<AuthUiState> {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
 
+    AppLog.warning('auth.sign_in.failed category=post_login_timeout');
     state = state.copyWith(
       isSubmitting: false,
       errorMessage:
