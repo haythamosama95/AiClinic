@@ -132,15 +132,15 @@
 
 ### Tests for User Story 4
 
-- [ ] T037 [P] [US4] Add widget tests for `ShellStatusBar` branch switching in `frontend/test/widget/settings/shell_status_bar_test.dart`
-- [ ] T038 [P] [US4] Add integration test for branch context update in `frontend/test/integration/settings/branch_switcher_test.dart`
+- [x] T037 [P] [US4] Add widget tests for `ShellStatusBar` branch switching in `frontend/test/widget/settings/shell_status_bar_test.dart`
+- [x] T038 [P] [US4] Add integration test for branch context update in `frontend/test/integration/settings/branch_switcher_test.dart`
 
 ### Implementation for User Story 4
 
-- [ ] T039 [US4] Implement `ShellStatusBar` (branch | user | connection) in `frontend/lib/features/settings/presentation/widgets/shell_status_bar.dart` per `contracts/branch-switcher-shell.md`
-- [ ] T040 [US4] Integrate `ShellStatusBar` into `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart` and remove or demote `ShellBranchSelector` from AppBar `actions`
-- [ ] T041 [US4] Ensure `AuthSessionNotifier.setActiveBranch()` updates session state used by permission/branch scope in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart`
-- [ ] T042 [US4] Verify `staffAssignableBranchesProvider` in `frontend/lib/features/auth/presentation/providers/staff_assignable_branches_provider.dart` lists only active assigned branches
+- [x] T039 [US4] Implement `ShellStatusBar` (branch | user | connection) in `frontend/lib/features/settings/presentation/widgets/shell_status_bar.dart` per `contracts/branch-switcher-shell.md`
+- [x] T040 [US4] Integrate `ShellStatusBar` into `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart` and remove or demote `ShellBranchSelector` from AppBar `actions`
+- [x] T041 [US4] Ensure `AuthSessionNotifier.setActiveBranch()` updates session state used by permission/branch scope in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart`
+- [x] T042 [US4] Verify `staffAssignableBranchesProvider` in `frontend/lib/features/auth/presentation/providers/staff_assignable_branches_provider.dart` lists only active assigned branches
 
 **Checkpoint**: Spec test case 5 (primary + switcher); acceptance criteria 7–8; NFR-005 perceived switch under 2s
 

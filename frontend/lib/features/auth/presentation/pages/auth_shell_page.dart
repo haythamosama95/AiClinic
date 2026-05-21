@@ -11,7 +11,7 @@ import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clin
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_reset_clinic_button.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/no_branch_blocked_panel.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/permission_demo_panel.dart';
-import 'package:ai_clinic/features/auth/presentation/widgets/shell_branch_selector.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/shell_status_bar.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 import 'package:go_router/go_router.dart';
 
@@ -29,15 +29,6 @@ class AuthShellPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('AiClinic'),
         actions: [
-          if (auth != null && auth.hasBranchAssignment)
-            branchesAsync.when(
-              data: (branches) => ShellBranchSelector(branches: branches),
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-              ),
-              error: (_, _) => const SizedBox.shrink(),
-            ),
           const DevFillDummyClinicButton(),
           const DevResetClinicButton(),
           TextButton(onPressed: () => ref.read(authNotifierProvider.notifier).signOut(), child: const Text('Sign out')),
@@ -48,6 +39,7 @@ class AuthShellPage extends ConsumerWidget {
           : !auth.hasBranchAssignment
           ? NoBranchBlockedPanel(staffName: auth.staffProfile.fullName)
           : _ShellHomeBody(auth: auth, branchesAsync: branchesAsync),
+      bottomNavigationBar: auth != null ? ShellStatusBar(branchesAsync: branchesAsync) : null,
     );
   }
 }

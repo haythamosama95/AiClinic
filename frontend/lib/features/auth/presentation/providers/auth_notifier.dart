@@ -159,4 +159,9 @@ class AuthNotifier extends Notifier<AuthUiState> {
   Future<void> reloadContext() async {
     await ref.read(authSessionProvider.notifier).reloadContext();
   }
+
+  /// Updates active branch for branch-scoped UI without re-login (V1-2 shell switcher).
+  void setActiveBranch(String branchId) {
+    ref.read(authSessionProvider.notifier).setActiveBranch(branchId);
+  }
 }

@@ -163,11 +163,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Welcome, Test Staff'), findsOneWidget);
-    expect(find.textContaining('receptionist'), findsOneWidget);
+    expect(find.textContaining('Role: receptionist'), findsOneWidget);
     expect(find.textContaining('Active branch: Downtown'), findsOneWidget);
+    expect(find.textContaining('Test Staff · receptionist'), findsOneWidget);
   });
 
-  testWidgets('single branch shows chip instead of dropdown', (tester) async {
+  testWidgets('single branch shows label in status bar instead of dropdown', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -183,7 +184,7 @@ void main() {
     expect(find.text('Downtown'), findsWidgets);
   });
 
-  testWidgets('branch selector updates active branch in session', (tester) async {
+  testWidgets('status bar branch selector updates active branch in session', (tester) async {
     final notifier = _BranchTrackingNotifier();
 
     await tester.pumpWidget(

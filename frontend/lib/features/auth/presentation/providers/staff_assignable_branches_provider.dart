@@ -4,7 +4,10 @@ import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
-/// Branches the signed-in staff member may assign when creating accounts.
+/// Active assigned branches for the signed-in staff (shell switcher, staff forms).
+///
+/// [ProvisioningRepository.listBranchesByIds] filters `is_active` and `is_deleted`,
+/// matching JWT `branch_ids` from `build_staff_claims`.
 final staffAssignableBranchesProvider = FutureProvider.autoDispose<List<BranchSummary>>((ref) async {
   final branchIds = ref.watch(authSessionProvider.select((state) => state.context?.branchIds ?? const []));
   if (branchIds.isEmpty) {
