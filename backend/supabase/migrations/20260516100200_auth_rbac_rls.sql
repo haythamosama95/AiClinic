@@ -23,9 +23,9 @@
 GRANT USAGE ON SCHEMA auth TO authenticated;
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 
--- Broad table grants; RLS still restricts which ROWS are visible (grants ≠ bypass RLS)
+-- Broad table grants for authenticated; RLS restricts which ROWS are visible.
+-- Anon is not granted table access (login uses auth API only; tenant data requires JWT).
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;
 
 -- -----------------------------------------------------------------------------
 -- Read JWT claims from the current HTTP request
@@ -36,6 +36,7 @@ CREATE OR REPLACE FUNCTION public.request_jwt_claims()
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
+SET search_path = public, auth
 AS $$
 DECLARE
   v_raw text;
@@ -59,6 +60,7 @@ CREATE OR REPLACE FUNCTION public.jwt_organization_id()
 RETURNS uuid
 LANGUAGE sql
 STABLE
+SET search_path = public
 AS $$
   SELECT NULLIF(public.request_jwt_claims() ->> 'organization_id', '')::uuid;
 $$;
@@ -68,6 +70,7 @@ CREATE OR REPLACE FUNCTION public.jwt_branch_ids()
 RETURNS uuid[]
 LANGUAGE sql
 STABLE
+SET search_path = public
 AS $$
   SELECT COALESCE(
     string_to_array(NULLIF(public.request_jwt_claims() ->> 'branch_ids', ''), ',')::uuid[],
@@ -79,6 +82,7 @@ CREATE OR REPLACE FUNCTION public.jwt_staff_member_id()
 RETURNS uuid
 LANGUAGE sql
 STABLE
+SET search_path = public
 AS $$
   SELECT NULLIF(public.request_jwt_claims() ->> 'staff_member_id', '')::uuid;
 $$;
@@ -87,6 +91,7 @@ CREATE OR REPLACE FUNCTION public.jwt_staff_role()
 RETURNS public.staff_role
 LANGUAGE sql
 STABLE
+SET search_path = public
 AS $$
   SELECT NULLIF(public.request_jwt_claims() ->> 'role', '')::public.staff_role;
 $$;
@@ -96,16 +101,17 @@ CREATE OR REPLACE FUNCTION public.jwt_setup_required()
 RETURNS boolean
 LANGUAGE sql
 STABLE
+SET search_path = public
 AS $$
   SELECT COALESCE((public.request_jwt_claims() ->> 'setup_required')::boolean, false);
 $$;
 
--- Load the staff_members row for whoever is logged in (bypasses RLS via SECURITY DEFINER)
+-- Load the staff_members row for whoever is logged in (SECURITY INVOKER; RLS applies)
 CREATE OR REPLACE FUNCTION public.current_staff_member_row()
 RETURNS public.staff_members
 LANGUAGE sql
 STABLE
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = public
 AS $$
   SELECT sm.*
@@ -193,7 +199,7 @@ CREATE POLICY staff_members_select ON public.staff_members
   USING (
     is_deleted = false
     AND (
-      auth_user_id = auth.uid()
+      auth_user_id = (SELECT auth.uid())
       OR EXISTS (
         SELECT 1
         FROM public.staff_branch_assignments sba
@@ -217,7 +223,7 @@ CREATE POLICY staff_members_update ON public.staff_members
   USING (
     is_deleted = false
     AND (
-      auth_user_id = auth.uid()
+      auth_user_id = (SELECT auth.uid())
       OR EXISTS (
         SELECT 1
         FROM public.staff_branch_assignments sba
@@ -273,7 +279,7 @@ CREATE POLICY audit_log_select ON public.audit_log
   FOR SELECT
   TO authenticated
   USING (
-    user_id = auth.uid()
+    user_id = (SELECT auth.uid())
     OR (
       organization_id IS NOT NULL
       AND organization_id = public.jwt_organization_id()

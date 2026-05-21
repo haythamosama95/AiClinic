@@ -23,6 +23,7 @@
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
   NEW.updated_at := now();
@@ -65,6 +66,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.apply_standard_audit_triggers(p_table regclass)
 RETURNS void
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 DECLARE
   v_table_name text := p_table::text;

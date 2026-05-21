@@ -1,25 +1,24 @@
 -- =============================================================================
--- MIGRATION 4 of 5: Business logic functions (RPCs) and JWT custom claims
+-- MIGRATION 7: Resolve lint 0029 (authenticated + SECURITY DEFINER in public)
 -- =============================================================================
---
--- WHAT THIS FILE DOES:
---   1) Builds JWT "custom claims" at login so RLS policies know org/branches/role.
---   2) Exposes RPC functions the Flutter app calls for bootstrap and staff admin.
---   3) Creates auth users server-side (staff provisioning) with hashed passwords.
---
--- KEY CONCEPTS:
---   • RPC = Remote Procedure Call; Flutter: supabase.rpc('function_name', params).
---   • SECURITY DEFINER = runs as function owner, can bypass RLS carefully; must validate caller.
---   • GoTrue = Supabase Auth service; calls get_custom_claims(jsonb) on each token issue.
---   • auth.users / auth.identities = internal Supabase tables for logins (not in public schema).
+-- PostgREST exposes only schemas listed in config.toml (public, graphql_public).
+-- Privileged logic lives in auth_internal (not API-exposed); public exposes thin
+-- SECURITY INVOKER entry points the Flutter app calls via /rest/v1/rpc/*.
 -- =============================================================================
 
+CREATE SCHEMA IF NOT EXISTS auth_internal;
+
+REVOKE ALL ON SCHEMA auth_internal FROM PUBLIC, anon, authenticated;
+GRANT USAGE ON SCHEMA auth_internal TO authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA auth_internal
+  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;
+
 -- -----------------------------------------------------------------------------
--- build_staff_claims: assemble JWT payload for one user id
+-- auth_internal: SECURITY DEFINER implementations (not exposed on REST API)
 -- -----------------------------------------------------------------------------
--- Called at login. If user is not active staff, returns empty {} (no org access).
--- setup_required = true when bootstrap admin exists but organization table is empty.
-CREATE OR REPLACE FUNCTION public.build_staff_claims(p_user_id uuid)
+
+CREATE OR REPLACE FUNCTION auth_internal.build_staff_claims(p_user_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
@@ -44,7 +43,6 @@ BEGIN
     RETURN '{}'::jsonb;
   END IF;
 
-  -- V1-1: single organization per installation (first non-deleted org wins)
   SELECT o.id
   INTO v_org_id
   FROM public.organizations o
@@ -52,7 +50,6 @@ BEGIN
   ORDER BY o.created_at
   LIMIT 1;
 
-  -- Comma-separated branch UUIDs; primary branch listed first for UI defaults
   SELECT string_agg(b.id::text, ',' ORDER BY sba.is_primary DESC, b.name)
   INTO v_branch_ids
   FROM public.staff_branch_assignments sba
@@ -76,80 +73,7 @@ BEGIN
 END;
 $$;
 
--- Wrapper for tests and direct SQL calls
-CREATE OR REPLACE FUNCTION public.get_custom_claims(p_user_id uuid)
-RETURNS jsonb
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, auth
-AS $$
-  SELECT public.build_staff_claims(p_user_id);
-$$;
-
--- -----------------------------------------------------------------------------
--- get_custom_claims(event jsonb): GoTrue Auth Hook entry point
--- -----------------------------------------------------------------------------
--- Supabase Auth passes an event like { "user_id": "...", "claims": { ... } }.
--- We merge existing claims with staff-specific fields from build_staff_claims.
--- Configure this hook in Supabase dashboard / config for custom access tokens.
-CREATE OR REPLACE FUNCTION public.get_custom_claims(event jsonb)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, auth
-AS $$
-DECLARE
-  v_user_id uuid;
-  v_claims jsonb;
-  v_custom jsonb;
-BEGIN
-  v_user_id := (event ->> 'user_id')::uuid;
-  v_claims := COALESCE(event -> 'claims', '{}'::jsonb);
-  v_custom := public.build_staff_claims(v_user_id);
-  RETURN jsonb_build_object('claims', v_claims || v_custom);
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.get_custom_claims(uuid) TO service_role;
-
--- GoTrue runs as supabase_auth_admin; grant only if that role exists (local vs hosted)
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
-    GRANT EXECUTE ON FUNCTION public.get_custom_claims(jsonb) TO supabase_auth_admin;
-    GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
-  END IF;
-END;
-$$;
-
--- -----------------------------------------------------------------------------
--- RPC helpers: uniform success/error responses for the Flutter client
--- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.rpc_success(p_data jsonb DEFAULT '{}'::jsonb)
-RETURNS public.rpc_result
-LANGUAGE sql
-IMMUTABLE
-SET search_path = public
-AS $$
-  SELECT (true, p_data, NULL::text, NULL::text)::public.rpc_result;
-$$;
-
-CREATE OR REPLACE FUNCTION public.rpc_error(p_code text, p_message text)
-RETURNS public.rpc_result
-LANGUAGE sql
-IMMUTABLE
-SET search_path = public
-AS $$
-  SELECT (false, NULL::jsonb, p_code, p_message)::public.rpc_result;
-$$;
-
--- -----------------------------------------------------------------------------
--- Authorization guards (internal; used by RPCs, not called from Flutter directly)
--- -----------------------------------------------------------------------------
-
--- Must be the seeded bootstrap admin (first installer)
-CREATE OR REPLACE FUNCTION public.assert_bootstrap_admin()
+CREATE OR REPLACE FUNCTION auth_internal.assert_bootstrap_admin()
 RETURNS public.staff_members
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -174,8 +98,7 @@ BEGIN
 END;
 $$;
 
--- Must be owner, administrator, or bootstrap admin
-CREATE OR REPLACE FUNCTION public.assert_owner_or_administrator()
+CREATE OR REPLACE FUNCTION auth_internal.assert_owner_or_administrator()
 RETURNS public.staff_members
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -204,8 +127,7 @@ BEGIN
 END;
 $$;
 
--- Installation state checks
-CREATE OR REPLACE FUNCTION public.organization_exists()
+CREATE OR REPLACE FUNCTION auth_internal.organization_exists()
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -219,7 +141,7 @@ AS $$
   );
 $$;
 
-CREATE OR REPLACE FUNCTION public.owner_exists()
+CREATE OR REPLACE FUNCTION auth_internal.owner_exists()
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -235,12 +157,76 @@ AS $$
   );
 $$;
 
--- -----------------------------------------------------------------------------
--- RPC: bootstrap_create_organization
--- -----------------------------------------------------------------------------
--- First-time setup: bootstrap admin creates the single clinic organization.
--- Fails if org already exists or caller is not bootstrap admin.
-CREATE OR REPLACE FUNCTION public.bootstrap_create_organization(
+CREATE OR REPLACE FUNCTION auth_internal.create_auth_user(p_email text, p_password text)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  v_user_id uuid := gen_random_uuid();
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM auth.users u
+    WHERE lower(u.email) = lower(trim(p_email))
+  ) THEN
+    RAISE EXCEPTION 'EMAIL_EXISTS';
+  END IF;
+
+  INSERT INTO auth.users (
+    id,
+    instance_id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    v_user_id,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    lower(trim(p_email)),
+    extensions.crypt(p_password, extensions.gen_salt('bf')),
+    now(),
+    jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
+    '{}'::jsonb,
+    now(),
+    now()
+  );
+
+  INSERT INTO auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    provider_id,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    gen_random_uuid(),
+    v_user_id,
+    jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(p_email))),
+    'email',
+    lower(trim(p_email)),
+    now(),
+    now(),
+    now()
+  );
+
+  RETURN v_user_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION auth_internal.bootstrap_create_organization(
   p_name text,
   p_settings_json jsonb DEFAULT '{}'::jsonb,
   p_logo_url text DEFAULT NULL,
@@ -255,9 +241,9 @@ AS $$
 DECLARE
   v_org_id uuid;
 BEGIN
-  PERFORM public.assert_bootstrap_admin();
+  PERFORM auth_internal.assert_bootstrap_admin();
 
-  IF public.organization_exists() THEN
+  IF auth_internal.organization_exists() THEN
     RETURN public.rpc_error('ORG_ALREADY_EXISTS', 'An organization already exists for this installation.');
   END IF;
 
@@ -310,11 +296,7 @@ EXCEPTION
 END;
 $$;
 
--- -----------------------------------------------------------------------------
--- RPC: bootstrap_create_branch
--- -----------------------------------------------------------------------------
--- Creates a branch under the org. First branch auto-assigns bootstrap admin as primary.
-CREATE OR REPLACE FUNCTION public.bootstrap_create_branch(
+CREATE OR REPLACE FUNCTION auth_internal.bootstrap_create_branch(
   p_organization_id uuid,
   p_name text,
   p_address text DEFAULT NULL,
@@ -332,7 +314,7 @@ DECLARE
   v_branch_id uuid;
   v_is_first_branch boolean;
 BEGIN
-  v_staff := public.assert_bootstrap_admin();
+  v_staff := auth_internal.assert_bootstrap_admin();
 
   IF NOT EXISTS (
     SELECT 1
@@ -413,90 +395,7 @@ EXCEPTION
 END;
 $$;
 
--- -----------------------------------------------------------------------------
--- Internal: create_auth_user
--- -----------------------------------------------------------------------------
--- Inserts into Supabase auth.users + auth.identities (email provider).
--- Password hashed with bcrypt via pgcrypto (extensions.crypt / gen_salt).
--- NOT granted to clients; only called from create_staff_account.
-CREATE OR REPLACE FUNCTION public.create_auth_user(
-  p_email text,
-  p_password text
-)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, auth
-AS $$
-DECLARE
-  v_user_id uuid := gen_random_uuid();
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM auth.users u
-    WHERE lower(u.email) = lower(trim(p_email))
-  ) THEN
-    RAISE EXCEPTION 'EMAIL_EXISTS';
-  END IF;
-
-  INSERT INTO auth.users (
-    id,
-    instance_id,
-    aud,
-    role,
-    email,
-    encrypted_password,
-    email_confirmed_at,
-    raw_app_meta_data,
-    raw_user_meta_data,
-    created_at,
-    updated_at
-  )
-  VALUES (
-    v_user_id,
-    '00000000-0000-0000-0000-000000000000',
-    'authenticated',
-    'authenticated',
-    lower(trim(p_email)),
-    extensions.crypt(p_password, extensions.gen_salt('bf')),
-    now(),
-    jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
-    '{}'::jsonb,
-    now(),
-    now()
-  );
-
-  INSERT INTO auth.identities (
-    id,
-    user_id,
-    identity_data,
-    provider,
-    provider_id,
-    last_sign_in_at,
-    created_at,
-    updated_at
-  )
-  VALUES (
-    gen_random_uuid(),
-    v_user_id,
-    jsonb_build_object('sub', v_user_id::text, 'email', lower(trim(p_email))),
-    'email',
-    lower(trim(p_email)),
-    now(),
-    now(),
-    now()
-  );
-
-  RETURN v_user_id;
-END;
-$$;
-
--- -----------------------------------------------------------------------------
--- RPC: create_staff_account
--- -----------------------------------------------------------------------------
--- Owner/admin creates a new staff login + staff_members row + branch assignments.
--- Returns assigned_password once so admin can share it (no email in V1-1).
-CREATE OR REPLACE FUNCTION public.create_staff_account(
+CREATE OR REPLACE FUNCTION auth_internal.create_staff_account(
   p_email text,
   p_password text,
   p_full_name text,
@@ -516,9 +415,9 @@ DECLARE
   v_branch_id uuid;
   v_primary uuid;
 BEGIN
-  v_caller := public.assert_owner_or_administrator();
+  v_caller := auth_internal.assert_owner_or_administrator();
 
-  IF NOT public.organization_exists() THEN
+  IF NOT auth_internal.organization_exists() THEN
     RETURN public.rpc_error('ORG_SETUP_INCOMPLETE', 'Create an organization and branch before provisioning staff.');
   END IF;
 
@@ -530,9 +429,8 @@ BEGIN
     RETURN public.rpc_error('INVALID_INPUT', 'Email, password, and full name are required.');
   END IF;
 
-  -- Owner role: only one "first owner" via bootstrap; later owners need existing owner caller
   IF p_role = 'owner' THEN
-    IF public.owner_exists() THEN
+    IF auth_internal.owner_exists() THEN
       IF v_caller.role <> 'owner' THEN
         RETURN public.rpc_error(
           'FORBIDDEN_OWNER_CREATE',
@@ -547,7 +445,6 @@ BEGIN
     END IF;
   END IF;
 
-  -- Every branch id must belong to a live branch in this installation's org
   IF EXISTS (
     SELECT 1
     FROM unnest(p_branch_ids) AS requested (branch_id)
@@ -569,7 +466,7 @@ BEGIN
     RETURN public.rpc_error('INVALID_INPUT', 'Primary branch must be included in branch assignments.');
   END IF;
 
-  v_auth_user_id := public.create_auth_user(p_email, p_password);
+  v_auth_user_id := auth_internal.create_auth_user(p_email, p_password);
 
   INSERT INTO public.staff_members (
     auth_user_id,
@@ -632,11 +529,7 @@ EXCEPTION
 END;
 $$;
 
--- -----------------------------------------------------------------------------
--- RPC: admin_reset_staff_password
--- -----------------------------------------------------------------------------
--- Owner/admin sets a new password for another staff member in the same organization.
-CREATE OR REPLACE FUNCTION public.admin_reset_staff_password(
+CREATE OR REPLACE FUNCTION auth_internal.admin_reset_staff_password(
   p_staff_member_id uuid,
   p_new_password text
 )
@@ -649,7 +542,7 @@ DECLARE
   v_target public.staff_members%ROWTYPE;
   v_auth_user_id uuid;
 BEGIN
-  PERFORM public.assert_owner_or_administrator();
+  PERFORM auth_internal.assert_owner_or_administrator();
 
   IF NULLIF(trim(p_new_password), '') IS NULL THEN
     RETURN public.rpc_error('INVALID_INPUT', 'A new password is required.');
@@ -665,7 +558,6 @@ BEGIN
     RETURN public.rpc_error('STAFF_NOT_FOUND', 'Staff member was not found.');
   END IF;
 
-  -- Prevent resetting staff in another organization (cross-tenant safety)
   IF EXISTS (
     SELECT 1
     FROM public.staff_branch_assignments sba
@@ -716,35 +608,182 @@ EXCEPTION
 END;
 $$;
 
--- -----------------------------------------------------------------------------
--- API grants: staff RPCs for authenticated only; internal helpers not exposed.
--- Broader REVOKE/GRANT hardening is in migration 20260521100000_*_linter_fixes.sql.
--- -----------------------------------------------------------------------------
-REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
+-- Call chain only: authenticated INVOKER wrappers invoke these (not listed in PostgREST schemas).
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA auth_internal TO authenticated, service_role;
 
-REVOKE EXECUTE ON FUNCTION public.assert_bootstrap_admin() FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.assert_owner_or_administrator() FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.build_staff_claims(uuid) FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.create_auth_user(text, text) FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.organization_exists() FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.owner_exists() FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.set_audit_user() FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.get_custom_claims(uuid) FROM anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.current_staff_member_row() FROM anon;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+    GRANT USAGE ON SCHEMA auth_internal TO supabase_auth_admin;
+    GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA auth_internal TO supabase_auth_admin;
+  END IF;
+END;
+$$;
 
--- JWT / RLS helpers (SECURITY INVOKER): authenticated must execute them in policy expressions.
-GRANT EXECUTE ON FUNCTION public.request_jwt_claims() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.jwt_organization_id() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.jwt_branch_ids() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.jwt_staff_member_id() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.jwt_staff_role() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.jwt_setup_required() TO authenticated;
+-- -----------------------------------------------------------------------------
+-- public: SECURITY INVOKER API surface (lint 0029 clear for these names)
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.build_staff_claims(p_user_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.build_staff_claims(p_user_id);
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_custom_claims(p_user_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.build_staff_claims(p_user_id);
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_custom_claims(event jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+DECLARE
+  v_user_id uuid;
+  v_claims jsonb;
+  v_custom jsonb;
+BEGIN
+  v_user_id := (event ->> 'user_id')::uuid;
+  v_claims := COALESCE(event -> 'claims', '{}'::jsonb);
+  v_custom := auth_internal.build_staff_claims(v_user_id);
+  RETURN jsonb_build_object('claims', v_claims || v_custom);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.bootstrap_create_organization(
+  p_name text,
+  p_settings_json jsonb DEFAULT '{}'::jsonb,
+  p_logo_url text DEFAULT NULL,
+  p_currency_code text DEFAULT NULL,
+  p_timezone text DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.bootstrap_create_organization(
+    p_name,
+    p_settings_json,
+    p_logo_url,
+    p_currency_code,
+    p_timezone
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.bootstrap_create_branch(
+  p_organization_id uuid,
+  p_name text,
+  p_address text DEFAULT NULL,
+  p_phone text DEFAULT NULL,
+  p_code text DEFAULT NULL,
+  p_maps_url text DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.bootstrap_create_branch(
+    p_organization_id,
+    p_name,
+    p_address,
+    p_phone,
+    p_code,
+    p_maps_url
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.create_staff_account(
+  p_email text,
+  p_password text,
+  p_full_name text,
+  p_role public.staff_role,
+  p_branch_ids uuid[],
+  p_primary_branch_id uuid DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.create_staff_account(
+    p_email,
+    p_password,
+    p_full_name,
+    p_role,
+    p_branch_ids,
+    p_primary_branch_id
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_reset_staff_password(
+  p_staff_member_id uuid,
+  p_new_password text
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.admin_reset_staff_password(p_staff_member_id, p_new_password);
+$$;
+
+-- RLS helper: INVOKER so caller's policies apply; not a privileged RPC.
+CREATE OR REPLACE FUNCTION public.current_staff_member_row()
+RETURNS public.staff_members
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+  SELECT sm.*
+  FROM public.staff_members sm
+  WHERE sm.auth_user_id = auth.uid()
+    AND sm.is_deleted = false
+  LIMIT 1;
+$$;
+
+-- Remove duplicate public DEFINER copies (logic now only in auth_internal).
+DROP FUNCTION IF EXISTS public.assert_bootstrap_admin();
+DROP FUNCTION IF EXISTS public.assert_owner_or_administrator();
+DROP FUNCTION IF EXISTS public.organization_exists();
+DROP FUNCTION IF EXISTS public.owner_exists();
+DROP FUNCTION IF EXISTS public.create_auth_user(text, text);
+
+-- Re-apply API grants on public INVOKER entry points only.
+REVOKE EXECUTE ON FUNCTION public.bootstrap_create_organization(text, jsonb, text, text, text) FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.bootstrap_create_branch(uuid, text, text, text, text, text) FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.create_staff_account(text, text, text, public.staff_role, uuid[], uuid) FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.admin_reset_staff_password(uuid, text) FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.current_staff_member_row() FROM anon, PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.build_staff_claims(uuid) FROM anon, PUBLIC;
 
 GRANT EXECUTE ON FUNCTION public.bootstrap_create_organization(text, jsonb, text, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.bootstrap_create_branch(uuid, text, text, text, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_staff_account(text, text, text, public.staff_role, uuid[], uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_reset_staff_password(uuid, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.current_staff_member_row() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.build_staff_claims(uuid) TO service_role;
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+    REVOKE EXECUTE ON FUNCTION public.get_custom_claims(jsonb) FROM anon, authenticated, PUBLIC;
+    GRANT EXECUTE ON FUNCTION public.get_custom_claims(jsonb) TO supabase_auth_admin;
+    GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
+  END IF;
+END;
+$$;
