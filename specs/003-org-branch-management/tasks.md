@@ -26,10 +26,10 @@
 
 **Purpose**: Settings admin module layout, routes, and test workspace before RPC/UI work
 
-- [ ] T001 Create settings admin directories in `frontend/lib/features/settings/data/`, `frontend/lib/features/settings/domain/`, `frontend/lib/features/settings/presentation/pages/`, and `frontend/lib/features/settings/presentation/widgets/`
-- [ ] T002 [P] Create test directories `frontend/test/unit/settings/`, `frontend/test/widget/settings/`, and `frontend/test/integration/settings/`
-- [ ] T003 [P] Add settings sub-route constants in `frontend/lib/app/app_routes.dart` (`/settings/organization`, `/settings/branches`, `/settings/branches/new`, `/settings/branches/:id/edit`, `/settings/staff`, `/settings/staff/new`, `/settings/staff/:id`, `/settings/staff/:id/reset-password`, `/settings/permissions`)
-- [ ] T004 [P] Add domain model stubs per `data-model.md` in `frontend/lib/features/settings/domain/organization_profile.dart`, `branch_list_item.dart`, `staff_list_item.dart`, and `permission_matrix_row.dart`
+- [x] T001 Create settings admin directories in `frontend/lib/features/settings/data/`, `frontend/lib/features/settings/domain/`, `frontend/lib/features/settings/presentation/pages/`, and `frontend/lib/features/settings/presentation/widgets/`
+- [x] T002 [P] Create test directories `frontend/test/unit/settings/`, `frontend/test/widget/settings/`, and `frontend/test/integration/settings/`
+- [x] T003 [P] Add settings sub-route constants in `frontend/lib/app/app_routes.dart` (`/settings/organization`, `/settings/branches`, `/settings/branches/new`, `/settings/branches/:id/edit`, `/settings/staff`, `/settings/staff/new`, `/settings/staff/:id`, `/settings/staff/:id/reset-password`, `/settings/permissions`)
+- [x] T004 [P] Add domain model stubs per `data-model.md` in `frontend/lib/features/settings/domain/organization_profile.dart`, `branch_list_item.dart`, `staff_list_item.dart`, and `permission_matrix_row.dart`
 
 ---
 
