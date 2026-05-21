@@ -94,7 +94,7 @@ BEGIN
     '00000000-0000-0000-0000-000000000000',
     'authenticated',
     'authenticated',
-    'nonbootstrap@clinic.local',
+    'nonbootstrap',
     extensions.crypt('test-password', extensions.gen_salt('bf')),
     now(),
     now(),

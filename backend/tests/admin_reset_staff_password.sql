@@ -11,7 +11,7 @@ VALUES
     '00000000-0000-0000-0000-000000000000',
     'authenticated',
     'authenticated',
-    'staff-doctor@clinic.local',
+    'staff-doctor',
     extensions.crypt('test-password', extensions.gen_salt('bf')),
     now(),
     now(),
@@ -54,7 +54,7 @@ BEGIN
   DELETE FROM public.staff_branch_assignments;
   DELETE FROM public.staff_members WHERE id NOT IN (v_bootstrap_staff, v_doctor_staff);
   DELETE FROM public.audit_log;
-  DELETE FROM auth.users WHERE email LIKE 'us7-%@clinic.local';
+  DELETE FROM auth.users WHERE email LIKE 'us7-%';
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
   PERFORM set_config('role', 'authenticated', true);
@@ -79,7 +79,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_staff_account(
-    'us7-reception@clinic.local',
+    'us7-reception',
     'initial-pass',
     'US7 Receptionist',
     'receptionist',

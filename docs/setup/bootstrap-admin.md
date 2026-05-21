@@ -8,11 +8,13 @@ This account is **not** a substitute for an owner. After setup, use owner or adm
 
 Values come from `backend/seed/bootstrap_admin.env.example` and the seed migration `20260516100400_auth_rbac_seed.sql`.
 
-| Field     | Default value            |
-| --------- | ------------------------ |
-| Email     | `admin@clinic.local`     |
-| Password  | `ChangeMeOnFirstSignIn!` |
-| Full name | `Clinic Administrator`   |
+| Field     | Default value          |
+| --------- | ---------------------- |
+| Username  | `admin`                |
+| Password  | `admin`                |
+| Full name | `Clinic Administrator` |
+
+GoTrue stores the username in the `auth.users.email` column (Supabase password grant requirement). In Studio that column shows the username, not an email address.
 
 Override locally by copying the example file (never commit real secrets):
 
@@ -23,7 +25,7 @@ cp backend/seed/bootstrap_admin.env.example backend/seed/bootstrap_admin.env
 
 Smoke scripts and `backend/local/.env` may reference the same variables:
 
-- `BOOTSTRAP_ADMIN_EMAIL`
+- `BOOTSTRAP_ADMIN_USERNAME`
 - `BOOTSTRAP_ADMIN_PASSWORD`
 - `BOOTSTRAP_ADMIN_FULL_NAME`
 - `BOOTSTRAP_ADMIN_USER_ID` (fixed UUID in seed; used by SQL tests)
@@ -85,13 +87,13 @@ Verify bootstrap admin:
 
 ## Troubleshooting
 
-| Symptom                             | Likely cause                                   | Action                                                        |
-| ----------------------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
-| Invalid login                       | Migrations not applied or wrong email/password | `supabase db reset`; confirm `.env` matches seed              |
-| Stuck on bootstrap after org exists | `setup_required` still true                    | Ensure organization + branch created; re-login                |
-| `ORG_ALREADY_EXISTS`                | Organization already created                   | Use owner/admin; do not re-run org step                       |
-| `NOT_BOOTSTRAP_ADMIN`               | Signed in as non-bootstrap user                | Sign in as bootstrap admin or owner/admin for branch create   |
-| Missing custom claims               | GoTrue hook not loaded                         | Restart auth per [backend/README.md](../../backend/README.md) |
+| Symptom                             | Likely cause                                      | Action                                                        |
+| ----------------------------------- | ------------------------------------------------- | ------------------------------------------------------------- |
+| Invalid login                       | Migrations not applied or wrong username/password | `supabase db reset`; confirm `.env` matches seed              |
+| Stuck on bootstrap after org exists | `setup_required` still true                       | Ensure organization + branch created; re-login                |
+| `ORG_ALREADY_EXISTS`                | Organization already created                      | Use owner/admin; do not re-run org step                       |
+| `NOT_BOOTSTRAP_ADMIN`               | Signed in as non-bootstrap user                   | Sign in as bootstrap admin or owner/admin for branch create   |
+| Missing custom claims               | GoTrue hook not loaded                            | Restart auth per [backend/README.md](../../backend/README.md) |
 
 ## Related documentation
 

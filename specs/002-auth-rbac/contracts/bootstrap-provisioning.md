@@ -52,7 +52,7 @@ Parameter order matches `public.bootstrap_create_branch` in migration `202605211
 
 | Parameter             | Type       | Required |
 | --------------------- | ---------- | -------- |
-| `p_email`             | text       | Yes      |
+| `p_username`          | text       | Yes      |
 | `p_password`          | text       | Yes      |
 | `p_full_name`         | text       | Yes      |
 | `p_role`              | staff_role | Yes      |
@@ -69,7 +69,7 @@ Parameter order matches `public.bootstrap_create_branch` in migration `202605211
 
 **Returns**: `rpc_result` with `staff_member_id`, `assigned_password` (echo of input for admin display)
 
-**Errors**: `ORG_SETUP_INCOMPLETE`, `FORBIDDEN_OWNER_CREATE`, `EMAIL_EXISTS`
+**Errors**: `ORG_SETUP_INCOMPLETE`, `FORBIDDEN_OWNER_CREATE`, `USERNAME_EXISTS`
 
 ## RPC: `admin_reset_staff_password`
 
@@ -100,8 +100,8 @@ Parameter order matches `public.bootstrap_create_branch` in migration `202605211
 
 ### Staff account create form
 
-- Email, full name, role, branch multi-select, primary branch, initial password
-- Success dialog shows email + password for admin to communicate
+- Username, full name, role, branch multi-select, primary branch, initial password
+- Success dialog shows username + password for admin to communicate
 
 ### Staff password reset form
 

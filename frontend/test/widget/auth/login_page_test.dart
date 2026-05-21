@@ -16,7 +16,7 @@ class _StuckSubmittingAuthNotifier extends AuthNotifier {
   AuthUiState build() => const AuthUiState();
 
   @override
-  Future<void> signIn({required String email, required String password}) async {
+  Future<void> signIn({required String username, required String password}) async {
     state = state.copyWith(isSubmitting: true, clearError: true);
   }
 }
@@ -29,7 +29,7 @@ class _LoginTestAuthNotifier extends AuthNotifier {
   AuthUiState build() => const AuthUiState();
 
   @override
-  Future<void> signIn({required String email, required String password}) async {
+  Future<void> signIn({required String username, required String password}) async {
     signInCalls++;
     state = state.copyWith(isSubmitting: true, clearError: true);
     if (failSignIn) {
@@ -51,7 +51,7 @@ void main() {
   });
 
   group('LoginPage', () {
-    testWidgets('renders email and password fields with actions', (tester) async {
+    testWidgets('renders username and password fields with actions', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -99,7 +99,7 @@ void main() {
         ),
       );
 
-      await tester.enterText(find.byType(TextFormField).at(0), 'staff@clinic.test');
+      await tester.enterText(find.byType(TextFormField).at(0), 'staff1');
       await tester.enterText(find.byType(TextFormField).at(1), 'wrong-password');
       await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.pumpAndSettle();
@@ -122,7 +122,7 @@ void main() {
         ),
       );
 
-      await tester.enterText(find.byType(TextFormField).at(0), 'staff@clinic.test');
+      await tester.enterText(find.byType(TextFormField).at(0), 'staff1');
       await tester.enterText(find.byType(TextFormField).at(1), 'password');
       await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.pump();
@@ -130,7 +130,7 @@ void main() {
       expect(tester.widget<TextFormField>(find.byType(TextFormField).at(0)).enabled, isFalse);
     });
 
-    testWidgets('empty email blocks submit without calling signIn', (tester) async {
+    testWidgets('empty username blocks submit without calling signIn', (tester) async {
       final notifier = _LoginTestAuthNotifier();
 
       await tester.pumpWidget(
@@ -149,7 +149,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(notifier.signInCalls, 0);
-      expect(find.text('Enter a valid email address'), findsOneWidget);
+      expect(find.text('Username is required.'), findsOneWidget);
     });
 
     testWidgets('password field is obscured', (tester) async {
@@ -183,7 +183,7 @@ void main() {
         ),
       );
 
-      await tester.enterText(find.byType(TextFormField).at(0), 'a@b.co');
+      await tester.enterText(find.byType(TextFormField).at(0), 'staff1');
       await tester.enterText(find.byType(TextFormField).at(1), 'wrong');
       await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.pumpAndSettle();

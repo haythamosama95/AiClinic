@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 
 /// Wraps Supabase Auth for staff sign-in lifecycle (no cross-restart persistence).
 class AuthRepository {
@@ -15,8 +16,8 @@ class AuthRepository {
 
   User? get currentUser => _client.auth.currentUser;
 
-  Future<void> signIn({required String email, required String password}) async {
-    await _client.auth.signInWithPassword(email: email.trim(), password: password);
+  Future<void> signIn({required String username, required String password}) async {
+    await _client.auth.signInWithPassword(email: normalizeStaffUsername(username), password: password);
   }
 
   Future<void> signOut() async {

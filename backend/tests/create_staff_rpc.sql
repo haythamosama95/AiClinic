@@ -35,7 +35,7 @@ BEGIN
       '00000000-0000-0000-0000-000000000000',
       'authenticated',
       'authenticated',
-      'staff-admin@clinic.local',
+      'staff-admin',
       extensions.crypt('test-password', extensions.gen_salt('bf')),
       now(),
       now(),
@@ -46,7 +46,7 @@ BEGIN
       '00000000-0000-0000-0000-000000000000',
       'authenticated',
       'authenticated',
-      'staff-doctor@clinic.local',
+      'staff-doctor',
       extensions.crypt('test-password', extensions.gen_salt('bf')),
       now(),
       now(),
@@ -66,8 +66,8 @@ BEGIN
   WHERE id NOT IN (v_bootstrap_staff, v_admin_staff, v_doctor_staff);
   DELETE FROM public.audit_log;
   DELETE FROM auth.users
-  WHERE email LIKE 'us6-%@clinic.local'
-     OR email IN ('owner-one@clinic.local', 'owner-two@clinic.local', 'reception@clinic.local');
+  WHERE email LIKE 'us6-%'
+     OR email IN ('owner-one', 'owner-two', 'reception');
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
 
@@ -80,7 +80,7 @@ BEGIN
     true
   );
   v_result := public.create_staff_account(
-    'us6-norg@clinic.local',
+    'us6-norg',
     'secret12',
     'No Org Receptionist',
     'receptionist',
@@ -110,7 +110,7 @@ PERFORM set_config('role', 'postgres', true);
 
   -- Stupid usage: empty branch list.
   v_result := public.create_staff_account(
-    'us6-empty-branches@clinic.local',
+    'us6-empty-branches',
     'secret12',
     'Empty Branches',
     'receptionist',
@@ -125,16 +125,16 @@ PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('role', 'authenticated', true);
 
   -- Trivial: whitespace-only required fields.
-  v_result := public.create_staff_account('   ', 'secret12', 'Whitespace Email', 'receptionist', ARRAY[v_branch_id]);
+  v_result := public.create_staff_account('   ', 'secret12', 'Whitespace Username', 'receptionist', ARRAY[v_branch_id]);
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'staff_empty_email_rejected',
+'staff_empty_username_rejected',
     NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.create_staff_account('us6-nopass@clinic.local', '   ', 'No Password', 'receptionist', ARRAY[v_branch_id]);
+  v_result := public.create_staff_account('us6-nopass', '   ', 'No Password', 'receptionist', ARRAY[v_branch_id]);
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
 'staff_empty_password_rejected',
@@ -143,7 +143,7 @@ PERFORM set_config('role', 'postgres', true);
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.create_staff_account('us6-noname@clinic.local', 'secret12', '   ', 'receptionist', ARRAY[v_branch_id]);
+  v_result := public.create_staff_account('us6-noname', 'secret12', '   ', 'receptionist', ARRAY[v_branch_id]);
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
 'staff_empty_full_name_rejected',
@@ -154,7 +154,7 @@ PERFORM set_config('role', 'postgres', true);
 
   -- Corner case: unknown branch id.
   v_result := public.create_staff_account(
-    'us6-bad-branch@clinic.local',
+    'us6-bad-branch',
     'secret12',
     'Bad Branch',
     'receptionist',
@@ -170,7 +170,7 @@ PERFORM set_config('role', 'postgres', true);
 
   -- Corner case: primary branch outside assignment list.
   v_result := public.create_staff_account(
-    'us6-bad-primary@clinic.local',
+    'us6-bad-primary',
     'secret12',
     'Bad Primary',
     'receptionist',
@@ -192,7 +192,7 @@ PERFORM set_config('role', 'postgres', true);
     true
   );
   v_result := public.create_staff_account(
-    'us6-doctor-create@clinic.local',
+    'us6-doctor-create',
     'secret12',
     'Doctor Attempt',
     'receptionist',
@@ -214,7 +214,7 @@ PERFORM set_config('role', 'postgres', true);
 
   -- FR-022c: bootstrap admin may create the first owner.
   v_result := public.create_staff_account(
-    'owner-one@clinic.local',
+    'owner-one',
     'owner-pass-1',
     '  First Owner  ',
     'owner',
@@ -244,7 +244,7 @@ PERFORM set_config('role', 'postgres', true);
 
   -- Bootstrap admin cannot create a second owner once one exists.
   v_result := public.create_staff_account(
-    'owner-bootstrap-second@clinic.local',
+    'owner-bootstrap-second',
     'owner-pass-2',
     'Bootstrap Second Owner',
     'owner',
@@ -271,7 +271,7 @@ PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_staff_account(
-    'owner-admin-attempt@clinic.local',
+    'owner-admin-attempt',
     'owner-pass-x',
     'Admin Owner Attempt',
     'owner',
@@ -287,7 +287,7 @@ PERFORM set_config('role', 'postgres', true);
 
   -- Happy path: administrator creates receptionist.
   v_result := public.create_staff_account(
-    'reception@clinic.local',
+    'reception',
     'recept-pass',
     'Front Desk',
     'receptionist',
@@ -348,18 +348,18 @@ PERFORM set_config('role', 'postgres', true);
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Duplicate email rejected.
+  -- Duplicate username rejected.
   v_result := public.create_staff_account(
-    'reception@clinic.local',
+    'reception',
     'other-pass',
-    'Duplicate Email',
+    'Duplicate Username',
     'doctor',
     ARRAY[v_branch_id]
   );
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'staff_duplicate_email_rejected',
-    NOT v_result.success AND v_result.error_code = 'EMAIL_EXISTS',
+'staff_duplicate_username_rejected',
+    NOT v_result.success AND v_result.error_code = 'USERNAME_EXISTS',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -385,7 +385,7 @@ PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_staff_account(
-    'owner-two@clinic.local',
+    'owner-two',
     'owner-pass-2',
     'Second Owner',
     'owner',

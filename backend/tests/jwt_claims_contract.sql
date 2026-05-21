@@ -22,8 +22,8 @@ BEGIN
   DELETE FROM public.staff_members WHERE id <> v_bootstrap_staff_id;
   DELETE FROM public.audit_log;
   DELETE FROM auth.users
-  WHERE email IN ('owner-one@clinic.local', 'owner-two@clinic.local', 'reception@clinic.local')
-     OR email LIKE 'us6-%@clinic.local';
+  WHERE email IN ('owner-one', 'owner-two', 'reception')
+     OR email LIKE 'us6-%';
   DELETE FROM public.subscription_cache;
   DELETE FROM public.branches;
   DELETE FROM public.organizations;

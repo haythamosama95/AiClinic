@@ -43,7 +43,7 @@ class _ProvisionedStaffAuthRepository extends AuthRepository {
   _ProvisionedStaffAuthRepository() : super(_FakeSupabaseClient());
 
   @override
-  Future<void> signIn({required String email, required String password}) async {}
+  Future<void> signIn({required String username, required String password}) async {}
 
   @override
   Stream<AuthState> get authStateChanges => const Stream.empty();
@@ -75,7 +75,7 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.login);
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextFormField).at(0), 'reception@clinic.local');
+    await tester.enterText(find.byType(TextFormField).at(0), 'reception');
     await tester.enterText(find.byType(TextFormField).at(1), 'recept-pass');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();

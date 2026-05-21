@@ -17,8 +17,8 @@ fi
 
 base_url="${SUPABASE_PUBLIC_URL:-http://127.0.0.1:54321}"
 anon_key="${SUPABASE_ANON_KEY:-}"
-email="${BOOTSTRAP_ADMIN_EMAIL:-admin@clinic.local}"
-password="${BOOTSTRAP_ADMIN_PASSWORD:-ChangeMeOnFirstSignIn!}"
+username="${BOOTSTRAP_ADMIN_USERNAME:-admin}"
+password="${BOOTSTRAP_ADMIN_PASSWORD:-admin}"
 db_port="${SUPABASE_DB_PORT:-54322}"
 db_password="${POSTGRES_PASSWORD:-postgres}"
 bootstrap_user_id="${BOOTSTRAP_ADMIN_USER_ID:-a0000000-0000-4000-8000-000000000001}"
@@ -36,7 +36,7 @@ require_command psql
 
 http_sign_in() {
   local sign_in_payload sign_in_response access_token
-  sign_in_payload="$(python3 -c 'import json,sys; print(json.dumps({"email":sys.argv[1],"password":sys.argv[2]}))' "${email}" "${password}")"
+  sign_in_payload="$(python3 -c 'import json,sys; print(json.dumps({"email":sys.argv[1],"password":sys.argv[2]}))' "${username}" "${password}")"
   sign_in_response="$(curl -sS -X POST "${base_url}/auth/v1/token?grant_type=password" \
     -H "apikey: ${anon_key}" \
     -H "Authorization: Bearer ${anon_key}" \
@@ -89,7 +89,7 @@ sql_claims_check() {
   done
 }
 
-printf 'Auth smoke: signing in as %s\n' "${email}"
+printf 'Auth smoke: signing in as %s\n' "${username}"
 
 if [[ -n "${anon_key}" ]] && http_sign_in; then
   printf 'Auth smoke: HTTP sign-in succeeded\n'

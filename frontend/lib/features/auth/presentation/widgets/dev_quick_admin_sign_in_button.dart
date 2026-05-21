@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 
-/// Local seed admin from [20260516100400_auth_rbac_seed.sql] (`admin@admin` / `admin`).
-const kDevAdminEmail = 'admin@admin';
+/// Local seed admin from [20260516100400_auth_rbac_seed.sql] (`admin` / `admin`).
+const kDevAdminUsername = 'admin';
 const kDevAdminPassword = 'admin';
 
 /// Debug-only one-tap sign-in as the seeded bootstrap administrator.
@@ -24,7 +24,9 @@ class DevQuickAdminSignInButton extends ConsumerWidget {
     return TextButton.icon(
       onPressed: isBusy
           ? null
-          : () => ref.read(authNotifierProvider.notifier).signIn(email: kDevAdminEmail, password: kDevAdminPassword),
+          : () => ref
+                .read(authNotifierProvider.notifier)
+                .signIn(username: kDevAdminUsername, password: kDevAdminPassword),
       icon: const Icon(Icons.developer_mode),
       label: const Text('Dev: sign in as admin'),
     );

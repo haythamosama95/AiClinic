@@ -43,7 +43,7 @@ This feature establishes the data foundation for organizations, branches, staff,
 
 ### User Story 1 - Sign In Securely (Priority: P1)
 
-As a clinic staff member, I can sign in with my work email and password so that I can access the application with my identity, organization context, and permissions applied.
+As a clinic staff member, I can sign in with my username and password so that I can access the application with my identity, organization context, and permissions applied.
 
 **Why this priority**: No protected clinic workflow can run until staff can authenticate and receive a scoped session.
 
@@ -51,8 +51,8 @@ As a clinic staff member, I can sign in with my work email and password so that 
 
 **Acceptance Scenarios**:
 
-1. **Given** a staff account exists and is active, **When** the user enters valid email and password on the login screen, **Then** the user is authenticated, leaves the unauthenticated entry experience, and lands on the minimal authenticated placeholder shell.
-2. **Given** invalid credentials are submitted, **When** sign-in is attempted, **Then** the user sees a clear error and remains unauthenticated without exposing whether the email exists.
+1. **Given** a staff account exists and is active, **When** the user enters valid username and password on the login screen, **Then** the user is authenticated, leaves the unauthenticated entry experience, and lands on the minimal authenticated placeholder shell.
+2. **Given** invalid credentials are submitted, **When** sign-in is attempted, **Then** the user sees a clear error and remains unauthenticated without exposing whether the username exists.
 3. **Given** a staff account is inactive or not linked to the auth identity, **When** valid credentials are used, **Then** sign-in is denied with an actionable message and no protected session is created.
 
 ---
@@ -133,7 +133,7 @@ As a clinic owner or administrator, I can create staff accounts for the other ro
 
 **Acceptance Scenarios**:
 
-1. **Given** organization and at least one branch exist, **When** a signed-in owner or administrator creates a staff account with email, role, branch assignment, and initial password, **Then** the new account can sign in with the assigned role and permissions.
+1. **Given** organization and at least one branch exist, **When** a signed-in owner or administrator creates a staff account with username, role, branch assignment, and initial password, **Then** the new account can sign in with the assigned role and permissions.
 2. **Given** no owner account exists yet, **When** the default bootstrap administrator creates a staff account with the owner role, **Then** the owner account is created successfully.
 3. **Given** at least one owner account already exists, **When** a signed-in administrator (non-owner) attempts to create an owner account, **Then** the action is blocked with a permission-denied outcome.
 4. **Given** at least one owner account exists, **When** a signed-in owner creates another owner account, **Then** the new owner account is created successfully.
@@ -195,7 +195,7 @@ As a clinic operator, the application prevents access to protected areas until a
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST provide email-and-password authentication for clinic staff accounts linked to the platform identity store.
+- **FR-001**: The system MUST provide username-and-password authentication for clinic staff accounts linked to the platform identity store.
 - **FR-002**: The system MUST issue an authenticated session that includes organization identifier, assigned branch identifiers, staff identifier, and role for use in authorization decisions.
 - **FR-003**: The system MUST populate session authorization context from staff and branch assignment records at login through the documented custom-claims mechanism.
 - **FR-004**: The system MUST end the authenticated session when the application is fully closed; reopening the application MUST require sign-in and MUST NOT restore a prior session.
@@ -214,10 +214,10 @@ As a clinic operator, the application prevents access to protected areas until a
 - **FR-013**: The system MUST provide audit logging infrastructure and automatic audit-field maintenance for tables introduced in this feature.
 - **FR-014**: The system MUST introduce and seed supporting tables for application settings and subscription validation cache as defined in architecture, without implementing subscription enforcement UI in this feature.
 - **FR-014a**: The system MUST NOT block login based on expired subscription cache entries in V1-1; subscription enforcement is deferred to a later billing/subscription feature.
-- **FR-021**: The system MUST ship with a default administrator account (email and password) suitable for first-time clinic bootstrap, documented for initial sign-in with a prominent first-sign-in warning to change the password; password change is recommended but not enforced in V1-1.
+- **FR-021**: The system MUST ship with a default administrator account (username and password) suitable for first-time clinic bootstrap, documented for initial sign-in with a prominent first-sign-in warning to change the password; password change is recommended but not enforced in V1-1.
 - **FR-022**: The system MUST allow the default administrator to create exactly one organization and at least one branch through minimal V1-1 setup screens on a fresh installation; no organization or branch may be pre-seeded, and additional organizations MUST NOT be creatable in V1-1.
 - **FR-022a**: The system MUST block staff account creation until at least one organization and one branch exist.
-- **FR-022b**: The system MUST allow signed-in owners and administrators to create staff accounts (email, role, branch assignment, initial password) through a minimal provisioning flow in V1-1 after organization and branch setup is complete.
+- **FR-022b**: The system MUST allow signed-in owners and administrators to create staff accounts (username, role, branch assignment, initial password) through a minimal provisioning flow in V1-1 after organization and branch setup is complete.
 - **FR-022c**: The system MUST allow only the default bootstrap administrator to create the first owner account; after an owner exists, only owners may create additional owner accounts, and administrators MUST NOT create owner accounts.
 - **FR-023**: The system MUST provide a forgot-password path on the login experience that displays a message to contact the clinic administrator and MUST NOT provide self-service password reset in V1-1.
 - **FR-024**: The system MUST allow signed-in owners and administrators to reset another staff member's password and view the password value they assign at account creation or reset time only.
@@ -270,7 +270,7 @@ All introduced tables MUST follow shared conventions: UUID primary keys, created
 - **Custom claims resolution**: On successful authentication, resolve staff member, organization, assigned branches, and role into session authorization claims. Must fail safely when staff record is missing or inactive. Staff with no branch assignments receive claims without branch scope and are limited to the blocked client state.
 - **Create organization** (default administrator on fresh install): Create the single tenant root with required fields; only when no organization exists yet; rejects creation if an organization already exists.
 - **Create branch** (default administrator / owner / administrator): Create first and additional branches under the organization during minimal setup; validate organization scope.
-- **Create staff account** (owner/administrator only): Create auth identity, staff member record, and branch assignments; validate role, email uniqueness, and branch scope; requires existing organization and branch; enforce owner-creation rules per FR-022c.
+- **Create staff account** (owner/administrator only): Create auth identity, staff member record, and branch assignments; validate role, username uniqueness, and branch scope; requires existing organization and branch; enforce owner-creation rules per FR-022c.
 - **Reset staff password** (owner/administrator only): Set a new password for a staff member within the same organization; must not expose prior unknown secrets.
 - Full organization settings, branch list/edit/deactivate, and staff list/edit/deactivate RPC flows are deferred to V1-2.
 
@@ -294,10 +294,10 @@ Policies MUST enforce:
 
 ### API Contracts
 
-- Sign in with email and password through the platform authentication service.
+- Sign in with username and password through the platform authentication service.
 - Sign out and end the client session (explicit logout and idle timeout).
 - Create organization and branch (bootstrap): minimal required fields on fresh install.
-- Create staff account (owner/administrator only): email, role, branch assignments, initial password (after org/branch exist).
+- Create staff account (owner/administrator only): username, role, branch assignments, initial password (after org/branch exist).
 - Reset staff password (owner/administrator only): set new password; return or display assigned value to the administrator performing the reset.
 - Read staff profile and branch assignment data needed for post-login context.
 - Read role-permission mappings needed to build the permission cache.
@@ -307,7 +307,7 @@ Protected domain APIs (patients, appointments, billing, etc.) are out of scope f
 
 ### UI States
 
-- **Login - Initial**: Email and password fields, submit action, forgot-password guidance link, link or path back to unauthenticated entry experience where applicable.
+- **Login - Initial**: Username and password fields, submit action, forgot-password guidance link, link or path back to unauthenticated entry experience where applicable.
 - **Login - Forgot Password**: Plain-language message to contact the clinic administrator; no self-service reset form.
 - **Login - Submitting**: Inputs disabled or loading indicator; no duplicate submissions.
 - **Login - Error**: Invalid credentials, inactive account, connectivity failure, or configuration error with plain-language guidance.
@@ -319,7 +319,7 @@ Protected domain APIs (patients, appointments, billing, etc.) are out of scope f
 - **Idle Timeout Sign-Out**: After 15 minutes without keyboard or pointer input in the app window, session cleared and user returned to login with an inactivity message.
 - **First Sign-In Warning**: Default administrator sees prominent shipped-password change warning; may dismiss and continue without forced change.
 - **Clinic Bootstrap Setup**: Default administrator guided flow to create organization and first branch when none exist; blocks staff creation until complete.
-- **Staff Account Create**: Owner/administrator form for email, role, branch assignment, and initial password; success confirmation showing assigned credentials to the administrator.
+- **Staff Account Create**: Owner/administrator form for username, role, branch assignment, and initial password; success confirmation showing assigned credentials to the administrator.
 - **Staff Password Reset**: Owner/administrator sets a new password for selected staff; assigned password visible to the resetting administrator.
 - **Post-Login Context Loading**: Loading staff profile, active branch, and permissions before enabling protected navigation.
 - **Post-Login Ready**: Authenticated user with branch and permission context available to route guard and future modules.
@@ -329,7 +329,7 @@ Protected domain APIs (patients, appointments, billing, etc.) are out of scope f
 
 ### Validation Rules
 
-- Email must be present and well-formed before sign-in submission.
+- Username must be present and valid (3–32 characters, allowed charset) before sign-in submission.
 - Password must be present before sign-in submission.
 - Only active staff linked to a valid auth identity may authenticate.
 - Active branch must belong to the user's branch assignment set when branch-scoped access is granted.
@@ -351,7 +351,7 @@ This feature introduces no AI-assisted workflow. Permission keys related to futu
 
 ### Acceptance Criteria
 
-1. A seeded staff user can sign in with email and password and reach the minimal authenticated placeholder shell with post-login context loaded.
+1. A seeded staff user can sign in with username and password and reach the minimal authenticated placeholder shell with post-login context loaded.
 2. Invalid credentials are rejected without creating a session.
 3. Unauthenticated users cannot access protected routes and are redirected to login.
 4. Authenticated session includes organization, role, staff identity, and branch scope consistent with seed data.
@@ -434,7 +434,7 @@ This feature introduces no AI-assisted workflow. Permission keys related to futu
 - V1-0 project scaffolding is complete, including local deployment profile, unauthenticated entry experience, and route-guard foundation.
 - A default administrator account is seeded or shipped with the product for first-time bootstrap; first sign-in shows a prominent password-change warning but does not force change in V1-1. No organization or branch records are pre-seeded—those are created through minimal V1-1 setup screens. Each installation supports exactly one organization in V1-1. Only the bootstrap administrator may create the first owner; thereafter only owners may create additional owner accounts.
 - Additional staff accounts are created by owners/administrators through the minimal V1-1 provisioning flow until V1-2 full staff management is delivered.
-- Email-and-password is the only authentication method in V1-1; SSO, MFA, and self-service password reset are deferred.
+- Username-and-password is the only authentication method in V1-1; SSO, MFA, and self-service password reset are deferred.
 - Sessions do not survive application close; 15-minute idle timeout (no keyboard or pointer input in the app window) adds protection on shared reception workstations when the app stays open.
 - Password recovery is administrator-mediated; viewing a password applies only to values the administrator sets or resets, not to recovering unknown prior secrets from storage.
 - Subscription cache is created and seeded in V1-1 but login is never blocked by expiry until a later subscription-enforcement feature.

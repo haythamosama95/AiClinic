@@ -21,7 +21,7 @@ class _HarnessAuthRepository extends AuthRepository {
   int signInCalls;
 
   @override
-  Future<void> signIn({required String email, required String password}) async {
+  Future<void> signIn({required String username, required String password}) async {
     signInCalls++;
     await _onSignIn();
   }
@@ -56,7 +56,7 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.login);
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextFormField).at(0), 'admin@clinic.local');
+    await tester.enterText(find.byType(TextFormField).at(0), 'admin');
     await tester.enterText(find.byType(TextFormField).at(1), 'password');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pump();
@@ -83,7 +83,7 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.login);
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextFormField).at(0), 'staff@clinic.test');
+    await tester.enterText(find.byType(TextFormField).at(0), 'staff1');
     await tester.enterText(find.byType(TextFormField).at(1), 'pw');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();

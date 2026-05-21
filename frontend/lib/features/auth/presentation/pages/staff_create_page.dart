@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/widgets/app_form_field.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/branch_assignment_label.dart';
@@ -22,7 +23,7 @@ class StaffCreatePage extends ConsumerStatefulWidget {
 
 class _StaffCreatePageState extends ConsumerState<StaffCreatePage> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _passwordController = TextEditingController();
 
@@ -42,7 +43,7 @@ class _StaffCreatePageState extends ConsumerState<StaffCreatePage> {
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usernameController.dispose();
     _fullNameController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -91,7 +92,7 @@ class _StaffCreatePageState extends ConsumerState<StaffCreatePage> {
     final result = await ref
         .read(provisioningNotifierProvider.notifier)
         .createStaffAccount(
-          email: _emailController.text.trim(),
+          username: _usernameController.text.trim(),
           fullName: _fullNameController.text.trim(),
           role: role,
           branchIds: _selectedBranchIds.toList(),
@@ -100,18 +101,18 @@ class _StaffCreatePageState extends ConsumerState<StaffCreatePage> {
         );
 
     if (result != null && mounted) {
-      await _showCredentialsDialog(result.email, result.assignedPassword);
+      await _showCredentialsDialog(result.username, result.assignedPassword);
     }
   }
 
-  Future<void> _showCredentialsDialog(String email, String password) async {
+  Future<void> _showCredentialsDialog(String username, String password) async {
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Staff account created'),
         content: SelectableText(
           'Share these credentials with the staff member:\n\n'
-          'Email: $email\n'
+          'Username: $username\n'
           'Password: $password',
         ),
         actions: [
@@ -119,7 +120,7 @@ class _StaffCreatePageState extends ConsumerState<StaffCreatePage> {
             onPressed: () {
               ref.read(provisioningNotifierProvider.notifier).clearLastCreated();
               Navigator.of(context).pop();
-              _emailController.clear();
+              _usernameController.clear();
               _fullNameController.clear();
               _passwordController.clear();
               setState(() {
@@ -225,21 +226,12 @@ class _StaffCreatePageState extends ConsumerState<StaffCreatePage> {
                   ],
                   const SizedBox(height: 24),
                   AppFormField(
-                    label: 'Email',
-                    infoTooltip: 'Work email used for clinic sign-in.',
-                    controller: _emailController,
+                    label: 'Username',
+                    infoTooltip: 'Work username used for clinic sign-in.',
+                    controller: _usernameController,
                     enabled: !isBusy,
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      final trimmed = value?.trim() ?? '';
-                      if (trimmed.isEmpty) {
-                        return 'Email is required';
-                      }
-                      if (!trimmed.contains('@')) {
-                        return 'Enter a valid email address';
-                      }
-                      return null;
-                    },
+                    keyboardType: TextInputType.text,
+                    validator: (value) => validateStaffUsername(value ?? ''),
                   ),
                   const SizedBox(height: 16),
                   AppFormField(

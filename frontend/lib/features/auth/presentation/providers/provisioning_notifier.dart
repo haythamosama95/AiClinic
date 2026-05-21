@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
 import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
+import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
 /// User-facing messages for provisioning RPC error codes.
@@ -15,7 +16,7 @@ String provisioningMessageForRpc(RpcFailure failure) {
     'ORG_SETUP_INCOMPLETE' => 'Create your clinic organization and first branch before adding staff accounts.',
     'FORBIDDEN_OWNER_CREATE' => failure.message,
     'FORBIDDEN' => 'You do not have permission to create staff accounts.',
-    'EMAIL_EXISTS' => 'A staff account with this email already exists.',
+    'USERNAME_EXISTS' => 'A staff account with this username already exists.',
     'INVALID_BRANCH' => 'One or more selected branches are invalid.',
     'INVALID_INPUT' => failure.message,
     'RPC_NOT_APPLIED' => failure.message,
@@ -109,7 +110,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
 
   /// Validates form fields and FR-022c before invoking the RPC.
   Future<CreateStaffAccountResult?> createStaffAccount({
-    required String email,
+    required String username,
     required String fullName,
     required StaffRole role,
     required List<String> branchIds,
@@ -128,17 +129,13 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
     }
 
     final caller = session.staffProfile;
-    final trimmedEmail = email.trim();
     final trimmedName = fullName.trim();
-
-    if (trimmedEmail.isEmpty) {
-      state = state.copyWith(errorMessage: 'Enter the staff member email address.');
+    final usernameError = validateStaffUsername(username);
+    if (usernameError != null) {
+      state = state.copyWith(errorMessage: usernameError);
       return null;
     }
-    if (!trimmedEmail.contains('@') || trimmedEmail.startsWith('@') || !trimmedEmail.contains('.')) {
-      state = state.copyWith(errorMessage: 'Enter a valid email address.');
-      return null;
-    }
+    final normalizedUsername = normalizeStaffUsername(username);
     if (trimmedName.isEmpty) {
       state = state.copyWith(errorMessage: 'Enter the staff member full name.');
       return null;
@@ -176,7 +173,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
           .read(provisioningRepositoryProvider)
           .createStaffAccount(
             CreateStaffAccountInput(
-              email: trimmedEmail,
+              username: normalizedUsername,
               password: password,
               fullName: trimmedName,
               role: role,

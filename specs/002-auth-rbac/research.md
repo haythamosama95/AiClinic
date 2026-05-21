@@ -2,7 +2,7 @@
 
 ## Decision 1: Supabase GoTrue + PostgreSQL custom claims hook
 
-- **Decision**: Use GoTrue email/password auth with a PostgreSQL `get_custom_claims(uid)` function invoked via the standard Supabase custom access token hook.
+- **Decision**: Use GoTrue password auth (username stored in `auth.users.email` for GoTrue compatibility) with a PostgreSQL `get_custom_claims(uid)` function invoked via the standard Supabase custom access token hook.
 - **Rationale**: Matches `docs/architecture/09-security-rbac.md` and roadmap V1-1; keeps JWT claims (`organization_id`, `branch_ids`, `role`, `staff_member_id`) authoritative for RLS.
 - **Alternatives considered**: Client-only role storage (rejected — violates constitution). Custom auth microservice (rejected — violates layer boundaries).
 

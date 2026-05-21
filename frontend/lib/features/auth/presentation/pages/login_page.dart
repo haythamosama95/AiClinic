@@ -5,12 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_quick_admin_sign_in_button.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 
-/// Staff email/password sign-in for clinic workstations.
+/// Staff username/password sign-in for clinic workstations.
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -20,7 +21,7 @@ class LoginPage extends ConsumerStatefulWidget {
 
 class _LoginPageState extends ConsumerState<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   String? _surfacedSessionFailureMessage;
 
@@ -51,7 +52,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -63,7 +64,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     await ref
         .read(authNotifierProvider.notifier)
-        .signIn(email: _emailController.text, password: _passwordController.text);
+        .signIn(username: _usernameController.text, password: _passwordController.text);
   }
 
   @override
@@ -113,18 +114,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     const SizedBox(height: 12),
                   ],
                   TextFormField(
-                    controller: _emailController,
-                    decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
-                    keyboardType: TextInputType.emailAddress,
+                    controller: _usernameController,
+                    decoration: const InputDecoration(labelText: 'Username', border: OutlineInputBorder()),
+                    keyboardType: TextInputType.text,
                     autofillHints: const [AutofillHints.username],
                     enabled: !isBusy,
-                    validator: (value) {
-                      final trimmed = value?.trim() ?? '';
-                      if (trimmed.isEmpty || !trimmed.contains('@')) {
-                        return 'Enter a valid email address';
-                      }
-                      return null;
-                    },
+                    validator: (value) => validateStaffUsername(value ?? ''),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(

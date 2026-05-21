@@ -4,10 +4,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
+import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
-/// Generic sign-in failure copy — must not reveal whether the email exists.
-const String kGenericSignInFailureMessage = 'Email or password is incorrect.';
+/// Generic sign-in failure copy — must not reveal whether the username exists.
+const String kGenericSignInFailureMessage = 'Username or password is incorrect.';
 
 /// User-facing message when sign-in fails for non-credential reasons.
 const String kSignInUnavailableMessage = 'Unable to sign in right now. Check clinic connectivity and try again.';
@@ -36,18 +37,17 @@ class AuthNotifier extends Notifier<AuthUiState> {
   @override
   AuthUiState build() => const AuthUiState();
 
-  bool validateCredentials({required String email, required String password}) {
-    final trimmedEmail = email.trim();
-    if (trimmedEmail.isEmpty || !trimmedEmail.contains('@')) {
+  bool validateCredentials({required String username, required String password}) {
+    if (validateStaffUsername(username) != null) {
       return false;
     }
 
     return password.isNotEmpty;
   }
 
-  Future<void> signIn({required String email, required String password}) async {
-    if (!validateCredentials(email: email, password: password)) {
-      state = state.copyWith(errorMessage: 'Enter a valid email address and password.');
+  Future<void> signIn({required String username, required String password}) async {
+    if (!validateCredentials(username: username, password: password)) {
+      state = state.copyWith(errorMessage: 'Enter a valid username and password.');
       return;
     }
 
@@ -55,7 +55,7 @@ class AuthNotifier extends Notifier<AuthUiState> {
 
     try {
       await ref.read(authSessionProvider.notifier).ensureReadyForSignIn();
-      await ref.read(authRepositoryProvider).signIn(email: email, password: password);
+      await ref.read(authRepositoryProvider).signIn(username: username, password: password);
       await ref.read(authSessionProvider.notifier).syncAfterSignIn();
       await _waitForPostLoginResolution();
     } on AuthException catch (error) {

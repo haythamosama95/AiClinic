@@ -81,7 +81,7 @@
 
 ## Phase 4: User Story 1 - Sign In Securely (Priority: P1) 🎯 MVP
 
-**Goal**: Email/password login with post-login context load and navigation to placeholder shell or bootstrap when setup is required
+**Goal**: Username/password login with post-login context load and navigation to placeholder shell or bootstrap when setup is required
 
 **Independent Test**: Sign in with valid staff credentials and reach authenticated shell (or bootstrap wizard when `setup_required`)
 

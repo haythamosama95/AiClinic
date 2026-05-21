@@ -22,6 +22,13 @@ DECLARE
   v_claims jsonb;
   v_setup_required text;
 BEGIN
+  -- Isolate from prior suite scripts (e.g. jwt_claims_contract) that may create an org.
+  PERFORM set_config('role', 'postgres', true);
+  DELETE FROM public.staff_branch_assignments;
+  DELETE FROM public.audit_log;
+  DELETE FROM public.branches;
+  DELETE FROM public.organizations;
+
   -- Ensure a non-bootstrap administrator exists for denial tests.
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
   VALUES (
@@ -29,7 +36,7 @@ BEGIN
     '00000000-0000-0000-0000-000000000000',
     'authenticated',
     'authenticated',
-    'bootstrap-deny@clinic.local',
+    'bootstrap-deny',
     extensions.crypt('test-password', extensions.gen_salt('bf')),
     now(),
     now(),
@@ -115,8 +122,8 @@ PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
   DELETE FROM auth.users
-  WHERE email LIKE 'owner-%@clinic.local'
-     OR email IN ('reception@clinic.local', 'owner-one@clinic.local', 'owner-two@clinic.local');
+  WHERE email LIKE 'owner-%'
+     OR email IN ('reception', 'owner-one', 'owner-two');
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(

@@ -89,13 +89,13 @@ void main() {
     await expectLater(repository.clearPersistedSessionOnColdStart(), completes);
   });
 
-  test('signIn trims email before calling auth client', () async {
+  test('signIn normalizes username before calling auth client', () async {
     final client = _RecordingSupabaseClient();
     final repository = AuthRepository(client);
 
-    await repository.signIn(email: '  staff@clinic.test  ', password: 'secret');
+    await repository.signIn(username: '  Staff1  ', password: 'secret');
 
-    expect(client.lastEmail, 'staff@clinic.test');
+    expect(client.lastEmail, 'staff1');
   });
 
   test('supabaseClientProvider throws when bootstrap not ready', () {

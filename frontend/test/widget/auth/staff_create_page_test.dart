@@ -82,7 +82,7 @@ class _TestProvisioningNotifier extends ProvisioningNotifier {
 
   @override
   Future<CreateStaffAccountResult?> createStaffAccount({
-    required String email,
+    required String username,
     required String fullName,
     required StaffRole role,
     required List<String> branchIds,
@@ -90,8 +90,8 @@ class _TestProvisioningNotifier extends ProvisioningNotifier {
     String? primaryBranchId,
   }) async {
     createCalls++;
-    if (email.trim().isEmpty) {
-      state = state.copyWith(errorMessage: 'Enter the staff member email address.');
+    if (username.trim().isEmpty) {
+      state = state.copyWith(errorMessage: 'Username is required.');
       return null;
     }
 
@@ -103,7 +103,7 @@ class _TestProvisioningNotifier extends ProvisioningNotifier {
     state = state.copyWith(
       lastCreated: CreateStaffAccountResult(
         staffMemberId: 'new-staff-uuid',
-        email: email.trim().toLowerCase(),
+        username: username.trim().toLowerCase(),
         assignedPassword: password,
       ),
     );
@@ -181,7 +181,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Create staff account'), findsWidgets);
-      expect(find.text('Email'), findsOneWidget);
+      expect(find.text('Username'), findsOneWidget);
       expect(find.text('Full name'), findsOneWidget);
       expect(find.text('Role'), findsOneWidget);
       expect(find.text('Initial password'), findsOneWidget);
@@ -270,7 +270,7 @@ void main() {
       expect(find.text('Receptionist'), findsOneWidget);
     });
 
-    testWidgets('empty email shows validation without RPC', (tester) async {
+    testWidgets('empty username shows validation without RPC', (tester) async {
       final provisioning = _TestProvisioningNotifier();
 
       await tester.pumpWidget(_staffCreateHarness(child: const StaffCreatePage(), provisioningNotifier: provisioning));
@@ -279,16 +279,16 @@ void main() {
       await _tapScrollable(tester, find.widgetWithText(FilledButton, 'Create staff account'));
 
       expect(provisioning.createCalls, 0);
-      expect(find.text('Email is required'), findsOneWidget);
+      expect(find.text('Username is required.'), findsOneWidget);
     });
 
-    testWidgets('invalid email format blocked client-side', (tester) async {
+    testWidgets('invalid username format blocked client-side', (tester) async {
       final provisioning = _TestProvisioningNotifier();
 
       await tester.pumpWidget(_staffCreateHarness(child: const StaffCreatePage(), provisioningNotifier: provisioning));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextFormField).at(0), 'not-an-email');
+      await tester.enterText(find.byType(TextFormField).at(0), 'ab');
       await tester.enterText(find.byType(TextFormField).at(1), 'Jane Doe');
       await tester.enterText(find.byType(TextFormField).at(2), 'secret12');
       await tester.tap(find.byType(DropdownButtonFormField<StaffRole>));
@@ -298,7 +298,7 @@ void main() {
       await _tapScrollable(tester, find.widgetWithText(FilledButton, 'Create staff account'));
 
       expect(provisioning.createCalls, 0);
-      expect(find.text('Enter a valid email address'), findsOneWidget);
+      expect(find.text('Username must be 3–32 characters.'), findsOneWidget);
     });
 
     testWidgets('password shorter than six characters rejected', (tester) async {
@@ -307,7 +307,7 @@ void main() {
       await tester.pumpWidget(_staffCreateHarness(child: const StaffCreatePage(), provisioningNotifier: provisioning));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextFormField).at(0), 'new@clinic.local');
+      await tester.enterText(find.byType(TextFormField).at(0), 'newstaff');
       await tester.enterText(find.byType(TextFormField).at(1), 'Jane Doe');
       await tester.enterText(find.byType(TextFormField).at(2), '12345');
       await tester.tap(find.byType(DropdownButtonFormField<StaffRole>));
@@ -326,7 +326,7 @@ void main() {
       await tester.pumpWidget(_staffCreateHarness(child: const StaffCreatePage(), provisioningNotifier: provisioning));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextFormField).at(0), 'reception@clinic.local');
+      await tester.enterText(find.byType(TextFormField).at(0), 'reception');
       await tester.enterText(find.byType(TextFormField).at(1), 'Front Desk');
       await tester.enterText(find.byType(TextFormField).at(2), 'secret12');
       await tester.tap(find.byType(DropdownButtonFormField<StaffRole>));
@@ -338,10 +338,7 @@ void main() {
       expect(provisioning.createCalls, 1);
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(find.text('Staff account created'), findsOneWidget);
-      expect(
-        find.descendant(of: find.byType(AlertDialog), matching: find.textContaining('reception@clinic.local')),
-        findsOneWidget,
-      );
+      expect(find.descendant(of: find.byType(AlertDialog), matching: find.textContaining('reception')), findsOneWidget);
       expect(find.descendant(of: find.byType(AlertDialog), matching: find.textContaining('secret12')), findsOneWidget);
     });
 
@@ -351,7 +348,7 @@ void main() {
       await tester.pumpWidget(_staffCreateHarness(child: const StaffCreatePage(), provisioningNotifier: provisioning));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextFormField).at(0), 'owner2@clinic.local');
+      await tester.enterText(find.byType(TextFormField).at(0), 'owner2');
       await tester.enterText(find.byType(TextFormField).at(1), 'Second Owner');
       await tester.enterText(find.byType(TextFormField).at(2), 'secret12');
       await tester.tap(find.byType(DropdownButtonFormField<StaffRole>));
@@ -365,7 +362,7 @@ void main() {
 
     testWidgets('dismiss error banner clears message', (tester) async {
       final provisioning = _TestProvisioningNotifier(
-        initialState: const ProvisioningUiState(errorMessage: 'A staff account with this email already exists.'),
+        initialState: const ProvisioningUiState(errorMessage: 'A staff account with this username already exists.'),
       );
 
       await tester.pumpWidget(_staffCreateHarness(child: const StaffCreatePage(), provisioningNotifier: provisioning));
@@ -393,7 +390,7 @@ void main() {
       await tester.pumpWidget(_staffCreateHarness(child: const StaffCreatePage(), provisioningNotifier: provisioning));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextFormField).at(0), 'user@clinic.local');
+      await tester.enterText(find.byType(TextFormField).at(0), 'newuser');
       await tester.enterText(find.byType(TextFormField).at(1), '     ');
       await tester.enterText(find.byType(TextFormField).at(2), 'secret12');
       await _tapScrollable(tester, find.widgetWithText(FilledButton, 'Create staff account'));

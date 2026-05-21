@@ -14,10 +14,10 @@ void main() {
       repository = ProvisioningRepository(client);
     });
 
-    test('createStaffAccount sends required contract keys and trims email/name', () async {
+    test('createStaffAccount sends required contract keys and normalizes username/name', () async {
       final result = await repository.createStaffAccount(
         const CreateStaffAccountInput(
-          email: '  new@clinic.test ',
+          username: '  NewStaff ',
           password: 'Initial1!',
           fullName: '  Jane Doe ',
           role: StaffRole.receptionist,
@@ -27,19 +27,19 @@ void main() {
       );
 
       expect(client.lastFunction, 'create_staff_account');
-      expect(client.lastParams, containsPair('p_email', 'new@clinic.test'));
+      expect(client.lastParams, containsPair('p_username', 'newstaff'));
       expect(client.lastParams, containsPair('p_password', 'Initial1!'));
       expect(client.lastParams, containsPair('p_full_name', 'Jane Doe'));
       expect(client.lastParams, containsPair('p_role', 'receptionist'));
       expect(client.lastParams, containsPair('p_branch_ids', ['22222222-2222-4222-8222-222222222222']));
       expect(client.lastParams, containsPair('p_primary_branch_id', '22222222-2222-4222-8222-222222222222'));
-      expect(result.email, 'new@clinic.test');
+      expect(result.username, 'newstaff');
     });
 
     test('createStaffAccount omits primary branch when null', () async {
       await repository.createStaffAccount(
         const CreateStaffAccountInput(
-          email: 'a@b.c',
+          username: 'doctor1',
           password: 'x',
           fullName: 'A',
           role: StaffRole.doctor,
@@ -53,7 +53,7 @@ void main() {
     test('createStaffAccount forwards empty branch list when UI guard skipped', () async {
       await repository.createStaffAccount(
         const CreateStaffAccountInput(
-          email: 'a@b.c',
+          username: 'doctor1',
           password: 'x',
           fullName: 'A',
           role: StaffRole.doctor,

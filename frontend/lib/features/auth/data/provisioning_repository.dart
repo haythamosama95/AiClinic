@@ -7,11 +7,12 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
+import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 
 /// Input for `create_staff_account` RPC.
 class CreateStaffAccountInput {
   const CreateStaffAccountInput({
-    required this.email,
+    required this.username,
     required this.password,
     required this.fullName,
     required this.role,
@@ -19,7 +20,7 @@ class CreateStaffAccountInput {
     this.primaryBranchId,
   });
 
-  final String email;
+  final String username;
   final String password;
   final String fullName;
   final StaffRole role;
@@ -29,10 +30,10 @@ class CreateStaffAccountInput {
 
 /// Successful staff account creation payload.
 class CreateStaffAccountResult {
-  const CreateStaffAccountResult({required this.staffMemberId, required this.email, required this.assignedPassword});
+  const CreateStaffAccountResult({required this.staffMemberId, required this.username, required this.assignedPassword});
 
   final String staffMemberId;
-  final String email;
+  final String username;
   final String assignedPassword;
 }
 
@@ -113,7 +114,7 @@ class ProvisioningRepository {
 
   Future<CreateStaffAccountResult> createStaffAccount(CreateStaffAccountInput input) async {
     final result = await _invoke('create_staff_account', {
-      'p_email': input.email.trim(),
+      'p_username': normalizeStaffUsername(input.username),
       'p_password': input.password,
       'p_full_name': input.fullName.trim(),
       'p_role': input.role.wireValue,
@@ -129,7 +130,7 @@ class ProvisioningRepository {
 
     return CreateStaffAccountResult(
       staffMemberId: staffMemberId,
-      email: input.email.trim().toLowerCase(),
+      username: normalizeStaffUsername(input.username),
       assignedPassword: assignedPassword,
     );
   }

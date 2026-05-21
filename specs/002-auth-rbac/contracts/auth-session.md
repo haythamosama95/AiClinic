@@ -6,9 +6,9 @@ Defines client and backend behavior for staff authentication, session lifecycle,
 
 ## Sign-In
 
-| Input           | Validation              | Success                        | Failure                   |
-| --------------- | ----------------------- | ------------------------------ | ------------------------- |
-| email, password | Non-empty, email format | JWT issued; load staff context | Generic error; no session |
+| Input              | Validation                                                      | Success                        | Failure                   |
+| ------------------ | --------------------------------------------------------------- | ------------------------------ | ------------------------- |
+| username, password | Non-empty, username format (3–32 chars, `a-z`, `0-9`, `_`, `-`) | JWT issued; load staff context | Generic error; no session |
 
 - Must call `supabase.auth.signInWithPassword`
 - On success, invoke post-login loader: staff profile, branch assignments, permissions, setup flags

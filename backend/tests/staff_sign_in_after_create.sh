@@ -22,7 +22,7 @@ db_password="${POSTGRES_PASSWORD:-postgres}"
 bootstrap_user_id="${BOOTSTRAP_ADMIN_USER_ID:-a0000000-0000-4000-8000-000000000001}"
 bootstrap_staff_id="${BOOTSTRAP_ADMIN_STAFF_ID:-b0000000-0000-4000-8000-000000000001}"
 
-test_email="us6-signin-e2e@clinic.local"
+test_username="us6-signin-e2e"
 test_password="E2eStaffPass1!"
 
 require_command() {
@@ -36,7 +36,7 @@ require_command curl
 require_command python3
 require_command psql
 
-printf 'staff_sign_in_after_create: provisioning %s\n' "${test_email}"
+printf 'staff_sign_in_after_create: provisioning %s\n' "${test_username}"
 
 PGPASSWORD="${db_password}" psql -h 127.0.0.1 -p "${db_port}" -U postgres -d postgres -v ON_ERROR_STOP=1 -q <<SQL
 DO \$\$
@@ -85,11 +85,11 @@ BEGIN
   DELETE FROM public.staff_branch_assignments sba
   USING public.staff_members sm
   WHERE sba.staff_member_id = sm.id AND sm.auth_user_id IN (
-    SELECT id FROM auth.users WHERE email = '${test_email}'
+    SELECT id FROM auth.users WHERE email = '${test_username}'
   );
   DELETE FROM public.staff_members sm
-  WHERE sm.auth_user_id IN (SELECT id FROM auth.users WHERE email = '${test_email}');
-  DELETE FROM auth.users WHERE email = '${test_email}';
+  WHERE sm.auth_user_id IN (SELECT id FROM auth.users WHERE email = '${test_username}');
+  DELETE FROM auth.users WHERE email = '${test_username}';
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
@@ -106,7 +106,7 @@ BEGIN
   );
 
   v_result := public.create_staff_account(
-    '${test_email}',
+    '${test_username}',
     '${test_password}',
     'E2E Receptionist',
     'receptionist',
@@ -123,7 +123,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM auth.users u
-    WHERE u.email = '${test_email}'
+    WHERE u.email = '${test_username}'
       AND (
         u.confirmation_token IS NULL
         OR u.recovery_token IS NULL
@@ -136,7 +136,7 @@ BEGIN
 END \$\$;
 SQL
 
-sign_in_payload="$(python3 -c 'import json,sys; print(json.dumps({"email":sys.argv[1],"password":sys.argv[2]}))' "${test_email}" "${test_password}")"
+sign_in_payload="$(python3 -c 'import json,sys; print(json.dumps({"email":sys.argv[1],"password":sys.argv[2]}))' "${test_username}" "${test_password}")"
 sign_in_response="$(curl -sS -X POST "${base_url}/auth/v1/token?grant_type=password" \
   -H "apikey: ${anon_key}" \
   -H "Authorization: Bearer ${anon_key}" \
