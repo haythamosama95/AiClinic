@@ -201,7 +201,8 @@ class _StaffPicker extends StatelessWidget {
 
     return DropdownButtonFormField<String>(
       isExpanded: true,
-      value: selectedStaffId,
+      key: ValueKey(selectedStaffId),
+      initialValue: selectedStaffId,
       decoration: const InputDecoration(labelText: 'Staff member', border: OutlineInputBorder()),
       items: [
         for (final member in staff)

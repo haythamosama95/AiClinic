@@ -10,7 +10,6 @@ void main() {
   group('BranchRepository', () {
     late SettingsRpcTestClient client;
     late BranchRepository repository;
-    const orgId = '11111111-1111-4111-8111-111111111111';
 
     setUp(() {
       client = SettingsRpcTestClient();

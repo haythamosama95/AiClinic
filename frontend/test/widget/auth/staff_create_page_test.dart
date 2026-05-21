@@ -161,14 +161,16 @@ void main() {
 
   setUp(() async {
     final binding = TestWidgetsFlutterBinding.ensureInitialized();
-    binding.window.physicalSizeTestValue = const Size(1280, 1600);
-    binding.window.devicePixelRatioTestValue = 1.0;
+    final view = binding.platformDispatcher.implicitView!;
+    view.physicalSize = const Size(1280, 1600);
+    view.devicePixelRatio = 1.0;
   });
 
   tearDown(() async {
     final binding = TestWidgetsFlutterBinding.ensureInitialized();
-    binding.window.clearPhysicalSizeTestValue();
-    binding.window.clearDevicePixelRatioTestValue();
+    final view = binding.platformDispatcher.implicitView!;
+    view.resetPhysicalSize();
+    view.resetDevicePixelRatio();
   });
 
   tearDown(() {

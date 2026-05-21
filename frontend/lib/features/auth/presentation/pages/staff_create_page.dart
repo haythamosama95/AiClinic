@@ -247,7 +247,8 @@ class _StaffCreatePageState extends ConsumerState<StaffCreatePage> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<StaffRole>(
-                    value: _selectedRole,
+                    key: ValueKey(_selectedRole),
+                    initialValue: _selectedRole,
                     decoration: const InputDecoration(labelText: 'Role'),
                     items: [
                       for (final role in selectableRoles) DropdownMenuItem(value: role, child: Text(_roleLabel(role))),
@@ -310,7 +311,8 @@ class _StaffCreatePageState extends ConsumerState<StaffCreatePage> {
                   if (_selectedBranchIds.length > 1) ...[
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _primaryBranchId,
+                      key: ValueKey(_primaryBranchId),
+                      initialValue: _primaryBranchId,
                       decoration: const InputDecoration(labelText: 'Primary branch'),
                       items: [
                         for (final id in _selectedBranchIds)

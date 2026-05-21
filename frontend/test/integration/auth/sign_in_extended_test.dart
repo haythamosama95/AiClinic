@@ -15,10 +15,10 @@ import '../../support/pump_auth_app.dart';
 import 'package:ai_clinic/testing/auth_test_support.dart';
 
 class _HarnessAuthRepository extends AuthRepository {
-  _HarnessAuthRepository(this._onSignIn, {this.signInCalls = 0}) : super(_FakeSupabaseClient());
+  _HarnessAuthRepository(this._onSignIn) : super(_FakeSupabaseClient());
 
   final Future<void> Function() _onSignIn;
-  int signInCalls;
+  int signInCalls = 0;
 
   @override
   Future<void> signIn({required String username, required String password}) async {

@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class _RecordingSupabaseClient implements SupabaseClient {
   String? lastEmail;
 
+  @override
   late final GoTrueClient auth = _RecordingGoTrue(this);
 
   @override
@@ -44,6 +45,7 @@ class _RecordingGoTrue implements GoTrueClient {
 }
 
 class _ThrowingSignOutClient implements SupabaseClient {
+  @override
   late final GoTrueClient auth = _ThrowingGoTrue();
 
   @override

@@ -1,4 +1,3 @@
-import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/organization_repository.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
@@ -164,8 +163,8 @@ Widget _host({
   final fetchClient = OrganizationFetchTestClient({
     'id': '00000000-0000-4000-8000-000000000020',
     'name': 'Test Clinic',
-    if (currencyCode != null) 'currency_code': currencyCode,
-    if (timezone != null) 'timezone': timezone,
+    'currency_code': ?currencyCode,
+    'timezone': ?timezone,
     'settings_json': {},
     'subscription_tier': 'pro',
   });

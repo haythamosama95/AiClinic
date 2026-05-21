@@ -1,4 +1,3 @@
-import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';

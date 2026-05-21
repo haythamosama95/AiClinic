@@ -130,7 +130,8 @@ class StaffFormFields extends StatelessWidget {
           )
         else
           DropdownButtonFormField<StaffRole>(
-            value: selectedRole,
+            key: ValueKey(selectedRole),
+            initialValue: selectedRole,
             decoration: const InputDecoration(labelText: 'Role'),
             items: [for (final role in selectableRoles) DropdownMenuItem(value: role, child: Text(roleLabel(role)))],
             onChanged: enabled ? onRoleChanged : null,
@@ -242,7 +243,8 @@ class _ModifiableRoleFieldState extends State<_ModifiableRoleField> {
   Widget build(BuildContext context) {
     if (_isEditing) {
       return DropdownButtonFormField<StaffRole>(
-        value: widget.selectedRole,
+        key: ValueKey(widget.selectedRole),
+        initialValue: widget.selectedRole,
         decoration: const InputDecoration(labelText: 'Role'),
         items: [
           for (final role in widget.selectableRoles)
@@ -403,7 +405,8 @@ class _BranchAssignmentsEditor extends StatelessWidget {
         if (selectedBranchIds.length > 1) ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: primaryBranchId,
+            key: ValueKey(primaryBranchId),
+            initialValue: primaryBranchId,
             decoration: const InputDecoration(labelText: 'Primary branch'),
             items: [
               for (final id in selectedBranchIds)

@@ -14,10 +14,9 @@ class SettingsTableTestClient extends Fake implements SupabaseClient {
 }
 
 class _TableQueryBuilder extends Fake implements SupabaseQueryBuilder {
-  _TableQueryBuilder(this._rows) : _working = List<Map<String, dynamic>>.from(_rows);
+  _TableQueryBuilder(List<Map<String, dynamic>> rows) : _working = List<Map<String, dynamic>>.from(rows);
 
-  final List<Map<String, dynamic>> _rows;
-  List<Map<String, dynamic>> _working;
+  final List<Map<String, dynamic>> _working;
 
   @override
   PostgrestFilterBuilder<List<Map<String, dynamic>>> select([String columns = '*']) {
@@ -26,20 +25,20 @@ class _TableQueryBuilder extends Fake implements SupabaseQueryBuilder {
 }
 
 class _FilterBuilder extends Fake implements PostgrestFilterBuilder<List<Map<String, dynamic>>> {
-  _FilterBuilder(this._rows);
+  _FilterBuilder(List<Map<String, dynamic>> rows) : _rows = List<Map<String, dynamic>>.from(rows);
 
-  List<Map<String, dynamic>> _rows;
+  final List<Map<String, dynamic>> _rows;
 
   @override
   PostgrestFilterBuilder<List<Map<String, dynamic>>> eq(String column, Object value) {
-    _rows = _rows.where((row) => row[column] == value).toList();
+    _rows.retainWhere((row) => row[column] == value);
     return this;
   }
 
   @override
   PostgrestFilterBuilder<List<Map<String, dynamic>>> inFilter(String column, List values) {
     final set = values.map((v) => v.toString()).toSet();
-    _rows = _rows.where((row) => set.contains(row[column]?.toString())).toList();
+    _rows.retainWhere((row) => set.contains(row[column]?.toString()));
     return this;
   }
 
@@ -50,12 +49,11 @@ class _FilterBuilder extends Fake implements PostgrestFilterBuilder<List<Map<Str
     bool nullsFirst = false,
     String? referencedTable,
   }) {
-    _rows = List<Map<String, dynamic>>.from(_rows)
-      ..sort((a, b) {
-        final left = a[column]?.toString() ?? '';
-        final right = b[column]?.toString() ?? '';
-        return ascending ? left.compareTo(right) : right.compareTo(left);
-      });
+    _rows.sort((a, b) {
+      final left = a[column]?.toString() ?? '';
+      final right = b[column]?.toString() ?? '';
+      return ascending ? left.compareTo(right) : right.compareTo(left);
+    });
     return this;
   }
 
@@ -66,7 +64,9 @@ class _FilterBuilder extends Fake implements PostgrestFilterBuilder<List<Map<Str
 
   @override
   Future<R> then<R>(FutureOr<R> Function(List<Map<String, dynamic>> value) onValue, {Function? onError}) {
-    return Future<List<Map<String, dynamic>>>.value(_rows).then(onValue, onError: onError);
+    return Future<List<Map<String, dynamic>>>.value(
+      List<Map<String, dynamic>>.from(_rows),
+    ).then(onValue, onError: onError);
   }
 }
 

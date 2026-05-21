@@ -189,8 +189,7 @@ class _TestProvisioningNotifier extends ProvisioningNotifier {
 }
 
 class _FakeStaffAdminRepository extends StaffAdminRepository {
-  _FakeStaffAdminRepository(SettingsRpcTestClient client, {required this.ownerAlreadyExists, this.existing})
-    : super(client);
+  _FakeStaffAdminRepository(super.client, {required this.ownerAlreadyExists, this.existing});
 
   final bool ownerAlreadyExists;
   final StaffMemberDetail? existing;

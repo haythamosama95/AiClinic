@@ -9,6 +9,7 @@ import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 import 'package:ai_clinic/testing/auth_test_support.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _branchAId = 'branch-a';
@@ -16,7 +17,10 @@ const _branchBId = 'branch-b';
 const _branchA = BranchSummary(id: _branchAId, name: 'Downtown');
 const _branchB = BranchSummary(id: _branchBId, name: 'Uptown');
 
-_shellOverrides(AuthSessionNotifier notifier, {List<BranchSummary> branches = const [_branchA, _branchB]}) => [
+List<Override> _shellOverrides(
+  AuthSessionNotifier notifier, {
+  List<BranchSummary> branches = const [_branchA, _branchB],
+}) => [
   authSessionProvider.overrideWith(() => notifier),
   staffAssignableBranchesProvider.overrideWith((ref) async => branches),
 ];
