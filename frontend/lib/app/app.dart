@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/router.dart';
+import 'package:ai_clinic/app/session_activity_scope.dart';
 import 'package:ai_clinic/app/theme/app_theme.dart';
+import 'package:ai_clinic/features/settings/presentation/providers/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 import 'package:ai_clinic/shared/providers/theme_provider.dart';
 
@@ -20,8 +22,10 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> {
     super.initState();
 
     // Delay bootstrap until the widget is mounted and the provider tree exists.
-    Future<void>.microtask(() {
-      return ref.read(startupSessionProvider.notifier).bootstrap();
+    Future<void>.microtask(() async {
+      await ref.read(startupSessionProvider.notifier).bootstrap();
+      // Load persisted idle timeout before the first authenticated session.
+      await ref.read(idleTimeoutSettingsProvider.future);
     });
   }
 
@@ -30,13 +34,15 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
 
-    return MaterialApp.router(
-      title: 'AiClinic',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme(),
-      darkTheme: AppTheme.darkTheme(),
-      themeMode: themeMode,
-      routerConfig: router,
+    return SessionActivityScope(
+      child: MaterialApp.router(
+        title: 'AiClinic',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme(),
+        darkTheme: AppTheme.darkTheme(),
+        themeMode: themeMode,
+        routerConfig: router,
+      ),
     );
   }
 }

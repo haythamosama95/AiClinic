@@ -23,6 +23,18 @@ class AuthRepository {
     await _client.auth.signOut();
   }
 
+  /// Clears any auth session from client storage on cold start (FR-004).
+  ///
+  /// Safe to call when no session exists; used with [EmptyLocalStorage] so reopening
+  /// the app never restores a prior workstation session.
+  Future<void> clearPersistedSessionOnColdStart() async {
+    try {
+      await _client.auth.signOut();
+    } on AuthException {
+      // No active session to clear.
+    }
+  }
+
   /// Refreshes the JWT so custom claims reflect post-bootstrap org/branch state.
   Future<void> refreshSession() async {
     final response = await _client.auth.refreshSession();

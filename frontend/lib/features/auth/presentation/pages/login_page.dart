@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
@@ -20,6 +21,32 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  String? _surfacedSessionFailureMessage;
+
+  static bool _isUserFacingSessionEndedMessage(String? message) {
+    return message == kIdleTimeoutSignOutMessage || message == kSessionEndedMessage;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _surfaceSessionFailureMessage(ref.read(authSessionProvider));
+    });
+  }
+
+  void _surfaceSessionFailureMessage(AuthSessionState session) {
+    final message = session.failureMessage;
+    if (session.status == AuthSessionStatus.unauthenticated &&
+        _isUserFacingSessionEndedMessage(message) &&
+        message != _surfacedSessionFailureMessage) {
+      _surfacedSessionFailureMessage = message;
+      ref.read(authNotifierProvider.notifier).showExternalMessage(message!);
+    }
+  }
 
   @override
   void dispose() {
@@ -40,6 +67,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+      _surfaceSessionFailureMessage(next);
+    });
+
     final authUi = ref.watch(authNotifierProvider);
     final session = ref.watch(authSessionProvider);
     final startup = ref.watch(startupSessionProvider);

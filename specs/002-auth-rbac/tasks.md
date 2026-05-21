@@ -151,14 +151,14 @@
 
 ### Tests for User Story 2
 
-- [ ] T040 [P] [US2] Add idle timeout unit tests in `frontend/test/unit/auth/idle_timeout_service_test.dart`
-- [ ] T041 [P] [US2] Add session lifecycle integration tests in `frontend/test/integration/auth/session_lifecycle_test.dart`
+- [X] T040 [P] [US2] Add idle timeout unit tests in `frontend/test/unit/auth/idle_timeout_service_test.dart`
+- [X] T041 [P] [US2] Add session lifecycle integration tests in `frontend/test/integration/auth/session_lifecycle_test.dart`
 
 ### Implementation for User Story 2
 
-- [ ] T042 [P] [US2] Implement `IdleTimeoutService` (15 min, keyboard/pointer) in `frontend/lib/core/auth/idle_timeout_service.dart`
-- [ ] T043 [US2] Wire idle timeout and session refresh handling into `frontend/lib/shared/providers/auth_session_provider.dart` and `frontend/lib/app/app.dart`
-- [ ] T044 [US2] Ensure cold start clears any persisted auth storage in `frontend/lib/features/auth/data/auth_repository.dart`
+- [X] T042 [P] [US2] Implement `IdleTimeoutService` (15 min, keyboard/pointer) in `frontend/lib/core/auth/idle_timeout_service.dart`
+- [X] T043 [US2] Wire idle timeout and session refresh handling into `frontend/lib/shared/providers/auth_session_provider.dart` and `frontend/lib/app/app.dart`
+- [X] T044 [US2] Ensure cold start clears any persisted auth storage in `frontend/lib/features/auth/data/auth_repository.dart`
 
 **Checkpoint**: SC-004 and SC-007 scenarios pass in manual or automated tests
 

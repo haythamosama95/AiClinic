@@ -14,6 +14,8 @@ import 'package:ai_clinic/features/startup/presentation/pages/protected_placehol
 import 'package:ai_clinic/features/startup/presentation/pages/protected_route_blocked_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/setup_guidance_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_check_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/idle_timeout_settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
@@ -51,6 +53,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const StaffProvisioningPlaceholderPage(title: 'Reset staff password'),
       ),
       GoRoute(path: AppRoutes.home, builder: (context, state) => const AuthShellPage()),
+      GoRoute(path: AppRoutes.settings, builder: (context, state) => const SettingsPage()),
+      GoRoute(path: AppRoutes.settingsIdleTimeout, builder: (context, state) => const IdleTimeoutSettingsPage()),
     ],
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);

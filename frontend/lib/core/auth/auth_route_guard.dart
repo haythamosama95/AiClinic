@@ -19,8 +19,13 @@ abstract final class AuthRouteGuard {
   static bool requiresAuthentication(String location) {
     return location == AppRoutes.home ||
         location == AppRoutes.bootstrap ||
+        isSettingsRoute(location) ||
         isStaffProvisioningRoute(location) ||
         location.startsWith('${AppRoutes.protectedPrefix}/');
+  }
+
+  static bool isSettingsRoute(String location) {
+    return location == AppRoutes.settings || location == AppRoutes.settingsIdleTimeout;
   }
 
   /// Staff account administration routes (blocked until clinic bootstrap completes).
@@ -60,7 +65,8 @@ abstract final class AuthRouteGuard {
 
         if (location == AppRoutes.home ||
             requiresProtectedSetupComplete(location) ||
-            isStaffProvisioningRoute(location)) {
+            isStaffProvisioningRoute(location) ||
+            isSettingsRoute(location)) {
           return AppRoutes.bootstrap;
         }
 

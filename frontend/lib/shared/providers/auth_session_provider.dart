@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
@@ -41,8 +42,20 @@ class AuthSessionState {
 
 final authSessionProvider = NotifierProvider<AuthSessionNotifier, AuthSessionState>(AuthSessionNotifier.new);
 
+final idleTimeoutServiceProvider = Provider<IdleTimeoutService>((ref) {
+  late final IdleTimeoutService service;
+  service = IdleTimeoutService(
+    onIdleTimeout: () {
+      unawaited(ref.read(authSessionProvider.notifier).signOutDueToInactivity());
+    },
+  );
+  ref.onDispose(service.dispose);
+  return service;
+});
+
 class AuthSessionNotifier extends Notifier<AuthSessionState> {
   StreamSubscription<AuthState>? _authSubscription;
+  bool _intentionalSignOut = false;
 
   @override
   AuthSessionState build() {
@@ -80,6 +93,8 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
         return;
       }
 
+      await ref.read(authRepositoryProvider).clearPersistedSessionOnColdStart();
+
       await _bindAuthListener();
 
       if (state.status == AuthSessionStatus.unknown || state.status == AuthSessionStatus.loading) {
@@ -104,7 +119,22 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
 
   Future<void> _handleAuthState(AuthState authState) async {
     if (authState.event == AuthChangeEvent.signedOut || authState.session == null) {
-      state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
+      _setUnauthenticatedAfterExternalSignOut();
+      return;
+    }
+
+    if (authState.event == AuthChangeEvent.tokenRefreshed && authState.session != null) {
+      if (state.isAuthenticated) {
+        try {
+          final context = await _loadSessionContext(authState.session!);
+          state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+        } catch (error) {
+          AppLog.warning('auth.session.token_refresh_context_failed reason=${_contextFailureReason(error)}');
+          await ref.read(authRepositoryProvider).signOut();
+          state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: kSessionEndedMessage);
+          _syncIdleMonitoring();
+        }
+      }
       return;
     }
 
@@ -112,6 +142,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     try {
       final context = await _loadSessionContext(authState.session!);
       state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+      _syncIdleMonitoring();
       AppLog.fine(
         'auth.session.authenticated role=${context.staffProfile.role.wireValue} '
         'setup=${context.setupRequired}',
@@ -120,7 +151,24 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
       AppLog.warning('auth.session.context_failed reason=${_contextFailureReason(error)}');
       await ref.read(authRepositoryProvider).signOut();
       state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
+      _syncIdleMonitoring();
     }
+  }
+
+  void _setUnauthenticatedAfterExternalSignOut() {
+    final wasAuthenticated = state.isAuthenticated;
+    final failureMessage = _intentionalSignOut || !wasAuthenticated ? null : kSessionEndedMessage;
+    state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: failureMessage);
+    _syncIdleMonitoring();
+  }
+
+  void _syncIdleMonitoring() {
+    final idle = ref.read(idleTimeoutServiceProvider);
+    if (state.isAuthenticated) {
+      idle.enable(resetTimer: true);
+      return;
+    }
+    idle.disable();
   }
 
   static String _contextFailureReason(Object error) {
@@ -229,8 +277,30 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   }
 
   Future<void> signOut() async {
-    await ref.read(authRepositoryProvider).signOut();
+    _intentionalSignOut = true;
+    try {
+      await ref.read(authRepositoryProvider).signOut();
+    } finally {
+      _intentionalSignOut = false;
+    }
     state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
+    _syncIdleMonitoring();
+  }
+
+  /// Automatic sign-out after idle timeout (FR-005a); does not use [signOut] message semantics.
+  Future<void> signOutDueToInactivity() async {
+    if (!state.isAuthenticated) {
+      return;
+    }
+
+    _intentionalSignOut = true;
+    try {
+      await ref.read(authRepositoryProvider).signOut();
+    } finally {
+      _intentionalSignOut = false;
+    }
+    state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: kIdleTimeoutSignOutMessage);
+    _syncIdleMonitoring();
   }
 
   /// Loads session context immediately after password sign-in (avoids missing auth stream events).
@@ -257,10 +327,12 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     try {
       final context = await _loadSessionContext(session);
       state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+      _syncIdleMonitoring();
     } catch (error) {
       AppLog.warning('auth.session.refresh_failed reason=${_contextFailureReason(error)}');
       await ref.read(authRepositoryProvider).signOut();
-      state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
+      state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: kSessionEndedMessage);
+      _syncIdleMonitoring();
     }
   }
 

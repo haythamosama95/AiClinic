@@ -144,4 +144,9 @@ class AuthNotifier extends Notifier<AuthUiState> {
       state = state.copyWith(clearError: true);
     }
   }
+
+  /// Surfaces session-ended or idle-timeout messages on the login screen.
+  void showExternalMessage(String message) {
+    state = state.copyWith(errorMessage: message);
+  }
 }

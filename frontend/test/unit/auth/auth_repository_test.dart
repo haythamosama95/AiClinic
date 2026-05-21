@@ -21,6 +21,12 @@ class _RecordingGoTrue implements GoTrueClient {
   _RecordingGoTrue(this.client);
 
   final _RecordingSupabaseClient client;
+  int signOutCalls = 0;
+
+  @override
+  Future<void> signOut({SignOutScope scope = SignOutScope.local}) async {
+    signOutCalls++;
+  }
 
   @override
   Future<AuthResponse> signInWithPassword({
@@ -31,6 +37,23 @@ class _RecordingGoTrue implements GoTrueClient {
   }) async {
     client.lastEmail = email;
     return AuthResponse();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
+}
+
+class _ThrowingSignOutClient implements SupabaseClient {
+  late final GoTrueClient auth = _ThrowingGoTrue();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
+}
+
+class _ThrowingGoTrue implements GoTrueClient {
+  @override
+  Future<void> signOut({SignOutScope scope = SignOutScope.local}) async {
+    throw const AuthException('No session');
   }
 
   @override
@@ -50,6 +73,22 @@ class _InvalidStartupNotifier extends StartupSessionNotifier {
 }
 
 void main() {
+  test('clearPersistedSessionOnColdStart invokes signOut', () async {
+    final client = _RecordingSupabaseClient();
+    final repository = AuthRepository(client);
+
+    await repository.clearPersistedSessionOnColdStart();
+
+    expect((client.auth as _RecordingGoTrue).signOutCalls, 1);
+  });
+
+  test('clearPersistedSessionOnColdStart swallows AuthException', () async {
+    final client = _ThrowingSignOutClient();
+    final repository = AuthRepository(client);
+
+    await expectLater(repository.clearPersistedSessionOnColdStart(), completes);
+  });
+
   test('signIn trims email before calling auth client', () async {
     final client = _RecordingSupabaseClient();
     final repository = AuthRepository(client);

@@ -1,5 +1,6 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/router.dart';
+import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
@@ -103,6 +104,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('staff claims'), findsNothing);
+
+    session.setUnauthenticated(failureMessage: kSessionEndedMessage);
+    await tester.pumpAndSettle();
+
+    expect(find.text(kSessionEndedMessage), findsOneWidget);
   });
 
   testWidgets('authenticated user on login redirects to home', (tester) async {

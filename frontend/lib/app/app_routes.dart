@@ -17,4 +17,8 @@ abstract final class AppRoutes {
   /// Minimal staff provisioning (US6); blocked while `setup_required` is true.
   static const staffCreate = '/staff/create';
   static const staffPasswordReset = '/staff/reset-password';
+
+  /// Clinic workstation settings (authenticated, setup complete).
+  static const settings = '/settings';
+  static const settingsIdleTimeout = '/settings/idle-timeout';
 }

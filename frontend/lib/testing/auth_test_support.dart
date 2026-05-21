@@ -1,6 +1,7 @@
 // Test-only helpers; not imported by production code.
 // ignore_for_file: depend_on_referenced_packages
 
+import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
@@ -63,4 +64,9 @@ class TestAuthSessionNotifier extends AuthSessionNotifier {
 
   @override
   Future<void> refreshSessionContext() async {}
+
+  @override
+  Future<void> signOutDueToInactivity() async {
+    setUnauthenticated(failureMessage: kIdleTimeoutSignOutMessage);
+  }
 }

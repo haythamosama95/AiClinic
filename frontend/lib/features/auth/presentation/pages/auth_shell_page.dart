@@ -38,8 +38,12 @@ class AuthShellPage extends ConsumerWidget {
                           'Operational modules will appear here in later features.',
                 textAlign: TextAlign.center,
               ),
-              if (auth != null && !auth.setupRequired && ProvisioningRules.canProvisionStaff(auth.staffProfile)) ...[
+              if (auth != null && !auth.setupRequired) ...[
                 const SizedBox(height: 24),
+                FilledButton(onPressed: () => context.go(AppRoutes.settings), child: const Text('Settings')),
+              ],
+              if (auth != null && !auth.setupRequired && ProvisioningRules.canProvisionStaff(auth.staffProfile)) ...[
+                const SizedBox(height: 12),
                 FilledButton(
                   onPressed: () => context.go(AppRoutes.staffCreate),
                   child: const Text('Create staff account'),
