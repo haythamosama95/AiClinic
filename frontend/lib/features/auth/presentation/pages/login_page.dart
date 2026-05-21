@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/dev_quick_admin_sign_in_button.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 
@@ -156,6 +157,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     onPressed: isBusy ? null : () => context.go(AppRoutes.startupEntry),
                     child: const Text('Back to startup'),
                   ),
+                  const DevQuickAdminSignInButton(),
                 ],
               ),
             ),
