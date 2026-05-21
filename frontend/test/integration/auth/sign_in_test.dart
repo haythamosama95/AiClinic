@@ -57,7 +57,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Signed in as Test Staff'), findsOneWidget);
+    expect(find.textContaining('Welcome, Test Staff'), findsOneWidget);
     expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
   });
 

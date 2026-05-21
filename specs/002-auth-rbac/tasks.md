@@ -172,16 +172,16 @@
 
 ### Tests for User Story 3
 
-- [ ] T045 [P] [US3] Add permission service unit tests in `frontend/test/unit/auth/permission_service_test.dart`
-- [ ] T046 [P] [US3] Add placeholder shell and branch selector widget tests in `frontend/test/widget/auth/auth_shell_page_test.dart`
+- [X] T045 [P] [US3] Add permission service unit tests in `frontend/test/unit/auth/permission_service_test.dart`
+- [X] T046 [P] [US3] Add placeholder shell and branch selector widget tests in `frontend/test/widget/auth/auth_shell_page_test.dart`
 
 ### Implementation for User Story 3
 
-- [ ] T047 [US3] Load and cache role permissions after login in `frontend/lib/features/auth/data/permission_repository.dart`
-- [ ] T048 [US3] Implement `AuthShellPage` (header, logout, branch selector, placeholder home) in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
-- [ ] T049 [US3] Implement no-branch-assignment blocked state in `frontend/lib/features/auth/presentation/widgets/no_branch_blocked_panel.dart`
-- [ ] T050 [US3] Implement permission-denied snackbar/dialog helper in `frontend/lib/core/auth/permission_denied_handler.dart`
-- [ ] T051 [P] [US3] Add demo permission-gated control on shell for independent RBAC verification in `frontend/lib/features/auth/presentation/widgets/permission_demo_panel.dart`
+- [X] T047 [US3] Load and cache role permissions after login in `frontend/lib/features/auth/data/permission_repository.dart`
+- [X] T048 [US3] Implement `AuthShellPage` (header, logout, branch selector, placeholder home) in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
+- [X] T049 [US3] Implement no-branch-assignment blocked state in `frontend/lib/features/auth/presentation/widgets/no_branch_blocked_panel.dart`
+- [X] T050 [US3] Implement permission-denied snackbar/dialog helper in `frontend/lib/core/auth/permission_denied_handler.dart`
+- [X] T051 [P] [US3] Add demo permission-gated control on shell for independent RBAC verification in `frontend/lib/features/auth/presentation/widgets/permission_demo_panel.dart`
 
 **Checkpoint**: Five roles show expected grant/deny for sample permission keys
 

@@ -80,8 +80,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Signed in as Front Desk'), findsOneWidget);
-    expect(find.textContaining('(receptionist)'), findsOneWidget);
+    expect(find.textContaining('Welcome, Front Desk'), findsOneWidget);
+    expect(find.textContaining('Role: receptionist'), findsOneWidget);
     expect(container.read(authSessionProvider).context?.staffProfile.role, StaffRole.receptionist);
     expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
     expect(find.text(kGenericSignInFailureMessage), findsNothing);

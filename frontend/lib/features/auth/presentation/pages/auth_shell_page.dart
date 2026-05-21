@@ -2,47 +2,112 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_reset_clinic_button.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/no_branch_blocked_panel.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/permission_demo_panel.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/shell_branch_selector.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 import 'package:go_router/go_router.dart';
 
-/// Placeholder authenticated shell (full shell in US3).
+/// Authenticated placeholder shell: identity header, branch selector, RBAC demo (US3).
 class AuthShellPage extends ConsumerWidget {
   const AuthShellPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(authSessionProvider).context;
+    final session = ref.watch(authSessionProvider);
+    final auth = session.context;
+    final branchesAsync = ref.watch(staffAssignableBranchesProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('AiClinic'),
         actions: [
+          if (auth != null && auth.hasBranchAssignment)
+            branchesAsync.when(
+              data: (branches) => ShellBranchSelector(branches: branches),
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+              error: (_, _) => const SizedBox.shrink(),
+            ),
           const DevFillDummyClinicButton(),
           const DevResetClinicButton(),
           TextButton(onPressed: () => ref.read(authSessionProvider.notifier).signOut(), child: const Text('Sign out')),
         ],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
+      body: auth == null
+          ? const Center(child: Text('Loading session context…'))
+          : !auth.hasBranchAssignment
+          ? NoBranchBlockedPanel(staffName: auth.staffProfile.fullName)
+          : _ShellHomeBody(auth: auth, branchesAsync: branchesAsync),
+    );
+  }
+}
+
+class _ShellHomeBody extends StatelessWidget {
+  const _ShellHomeBody({required this.auth, required this.branchesAsync});
+
+  final AuthSessionContext auth;
+  final AsyncValue<List<BranchSummary>> branchesAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeBranchLabel = branchesAsync.maybeWhen(
+      data: (branches) {
+        final activeId = auth.activeBranchId;
+        if (activeId == null) {
+          return null;
+        }
+        for (final branch in branches) {
+          if (branch.id == activeId) {
+            return branch.name;
+          }
+        }
+        return activeId;
+      },
+      orElse: () => auth.activeBranchId,
+    );
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                auth == null
-                    ? 'Loading session context…'
-                    : 'Signed in as ${auth.staffProfile.fullName} (${auth.staffProfile.role.wireValue}). '
-                          'Operational modules will appear here in later features.',
+                'Welcome, ${auth.staffProfile.fullName}',
+                style: Theme.of(context).textTheme.headlineSmall,
                 textAlign: TextAlign.center,
               ),
-              if (auth != null && !auth.setupRequired) ...[
-                const SizedBox(height: 24),
+              const SizedBox(height: 8),
+              Text(
+                'Role: ${auth.staffProfile.role.wireValue}'
+                '${activeBranchLabel != null ? ' · Active branch: $activeBranchLabel' : ''}',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Operational modules will appear here in later features.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 24),
+              const PermissionDemoPanel(),
+              if (!auth.setupRequired) ...[
+                const SizedBox(height: 16),
                 FilledButton(onPressed: () => context.go(AppRoutes.settings), child: const Text('Settings')),
               ],
-              if (auth != null && !auth.setupRequired && ProvisioningRules.canProvisionStaff(auth.staffProfile)) ...[
+              if (!auth.setupRequired && ProvisioningRules.canProvisionStaff(auth.staffProfile)) ...[
                 const SizedBox(height: 12),
                 FilledButton(
                   onPressed: () => context.go(AppRoutes.staffCreate),

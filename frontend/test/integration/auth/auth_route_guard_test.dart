@@ -79,7 +79,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
-      expect(find.textContaining('Signed in as Test Staff'), findsOneWidget);
+      expect(find.textContaining('Welcome, Test Staff'), findsOneWidget);
     });
 
     testWidgets('authenticated user navigating to login bounces to home', (tester) async {

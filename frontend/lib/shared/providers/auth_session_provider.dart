@@ -8,6 +8,7 @@ import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
+import 'package:ai_clinic/features/auth/data/permission_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 
@@ -230,7 +231,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     final branchIdsRaw = claims['branch_ids']?.toString() ?? '';
     final branchIds = branchIdsRaw.split(',').map((value) => value.trim()).where((value) => value.isNotEmpty).toList();
 
-    final permissions = await _loadPermissions(role);
+    final permissions = await ref.read(permissionRepositoryProvider).loadGrantedPermissions(role);
     final primaryBranchId = branchIds.isEmpty ? null : branchIds.first;
     final setupRequired = claims['setup_required'] == true || claims['setup_required']?.toString() == 'true';
 
@@ -248,24 +249,6 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
       permissions: permissions,
       setupRequired: setupRequired,
     );
-  }
-
-  Future<Set<String>> _loadPermissions(StaffRole role) async {
-    final client = ref.read(supabaseClientProvider);
-    final rows = await client
-        .from('roles_permissions')
-        .select('permission_key')
-        .eq('role', role.wireValue)
-        .eq('is_granted', true);
-
-    final permissions = <String>{};
-    for (final row in rows) {
-      final key = row['permission_key']?.toString();
-      if (key != null && key.isNotEmpty) {
-        permissions.add(key);
-      }
-    }
-    return permissions;
   }
 
   void setActiveBranch(String branchId) {
