@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -154,32 +153,5 @@ class DeploymentProfile {
     }
 
     return parsed;
-  }
-}
-
-/// Loads the local deployment profile from [fileName] in the process working directory.
-class DeploymentProfileStore {
-  const DeploymentProfileStore();
-
-  static const fileName = 'deployment-profile.json';
-
-  /// Back-compat alias for UI copy that references the profile file name.
-  static const defaultFileName = fileName;
-
-  /// Returns the profile path resolved against the process working directory.
-  String resolvePath() => fileName;
-
-  /// Loads and validates [fileName] from the process working directory.
-  Future<DeploymentProfile> load() async {
-    final file = File(fileName);
-    if (!await file.exists()) {
-      throw MissingDeploymentProfileException(
-        'No deployment profile was found. Expected `$fileName` in the process working directory. '
-        'Create a local profile before startup can continue.',
-      );
-    }
-
-    final contents = await file.readAsString();
-    return DeploymentProfile.fromJsonString(contents, sourcePath: file.path);
   }
 }

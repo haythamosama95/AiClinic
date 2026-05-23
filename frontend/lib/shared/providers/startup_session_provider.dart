@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/config/deployment_profile.dart';
+import 'package:ai_clinic/core/config/deployment_profile_store.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
 import 'package:ai_clinic/core/errors/failures.dart';

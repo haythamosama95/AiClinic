@@ -3,6 +3,7 @@
 
 import 'package:ai_clinic/app/app.dart';
 import 'package:ai_clinic/core/config/deployment_profile.dart';
+import 'package:ai_clinic/core/config/deployment_profile_store.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';

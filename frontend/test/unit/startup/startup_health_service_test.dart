@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:ai_clinic/shared/services/startup_health_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,7 +24,7 @@ void main() {
           name: 'auth',
           uri: Uri.parse('http://x/auth/v1/health'),
           reachable: false,
-          statusCode: HttpStatus.badGateway,
+          statusCode: 502,
           detail: 'HTTP 502',
         ),
       ]);
@@ -36,12 +34,7 @@ void main() {
 
     test('degraded when auth is up but api fails', () {
       final status = classifyStartupConnectivity([
-        StartupDependencyCheck(
-          name: 'api',
-          uri: Uri.parse('http://x/rest/v1/'),
-          reachable: false,
-          statusCode: HttpStatus.serviceUnavailable,
-        ),
+        StartupDependencyCheck(name: 'api', uri: Uri.parse('http://x/rest/v1/'), reachable: false, statusCode: 503),
         StartupDependencyCheck(
           name: 'auth',
           uri: Uri.parse('http://x/auth/v1/health'),

@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
 
@@ -74,26 +74,59 @@ StartupConnectivityStatus classifyStartupConnectivity(List<StartupDependencyChec
 /// Probes the local Supabase API and Auth endpoints used by the startup shell.
 class StartupHealthService {
   const StartupHealthService({
+    this.client,
     this.timeout = const Duration(seconds: 3),
     this.authRetryDelay = const Duration(seconds: 2),
   });
 
+  final http.Client? client;
   final Duration timeout;
   final Duration authRetryDelay;
 
+  static const _badGatewayStatusCode = 502;
+  static const _internalServerErrorStatusCode = 500;
+
   /// Checks REST and Auth health endpoints (auth is required for sign-in).
   Future<StartupHealthResult> check(SupabaseConfig config) async {
-    var authCheck = await _probeEndpoint(name: 'auth', uri: config.authHealthUrl, apiKey: config.anonKey);
+    final httpClient = client ?? http.Client();
+    final ownsClient = client == null;
 
-    if (!authCheck.reachable && authCheck.statusCode == HttpStatus.badGateway) {
-      await Future<void>.delayed(authRetryDelay);
-      authCheck = await _probeEndpoint(name: 'auth', uri: config.authHealthUrl, apiKey: config.anonKey);
+    try {
+      var authCheck = await _probeEndpoint(
+        client: httpClient,
+        name: 'auth',
+        uri: config.authHealthUrl,
+        apiKey: config.anonKey,
+      );
+
+      if (!authCheck.reachable && authCheck.statusCode == _badGatewayStatusCode) {
+        await Future<void>.delayed(authRetryDelay);
+        authCheck = await _probeEndpoint(
+          client: httpClient,
+          name: 'auth',
+          uri: config.authHealthUrl,
+          apiKey: config.anonKey,
+        );
+      }
+
+      final apiCheck = await _probeEndpoint(
+        client: httpClient,
+        name: 'api',
+        uri: config.restProbeUrl,
+        apiKey: config.anonKey,
+      );
+
+      final checks = [apiCheck, authCheck];
+      return StartupHealthResult(
+        status: classifyStartupConnectivity(checks),
+        checkedAt: DateTime.now(),
+        checks: checks,
+      );
+    } finally {
+      if (ownsClient) {
+        httpClient.close();
+      }
     }
-
-    final apiCheck = await _probeEndpoint(name: 'api', uri: config.restProbeUrl, apiKey: config.anonKey);
-
-    final checks = [apiCheck, authCheck];
-    return StartupHealthResult(status: classifyStartupConnectivity(checks), checkedAt: DateTime.now(), checks: checks);
   }
 
   /// Performs a lightweight GET request and captures the reachability outcome.
@@ -103,30 +136,26 @@ class StartupHealthService {
     required Uri uri,
     required String apiKey,
   }) {
-    return _probeEndpoint(name: name, uri: uri, apiKey: apiKey);
+    final httpClient = client ?? http.Client();
+    return _probeEndpoint(client: httpClient, name: name, uri: uri, apiKey: apiKey);
   }
 
   Future<StartupDependencyCheck> _probeEndpoint({
+    required http.Client client,
     required String name,
     required Uri uri,
     required String apiKey,
   }) async {
-    final client = HttpClient()..connectionTimeout = timeout;
-
     try {
-      final request = await client.getUrl(uri).timeout(timeout);
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set('apikey', apiKey);
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
-
-      final response = await request.close().timeout(timeout);
-      await response.drain();
+      final response = await client
+          .get(uri, headers: {'Accept': 'application/json', 'apikey': apiKey, 'Authorization': 'Bearer $apiKey'})
+          .timeout(timeout);
 
       final statusCode = response.statusCode;
       return StartupDependencyCheck(
         name: name,
         uri: uri,
-        reachable: statusCode < HttpStatus.internalServerError,
+        reachable: statusCode < _internalServerErrorStatusCode,
         statusCode: statusCode,
         detail: 'HTTP $statusCode',
       );
@@ -137,12 +166,10 @@ class StartupHealthService {
         reachable: false,
         detail: 'Timed out after ${timeout.inSeconds}s',
       );
-    } on SocketException catch (error) {
+    } on http.ClientException catch (error) {
       return StartupDependencyCheck(name: name, uri: uri, reachable: false, detail: error.message);
-    } on HttpException catch (error) {
-      return StartupDependencyCheck(name: name, uri: uri, reachable: false, detail: error.message);
-    } finally {
-      client.close(force: true);
+    } on Exception catch (error) {
+      return StartupDependencyCheck(name: name, uri: uri, reachable: false, detail: error.toString());
     }
   }
 }

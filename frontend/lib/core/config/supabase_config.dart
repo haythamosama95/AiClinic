@@ -37,7 +37,13 @@ class SupabaseConfig {
   Uri get authHealthUrl => appendPath('auth/v1/health');
 
   /// PostgREST OpenAPI root used as the API availability probe (Kong root often returns 404).
-  Uri get restProbeUrl => appendPath('rest/v1/');
+  ///
+  /// The trailing slash is required: `/rest/v1` is a Kong 404 without CORS headers, which
+  /// browsers report as "Failed to fetch" during web startup probes.
+  Uri get restProbeUrl {
+    final base = appendPath('rest/v1');
+    return base.replace(path: '${base.path}/');
+  }
 
   /// Appends a path segment without losing the base profile URL context.
   Uri appendPath(String path) {

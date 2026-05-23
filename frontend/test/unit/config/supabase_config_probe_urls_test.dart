@@ -7,7 +7,8 @@ void main() {
     final config = SupabaseConfig.fromDeploymentProfile(sampleDeploymentProfile());
 
     expect(config.authHealthUrl.path, '/auth/v1/health');
-    expect(config.restProbeUrl.path, '/rest/v1');
+    expect(config.restProbeUrl.path, '/rest/v1/');
+    expect(config.restProbeUrl.toString(), endsWith('/rest/v1/'));
     expect(config.url.path, isEmpty);
   });
 }
