@@ -57,6 +57,8 @@ final idleTimeoutServiceProvider = Provider<IdleTimeoutService>((ref) {
 class AuthSessionNotifier extends Notifier<AuthSessionState> {
   StreamSubscription<AuthState>? _authSubscription;
   bool _intentionalSignOut = false;
+  Future<void>? _ensureSupabaseReadyTask;
+  bool _clearedPersistedSessionOnColdStart = false;
 
   @override
   AuthSessionState build() {
@@ -78,7 +80,11 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     return AuthSessionState.initial();
   }
 
-  Future<void> _ensureSupabaseReady(StartupSessionState startup) async {
+  Future<void> _ensureSupabaseReady(StartupSessionState startup) {
+    return _ensureSupabaseReadyTask ??= _runEnsureSupabaseReady(startup);
+  }
+
+  Future<void> _runEnsureSupabaseReady(StartupSessionState startup) async {
     final profile = startup.deploymentProfile;
     if (profile == null) {
       return;
@@ -94,7 +100,12 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
         return;
       }
 
-      await ref.read(authRepositoryProvider).clearPersistedSessionOnColdStart();
+      // Run once per process. Concurrent bootstrap + sign-in used to call signOut again
+      // after password sign-in and break the first PostgREST request (PGRST301).
+      if (!_clearedPersistedSessionOnColdStart) {
+        await ref.read(authRepositoryProvider).clearPersistedSessionOnColdStart();
+        _clearedPersistedSessionOnColdStart = true;
+      }
 
       await _bindAuthListener();
 

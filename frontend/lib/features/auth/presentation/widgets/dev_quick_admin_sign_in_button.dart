@@ -2,7 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
+import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 
 /// Local seed admin from [20260516100400_auth_rbac_seed.sql] (`admin` / `admin`).
 const kDevAdminUsername = 'admin';
@@ -19,7 +22,10 @@ class DevQuickAdminSignInButton extends ConsumerWidget {
     }
 
     final authUi = ref.watch(authNotifierProvider);
-    final isBusy = authUi.isSubmitting;
+    final session = ref.watch(authSessionProvider);
+    final startup = ref.watch(startupSessionProvider);
+    final supabaseReady = startup.configurationStatus == StartupConfigurationStatus.valid && SupabaseBootstrap.isReady;
+    final isBusy = authUi.isSubmitting || session.status == AuthSessionStatus.loading || !supabaseReady;
 
     return TextButton.icon(
       onPressed: isBusy
