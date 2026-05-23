@@ -19,9 +19,11 @@ DECLARE
   v_user_b uuid := 'e2000000-0000-4000-8000-0000000000b2';
   v_staff_a uuid := 'f2000000-0000-4000-8000-0000000000a1';
   v_staff_b uuid := 'f2000000-0000-4000-8000-0000000000b2';
+  v_patient_a uuid := 'a2000000-0000-4000-8000-0000000000a1';
   v_patient_b uuid := 'a2000000-0000-4000-8000-0000000000b2';
   v_result public.rpc_result;
   v_visible_count int;
+  v_dml_failed boolean;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
@@ -64,9 +66,9 @@ BEGIN
   INSERT INTO public.patients (
     id, branch_id, organization_id, full_name, phone, created_by, updated_by
   )
-  VALUES (
-    v_patient_b, v_branch_b, v_org_b, 'Org B Patient', '201234567890', v_user_b, v_user_b
-  );
+  VALUES
+    (v_patient_a, v_branch_a, v_org_a, 'Org A Patient', '201111111111', v_user_a, v_user_a),
+    (v_patient_b, v_branch_b, v_org_b, 'Org B Patient', '201234567890', v_user_b, v_user_b);
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
@@ -144,6 +146,91 @@ BEGIN
         WHERE (item ->> 'id')::uuid = v_patient_b
       ),
     COALESCE(v_result.error_code, 'items=' || jsonb_array_length(COALESCE(v_result.data -> 'items', '[]'::jsonb))::text)
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Direct INSERT blocked by RLS.
+  v_dml_failed := false;
+  BEGIN
+    INSERT INTO public.patients (
+      id, branch_id, organization_id, full_name, created_by, updated_by
+    )
+    VALUES (
+      'a2000000-0000-4000-8000-000000000099',
+      v_branch_a,
+      v_org_a,
+      'Direct Insert Attempt',
+      v_user_a,
+      v_user_a
+    );
+  EXCEPTION WHEN insufficient_privilege OR OTHERS THEN
+    v_dml_failed := true;
+  END;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_rls_results VALUES (
+    'direct_insert_denied',
+    v_dml_failed,
+    CASE WHEN v_dml_failed THEN 'insert blocked' ELSE 'insert succeeded unexpectedly' END
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Direct UPDATE blocked by RLS (no rows match policy; name must remain unchanged).
+  UPDATE public.patients
+  SET full_name = 'Direct Update Attempt'
+  WHERE id = v_patient_a;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_rls_results VALUES (
+    'direct_update_denied',
+    (SELECT full_name FROM public.patients p WHERE p.id = v_patient_a) = 'Org A Patient',
+    'name=' || (SELECT full_name FROM public.patients p WHERE p.id = v_patient_a)
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Direct DELETE blocked by RLS (row must still exist).
+  DELETE FROM public.patients WHERE id = v_patient_a;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_rls_results VALUES (
+    'direct_delete_denied',
+    EXISTS (SELECT 1 FROM public.patients p WHERE p.id = v_patient_a),
+    'exists=' || EXISTS (SELECT 1 FROM public.patients p WHERE p.id = v_patient_a)::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Tampered organization_id in JWT must not expose org A patient.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_a::text,
+      'role', 'authenticated',
+      'organization_id', v_org_b::text,
+      'branch_ids', v_branch_a::text,
+      'staff_member_id', v_staff_a::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_result := public.get_patient(v_patient_a);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_rls_results VALUES (
+    'tampered_org_jwt_get_denied',
+    NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.search_patients(NULL, 'organization', NULL, 25, 0);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_rls_results VALUES (
+    'tampered_org_jwt_search_empty',
+    v_result.success
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(COALESCE(v_result.data -> 'items', '[]'::jsonb)) item
+        WHERE (item ->> 'id')::uuid = v_patient_a
+      ),
+    'items=' || jsonb_array_length(COALESCE(v_result.data -> 'items', '[]'::jsonb))::text
   );
 END;
 $$;

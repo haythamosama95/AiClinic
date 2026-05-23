@@ -25,10 +25,13 @@ DECLARE
   v_branch_second uuid;
   v_patient_main uuid;
   v_patient_second uuid;
+  v_patient_name_only uuid;
+  v_patient_wildcard uuid;
   v_updated_at timestamptz;
   v_total int;
   v_items jsonb;
   v_audit_count int;
+  v_limit int;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.patients;
@@ -133,6 +136,46 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Invalid gender rejected.
+  v_result := public.create_patient(v_branch_main, 'Bad Gender', NULL, NULL, 'invalid', NULL, NULL, false);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'create_rejects_invalid_gender',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Oversized notes rejected.
+  v_result := public.create_patient(
+    v_branch_main,
+    'Long Notes',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    repeat('x', 4001),
+    false
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'create_rejects_oversized_notes',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Name-only registration (spec TC 1).
+  v_result := public.create_patient(v_branch_main, 'Name Only Patient', NULL, NULL, NULL, NULL, NULL, false);
+  v_patient_name_only := (v_result.data ->> 'patient_id')::uuid;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'create_name_only_success',
+    v_result.success AND v_patient_name_only IS NOT NULL,
+    COALESCE(v_result.error_code, v_patient_name_only::text)
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Register patient at main branch.
   v_result := public.create_patient(
     v_branch_main,
@@ -163,6 +206,17 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Standalone duplicate check returns candidates.
+  v_result := public.check_patient_duplicates('Ahmed Hassan', '201005551234', '1990-05-15'::date, NULL, NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'check_patient_duplicates_returns_candidates',
+    v_result.success
+      AND jsonb_array_length(COALESCE(v_result.data -> 'candidates', '[]'::jsonb)) >= 1,
+    'candidates=' || jsonb_array_length(COALESCE(v_result.data -> 'candidates', '[]'::jsonb))::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- National ID hard block for duplicate.
   v_result := public.create_patient(
     v_branch_main,
@@ -178,6 +232,27 @@ BEGIN
   INSERT INTO patient_crud_results VALUES (
     'create_blocks_duplicate_national_id',
     NOT v_result.success AND v_result.error_code = 'NATIONAL_ID_EXISTS',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Duplicate advisory (name + DOB) without acknowledge.
+  v_result := public.create_patient(
+    v_branch_main,
+    'Ahmed Hassan',
+    '209900001122',
+    '1990-05-15'::date,
+    NULL,
+    NULL,
+    NULL,
+    false
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'create_duplicate_warning_name_dob',
+    NOT v_result.success
+      AND v_result.error_code = 'DUPLICATE_WARNING'
+      AND jsonb_array_length(COALESCE(v_result.data -> 'candidates', '[]'::jsonb)) >= 1,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -230,6 +305,38 @@ BEGIN
     'create_at_second_branch',
     v_result.success AND v_patient_second IS NOT NULL,
     COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Wildcard patient for LIKE escape verification.
+  v_result := public.create_patient(v_branch_second, '100% Promo', NULL, NULL, NULL, NULL, NULL, false);
+  v_patient_wildcard := (v_result.data ->> 'patient_id')::uuid;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'create_wildcard_name_patient',
+    v_result.success AND v_patient_wildcard IS NOT NULL,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Duplicate check excludes self on edit.
+  v_result := public.check_patient_duplicates(
+    'Ahmed Hassan',
+    '201005551234',
+    '1990-05-15'::date,
+    'NAT-001',
+    v_patient_main
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'check_patient_duplicates_excludes_self_on_edit',
+    v_result.success
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(COALESCE(v_result.data -> 'candidates', '[]'::jsonb)) item
+        WHERE (item ->> 'id')::uuid = v_patient_main
+      ),
+  COALESCE(v_result.error_code, 'candidates=' || jsonb_array_length(COALESCE(v_result.data -> 'candidates', '[]'::jsonb))::text)
   );
   PERFORM set_config('role', 'authenticated', true);
 
@@ -307,6 +414,44 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Pagination limit clamped to 1..100.
+  v_result := public.search_patients(NULL, 'organization', NULL, 0, 0);
+  v_limit := (v_result.data ->> 'limit')::int;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'search_pagination_limit_clamped_low',
+    v_result.success AND v_limit = 1,
+    'limit=' || COALESCE(v_result.data ->> 'limit', '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.search_patients(NULL, 'organization', NULL, 500, 0);
+  v_limit := (v_result.data ->> 'limit')::int;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'search_pagination_limit_clamped_high',
+    v_result.success AND v_limit = 100,
+    'limit=' || COALESCE(v_result.data ->> 'limit', '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Literal percent in name must not broaden LIKE match.
+  v_result := public.search_patients('100%', 'organization', NULL, 25, 0);
+  v_items := COALESCE(v_result.data -> 'items', '[]'::jsonb);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'search_wildcard_percent_escaped',
+    v_result.success
+      AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_items) item WHERE (item ->> 'id')::uuid = v_patient_wildcard
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_items) item WHERE (item ->> 'id')::uuid = v_patient_main
+      ),
+    'items=' || jsonb_array_length(v_items)::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- get_patient returns profile.
   v_result := public.get_patient(v_patient_main);
   PERFORM set_config('role', 'postgres', true);
@@ -363,6 +508,90 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- National ID conflict on update.
+  v_result := public.get_patient(v_patient_second);
+  v_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.update_patient(
+    v_patient_second,
+    'Branch Two Patient',
+    v_updated_at,
+    NULL,
+    NULL,
+    NULL,
+    'NAT-001',
+    NULL,
+    false
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'update_blocks_duplicate_national_id',
+    NOT v_result.success AND v_result.error_code = 'NATIONAL_ID_EXISTS',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Gender preserved when p_gender omitted.
+  v_result := public.get_patient(v_patient_main);
+  v_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.update_patient(
+    v_patient_main,
+    'Ahmed Hassan Gender Check',
+    v_updated_at,
+    v_result.data ->> 'phone',
+    (v_result.data ->> 'date_of_birth')::date,
+    NULL,
+    v_result.data ->> 'national_id',
+    v_result.data ->> 'notes',
+    false
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'update_preserves_gender_when_omitted',
+    v_result.success
+      AND (SELECT gender::text FROM public.patients p WHERE p.id = v_patient_main) = 'male',
+    COALESCE(v_result.error_code, (SELECT gender::text FROM public.patients p WHERE p.id = v_patient_main))
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.get_patient(v_patient_main);
+  v_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.record_id = v_patient_main AND al.action = 'patient.update';
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'update_writes_audit_log',
+    v_audit_count >= 1,
+    'count=' || v_audit_count::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Duplicate warning on edit when phone collides.
+  v_result := public.get_patient(v_patient_second);
+  v_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.update_patient(
+    v_patient_second,
+    'Branch Two Patient',
+    v_updated_at,
+    '209911112233',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    false
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'update_duplicate_warning_on_edit',
+    NOT v_result.success
+      AND v_result.error_code = 'DUPLICATE_WARNING'
+      AND jsonb_array_length(COALESCE(v_result.data -> 'candidates', '[]'::jsonb)) >= 1,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Archive patient.
   v_result := public.archive_patient(v_patient_main);
   PERFORM set_config('role', 'postgres', true);
@@ -376,6 +605,16 @@ BEGIN
     'archive_sets_is_deleted',
     (SELECT is_deleted FROM public.patients p WHERE p.id = v_patient_main),
     'is_deleted flag'
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Second archive attempt rejected.
+  v_result := public.archive_patient(v_patient_main);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'double_archive_rejected',
+    NOT v_result.success AND v_result.error_code = 'PATIENT_ARCHIVED',
+    COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
@@ -422,6 +661,45 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'lab_staff_create_forbidden',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.get_patient(v_patient_second);
+  v_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.update_patient(
+    v_patient_second,
+    'Lab Edit Attempt',
+    v_updated_at,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    false
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'lab_staff_update_forbidden',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.archive_patient(v_patient_second);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'lab_staff_archive_forbidden',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.check_patient_duplicates('Branch Two Patient', '2099887766', NULL, NULL, NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'lab_staff_check_duplicates_forbidden',
     NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
     COALESCE(v_result.error_code, '<null>')
   );
