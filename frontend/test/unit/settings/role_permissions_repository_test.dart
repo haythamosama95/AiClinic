@@ -50,11 +50,11 @@ void main() {
       );
     });
 
-    test('advanced: administrator denied matrix write from server', () async {
+    test('advanced: non-privileged role denied matrix write from server', () async {
       client.rpcResults['update_role_permission'] = {
         'success': false,
         'error_code': 'FORBIDDEN',
-        'error_message': 'Only owners may update the permission matrix.',
+        'error_message': 'Only owners and administrators may update the permission matrix.',
       };
 
       expect(

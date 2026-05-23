@@ -27,6 +27,7 @@ void main() {
       expect(AuthRouteGuard.canAccessOrganizationSettings(auth), isTrue);
       expect(AuthRouteGuard.canAccessPermissionMatrix(auth), isTrue);
       expect(AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsOrganization, auth: auth), isNull);
+      expect(AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsPermissions, auth: auth), isNull);
     });
 
     test('doctor denied admin routes redirects to settings hub', () {

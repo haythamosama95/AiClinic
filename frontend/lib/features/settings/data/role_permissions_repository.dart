@@ -6,7 +6,7 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/permission_matrix_row.dart';
 
-/// Steady-state role permission matrix reads and owner updates.
+/// Steady-state role permission matrix reads and owner/administrator updates.
 class RolePermissionsRepository with SettingsRpcInvoker {
   RolePermissionsRepository(this._client);
 

@@ -24,6 +24,18 @@ String branchMessageForRpc(RpcFailure failure) {
   };
 }
 
+/// User-facing messages for role permission matrix RPC error codes.
+String permissionMessageForRpc(RpcFailure failure) {
+  return switch (failure.code) {
+    'FORBIDDEN' => 'Only clinic owners and administrators can change role permissions.',
+    'INVALID_PERMISSION' => failure.message,
+    'PERMISSION_NOT_FOUND' => 'That permission row could not be found. Refresh the page and try again.',
+    'INVALID_INPUT' => failure.message,
+    'RPC_NOT_APPLIED' => failure.message,
+    _ => 'Unable to update role permissions. Check connectivity and try again.',
+  };
+}
+
 /// User-facing messages for staff management RPC error codes.
 String staffMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {

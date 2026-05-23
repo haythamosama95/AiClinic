@@ -13,8 +13,12 @@ class SettingsRpcTestClient extends RpcCaptureSupabaseClient {
   final Map<String, Map<String, dynamic>> rpcResults;
   final PostgrestException? rpcException;
 
+  /// Every RPC invocation in call order (for batch-save tests).
+  final List<({String function, Map<String, dynamic>? params})> rpcCalls = [];
+
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    rpcCalls.add((function: fn, params: params == null ? null : Map<String, dynamic>.from(params)));
     lastFunction = fn;
     lastParams = params == null ? null : Map<String, dynamic>.from(params);
     if (rpcException != null) {

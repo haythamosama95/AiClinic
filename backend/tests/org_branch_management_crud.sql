@@ -424,7 +424,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Owner toggles permission matrix; administrator denied write.
+  -- Owner and administrator may toggle permission matrix; other roles denied.
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(
@@ -465,16 +465,44 @@ BEGIN
   );
   v_result := public.update_role_permission('doctor', 'patients.view', false);
   PERFORM set_config('role', 'postgres', true);
+  SELECT rp.is_granted INTO v_grant
+  FROM public.roles_permissions rp
+  WHERE rp.role = 'doctor' AND rp.permission_key = 'patients.view' AND rp.is_deleted = false;
   INSERT INTO org_branch_crud_results VALUES (
-    'permission_matrix_admin_denied',
+    'permission_matrix_admin_write',
+    v_result.success AND v_grant = false,
+    COALESCE(v_result.error_code, v_grant::text)
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_doctor_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_doctor_staff::text,
+      'staff_role', 'doctor',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_result := public.update_role_permission('nurse', 'patients.view', false);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_branch_crud_results VALUES (
+    'permission_matrix_doctor_denied',
     NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
     COALESCE(v_result.error_code, '<null>')
   );
 
-  -- Restore administrator branch manage grant for downstream tests.
+  -- Restore matrix grants for downstream tests.
   UPDATE public.roles_permissions
   SET is_granted = true, updated_at = now()
   WHERE role = 'administrator' AND permission_key = 'settings.manage_branches' AND is_deleted = false;
+  UPDATE public.roles_permissions
+  SET is_granted = true, updated_at = now()
+  WHERE role = 'doctor' AND permission_key = 'patients.view' AND is_deleted = false;
 END;
 $$;
 

@@ -100,10 +100,17 @@ void main() {
       ),
     );
 
+    final statusesDuringReload = <AuthSessionStatus>[];
+    final removeListener = container.listen(authSessionProvider, (_, next) {
+      statusesDuringReload.add(next.status);
+    });
+
     await notifier.reloadContext();
+    removeListener.close();
 
     expect(refreshCalls, 1);
     expect(permissionLoads, 1);
+    expect(statusesDuringReload, isNot(contains(AuthSessionStatus.loading)));
     final context = container.read(authSessionProvider).context;
     expect(context?.permissions, contains('settings.manage_branches'));
     expect(container.read(authSessionProvider).status, AuthSessionStatus.authenticated);

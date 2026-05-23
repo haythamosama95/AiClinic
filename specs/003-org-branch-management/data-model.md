@@ -62,41 +62,41 @@ CREATE UNIQUE INDEX IF NOT EXISTS branches_organization_code_unique
 
 ### Role permission (`roles_permissions`)
 
-| Field            | Notes                                                |
-| ---------------- | ---------------------------------------------------- |
-| `role`           | One of five `staff_role` values                      |
-| `permission_key` | Catalog key from architecture; UI cannot invent keys |
-| `is_granted`     | Owner may toggle via `update_role_permission`        |
+| Field            | Notes                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| `role`           | One of five `staff_role` values                                |
+| `permission_key` | Catalog key from architecture; UI cannot invent keys           |
+| `is_granted`     | Owner or administrator may toggle via `update_role_permission` |
 
 **Global catalog**: Not per-organization rows (unchanged from V1-1).
 
 ## Authorization matrix (V1-2 operations)
 
-| Operation                         | Owner                                 | Administrator   | Doctor / Receptionist / Lab |
-| --------------------------------- | ------------------------------------- | --------------- | --------------------------- |
-| View/update organization          | Yes                                   | Yes             | No                          |
-| Branch CRUD (manage)              | If `settings.manage_branches` granted | If granted      | No                          |
-| Staff CRUD (manage)               | If `settings.manage_staff` granted    | If granted      | No                          |
-| View permission matrix            | Yes                                   | Yes (read-only) | No                          |
-| Edit permission matrix            | Yes                                   | No              | No                          |
-| Branch switcher (active branches) | If assigned                           | If assigned     | If assigned                 |
-| Password reset other staff        | Yes                                   | Yes             | No                          |
+| Operation                         | Owner                                 | Administrator | Doctor / Receptionist / Lab |
+| --------------------------------- | ------------------------------------- | ------------- | --------------------------- |
+| View/update organization          | Yes                                   | Yes           | No                          |
+| Branch CRUD (manage)              | If `settings.manage_branches` granted | If granted    | No                          |
+| Staff CRUD (manage)               | If `settings.manage_staff` granted    | If granted    | No                          |
+| View permission matrix            | Yes                                   | Yes           | No                          |
+| Edit permission matrix            | Yes                                   | Yes           | No                          |
+| Branch switcher (active branches) | If assigned                           | If assigned   | If assigned                 |
+| Password reset other staff        | Yes                                   | Yes           | No                          |
 
 Organization settings use **role check**; branch/staff use **permission keys** from seeded matrix (owner/administrator seeded with manage grants in V1-1).
 
 ## RPC inventory (planned names)
 
-| RPC                                       | Purpose                             |
-| ----------------------------------------- | ----------------------------------- |
-| `update_organization`                     | Profile/locale/settings_json update |
-| `manage_create_branch`                    | Steady-state branch create          |
-| `update_branch`                           | Field update                        |
-| `set_branch_active`                       | Deactivate/reactivate (`is_active`) |
-| `update_staff_member`                     | Profile, role, active, assignments  |
-| `set_staff_active`                        | Deactivate/reactivate staff         |
-| `update_role_permission`                  | Toggle grant (owner only)           |
-| *(existing)* `create_staff_account`       | Create staff                        |
-| *(existing)* `admin_reset_staff_password` | Reset password                      |
+| RPC                                       | Purpose                               |
+| ----------------------------------------- | ------------------------------------- |
+| `update_organization`                     | Profile/locale/settings_json update   |
+| `manage_create_branch`                    | Steady-state branch create            |
+| `update_branch`                           | Field update                          |
+| `set_branch_active`                       | Deactivate/reactivate (`is_active`)   |
+| `update_staff_member`                     | Profile, role, active, assignments    |
+| `set_staff_active`                        | Deactivate/reactivate staff           |
+| `update_role_permission`                  | Toggle grant (owner or administrator) |
+| *(existing)* `create_staff_account`       | Create staff                          |
+| *(existing)* `admin_reset_staff_password` | Reset password                        |
 
 ## Client models (Flutter)
 

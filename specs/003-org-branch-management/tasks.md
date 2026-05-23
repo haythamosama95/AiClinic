@@ -148,22 +148,22 @@
 
 ## Phase 7: User Story 5 - Manage Role Permissions (Priority: P2)
 
-**Goal**: Owner edits permission matrix; administrator view-only; server enforces grants immediately; client cache reloads on login/resume/post-save
+**Goal**: Owner and administrator edit permission matrix; server enforces grants immediately; client cache reloads on login/resume/post-save
 
 **Independent Test**: Owner revokes grant → doctor RPC denied immediately; doctor UI updates after `reloadContext()` or re-login
 
 ### Tests for User Story 5
 
-- [ ] T043 [P] [US5] Add permission matrix RPC tests (owner write, administrator denied) in `backend/tests/org_branch_management_crud.sql`
-- [ ] T044 [P] [US5] Add unit tests for `RolePermissionsRepository` in `frontend/test/unit/settings/role_permissions_repository_test.dart`
-- [ ] T045 [P] [US5] Add widget tests for view-only vs editable matrix in `frontend/test/widget/settings/role_permissions_page_test.dart`
+- [x] T043 [P] [US5] Add permission matrix RPC tests (owner write, administrator denied) in `backend/tests/org_branch_management_crud.sql`
+- [x] T044 [P] [US5] Add unit tests for `RolePermissionsRepository` in `frontend/test/unit/settings/role_permissions_repository_test.dart`
+- [x] T045 [P] [US5] Add widget tests for view-only vs editable matrix in `frontend/test/widget/settings/role_permissions_page_test.dart`
 
 ### Implementation for User Story 5
 
-- [ ] T046 [US5] Implement `RolePermissionsRepository` fetch matrix and `updateRolePermission` in `frontend/lib/features/settings/data/role_permissions_repository.dart`
-- [ ] T047 [US5] Implement `RolePermissionsPage` (owner toggles, administrator read-only) in `frontend/lib/features/settings/presentation/pages/role_permissions_page.dart`
-- [ ] T048 [US5] Call `reloadContext()` after successful matrix save and on app resume hook in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart` or app lifecycle wrapper in `frontend/lib/app/app.dart`
-- [ ] T049 [US5] Restrict permissions route to owner (edit) and administrator (view) in `frontend/lib/app/router.dart`
+- [x] T046 [US5] Implement `RolePermissionsRepository` fetch matrix and `updateRolePermission` in `frontend/lib/features/settings/data/role_permissions_repository.dart`
+- [x] T047 [US5] Implement `RolePermissionsPage` (owner toggles, administrator read-only) in `frontend/lib/features/settings/presentation/pages/role_permissions_page.dart`
+- [x] T048 [US5] Call `reloadContext()` after successful matrix save and on app resume hook in `frontend/lib/features/auth/presentation/providers/auth_notifier.dart` or app lifecycle wrapper in `frontend/lib/app/app.dart`
+- [x] T049 [US5] Restrict permissions route to owner (edit) and administrator (view) in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 8–9; acceptance criteria 9–10; FR-011 server vs client timing
 

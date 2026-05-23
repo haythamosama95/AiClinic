@@ -309,7 +309,8 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
       return;
     }
 
-    state = state.copyWith(status: AuthSessionStatus.loading, clearFailure: true);
+    // Keep [isAuthenticated] true during refresh so route guards do not redirect
+    // away from deep-linked settings pages (e.g. role permissions matrix).
     try {
       final context = await _loadSessionContext(session);
       state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);

@@ -9,7 +9,7 @@ View and edit global `roles_permissions` grants per staff role (V1-2).
 | Action       | Owner | Administrator | Other |
 | ------------ | ----- | ------------- | ----- |
 | View matrix  | Yes   | Yes           | No    |
-| Update grant | Yes   | No            | No    |
+| Update grant | Yes   | Yes           | No    |
 
 ## Read: permission matrix
 
@@ -23,13 +23,13 @@ from('roles_permissions')
   .order('permission_key')
 ```
 
-**UI shape**: Rows grouped by `permission_key`; columns or tabs per `staff_role` (five roles). Toggle only for owner.
+**UI shape**: Rows grouped by `permission_key`; columns or tabs per `staff_role` (five roles). Toggle for owner and administrator.
 
 **Catalog**: Only keys present in seed + architecture doc; UI does not add arbitrary keys in V1-2.
 
 ## RPC: `update_role_permission`
 
-**Caller**: `owner` only
+**Caller**: `owner` or `administrator`
 
 | Parameter          | Type       | Required |
 | ------------------ | ---------- | -------- |
@@ -48,11 +48,11 @@ from('roles_permissions')
 
 ## Effective timing (FR-011)
 
-| Layer               | Behavior                                                                      |
-| ------------------- | ----------------------------------------------------------------------------- |
-| Server RPCs         | Read current `is_granted` immediately                                         |
-| Client cache        | Updates on next login or `AuthSessionNotifier.reloadContext()`                |
-| Triggers for reload | App resume, successful matrix save (owner), optional explicit refresh control |
+| Layer               | Behavior                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------- |
+| Server RPCs         | Read current `is_granted` immediately                                                       |
+| Client cache        | Updates on next login or `AuthSessionNotifier.reloadContext()`                              |
+| Triggers for reload | App resume, successful matrix save (owner/administrator), optional explicit refresh control |
 
 **Test implication**: After owner revokes `settings.manage_branches` for administrator, administrator’s **RPC** branch create fails immediately; **UI** may hide controls only after reload.
 
@@ -60,6 +60,6 @@ from('roles_permissions')
 
 **Route**: `/settings/permissions`
 
-**States**: View-only (administrator), Editable toggles (owner), Permission denied
+**States**: Editable toggles (owner, administrator), Permission denied (other roles)
 
 **Out of scope**: Per-organization permission overrides; custom permission key authoring

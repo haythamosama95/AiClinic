@@ -18,7 +18,7 @@ import 'package:ai_clinic/features/settings/presentation/pages/idle_timeout_sett
 import 'package:ai_clinic/features/settings/presentation/pages/branch_form_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/branch_list_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/organization_settings_page.dart';
-import 'package:ai_clinic/features/settings/presentation/pages/settings_admin_placeholder_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_form_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
@@ -76,10 +76,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '${AppRoutes.settingsStaff}/:staffId/reset-password',
         builder: (context, state) => StaffSettingsPasswordResetPage(staffId: state.pathParameters['staffId']!),
       ),
-      GoRoute(
-        path: AppRoutes.settingsPermissions,
-        builder: (context, state) => const SettingsAdminPlaceholderPage(title: 'Role permissions'),
-      ),
+      GoRoute(path: AppRoutes.settingsPermissions, builder: (context, state) => const RolePermissionsPage()),
     ],
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);

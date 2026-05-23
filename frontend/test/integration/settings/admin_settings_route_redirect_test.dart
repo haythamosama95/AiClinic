@@ -80,6 +80,19 @@ void main() {
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.bootstrap);
     });
 
+    testWidgets('doctor deep-linking to permissions is redirected to settings hub', (tester) async {
+      await pumpAuthApp(tester, extraOverrides: [authSessionProvider.overrideWith(_DoctorSessionNotifier.new)]);
+      await completeStartupBootstrap(tester);
+
+      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+      (container.read(authSessionProvider.notifier) as _DoctorSessionNotifier).setAuthenticated();
+      container.read(appRouterProvider).go(AppRoutes.settingsPermissions);
+      await tester.pumpAndSettle();
+
+      expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.settings);
+      expect(find.text('Role permissions'), findsNothing);
+    });
+
     testWidgets('unauthenticated user opening organization admin route goes to login', (tester) async {
       await pumpAuthApp(tester);
       await completeStartupBootstrap(tester);

@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/app/session_activity_scope.dart';
 import 'package:ai_clinic/app/theme/app_theme.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/idle_timeout_settings_notifier.dart';
+import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 import 'package:ai_clinic/shared/providers/theme_provider.dart';
 
@@ -16,10 +20,11 @@ class AiClinicApp extends ConsumerStatefulWidget {
   ConsumerState<AiClinicApp> createState() => _AiClinicAppState();
 }
 
-class _AiClinicAppState extends ConsumerState<AiClinicApp> {
+class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Delay bootstrap until the widget is mounted and the provider tree exists.
     Future<void>.microtask(() async {
@@ -27,6 +32,26 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> {
       // Load persisted idle timeout before the first authenticated session.
       await ref.read(idleTimeoutSettingsProvider.future);
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+
+    final auth = ref.read(authSessionProvider);
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return;
+    }
+
+    unawaited(ref.read(authNotifierProvider.notifier).reloadContext());
   }
 
   @override

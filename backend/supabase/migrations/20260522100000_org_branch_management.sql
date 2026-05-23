@@ -634,17 +634,7 @@ DECLARE
   v_old boolean;
   v_row public.roles_permissions%ROWTYPE;
 BEGIN
-  SELECT *
-  INTO v_caller
-  FROM public.staff_members sm
-  WHERE sm.auth_user_id = auth.uid()
-    AND sm.is_deleted = false
-    AND sm.is_active = true
-  LIMIT 1;
-
-  IF NOT FOUND OR v_caller.role <> 'owner' THEN
-    RETURN public.rpc_error('FORBIDDEN', 'Only owners may update the permission matrix.');
-  END IF;
+  v_caller := auth_internal.assert_owner_or_administrator();
 
   IF NULLIF(trim(p_permission_key), '') IS NULL THEN
     RETURN public.rpc_error('INVALID_INPUT', 'Permission key is required.');
@@ -698,6 +688,12 @@ BEGIN
       'is_granted', p_is_granted
     )
   );
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'Only owners and administrators may update the permission matrix.');
+    END IF;
+    RAISE;
 END;
 $$;
 
