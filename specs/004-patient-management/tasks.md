@@ -27,10 +27,10 @@
 
 **Purpose**: Patients feature module layout, routes, and test workspace before migration/UI work
 
-- [ ] T001 Create patients feature directories in `frontend/lib/features/patients/data/`, `frontend/lib/features/patients/domain/`, `frontend/lib/features/patients/presentation/pages/`, `frontend/lib/features/patients/presentation/providers/`, and `frontend/lib/features/patients/presentation/widgets/`
-- [ ] T002 [P] Create test directories `frontend/test/unit/patients/`, `frontend/test/widget/patients/`, and `frontend/test/integration/patients/`
-- [ ] T003 [P] Add patient route constants in `frontend/lib/app/app_routes.dart` (`/patients`, `/patients/new`, `/patients/:id`, `/patients/:id/edit` plus path builders)
-- [ ] T004 [P] Add domain model stubs per `data-model.md` in `frontend/lib/features/patients/domain/patient_list_item.dart`, `patient_detail.dart`, `patient_list_scope.dart`, and `duplicate_candidate.dart`
+- [x] T001 Create patients feature directories in `frontend/lib/features/patients/data/`, `frontend/lib/features/patients/domain/`, `frontend/lib/features/patients/presentation/pages/`, `frontend/lib/features/patients/presentation/providers/`, and `frontend/lib/features/patients/presentation/widgets/`
+- [x] T002 [P] Create test directories `frontend/test/unit/patients/`, `frontend/test/widget/patients/`, and `frontend/test/integration/patients/`
+- [x] T003 [P] Add patient route constants in `frontend/lib/app/app_routes.dart` (`/patients`, `/patients/new`, `/patients/:id`, `/patients/:id/edit` plus path builders)
+- [x] T004 [P] Add domain model stubs per `data-model.md` in `frontend/lib/features/patients/domain/patient_list_item.dart`, `patient_detail.dart`, `patient_list_scope.dart`, and `duplicate_candidate.dart`
 
 ---
 

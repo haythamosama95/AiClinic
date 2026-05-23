@@ -48,4 +48,17 @@ abstract final class AppRoutes {
     settingsStaffNew,
     settingsPermissions,
   ];
+
+  // V1-3 patient management
+  static const patients = '/patients';
+  static const patientsNew = '/patients/new';
+
+  /// Patient detail: `/patients/:id`
+  static String patientDetail(String patientId) => '$patients/$patientId';
+
+  /// Patient edit: `/patients/:id/edit`
+  static String patientEdit(String patientId) => '$patients/$patientId/edit';
+
+  /// Static patient hub paths (list + register).
+  static const patientStaticPaths = <String>[patients, patientsNew];
 }
