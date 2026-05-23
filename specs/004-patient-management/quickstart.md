@@ -82,4 +82,19 @@ flutter test test/integration/patients/patient_management_acceptance_test.dart
 
 ## 6. Operator documentation
 
-After implementation, link from `docs/architecture/12-roadmap-phases.md` V1-3 to this quickstart for desk staff training: scope toggle, duplicate warnings, archive is irreversible in UI.
+Link from `docs/architecture/12-roadmap-phases.md` V1-3 to this quickstart for desk staff training.
+
+**Desk staff notes (verified 2026-05-23)**
+
+- **Patients** appears on the home screen only for roles with `patients.view` (e.g. receptionist, lab staff). **Register patient** appears only with `patients.create`.
+- Default list scope is **This branch only** after each sign-in; use **All branches** to find patients registered at other locations (registering branch column appears).
+- Search needs at least **3 characters** for a name or **2 digits** for a phone prefix; shorter input shows guidance and does not query the server.
+- **Duplicate warnings** are advisory for phone or name+date of birth; staff must confirm before saving. **National ID** conflicts are blocked in the database (no duplicate registration).
+- **Archive** is confirmed in a dialog and removes the patient from normal list/search; there is no restore in V1-3.
+- **Lab staff** can list and open profiles only; register, edit, and archive are hidden or denied.
+- If two users edit the same patient, the second save may show a **reload** banner when the record changed elsewhere—reload the profile before saving again.
+
+**Automated verification**
+
+- Backend: `./backend/tests/run_patient_management_tests.sh` from repo root (requires local Supabase on port 54322).
+- Flutter: `cd frontend && flutter test` (unit, widget, integration under `test/**/patients/`).

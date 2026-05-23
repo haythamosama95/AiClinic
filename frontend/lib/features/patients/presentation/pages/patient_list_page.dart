@@ -3,10 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/core/auth/permission_denied_handler.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/widgets/app_data_table.dart';
-import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
@@ -51,19 +49,14 @@ class PatientListPage extends ConsumerWidget {
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.home)),
         actions: const [DevSeedPatientsButton()],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        key: const Key('patient_list_register_fab'),
-        onPressed: () {
-          PermissionDeniedHandler.runIfPermitted(
-            context,
-            permissions: permissions,
-            permissionKey: PermissionKeys.patientsCreate,
-            action: () => context.push(AppRoutes.patientsNew),
-          );
-        },
-        icon: const Icon(Icons.person_add_outlined),
-        label: const Text('Register patient'),
-      ),
+      floatingActionButton: permissions.canCreatePatients()
+          ? FloatingActionButton.extended(
+              key: const Key('patient_list_register_fab'),
+              onPressed: () => context.push(AppRoutes.patientsNew),
+              icon: const Icon(Icons.person_add_outlined),
+              label: const Text('Register patient'),
+            )
+          : null,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

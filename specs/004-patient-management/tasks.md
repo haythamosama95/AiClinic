@@ -174,11 +174,11 @@
 
 **Purpose**: Shell navigation, end-to-end acceptance, quickstart validation, regression
 
-- [ ] T050 Add **Patients** navigation entry on `AuthShellPage` gated by `patients.view` in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
-- [ ] T051 [P] Add integration acceptance test for spec test cases 1–13 in `frontend/test/integration/patients/patient_management_acceptance_test.dart`
-- [ ] T052 [P] Add `lab_staff` view-only widget test in `frontend/test/widget/patients/patient_permission_guards_test.dart`
-- [ ] T053 Run `quickstart.md` verification and document any operator notes in `specs/004-patient-management/quickstart.md`
-- [ ] T054 [P] Regression smoke: settings admin and branch switcher unchanged (`frontend/test/integration/settings/org_branch_management_acceptance_test.dart` or targeted subset)
+- [x] T050 Add **Patients** navigation entry on `AuthShellPage` gated by `patients.view` in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
+- [x] T051 [P] Add integration acceptance test for spec test cases 1–13 in `frontend/test/integration/patients/patient_management_acceptance_test.dart`
+- [x] T052 [P] Add `lab_staff` view-only widget test in `frontend/test/widget/patients/patient_permission_guards_test.dart`
+- [x] T053 Run `quickstart.md` verification and document any operator notes in `specs/004-patient-management/quickstart.md`
+- [x] T054 [P] Regression smoke: settings admin and branch switcher unchanged (`frontend/test/integration/settings/org_branch_management_acceptance_test.dart` or targeted subset)
 
 ---
 

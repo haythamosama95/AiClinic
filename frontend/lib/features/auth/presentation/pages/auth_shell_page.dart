@@ -56,6 +56,8 @@ class _ShellHomeBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final permissions = PermissionService(auth);
+
     final activeBranchLabel = branchesAsync.maybeWhen(
       data: (branches) {
         final activeId = auth.activeBranchId;
@@ -93,30 +95,18 @@ class _ShellHomeBody extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 8),
-              if (!auth.setupRequired) ...[
+              if (!auth.setupRequired && permissions.canViewPatients()) ...[
                 const SizedBox(height: 16),
                 FilledButton.icon(
-                  onPressed: () {
-                    PermissionDeniedHandler.runIfPermitted(
-                      context,
-                      permissions: PermissionService(auth),
-                      permissionKey: PermissionKeys.patientsView,
-                      action: () => context.go(AppRoutes.patients),
-                    );
-                  },
+                  onPressed: () => context.go(AppRoutes.patients),
                   icon: const Icon(Icons.people_outline),
                   label: const Text('Patients'),
                 ),
+              ],
+              if (!auth.setupRequired && permissions.canCreatePatients()) ...[
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
-                  onPressed: () {
-                    PermissionDeniedHandler.runIfPermitted(
-                      context,
-                      permissions: PermissionService(auth),
-                      permissionKey: PermissionKeys.patientsCreate,
-                      action: () => context.push(AppRoutes.patientsNew),
-                    );
-                  },
+                  onPressed: () => context.push(AppRoutes.patientsNew),
                   icon: const Icon(Icons.person_add_outlined),
                   label: const Text('Register patient'),
                 ),

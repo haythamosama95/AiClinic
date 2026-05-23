@@ -219,7 +219,7 @@ void main() {
     expect(find.textContaining('Active branch: Uptown'), findsOneWidget);
   });
 
-  testWidgets('patient navigation always visible; denied tap shows snackbar', (tester) async {
+  testWidgets('patient navigation visible only when granted', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -248,13 +248,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Patients'), findsNothing);
+    expect(find.text('Register patient'), findsNothing);
+  });
+
+  testWidgets('receptionist sees patients list entry but not register shortcut', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authSessionProvider.overrideWith(_ReceptionistShellNotifier.new),
+          staffAssignableBranchesProvider.overrideWith((ref) async => [_branchA]),
+        ],
+        child: const MaterialApp(home: AuthShellPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
     expect(find.text('Patients'), findsOneWidget);
-    expect(find.text('Register patient'), findsOneWidget);
-
-    await tester.tap(find.text('Patients'));
-    await tester.pump();
-
-    expect(find.text(PermissionDeniedHandler.defaultMessage), findsOneWidget);
+    expect(find.text('Register patient'), findsNothing);
   });
 
   testWidgets('owner sees manage staff demo button; doctor does not', (tester) async {
