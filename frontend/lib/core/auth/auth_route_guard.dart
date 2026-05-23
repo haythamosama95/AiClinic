@@ -107,6 +107,23 @@ abstract final class AuthRouteGuard {
     return location == AppRoutes.staffCreate || location == AppRoutes.staffPasswordReset;
   }
 
+  /// Redirects V1-1 minimal provisioning routes to settings administration when setup is complete (US6).
+  static String? steadyStateProvisioningRedirect({required String location, required AuthSessionState auth}) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return null;
+    }
+
+    if (location == AppRoutes.staffCreate) {
+      return canAccessStaffManagement(auth) ? AppRoutes.settingsStaffNew : AppRoutes.settings;
+    }
+
+    if (location == AppRoutes.staffPasswordReset) {
+      return canAccessStaffManagement(auth) ? AppRoutes.settingsStaff : AppRoutes.settings;
+    }
+
+    return null;
+  }
+
   /// Whether a protected feature route may render (authenticated + setup complete).
   static bool canAccessProtectedFeatureRoute(AuthSessionState auth) {
     if (!auth.isAuthenticated) {
@@ -153,6 +170,11 @@ abstract final class AuthRouteGuard {
 
       if (location == AppRoutes.login || location == AppRoutes.bootstrap || location == AppRoutes.forgotPassword) {
         return AppRoutes.home;
+      }
+
+      final steadyStateProvisioning = steadyStateProvisioningRedirect(location: location, auth: auth);
+      if (steadyStateProvisioning != null) {
+        return steadyStateProvisioning;
       }
 
       return null;

@@ -177,13 +177,13 @@
 
 ### Tests for User Story 6
 
-- [ ] T050 [P] [US6] Add integration test bootstrap data visible in settings lists in `frontend/test/integration/settings/bootstrap_data_migration_test.dart`
+- [x] T050 [P] [US6] Add integration test bootstrap data visible in settings lists in `frontend/test/integration/settings/bootstrap_data_migration_test.dart`
 
 ### Implementation for User Story 6
 
-- [ ] T051 [US6] Redirect authenticated users from minimal `staff_create` / bootstrap-only paths to settings staff create when `setup_required` is false in `frontend/lib/app/router.dart`
-- [ ] T052 [US6] Update `AuthShellPage` home actions to link Settings hub instead of standalone provisioning placeholder in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
-- [ ] T053 [US6] Keep bootstrap wizard routes active only when `setup_required` is true in `frontend/lib/app/router.dart` and `frontend/lib/features/auth/presentation/pages/clinic_bootstrap_page.dart`
+- [x] T051 [US6] Redirect authenticated users from minimal `staff_create` / bootstrap-only paths to settings staff create when `setup_required` is false in `frontend/lib/app/router.dart`
+- [x] T052 [US6] Update `AuthShellPage` home actions to link Settings hub instead of standalone provisioning placeholder in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
+- [x] T053 [US6] Keep bootstrap wizard routes active only when `setup_required` is true in `frontend/lib/app/router.dart` and `frontend/lib/features/auth/presentation/pages/clinic_bootstrap_page.dart`
 
 **Checkpoint**: Spec test case 12; acceptance criteria 12; user story 6 acceptance scenarios
 

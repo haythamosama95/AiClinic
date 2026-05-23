@@ -207,9 +207,8 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   Future<AuthSessionContext> _loadSessionContext(Session session) async {
     final claims = decodeAccessTokenClaims(session.accessToken);
     final staffMemberId = claims['staff_member_id']?.toString();
-    final role = StaffRole.tryParse(claims['staff_role']?.toString());
 
-    if (staffMemberId == null || role == null) {
+    if (staffMemberId == null) {
       throw StateError('Authenticated session is missing staff claims.');
     }
 
@@ -226,6 +225,13 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
 
     if (staffRow['is_active'] != true) {
       throw StateError('This staff account is inactive. Contact your clinic administrator.');
+    }
+
+    // Prefer live staff_members.role over JWT staff_role so UI matches RPC authorization.
+    final role =
+        StaffRole.tryParse(staffRow['role']?.toString()) ?? StaffRole.tryParse(claims['staff_role']?.toString());
+    if (role == null) {
+      throw StateError('Authenticated session is missing a valid staff role.');
     }
 
     final branchIdsRaw = claims['branch_ids']?.toString() ?? '';

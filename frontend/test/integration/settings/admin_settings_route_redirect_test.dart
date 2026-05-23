@@ -93,6 +93,21 @@ void main() {
       expect(find.text('Role permissions'), findsNothing);
     });
 
+    testWidgets('setup_complete legacy staff create redirects to settings staff form', (tester) async {
+      await pumpAuthApp(tester, extraOverrides: [authSessionProvider.overrideWith(_OwnerSessionNotifier.new)]);
+      await completeStartupBootstrap(tester);
+
+      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+      (container.read(authSessionProvider.notifier) as _OwnerSessionNotifier).setAuthenticated();
+      container.read(appRouterProvider).go(AppRoutes.staffCreate);
+      await tester.pumpAndSettle();
+
+      expect(
+        container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path,
+        AppRoutes.settingsStaffNew,
+      );
+    });
+
     testWidgets('unauthenticated user opening organization admin route goes to login', (tester) async {
       await pumpAuthApp(tester);
       await completeStartupBootstrap(tester);

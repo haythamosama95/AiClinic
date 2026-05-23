@@ -41,6 +41,62 @@ Session _fakeSession() {
 }
 
 void main() {
+  test('session context uses staff_members.role when JWT staff_role differs', () async {
+    final session = Session(
+      accessToken: _fakeJwt({
+        'staff_member_id': '00000000-0000-4000-8000-000000000010',
+        'staff_role': 'doctor',
+        'organization_id': '00000000-0000-4000-8000-000000000020',
+        'branch_ids': '00000000-0000-4000-8000-000000000001',
+        'setup_required': false,
+      }),
+      refreshToken: 'refresh-token',
+      tokenType: 'bearer',
+      expiresIn: 3600,
+      user: User(
+        id: '00000000-0000-4000-8000-000000000099',
+        appMetadata: const {},
+        userMetadata: const {},
+        aud: 'authenticated',
+        createdAt: DateTime.utc(2026, 1, 1).toIso8601String(),
+      ),
+    );
+    final supabaseClient = SettingsTableTestClient({
+      'staff_members': [
+        {
+          'id': '00000000-0000-4000-8000-000000000010',
+          'full_name': 'DB Role Admin',
+          'role': 'administrator',
+          'is_bootstrap_admin': false,
+          'is_active': true,
+        },
+      ],
+    });
+
+    final container = ProviderContainer(
+      overrides: [
+        authRepositoryProvider.overrideWith((ref) => _ReloadAuthRepository(session: session, onRefresh: () {})),
+        permissionRepositoryProvider.overrideWith(
+          (ref) => _ReloadPermissionRepository(onLoad: () async => {'patients.view'}),
+        ),
+        supabaseClientProvider.overrideWithValue(supabaseClient),
+        idleTimeoutServiceProvider.overrideWith((ref) {
+          final idle = IdleTimeoutService(idleDuration: const Duration(minutes: 15), onIdleTimeout: () {});
+          ref.onDispose(idle.dispose);
+          return idle;
+        }),
+        authSessionProvider.overrideWith(_ReloadHarnessNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(authSessionProvider.notifier) as _ReloadHarnessNotifier;
+    await notifier.refreshSessionContext();
+
+    expect(notifier.state.context?.staffProfile.role, StaffRole.administrator);
+    container.dispose();
+  });
+
   test('reloadContext refreshes session and reloads permission grants', () async {
     var permissionLoads = 0;
     var refreshCalls = 0;

@@ -71,6 +71,10 @@ BEGIN
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
 
+  UPDATE public.staff_members
+  SET role = 'administrator', is_bootstrap_admin = true, is_active = true, is_deleted = false
+  WHERE id = v_bootstrap_staff;
+
   PERFORM set_config('role', 'authenticated', true);
 
   -- Trivial: provisioning blocked before organization exists.

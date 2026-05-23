@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
-import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
+import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
@@ -24,6 +24,7 @@ class AuthShellPage extends ConsumerWidget {
     final session = ref.watch(authSessionProvider);
     final auth = session.context;
     final branchesAsync = ref.watch(staffAssignableBranchesProvider);
+    final canManageStaff = AuthRouteGuard.canAccessStaffManagement(session);
 
     return Scaffold(
       appBar: AppBar(
@@ -38,17 +39,18 @@ class AuthShellPage extends ConsumerWidget {
           ? const Center(child: Text('Loading session context…'))
           : !auth.hasBranchAssignment
           ? NoBranchBlockedPanel(staffName: auth.staffProfile.fullName)
-          : _ShellHomeBody(auth: auth, branchesAsync: branchesAsync),
+          : _ShellHomeBody(auth: auth, branchesAsync: branchesAsync, canManageStaff: canManageStaff),
       bottomNavigationBar: auth != null ? ShellStatusBar(branchesAsync: branchesAsync) : null,
     );
   }
 }
 
 class _ShellHomeBody extends StatelessWidget {
-  const _ShellHomeBody({required this.auth, required this.branchesAsync});
+  const _ShellHomeBody({required this.auth, required this.branchesAsync, required this.canManageStaff});
 
   final AuthSessionContext auth;
   final AsyncValue<List<BranchSummary>> branchesAsync;
+  final bool canManageStaff;
 
   @override
   Widget build(BuildContext context) {
@@ -100,12 +102,9 @@ class _ShellHomeBody extends StatelessWidget {
                 const SizedBox(height: 16),
                 FilledButton(onPressed: () => context.go(AppRoutes.settings), child: const Text('Settings')),
               ],
-              if (!auth.setupRequired && ProvisioningRules.canProvisionStaff(auth.staffProfile)) ...[
+              if (!auth.setupRequired && canManageStaff) ...[
                 const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: () => context.go(AppRoutes.staffCreate),
-                  child: const Text('Create staff account'),
-                ),
+                OutlinedButton(onPressed: () => context.go(AppRoutes.settingsStaff), child: const Text('Manage staff')),
               ],
             ],
           ),

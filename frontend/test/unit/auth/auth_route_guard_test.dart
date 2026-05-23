@@ -59,16 +59,29 @@ void main() {
       );
     });
 
-    test('setup_complete staff create does not redirect away', () {
+    test('setup_complete staff create redirects to settings staff form (US6)', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.staffCreate,
           auth: AuthSessionState(
             status: AuthSessionStatus.authenticated,
-            context: sampleAuthSessionContext(setupRequired: false),
+            context: sampleAuthSessionContext(setupRequired: false, permissions: {'settings.manage_staff'}),
           ),
         ),
-        isNull,
+        AppRoutes.settingsStaffNew,
+      );
+    });
+
+    test('setup_complete legacy password reset redirects to settings staff list', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(
+          location: AppRoutes.staffPasswordReset,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: false, permissions: {'settings.manage_staff'}),
+          ),
+        ),
+        AppRoutes.settingsStaff,
       );
     });
 

@@ -103,9 +103,20 @@ class _ClinicBootstrapPageState extends ConsumerState<ClinicBootstrapPage> {
 
   @override
   Widget build(BuildContext context) {
+    final session = ref.watch(authSessionProvider);
     final bootstrap = ref.watch(bootstrapNotifierProvider);
-    final auth = ref.watch(authSessionProvider).context;
+    final auth = session.context;
     final isBusy = bootstrap.isSubmitting;
+
+    if (session.isAuthenticated && auth != null && !auth.setupRequired) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        context.go(AppRoutes.home);
+      });
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -174,7 +185,10 @@ class _ClinicBootstrapPageState extends ConsumerState<ClinicBootstrapPage> {
                     organizationId: bootstrap.organizationId,
                     branchId: bootstrap.branchId,
                     onGoHome: () => context.go(AppRoutes.home),
-                    onCreateStaff: () => context.go(AppRoutes.staffCreate),
+                    onCreateStaff: () {
+                      final setupRequired = ref.read(authSessionProvider).context?.setupRequired ?? true;
+                      context.go(setupRequired ? AppRoutes.staffCreate : AppRoutes.settingsStaffNew);
+                    },
                   ),
                 },
               ],

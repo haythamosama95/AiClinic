@@ -142,6 +142,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return adminRedirect;
         }
 
+        final provisioningRedirect = AuthRouteGuard.steadyStateProvisioningRedirect(location: location, auth: auth);
+        if (provisioningRedirect != null) {
+          return provisioningRedirect;
+        }
+
         return null;
       }
 

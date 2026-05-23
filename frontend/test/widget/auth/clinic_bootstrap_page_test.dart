@@ -17,6 +17,11 @@ class _BootstrapAuthNotifier extends TestAuthSessionNotifier {
   AuthSessionState build() => _bootstrapAdminSession();
 }
 
+class _BootstrapCompleteAuthNotifier extends TestAuthSessionNotifier {
+  @override
+  AuthSessionState build() => _bootstrapAdminSession(setupRequired: false);
+}
+
 class _TestBootstrapNotifier extends BootstrapNotifier {
   _TestBootstrapNotifier({this.failFinishSetup = false, this.initialState = const BootstrapUiState()});
 
@@ -420,6 +425,36 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Unable to save clinic setup'), findsNothing);
+    });
+
+    testWidgets('setup complete session redirects bootstrap wizard to home (US6)', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            startupSessionProvider.overrideWith(TestValidStartupSessionNotifier.new),
+            authSessionProvider.overrideWith(_BootstrapCompleteAuthNotifier.new),
+            bootstrapNotifierProvider.overrideWith(
+              () => _TestBootstrapNotifier(initialState: const BootstrapUiState(hasShownPasswordWarning: true)),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              routes: [
+                GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const ClinicBootstrapPage()),
+                GoRoute(
+                  path: AppRoutes.home,
+                  builder: (context, state) => const Scaffold(body: Text('Home')),
+                ),
+              ],
+              initialLocation: AppRoutes.bootstrap,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Home'), findsOneWidget);
+      expect(find.text('Clinic setup'), findsNothing);
     });
   });
 }

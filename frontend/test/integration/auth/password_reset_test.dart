@@ -12,6 +12,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../support/pump_auth_app.dart';
+import '../../support/settings_table_test_client.dart';
+import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/testing/auth_test_support.dart';
 import 'package:ai_clinic/testing/startup_test_support.dart';
 
@@ -51,12 +53,26 @@ void main() {
   testWidgets('owner reaches reset page from shell and completes reset flow', (tester) async {
     late _HarnessProvisioningRepository repo;
 
+    final staffTable = SettingsTableTestClient({
+      'staff_members': [
+        {
+          'id': _targetStaff.id,
+          'full_name': _targetStaff.fullName,
+          'role': _targetStaff.role.wireValue,
+          'phone': null,
+          'is_active': true,
+          'is_deleted': false,
+        },
+      ],
+    });
+
     await pumpAuthApp(
       tester,
       extraOverrides: [
         authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
         provisioningRepositoryProvider.overrideWith((ref) => repo = _HarnessProvisioningRepository()),
         staffResetCandidatesProvider.overrideWith((ref) async => const [_targetStaff]),
+        staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepository(staffTable)),
       ],
     );
     await completeStartupBootstrap(tester);
@@ -65,19 +81,19 @@ void main() {
     (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setSession(
       AuthSessionState(
         status: AuthSessionStatus.authenticated,
-        context: sampleAuthSessionContext(role: StaffRole.owner),
+        context: sampleAuthSessionContext(role: StaffRole.owner, permissions: {'settings.manage_staff'}),
       ),
     );
     container.read(appRouterProvider).go(AppRoutes.staffPasswordReset);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Lab Tech (lab_staff)'));
+    expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.settingsStaff);
+
+    container.read(appRouterProvider).go(AppRoutes.settingsStaffResetPassword(_targetStaff.id));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField), 'assigned-pass-99');
-    await tester.tap(find.text('Reset password'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Reset password'));
     await tester.pumpAndSettle();
 
     expect(repo.resetCalls, 1);
@@ -107,7 +123,7 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.staffPasswordReset);
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Only clinic owners and administrators'), findsOneWidget);
+    expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.settings);
     expect(find.text('Reset password'), findsNothing);
   });
 
