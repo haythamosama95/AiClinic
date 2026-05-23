@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
-import 'package:ai_clinic/core/auth/auth_route_guard.dart';
+import 'package:ai_clinic/core/auth/permission_denied_handler.dart';
+import 'package:ai_clinic/core/auth/permission_service.dart';
+import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
@@ -24,7 +26,6 @@ class AuthShellPage extends ConsumerWidget {
     final session = ref.watch(authSessionProvider);
     final auth = session.context;
     final branchesAsync = ref.watch(staffAssignableBranchesProvider);
-    final canManageStaff = AuthRouteGuard.canAccessStaffManagement(session);
 
     return Scaffold(
       appBar: AppBar(
@@ -39,18 +40,17 @@ class AuthShellPage extends ConsumerWidget {
           ? const Center(child: Text('Loading session context…'))
           : !auth.hasBranchAssignment
           ? NoBranchBlockedPanel(staffName: auth.staffProfile.fullName)
-          : _ShellHomeBody(auth: auth, branchesAsync: branchesAsync, canManageStaff: canManageStaff),
+          : _ShellHomeBody(auth: auth, branchesAsync: branchesAsync),
       bottomNavigationBar: auth != null ? ShellStatusBar(branchesAsync: branchesAsync) : null,
     );
   }
 }
 
 class _ShellHomeBody extends StatelessWidget {
-  const _ShellHomeBody({required this.auth, required this.branchesAsync, required this.canManageStaff});
+  const _ShellHomeBody({required this.auth, required this.branchesAsync});
 
   final AuthSessionContext auth;
   final AsyncValue<List<BranchSummary>> branchesAsync;
-  final bool canManageStaff;
 
   @override
   Widget build(BuildContext context) {
@@ -91,20 +91,53 @@ class _ShellHomeBody extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 8),
-              Text(
-                'Operational modules will appear here in later features.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              if (!auth.setupRequired) ...[
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () {
+                    PermissionDeniedHandler.runIfPermitted(
+                      context,
+                      permissions: PermissionService(auth),
+                      permissionKey: PermissionKeys.patientsView,
+                      action: () => context.go(AppRoutes.patients),
+                    );
+                  },
+                  icon: const Icon(Icons.people_outline),
+                  label: const Text('Patients'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    PermissionDeniedHandler.runIfPermitted(
+                      context,
+                      permissions: PermissionService(auth),
+                      permissionKey: PermissionKeys.patientsCreate,
+                      action: () => context.go(AppRoutes.patientsNew),
+                    );
+                  },
+                  icon: const Icon(Icons.person_add_outlined),
+                  label: const Text('Register patient'),
+                ),
+              ],
               const SizedBox(height: 24),
               const PermissionDemoPanel(),
               if (!auth.setupRequired) ...[
                 const SizedBox(height: 16),
                 FilledButton(onPressed: () => context.go(AppRoutes.settings), child: const Text('Settings')),
               ],
-              if (!auth.setupRequired && canManageStaff) ...[
+              if (!auth.setupRequired) ...[
                 const SizedBox(height: 12),
-                OutlinedButton(onPressed: () => context.go(AppRoutes.settingsStaff), child: const Text('Manage staff')),
+                OutlinedButton(
+                  onPressed: () {
+                    PermissionDeniedHandler.runIfPermitted(
+                      context,
+                      permissions: PermissionService(auth),
+                      permissionKey: PermissionKeys.manageStaff,
+                      action: () => context.go(AppRoutes.settingsStaff),
+                    );
+                  },
+                  child: const Text('Manage staff'),
+                ),
               ],
             ],
           ),

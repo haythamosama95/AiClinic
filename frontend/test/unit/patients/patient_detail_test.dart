@@ -1,5 +1,6 @@
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
+import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -11,7 +12,7 @@ void main() {
         'phone': '201111111111',
         'date_of_birth': '1985-03-20',
         'gender': 'female',
-        'national_id': '12345678901234',
+        'marital_status': 'married',
         'notes': 'Allergic to penicillin',
         'branch_id': 'b1',
         'branch_name': 'Downtown',
@@ -22,7 +23,7 @@ void main() {
 
       expect(detail, isNotNull);
       expect(detail!.gender, PatientGender.female);
-      expect(detail.nationalId, '12345678901234');
+      expect(detail.maritalStatus, PatientMaritalStatus.married);
       expect(detail.notes, 'Allergic to penicillin');
       expect(detail.createdByDisplay, 'Dr. Admin');
       expect(detail.dateOfBirth, DateTime(1985, 3, 20));
@@ -87,7 +88,6 @@ void main() {
         'id': 'p1',
         'full_name': 'X',
         'phone': '  ',
-        'national_id': '',
         'notes': '\t',
         'branch_id': 'b1',
         'branch_name': 'B',
@@ -96,7 +96,6 @@ void main() {
       });
 
       expect(detail!.phone, isNull);
-      expect(detail.nationalId, isNull);
       expect(detail.notes, isNull);
     });
 

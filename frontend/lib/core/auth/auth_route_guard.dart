@@ -38,21 +38,6 @@ abstract final class AuthRouteGuard {
     return location != AppRoutes.patients;
   }
 
-  static bool _isPatientEditRoute(String location) {
-    return location.startsWith('${AppRoutes.patients}/') && location.endsWith('/edit');
-  }
-
-  static bool _isPatientDetailRoute(String location) {
-    if (!location.startsWith('${AppRoutes.patients}/')) {
-      return false;
-    }
-    if (location == AppRoutes.patientsNew || _isPatientEditRoute(location)) {
-      return false;
-    }
-    final suffix = location.substring('${AppRoutes.patients}/'.length);
-    return suffix.isNotEmpty && !suffix.contains('/');
-  }
-
   static bool canAccessPatientList(AuthSessionState auth) {
     if (!auth.isAuthenticated || auth.context!.setupRequired) {
       return false;
@@ -92,15 +77,8 @@ abstract final class AuthRouteGuard {
       return AppRoutes.bootstrap;
     }
 
-    final allowed = switch (location) {
-      AppRoutes.patients => canAccessPatientList(auth),
-      AppRoutes.patientsNew => canAccessPatientRegistration(auth),
-      _ when _isPatientEditRoute(location) => canAccessPatientEdit(auth),
-      _ when _isPatientDetailRoute(location) => canAccessPatientDetail(auth),
-      _ => false,
-    };
-
-    return allowed ? null : AppRoutes.home;
+    // Permission checks are enforced on each patient page (UI stays visible; denial in-page).
+    return null;
   }
 
   static bool isSettingsRoute(String location) {

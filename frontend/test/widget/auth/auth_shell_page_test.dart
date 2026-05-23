@@ -88,6 +88,19 @@ class _DoctorShellNotifier extends TestAuthSessionNotifier {
   );
 }
 
+class _NoPatientViewShellNotifier extends TestAuthSessionNotifier {
+  @override
+  AuthSessionState build() => AuthSessionState(
+    status: AuthSessionStatus.authenticated,
+    context: sampleAuthSessionContext(
+      role: StaffRole.doctor,
+      branchIds: const [_branchAId],
+      activeBranchId: _branchAId,
+      permissions: const {PermissionKeys.aiAccess},
+    ),
+  );
+}
+
 void main() {
   testWidgets('shows loading copy when context is null', (tester) async {
     await tester.pumpWidget(
@@ -206,6 +219,44 @@ void main() {
     expect(find.textContaining('Active branch: Uptown'), findsOneWidget);
   });
 
+  testWidgets('patient navigation always visible; denied tap shows snackbar', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authSessionProvider.overrideWith(_OwnerShellNotifier.new),
+          staffAssignableBranchesProvider.overrideWith((ref) async => [_branchA]),
+        ],
+        child: const MaterialApp(home: AuthShellPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Patients'), findsOneWidget);
+    expect(find.text('Register patient'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authSessionProvider.overrideWith(_NoPatientViewShellNotifier.new),
+          staffAssignableBranchesProvider.overrideWith((ref) async => [_branchA]),
+        ],
+        child: const MaterialApp(home: AuthShellPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Patients'), findsOneWidget);
+    expect(find.text('Register patient'), findsOneWidget);
+
+    await tester.tap(find.text('Patients'));
+    await tester.pump();
+
+    expect(find.text(PermissionDeniedHandler.defaultMessage), findsOneWidget);
+  });
+
   testWidgets('owner sees manage staff demo button; doctor does not', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -250,6 +301,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Try staff settings (always visible)'));
     await tester.tap(find.text('Try staff settings (always visible)'));
     await tester.pump();
 

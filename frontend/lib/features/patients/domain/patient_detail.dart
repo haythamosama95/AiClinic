@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
+import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/patient_row_parsing.dart';
 import 'package:flutter/foundation.dart';
 
@@ -15,7 +16,7 @@ class PatientDetail {
     this.phone,
     this.dateOfBirth,
     this.gender,
-    this.nationalId,
+    this.maritalStatus,
     this.notes,
     this.createdByDisplay,
   });
@@ -25,7 +26,7 @@ class PatientDetail {
   final String? phone;
   final DateTime? dateOfBirth;
   final PatientGender? gender;
-  final String? nationalId;
+  final PatientMaritalStatus? maritalStatus;
   final String? notes;
   final String branchId;
   final String branchName;
@@ -59,7 +60,7 @@ class PatientDetail {
       phone: optionalPatientString(row['phone']),
       dateOfBirth: parsePatientDate(row['date_of_birth']),
       gender: PatientGender.tryParse(row['gender']?.toString()),
-      nationalId: optionalPatientString(row['national_id']),
+      maritalStatus: PatientMaritalStatus.tryParse(row['marital_status']?.toString()),
       notes: optionalPatientString(row['notes']),
       branchId: branchId,
       branchName: branchName,
@@ -75,7 +76,7 @@ class PatientDetail {
     String? phone,
     DateTime? dateOfBirth,
     PatientGender? gender,
-    String? nationalId,
+    PatientMaritalStatus? maritalStatus,
     String? notes,
     String? branchId,
     String? branchName,
@@ -89,7 +90,7 @@ class PatientDetail {
       phone: phone ?? this.phone,
       dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       gender: gender ?? this.gender,
-      nationalId: nationalId ?? this.nationalId,
+      maritalStatus: maritalStatus ?? this.maritalStatus,
       notes: notes ?? this.notes,
       branchId: branchId ?? this.branchId,
       branchName: branchName ?? this.branchName,
@@ -109,7 +110,7 @@ class PatientDetail {
             phone == other.phone &&
             dateOfBirth == other.dateOfBirth &&
             gender == other.gender &&
-            nationalId == other.nationalId &&
+            maritalStatus == other.maritalStatus &&
             notes == other.notes &&
             branchId == other.branchId &&
             branchName == other.branchName &&
@@ -125,7 +126,7 @@ class PatientDetail {
     phone,
     dateOfBirth,
     gender,
-    nationalId,
+    maritalStatus,
     notes,
     branchId,
     branchName,

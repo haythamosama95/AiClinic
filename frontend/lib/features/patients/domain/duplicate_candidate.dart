@@ -9,14 +9,12 @@ class DuplicateCandidate {
     required this.fullName,
     required this.branchName,
     this.phone,
-    this.nationalId,
     this.dateOfBirth,
   });
 
   final String id;
   final String fullName;
   final String? phone;
-  final String? nationalId;
   final DateTime? dateOfBirth;
   final String branchName;
 
@@ -32,7 +30,6 @@ class DuplicateCandidate {
       id: id,
       fullName: fullName,
       phone: optionalPatientString(row['phone']),
-      nationalId: optionalPatientString(row['national_id']),
       dateOfBirth: parsePatientDate(row['date_of_birth']),
       branchName: branchName,
     );
@@ -46,11 +43,10 @@ class DuplicateCandidate {
             id == other.id &&
             fullName == other.fullName &&
             phone == other.phone &&
-            nationalId == other.nationalId &&
             dateOfBirth == other.dateOfBirth &&
             branchName == other.branchName;
   }
 
   @override
-  int get hashCode => Object.hash(id, fullName, phone, nationalId, dateOfBirth, branchName);
+  int get hashCode => Object.hash(id, fullName, phone, dateOfBirth, branchName);
 }

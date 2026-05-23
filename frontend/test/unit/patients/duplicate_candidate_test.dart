@@ -8,7 +8,6 @@ void main() {
         'id': 'dup-1',
         'full_name': 'Mohamed Ibrahim',
         'phone': '201000000001',
-        'national_id': '98765432109876',
         'date_of_birth': '1992-07-01',
         'branch_name': 'North Branch',
       });
@@ -16,7 +15,6 @@ void main() {
       expect(candidate, isNotNull);
       expect(candidate!.fullName, 'Mohamed Ibrahim');
       expect(candidate.phone, '201000000001');
-      expect(candidate.nationalId, '98765432109876');
       expect(candidate.dateOfBirth, DateTime(1992, 7, 1));
       expect(candidate.branchName, 'North Branch');
     });
@@ -35,8 +33,7 @@ void main() {
         'branch_name': 'Main',
       });
 
-      expect(candidate!.nationalId, isNull);
-      expect(candidate.dateOfBirth, isNull);
+      expect(candidate!.dateOfBirth, isNull);
     });
 
     test('stupid user: garbage date does not crash parsing', () {

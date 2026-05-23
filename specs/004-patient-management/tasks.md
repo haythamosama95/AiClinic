@@ -62,16 +62,16 @@
 
 ### Tests for User Story 1
 
-- [ ] T014 [P] [US1] Add create/duplicate/national-id RPC tests in `backend/tests/patient_management_crud.sql`
-- [ ] T015 [P] [US1] Add unit tests for `PatientRepository.createPatient` and `checkDuplicates` in `frontend/test/unit/patients/patient_repository_create_test.dart`
-- [ ] T016 [P] [US1] Add widget tests for registration form states in `frontend/test/widget/patients/patient_registration_page_test.dart`
+- [x] T014 [P] [US1] Add create/duplicate/national-id RPC tests in `backend/tests/patient_management_crud.sql`
+- [x] T015 [P] [US1] Add unit tests for `PatientRepository.createPatient` and `checkDuplicates` in `frontend/test/unit/patients/patient_repository_create_test.dart`
+- [x] T016 [P] [US1] Add widget tests for registration form states in `frontend/test/widget/patients/patient_registration_page_test.dart`
 
 ### Implementation for User Story 1
 
-- [ ] T017 [US1] Implement `PatientRepository.createPatient` and `checkPatientDuplicates` with `DUPLICATE_WARNING` and `NATIONAL_ID_EXISTS` handling per `contracts/patient-mutations.md` in `frontend/lib/features/patients/data/patient_repository.dart`
-- [ ] T018 [US1] Implement `DuplicateCandidatesDialog` in `frontend/lib/features/patients/presentation/widgets/duplicate_candidates_dialog.dart`
-- [ ] T019 [US1] Implement `PatientRegistrationPage` (validation, duplicate flow, permission denied) in `frontend/lib/features/patients/presentation/pages/patient_registration_page.dart`
-- [ ] T020 [US1] Gate `/patients/new` route to `patients.create` in `frontend/lib/app/router.dart`
+- [x] T017 [US1] Implement `PatientRepository.createPatient` and `checkPatientDuplicates` with `DUPLICATE_WARNING` and `NATIONAL_ID_EXISTS` handling per `contracts/patient-mutations.md` in `frontend/lib/features/patients/data/patient_repository.dart`
+- [x] T018 [US1] Implement `DuplicateCandidatesDialog` in `frontend/lib/features/patients/presentation/widgets/duplicate_candidates_dialog.dart`
+- [x] T019 [US1] Implement `PatientRegistrationPage` (validation, duplicate flow, permission denied) in `frontend/lib/features/patients/presentation/pages/patient_registration_page.dart`
+- [x] T020 [US1] Gate `/patients/new` route to `patients.create` in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 1–3; acceptance criteria 1–2, 7–8
 

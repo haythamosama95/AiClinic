@@ -24,6 +24,7 @@ import 'package:ai_clinic/features/settings/presentation/pages/staff_form_page.d
 import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_settings_password_reset_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patient_pages.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/patient_registration_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';

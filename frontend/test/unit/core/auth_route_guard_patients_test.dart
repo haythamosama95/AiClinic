@@ -16,7 +16,7 @@ void main() {
       expect(AuthRouteGuard.isPatientRoute(AppRoutes.home), isFalse);
     });
 
-    test('view-only staff can access list and detail but not register or edit', () {
+    test('authenticated staff may open patient routes; pages enforce permissions', () {
       final auth = AuthSessionState(
         status: AuthSessionStatus.authenticated,
         context: sampleAuthSessionContext(permissions: {PermissionKeys.patientsView}),
@@ -24,8 +24,18 @@ void main() {
 
       expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patients, auth: auth), isNull);
       expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientDetail('id'), auth: auth), isNull);
-      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientsNew, auth: auth), AppRoutes.home);
-      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientEdit('id'), auth: auth), AppRoutes.home);
+      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientsNew, auth: auth), isNull);
+      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientEdit('id'), auth: auth), isNull);
+    });
+
+    test('staff without patient grants are not redirected away from patient routes', () {
+      final auth = AuthSessionState(
+        status: AuthSessionStatus.authenticated,
+        context: sampleAuthSessionContext(permissions: const {PermissionKeys.aiAccess}),
+      );
+
+      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patients, auth: auth), isNull);
+      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patientsNew, auth: auth), isNull);
     });
 
     test('stupid usage: unauthenticated user sent to login', () {

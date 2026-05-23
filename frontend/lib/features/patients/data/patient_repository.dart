@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 
 /// Paginated patient list/search result from `search_patients`.
@@ -58,20 +59,20 @@ class CreatePatientInput {
   const CreatePatientInput({
     required this.activeBranchId,
     required this.fullName,
-    this.phone,
+    required this.phone,
     this.dateOfBirth,
     this.gender,
-    this.nationalId,
+    this.maritalStatus,
     this.notes,
     this.acknowledgeDuplicate = false,
   });
 
   final String activeBranchId;
   final String fullName;
-  final String? phone;
+  final String phone;
   final DateTime? dateOfBirth;
   final PatientGender? gender;
-  final String? nationalId;
+  final PatientMaritalStatus? maritalStatus;
   final String? notes;
   final bool acknowledgeDuplicate;
 }
@@ -85,7 +86,7 @@ class UpdatePatientInput {
     this.phone,
     this.dateOfBirth,
     this.gender,
-    this.nationalId,
+    this.maritalStatus,
     this.notes,
     this.acknowledgeDuplicate = false,
   });
@@ -96,7 +97,7 @@ class UpdatePatientInput {
   final String? phone;
   final DateTime? dateOfBirth;
   final PatientGender? gender;
-  final String? nationalId;
+  final PatientMaritalStatus? maritalStatus;
   final String? notes;
   final bool acknowledgeDuplicate;
 }
@@ -139,18 +140,16 @@ class PatientRepository {
     String? fullName,
     String? phone,
     DateTime? dateOfBirth,
-    String? nationalId,
     String? excludePatientId,
   }) async {
     final result = await _invoke('check_patient_duplicates', {
       if (fullName != null) 'p_full_name': fullName.trim(),
       if (phone != null) 'p_phone': phone.trim(),
       if (dateOfBirth != null) 'p_date_of_birth': dateOfBirth.toIso8601String().split('T').first,
-      if (nationalId != null) 'p_national_id': nationalId.trim(),
       if (excludePatientId != null) 'p_exclude_patient_id': excludePatientId,
     });
 
-    return _parseCandidates(result.data?['candidates']);
+    return parseDuplicateCandidates(result.data?['candidates']);
   }
 
   Future<String> createPatient(CreatePatientInput input) async {
@@ -161,14 +160,21 @@ class PatientRepository {
       );
     }
 
+    final phone = input.phone.trim();
+    if (phone.isEmpty) {
+      throw RpcFailure(
+        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Mobile number is required.'),
+      );
+    }
+
     final result = await _invoke('create_patient', {
       'p_active_branch_id': input.activeBranchId,
       'p_full_name': name,
+      'p_phone': phone,
       'p_acknowledge_duplicate': input.acknowledgeDuplicate,
-      if (input.phone != null) 'p_phone': input.phone!.trim(),
       if (input.dateOfBirth != null) 'p_date_of_birth': input.dateOfBirth!.toIso8601String().split('T').first,
       if (input.gender != null) 'p_gender': input.gender!.wireValue,
-      if (input.nationalId != null) 'p_national_id': input.nationalId!.trim(),
+      if (input.maritalStatus != null) 'p_marital_status': input.maritalStatus!.wireValue,
       if (input.notes != null) 'p_notes': input.notes!.trim(),
     });
 
@@ -195,7 +201,7 @@ class PatientRepository {
       if (input.phone != null) 'p_phone': input.phone!.trim(),
       if (input.dateOfBirth != null) 'p_date_of_birth': input.dateOfBirth!.toIso8601String().split('T').first,
       if (input.gender != null) 'p_gender': input.gender!.wireValue,
-      if (input.nationalId != null) 'p_national_id': input.nationalId!.trim(),
+      if (input.maritalStatus != null) 'p_marital_status': input.maritalStatus!.wireValue,
       if (input.notes != null) 'p_notes': input.notes!.trim(),
     });
 
@@ -244,7 +250,8 @@ class PatientRepository {
     }
   }
 
-  List<DuplicateCandidate> _parseCandidates(Object? raw) {
+  /// Parses `candidates` from RPC success or `DUPLICATE_WARNING` error payloads.
+  static List<DuplicateCandidate> parseDuplicateCandidates(Object? raw) {
     if (raw is! List) {
       return const [];
     }

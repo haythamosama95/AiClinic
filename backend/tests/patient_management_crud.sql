@@ -25,7 +25,6 @@ DECLARE
   v_branch_second uuid;
   v_patient_main uuid;
   v_patient_second uuid;
-  v_patient_name_only uuid;
   v_patient_wildcard uuid;
   v_updated_at timestamptz;
   v_total int;
@@ -98,10 +97,20 @@ BEGIN
   );
 
   -- Trivial: blank name rejected on create.
-  v_result := public.create_patient(v_branch_main, '   ', NULL, NULL, NULL, NULL, NULL, false);
+  v_result := public.create_patient(v_branch_main, '   ', '201000000001', NULL, NULL, NULL, NULL, false);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'create_rejects_blank_name',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Trivial: missing mobile rejected on create.
+  v_result := public.create_patient(v_branch_main, 'Test Patient', NULL, NULL, NULL, NULL, NULL, false);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'create_rejects_missing_phone',
     NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
     COALESCE(v_result.error_code, '<null>')
   );
@@ -121,7 +130,7 @@ BEGIN
   v_result := public.create_patient(
     v_branch_main,
     'Future Baby',
-    NULL,
+    '201000000099',
     (current_date + 1),
     NULL,
     NULL,
@@ -137,7 +146,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Invalid gender rejected.
-  v_result := public.create_patient(v_branch_main, 'Bad Gender', NULL, NULL, 'invalid', NULL, NULL, false);
+  v_result := public.create_patient(v_branch_main, 'Bad Gender', '201000000088', NULL, 'invalid', NULL, NULL, false);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'create_rejects_invalid_gender',
@@ -150,7 +159,7 @@ BEGIN
   v_result := public.create_patient(
     v_branch_main,
     'Long Notes',
-    NULL,
+    '201000000077',
     NULL,
     NULL,
     NULL,
@@ -165,17 +174,6 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Name-only registration (spec TC 1).
-  v_result := public.create_patient(v_branch_main, 'Name Only Patient', NULL, NULL, NULL, NULL, NULL, false);
-  v_patient_name_only := (v_result.data ->> 'patient_id')::uuid;
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO patient_crud_results VALUES (
-    'create_name_only_success',
-    v_result.success AND v_patient_name_only IS NOT NULL,
-    COALESCE(v_result.error_code, v_patient_name_only::text)
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
   -- Register patient at main branch.
   v_result := public.create_patient(
     v_branch_main,
@@ -183,7 +181,7 @@ BEGIN
     '+20 100 555 1234',
     '1990-05-15'::date,
     'male',
-    'NAT-001',
+    'married',
     'Notes',
     false
   );
@@ -206,33 +204,72 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- US1: created patient is retrievable via get_patient.
+  v_result := public.get_patient(v_patient_main);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'get_patient_after_create',
+    v_result.success
+      AND (v_result.data ->> 'full_name') = 'Ahmed Hassan'
+      AND (v_result.data ->> 'marital_status') = 'married',
+    COALESCE(v_result.error_code, v_result.data ->> 'full_name')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US1: duplicate check with no matches returns empty candidates.
+  v_result := public.check_patient_duplicates('Unique Name XYZ', NULL, NULL, NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'check_patient_duplicates_empty_when_no_match',
+    v_result.success
+      AND jsonb_array_length(COALESCE(v_result.data -> 'candidates', '[]'::jsonb)) = 0,
+    'candidates=' || jsonb_array_length(COALESCE(v_result.data -> 'candidates', '[]'::jsonb))::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US1: cannot register at a branch outside JWT branch_ids (second branch exists but not assigned).
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_result := public.create_patient(v_branch_second, 'Wrong Branch', '201000000066', NULL, NULL, NULL, NULL, false);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'create_at_unauthorized_branch',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text || ',' || v_branch_second::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+
   -- Standalone duplicate check returns candidates.
-  v_result := public.check_patient_duplicates('Ahmed Hassan', '201005551234', '1990-05-15'::date, NULL, NULL);
+  v_result := public.check_patient_duplicates('Ahmed Hassan', '201005551234', '1990-05-15'::date, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'check_patient_duplicates_returns_candidates',
     v_result.success
       AND jsonb_array_length(COALESCE(v_result.data -> 'candidates', '[]'::jsonb)) >= 1,
     'candidates=' || jsonb_array_length(COALESCE(v_result.data -> 'candidates', '[]'::jsonb))::text
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- National ID hard block for duplicate.
-  v_result := public.create_patient(
-    v_branch_main,
-    'Another Person',
-    NULL,
-    NULL,
-    NULL,
-    'nat-001',
-    NULL,
-    false
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO patient_crud_results VALUES (
-    'create_blocks_duplicate_national_id',
-    NOT v_result.success AND v_result.error_code = 'NATIONAL_ID_EXISTS',
-    COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
@@ -309,7 +346,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Wildcard patient for LIKE escape verification.
-  v_result := public.create_patient(v_branch_second, '100% Promo', NULL, NULL, NULL, NULL, NULL, false);
+  v_result := public.create_patient(v_branch_second, '100% Promo', '201000000055', NULL, NULL, NULL, NULL, false);
   v_patient_wildcard := (v_result.data ->> 'patient_id')::uuid;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
@@ -324,7 +361,6 @@ BEGIN
     'Ahmed Hassan',
     '201005551234',
     '1990-05-15'::date,
-    'NAT-001',
     v_patient_main
   );
   PERFORM set_config('role', 'postgres', true);
@@ -473,7 +509,7 @@ BEGIN
     '209911112233',
     '1990-05-15'::date,
     'male',
-    'NAT-001',
+    'single',
     'Updated notes',
     true
   );
@@ -508,28 +544,6 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- National ID conflict on update.
-  v_result := public.get_patient(v_patient_second);
-  v_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
-  v_result := public.update_patient(
-    v_patient_second,
-    'Branch Two Patient',
-    v_updated_at,
-    NULL,
-    NULL,
-    NULL,
-    'NAT-001',
-    NULL,
-    false
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO patient_crud_results VALUES (
-    'update_blocks_duplicate_national_id',
-    NOT v_result.success AND v_result.error_code = 'NATIONAL_ID_EXISTS',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
   -- Gender preserved when p_gender omitted.
   v_result := public.get_patient(v_patient_main);
   v_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
@@ -540,7 +554,7 @@ BEGIN
     v_result.data ->> 'phone',
     (v_result.data ->> 'date_of_birth')::date,
     NULL,
-    v_result.data ->> 'national_id',
+    v_result.data ->> 'marital_status',
     v_result.data ->> 'notes',
     false
   );
@@ -657,7 +671,7 @@ BEGIN
     )::text,
     true
   );
-  v_result := public.create_patient(v_branch_main, 'Lab Attempt', NULL, NULL, NULL, NULL, NULL, false);
+  v_result := public.create_patient(v_branch_main, 'Lab Attempt', '201000000044', NULL, NULL, NULL, NULL, false);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'lab_staff_create_forbidden',
@@ -696,7 +710,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.check_patient_duplicates('Branch Two Patient', '2099887766', NULL, NULL, NULL);
+  v_result := public.check_patient_duplicates('Branch Two Patient', '2099887766', NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'lab_staff_check_duplicates_forbidden',
