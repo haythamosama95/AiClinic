@@ -488,7 +488,7 @@ BEGIN
     )::text,
     true
   );
-  v_result := public.update_role_permission('nurse', 'patients.view', false);
+  v_result := public.update_role_permission('lab_staff', 'patients.view', false);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_branch_crud_results VALUES (
     'permission_matrix_doctor_denied',

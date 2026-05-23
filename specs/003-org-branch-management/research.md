@@ -30,6 +30,18 @@
 - **Rationale**: Existing migration `20260521170000_fix_staff_claims_org_and_dev_reset_invoker.sql` matches clarified spec.
 - **Alternatives considered**: Include inactive branches in claims with client filter (rejected — violates fail-closed).
 
+### Verification note (Phase 9, T059)
+
+Source of truth in `auth_internal.build_staff_claims` (`backend/supabase/migrations/20260521110000_auth_rbac_definer_internal_schema.sql`):
+
+- Assignment join: `staff_branch_assignments` → `branches` with `b.is_deleted = false` **and** `b.is_active = true` (lines 55–60).
+- Inactive staff: `sm.is_active = true` required; inactive staff return `{}` claims (`auth_security_extensions.sql` → `inactive_staff_empty_claims`).
+
+Automated regression:
+
+- `backend/tests/jwt_claims_contract.sql` → `build_staff_claims_excludes_inactive_branch` (staff assigned only to a deactivated branch gets empty `branch_ids`).
+- Flutter: `org_branch_management_acceptance_test.dart` spec case 13 (blocked shell, no switcher).
+
 ## Decision 6: Steady-state branch create separate from bootstrap RPC
 
 - **Decision**: New `manage_create_branch` (name TBD in contracts) requires `settings.manage_branches` and existing organization; bootstrap RPC remains for `setup_required` flows only.

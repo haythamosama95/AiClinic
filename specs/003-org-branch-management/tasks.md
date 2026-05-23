@@ -193,12 +193,12 @@
 
 **Purpose**: Quickstart validation, docs, regression, and constitution-sensitive verification
 
-- [ ] T054 [P] Run full `specs/003-org-branch-management/quickstart.md` flow and document any gaps in `specs/003-org-branch-management/quickstart.md`
-- [ ] T055 [P] Add integration test covering spec test cases 1–13 outline in `frontend/test/integration/settings/org_branch_management_acceptance_test.dart`
-- [ ] T056 Run V1-1 regression: bootstrap, login, idle timeout, subscription non-blocking per `specs/002-auth-rbac/quickstart.md`
-- [ ] T057 [P] Add admin settings section to `docs/setup/` linking organization, branch, staff, and permissions screens
-- [ ] T058 Verify no soft-delete UI for branches/staff (FR-018a) via manual checklist in `specs/003-org-branch-management/spec.md` acceptance criteria
-- [ ] T059 [P] Confirm `build_staff_claims` excludes inactive branches (no code change if already correct) and document in `specs/003-org-branch-management/research.md` Decision 5 verification note
+- [x] T054 [P] Run full `specs/003-org-branch-management/quickstart.md` flow and document any gaps in `specs/003-org-branch-management/quickstart.md`
+- [x] T055 [P] Add integration test covering spec test cases 1–13 outline in `frontend/test/integration/settings/org_branch_management_acceptance_test.dart`
+- [x] T056 Run V1-1 regression: bootstrap, login, idle timeout, subscription non-blocking per `specs/002-auth-rbac/quickstart.md`
+- [x] T057 [P] Add admin settings section to `docs/setup/` linking organization, branch, staff, and permissions screens
+- [x] T058 Verify no soft-delete UI for branches/staff (FR-018a) via manual checklist in `specs/003-org-branch-management/spec.md` acceptance criteria
+- [x] T059 [P] Confirm `build_staff_claims` excludes inactive branches (no code change if already correct) and document in `specs/003-org-branch-management/research.md` Decision 5 verification note
 
 ---
 

@@ -79,6 +79,40 @@ BEGIN
     'organization_id=' || COALESCE(v_claims ->> 'organization_id', '<null>')
   );
 
+  -- Decision 5 (T059): inactive branches must not appear in branch_ids claims.
+  DELETE FROM public.staff_branch_assignments WHERE staff_member_id = v_bootstrap_staff_id;
+
+  INSERT INTO public.branches (id, organization_id, name, code, is_active, created_by, updated_by)
+  VALUES (
+    'c1000000-0000-4000-8000-000000000099',
+    (v_bootstrap_result.data ->> 'organization_id')::uuid,
+    'Inactive Only Branch',
+    'INACT',
+    false,
+    v_bootstrap_user_id,
+    v_bootstrap_user_id
+  )
+  ON CONFLICT (id) DO UPDATE SET is_active = false;
+
+  INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
+  VALUES (
+    v_bootstrap_staff_id,
+    'c1000000-0000-4000-8000-000000000099',
+    true,
+    v_bootstrap_user_id,
+    v_bootstrap_user_id
+  )
+  ON CONFLICT (staff_member_id, branch_id) DO NOTHING;
+
+  v_claims := auth_internal.build_staff_claims(v_bootstrap_user_id);
+
+  INSERT INTO jwt_claims_results (test_name, passed, detail)
+  VALUES (
+    'build_staff_claims_excludes_inactive_branch',
+    COALESCE(v_claims ->> 'branch_ids', '') = '',
+    'branch_ids=' || COALESCE(v_claims ->> 'branch_ids', '<empty>')
+  );
+
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(

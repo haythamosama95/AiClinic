@@ -12,10 +12,10 @@ supabase migration up
 # or: supabase db reset
 ```
 
-Expected new migration (planned):
+Applied migrations:
 
-- `*_org_branch_management_functions.sql` — RPCs, branch code unique index
-- Optional RLS/policy tweaks for `organizations` UPDATE and `roles_permissions` owner writes
+- `backend/supabase/migrations/20260522100000_org_branch_management.sql` — RPCs, branch code partial unique index, `roles_permissions` SELECT policy
+- Prior auth/RBAC migrations from `specs/002-auth-rbac` (schema, RLS, `build_staff_claims`, bootstrap RPCs)
 
 ## 2. Run backend verification
 
@@ -23,12 +23,16 @@ Expected new migration (planned):
 ./backend/tests/run_org_branch_management_tests.sh
 ```
 
-Or individual SQL (paths planned in implementation):
+Or individual SQL:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/tests/org_branch_management_crud.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/tests/org_branch_management_rls.sql
+psql -h 127.0.0.1 -p "${SUPABASE_DB_PORT:-54322}" -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 -f backend/tests/org_branch_management_crud.sql
+psql -h 127.0.0.1 -p "${SUPABASE_DB_PORT:-54322}" -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 -f backend/tests/org_branch_management_rls.sql
 ```
+
+JWT inactive-branch exclusion (Decision 5): included in `backend/tests/jwt_claims_contract.sql` via `build_staff_claims_excludes_inactive_branch`.
 
 **Scenarios**:
 
@@ -63,11 +67,33 @@ flutter run -d windows
 - Idle timeout and no session restore on app close unchanged
 - Expired subscription cache does not block login
 
-## 5. Test matrix reference
+## 5. Automated Flutter acceptance (spec test cases 1–13)
 
-See `spec.md` → Test Cases 1–13 and Acceptance Criteria 1–13.
+```bash
+cd frontend
+flutter test test/integration/settings/org_branch_management_acceptance_test.dart
+```
 
-## 6. Key documents
+Covers organization/branch/staff routes, branch switcher, bootstrap visibility, FR-018a delete-label absence, and V1-1 redirect regression smoke. Cases 2 and 11 delegate to backend SQL suites above.
+
+## 6. Operator documentation
+
+- [docs/setup/clinic-administration.md](../../docs/setup/clinic-administration.md) — screen map and access rules
+- [docs/setup/bootstrap-admin.md](../../docs/setup/bootstrap-admin.md) — first-run bootstrap (V1-1)
+
+## 7. Test matrix reference
+
+See `spec.md` → Test Cases 1–13 and Acceptance Criteria 1–13. FR-018a manual UI checklist: [checklists/fr-018a-ui-verification.md](./checklists/fr-018a-ui-verification.md).
+
+## Verification gaps (documented 2026-05-23)
+
+| Item                                                     | Status                       | Notes                                                                                        |
+| -------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------- |
+| Manual LAN timing (SC-001, NFR-005)                      | Not automated                | Use quickstart §3 on clinic hardware                                                         |
+| Full V1-1 idle-timeout E2E                               | Partial                      | `session_lifecycle_test.dart` + manual table in `specs/002-auth-rbac/quickstart.md` §5       |
+| Administrator permission matrix read-only (spec case 10) | UI allows administrator edit | Server allows administrator `update_role_permission`; align product if read-only is required |
+
+## 8. Key documents
 
 | Doc          | Path                                         |
 | ------------ | -------------------------------------------- |

@@ -48,6 +48,14 @@ Skip this section for single-machine development on loopback.
 - [ ] Client `deployment-profile.json` uses the receptionist PC LAN IP, not `127.0.0.1`.
 - [ ] Client `flutter run` shows healthy or degraded connectivity based on actual reachability.
 
+## Clinic administration (V1-2, after auth bootstrap)
+
+When `specs/003-org-branch-management` is deployed:
+
+- [ ] [clinic-administration.md](./clinic-administration.md) describes settings screens used in production
+- [ ] `./backend/tests/run_org_branch_management_tests.sh` passes
+- [ ] Owner can save organization settings; branch/staff deactivate uses reactivate flow (no delete UI per [FR-018a checklist](../../specs/003-org-branch-management/checklists/fr-018a-ui-verification.md))
+
 ## Documentation sign-off
 
 - [ ] Operator can name which guide they followed: [developer-workstation.md](./developer-workstation.md), [server-node.md](./server-node.md), or [client-workstation.md](./client-workstation.md).
