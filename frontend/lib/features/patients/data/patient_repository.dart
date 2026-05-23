@@ -128,7 +128,14 @@ class PatientRepository {
   }
 
   Future<PatientDetail> getPatient(String patientId) async {
-    final result = await _invoke('get_patient', {'p_patient_id': patientId});
+    final id = patientId.trim();
+    if (id.isEmpty) {
+      throw RpcFailure(
+        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Patient id is required.'),
+      );
+    }
+
+    final result = await _invoke('get_patient', {'p_patient_id': id});
     final detail = PatientDetail.fromRow(result.data ?? {});
     if (detail == null) {
       throw StateError('Patient profile was returned in an unexpected shape.');

@@ -118,7 +118,8 @@ void main() {
       await tester.tap(find.text('Test Patient'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('coming in Phase 5'), findsOneWidget);
+      expect(find.byKey(const Key('patient_detail_profile')), findsOneWidget);
+      expect(find.text('Test Patient'), findsWidgets);
     });
 
     testWidgets('regression: clear search resets list', (tester) async {

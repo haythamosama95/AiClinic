@@ -101,6 +101,32 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Register patient'), findsNothing);
     });
 
+    testWidgets('back returns to previous route when pushed', (tester) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (context, state) => const Scaffold(body: Text('Home shell')),
+          ),
+          GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => const PatientRegistrationPage()),
+        ],
+        initialLocation: AppRoutes.home,
+      );
+
+      await _pumpPage(tester, _host(router: router));
+
+      router.push(AppRoutes.patientsNew);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Register patient'), findsWidgets);
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Home shell'), findsOneWidget);
+      expect(find.text('Register patient'), findsNothing);
+    });
+
     testWidgets('edge case: duplicate dialog Go back does not call RPC again', (tester) async {
       final client = _DuplicateThenSuccessClient();
 

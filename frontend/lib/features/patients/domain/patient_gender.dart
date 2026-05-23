@@ -20,4 +20,9 @@ enum PatientGender {
     PatientGender.male => 'male',
     PatientGender.female => 'female',
   };
+
+  String get label => switch (this) {
+    PatientGender.male => 'Male',
+    PatientGender.female => 'Female',
+  };
 }

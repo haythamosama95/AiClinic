@@ -14,6 +14,14 @@ import 'package:ai_clinic/features/patients/presentation/patient_rpc_messages.da
 import 'package:ai_clinic/features/patients/presentation/widgets/duplicate_candidates_dialog.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
+void _leavePatientRegistration(BuildContext context) {
+  if (context.canPop()) {
+    context.pop();
+  } else {
+    context.go(AppRoutes.home);
+  }
+}
+
 /// Register a new patient at the active branch (US1).
 class PatientRegistrationPage extends ConsumerStatefulWidget {
   const PatientRegistrationPage({super.key});
@@ -165,7 +173,7 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
       return Scaffold(
         appBar: AppBar(
           title: const Text('Register patient'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.patients)),
+          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
         ),
         body: const Center(
           child: Padding(
@@ -183,7 +191,7 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
     return Scaffold(
       appBar: AppBar(
         title: const Text('Register patient'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.patients)),
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),

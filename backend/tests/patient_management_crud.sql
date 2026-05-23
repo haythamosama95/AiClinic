@@ -216,6 +216,32 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- US3: get_patient returns full profile fields for detail view.
+  v_result := public.get_patient(v_patient_main);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'get_patient_profile_fields',
+    v_result.success
+      AND (v_result.data ->> 'phone') = '201005551234'
+      AND (v_result.data ->> 'gender') = 'male'
+      AND (v_result.data ->> 'branch_name') = 'Main'
+      AND (v_result.data ->> 'notes') = 'Notes'
+      AND (v_result.data ->> 'created_at') IS NOT NULL
+      AND (v_result.data ->> 'updated_at') IS NOT NULL,
+    COALESCE(v_result.error_code, v_result.data ->> 'full_name')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US3: unknown patient id returns NOT_FOUND without leaking org data.
+  v_result := public.get_patient('99999999-9999-4999-8999-999999999999');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'get_patient_not_found',
+    NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- US1: duplicate check with no matches returns empty candidates.
   v_result := public.check_patient_duplicates('Unique Name XYZ', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);

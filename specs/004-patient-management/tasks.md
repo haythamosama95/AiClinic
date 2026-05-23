@@ -110,16 +110,16 @@
 
 ### Tests for User Story 3
 
-- [ ] T030 [P] [US3] Add `get_patient` and archived-denial tests in `backend/tests/patient_management_crud.sql`
-- [ ] T031 [P] [US3] Add unit tests for `PatientRepository.getPatient` in `frontend/test/unit/patients/patient_repository_get_test.dart`
-- [ ] T032 [P] [US3] Add widget tests for detail and visits placeholder in `frontend/test/widget/patients/patient_detail_page_test.dart`
+- [x] T030 [P] [US3] Add `get_patient` and archived-denial tests in `backend/tests/patient_management_crud.sql`
+- [x] T031 [P] [US3] Add unit tests for `PatientRepository.getPatient` in `frontend/test/unit/patients/patient_repository_get_test.dart`
+- [x] T032 [P] [US3] Add widget tests for detail and visits placeholder in `frontend/test/widget/patients/patient_detail_page_test.dart`
 
 ### Implementation for User Story 3
 
-- [ ] T033 [US3] Implement `PatientRepository.getPatient` in `frontend/lib/features/patients/data/patient_repository.dart`
-- [ ] T034 [US3] Implement `PatientVisitsPlaceholder` in `frontend/lib/features/patients/presentation/widgets/patient_visits_placeholder.dart`
-- [ ] T035 [US3] Implement `PatientDetailPage` (loading, loaded, archived unavailable, permission denied) in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`
-- [ ] T036 [US3] Add navigation from `PatientListPage` row tap to `/patients/:id` in `frontend/lib/features/patients/presentation/pages/patient_list_page.dart`
+- [x] T033 [US3] Implement `PatientRepository.getPatient` in `frontend/lib/features/patients/data/patient_repository.dart`
+- [x] T034 [US3] Implement `PatientVisitsPlaceholder` in `frontend/lib/features/patients/presentation/widgets/patient_visits_placeholder.dart`
+- [x] T035 [US3] Implement `PatientDetailPage` (loading, loaded, archived unavailable, permission denied) in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`
+- [x] T036 [US3] Add navigation from `PatientListPage` row tap to `/patients/:id` in `frontend/lib/features/patients/presentation/pages/patient_list_page.dart`
 
 **Checkpoint**: Spec test case 5; acceptance criteria 5
 

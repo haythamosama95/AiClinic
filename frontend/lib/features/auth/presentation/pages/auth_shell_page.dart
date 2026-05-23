@@ -114,7 +114,7 @@ class _ShellHomeBody extends StatelessWidget {
                       context,
                       permissions: PermissionService(auth),
                       permissionKey: PermissionKeys.patientsCreate,
-                      action: () => context.go(AppRoutes.patientsNew),
+                      action: () => context.push(AppRoutes.patientsNew),
                     );
                   },
                   icon: const Icon(Icons.person_add_outlined),

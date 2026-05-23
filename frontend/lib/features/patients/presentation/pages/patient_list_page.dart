@@ -58,7 +58,7 @@ class PatientListPage extends ConsumerWidget {
             context,
             permissions: permissions,
             permissionKey: PermissionKeys.patientsCreate,
-            action: () => context.go(AppRoutes.patientsNew),
+            action: () => context.push(AppRoutes.patientsNew),
           );
         },
         icon: const Icon(Icons.person_add_outlined),
@@ -140,7 +140,7 @@ class _PatientListBody extends StatelessWidget {
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   key: const Key('patient_list_empty_register'),
-                  onPressed: () => context.go(AppRoutes.patientsNew),
+                  onPressed: () => context.push(AppRoutes.patientsNew),
                   icon: const Icon(Icons.person_add_outlined),
                   label: const Text('Register patient'),
                 ),
@@ -169,7 +169,7 @@ class _PatientListBody extends StatelessWidget {
             columns: columns,
             rows: rows,
             emptyMessage: 'No patients to display',
-            onRowTap: (index) => context.go(AppRoutes.patientDetail(ui.items[index].id)),
+            onRowTap: (index) => context.push(AppRoutes.patientDetail(ui.items[index].id)),
           ),
         ),
         if (ui.hasMore)

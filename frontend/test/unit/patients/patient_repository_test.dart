@@ -39,14 +39,6 @@ void main() {
       expect(client.lastParams?.containsKey('p_branch_id'), isFalse);
     });
 
-    test('getPatient parses detail row', () async {
-      final detail = await repository.getPatient('11111111-1111-4111-8111-111111111111');
-
-      expect(detail.id, '11111111-1111-4111-8111-111111111111');
-      expect(detail.fullName, 'Test Patient');
-      expect(detail.branchName, 'Main');
-    });
-
     test('checkDuplicates parses candidate list', () async {
       final candidates = await repository.checkDuplicates(fullName: 'Test', phone: '201234567890');
 

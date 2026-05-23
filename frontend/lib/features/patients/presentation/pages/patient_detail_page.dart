@@ -1,0 +1,222 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/core/auth/permission_service.dart';
+import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_visits_placeholder.dart';
+import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+
+void _leavePatientDetail(BuildContext context) {
+  if (context.canPop()) {
+    context.pop();
+  } else {
+    context.go(AppRoutes.patients);
+  }
+}
+
+/// Patient profile detail with medical-history placeholder (US3).
+class PatientDetailPage extends ConsumerWidget {
+  const PatientDetailPage({required this.patientId, super.key});
+
+  final String? patientId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canView = PermissionService(ref.watch(authSessionProvider).context).canViewPatients();
+    final id = patientId?.trim() ?? '';
+
+    if (!canView) {
+      return _PatientScaffold(
+        title: 'Patient',
+        body: const Center(
+          key: Key('patient_detail_permission_denied'),
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('You do not have permission to view patients.', textAlign: TextAlign.center),
+          ),
+        ),
+      );
+    }
+
+    if (id.isEmpty) {
+      return _PatientScaffold(
+        title: 'Patient',
+        body: const Center(
+          key: Key('patient_detail_invalid_id'),
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('A valid patient id is required.', textAlign: TextAlign.center),
+          ),
+        ),
+      );
+    }
+
+    final detailAsync = ref.watch(patientDetailProvider(id));
+
+    return _PatientScaffold(
+      title: detailAsync.maybeWhen(data: (detail) => detail.fullName, orElse: () => 'Patient'),
+      body: detailAsync.when(
+        loading: () => const Center(key: Key('patient_detail_loading'), child: CircularProgressIndicator()),
+        error: (error, _) =>
+            _PatientDetailError(message: error.toString(), onRetry: () => ref.invalidate(patientDetailProvider(id))),
+        data: (detail) => _PatientDetailBody(detail: detail),
+      ),
+    );
+  }
+}
+
+class _PatientScaffold extends StatelessWidget {
+  const _PatientScaffold({required this.title, required this.body});
+
+  final String title;
+  final Widget body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientDetail(context)),
+      ),
+      body: body,
+    );
+  }
+}
+
+class _PatientDetailError extends StatelessWidget {
+  const _PatientDetailError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final isArchived = message.contains('archived');
+
+    return Center(
+      key: Key(isArchived ? 'patient_detail_archived' : 'patient_detail_error'),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            if (isArchived)
+              FilledButton(onPressed: () => _leavePatientDetail(context), child: const Text('Back to patients'))
+            else ...[
+              FilledButton(onPressed: onRetry, child: const Text('Retry')),
+              TextButton(onPressed: () => _leavePatientDetail(context), child: const Text('Back to patients')),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PatientDetailBody extends StatelessWidget {
+  const _PatientDetailBody({required this.detail});
+
+  final PatientDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return ListView(
+      key: const Key('patient_detail_body'),
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Profile', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Card(
+          key: const Key('patient_detail_profile'),
+          child: Column(
+            children: [
+              _ProfileRow(label: 'Full name', value: detail.fullName),
+              _ProfileRow(label: 'Mobile number', value: detail.phone ?? '—'),
+              _ProfileRow(label: 'Date of birth', value: _formatDate(detail.dateOfBirth)),
+              _ProfileRow(label: 'Gender', value: detail.gender?.label ?? '—'),
+              _ProfileRow(label: 'Marital status', value: detail.maritalStatus?.label ?? '—'),
+              _ProfileRow(label: 'Registering branch', value: detail.branchName),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text('Medical history', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Card(
+          key: const Key('patient_detail_medical_history'),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Notes', style: theme.textTheme.titleSmall),
+                const SizedBox(height: 8),
+                Text(
+                  (detail.notes == null || detail.notes!.isEmpty) ? 'No notes recorded.' : detail.notes!,
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const PatientVisitsPlaceholder(),
+        const SizedBox(height: 24),
+        Text('Record history', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Card(
+          key: const Key('patient_detail_audit'),
+          child: Column(
+            children: [
+              _ProfileRow(label: 'Created', value: _formatDateTime(detail.createdAt)),
+              _ProfileRow(label: 'Last updated', value: _formatDateTime(detail.updatedAt)),
+              if (detail.createdByDisplay != null) _ProfileRow(label: 'Registered by', value: detail.createdByDisplay!),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _formatDate(DateTime? value) {
+    if (value == null) {
+      return '—';
+    }
+    return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  }
+
+  static String _formatDateTime(DateTime value) {
+    final local = value.toLocal();
+    final date = _formatDate(local);
+    final time = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    return '$date $time';
+  }
+}
+
+class _ProfileRow extends StatelessWidget {
+  const _ProfileRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 160, child: Text(label, style: Theme.of(context).textTheme.bodyMedium)),
+          Expanded(child: Text(value, style: Theme.of(context).textTheme.bodyLarge)),
+        ],
+      ),
+    );
+  }
+}
