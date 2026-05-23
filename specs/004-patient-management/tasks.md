@@ -133,16 +133,16 @@
 
 ### Tests for User Story 4
 
-- [ ] T037 [P] [US4] Add `update_patient` stale conflict and cross-branch edit tests in `backend/tests/patient_management_crud.sql`
-- [ ] T038 [P] [US4] Add unit tests for `PatientRepository.updatePatient` in `frontend/test/unit/patients/patient_repository_update_test.dart`
-- [ ] T039 [P] [US4] Add widget tests for edit form and stale banner in `frontend/test/widget/patients/patient_edit_page_test.dart`
+- [x] T037 [P] [US4] Add `update_patient` stale conflict and cross-branch edit tests in `backend/tests/patient_management_crud.sql`
+- [x] T038 [P] [US4] Add unit tests for `PatientRepository.updatePatient` in `frontend/test/unit/patients/patient_repository_update_test.dart`
+- [x] T039 [P] [US4] Add widget tests for edit form and stale banner in `frontend/test/widget/patients/patient_edit_page_test.dart`
 
 ### Implementation for User Story 4
 
-- [ ] T040 [US4] Implement `PatientRepository.updatePatient` with `p_expected_updated_at` and `STALE_PATIENT` handling in `frontend/lib/features/patients/data/patient_repository.dart`
-- [ ] T041 [US4] Implement `PatientEditPage` (duplicate dialog reuse, stale reload banner) in `frontend/lib/features/patients/presentation/pages/patient_edit_page.dart`
-- [ ] T042 [US4] Add **Edit** action on `PatientDetailPage` gated by `patients.edit` in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`
-- [ ] T043 [US4] Gate `/patients/:id/edit` route to `patients.edit` in `frontend/lib/app/router.dart`
+- [x] T040 [US4] Implement `PatientRepository.updatePatient` with `p_expected_updated_at` and `STALE_PATIENT` handling in `frontend/lib/features/patients/data/patient_repository.dart`
+- [x] T041 [US4] Implement `PatientEditPage` (duplicate dialog reuse, stale reload banner) in `frontend/lib/features/patients/presentation/pages/patient_edit_page.dart`
+- [x] T042 [US4] Add **Edit** action on `PatientDetailPage` gated by `patients.edit` in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`
+- [x] T043 [US4] Gate `/patients/:id/edit` route to `patients.edit` in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 6–8; acceptance criteria 6–7
 
@@ -156,15 +156,15 @@
 
 ### Tests for User Story 5
 
-- [ ] T044 [P] [US5] Add `archive_patient` tests in `backend/tests/patient_management_crud.sql`
-- [ ] T045 [P] [US5] Add unit tests for `PatientRepository.archivePatient` in `frontend/test/unit/patients/patient_repository_archive_test.dart`
-- [ ] T046 [P] [US5] Add widget tests for archive confirm dialog in `frontend/test/widget/patients/patient_archive_dialog_test.dart`
+- [x] T044 [P] [US5] Add `archive_patient` tests in `backend/tests/patient_management_crud.sql`
+- [x] T045 [P] [US5] Add unit tests for `PatientRepository.archivePatient` in `frontend/test/unit/patients/patient_repository_archive_test.dart`
+- [x] T046 [P] [US5] Add widget tests for archive confirm dialog in `frontend/test/widget/patients/patient_archive_dialog_test.dart`
 
 ### Implementation for User Story 5
 
-- [ ] T047 [US5] Implement `PatientRepository.archivePatient` in `frontend/lib/features/patients/data/patient_repository.dart`
-- [ ] T048 [US5] Implement archive confirmation dialog in `frontend/lib/features/patients/presentation/widgets/patient_archive_dialog.dart`
-- [ ] T049 [US5] Add **Archive** action on `PatientDetailPage` gated by `patients.delete` in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`
+- [x] T047 [US5] Implement `PatientRepository.archivePatient` in `frontend/lib/features/patients/data/patient_repository.dart`
+- [x] T048 [US5] Implement archive confirmation dialog in `frontend/lib/features/patients/presentation/widgets/patient_archive_dialog.dart`
+- [x] T049 [US5] Add **Archive** action on `PatientDetailPage` gated by `patients.delete` in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`
 
 **Checkpoint**: Spec test case 9; acceptance criteria 9–10
 

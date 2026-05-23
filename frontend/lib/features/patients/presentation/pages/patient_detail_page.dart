@@ -6,6 +6,8 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_archive_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visits_placeholder.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
@@ -25,7 +27,10 @@ class PatientDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canView = PermissionService(ref.watch(authSessionProvider).context).canViewPatients();
+    final permissions = PermissionService(ref.watch(authSessionProvider).context);
+    final canView = permissions.canViewPatients();
+    final canEdit = permissions.canEditPatients();
+    final canDelete = permissions.canDeletePatients();
     final id = patientId?.trim() ?? '';
 
     if (!canView) {
@@ -58,6 +63,10 @@ class PatientDetailPage extends ConsumerWidget {
 
     return _PatientScaffold(
       title: detailAsync.maybeWhen(data: (detail) => detail.fullName, orElse: () => 'Patient'),
+      actions: detailAsync.maybeWhen(
+        data: (detail) => _PatientDetailActions(detail: detail, patientId: id, canEdit: canEdit, canDelete: canDelete),
+        orElse: () => null,
+      ),
       body: detailAsync.when(
         loading: () => const Center(key: Key('patient_detail_loading'), child: CircularProgressIndicator()),
         error: (error, _) =>
@@ -69,10 +78,11 @@ class PatientDetailPage extends ConsumerWidget {
 }
 
 class _PatientScaffold extends StatelessWidget {
-  const _PatientScaffold({required this.title, required this.body});
+  const _PatientScaffold({required this.title, required this.body, this.actions});
 
   final String title;
   final Widget body;
+  final Widget? actions;
 
   @override
   Widget build(BuildContext context) {
@@ -80,8 +90,61 @@ class _PatientScaffold extends StatelessWidget {
       appBar: AppBar(
         title: Text(title),
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientDetail(context)),
+        actions: actions == null ? null : [actions!],
       ),
       body: body,
+    );
+  }
+}
+
+class _PatientDetailActions extends ConsumerWidget {
+  const _PatientDetailActions({
+    required this.detail,
+    required this.patientId,
+    required this.canEdit,
+    required this.canDelete,
+  });
+
+  final PatientDetail detail;
+  final String patientId;
+  final bool canEdit;
+  final bool canDelete;
+
+  Future<void> _archive(BuildContext context, WidgetRef ref) async {
+    final confirmed = await PatientArchiveDialog.show(context, patientId: patientId, patientName: detail.fullName);
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    ref.invalidate(patientListProvider);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Patient archived.')));
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(AppRoutes.patients);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (canEdit)
+          IconButton(
+            key: const Key('patient_detail_edit'),
+            tooltip: 'Edit patient',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () => context.push(AppRoutes.patientEdit(patientId)),
+          ),
+        if (canDelete)
+          IconButton(
+            key: const Key('patient_detail_archive'),
+            tooltip: 'Archive patient',
+            icon: const Icon(Icons.archive_outlined),
+            onPressed: () => _archive(context, ref),
+          ),
+      ],
     );
   }
 }

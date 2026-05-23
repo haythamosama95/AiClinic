@@ -550,6 +550,26 @@ BEGIN
   v_result := public.get_patient(v_patient_main);
   v_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
 
+  -- Blank name rejected on update.
+  v_result := public.update_patient(
+    v_patient_main,
+    '   ',
+    v_updated_at,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    false
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'update_blank_name_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Stale update rejected.
   v_result := public.update_patient(
     v_patient_main,

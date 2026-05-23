@@ -139,6 +139,34 @@ void main() {
       expect(find.text('Home shell'), findsOneWidget);
     });
 
+    testWidgets('advanced: edit action visible with patients.edit', (tester) async {
+      await _pump(
+        tester,
+        _host(
+          client: PatientRpcTestClient(),
+          patientId: '11111111-1111-4111-8111-111111111111',
+          permissions: const {'patients.view', 'patients.edit'},
+        ),
+      );
+
+      expect(find.byKey(const Key('patient_detail_edit')), findsOneWidget);
+      expect(find.byKey(const Key('patient_detail_archive')), findsNothing);
+    });
+
+    testWidgets('advanced: archive action visible with patients.delete', (tester) async {
+      await _pump(
+        tester,
+        _host(
+          client: PatientRpcTestClient(),
+          patientId: '11111111-1111-4111-8111-111111111111',
+          permissions: const {'patients.view', 'patients.delete'},
+        ),
+      );
+
+      expect(find.byKey(const Key('patient_detail_archive')), findsOneWidget);
+      expect(find.byKey(const Key('patient_detail_edit')), findsNothing);
+    });
+
     testWidgets('regression: back without stack falls back to patient list', (tester) async {
       final router = GoRouter(
         routes: [
