@@ -1,1 +1,1 @@
-// Patients data layer scaffold — PatientRepository added in Phase 2 (T011).
+export 'package:ai_clinic/features/patients/data/patient_repository.dart';

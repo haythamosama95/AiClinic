@@ -1,1 +1,1 @@
-// Patients presentation providers scaffold — scope notifier in Phase 2 (T012).
+export 'package:ai_clinic/features/patients/presentation/providers/patient_list_scope_provider.dart';

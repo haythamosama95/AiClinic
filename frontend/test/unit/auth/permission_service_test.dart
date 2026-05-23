@@ -97,6 +97,30 @@ void main() {
       }
     });
 
+    test('V1-3 patient helpers reflect grants', () {
+      final full = PermissionService(
+        sampleAuthSessionContext(
+          permissions: {
+            PermissionKeys.patientsView,
+            PermissionKeys.patientsCreate,
+            PermissionKeys.patientsEdit,
+            PermissionKeys.patientsDelete,
+          },
+        ),
+      );
+      final viewOnly = PermissionService(sampleAuthSessionContext(permissions: {PermissionKeys.patientsView}));
+
+      expect(full.canViewPatients(), isTrue);
+      expect(full.canCreatePatients(), isTrue);
+      expect(full.canEditPatients(), isTrue);
+      expect(full.canDeletePatients(), isTrue);
+
+      expect(viewOnly.canViewPatients(), isTrue);
+      expect(viewOnly.canCreatePatients(), isFalse);
+      expect(viewOnly.canEditPatients(), isFalse);
+      expect(viewOnly.canDeletePatients(), isFalse);
+    });
+
     test('owner and administrator share staff settings grant; doctor does not', () {
       final owner = PermissionService(
         sampleAuthSessionContext(role: StaffRole.owner, permissions: RolePermissionSeed.owner),

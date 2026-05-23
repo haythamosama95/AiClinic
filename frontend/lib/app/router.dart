@@ -23,6 +23,7 @@ import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dar
 import 'package:ai_clinic/features/settings/presentation/pages/staff_form_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_settings_password_reset_page.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/patient_pages.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
@@ -77,6 +78,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => StaffSettingsPasswordResetPage(staffId: state.pathParameters['staffId']!),
       ),
       GoRoute(path: AppRoutes.settingsPermissions, builder: (context, state) => const RolePermissionsPage()),
+      GoRoute(path: AppRoutes.patients, builder: (context, state) => const PatientListPage()),
+      GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => const PatientRegistrationPage()),
+      GoRoute(
+        path: '${AppRoutes.patients}/:patientId',
+        builder: (context, state) => PatientDetailPage(patientId: state.pathParameters['patientId']),
+      ),
+      GoRoute(
+        path: '${AppRoutes.patients}/:patientId/edit',
+        builder: (context, state) => PatientEditPage(patientId: state.pathParameters['patientId']),
+      ),
     ],
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);
@@ -140,6 +151,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final adminRedirect = AuthRouteGuard.adminSettingsRedirect(location: location, auth: auth);
         if (adminRedirect != null) {
           return adminRedirect;
+        }
+
+        final patientRedirect = AuthRouteGuard.patientRouteRedirect(location: location, auth: auth);
+        if (patientRedirect != null) {
+          return patientRedirect;
         }
 
         final provisioningRedirect = AuthRouteGuard.steadyStateProvisioningRedirect(location: location, auth: auth);

@@ -35,6 +35,18 @@ class PermissionService {
   /// V1-2 staff administration (`settings.manage_staff`).
   bool canManageStaff() => hasPermission('settings.manage_staff');
 
+  /// V1-3 patient registry (`patients.view`).
+  bool canViewPatients() => hasPermission('patients.view');
+
+  /// V1-3 patient registration (`patients.create`).
+  bool canCreatePatients() => hasPermission('patients.create');
+
+  /// V1-3 patient profile edit (`patients.edit`).
+  bool canEditPatients() => hasPermission('patients.edit');
+
+  /// V1-3 patient archive (`patients.delete`).
+  bool canDeletePatients() => hasPermission('patients.delete');
+
   void requirePermission(String key) {
     if (!hasPermission(key)) {
       throw const PermissionDeniedException('You do not have permission to perform this action.');

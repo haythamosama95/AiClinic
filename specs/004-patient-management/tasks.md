@@ -40,15 +40,15 @@
 
 **⚠️ CRITICAL**: No user story phase work until this phase is complete
 
-- [ ] T005 Add migration `backend/supabase/migrations/20260523140000_patient_management.sql` with `patient_gender` enum, `patients` table (`organization_id` denormalized), indexes, RLS (SELECT org-scoped; INSERT/UPDATE/DELETE denied), `auth_internal` helpers (phone normalize, duplicate finder, org patient assert), and RPCs `search_patients`, `get_patient`, `check_patient_duplicates`, `create_patient`, `update_patient`, `archive_patient` per `contracts/` and `data-model.md`
-- [ ] T006 [P] Add CRUD verification SQL in `backend/tests/patient_management_crud.sql` (register, search branch/org scope, name contains, phone prefix, national ID block, duplicate advisory, stale update, archive, cross-branch edit)
-- [ ] T007 [P] Add RLS isolation SQL in `backend/tests/patient_management_rls.sql` (cross-org denial for patient reads and RPCs)
-- [ ] T008 [P] Add test runner `backend/tests/run_patient_management_tests.sh`
-- [ ] T009 [P] Extend `PermissionKeys` with `patientsCreate`, `patientsEdit`, `patientsDelete` in `frontend/lib/features/auth/domain/permission_keys.dart`
-- [ ] T010 [P] Add `canViewPatients`, `canCreatePatients`, `canEditPatients`, `canDeletePatients` helpers in `frontend/lib/core/auth/permission_service.dart`
-- [ ] T011 Implement `PatientRepository` RPC wrappers in `frontend/lib/features/patients/data/patient_repository.dart` (`searchPatients`, `getPatient`, `checkDuplicates`, `createPatient`, `updatePatient`, `archivePatient`)
-- [ ] T012 [P] Implement `PatientListScopeNotifier` (default `thisBranch` on sign-in; session persistence until sign-out) in `frontend/lib/features/patients/presentation/providers/patient_list_scope_provider.dart`
-- [ ] T013 Register patient routes with `patients.view` / create / edit / delete guards in `frontend/lib/app/router.dart`
+- [x] T005 Add migration `backend/supabase/migrations/20260523140000_patient_management.sql` with `patient_gender` enum, `patients` table (`organization_id` denormalized), indexes, RLS (SELECT org-scoped; INSERT/UPDATE/DELETE denied), `auth_internal` helpers (phone normalize, duplicate finder, org patient assert), and RPCs `search_patients`, `get_patient`, `check_patient_duplicates`, `create_patient`, `update_patient`, `archive_patient` per `contracts/` and `data-model.md`
+- [x] T006 [P] Add CRUD verification SQL in `backend/tests/patient_management_crud.sql` (register, search branch/org scope, name contains, phone prefix, national ID block, duplicate advisory, stale update, archive, cross-branch edit)
+- [x] T007 [P] Add RLS isolation SQL in `backend/tests/patient_management_rls.sql` (cross-org denial for patient reads and RPCs)
+- [x] T008 [P] Add test runner `backend/tests/run_patient_management_tests.sh`
+- [x] T009 [P] Extend `PermissionKeys` with `patientsCreate`, `patientsEdit`, `patientsDelete` in `frontend/lib/features/auth/domain/permission_keys.dart`
+- [x] T010 [P] Add `canViewPatients`, `canCreatePatients`, `canEditPatients`, `canDeletePatients` helpers in `frontend/lib/core/auth/permission_service.dart`
+- [x] T011 Implement `PatientRepository` RPC wrappers in `frontend/lib/features/patients/data/patient_repository.dart` (`searchPatients`, `getPatient`, `checkDuplicates`, `createPatient`, `updatePatient`, `archivePatient`)
+- [x] T012 [P] Implement `PatientListScopeNotifier` (default `thisBranch` on sign-in; session persistence until sign-out) in `frontend/lib/features/patients/presentation/providers/patient_list_scope_provider.dart`
+- [x] T013 Register patient routes with `patients.view` / create / edit / delete guards in `frontend/lib/app/router.dart`
 
 **Checkpoint**: `supabase migration up` succeeds; `run_patient_management_tests.sh` passes; patient routes registered (pages may 404 until story phases)
 

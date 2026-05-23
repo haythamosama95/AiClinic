@@ -1,4 +1,5 @@
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
@@ -21,8 +22,85 @@ abstract final class AuthRouteGuard {
     return location == AppRoutes.home ||
         location == AppRoutes.bootstrap ||
         isSettingsRoute(location) ||
+        isPatientRoute(location) ||
         isStaffProvisioningRoute(location) ||
         location.startsWith('${AppRoutes.protectedPrefix}/');
+  }
+
+  /// V1-3 operational patient routes under `/patients`.
+  static bool isPatientRoute(String location) {
+    if (AppRoutes.patientStaticPaths.contains(location)) {
+      return true;
+    }
+    if (!location.startsWith('${AppRoutes.patients}/')) {
+      return false;
+    }
+    return location != AppRoutes.patients;
+  }
+
+  static bool _isPatientEditRoute(String location) {
+    return location.startsWith('${AppRoutes.patients}/') && location.endsWith('/edit');
+  }
+
+  static bool _isPatientDetailRoute(String location) {
+    if (!location.startsWith('${AppRoutes.patients}/')) {
+      return false;
+    }
+    if (location == AppRoutes.patientsNew || _isPatientEditRoute(location)) {
+      return false;
+    }
+    final suffix = location.substring('${AppRoutes.patients}/'.length);
+    return suffix.isNotEmpty && !suffix.contains('/');
+  }
+
+  static bool canAccessPatientList(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canViewPatients();
+  }
+
+  static bool canAccessPatientRegistration(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canCreatePatients();
+  }
+
+  static bool canAccessPatientDetail(AuthSessionState auth) {
+    return canAccessPatientList(auth);
+  }
+
+  static bool canAccessPatientEdit(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canEditPatients();
+  }
+
+  /// Returns redirect when [location] is a patient route the session cannot access.
+  static String? patientRouteRedirect({required String location, required AuthSessionState auth}) {
+    if (!isPatientRoute(location)) {
+      return null;
+    }
+
+    if (!auth.isAuthenticated) {
+      return AppRoutes.login;
+    }
+
+    if (auth.context!.setupRequired) {
+      return AppRoutes.bootstrap;
+    }
+
+    final allowed = switch (location) {
+      AppRoutes.patients => canAccessPatientList(auth),
+      AppRoutes.patientsNew => canAccessPatientRegistration(auth),
+      _ when _isPatientEditRoute(location) => canAccessPatientEdit(auth),
+      _ when _isPatientDetailRoute(location) => canAccessPatientDetail(auth),
+      _ => false,
+    };
+
+    return allowed ? null : AppRoutes.home;
   }
 
   static bool isSettingsRoute(String location) {
