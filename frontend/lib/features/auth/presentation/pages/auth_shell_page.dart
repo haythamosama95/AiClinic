@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dar
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_reset_clinic_button.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/dev_seed_patients_button.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/no_branch_blocked_panel.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/permission_demo_panel.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/shell_status_bar.dart';
@@ -33,6 +34,7 @@ class AuthShellPage extends ConsumerWidget {
         actions: [
           const DevFillDummyClinicButton(),
           const DevResetClinicButton(),
+          const DevSeedPatientsButton(),
           TextButton(onPressed: () => ref.read(authNotifierProvider.notifier).signOut(), child: const Text('Sign out')),
         ],
       ),

@@ -26,6 +26,7 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.staff_branch_assignments;
   DELETE FROM public.audit_log;
+  DELETE FROM public.patients;
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
 
@@ -119,6 +120,7 @@ PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.staff_branch_assignments;
   DELETE FROM public.staff_members WHERE id NOT IN (v_bootstrap_staff, v_non_bootstrap_staff);
   DELETE FROM public.audit_log;
+  DELETE FROM public.patients;
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
   DELETE FROM auth.users

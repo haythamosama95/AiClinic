@@ -18,12 +18,16 @@ class AppDataTable extends StatelessWidget {
     required this.rows,
     this.emptyMessage = 'No records to display',
     this.isLoading = false,
+    this.onRowTap,
   });
 
   final List<AppDataColumn> columns;
   final List<List<String>> rows;
   final String emptyMessage;
   final bool isLoading;
+
+  /// Called when a data row is tapped (index matches [rows]).
+  final void Function(int index)? onRowTap;
 
   @override
   Widget build(BuildContext context) {
@@ -42,29 +46,42 @@ class AppDataTable extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        Widget table = DataTable(
+          showCheckboxColumn: false,
+          headingRowColor: WidgetStatePropertyAll(Theme.of(context).colorScheme.surfaceContainerHighest),
+          columns: [
+            for (final column in columns)
+              DataColumn(
+                numeric: column.numeric,
+                label: Expanded(child: Text(column.label, style: Theme.of(context).textTheme.labelLarge)),
+              ),
+          ],
+          rows: [
+            for (var rowIndex = 0; rowIndex < rows.length; rowIndex++)
+              DataRow(
+                cells: [
+                  for (var index = 0; index < columns.length; index++)
+                    DataCell(
+                      Text(index < rows[rowIndex].length ? rows[rowIndex][index] : ''),
+                      onTap: onRowTap == null ? null : () => onRowTap!(rowIndex),
+                    ),
+                ],
+              ),
+          ],
+        );
+
+        if (constraints.maxHeight.isFinite) {
+          table = SizedBox(
+            height: constraints.maxHeight,
+            child: SingleChildScrollView(child: table),
+          );
+        }
+
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
             constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: DataTable(
-              headingRowColor: WidgetStatePropertyAll(Theme.of(context).colorScheme.surfaceContainerHighest),
-              columns: [
-                for (final column in columns)
-                  DataColumn(
-                    numeric: column.numeric,
-                    label: Expanded(child: Text(column.label, style: Theme.of(context).textTheme.labelLarge)),
-                  ),
-              ],
-              rows: [
-                for (final row in rows)
-                  DataRow(
-                    cells: [
-                      for (var index = 0; index < columns.length; index++)
-                        DataCell(Text(index < row.length ? row[index] : '')),
-                    ],
-                  ),
-              ],
-            ),
+            child: table,
           ),
         );
       },

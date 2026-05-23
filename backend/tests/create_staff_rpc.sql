@@ -68,6 +68,7 @@ BEGIN
   DELETE FROM auth.users
   WHERE email LIKE 'us6-%'
      OR email IN ('owner-one', 'owner-two', 'reception');
+  DELETE FROM public.patients;
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
 

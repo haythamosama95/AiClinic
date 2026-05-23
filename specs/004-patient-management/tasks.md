@@ -85,18 +85,18 @@
 
 ### Tests for User Story 2
 
-- [ ] T021 [P] [US2] Add `search_patients` scope and min-length tests in `backend/tests/patient_management_crud.sql`
-- [ ] T022 [P] [US2] Add unit tests for `PatientRepository.searchPatients` in `frontend/test/unit/patients/patient_repository_search_test.dart`
-- [ ] T023 [P] [US2] Add widget tests for list scope toggle and search in `frontend/test/widget/patients/patient_list_page_test.dart`
+- [x] T021 [P] [US2] Add `search_patients` scope and min-length tests in `backend/tests/patient_management_crud.sql`
+- [x] T022 [P] [US2] Add unit tests for `PatientRepository.searchPatients` in `frontend/test/unit/patients/patient_repository_search_test.dart`
+- [x] T023 [P] [US2] Add widget tests for list scope toggle and search in `frontend/test/widget/patients/patient_list_page_test.dart`
 
 ### Implementation for User Story 2
 
-- [ ] T024 [US2] Implement `PatientRepository.searchPatients` with scope `branch` | `organization` per `contracts/patient-list-search.md` in `frontend/lib/features/patients/data/patient_repository.dart`
-- [ ] T025 [US2] Implement `PatientScopeToggle` in `frontend/lib/features/patients/presentation/widgets/patient_scope_toggle.dart`
-- [ ] T026 [US2] Implement `PatientSearchField` (debounce, min-length guidance, digit vs name detection) in `frontend/lib/features/patients/presentation/widgets/patient_search_field.dart`
-- [ ] T027 [US2] Implement `PatientListPage` (pagination, branch column when org scope, register FAB) in `frontend/lib/features/patients/presentation/pages/patient_list_page.dart`
-- [ ] T028 [US2] Wire `PatientListPage` to `PatientListScopeNotifier` and active branch from `frontend/lib/shared/providers/auth_session_provider.dart`
-- [ ] T029 [US2] Gate `/patients` route to `patients.view` in `frontend/lib/app/router.dart`
+- [x] T024 [US2] Implement `PatientRepository.searchPatients` with scope `branch` | `organization` per `contracts/patient-list-search.md` in `frontend/lib/features/patients/data/patient_repository.dart`
+- [x] T025 [US2] Implement `PatientScopeToggle` in `frontend/lib/features/patients/presentation/widgets/patient_scope_toggle.dart`
+- [x] T026 [US2] Implement `PatientSearchField` (debounce, min-length guidance, digit vs name detection) in `frontend/lib/features/patients/presentation/widgets/patient_search_field.dart`
+- [x] T027 [US2] Implement `PatientListPage` (pagination, branch column when org scope, register FAB) in `frontend/lib/features/patients/presentation/pages/patient_list_page.dart`
+- [x] T028 [US2] Wire `PatientListPage` to `PatientListScopeNotifier` and active branch from `frontend/lib/shared/providers/auth_session_provider.dart`
+- [x] T029 [US2] Gate `/patients` route to `patients.view` in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 4–5, 12; acceptance criteria 3–4
 

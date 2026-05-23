@@ -25,6 +25,7 @@ BEGIN
   WHERE email IN ('owner-one', 'owner-two', 'reception')
      OR email LIKE 'us6-%';
   DELETE FROM public.subscription_cache;
+  DELETE FROM public.patients;
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
 

@@ -22,6 +22,7 @@ BEGIN
   DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
   DELETE FROM public.app_settings WHERE true;
   DELETE FROM public.subscription_cache WHERE true;
+  DELETE FROM public.patients WHERE true;
   DELETE FROM public.branches WHERE true;
   DELETE FROM public.organizations WHERE true;
 

@@ -55,6 +55,7 @@ BEGIN
   DELETE FROM public.staff_members WHERE id NOT IN (v_bootstrap_staff, v_doctor_staff);
   DELETE FROM public.audit_log;
   DELETE FROM auth.users WHERE email LIKE 'us7-%';
+  DELETE FROM public.patients;
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
   PERFORM set_config('role', 'authenticated', true);
