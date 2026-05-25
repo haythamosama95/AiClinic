@@ -216,7 +216,7 @@ void main() {
       container.read(appRouterProvider).go(AppRoutes.home);
       await tester.pumpAndSettle();
 
-      expect(find.text('Settings'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Settings'), findsOneWidget);
       expect(find.text('Manage staff'), findsOneWidget);
       expect(find.text('Create staff account'), findsNothing);
 

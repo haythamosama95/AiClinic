@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/auth_shell_page.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/clinic_bootstrap_page.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/forgot_password_page.dart';
@@ -46,6 +47,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.startupCheck,
     refreshListenable: refreshSignal,
     routes: [
+      // Unauthenticated / startup routes
       GoRoute(path: AppRoutes.startupCheck, builder: (context, state) => const StartupCheckPage()),
       GoRoute(path: AppRoutes.startupEntry, builder: (context, state) => const StartupEntryPage()),
       GoRoute(path: AppRoutes.setupGuidance, builder: (context, state) => const SetupGuidancePage()),
@@ -57,36 +59,47 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const ClinicBootstrapPage()),
       GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => const StaffCreatePage()),
       GoRoute(path: AppRoutes.staffPasswordReset, builder: (context, state) => const StaffPasswordResetPage()),
-      GoRoute(path: AppRoutes.home, builder: (context, state) => const AuthShellPage()),
-      GoRoute(path: AppRoutes.settings, builder: (context, state) => const SettingsPage()),
-      GoRoute(path: AppRoutes.settingsIdleTimeout, builder: (context, state) => const IdleTimeoutSettingsPage()),
-      GoRoute(path: AppRoutes.settingsOrganization, builder: (context, state) => const OrganizationSettingsPage()),
-      GoRoute(path: AppRoutes.settingsBranches, builder: (context, state) => const BranchListPage()),
-      GoRoute(path: AppRoutes.settingsBranchesNew, builder: (context, state) => const BranchFormPage()),
-      GoRoute(
-        path: '${AppRoutes.settingsBranches}/:branchId/edit',
-        builder: (context, state) => BranchFormPage(branchId: state.pathParameters['branchId']),
-      ),
-      GoRoute(path: AppRoutes.settingsStaff, builder: (context, state) => const StaffListPage()),
-      GoRoute(path: AppRoutes.settingsStaffNew, builder: (context, state) => const StaffFormPage()),
-      GoRoute(
-        path: '${AppRoutes.settingsStaff}/:staffId',
-        builder: (context, state) => StaffFormPage(staffId: state.pathParameters['staffId']),
-      ),
-      GoRoute(
-        path: '${AppRoutes.settingsStaff}/:staffId/reset-password',
-        builder: (context, state) => StaffSettingsPasswordResetPage(staffId: state.pathParameters['staffId']!),
-      ),
-      GoRoute(path: AppRoutes.settingsPermissions, builder: (context, state) => const RolePermissionsPage()),
-      GoRoute(path: AppRoutes.patients, builder: (context, state) => const PatientListPage()),
-      GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => const PatientRegistrationPage()),
-      GoRoute(
-        path: '${AppRoutes.patients}/:patientId',
-        builder: (context, state) => PatientDetailPage(patientId: state.pathParameters['patientId']),
-      ),
-      GoRoute(
-        path: '${AppRoutes.patients}/:patientId/edit',
-        builder: (context, state) => PatientEditPage(patientId: state.pathParameters['patientId']),
+
+      // Authenticated shell — shared NavigationRail wraps all feature routes
+      ShellRoute(
+        builder: (context, state, child) => AuthenticatedShell(child: child),
+        routes: [
+          GoRoute(path: AppRoutes.home, builder: (context, state) => const AuthShellPage()),
+
+          // Patient management
+          GoRoute(path: AppRoutes.patients, builder: (context, state) => const PatientListPage()),
+          GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => const PatientRegistrationPage()),
+          GoRoute(
+            path: '${AppRoutes.patients}/:patientId',
+            builder: (context, state) => PatientDetailPage(patientId: state.pathParameters['patientId']),
+          ),
+          GoRoute(
+            path: '${AppRoutes.patients}/:patientId/edit',
+            builder: (context, state) => PatientEditPage(patientId: state.pathParameters['patientId']),
+          ),
+
+          // Settings
+          GoRoute(path: AppRoutes.settings, builder: (context, state) => const SettingsPage()),
+          GoRoute(path: AppRoutes.settingsIdleTimeout, builder: (context, state) => const IdleTimeoutSettingsPage()),
+          GoRoute(path: AppRoutes.settingsOrganization, builder: (context, state) => const OrganizationSettingsPage()),
+          GoRoute(path: AppRoutes.settingsBranches, builder: (context, state) => const BranchListPage()),
+          GoRoute(path: AppRoutes.settingsBranchesNew, builder: (context, state) => const BranchFormPage()),
+          GoRoute(
+            path: '${AppRoutes.settingsBranches}/:branchId/edit',
+            builder: (context, state) => BranchFormPage(branchId: state.pathParameters['branchId']),
+          ),
+          GoRoute(path: AppRoutes.settingsStaff, builder: (context, state) => const StaffListPage()),
+          GoRoute(path: AppRoutes.settingsStaffNew, builder: (context, state) => const StaffFormPage()),
+          GoRoute(
+            path: '${AppRoutes.settingsStaff}/:staffId',
+            builder: (context, state) => StaffFormPage(staffId: state.pathParameters['staffId']),
+          ),
+          GoRoute(
+            path: '${AppRoutes.settingsStaff}/:staffId/reset-password',
+            builder: (context, state) => StaffSettingsPasswordResetPage(staffId: state.pathParameters['staffId']!),
+          ),
+          GoRoute(path: AppRoutes.settingsPermissions, builder: (context, state) => const RolePermissionsPage()),
+        ],
       ),
     ],
     redirect: (context, state) {

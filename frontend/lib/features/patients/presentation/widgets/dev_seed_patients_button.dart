@@ -5,13 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/patients/data/patient_dev_seed_service.dart';
-import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/patient_dev_seed_data.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
-import 'package:ai_clinic/features/settings/data/branch_repository.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/shared/providers/repository_providers.dart';
 
 final _patientDevSeedServiceProvider = Provider<PatientDevSeedService>((ref) {
   return PatientDevSeedService(

@@ -10,6 +10,7 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/data/permission_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/shared/providers/session_context_loader.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 
 /// High-level auth lifecycle used by routing and permission services.
@@ -184,19 +185,8 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     idle.disable();
   }
 
-  static String _contextFailureReason(Object error) {
-    final message = error.toString().toLowerCase();
-    if (message.contains('missing staff claims')) {
-      return 'missing_staff_claims';
-    }
-    if (message.contains('inactive')) {
-      return 'inactive_staff';
-    }
-    if (message.contains('no active staff profile')) {
-      return 'staff_profile_missing';
-    }
-    return error.runtimeType.toString();
-  }
+  static String _contextFailureReason(Object error) =>
+      SessionContextLoader.contextFailureReason(error);
 
   Future<void> _syncFromCurrentSession() async {
     if (!SupabaseBootstrap.isReady) {
@@ -213,71 +203,13 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     await _handleAuthState(AuthState(AuthChangeEvent.initialSession, session));
   }
 
-  Future<AuthSessionContext> _loadSessionContext(Session session) async {
-    final claims = decodeAccessTokenClaims(session.accessToken);
-    final staffMemberId = claims['staff_member_id']?.toString();
+  SessionContextLoader get _contextLoader => SessionContextLoader(
+        ref.read(supabaseClientProvider),
+        ref.read(permissionRepositoryProvider),
+      );
 
-    if (staffMemberId == null) {
-      throw StateError('Authenticated session is missing staff claims.');
-    }
-
-    final client = ref.read(supabaseClientProvider);
-    final staffRow = await client
-        .from('staff_members')
-        .select('id, full_name, role, is_bootstrap_admin, is_active')
-        .eq('id', staffMemberId)
-        .maybeSingle();
-
-    if (staffRow == null) {
-      throw StateError('No active staff profile is linked to this account.');
-    }
-
-    if (staffRow['is_active'] != true) {
-      throw StateError('This staff account is inactive. Contact your clinic administrator.');
-    }
-
-    // Prefer live staff_members.role over JWT staff_role so UI matches RPC authorization.
-    final role =
-        StaffRole.tryParse(staffRow['role']?.toString()) ?? StaffRole.tryParse(claims['staff_role']?.toString());
-    if (role == null) {
-      throw StateError('Authenticated session is missing a valid staff role.');
-    }
-
-    final branchIdsRaw = claims['branch_ids']?.toString() ?? '';
-    final branchIds = branchIdsRaw.split(',').map((value) => value.trim()).where((value) => value.isNotEmpty).toList();
-
-    final permissions = await ref.read(permissionRepositoryProvider).loadGrantedPermissions(role);
-    final setupRequired = claims['setup_required'] == true || claims['setup_required']?.toString() == 'true';
-
-    String? primaryBranchId;
-    if (branchIds.isNotEmpty) {
-      final primaryRow = await client
-          .from('staff_branch_assignments')
-          .select('branch_id')
-          .eq('staff_member_id', staffMemberId)
-          .eq('is_primary', true)
-          .maybeSingle();
-      primaryBranchId = primaryRow?['branch_id']?.toString();
-      if (primaryBranchId == null || !branchIds.contains(primaryBranchId)) {
-        primaryBranchId = branchIds.first;
-      }
-    }
-
-    return AuthSessionContext(
-      staffProfile: StaffProfile(
-        staffMemberId: staffMemberId,
-        fullName: staffRow['full_name']?.toString() ?? 'Staff',
-        role: role,
-        isBootstrapAdmin: staffRow['is_bootstrap_admin'] == true,
-        isActive: staffRow['is_active'] == true,
-      ),
-      organizationId: claims['organization_id']?.toString(),
-      branchIds: branchIds,
-      activeBranchId: primaryBranchId,
-      permissions: permissions,
-      setupRequired: setupRequired,
-    );
-  }
+  Future<AuthSessionContext> _loadSessionContext(Session session) =>
+      _contextLoader.load(session);
 
   void setActiveBranch(String branchId) {
     final context = state.context;

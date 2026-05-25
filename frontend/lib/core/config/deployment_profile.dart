@@ -5,7 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
 
 /// Deployment modes supported by the checked-in bootstrap foundation.
-enum DeploymentMode { local }
+enum DeploymentMode {
+  local,
+  // Reserved for future releases:
+  // cloud,
+  // hybrid,
+}
 
 extension DeploymentModeX on DeploymentMode {
   /// Returns the serialized value expected in the JSON profile.
@@ -82,11 +87,10 @@ class DeploymentProfile {
       throw const InvalidDeploymentProfileException('The deployment profile is missing `deployment_mode`.');
     }
 
-    // V1-0 intentionally rejects anything except the clinic-local deployment mode.
     if (deploymentModeValue != DeploymentMode.local.wireValue) {
       throw InvalidDeploymentProfileException(
-        'Only clinic-local deployment is supported in V1-0.',
-        details: 'Received `$deploymentModeValue`.',
+        'Only "${DeploymentMode.local.wireValue}" deployment is supported. '
+        'Received: "$deploymentModeValue".',
       );
     }
 

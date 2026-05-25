@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 
-/// Maps caught errors to user-friendly messages for display in form pages.
+/// Maps caught exceptions to user-friendly messages shown in forms and dialogs.
 abstract final class UserErrorMapper {
   static String mapToUserMessage(Object error) {
     if (error is RpcFailure) {
@@ -21,9 +21,6 @@ abstract final class UserErrorMapper {
     }
     if (error is StateError) {
       return error.message;
-    }
-    if (error is ArgumentError) {
-      return error.message?.toString() ?? 'Invalid input. Please check your data and try again.';
     }
 
     AppLog.warning('unhandled_error type=${error.runtimeType} error=$error');

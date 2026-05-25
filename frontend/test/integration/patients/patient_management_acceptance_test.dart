@@ -176,7 +176,7 @@ void main() {
       await _pumpPatientApp(tester, session: _ReceptionistSession());
 
       await _go(tester, AppRoutes.home);
-      await tester.tap(find.text('Patients'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Patients'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('patient_list_table')), findsOneWidget);

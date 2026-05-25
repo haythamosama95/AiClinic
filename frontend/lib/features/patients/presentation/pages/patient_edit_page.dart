@@ -355,10 +355,10 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
             DropdownButtonFormField<PatientGender?>(
               value: _gender,
               decoration: const InputDecoration(labelText: 'Gender'),
-              items: const [
-                DropdownMenuItem(value: null, child: Text('Not specified')),
-                DropdownMenuItem(value: PatientGender.male, child: Text('Male')),
-                DropdownMenuItem(value: PatientGender.female, child: Text('Female')),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Not specified')),
+                for (final gender in PatientGender.values)
+                  DropdownMenuItem(value: gender, child: Text(gender.label)),
               ],
               onChanged: _isSaving ? null : (value) => setState(() => _gender = value),
             ),
