@@ -42,7 +42,7 @@ class _IdleTimeoutSettingsPageState extends ConsumerState<IdleTimeoutSettingsPag
     return Scaffold(
       appBar: AppBar(
         title: const Text('Idle sign-out'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
       ),
       body: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

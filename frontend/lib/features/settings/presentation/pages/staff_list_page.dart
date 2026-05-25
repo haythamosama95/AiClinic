@@ -51,7 +51,7 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Staff'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
         ),
         body: const Center(
           child: Padding(
@@ -65,7 +65,7 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Staff'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(AppRoutes.settingsStaffNew),

@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('parsePatientDate', () {
     test('parses ISO date strings to date-only DateTime', () {
-      expect(parsePatientDate('2001-12-31'), DateTime(2001, 12, 31));
+      expect(parsePatientDate('2001-12-31'), DateTime.utc(2001, 12, 31));
     });
 
     test('returns null for null, empty, or invalid input', () {
@@ -15,7 +15,7 @@ void main() {
     });
 
     test('strips time component from DateTime values', () {
-      expect(parsePatientDate(DateTime(2020, 6, 15, 23, 59)), DateTime(2020, 6, 15));
+      expect(parsePatientDate(DateTime(2020, 6, 15, 23, 59)), DateTime.utc(2020, 6, 15));
     });
   });
 

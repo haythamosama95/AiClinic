@@ -6,7 +6,6 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/core/auth/permission_denied_handler.dart';
-import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
@@ -49,15 +48,15 @@ class AuthShellPage extends ConsumerWidget {
   }
 }
 
-class _ShellHomeBody extends StatelessWidget {
+class _ShellHomeBody extends ConsumerWidget {
   const _ShellHomeBody({required this.auth, required this.branchesAsync});
 
   final AuthSessionContext auth;
   final AsyncValue<List<BranchSummary>> branchesAsync;
 
   @override
-  Widget build(BuildContext context) {
-    final permissions = PermissionService(auth);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final permissions = ref.watch(permissionServiceProvider);
 
     final activeBranchLabel = branchesAsync.maybeWhen(
       data: (branches) {
@@ -124,7 +123,7 @@ class _ShellHomeBody extends StatelessWidget {
                   onPressed: () {
                     PermissionDeniedHandler.runIfPermitted(
                       context,
-                      permissions: PermissionService(auth),
+                      permissions: permissions,
                       permissionKey: PermissionKeys.manageStaff,
                       action: () => context.go(AppRoutes.settingsStaff),
                     );

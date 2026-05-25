@@ -1,5 +1,6 @@
 import 'package:ai_clinic/core/errors/exceptions.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 
 /// Client-side permission checks against cached session grants (UX layer only).
 class PermissionService {
@@ -29,23 +30,17 @@ class PermissionService {
     return false;
   }
 
-  /// V1-2 branch administration (`settings.manage_branches`).
-  bool canManageBranches() => hasPermission('settings.manage_branches');
+  bool canManageBranches() => hasPermission(PermissionKeys.manageBranches);
 
-  /// V1-2 staff administration (`settings.manage_staff`).
-  bool canManageStaff() => hasPermission('settings.manage_staff');
+  bool canManageStaff() => hasPermission(PermissionKeys.manageStaff);
 
-  /// V1-3 patient registry (`patients.view`).
-  bool canViewPatients() => hasPermission('patients.view');
+  bool canViewPatients() => hasPermission(PermissionKeys.patientsView);
 
-  /// V1-3 patient registration (`patients.create`).
-  bool canCreatePatients() => hasPermission('patients.create');
+  bool canCreatePatients() => hasPermission(PermissionKeys.patientsCreate);
 
-  /// V1-3 patient profile edit (`patients.edit`).
-  bool canEditPatients() => hasPermission('patients.edit');
+  bool canEditPatients() => hasPermission(PermissionKeys.patientsEdit);
 
-  /// V1-3 patient archive (`patients.delete`).
-  bool canDeletePatients() => hasPermission('patients.delete');
+  bool canDeletePatients() => hasPermission(PermissionKeys.patientsDelete);
 
   void requirePermission(String key) {
     if (!hasPermission(key)) {

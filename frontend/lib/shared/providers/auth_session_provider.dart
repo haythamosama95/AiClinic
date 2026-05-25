@@ -113,6 +113,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
         await _syncFromCurrentSession();
       }
     } catch (error) {
+      _ensureSupabaseReadyTask = null;
       AppLog.warning('auth.session.bootstrap_failed reason=${error.runtimeType}');
       state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
     }

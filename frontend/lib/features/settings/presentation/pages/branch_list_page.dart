@@ -57,7 +57,7 @@ class _BranchListPageState extends ConsumerState<BranchListPage> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Branches'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
         ),
         body: const Center(
           child: Padding(
@@ -71,7 +71,7 @@ class _BranchListPageState extends ConsumerState<BranchListPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Branches'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(AppRoutes.settingsBranchesNew),

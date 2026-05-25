@@ -1,6 +1,7 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/presentation/patient_rpc_messages.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,9 +14,7 @@ void main() {
 
     ProviderContainer container() {
       return ProviderContainer(
-        overrides: [
-          patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client)),
-        ],
+        overrides: [patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client))],
       );
     }
 
@@ -78,43 +77,24 @@ void main() {
       await expectLater(
         c.read(patientDetailProvider('99999999-9999-4999-8999-999999999999').future),
         throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            'Patient was not found or you do not have access.',
-          ),
+          isA<StateError>().having((e) => e.message, 'message', 'Patient was not found or you do not have access.'),
         ),
       );
     });
 
-    test('PATIENT_ARCHIVED maps to archived message', () async {
-      client.rpcResults['get_patient'] = {
-        'success': false,
-        'error_code': 'PATIENT_ARCHIVED',
-        'error_message': 'This patient is archived.',
-      };
-
-      final c = container();
-      addTearDown(c.dispose);
-
-      await expectLater(
-        c.read(patientDetailProvider('11111111-1111-4111-8111-111111111111').future),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('archived'),
+    test('PATIENT_ARCHIVED maps to archived message', () {
+      expect(
+        patientMessageForRpc(
+          RpcFailure(
+            const RpcResult(success: false, errorCode: 'PATIENT_ARCHIVED', errorMessage: 'This patient is archived.'),
           ),
         ),
+        contains('archived'),
       );
     });
 
     test('FORBIDDEN maps to permission message', () async {
-      client.rpcResults['get_patient'] = {
-        'success': false,
-        'error_code': 'FORBIDDEN',
-        'error_message': 'Forbidden',
-      };
+      client.rpcResults['get_patient'] = {'success': false, 'error_code': 'FORBIDDEN', 'error_message': 'Forbidden'};
 
       final c = container();
       addTearDown(c.dispose);
@@ -122,11 +102,7 @@ void main() {
       await expectLater(
         c.read(patientDetailProvider('11111111-1111-4111-8111-111111111111').future),
         throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            'You do not have permission to perform this action.',
-          ),
+          isA<StateError>().having((e) => e.message, 'message', 'You do not have permission to perform this action.'),
         ),
       );
     });

@@ -166,7 +166,7 @@ void main() {
 
       await c.read(patientListProvider.notifier).loadMore();
 
-      expect(c.read(patientListProvider).hasError, isTrue);
+      expect(c.read(patientListProvider).value!.loadMoreError, isNotNull);
     });
 
     test('organization scope does not require active branch id', () async {

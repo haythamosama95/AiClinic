@@ -157,7 +157,7 @@ void main() {
 
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Front Desk (receptionist)'));
+    await tester.tap(find.text('Front Desk (Receptionist)'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField), 'new-secure-pass');
@@ -175,7 +175,7 @@ void main() {
 
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Front Desk (receptionist)'));
+    await tester.tap(find.text('Front Desk (Receptionist)'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField), 'valid-password');

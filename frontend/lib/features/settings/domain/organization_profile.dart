@@ -135,7 +135,11 @@ class OrganizationProfile {
     logoUrl,
     currencyCode,
     timezone,
-    settingsJson == null ? null : Object.hashAll(settingsJson!.entries),
+    settingsJson == null
+        ? null
+        : Object.hashAllUnordered(
+            settingsJson!.entries.map((e) => Object.hash(e.key, e.value)),
+          ),
     subscriptionTier,
     subscriptionValidUntil,
   );

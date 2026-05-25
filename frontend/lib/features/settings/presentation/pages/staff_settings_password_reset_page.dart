@@ -78,7 +78,7 @@ class _StaffSettingsPasswordResetPageState extends ConsumerState<StaffSettingsPa
       return Scaffold(
         appBar: AppBar(
           title: const Text('Reset password'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settingsStaff)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settingsStaff)),
         ),
         body: const Center(
           child: Padding(

@@ -50,6 +50,10 @@ app.*.map.json
 !.env.example
 !**/.env.example
 
+# Deployment profiles (never commit real credentials)
+**/deployment-profile.json
+!**/deployment-profile.example.json
+
 # Workspace settings
 .vscode/*
 !.vscode/settings.json

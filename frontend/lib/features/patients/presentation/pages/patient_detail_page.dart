@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/core/auth/permission_service.dart';
+import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/domain/patient_exceptions.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_archive_dialog.dart';
@@ -27,7 +28,7 @@ class PatientDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final permissions = PermissionService(ref.watch(authSessionProvider).context);
+    final permissions = ref.watch(permissionServiceProvider);
     final canView = permissions.canViewPatients();
     final canEdit = permissions.canEditPatients();
     final canDelete = permissions.canDeletePatients();
@@ -69,8 +70,11 @@ class PatientDetailPage extends ConsumerWidget {
       ),
       body: detailAsync.when(
         loading: () => const Center(key: Key('patient_detail_loading'), child: CircularProgressIndicator()),
-        error: (error, _) =>
-            _PatientDetailError(message: error.toString(), onRetry: () => ref.invalidate(patientDetailProvider(id))),
+        error: (error, _) => _PatientDetailError(
+          error: error,
+          message: error.toString(),
+          onRetry: () => ref.invalidate(patientDetailProvider(id)),
+        ),
         data: (detail) => _PatientDetailBody(detail: detail),
       ),
     );
@@ -89,7 +93,7 @@ class _PatientScaffold extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientDetail(context)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientDetail(context)),
         actions: actions == null ? null : [actions!],
       ),
       body: body,
@@ -150,14 +154,15 @@ class _PatientDetailActions extends ConsumerWidget {
 }
 
 class _PatientDetailError extends StatelessWidget {
-  const _PatientDetailError({required this.message, required this.onRetry});
+  const _PatientDetailError({required this.error, required this.message, required this.onRetry});
 
+  final Object error;
   final String message;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final isArchived = message.contains('archived');
+    final isArchived = error is PatientArchivedException;
 
     return Center(
       key: Key(isArchived ? 'patient_detail_archived' : 'patient_detail_error'),
@@ -202,7 +207,7 @@ class _PatientDetailBody extends StatelessWidget {
             children: [
               _ProfileRow(label: 'Full name', value: detail.fullName),
               _ProfileRow(label: 'Mobile number', value: detail.phone ?? '—'),
-              _ProfileRow(label: 'Date of birth', value: _formatDate(detail.dateOfBirth)),
+              _ProfileRow(label: 'Date of birth', value: formatDate(detail.dateOfBirth)),
               _ProfileRow(label: 'Gender', value: detail.gender?.label ?? '—'),
               _ProfileRow(label: 'Marital status', value: detail.maritalStatus?.label ?? '—'),
               _ProfileRow(label: 'Registering branch', value: detail.branchName),
@@ -238,8 +243,8 @@ class _PatientDetailBody extends StatelessWidget {
           key: const Key('patient_detail_audit'),
           child: Column(
             children: [
-              _ProfileRow(label: 'Created', value: _formatDateTime(detail.createdAt)),
-              _ProfileRow(label: 'Last updated', value: _formatDateTime(detail.updatedAt)),
+              _ProfileRow(label: 'Created', value: formatDateTime(detail.createdAt)),
+              _ProfileRow(label: 'Last updated', value: formatDateTime(detail.updatedAt)),
               if (detail.createdByDisplay != null) _ProfileRow(label: 'Registered by', value: detail.createdByDisplay!),
             ],
           ),
@@ -248,19 +253,6 @@ class _PatientDetailBody extends StatelessWidget {
     );
   }
 
-  static String _formatDate(DateTime? value) {
-    if (value == null) {
-      return '—';
-    }
-    return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-  }
-
-  static String _formatDateTime(DateTime value) {
-    final local = value.toLocal();
-    final date = _formatDate(local);
-    final time = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-    return '$date $time';
-  }
 }
 
 class _ProfileRow extends StatelessWidget {

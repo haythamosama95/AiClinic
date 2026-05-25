@@ -2,13 +2,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/permission_matrix_row.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/role_permissions_repository.dart';
 
 /// Steady-state role permission matrix reads and owner/administrator updates.
-class RolePermissionsRepositoryImpl with SettingsRpcInvoker implements RolePermissionsRepository {
+class RolePermissionsRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements RolePermissionsRepository {
   RolePermissionsRepositoryImpl(this._client);
 
   final SupabaseClient _client;

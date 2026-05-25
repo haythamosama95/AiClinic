@@ -40,10 +40,7 @@ PostgrestException _pgrst202({String fn = 'search_patients'}) {
 }
 
 PostgrestException _otherException() {
-  return PostgrestException(
-    message: 'permission denied for function search_patients',
-    code: '42501',
-  );
+  return PostgrestException(message: 'permission denied for function search_patients', code: '42501');
 }
 
 void main() {
@@ -83,11 +80,7 @@ void main() {
 
       expect(
         () => repository.createPatient(
-          const CreatePatientInput(
-            activeBranchId: 'b1',
-            fullName: 'Test',
-            phone: '201000000001',
-          ),
+          const CreatePatientInput(activeBranchId: 'b1', fullName: 'Test', phone: '201000000001'),
         ),
         throwsA(
           isA<RpcFailure>()
@@ -103,11 +96,7 @@ void main() {
 
       expect(
         () => repository.updatePatient(
-          UpdatePatientInput(
-            patientId: 'p1',
-            fullName: 'Updated',
-            expectedUpdatedAt: DateTime.utc(2026),
-          ),
+          UpdatePatientInput(patientId: 'p1', fullName: 'Updated', expectedUpdatedAt: DateTime.utc(2026)),
         ),
         throwsA(
           isA<RpcFailure>()
@@ -178,7 +167,7 @@ void main() {
         fail('Expected RpcFailure');
       } on RpcFailure catch (e) {
         expect(e.message, contains('20260523140000_patient_management.sql'));
-        expect(e.message, contains('Supabase'));
+        expect(e.message, contains('search_patients'));
       }
     });
   });

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
@@ -11,7 +12,7 @@ import 'package:ai_clinic/features/settings/domain/repositories/branch_repositor
 import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 
 /// Branch list reads (RLS) and lifecycle mutations (RPC).
-class BranchRepositoryImpl with SettingsRpcInvoker implements BranchRepository {
+class BranchRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements BranchRepository {
   BranchRepositoryImpl(this._client);
 
   final SupabaseClient _client;

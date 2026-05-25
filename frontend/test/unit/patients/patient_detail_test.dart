@@ -26,7 +26,7 @@ void main() {
       expect(detail.maritalStatus, PatientMaritalStatus.married);
       expect(detail.notes, 'Allergic to penicillin');
       expect(detail.createdByDisplay, 'Dr. Admin');
-      expect(detail.dateOfBirth, DateTime(1985, 3, 20));
+      expect(detail.dateOfBirth, DateTime.utc(1985, 3, 20));
       expect(detail.updatedAt, DateTime.parse('2026-05-23T11:30:00.000Z'));
     });
 

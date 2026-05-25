@@ -219,7 +219,7 @@ class _StaffFormPageState extends ConsumerState<StaffFormPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEdit ? 'Edit staff member' : 'New staff member'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settingsStaff)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settingsStaff)),
       ),
       body: formAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

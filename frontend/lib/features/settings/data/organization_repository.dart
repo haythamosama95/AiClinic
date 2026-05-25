@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
@@ -9,7 +10,7 @@ import 'package:ai_clinic/features/settings/domain/repositories/organization_rep
 import 'package:ai_clinic/features/settings/domain/update_organization_input.dart';
 
 /// Organization profile reads (RLS) and updates (RPC).
-class OrganizationRepositoryImpl with SettingsRpcInvoker implements OrganizationRepository {
+class OrganizationRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements OrganizationRepository {
   OrganizationRepositoryImpl(this._client);
 
   final SupabaseClient _client;

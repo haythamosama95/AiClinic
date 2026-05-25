@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/core/auth/permission_service.dart';
+import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/core/widgets/app_form_field.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
@@ -182,7 +183,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       }
       setState(() {
         _isSaving = false;
-        _formError = error.toString();
+        _formError = UserErrorMapper.mapToUserMessage(error);
       });
     }
   }
@@ -207,13 +208,14 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
   @override
   Widget build(BuildContext context) {
     final id = widget.patientId?.trim() ?? '';
-    final canEdit = PermissionService(ref.watch(authSessionProvider).context).canEditPatients();
+    final canEdit = ref.watch(permissionServiceProvider).canEditPatients();
 
     if (!canEdit) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Edit patient'),
           leading: IconButton(
+            tooltip: 'Go back',
             icon: const Icon(Icons.arrow_back),
             onPressed: () => id.isEmpty ? context.go(AppRoutes.patients) : _leavePatientEdit(context, id),
           ),
@@ -232,7 +234,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Edit patient'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.patients)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.patients)),
         ),
         body: const Center(
           key: Key('patient_edit_invalid_id'),
@@ -260,7 +262,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
           data: (detail) => Text('Edit ${detail.fullName}'),
           orElse: () => const Text('Edit patient'),
         ),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientEdit(context, id)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientEdit(context, id)),
       ),
       body: detailAsync.when(
         loading: () => const Center(key: Key('patient_edit_loading'), child: CircularProgressIndicator()),
@@ -284,9 +286,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
   }
 
   Widget _buildForm(BuildContext context, {required PatientDetail detail, required String patientId}) {
-    final dobLabel = _dateOfBirth == null
-        ? 'Not set'
-        : '${_dateOfBirth!.year}-${_dateOfBirth!.month.toString().padLeft(2, '0')}-${_dateOfBirth!.day.toString().padLeft(2, '0')}';
+    final dobLabel = _dateOfBirth == null ? 'Not set' : formatDate(_dateOfBirth);
 
     return SingleChildScrollView(
       key: const Key('patient_edit_body'),

@@ -46,18 +46,8 @@ void main() {
     });
 
     test('not equal when dateOfBirth differs', () {
-      final a = DuplicateCandidate(
-        id: '1',
-        fullName: 'X',
-        branchName: 'B',
-        dateOfBirth: DateTime(1990, 1, 1),
-      );
-      final b = DuplicateCandidate(
-        id: '1',
-        fullName: 'X',
-        branchName: 'B',
-        dateOfBirth: DateTime(1991, 1, 1),
-      );
+      final a = DuplicateCandidate(id: '1', fullName: 'X', branchName: 'B', dateOfBirth: DateTime(1990, 1, 1));
+      final b = DuplicateCandidate(id: '1', fullName: 'X', branchName: 'B', dateOfBirth: DateTime(1991, 1, 1));
 
       expect(a == b, isFalse);
     });
@@ -91,11 +81,7 @@ void main() {
 
   group('DuplicateCandidate.fromRow extended edge cases', () {
     test('id as integer is coerced to string', () {
-      final candidate = DuplicateCandidate.fromRow({
-        'id': 42,
-        'full_name': 'Test',
-        'branch_name': 'Main',
-      });
+      final candidate = DuplicateCandidate.fromRow({'id': 42, 'full_name': 'Test', 'branch_name': 'Main'});
 
       expect(candidate!.id, '42');
     });
@@ -119,41 +105,27 @@ void main() {
         'date_of_birth': DateTime(2000, 6, 15, 23, 59),
       });
 
-      expect(candidate!.dateOfBirth, DateTime(2000, 6, 15));
+      expect(candidate!.dateOfBirth, DateTime.utc(2000, 6, 15));
     });
 
     test('full_name is trimmed', () {
-      final candidate = DuplicateCandidate.fromRow({
-        'id': '1',
-        'full_name': '  Ahmed Hassan  ',
-        'branch_name': 'Main',
-      });
+      final candidate = DuplicateCandidate.fromRow({'id': '1', 'full_name': '  Ahmed Hassan  ', 'branch_name': 'Main'});
 
       expect(candidate!.fullName, 'Ahmed Hassan');
     });
 
     test('branch_name is trimmed', () {
-      final candidate = DuplicateCandidate.fromRow({
-        'id': '1',
-        'full_name': 'X',
-        'branch_name': '  Main Branch  ',
-      });
+      final candidate = DuplicateCandidate.fromRow({'id': '1', 'full_name': 'X', 'branch_name': '  Main Branch  '});
 
       expect(candidate!.branchName, 'Main Branch');
     });
 
     test('returns null when id is null', () {
-      expect(
-        DuplicateCandidate.fromRow({'full_name': 'X', 'branch_name': 'B'}),
-        isNull,
-      );
+      expect(DuplicateCandidate.fromRow({'full_name': 'X', 'branch_name': 'B'}), isNull);
     });
 
     test('missing branch_name returns null', () {
-      expect(
-        DuplicateCandidate.fromRow({'id': '1', 'full_name': 'X'}),
-        isNull,
-      );
+      expect(DuplicateCandidate.fromRow({'id': '1', 'full_name': 'X'}), isNull);
     });
   });
 }

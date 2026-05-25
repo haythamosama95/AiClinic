@@ -20,6 +20,7 @@ class PatientListUiState {
     required this.searchQuery,
     this.validationHint,
     this.isLoadingMore = false,
+    this.loadMoreError,
   });
 
   final List<PatientListItem> items;
@@ -29,6 +30,7 @@ class PatientListUiState {
   final String searchQuery;
   final String? validationHint;
   final bool isLoadingMore;
+  final String? loadMoreError;
 
   bool get hasMore => offset + items.length < totalCount;
 
@@ -41,6 +43,8 @@ class PatientListUiState {
     String? validationHint,
     bool clearValidationHint = false,
     bool? isLoadingMore,
+    String? loadMoreError,
+    bool clearLoadMoreError = false,
   }) {
     return PatientListUiState(
       items: items ?? this.items,
@@ -50,6 +54,7 @@ class PatientListUiState {
       searchQuery: searchQuery ?? this.searchQuery,
       validationHint: clearValidationHint ? null : (validationHint ?? this.validationHint),
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadMoreError: clearLoadMoreError ? null : (loadMoreError ?? this.loadMoreError),
     );
   }
 }
@@ -111,7 +116,7 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
       return;
     }
 
-    state = AsyncData(current.copyWith(isLoadingMore: true));
+    state = AsyncData(current.copyWith(isLoadingMore: true, clearLoadMoreError: true));
 
     try {
       final page = await _fetchRpc(offset: current.offset + current.limit);
@@ -123,10 +128,16 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
           offset: page.offset,
           isLoadingMore: false,
           clearValidationHint: true,
+          clearLoadMoreError: true,
         ),
       );
-    } catch (error, stack) {
-      state = AsyncError(error, stack);
+    } catch (error, _) {
+      state = AsyncData(
+        current.copyWith(
+          isLoadingMore: false,
+          loadMoreError: error.toString(),
+        ),
+      );
     }
   }
 
@@ -166,7 +177,7 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
       return await ref.read(searchPatientsUseCaseProvider)(
         query: _searchQuery.isEmpty ? null : _searchQuery,
         scope: scope,
-        branchId: activeBranchId,
+        branchId: scope == PatientListScope.thisBranch ? activeBranchId : null,
         limit: pageSize,
         offset: offset,
       );

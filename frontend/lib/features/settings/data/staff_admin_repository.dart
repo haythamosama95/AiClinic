@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
@@ -12,7 +13,7 @@ import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 
 /// Staff administration reads (RLS) and lifecycle RPCs.
-class StaffAdminRepositoryImpl with SettingsRpcInvoker implements StaffAdminRepository {
+class StaffAdminRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements StaffAdminRepository {
   StaffAdminRepositoryImpl(this._client);
 
   final SupabaseClient _client;

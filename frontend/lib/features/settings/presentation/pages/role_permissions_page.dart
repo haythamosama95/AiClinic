@@ -101,7 +101,7 @@ class RolePermissionsPage extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Role permissions'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePage(context, ref, ui)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePage(context, ref, ui)),
           actions: [
             if (ui != null && ui.editable)
               TextButton(

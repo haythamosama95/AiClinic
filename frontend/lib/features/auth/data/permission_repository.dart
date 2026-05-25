@@ -17,7 +17,8 @@ class PermissionRepositoryImpl implements PermissionRepository {
         .from('roles_permissions')
         .select('permission_key')
         .eq('role', role.wireValue)
-        .eq('is_granted', true);
+        .eq('is_granted', true)
+        .eq('is_deleted', false);
 
     return parseGrantedPermissionKeys(rows);
   }

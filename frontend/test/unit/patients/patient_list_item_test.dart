@@ -16,7 +16,7 @@ void main() {
       expect(item, isNotNull);
       expect(item!.fullName, 'Ahmed Hassan');
       expect(item.phone, '201234567890');
-      expect(item.dateOfBirth, DateTime(1990, 5, 15));
+      expect(item.dateOfBirth, DateTime.utc(1990, 5, 15));
       expect(item.registeringBranchId, 'b1');
       expect(item.registeringBranchName, 'Main Clinic');
     });
@@ -73,7 +73,7 @@ void main() {
         'branch_name': 'Branch',
       });
 
-      expect(item!.dateOfBirth, DateTime(2000, 1, 2));
+      expect(item!.dateOfBirth, DateTime.utc(2000, 1, 2));
     });
 
     test('stupid user: unexpected types coerced via toString', () {

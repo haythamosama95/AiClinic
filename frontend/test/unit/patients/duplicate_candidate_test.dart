@@ -15,7 +15,7 @@ void main() {
       expect(candidate, isNotNull);
       expect(candidate!.fullName, 'Mohamed Ibrahim');
       expect(candidate.phone, '201000000001');
-      expect(candidate.dateOfBirth, DateTime(1992, 7, 1));
+      expect(candidate.dateOfBirth, DateTime.utc(1992, 7, 1));
       expect(candidate.branchName, 'North Branch');
     });
 

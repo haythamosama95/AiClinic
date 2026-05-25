@@ -51,7 +51,7 @@ void main() {
       expect(detail.maritalStatus, PatientMaritalStatus.widowed);
       expect(detail.notes, 'Penicillin allergy');
       expect(detail.createdByDisplay, 'Reception');
-      expect(detail.dateOfBirth, DateTime(1985, 3, 20));
+      expect(detail.dateOfBirth, DateTime.utc(1985, 3, 20));
     });
 
     test('stupid usage: blank patient id throws INVALID_INPUT before RPC', () async {

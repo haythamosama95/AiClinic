@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/core/auth/permission_service.dart';
+import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/core/widgets/app_form_field.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
@@ -156,7 +157,7 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
       }
       setState(() {
         _isSaving = false;
-        _formError = error.toString();
+        _formError = UserErrorMapper.mapToUserMessage(error);
       });
     }
   }
@@ -164,13 +165,13 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authSessionProvider);
-    final canCreate = PermissionService(auth.context).canCreatePatients();
+    final canCreate = ref.watch(permissionServiceProvider).canCreatePatients();
 
     if (!canCreate) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Register patient'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
         ),
         body: const Center(
           child: Padding(
@@ -181,14 +182,12 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
       );
     }
 
-    final dobLabel = _dateOfBirth == null
-        ? 'Not set'
-        : '${_dateOfBirth!.year}-${_dateOfBirth!.month.toString().padLeft(2, '0')}-${_dateOfBirth!.day.toString().padLeft(2, '0')}';
+    final dobLabel = _dateOfBirth == null ? 'Not set' : formatDate(_dateOfBirth);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Register patient'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
