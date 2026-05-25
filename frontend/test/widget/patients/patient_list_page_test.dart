@@ -1,6 +1,5 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
-import 'package:ai_clinic/features/patients/presentation/pages/patient_list_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patient_pages.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_scope_provider.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
