@@ -13,10 +13,21 @@
 ### Authentication
 
 - **Supabase GoTrue** handles all authentication.
-- Staff members authenticate with email + password.
-- JWT tokens include custom claims: `organization_id`, `branch_ids`, `role`, `staff_member_id`.
-- Custom claims are populated by a PostgreSQL function (`get_custom_claims`) triggered during the GoTrue login hook.
-- Token refresh is handled automatically by the Supabase Dart SDK.
+- Staff members authenticate with **username + password** (not email). Usernames are stored in GoTrue's `auth.users.email` field without an `@` symbol. Username rules: 3–32 chars, lowercase `[a-z0-9_-]`, no `@`.
+- JWT tokens include custom claims: `organization_id`, `branch_ids` (comma-separated), `role`, `staff_member_id`, `setup_required`.
+- Custom claims are populated by a PostgreSQL function (`get_custom_claims`) triggered during the GoTrue login hook. The function delegates to `auth_internal.build_staff_claims(user_id)`.
+- Token refresh is handled by explicit `refreshSession()` calls after context-changing operations (e.g., completing clinic bootstrap).
+- **No session persistence across app restarts**: the Flutter app uses `EmptyLocalStorage` and forces sign-out on cold start (shared-workstation model).
+- **Idle timeout auto-sign-out**: configurable inactivity timer (default 15 minutes, range 1–120 minutes) signs the user out of the workstation.
+
+### Bootstrap Flow
+
+A special `is_bootstrap_admin` flag on the first staff_members row enables first-time clinic setup:
+1. Bootstrap admin signs in → JWT contains `setup_required: true` (no org exists yet).
+2. Admin calls `bootstrap_create_organization(...)` to create the clinic organization.
+3. Admin calls `bootstrap_create_branch(...)` to create the first branch (auto-assigned).
+4. Admin calls `create_staff_account(...)` to provision the first owner account.
+5. After setup, `refreshSession()` updates the JWT with real org/branch claims.
 
 ### Role-Based Access Control (RBAC)
 
@@ -54,9 +65,10 @@ permission_key examples:
   ai.access
 ```
 
-Permission checks happen at two levels:
-1. **RLS policies** (database level): enforce organization and branch isolation. Prevents any cross-tenant data access regardless of application code.
-2. **Flutter service layer** (application level): check granular permissions before rendering UI elements and before calling RPC functions. The RPC functions also validate permissions as a defense-in-depth measure.
+Permission checks happen at three levels:
+1. **RLS policies** (database level): enforce organization and branch isolation. Prevents any cross-tenant data access regardless of application code. Domain tables block direct INSERT/UPDATE/DELETE via RLS (`WITH CHECK (false)`).
+2. **RPC functions** (`auth_internal` schema): call `assert_permission(key)` before executing business logic. This is the authoritative enforcement layer.
+3. **Flutter service layer** (application level): check granular permissions from cached `roles_permissions` before rendering UI elements. This provides fast UX feedback but is not the security boundary.
 
 #### Permission Resolution Flow
 

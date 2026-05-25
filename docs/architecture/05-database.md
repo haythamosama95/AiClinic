@@ -12,14 +12,14 @@
 
 ### Multi-Tenancy Model
 
-The database uses a **shared-schema, shared-table** multi-tenancy model with tenant isolation via `branch_id` columns. The `organization_id` foreign key exists **only** on the `branches` table. All other tables reference `branch_id` and derive their organization context through the branch's `organization_id`.
+The database uses a **shared-schema, shared-table** multi-tenancy model with tenant isolation via `organization_id` and `branch_id` columns.
 
 ```
 organizations (tenant root)
     │
-    └── branches (organization_id FK) ── the ONLY table with organization_id
+    └── branches (organization_id FK)
             │
-            ├── patients (branch_id FK, registering branch; cross-branch visibility via RLS)
+            ├── patients (branch_id FK + organization_id FK; cross-branch visibility via RLS on org)
             ├── staff_branch_assignments (branch_id FK, many-to-many)
             ├── appointments (branch_id FK)
             ├── invoices (branch_id FK)
@@ -29,10 +29,9 @@ organizations (tenant root)
 ```
 
 Rules:
-- `organization_id` exists only on `branches`. No other table directly references `organization_id`.
-- Every operational table includes `branch_id` (NOT NULL, FK to `branches`).
-- Organization context is always derived: `table.branch_id` → `branches.organization_id`.
-- Patients have a `branch_id` (the branch where they were first registered) but are visible across all branches within the same organization via RLS.
+- `organization_id` exists on `branches` and on `patients` (denormalized for efficient RLS queries).
+- Other operational tables include `branch_id` (NOT NULL, FK to `branches`) and derive organization context through the branch.
+- Patients have both `branch_id` (the registering branch) and `organization_id` (denormalized). They are visible across all branches within the same organization via RLS.
 - Staff members are linked to branches via `staff_branch_assignments`. Their organization is derived from their assigned branches.
 - RLS policies use the authenticated user's JWT claims (`organization_id`, `branch_ids[]`, `role`) to filter all queries automatically.
 
@@ -54,33 +53,43 @@ Every table follows these conventions:
 Triggers:
 - `set_updated_at`: automatically sets `updated_at` to `now()` on UPDATE.
 - `set_audit_user`: automatically sets `created_by`/`updated_by` from the JWT `auth.uid()`.
+- Applied via: `SELECT public.apply_standard_audit_triggers('public.table_name'::regclass);`
 
-All queries (via PostgREST and RPC functions) include `WHERE is_deleted = false` by default. This is enforced in RLS policies.
+All queries (via PostgREST and RPC functions) include `WHERE is_deleted = false` by default. This is enforced in RLS policies. Domain tables additionally block direct INSERT/UPDATE/DELETE via RLS `WITH CHECK (false)`, forcing all writes through RPC functions.
 
 ### Core Schema Domains
 
 #### Organization & Tenancy
 
-| Table           | Key Columns                                                                    | Notes                                            |
-| --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------ |
-| `organizations` | `id`, `name`, `subscription_tier`, `subscription_valid_until`, `settings_json` | Tenant root. One record per clinic organization. |
-| `branches`      | `id`, `organization_id`, `name`, `address`, `phone`, `is_active`               | Each branch under an organization.               |
+| Table           | Key Columns                                                                                                     | Notes                                                                          |
+| --------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `organizations` | `id`, `name`, `logo_url`, `currency_code`, `timezone`, `subscription_tier`, `subscription_valid_until`, `settings_json` | Tenant root. One record per clinic organization. Includes branding and locale.  |
+| `branches`      | `id`, `organization_id`, `name`, `code`, `address`, `phone`, `maps_url`, `is_active`                            | Each branch under an organization. `code` is unique per org (partial index).   |
 
 #### Staff & Auth
 
-| Table                      | Key Columns                                                     | Notes                                                                       |
-| -------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `staff_members`            | `id`, `auth_user_id`, `full_name`, `role`, `phone`, `is_active` | Links to `auth.users`. Role is an enum. Org derived via branch assignments. |
-| `staff_branch_assignments` | `id`, `staff_member_id`, `branch_id`, `is_primary`              | Many-to-many. A staff member can work at multiple branches.                 |
-| `roles_permissions`        | `id`, `role`, `permission_key`, `is_granted`                    | Defines what each role can do. Org context derived from user's JWT.         |
+| Table                      | Key Columns                                                                              | Notes                                                                                                      |
+| -------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `staff_members`            | `id`, `auth_user_id`, `full_name`, `role`, `phone`, `is_active`, `is_bootstrap_admin`    | Links to `auth.users`. Role is an enum. `is_bootstrap_admin` marks the initial installer.                  |
+| `staff_branch_assignments` | `id`, `staff_member_id`, `branch_id`, `is_primary`, UNIQUE(`staff_member_id`, `branch_id`) | Many-to-many. A staff member can work at multiple branches. `is_primary` sets UI default.                 |
+| `roles_permissions`        | `id`, `role`, `permission_key`, `is_granted`, UNIQUE(`role`, `permission_key`)           | Defines what each role can do. Seeded at migration time for all known permission keys.                     |
 
 Staff roles enum: `owner`, `administrator`, `doctor`, `receptionist`, `lab_staff`.
 
+Authentication uses **usernames** (not email). Usernames are stored in GoTrue's `auth.users.email` field without an `@` symbol. Validation: 3–32 chars, `[a-z0-9_-]`, no `@`.
+
 #### Patients
 
-| Table      | Key Columns                                                                                | Notes                                                                                                |
-| ---------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `patients` | `id`, `branch_id`, `full_name`, `phone`, `date_of_birth`, `gender`, `national_id`, `notes` | `branch_id` is the registering branch. Cross-branch visibility within the same organization via RLS. |
+| Table      | Key Columns                                                                                                       | Notes                                                                                                |
+| ---------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `patients` | `id`, `branch_id`, `organization_id`, `full_name`, `phone` (NOT NULL), `date_of_birth`, `gender`, `marital_status`, `notes` | `branch_id` is the registering branch. `organization_id` is denormalized for RLS. Cross-branch visibility within the same organization. |
+
+Key differences from original spec:
+- `national_id` was removed (not required for this clinic context).
+- `phone` is NOT NULL (required for patient registration).
+- `gender` enum restricted to `male`, `female` (removed `other`, `unknown`).
+- `marital_status` enum added: `single`, `married`, `divorced`, `widowed`.
+- `organization_id` added directly on patients for efficient org-scoped RLS queries.
 
 #### Appointments
 
@@ -126,47 +135,79 @@ Overlap rule: no overlapping shifts for the same staff member at the same branch
 
 #### System
 
-| Table                | Key Columns                                                                                                       | Notes                                                                                      |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `app_settings`       | `id`, `branch_id` (nullable), `key`, `value_json`                                                                 | Branch-level or org-wide settings (null `branch_id` = all branches). Org derived from JWT. |
-| `audit_log`          | `id`, `user_id`, `action`, `table_name`, `record_id`, `old_data_json`, `new_data_json`, `ip_address`, `timestamp` | Detailed audit trail for sensitive operations. Org derived from user's JWT.                |
-| `subscription_cache` | `organization_id`, `tier`, `valid_until`, `last_checked_at`                                                       | Local cache for offline subscription validation.                                           |
+| Table                | Key Columns                                                                                                                         | Notes                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `app_settings`       | `id`, `organization_id` (NOT NULL FK), `branch_id` (nullable FK), `key`, `value_json`                                              | Branch-level or org-wide settings (null `branch_id` = all branches). Org explicit.         |
+| `audit_log`          | `id`, `user_id`, `organization_id` (nullable FK), `action`, `table_name`, `record_id`, `old_data_json`, `new_data_json`, `ip_address`, `timestamp` | Detailed audit trail for sensitive operations. Org stored directly (nullable pre-bootstrap). |
+| `subscription_cache` | `organization_id` (PK, FK with CASCADE), `tier`, `valid_until`, `last_checked_at`                                                  | Local cache for offline subscription validation.                                           |
 
 ### Row Level Security (RLS) Strategy
 
 Every table has RLS enabled. Policies follow this pattern:
 
 ```sql
--- Example: org isolation derived through branch (patients registered at any branch in the org)
-CREATE POLICY "org_isolation" ON patients
-  FOR ALL
+-- Example: org isolation on patients (organization_id denormalized)
+CREATE POLICY patients_select ON patients
+  FOR SELECT TO authenticated
   USING (
-    branch_id IN (
-      SELECT id FROM branches
-      WHERE organization_id = (auth.jwt() ->> 'organization_id')::uuid
-    )
+    is_deleted = false
+    AND organization_id = public.jwt_organization_id()
   );
 
--- Example: branch-scoped data filtered by user's assigned branches
-CREATE POLICY "branch_isolation" ON appointments
-  FOR ALL
-  USING (
-    branch_id = ANY(
-      string_to_array(auth.jwt() ->> 'branch_ids', ',')::uuid[]
-    )
-  );
+-- Example: INSERT/UPDATE/DELETE blocked for direct PostgREST access (writes go through RPC)
+CREATE POLICY patients_insert ON patients
+  FOR INSERT TO authenticated
+  WITH CHECK (false);
 ```
 
-JWT custom claims (set during login via a PostgreSQL function called by GoTrue hook):
-- `organization_id`: the user's organization
-- `branch_ids`: array of branch IDs the user is assigned to
+Domain tables block direct INSERT/UPDATE/DELETE via RLS. All writes go through RPC functions running as SECURITY DEFINER in the `auth_internal` schema.
+
+JWT custom claims (set during login via the `get_custom_claims` PostgreSQL function called by GoTrue hook):
+- `organization_id`: the user's organization UUID
+- `branch_ids`: comma-separated string of branch UUIDs the user is assigned to (primary branch listed first)
 - `role`: the user's role enum value
+- `staff_member_id`: the user's staff_members UUID
+- `setup_required`: boolean flag when bootstrap admin has no organization yet
+
+Helper functions for RLS policy expressions:
+- `public.jwt_organization_id()` → extracts org UUID from JWT
+- `public.jwt_branch_ids()` → parses comma-separated branch UUIDs into a `uuid[]` array
+- `public.jwt_staff_member_id()` → extracts staff member UUID
+- `public.jwt_staff_role()` → extracts role as `staff_role` enum
+- `public.jwt_setup_required()` → boolean for bootstrap state
+- `public.current_staff_member_row()` → returns the caller's full `staff_members` row
 
 RLS policies are the first line of authorization. They ensure that even if application code has a bug, users cannot access data outside their organization or unauthorized branches.
 
 ### PostgreSQL Functions (RPC Layer)
 
-Key business logic functions:
+All domain functions live in the `auth_internal` schema (SECURITY DEFINER) with thin `public` SECURITY INVOKER wrappers exposed via PostgREST.
+
+#### Implemented Functions (V1-1 through V1-3)
+
+| Public Wrapper                        | Purpose                                                  | Validation                                                                  |
+| ------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `bootstrap_create_organization(...)`  | First-time org setup (bootstrap admin only)              | Only callable by `is_bootstrap_admin`, fails if org already exists          |
+| `bootstrap_create_branch(...)`        | First branch creation during setup                       | Auto-assigns bootstrap admin to first branch                                |
+| `create_staff_account(...)`           | Provision a new staff login + profile + branch assignments | Username validation, owner-creation guards, branch existence checks         |
+| `admin_reset_staff_password(...)`     | Admin resets another staff member's password             | Cross-org denied, target must exist in caller's org                          |
+| `update_organization(...)`            | Update org name/logo/currency/timezone/settings          | ISO 4217 currency validation, IANA timezone validation                      |
+| `manage_create_branch(...)`           | Create branch (post-bootstrap)                           | Permission check (`settings.manage_branches`), unique code enforcement       |
+| `update_branch(...)`                  | Edit branch details                                      | Org scope check, unique code enforcement                                     |
+| `set_branch_active(...)`              | Activate/deactivate branch                               | Cannot deactivate last active branch                                         |
+| `update_staff_member(...)`            | Edit staff profile/role/branches                         | Permission check, cross-org safety, owner-role promotion guards              |
+| `set_staff_active(...)`               | Activate/deactivate staff                                | Org scope check                                                              |
+| `update_role_permission(...)`         | Toggle permission grant for a role                       | Owner/admin only, permission key must exist in catalog                        |
+| `search_patients(...)`                | Paginated patient search (name or phone)                 | Branch or org scope, min query length enforcement                            |
+| `get_patient(...)`                    | Fetch full patient detail                                | Org ownership check, archived check                                          |
+| `check_patient_duplicates(...)`       | Pre-registration duplicate check                         | Phone or name+DOB matching                                                   |
+| `create_patient(...)`                 | Register a new patient                                   | Phone required (8-15 digits), duplicate warning, gender/marital_status validation |
+| `update_patient(...)`                 | Edit patient record                                      | Optimistic concurrency (`p_expected_updated_at`), duplicate warning           |
+| `archive_patient(...)`                | Soft-delete a patient                                    | Permission check (`patients.delete`), idempotent archive                     |
+| `dev_reset_clinic_installation()`     | DEV ONLY: wipe org/branch data for re-bootstrap          | Bootstrap admin only, not for production                                     |
+| `get_custom_claims(event jsonb)`      | GoTrue auth hook to build JWT custom claims              | Looks up staff org, branches, role, setup_required flag                       |
+
+#### Planned Functions (V1-4+)
 
 | Function                  | Purpose                                   | Validation                                                         |
 | ------------------------- | ----------------------------------------- | ------------------------------------------------------------------ |
@@ -177,12 +218,12 @@ Key business logic functions:
 | `apply_discount(...)`     | Apply discount with permission check      | Validates caller has discount permission for the amount threshold  |
 | `create_shift(...)`       | Create shift with staff assignments       | Validates no overlapping shifts for assigned staff                 |
 | `create_visit(...)`       | Create visit record from appointment      | Validates appointment exists and is in correct status              |
-| `get_custom_claims(uid)`  | Called by GoTrue hook to build JWT claims | Looks up staff org, branches, role                                 |
+
+#### Standard Return Type
 
 All functions return a standardized response shape:
 
 ```sql
--- Return type convention
 CREATE TYPE rpc_result AS (
   success boolean,
   data jsonb,
@@ -190,5 +231,16 @@ CREATE TYPE rpc_result AS (
   error_message text
 );
 ```
+
+Helper constructors: `rpc_success(data)` and `rpc_error(code, message)`.
+
+#### Permission Assertion Helpers (auth_internal)
+
+| Function                           | Purpose                                                    |
+| ---------------------------------- | ---------------------------------------------------------- |
+| `assert_bootstrap_admin()`         | Raises `NOT_BOOTSTRAP_ADMIN` if caller is not the installer |
+| `assert_owner_or_administrator()`  | Raises `FORBIDDEN` if caller is not owner/admin/bootstrap   |
+| `assert_permission(key)`           | Raises `FORBIDDEN` if caller's role lacks the permission    |
+| `assert_org_patient(id, archived)` | Raises if patient not in caller's org or is archived        |
 
 ---

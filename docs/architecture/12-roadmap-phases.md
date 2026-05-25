@@ -16,6 +16,20 @@ The project is divided into three versions (V1, V2, V3). Development follows the
 
 V1 delivers a fully functional clinic management system with no AI. This is the MVP. Each feature below follows the cycle: **spec → backend → test → frontend → test**.
 
+### Implementation Status
+
+| Phase | Status |
+| ----- | ------ |
+| V1-0: Project Scaffolding | **Complete** |
+| V1-1: Auth and RBAC | **Complete** |
+| V1-2: Organization and Branch Management | **Complete** |
+| V1-3: Patient Management | **Complete** |
+| V1-4: Appointments | Pending |
+| V1-5: Visits and Medical Records | Pending |
+| V1-6: Billing | Pending |
+| V1-7: Shifts | Pending |
+| V1-8: Deployment and Installer | Pending |
+
 ### V1-0: Project Scaffolding
 
 Required architecture docs:

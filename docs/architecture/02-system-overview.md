@@ -84,21 +84,61 @@ The backend never knows whether a request originated from manual UI interaction 
 ### Critical Data Flow: Standard UI Operation
 
 ```
-User interacts with Flutter UI (e.g., clicks "Book Appointment")
+User interacts with Flutter UI (e.g., clicks "Register Patient")
         │
         ▼
 Flutter service layer validates input client-side
         │
         ▼
 Flutter calls Supabase SDK
-  e.g. supabase.rpc('create_appointment', params)
-     or supabase.from('patients').insert(...)
+  e.g. supabase.rpc('create_patient', params)
         │
         ▼
-PostgREST enforces RLS policies → PostgreSQL executes
+PostgREST routes to public.create_patient() [SECURITY INVOKER]
         │
         ▼
-Result returned to Flutter → UI updates via Riverpod state
+Delegates to auth_internal.create_patient() [SECURITY DEFINER]
+  → Permission check (assert_permission)
+  → Business validation
+  → Duplicate detection
+  → INSERT with audit log
+        │
+        ▼
+rpc_result returned to Flutter → UI updates via Riverpod state
+```
+
+> **Note:** Direct table INSERT/UPDATE via PostgREST is blocked by RLS. All domain writes go through RPC functions.
+
+### Critical Data Flow: App Startup
+
+```
+App launch
+        │
+        ▼
+Load deployment-profile.json (Supabase URL, anon key, AI URL)
+        │
+        ▼
+Probe health endpoints (GoTrue /auth/v1/health, PostgREST /rest/v1/)
+        │
+        ├── Probes fail → show degraded-state/retry UI
+        │
+        ▼ (healthy)
+Initialize Supabase SDK (EmptyLocalStorage — no session persistence)
+        │
+        ▼
+Force sign-out of any stale in-memory session (cold-start safety)
+        │
+        ▼
+Navigate to Login page → user signs in with username + password
+        │
+        ▼
+Decode JWT custom claims → build AuthSessionContext
+  (organizationId, branchIds, role, permissions, setupRequired)
+        │
+        ├── setupRequired = true → navigate to Bootstrap flow
+        │
+        ▼ (normal)
+Navigate to authenticated shell (sidebar + content area)
 ```
 
 ---
