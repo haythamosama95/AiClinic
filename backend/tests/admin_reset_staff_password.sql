@@ -166,8 +166,7 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO admin_reset_password_results VALUES (
     'bootstrap_admin_resets_receptionist_password',
-    v_result.success
-      AND COALESCE((v_result.data ->> 'password_reset')::boolean, false),
+    v_result.success AND (v_result.data ->> 'password_reset')::boolean = true,
     'password_reset=' || COALESCE(v_result.data ->> 'password_reset', '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

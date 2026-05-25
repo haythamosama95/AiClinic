@@ -84,6 +84,11 @@ run_sql_test "Patient management RLS" "patient_management_rls.sql"
 run_sql_test "Patient management extended" "patient_management_extended.sql"
 run_sql_test "Patient management roles" "patient_management_roles.sql"
 run_sql_test "Patient management search advanced" "patient_management_search_advanced.sql"
+run_sql_test "Patient management concurrent" "patient_management_concurrent.sql"
+
+# --- Safety ---
+printf '\n--- Safety ---\n'
+run_sql_test "Dev reset safety" "dev_reset_safety.sql"
 
 # --- Summary ---
 printf -- '\n==========================================================\n'

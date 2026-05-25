@@ -9,6 +9,14 @@ services:
         paths:
           - /auth/v1/
         strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          hour: 500
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   - name: rest
     url: http://rest:3000/
@@ -17,6 +25,14 @@ services:
         paths:
           - /rest/v1/
         strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 60
+          hour: 1000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   - name: storage
     url: http://storage:5000/

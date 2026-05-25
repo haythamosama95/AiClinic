@@ -76,6 +76,13 @@ BEGIN
     updated_at = now()
   WHERE id = v_auth_user_id;
 
+  -- Clear the must_change_password flag after successful password change (Fix 11)
+  UPDATE public.staff_members
+  SET must_change_password = false,
+      updated_at = now(),
+      updated_by = auth.uid()
+  WHERE id = p_staff_member_id;
+
   INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
   VALUES (
     auth.uid(),

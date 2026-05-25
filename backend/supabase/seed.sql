@@ -1,0 +1,3 @@
+-- Seed file for local development
+-- The bootstrap admin is created by migration 20260516100400_auth_rbac_seed.sql
+-- Add any additional local dev seed data below this line.
