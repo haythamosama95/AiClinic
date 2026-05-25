@@ -186,9 +186,6 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   static String _contextFailureReason(Object error) {
     final message = error.toString().toLowerCase();
     if (message.contains('missing staff claims')) {
-      if (message.contains('staff_role') || message.contains('staff claims')) {
-        return 'missing_staff_claims';
-      }
       return 'missing_staff_claims';
     }
     if (message.contains('inactive')) {

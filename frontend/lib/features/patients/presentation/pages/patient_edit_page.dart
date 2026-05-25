@@ -84,7 +84,10 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
     return UpdatePatientInput(
       patientId: patientId,
       fullName: _fullNameController.text,
-      expectedUpdatedAt: _expectedUpdatedAt ?? DateTime.now().toUtc(),
+      expectedUpdatedAt: _expectedUpdatedAt ?? (throw StateError(
+        'Cannot build patient update input: _expectedUpdatedAt is null. '
+        'Ensure patient detail is loaded before calling _buildInput.',
+      )),
       phone: _phoneController.text.trim(),
       dateOfBirth: _dateOfBirth,
       gender: _gender,
@@ -203,8 +206,8 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = PermissionService(ref.watch(authSessionProvider).context).canEditPatients();
     final id = widget.patientId?.trim() ?? '';
+    final canEdit = PermissionService(ref.watch(authSessionProvider).context).canEditPatients();
 
     if (!canEdit) {
       return Scaffold(
@@ -241,6 +244,14 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       );
     }
 
+    ref.listen(patientDetailProvider(id), (prev, next) {
+      next.whenData((detail) {
+        if (_loadedPatientId != detail.id) {
+          _populateFromDetail(detail);
+        }
+      });
+    });
+
     final detailAsync = ref.watch(patientDetailProvider(id));
 
     return Scaffold(
@@ -267,10 +278,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
             ),
           ),
         ),
-        data: (detail) {
-          _populateFromDetail(detail);
-          return _buildForm(context, detail: detail, patientId: id);
-        },
+        data: (detail) => _buildForm(context, detail: detail, patientId: id),
       ),
     );
   }

@@ -11,13 +11,12 @@ void main() {
         'role': 'doctor',
         'is_active': true,
         'phone': '+20 111',
-        'branch_names': ['Main', 'Annex'],
       });
 
       expect(item, isNotNull);
       expect(item!.fullName, 'Dr. Sam');
       expect(item.role, StaffRole.doctor);
-      expect(item.branchNames, ['Main', 'Annex']);
+      expect(item.branchNames, isEmpty);
       expect(item.phone, '+20 111');
     });
 
@@ -33,31 +32,7 @@ void main() {
       expect(item!.role, StaffRole.labStaff);
     });
 
-    test('branch_names accepts list with empty entries filtered', () {
-      final item = StaffListItem.fromRow({
-        'id': '1',
-        'full_name': 'X',
-        'role': 'receptionist',
-        'is_active': true,
-        'branch_names': ['Main', '', '  ', null],
-      });
-
-      expect(item!.branchNames, ['Main']);
-    });
-
-    test('branch_names falls back to single string column', () {
-      final item = StaffListItem.fromRow({
-        'id': '1',
-        'full_name': 'X',
-        'role': 'owner',
-        'is_active': true,
-        'branch_names': 'Only Branch',
-      });
-
-      expect(item!.branchNames, ['Only Branch']);
-    });
-
-    test('missing branch_names yields empty list', () {
+    test('fromRow always yields empty branchNames (loaded separately via copyWith)', () {
       final item = StaffListItem.fromRow({'id': '1', 'full_name': 'X', 'role': 'owner', 'is_active': false});
       expect(item!.branchNames, isEmpty);
       expect(item.branchNamesLabel, 'No branches assigned');

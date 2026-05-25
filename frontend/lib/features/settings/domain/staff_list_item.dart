@@ -39,7 +39,7 @@ class StaffListItem {
       role: role,
       isActive: _parseIsActive(row['is_active']),
       phone: optionalString(row['phone']),
-      branchNames: _parseBranchNames(row['branch_names']),
+      branchNames: const [],
     );
   }
 
@@ -49,24 +49,6 @@ class StaffListItem {
     }
     final text = value?.toString().trim().toLowerCase();
     return text == 'true' || text == 't' || text == '1';
-  }
-
-  static List<String> _parseBranchNames(Object? value) {
-    if (value == null) {
-      return const [];
-    }
-    if (value is List) {
-      return value
-          .map((e) => e?.toString().trim())
-          .whereType<String>()
-          .where((name) => name.isNotEmpty)
-          .toList(growable: false);
-    }
-    final text = value.toString().trim();
-    if (text.isEmpty) {
-      return const [];
-    }
-    return [text];
   }
 
   /// Comma-separated branch labels for list subtitle.

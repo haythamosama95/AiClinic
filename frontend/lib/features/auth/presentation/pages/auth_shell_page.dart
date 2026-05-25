@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -112,7 +113,7 @@ class _ShellHomeBody extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 24),
-              const PermissionDemoPanel(),
+              if (kDebugMode) const PermissionDemoPanel(),
               if (!auth.setupRequired) ...[
                 const SizedBox(height: 16),
                 FilledButton(onPressed: () => context.go(AppRoutes.settings), child: const Text('Settings')),

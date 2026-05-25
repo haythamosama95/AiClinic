@@ -35,7 +35,27 @@ abstract final class SnackbarService {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Semantics(label: semanticsLabel, child: Text(failure.title)),
+          content: Semantics(
+            label: semanticsLabel,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  failure.title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                if (failure.message.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      failure.message,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           behavior: SnackBarBehavior.floating,
           action: failure.recoverable
               ? SnackBarAction(

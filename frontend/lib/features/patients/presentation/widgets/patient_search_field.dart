@@ -28,11 +28,11 @@ class _PatientSearchFieldState extends State<PatientSearchField> {
 
   void _scheduleSearch() {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
+    _debounce = Timer(const Duration(milliseconds: 500), () {
       if (!mounted) {
         return;
       }
-      widget.onSearch(_controller.text);
+      widget.onSearch(_controller.text.trim());
     });
   }
 
