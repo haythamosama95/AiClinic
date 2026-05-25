@@ -32,6 +32,21 @@ void main() {
       expect(failure!.code, 'RESET_NOT_APPLIED');
     });
 
+    test('maps patient FK violation on dev reset to RESET_DEPENDENCY_BLOCKED', () {
+      final failure = bootstrapRpcFailureFromPostgrest(
+        const PostgrestException(
+          message:
+              'update or delete on table "branches" violates foreign key constraint "patients_branch_id_fkey" on table "patients"',
+          code: '23503',
+        ),
+        'dev_reset_clinic_installation',
+      );
+
+      expect(failure, isNotNull);
+      expect(failure!.code, 'RESET_DEPENDENCY_BLOCKED');
+      expect(failure.message, contains('20260525120000'));
+    });
+
     test('returns null for unrelated PostgREST errors', () {
       final failure = bootstrapRpcFailureFromPostgrest(
         const PostgrestException(message: 'permission denied', code: '42501'),

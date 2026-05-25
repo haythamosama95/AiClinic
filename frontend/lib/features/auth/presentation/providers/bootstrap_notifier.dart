@@ -20,6 +20,7 @@ String bootstrapMessageForRpc(RpcFailure failure) {
     'RESET_INCOMPLETE' => 'Clinic data could not be cleared. Apply the latest database migrations and try again.',
     'RESET_NOT_APPLIED' => failure.message,
     'RESET_SAFE_DELETE' => failure.message,
+    'RESET_DEPENDENCY_BLOCKED' => failure.message,
     _ => 'Unable to save clinic setup. Check connectivity and try again.',
   };
 }

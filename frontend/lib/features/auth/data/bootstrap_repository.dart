@@ -34,6 +34,19 @@ RpcFailure? bootstrapRpcFailureFromPostgrest(PostgrestException error, String fu
     );
   }
 
+  if (functionName == 'dev_reset_clinic_installation' &&
+      (error.code == '23503' || error.message.contains('violates foreign key constraint'))) {
+    return RpcFailure(
+      RpcResult(
+        success: false,
+        errorCode: 'RESET_DEPENDENCY_BLOCKED',
+        errorMessage:
+            'Clinic reset could not remove branches or organization data because related records still exist '
+            '(for example patients). Apply migration 20260525120000_dev_reset_delete_patients.sql, restart Supabase, and try again.',
+      ),
+    );
+  }
+
   return null;
 }
 
