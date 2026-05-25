@@ -6,8 +6,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/widgets/app_form_field.dart';
-import 'package:ai_clinic/features/patients/data/patient_repository.dart';
-import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 import 'package:ai_clinic/features/patients/data/patient_rpc_failure.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
@@ -121,17 +120,15 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       _showStaleBanner = false;
     });
 
-    final repository = ref.read(patientRepositoryProvider);
-    await _updateWithDuplicateHandling(repository: repository, patientId: patientId, acknowledgeDuplicate: false);
+    await _updateWithDuplicateHandling(patientId: patientId, acknowledgeDuplicate: false);
   }
 
   Future<void> _updateWithDuplicateHandling({
-    required PatientRepository repository,
     required String patientId,
     required bool acknowledgeDuplicate,
   }) async {
     try {
-      final updatedAt = await repository.updatePatient(
+      final updatedAt = await ref.read(updatePatientUseCaseProvider)(
         _buildInput(patientId: patientId, acknowledgeDuplicate: acknowledgeDuplicate),
       );
 
@@ -159,7 +156,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
         }
 
         setState(() => _isSaving = true);
-        await _updateWithDuplicateHandling(repository: repository, patientId: patientId, acknowledgeDuplicate: true);
+        await _updateWithDuplicateHandling(patientId: patientId, acknowledgeDuplicate: true);
         return;
       }
 

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
+import 'package:ai_clinic/features/auth/domain/usecases/auth_use_case_providers.dart';
 import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/auth/domain/create_staff_account_result.dart';
 import 'package:ai_clinic/features/auth/domain/admin_reset_staff_password_result.dart';
@@ -172,18 +172,16 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
     AppLog.info('provisioning.create_staff.start role=${role.wireValue}');
 
     try {
-      final result = await ref
-          .read(provisioningRepositoryProvider)
-          .createStaffAccount(
-            CreateStaffAccountInput(
-              username: normalizedUsername,
-              password: password,
-              fullName: trimmedName,
-              role: role,
-              branchIds: branchIds,
-              primaryBranchId: primary,
-            ),
-          );
+      final result = await ref.read(createStaffAccountUseCaseProvider)(
+        CreateStaffAccountInput(
+          username: normalizedUsername,
+          password: password,
+          fullName: trimmedName,
+          role: role,
+          branchIds: branchIds,
+          primaryBranchId: primary,
+        ),
+      );
 
       if (role == StaffRole.owner) {
         markOwnerExists();
@@ -248,9 +246,10 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
     AppLog.info('provisioning.reset_password.start staff_id=$trimmedId');
 
     try {
-      final result = await ref
-          .read(provisioningRepositoryProvider)
-          .resetStaffPassword(staffMemberId: trimmedId, newPassword: trimmedPassword);
+      final result = await ref.read(resetStaffPasswordUseCaseProvider)(
+        staffMemberId: trimmedId,
+        newPassword: trimmedPassword,
+      );
 
       state = state.copyWith(isSubmitting: false, lastPasswordReset: result);
       AppLog.info('provisioning.reset_password.ok staff_id=${result.staffMemberId}');
@@ -277,5 +276,5 @@ final staffResetCandidatesProvider = FutureProvider.autoDispose<List<StaffMember
     return const [];
   }
 
-  return ref.read(provisioningRepositoryProvider).listOrgStaffMembers();
+  return ref.read(listOrgStaffMembersUseCaseProvider)();
 });

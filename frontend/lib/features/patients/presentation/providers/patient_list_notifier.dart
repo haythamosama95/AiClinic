@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
@@ -163,15 +163,13 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
     }
 
     try {
-      return await ref
-          .read(patientRepositoryProvider)
-          .searchPatients(
-            query: _searchQuery.isEmpty ? null : _searchQuery,
-            scope: scope,
-            branchId: activeBranchId,
-            limit: pageSize,
-            offset: offset,
-          );
+      return await ref.read(searchPatientsUseCaseProvider)(
+        query: _searchQuery.isEmpty ? null : _searchQuery,
+        scope: scope,
+        branchId: activeBranchId,
+        limit: pageSize,
+        offset: offset,
+      );
     } on RpcFailure catch (failure) {
       throw StateError(patientMessageForRpc(failure));
     }

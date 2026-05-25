@@ -7,7 +7,7 @@ import 'package:ai_clinic/core/widgets/app_form_field.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
@@ -200,7 +200,7 @@ class _StaffSettingsPasswordResetPageState extends ConsumerState<StaffSettingsPa
 }
 
 final _staffMemberProvider = FutureProvider.autoDispose.family<StaffListItem?, String>((ref, staffId) async {
-  final staff = await ref.read(staffAdminRepositoryProvider).listStaff(filter: StaffListFilter.all);
+  final staff = await ref.read(listStaffUseCaseProvider)(filter: StaffListFilter.all);
   for (final member in staff) {
     if (member.id == staffId) {
       return member;

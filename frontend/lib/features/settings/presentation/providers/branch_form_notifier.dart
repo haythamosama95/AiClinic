@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
@@ -81,7 +81,7 @@ class BranchFormNotifier extends AsyncNotifier<BranchFormUiState> {
       throw StateError('Missing organization id in session');
     }
 
-    final branches = await ref.read(branchRepositoryProvider).listBranches(organizationId: orgId);
+    final branches = await ref.read(listBranchesUseCaseProvider)(organizationId: orgId);
     BranchListItem? existing;
     for (final branch in branches) {
       if (branch.id == branchId) {
@@ -121,30 +121,26 @@ class BranchFormNotifier extends AsyncNotifier<BranchFormUiState> {
     try {
       final String savedId;
       if (branchId == null) {
-        savedId = await ref
-            .read(branchRepositoryProvider)
-            .createBranch(
-              CreateBranchInput(
-                name: trimmedName,
-                code: _optionalTrim(code),
-                address: _optionalTrim(address),
-                phone: _optionalTrim(phone),
-                mapsUrl: _optionalTrim(mapsUrl),
-              ),
-            );
+        savedId = await ref.read(createBranchUseCaseProvider)(
+          CreateBranchInput(
+            name: trimmedName,
+            code: _optionalTrim(code),
+            address: _optionalTrim(address),
+            phone: _optionalTrim(phone),
+            mapsUrl: _optionalTrim(mapsUrl),
+          ),
+        );
       } else {
-        savedId = await ref
-            .read(branchRepositoryProvider)
-            .updateBranch(
-              UpdateBranchInput(
-                branchId: branchId,
-                name: trimmedName,
-                code: _optionalTrim(code),
-                address: _optionalTrim(address),
-                phone: _optionalTrim(phone),
-                mapsUrl: _optionalTrim(mapsUrl),
-              ),
-            );
+        savedId = await ref.read(updateBranchUseCaseProvider)(
+          UpdateBranchInput(
+            branchId: branchId,
+            name: trimmedName,
+            code: _optionalTrim(code),
+            address: _optionalTrim(address),
+            phone: _optionalTrim(phone),
+            mapsUrl: _optionalTrim(mapsUrl),
+          ),
+        );
       }
 
       state = AsyncData(current.copyWith(isSaving: false, savedBranchId: savedId));

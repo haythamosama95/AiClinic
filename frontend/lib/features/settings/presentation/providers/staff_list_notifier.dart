@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
@@ -57,7 +57,7 @@ class StaffListNotifier extends AsyncNotifier<StaffListUiState> {
       return StaffListUiState(filter: _filter, staff: const []);
     }
 
-    final staff = await ref.read(staffAdminRepositoryProvider).listStaff(filter: _filter);
+    final staff = await ref.read(listStaffUseCaseProvider)(filter: _filter);
     return StaffListUiState(filter: _filter, staff: staff);
   }
 
@@ -92,7 +92,7 @@ class StaffListNotifier extends AsyncNotifier<StaffListUiState> {
     AppLog.info('settings.staff.toggle.start staff_id=${member.id} active=$targetActive');
 
     try {
-      await ref.read(staffAdminRepositoryProvider).setStaffActive(staffMemberId: member.id, isActive: targetActive);
+      await ref.read(setStaffActiveUseCaseProvider)(staffMemberId: member.id, isActive: targetActive);
       ref.invalidateSelf();
     } on RpcFailure catch (error) {
       AppLog.warning('settings.staff.toggle.rpc_failed code=${error.code}');

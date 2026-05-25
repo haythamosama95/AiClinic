@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
@@ -65,7 +65,7 @@ class BranchListNotifier extends AsyncNotifier<BranchListUiState> {
     if (orgId == null || orgId.isEmpty) {
       throw StateError('Missing organization id in session');
     }
-    final branches = await ref.read(branchRepositoryProvider).listBranches(organizationId: orgId, filter: _filter);
+    final branches = await ref.read(listBranchesUseCaseProvider)(organizationId: orgId, filter: _filter);
 
     return BranchListUiState(filter: _filter, branches: branches);
   }
@@ -118,7 +118,7 @@ class BranchListNotifier extends AsyncNotifier<BranchListUiState> {
     AppLog.info('settings.branch.toggle.start branch_id=${branch.id} active=$targetActive');
 
     try {
-      await ref.read(branchRepositoryProvider).setBranchActive(branchId: branch.id, isActive: targetActive);
+      await ref.read(setBranchActiveUseCaseProvider)(branchId: branch.id, isActive: targetActive);
       ref.invalidateSelf();
       return false;
     } on RpcFailure catch (error) {
