@@ -1,5 +1,6 @@
 import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/fake_postgrest_rpc.dart';

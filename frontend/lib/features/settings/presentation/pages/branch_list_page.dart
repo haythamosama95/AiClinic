@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/branch_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/last_active_branch_blocked_dialog.dart';

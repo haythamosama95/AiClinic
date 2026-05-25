@@ -1,6 +1,8 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/settings_rpc_test_client.dart';

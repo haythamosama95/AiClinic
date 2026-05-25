@@ -4,46 +4,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/auth/domain/create_staff_account_result.dart';
+import 'package:ai_clinic/features/auth/domain/admin_reset_staff_password_result.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
-
-/// Input for `create_staff_account` RPC.
-class CreateStaffAccountInput {
-  const CreateStaffAccountInput({
-    required this.username,
-    required this.password,
-    required this.fullName,
-    required this.role,
-    required this.branchIds,
-    this.primaryBranchId,
-  });
-
-  final String username;
-  final String password;
-  final String fullName;
-  final StaffRole role;
-  final List<String> branchIds;
-  final String? primaryBranchId;
-}
-
-/// Successful staff account creation payload.
-class CreateStaffAccountResult {
-  const CreateStaffAccountResult({required this.staffMemberId, required this.username, required this.assignedPassword});
-
-  final String staffMemberId;
-  final String username;
-  final String assignedPassword;
-}
-
-/// Successful administrator password reset payload.
-class AdminResetStaffPasswordResult {
-  const AdminResetStaffPasswordResult({required this.staffMemberId, required this.assignedPassword});
-
-  final String staffMemberId;
-  final String assignedPassword;
-}
 
 /// Maps provisioning RPC PostgREST failures to [RpcFailure], or returns null to rethrow.
 RpcFailure? provisioningRpcFailureFromPostgrest(PostgrestException error, String functionName) {

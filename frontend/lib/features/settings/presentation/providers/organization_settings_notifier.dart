@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/organization_repository.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
+import 'package:ai_clinic/features/settings/domain/update_organization_input.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 

@@ -3,6 +3,7 @@ import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
+import 'package:ai_clinic/features/auth/domain/create_staff_account_result.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/staff_create_page.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';

@@ -5,32 +5,10 @@ import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
-
-/// Filter for staff list queries.
-enum StaffListFilter { active, inactive, all }
-
-/// Input for [update_staff_member] RPC.
-class UpdateStaffMemberInput {
-  const UpdateStaffMemberInput({
-    required this.staffMemberId,
-    required this.fullName,
-    required this.role,
-    required this.branchIds,
-    this.phone,
-    this.primaryBranchId,
-    this.isActive,
-  });
-
-  final String staffMemberId;
-  final String fullName;
-  final StaffRole role;
-  final List<String> branchIds;
-  final String? phone;
-  final String? primaryBranchId;
-  final bool? isActive;
-}
+import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 
 /// Staff administration reads (RLS) and lifecycle RPCs.
 class StaffAdminRepository with SettingsRpcInvoker {

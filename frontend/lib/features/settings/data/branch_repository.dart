@@ -4,40 +4,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-
-/// Filter for branch list queries.
-enum BranchListFilter { active, inactive, all }
-
-/// Input for [manage_create_branch] RPC.
-class CreateBranchInput {
-  const CreateBranchInput({required this.name, this.code, this.address, this.phone, this.mapsUrl});
-
-  final String name;
-  final String? code;
-  final String? address;
-  final String? phone;
-  final String? mapsUrl;
-}
-
-/// Input for [update_branch] RPC.
-class UpdateBranchInput {
-  const UpdateBranchInput({
-    required this.branchId,
-    required this.name,
-    this.code,
-    this.address,
-    this.phone,
-    this.mapsUrl,
-  });
-
-  final String branchId;
-  final String name;
-  final String? code;
-  final String? address;
-  final String? phone;
-  final String? mapsUrl;
-}
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 
 /// Branch list reads (RLS) and lifecycle mutations (RPC).
 class BranchRepository with SettingsRpcInvoker {

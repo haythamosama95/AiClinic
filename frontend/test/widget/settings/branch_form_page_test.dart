@@ -1,5 +1,8 @@
 import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/branch_form_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/branch_form_notifier.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';

@@ -3,6 +3,7 @@ import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
+import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_form_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/staff_form_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/staff_management_branches_provider.dart';

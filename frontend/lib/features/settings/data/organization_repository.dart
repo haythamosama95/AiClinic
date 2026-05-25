@@ -5,23 +5,7 @@ import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
-
-/// Input for steady-state [update_organization] RPC.
-class UpdateOrganizationInput {
-  const UpdateOrganizationInput({
-    required this.name,
-    this.logoUrl,
-    this.currencyCode,
-    this.timezone,
-    this.settingsJson,
-  });
-
-  final String name;
-  final String? logoUrl;
-  final String? currencyCode;
-  final String? timezone;
-  final Map<String, dynamic>? settingsJson;
-}
+import 'package:ai_clinic/features/settings/domain/update_organization_input.dart';
 
 /// Organization profile reads (RLS) and updates (RPC).
 class OrganizationRepository with SettingsRpcInvoker {

@@ -4,42 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-
-/// Organization fields for first-time clinic bootstrap.
-class BootstrapOrganizationInput {
-  const BootstrapOrganizationInput({
-    required this.name,
-    this.logoUrl,
-    this.currencyCode,
-    this.timezone,
-    this.settingsJson = const {},
-  });
-
-  final String name;
-  final String? logoUrl;
-  final String? currencyCode;
-  final String? timezone;
-  final Map<String, dynamic> settingsJson;
-}
-
-/// Branch fields for first-time clinic bootstrap.
-class BootstrapBranchInput {
-  const BootstrapBranchInput({
-    required this.organizationId,
-    required this.name,
-    this.code,
-    this.address,
-    this.phone,
-    this.mapsUrl,
-  });
-
-  final String organizationId;
-  final String name;
-  final String? code;
-  final String? address;
-  final String? phone;
-  final String? mapsUrl;
-}
+import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
 
 /// Maps bootstrap RPC PostgREST failures to [RpcFailure], or returns null to rethrow.
 RpcFailure? bootstrapRpcFailureFromPostgrest(PostgrestException error, String functionName) {

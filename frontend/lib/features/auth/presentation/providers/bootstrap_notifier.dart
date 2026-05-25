@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
+import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_dummy_data.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';

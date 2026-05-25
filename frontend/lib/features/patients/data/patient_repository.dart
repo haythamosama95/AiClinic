@@ -4,103 +4,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
-import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
-import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
-
-/// Paginated patient list/search result from `search_patients`.
-class PatientSearchPage {
-  const PatientSearchPage({required this.items, required this.totalCount, required this.limit, required this.offset});
-
-  final List<PatientListItem> items;
-  final int totalCount;
-  final int limit;
-  final int offset;
-
-  factory PatientSearchPage.fromRpcData(Map<String, dynamic>? data) {
-    if (data == null) {
-      return const PatientSearchPage(items: [], totalCount: 0, limit: 25, offset: 0);
-    }
-
-    final rawItems = data['items'];
-    final items = <PatientListItem>[];
-    if (rawItems is List) {
-      for (final entry in rawItems) {
-        if (entry is Map) {
-          final item = PatientListItem.fromRow(Map<String, dynamic>.from(entry));
-          if (item != null) {
-            items.add(item);
-          }
-        }
-      }
-    }
-
-    return PatientSearchPage(
-      items: items,
-      totalCount: _readInt(data['total_count'], fallback: items.length),
-      limit: _readInt(data['limit'], fallback: 25),
-      offset: _readInt(data['offset'], fallback: 0),
-    );
-  }
-
-  static int _readInt(Object? value, {required int fallback}) {
-    if (value is int) {
-      return value;
-    }
-    return int.tryParse(value?.toString() ?? '') ?? fallback;
-  }
-}
-
-/// Input for [PatientRepository.createPatient].
-class CreatePatientInput {
-  const CreatePatientInput({
-    required this.activeBranchId,
-    required this.fullName,
-    required this.phone,
-    this.dateOfBirth,
-    this.gender,
-    this.maritalStatus,
-    this.notes,
-    this.acknowledgeDuplicate = false,
-  });
-
-  final String activeBranchId;
-  final String fullName;
-  final String phone;
-  final DateTime? dateOfBirth;
-  final PatientGender? gender;
-  final PatientMaritalStatus? maritalStatus;
-  final String? notes;
-  final bool acknowledgeDuplicate;
-}
-
-/// Input for [PatientRepository.updatePatient].
-class UpdatePatientInput {
-  const UpdatePatientInput({
-    required this.patientId,
-    required this.fullName,
-    required this.expectedUpdatedAt,
-    this.phone,
-    this.dateOfBirth,
-    this.gender,
-    this.maritalStatus,
-    this.notes,
-    this.acknowledgeDuplicate = false,
-  });
-
-  final String patientId;
-  final String fullName;
-  final DateTime expectedUpdatedAt;
-  final String? phone;
-  final DateTime? dateOfBirth;
-  final PatientGender? gender;
-  final PatientMaritalStatus? maritalStatus;
-  final String? notes;
-  final bool acknowledgeDuplicate;
-}
+import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
+import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
+import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 
 /// Patient list/detail mutations via secured RPCs (V1-3).
 class PatientRepository {

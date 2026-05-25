@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
