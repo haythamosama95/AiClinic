@@ -247,8 +247,21 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     final branchIds = branchIdsRaw.split(',').map((value) => value.trim()).where((value) => value.isNotEmpty).toList();
 
     final permissions = await ref.read(permissionRepositoryProvider).loadGrantedPermissions(role);
-    final primaryBranchId = branchIds.isEmpty ? null : branchIds.first;
     final setupRequired = claims['setup_required'] == true || claims['setup_required']?.toString() == 'true';
+
+    String? primaryBranchId;
+    if (branchIds.isNotEmpty) {
+      final primaryRow = await client
+          .from('staff_branch_assignments')
+          .select('branch_id')
+          .eq('staff_member_id', staffMemberId)
+          .eq('is_primary', true)
+          .maybeSingle();
+      primaryBranchId = primaryRow?['branch_id']?.toString();
+      if (primaryBranchId == null || !branchIds.contains(primaryBranchId)) {
+        primaryBranchId = branchIds.first;
+      }
+    }
 
     return AuthSessionContext(
       staffProfile: StaffProfile(

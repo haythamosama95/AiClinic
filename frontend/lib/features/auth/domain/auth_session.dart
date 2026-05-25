@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:flutter/foundation.dart';
 
 /// Staff roles aligned with PostgreSQL `staff_role` enum.
@@ -74,17 +75,17 @@ class AuthSessionContext {
 
   AuthSessionContext copyWith({
     StaffProfile? staffProfile,
-    String? organizationId,
+    Object? organizationId = copyWithSentinel,
     List<String>? branchIds,
-    String? activeBranchId,
+    Object? activeBranchId = copyWithSentinel,
     Set<String>? permissions,
     bool? setupRequired,
   }) {
     return AuthSessionContext(
       staffProfile: staffProfile ?? this.staffProfile,
-      organizationId: organizationId ?? this.organizationId,
+      organizationId: identical(organizationId, copyWithSentinel) ? this.organizationId : organizationId as String?,
       branchIds: branchIds ?? this.branchIds,
-      activeBranchId: activeBranchId ?? this.activeBranchId,
+      activeBranchId: identical(activeBranchId, copyWithSentinel) ? this.activeBranchId : activeBranchId as String?,
       permissions: permissions ?? this.permissions,
       setupRequired: setupRequired ?? this.setupRequired,
     );

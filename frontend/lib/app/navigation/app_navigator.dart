@@ -1,0 +1,57 @@
+import 'package:flutter/widgets.dart';
+import 'package:go_router/go_router.dart';
+
+import 'package:ai_clinic/app/app_routes.dart';
+
+/// Centralized navigation service to avoid scattered `context.go()`/`context.push()` calls.
+///
+/// Usage: `context.nav.goPatientDetail(patientId)`
+extension AppNavigatorExt on BuildContext {
+  AppNavigator get nav => AppNavigator(this);
+}
+
+class AppNavigator {
+  const AppNavigator(this._context);
+  final BuildContext _context;
+
+  // Auth / startup
+  void goHome() => _context.go(AppRoutes.home);
+  void goLogin() => _context.go(AppRoutes.login);
+  void goBootstrap() => _context.go(AppRoutes.bootstrap);
+  void goForgotPassword() => _context.go(AppRoutes.forgotPassword);
+  void goStartupEntry() => _context.go(AppRoutes.startupEntry);
+  void goStaffCreate() => _context.go(AppRoutes.staffCreate);
+  void goStaffPasswordReset() => _context.go(AppRoutes.staffPasswordReset);
+
+  // Patient management
+  void goPatients() => _context.go(AppRoutes.patients);
+  void goPatientDetail(String id) => _context.go(AppRoutes.patientDetail(id));
+  void pushPatientDetail(String id) => _context.push(AppRoutes.patientDetail(id));
+  void goPatientEdit(String id) => _context.go(AppRoutes.patientEdit(id));
+  void pushPatientEdit(String id) => _context.push(AppRoutes.patientEdit(id));
+  void goPatientRegister() => _context.push(AppRoutes.patientsNew);
+
+  // Settings
+  void goSettings() => _context.go(AppRoutes.settings);
+  void goSettingsOrganization() => _context.go(AppRoutes.settingsOrganization);
+  void goSettingsBranches() => _context.go(AppRoutes.settingsBranches);
+  void goSettingsBranchesNew() => _context.go(AppRoutes.settingsBranchesNew);
+  void goSettingsBranchEdit(String id) => _context.go(AppRoutes.settingsBranchEdit(id));
+  void goSettingsStaff() => _context.go(AppRoutes.settingsStaff);
+  void goSettingsStaffNew() => _context.go(AppRoutes.settingsStaffNew);
+  void goSettingsStaffDetail(String id) => _context.go(AppRoutes.settingsStaffDetail(id));
+  void goSettingsStaffResetPassword(String id) => _context.go(AppRoutes.settingsStaffResetPassword(id));
+  void goSettingsPermissions() => _context.go(AppRoutes.settingsPermissions);
+  void goSettingsIdleTimeout() => _context.go(AppRoutes.settingsIdleTimeout);
+
+  // Utility
+  void pop() => _context.pop();
+  bool canPop() => _context.canPop();
+  void popOrHome() {
+    if (_context.canPop()) {
+      _context.pop();
+    } else {
+      _context.go(AppRoutes.home);
+    }
+  }
+}

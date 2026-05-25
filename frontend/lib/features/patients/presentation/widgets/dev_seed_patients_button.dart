@@ -21,6 +21,8 @@ final _patientDevSeedServiceProvider = Provider<PatientDevSeedService>((ref) {
   );
 });
 
+const bool _kEnableDevTools = bool.fromEnvironment('ENABLE_DEV_TOOLS');
+
 /// Debug-only control to seed ~20 demo patients (active + other branch, plus archived).
 class DevSeedPatientsButton extends ConsumerStatefulWidget {
   const DevSeedPatientsButton({super.key});
@@ -34,7 +36,7 @@ class _DevSeedPatientsButtonState extends ConsumerState<DevSeedPatientsButton> {
 
   @override
   Widget build(BuildContext context) {
-    if (!kDebugMode) {
+    if (!kDebugMode && !_kEnableDevTools) {
       return const SizedBox.shrink();
     }
 

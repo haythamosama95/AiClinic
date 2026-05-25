@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter/foundation.dart';
 
@@ -64,7 +65,7 @@ class StaffListItem {
     String? fullName,
     StaffRole? role,
     bool? isActive,
-    String? phone,
+    Object? phone = copyWithSentinel,
     List<String>? branchNames,
   }) {
     return StaffListItem(
@@ -72,7 +73,7 @@ class StaffListItem {
       fullName: fullName ?? this.fullName,
       role: role ?? this.role,
       isActive: isActive ?? this.isActive,
-      phone: phone ?? this.phone,
+      phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
       branchNames: branchNames ?? this.branchNames,
     );
   }

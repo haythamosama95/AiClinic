@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/utils/user_error_mapper.dart';
@@ -19,10 +18,10 @@ import 'package:ai_clinic/features/patients/presentation/widgets/duplicate_candi
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
 void _leavePatientEdit(BuildContext context, String patientId) {
-  if (context.canPop()) {
-    context.pop();
+  if (context.nav.canPop()) {
+    context.nav.pop();
   } else {
-    context.go(AppRoutes.patientDetail(patientId));
+    context.nav.goPatientDetail(patientId);
   }
 }
 
@@ -142,7 +141,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
 
       ref.invalidate(patientDetailProvider(patientId));
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Patient updated successfully.')));
-      context.go(AppRoutes.patientDetail(patientId));
+      context.nav.goPatientDetail(patientId);
       // Keep analyzer happy about updatedAt being used for optimistic lock refresh on future edits.
       _expectedUpdatedAt = updatedAt;
     } on RpcFailure catch (error) {
@@ -195,6 +194,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       initialDate: _dateOfBirth ?? DateTime(now.year - 30),
       firstDate: DateTime(1900),
       lastDate: now,
+      initialDatePickerMode: DatePickerMode.year,
     );
     if (picked != null && mounted) {
       setState(() => _dateOfBirth = picked);
@@ -217,7 +217,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
           leading: IconButton(
             tooltip: 'Go back',
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => id.isEmpty ? context.go(AppRoutes.patients) : _leavePatientEdit(context, id),
+            onPressed: () => id.isEmpty ? context.nav.goPatients() : _leavePatientEdit(context, id),
           ),
         ),
         body: const Center(
@@ -234,7 +234,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Edit patient'),
-          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.patients)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.nav.goPatients()),
         ),
         body: const Center(
           key: Key('patient_edit_invalid_id'),

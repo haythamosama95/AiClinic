@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/core/widgets/app_form_field.dart';
+import 'package:ai_clinic/core/widgets/unsaved_changes_guard.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/data/patient_rpc_failure.dart';
@@ -17,11 +17,7 @@ import 'package:ai_clinic/features/patients/presentation/widgets/duplicate_candi
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
 void _leavePatientRegistration(BuildContext context) {
-  if (context.canPop()) {
-    context.pop();
-  } else {
-    context.go(AppRoutes.home);
-  }
+  context.nav.popOrHome();
 }
 
 /// Register a new patient at the active branch (US1).
@@ -59,6 +55,7 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
       initialDate: _dateOfBirth ?? DateTime(now.year - 30),
       firstDate: DateTime(1900),
       lastDate: now,
+      initialDatePickerMode: DatePickerMode.year,
     );
     if (picked != null && mounted) {
       setState(() => _dateOfBirth = picked);
@@ -124,7 +121,7 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
       }
 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Patient registered successfully.')));
-      context.go(AppRoutes.patientDetail(patientId));
+      context.nav.goPatientDetail(patientId);
     } on RpcFailure catch (error) {
       if (!mounted) {
         return;
@@ -184,96 +181,108 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
 
     final dobLabel = _dateOfBirth == null ? 'Not set' : formatDate(_dateOfBirth);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Register patient'),
-        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_formError != null) ...[
-                Text(_formError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+    return UnsavedChangesGuard(
+      hasUnsavedChanges: _hasUnsavedChanges(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Register patient'),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_formError != null) ...[
+                  Text(_formError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  const SizedBox(height: 16),
+                ],
+                AppFormField(
+                  label: 'Full name',
+                  infoTooltip: 'Patient legal or preferred full name as recorded at the desk.',
+                  controller: _fullNameController,
+                  enabled: !_isSaving,
+                  validator: (value) => value == null || value.trim().isEmpty ? 'Full name is required.' : null,
+                ),
                 const SizedBox(height: 16),
-              ],
-              AppFormField(
-                label: 'Full name',
-                infoTooltip: 'Patient legal or preferred full name as recorded at the desk.',
-                controller: _fullNameController,
-                enabled: !_isSaving,
-                validator: (value) => value == null || value.trim().isEmpty ? 'Full name is required.' : null,
-              ),
-              const SizedBox(height: 16),
-              AppFormField(
-                label: 'Mobile number',
-                infoTooltip: 'Mobile number including country code when known (8–15 digits).',
-                controller: _phoneController,
-                enabled: !_isSaving,
-                keyboardType: TextInputType.phone,
-                validator: (value) => value == null || value.trim().isEmpty ? 'Mobile number is required.' : null,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: InputDecorator(
-                      decoration: const InputDecoration(labelText: 'Date of birth'),
-                      child: Text(dobLabel),
+                AppFormField(
+                  label: 'Mobile number',
+                  infoTooltip: 'Mobile number including country code when known (8–15 digits).',
+                  controller: _phoneController,
+                  enabled: !_isSaving,
+                  keyboardType: TextInputType.phone,
+                  validator: (value) => value == null || value.trim().isEmpty ? 'Mobile number is required.' : null,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: InputDecorator(
+                        decoration: const InputDecoration(labelText: 'Date of birth'),
+                        child: Text(dobLabel),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(onPressed: _isSaving ? null : _pickDateOfBirth, child: const Text('Pick date')),
-                  if (_dateOfBirth != null)
-                    TextButton(onPressed: _isSaving ? null : _clearDateOfBirth, child: const Text('Clear')),
-                ],
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<PatientGender?>(
-                value: _gender,
-                decoration: const InputDecoration(labelText: 'Gender'),
-                items: const [
-                  DropdownMenuItem(value: null, child: Text('Not specified')),
-                  DropdownMenuItem(value: PatientGender.male, child: Text('Male')),
-                  DropdownMenuItem(value: PatientGender.female, child: Text('Female')),
-                ],
-                onChanged: _isSaving ? null : (value) => setState(() => _gender = value),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<PatientMaritalStatus?>(
-                value: _maritalStatus,
-                decoration: const InputDecoration(labelText: 'Marital status'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Not specified')),
-                  ...PatientMaritalStatus.values.map(
-                    (status) => DropdownMenuItem(value: status, child: Text(status.label)),
-                  ),
-                ],
-                onChanged: _isSaving ? null : (value) => setState(() => _maritalStatus = value),
-              ),
-              const SizedBox(height: 16),
-              AppFormField(
-                label: 'Notes',
-                infoTooltip: 'Front-desk notes visible on the patient profile.',
-                controller: _notesController,
-                enabled: !_isSaving,
-              ),
-              const SizedBox(height: 24),
-              FilledButton(
-                key: const Key('patient_register_submit'),
-                onPressed: _isSaving ? null : _submit,
-                child: _isSaving
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Register patient'),
-              ),
-            ],
+                    const SizedBox(width: 8),
+                    TextButton(onPressed: _isSaving ? null : _pickDateOfBirth, child: const Text('Pick date')),
+                    if (_dateOfBirth != null)
+                      TextButton(onPressed: _isSaving ? null : _clearDateOfBirth, child: const Text('Clear')),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<PatientGender?>(
+                  value: _gender,
+                  decoration: const InputDecoration(labelText: 'Gender'),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('Not specified')),
+                    DropdownMenuItem(value: PatientGender.male, child: Text('Male')),
+                    DropdownMenuItem(value: PatientGender.female, child: Text('Female')),
+                  ],
+                  onChanged: _isSaving ? null : (value) => setState(() => _gender = value),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<PatientMaritalStatus?>(
+                  value: _maritalStatus,
+                  decoration: const InputDecoration(labelText: 'Marital status'),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Not specified')),
+                    ...PatientMaritalStatus.values.map(
+                      (status) => DropdownMenuItem(value: status, child: Text(status.label)),
+                    ),
+                  ],
+                  onChanged: _isSaving ? null : (value) => setState(() => _maritalStatus = value),
+                ),
+                const SizedBox(height: 16),
+                AppFormField(
+                  label: 'Notes',
+                  infoTooltip: 'Front-desk notes visible on the patient profile.',
+                  controller: _notesController,
+                  enabled: !_isSaving,
+                ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  key: const Key('patient_register_submit'),
+                  onPressed: _isSaving ? null : _submit,
+                  child: _isSaving
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Register patient'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  bool _hasUnsavedChanges() {
+    return _fullNameController.text.trim().isNotEmpty ||
+        _phoneController.text.trim().isNotEmpty ||
+        _notesController.text.trim().isNotEmpty ||
+        _dateOfBirth != null ||
+        _gender != null ||
+        _maritalStatus != null;
   }
 }

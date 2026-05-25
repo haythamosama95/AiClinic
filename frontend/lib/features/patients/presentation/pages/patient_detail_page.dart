@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_exceptions.dart';
@@ -13,10 +12,10 @@ import 'package:ai_clinic/features/patients/presentation/widgets/patient_visits_
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
 void _leavePatientDetail(BuildContext context) {
-  if (context.canPop()) {
-    context.pop();
+  if (context.nav.canPop()) {
+    context.nav.pop();
   } else {
-    context.go(AppRoutes.patients);
+    context.nav.goPatients();
   }
 }
 
@@ -122,10 +121,10 @@ class _PatientDetailActions extends ConsumerWidget {
 
     ref.invalidate(patientListProvider);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Patient archived.')));
-    if (context.canPop()) {
-      context.pop();
+    if (context.nav.canPop()) {
+      context.nav.pop();
     } else {
-      context.go(AppRoutes.patients);
+      context.nav.goPatients();
     }
   }
 
@@ -139,7 +138,7 @@ class _PatientDetailActions extends ConsumerWidget {
             key: const Key('patient_detail_edit'),
             tooltip: 'Edit patient',
             icon: const Icon(Icons.edit_outlined),
-            onPressed: () => context.push(AppRoutes.patientEdit(patientId)),
+            onPressed: () => context.nav.pushPatientEdit(patientId),
           ),
         if (canDelete)
           IconButton(

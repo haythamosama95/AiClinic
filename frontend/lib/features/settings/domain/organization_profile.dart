@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:flutter/foundation.dart';
 
 /// Organization row for steady-state settings (V1-2).
@@ -94,22 +95,22 @@ class OrganizationProfile {
   OrganizationProfile copyWith({
     String? id,
     String? name,
-    String? logoUrl,
-    String? currencyCode,
-    String? timezone,
-    Map<String, dynamic>? settingsJson,
-    String? subscriptionTier,
-    DateTime? subscriptionValidUntil,
+    Object? logoUrl = copyWithSentinel,
+    Object? currencyCode = copyWithSentinel,
+    Object? timezone = copyWithSentinel,
+    Object? settingsJson = copyWithSentinel,
+    Object? subscriptionTier = copyWithSentinel,
+    Object? subscriptionValidUntil = copyWithSentinel,
   }) {
     return OrganizationProfile(
       id: id ?? this.id,
       name: name ?? this.name,
-      logoUrl: logoUrl ?? this.logoUrl,
-      currencyCode: currencyCode ?? this.currencyCode,
-      timezone: timezone ?? this.timezone,
-      settingsJson: settingsJson ?? this.settingsJson,
-      subscriptionTier: subscriptionTier ?? this.subscriptionTier,
-      subscriptionValidUntil: subscriptionValidUntil ?? this.subscriptionValidUntil,
+      logoUrl: identical(logoUrl, copyWithSentinel) ? this.logoUrl : logoUrl as String?,
+      currencyCode: identical(currencyCode, copyWithSentinel) ? this.currencyCode : currencyCode as String?,
+      timezone: identical(timezone, copyWithSentinel) ? this.timezone : timezone as String?,
+      settingsJson: identical(settingsJson, copyWithSentinel) ? this.settingsJson : settingsJson as Map<String, dynamic>?,
+      subscriptionTier: identical(subscriptionTier, copyWithSentinel) ? this.subscriptionTier : subscriptionTier as String?,
+      subscriptionValidUntil: identical(subscriptionValidUntil, copyWithSentinel) ? this.subscriptionValidUntil : subscriptionValidUntil as DateTime?,
     );
   }
 

@@ -140,6 +140,7 @@ final supabaseClientProvider = Provider<SupabaseClient>((ref) {
 });
 
 /// Decodes JWT custom claims issued by `get_custom_claims`.
+/// Returns empty map for expired or malformed tokens.
 Map<String, dynamic> decodeAccessTokenClaims(String accessToken) {
   final parts = accessToken.split('.');
   if (parts.length < 2) {
@@ -153,6 +154,16 @@ Map<String, dynamic> decodeAccessTokenClaims(String accessToken) {
     if (decoded is! Map<String, dynamic>) {
       return const {};
     }
+
+    final exp = decoded['exp'];
+    if (exp is int) {
+      final expiryDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true);
+      if (expiryDate.isBefore(DateTime.now().toUtc())) {
+        AppLog.warning('supabase.jwt.expired exp=$expiryDate');
+        return const {};
+      }
+    }
+
     return decoded;
   } on FormatException {
     return const {};

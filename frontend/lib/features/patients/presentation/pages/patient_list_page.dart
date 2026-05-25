@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/core/widgets/app_data_table.dart';
+import 'package:ai_clinic/core/widgets/skeleton_list.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
@@ -30,7 +30,7 @@ class PatientListPage extends ConsumerWidget {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Patients'),
-          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.home)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.nav.goHome()),
         ),
         body: const Center(
           child: Padding(
@@ -46,13 +46,13 @@ class PatientListPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Patients'),
-        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.home)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.nav.goHome()),
         actions: const [DevSeedPatientsButton()],
       ),
       floatingActionButton: permissions.canCreatePatients()
           ? FloatingActionButton.extended(
               key: const Key('patient_list_register_fab'),
-              onPressed: () => context.push(AppRoutes.patientsNew),
+              onPressed: () => context.nav.goPatientRegister(),
               icon: const Icon(Icons.person_add_outlined),
               label: const Text('Register patient'),
             )
@@ -78,7 +78,7 @@ class PatientListPage extends ConsumerWidget {
             ),
           Expanded(
             child: listAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const SkeletonList(),
               error: (error, _) => Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -145,7 +145,7 @@ class _PatientListBody extends StatelessWidget {
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   key: const Key('patient_list_empty_register'),
-                  onPressed: () => context.push(AppRoutes.patientsNew),
+                  onPressed: () => context.nav.goPatientRegister(),
                   icon: const Icon(Icons.person_add_outlined),
                   label: const Text('Register patient'),
                 ),
@@ -174,7 +174,7 @@ class _PatientListBody extends StatelessWidget {
             columns: columns,
             rows: rows,
             emptyMessage: 'No patients to display',
-            onRowTap: (index) => context.push(AppRoutes.patientDetail(ui.items[index].id)),
+            onRowTap: (index) => context.nav.pushPatientDetail(ui.items[index].id),
           ),
         ),
         if (ui.loadMoreError != null)

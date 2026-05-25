@@ -6,13 +6,15 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/bootstrap_notifier.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 
+const bool _kEnableDevTools = bool.fromEnvironment('ENABLE_DEV_TOOLS');
+
 /// Debug-only control to create organization and first branch with preset dummy data.
 class DevFillDummyClinicButton extends ConsumerWidget {
   const DevFillDummyClinicButton({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!kDebugMode) {
+    if (!kDebugMode && !_kEnableDevTools) {
       return const SizedBox.shrink();
     }
 

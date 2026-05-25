@@ -7,9 +7,10 @@ import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dar
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
 import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 
-/// Local seed admin from [20260516100400_auth_rbac_seed.sql] (`admin` / `admin`).
-const kDevAdminUsername = 'admin';
-const kDevAdminPassword = 'admin';
+const bool _kEnableDevTools = bool.fromEnvironment('ENABLE_DEV_TOOLS');
+
+const kDevAdminUsername = String.fromEnvironment('DEV_ADMIN_USER', defaultValue: '');
+const kDevAdminPassword = String.fromEnvironment('DEV_ADMIN_PASS', defaultValue: '');
 
 /// Debug-only one-tap sign-in as the seeded bootstrap administrator.
 class DevQuickAdminSignInButton extends ConsumerWidget {
@@ -17,7 +18,11 @@ class DevQuickAdminSignInButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!kDebugMode) {
+    if (!kDebugMode && !_kEnableDevTools) {
+      return const SizedBox.shrink();
+    }
+
+    if (kDevAdminUsername.isEmpty || kDevAdminPassword.isEmpty) {
       return const SizedBox.shrink();
     }
 

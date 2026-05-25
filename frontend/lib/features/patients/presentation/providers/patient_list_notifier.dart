@@ -64,6 +64,7 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
   static const pageSize = 25;
 
   String _searchQuery = '';
+  int _reloadGeneration = 0;
 
   @override
   Future<PatientListUiState> build() async {
@@ -89,6 +90,9 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
       _searchQuery = searchQuery.trim();
     }
 
+    _reloadGeneration++;
+    final myGeneration = _reloadGeneration;
+
     final hint = PatientSearchQuery.validationHint(_searchQuery);
     if (hint != null) {
       state = AsyncData(
@@ -107,7 +111,17 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
     if (!state.hasValue) {
       state = const AsyncLoading();
     }
-    state = await AsyncValue.guard(() => _fetchPage(offset: 0));
+    state = await AsyncValue.guard(() async {
+      final result = await _fetchPage(offset: 0);
+      if (_reloadGeneration != myGeneration) {
+        throw _StaleReloadException();
+      }
+      return result;
+    });
+
+    if (state case AsyncError(error: _StaleReloadException())) {
+      return;
+    }
   }
 
   Future<void> loadMore() async {
@@ -188,3 +202,5 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
 }
 
 final patientListProvider = AsyncNotifierProvider<PatientListNotifier, PatientListUiState>(PatientListNotifier.new);
+
+class _StaleReloadException implements Exception {}
