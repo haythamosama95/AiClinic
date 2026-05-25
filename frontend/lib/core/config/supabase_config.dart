@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/deployment_profile.dart';
+import 'package:ai_clinic/core/config/in_memory_gotrue_async_storage.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 
@@ -58,6 +59,10 @@ class SupabaseConfig {
 
 bool _isFlutterTestRuntime() => supabase_config_env.isFlutterTestRuntimeFromEnvironment();
 
+bool _isBoundaryIntegration() => supabase_config_env.isBoundaryIntegrationFromEnvironment();
+
+bool _useTestStub() => _isFlutterTestRuntime() && !_isBoundaryIntegration();
+
 /// Initializes Supabase without restoring sessions from platform storage.
 class SupabaseBootstrap {
   const SupabaseBootstrap._();
@@ -69,7 +74,7 @@ class SupabaseBootstrap {
   ///
   /// Do not use [Supabase.instance] to check readiness — the SDK throws before init.
   static bool get isReady {
-    if (_isFlutterTestRuntime() && _testReady) {
+    if (_useTestStub() && _testReady) {
       return true;
     }
 
@@ -98,7 +103,7 @@ class SupabaseBootstrap {
       return Future<void>.value();
     }
 
-    if (_isFlutterTestRuntime()) {
+    if (_useTestStub()) {
       debugMarkReadyForTests();
       return Future<void>.value();
     }
@@ -111,7 +116,11 @@ class SupabaseBootstrap {
       await Supabase.initialize(
         url: config.url.toString(),
         anonKey: config.anonKey,
-        authOptions: const FlutterAuthClientOptions(localStorage: EmptyLocalStorage()),
+        authOptions: const FlutterAuthClientOptions(
+          localStorage: EmptyLocalStorage(),
+          // Avoid SharedPreferences in headless `flutter test` (boundary suite).
+          pkceAsyncStorage: InMemoryGotrueAsyncStorage(),
+        ),
       );
       _initialized = true;
       AppLog.info('supabase.bootstrap.ready');

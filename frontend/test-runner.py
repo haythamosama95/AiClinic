@@ -50,7 +50,15 @@ def spinner_task():
 def run_tests():
     global RUNNING
 
-    cmd = ["flutter", "test", "--concurrency", "15", "--machine"]
+    cmd = [
+        "flutter",
+        "test",
+        "--concurrency",
+        "15",
+        "--machine",
+        "--exclude-tags",
+        "boundary",
+    ]
 
     process = subprocess.Popen(
         cmd,

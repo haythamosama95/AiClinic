@@ -75,6 +75,19 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     DateTime? dateOfBirth,
     String? excludePatientId,
   }) async {
+    if (phone != null) {
+      final normalized = phone.replaceAll(RegExp(r'\D'), '');
+      if (normalized.length < 8 || normalized.length > 15) {
+        throw RpcFailure(
+          const RpcResult(
+            success: false,
+            errorCode: 'INVALID_INPUT',
+            errorMessage: 'Phone must contain 8 to 15 digits when provided.',
+          ),
+        );
+      }
+    }
+
     final result = await invokeRpc('check_patient_duplicates', {
       if (fullName != null) 'p_full_name': fullName.trim(),
       if (phone != null) 'p_phone': phone.trim(),
