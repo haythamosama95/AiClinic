@@ -1,6 +1,5 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
-import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/domain/create_staff_account_result.dart';

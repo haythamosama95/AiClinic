@@ -25,7 +25,6 @@ import 'package:ai_clinic/testing/startup_test_support.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../support/fake_postgrest_rpc.dart';
@@ -452,7 +451,7 @@ class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
 }
 
 class _CallLogPatientClient extends PatientRpcTestClient {
-  _CallLogPatientClient({super.rpcResults});
+  _CallLogPatientClient();
 
   final calls = <String>[];
   Map<String, dynamic>? lastUpdateParams;

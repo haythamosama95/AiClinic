@@ -11,7 +11,7 @@ class SkeletonList extends StatelessWidget {
     return ListView.builder(
       physics: const NeverScrollableScrollPhysics(),
       itemCount: itemCount,
-      itemBuilder: (_, __) => const _SkeletonRow(),
+      itemBuilder: (_, _) => const _SkeletonRow(),
     );
   }
 }
@@ -61,13 +61,11 @@ class _SkeletonBoxState extends State<_SkeletonBox> with SingleTickerProviderSta
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-    _opacity = Tween<double>(begin: 0.3, end: 0.7).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat(reverse: true);
+    _opacity = Tween<double>(
+      begin: 0.3,
+      end: 0.7,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -84,10 +82,7 @@ class _SkeletonBoxState extends State<_SkeletonBox> with SingleTickerProviderSta
       child: Container(
         width: widget.width,
         height: widget.height,
-        decoration: BoxDecoration(
-          color: baseColor,
-          borderRadius: widget.borderRadius,
-        ),
+        decoration: BoxDecoration(color: baseColor, borderRadius: widget.borderRadius),
       ),
     );
   }

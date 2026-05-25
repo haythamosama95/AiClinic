@@ -84,10 +84,12 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
     return UpdatePatientInput(
       patientId: patientId,
       fullName: _fullNameController.text,
-      expectedUpdatedAt: _expectedUpdatedAt ?? (throw StateError(
-        'Cannot build patient update input: _expectedUpdatedAt is null. '
-        'Ensure patient detail is loaded before calling _buildInput.',
-      )),
+      expectedUpdatedAt:
+          _expectedUpdatedAt ??
+          (throw StateError(
+            'Cannot build patient update input: _expectedUpdatedAt is null. '
+            'Ensure patient detail is loaded before calling _buildInput.',
+          )),
       phone: _phoneController.text.trim(),
       dateOfBirth: _dateOfBirth,
       gender: _gender,
@@ -126,10 +128,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
     await _updateWithDuplicateHandling(patientId: patientId, acknowledgeDuplicate: false);
   }
 
-  Future<void> _updateWithDuplicateHandling({
-    required String patientId,
-    required bool acknowledgeDuplicate,
-  }) async {
+  Future<void> _updateWithDuplicateHandling({required String patientId, required bool acknowledgeDuplicate}) async {
     try {
       final updatedAt = await ref.read(updatePatientUseCaseProvider)(
         _buildInput(patientId: patientId, acknowledgeDuplicate: acknowledgeDuplicate),
@@ -234,7 +233,11 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Edit patient'),
-          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.nav.goPatients()),
+          leading: IconButton(
+            tooltip: 'Go back',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.nav.goPatients(),
+          ),
         ),
         body: const Center(
           key: Key('patient_edit_invalid_id'),
@@ -262,7 +265,11 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
           data: (detail) => Text('Edit ${detail.fullName}'),
           orElse: () => const Text('Edit patient'),
         ),
-        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientEdit(context, id)),
+        leading: IconButton(
+          tooltip: 'Go back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _leavePatientEdit(context, id),
+        ),
       ),
       body: detailAsync.when(
         loading: () => const Center(key: Key('patient_edit_loading'), child: CircularProgressIndicator()),
@@ -353,18 +360,17 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<PatientGender?>(
-              value: _gender,
+              initialValue: _gender,
               decoration: const InputDecoration(labelText: 'Gender'),
               items: [
                 const DropdownMenuItem(value: null, child: Text('Not specified')),
-                for (final gender in PatientGender.values)
-                  DropdownMenuItem(value: gender, child: Text(gender.label)),
+                for (final gender in PatientGender.values) DropdownMenuItem(value: gender, child: Text(gender.label)),
               ],
               onChanged: _isSaving ? null : (value) => setState(() => _gender = value),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<PatientMaritalStatus?>(
-              value: _maritalStatus,
+              initialValue: _maritalStatus,
               decoration: const InputDecoration(labelText: 'Marital status'),
               items: [
                 const DropdownMenuItem(value: null, child: Text('Not specified')),

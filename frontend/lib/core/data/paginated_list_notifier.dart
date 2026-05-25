@@ -2,12 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// A page of results from a paginated data source.
 class PaginatedPage<T> {
-  const PaginatedPage({
-    required this.items,
-    required this.totalCount,
-    required this.offset,
-    required this.limit,
-  });
+  const PaginatedPage({required this.items, required this.totalCount, required this.offset, required this.limit});
 
   final List<T> items;
   final int totalCount;
@@ -66,16 +61,11 @@ abstract class PaginatedListNotifier<T> extends AsyncNotifier<PaginatedList<T>> 
   @override
   Future<PaginatedList<T>> build() async {
     final page = await fetchPage(0, pageSize);
-    return PaginatedList<T>(
-      items: page.items,
-      totalCount: page.totalCount,
-      offset: page.offset,
-      limit: page.limit,
-    );
+    return PaginatedList<T>(items: page.items, totalCount: page.totalCount, offset: page.offset, limit: page.limit);
   }
 
   Future<void> loadMore() async {
-    final current = state.valueOrNull;
+    final current = state.asData?.value;
     if (current == null || !current.hasMore || current.isLoadingMore) return;
 
     state = AsyncData(current.copyWith(isLoadingMore: true, clearLoadMoreError: true));
@@ -83,17 +73,16 @@ abstract class PaginatedListNotifier<T> extends AsyncNotifier<PaginatedList<T>> 
     try {
       final nextOffset = current.offset + current.limit;
       final page = await fetchPage(nextOffset, pageSize);
-      state = AsyncData(PaginatedList<T>(
-        items: [...current.items, ...page.items],
-        totalCount: page.totalCount,
-        offset: page.offset,
-        limit: page.limit,
-      ));
+      state = AsyncData(
+        PaginatedList<T>(
+          items: [...current.items, ...page.items],
+          totalCount: page.totalCount,
+          offset: page.offset,
+          limit: page.limit,
+        ),
+      );
     } catch (error) {
-      state = AsyncData(current.copyWith(
-        isLoadingMore: false,
-        loadMoreError: error.toString(),
-      ));
+      state = AsyncData(current.copyWith(isLoadingMore: false, loadMoreError: error.toString()));
     }
   }
 

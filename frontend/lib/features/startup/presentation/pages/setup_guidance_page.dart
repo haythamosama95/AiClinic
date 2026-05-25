@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/config/deployment_profile.dart';
 import 'package:ai_clinic/core/config/deployment_profile_store.dart';
 import 'package:ai_clinic/features/startup/presentation/providers/startup_notifier.dart';
 import 'package:ai_clinic/features/startup/presentation/widgets/failure_banner.dart';

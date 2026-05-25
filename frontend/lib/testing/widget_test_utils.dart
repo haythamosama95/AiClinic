@@ -3,16 +3,13 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:go_router/go_router.dart';
 
 /// Wraps a widget in [ProviderScope] + [MaterialApp.router] for widget tests.
 ///
 /// Use [overrides] to inject fakes for providers the widget depends on.
-Widget wrapWithProviders(
-  Widget child, {
-  List<Override> overrides = const [],
-  GoRouter? router,
-}) {
+Widget wrapWithProviders(Widget child, {List<Override> overrides = const [], GoRouter? router}) {
   if (router != null) {
     return ProviderScope(
       overrides: overrides,
@@ -30,6 +27,6 @@ Widget wrapWithProviders(
 GoRouter testRouterFor(Widget child) {
   return GoRouter(
     initialLocation: '/',
-    routes: [GoRoute(path: '/', builder: (_, __) => child)],
+    routes: [GoRoute(path: '/', builder: (_, _) => child)],
   );
 }

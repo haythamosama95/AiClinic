@@ -101,10 +101,7 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
       _formError = null;
     });
 
-    await _createWithDuplicateHandling(
-      activeBranchId: activeBranchId,
-      acknowledgeDuplicate: false,
-    );
+    await _createWithDuplicateHandling(activeBranchId: activeBranchId, acknowledgeDuplicate: false);
   }
 
   Future<void> _createWithDuplicateHandling({
@@ -137,10 +134,7 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
         }
 
         setState(() => _isSaving = true);
-        await _createWithDuplicateHandling(
-          activeBranchId: activeBranchId,
-          acknowledgeDuplicate: true,
-        );
+        await _createWithDuplicateHandling(activeBranchId: activeBranchId, acknowledgeDuplicate: true);
         return;
       }
 
@@ -161,14 +155,17 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
 
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(authSessionProvider);
     final canCreate = ref.watch(permissionServiceProvider).canCreatePatients();
 
     if (!canCreate) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Register patient'),
-          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
+          leading: IconButton(
+            tooltip: 'Go back',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => _leavePatientRegistration(context),
+          ),
         ),
         body: const Center(
           child: Padding(
@@ -186,7 +183,11 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Register patient'),
-          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientRegistration(context)),
+          leading: IconButton(
+            tooltip: 'Go back',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => _leavePatientRegistration(context),
+          ),
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -233,7 +234,7 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<PatientGender?>(
-                  value: _gender,
+                  initialValue: _gender,
                   decoration: const InputDecoration(labelText: 'Gender'),
                   items: [
                     const DropdownMenuItem(value: null, child: Text('Not specified')),
@@ -244,7 +245,7 @@ class _PatientRegistrationPageState extends ConsumerState<PatientRegistrationPag
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<PatientMaritalStatus?>(
-                  value: _maritalStatus,
+                  initialValue: _maritalStatus,
                   decoration: const InputDecoration(labelText: 'Marital status'),
                   items: [
                     const DropdownMenuItem(value: null, child: Text('Not specified')),

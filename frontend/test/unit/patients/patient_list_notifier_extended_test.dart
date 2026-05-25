@@ -1,4 +1,3 @@
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
@@ -107,7 +106,6 @@ void main() {
 
       await c.read(patientListProvider.future);
 
-      final beforeFunction = client.lastFunction;
       client.lastFunction = null;
 
       await c.read(patientListProvider.notifier).loadMore();
@@ -158,11 +156,7 @@ void main() {
 
       await c.read(patientListProvider.future);
 
-      client.rpcResults['search_patients'] = {
-        'success': false,
-        'error_code': 'FORBIDDEN',
-        'error_message': 'Denied',
-      };
+      client.rpcResults['search_patients'] = {'success': false, 'error_code': 'FORBIDDEN', 'error_message': 'Denied'};
 
       await c.read(patientListProvider.notifier).loadMore();
 

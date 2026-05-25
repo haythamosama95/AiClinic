@@ -16,12 +16,7 @@ class AuthenticatedShell extends ConsumerWidget {
   final Widget child;
 
   static const _destinations = <_NavDestination>[
-    _NavDestination(
-      route: AppRoutes.home,
-      icon: Icons.home_outlined,
-      selectedIcon: Icons.home,
-      label: 'Home',
-    ),
+    _NavDestination(route: AppRoutes.home, icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
     _NavDestination(
       route: AppRoutes.patients,
       icon: Icons.people_outline,
@@ -39,7 +34,6 @@ class AuthenticatedShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final permissions = ref.watch(permissionServiceProvider);
     final session = ref.watch(authSessionProvider);
     final auth = session.context;
 

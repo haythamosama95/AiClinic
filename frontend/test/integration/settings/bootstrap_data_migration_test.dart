@@ -12,7 +12,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../support/pump_auth_app.dart';
-import '../../support/settings_rpc_test_client.dart';
 import '../../support/settings_table_test_client.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/testing/auth_test_support.dart';

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
@@ -11,12 +10,6 @@ class SupabaseInitializer {
   bool get isReady => SupabaseBootstrap.isReady;
 
   Future<void> initialize(SupabaseConfig config) => SupabaseBootstrap.ensureInitialized(config);
-
-  @visibleForTesting
-  void markReadyForTests() => SupabaseBootstrap.debugMarkReadyForTests();
-
-  @visibleForTesting
-  void reset() => SupabaseBootstrap.debugResetForTests();
 }
 
 /// Test double that is always "ready" without touching the Supabase SDK.

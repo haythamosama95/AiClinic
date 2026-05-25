@@ -1,7 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
-import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/domain/repositories/permission_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 

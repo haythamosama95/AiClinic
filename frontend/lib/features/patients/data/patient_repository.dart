@@ -7,9 +7,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
-import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
-import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
@@ -81,7 +79,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
       if (fullName != null) 'p_full_name': fullName.trim(),
       if (phone != null) 'p_phone': phone.trim(),
       if (dateOfBirth != null) 'p_date_of_birth': dateOfBirth.toIso8601String().split('T').first,
-      if (excludePatientId != null) 'p_exclude_patient_id': excludePatientId,
+      'p_exclude_patient_id': ?excludePatientId,
     });
 
     return parseDuplicateCandidates(result.data?['candidates']);

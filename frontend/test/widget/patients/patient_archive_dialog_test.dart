@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_archive_dialog.dart';
 import 'package:ai_clinic/shared/providers/auth_session_provider.dart';

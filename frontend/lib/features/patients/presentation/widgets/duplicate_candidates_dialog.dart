@@ -67,7 +67,7 @@ class _CandidateTile extends StatelessWidget {
       subtitle: Text(
         [
           if (candidate.phone != null && candidate.phone!.isNotEmpty) candidate.phone,
-          if (dobLabel != null) dobLabel,
+          ?dobLabel,
           candidate.branchName,
         ].whereType<String>().join(' · '),
         style: theme.bodySmall,

@@ -243,7 +243,6 @@ void main() {
       await tester.pumpAndSettle();
 
       final switchFinder = find.byType(Switch).first;
-      final initialValue = tester.widget<Switch>(switchFinder).value;
 
       await tester.tap(switchFinder);
       await tester.pumpAndSettle();
