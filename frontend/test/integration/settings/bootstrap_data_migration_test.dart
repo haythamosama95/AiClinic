@@ -185,8 +185,8 @@ void main() {
         tester,
         extraOverrides: [
           authSessionProvider.overrideWith(_OwnerSessionNotifier.new),
-          staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepository(tableClient)),
-          branchRepositoryProvider.overrideWithValue(BranchRepository(tableClient)),
+          staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepositoryImpl(tableClient)),
+          branchRepositoryProvider.overrideWithValue(BranchRepositoryImpl(tableClient)),
         ],
       );
       await completeStartupBootstrap(tester);
@@ -259,8 +259,8 @@ Future<void> _pumpOwnerWithBootstrapData(WidgetTester tester) async {
     extraOverrides: [
       authSessionProvider.overrideWith(_OwnerSessionNotifier.new),
       organizationRepositoryProvider.overrideWithValue(_BootstrapOrganizationRepository(tableClient)),
-      branchRepositoryProvider.overrideWithValue(BranchRepository(tableClient)),
-      staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepository(tableClient)),
+      branchRepositoryProvider.overrideWithValue(BranchRepositoryImpl(tableClient)),
+      staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepositoryImpl(tableClient)),
     ],
   );
   await completeStartupBootstrap(tester);
@@ -269,14 +269,14 @@ Future<void> _pumpOwnerWithBootstrapData(WidgetTester tester) async {
   (container.read(authSessionProvider.notifier) as _OwnerSessionNotifier).setAuthenticated();
 }
 
-class _BootstrapOrganizationRepository extends OrganizationRepository {
+class _BootstrapOrganizationRepository extends OrganizationRepositoryImpl {
   _BootstrapOrganizationRepository(this._fetchClient) : super(_fetchClient);
 
   final SupabaseClient _fetchClient;
 
   @override
   Future<OrganizationProfile?> fetchProfile({required String organizationId}) {
-    return OrganizationRepository(_fetchClient).fetchProfile(organizationId: organizationId);
+    return OrganizationRepositoryImpl(_fetchClient).fetchProfile(organizationId: organizationId);
   }
 }
 

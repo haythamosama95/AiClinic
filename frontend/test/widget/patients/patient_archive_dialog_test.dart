@@ -25,7 +25,7 @@ Future<void> _pumpDialog(WidgetTester tester, PatientRpcTestClient client) async
             ),
           ),
         ),
-        patientRepositoryProvider.overrideWith((ref) => PatientRepository(client)),
+        patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client)),
       ],
       child: MaterialApp(
         home: Builder(
@@ -69,7 +69,7 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [patientRepositoryProvider.overrideWith((ref) => PatientRepository(client))],
+          overrides: [patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client))],
           child: MaterialApp(
             home: Builder(
               builder: (context) {

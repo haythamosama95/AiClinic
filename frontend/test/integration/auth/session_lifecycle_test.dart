@@ -19,7 +19,7 @@ IdleTimeoutService _shortIdleService(void Function() onIdle) {
   return IdleTimeoutService(idleDuration: const Duration(milliseconds: 80), onIdleTimeout: onIdle);
 }
 
-class _LifecycleAuthRepository extends AuthRepository {
+class _LifecycleAuthRepository extends AuthRepositoryImpl {
   _LifecycleAuthRepository() : super(_FakeSupabaseClient());
 
   int signOutCalls = 0;

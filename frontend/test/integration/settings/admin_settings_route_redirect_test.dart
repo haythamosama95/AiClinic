@@ -133,7 +133,7 @@ class _DoctorSessionNotifier extends TestAuthSessionNotifier {
   }
 }
 
-class _IntegrationOrganizationRepository extends OrganizationRepository {
+class _IntegrationOrganizationRepository extends OrganizationRepositoryImpl {
   _IntegrationOrganizationRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
     : _fetchClient = fetchClient,
       super(rpcClient);
@@ -142,7 +142,7 @@ class _IntegrationOrganizationRepository extends OrganizationRepository {
 
   @override
   Future<OrganizationProfile?> fetchProfile({required String organizationId}) {
-    return OrganizationRepository(_fetchClient).fetchProfile(organizationId: organizationId);
+    return OrganizationRepositoryImpl(_fetchClient).fetchProfile(organizationId: organizationId);
   }
 }
 

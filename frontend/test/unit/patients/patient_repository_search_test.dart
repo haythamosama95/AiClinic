@@ -8,11 +8,11 @@ import '../../support/patient_rpc_test_client.dart';
 void main() {
   group('PatientRepository.searchPatients', () {
     late PatientRpcTestClient client;
-    late PatientRepository repository;
+    late PatientRepositoryImpl repository;
 
     setUp(() {
       client = PatientRpcTestClient();
-      repository = PatientRepository(client);
+      repository = PatientRepositoryImpl(client);
     });
 
     test('trivial: trims query and sends branch scope', () async {

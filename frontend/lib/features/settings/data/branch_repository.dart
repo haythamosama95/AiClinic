@@ -7,17 +7,19 @@ import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 
 /// Branch list reads (RLS) and lifecycle mutations (RPC).
-class BranchRepository with SettingsRpcInvoker {
-  BranchRepository(this._client);
+class BranchRepositoryImpl with SettingsRpcInvoker implements BranchRepository {
+  BranchRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
   @override
   SupabaseClient get settingsRpcClient => _client;
 
+  @override
   Future<List<BranchListItem>> listBranches({
     required String organizationId,
     BranchListFilter filter = BranchListFilter.all,
@@ -47,6 +49,7 @@ class BranchRepository with SettingsRpcInvoker {
     return items;
   }
 
+  @override
   Future<String> createBranch(CreateBranchInput input) async {
     final name = input.name.trim();
     if (name.isEmpty) {
@@ -70,6 +73,7 @@ class BranchRepository with SettingsRpcInvoker {
     return branchId;
   }
 
+  @override
   Future<String> updateBranch(UpdateBranchInput input) async {
     final name = input.name.trim();
     if (name.isEmpty) {
@@ -90,11 +94,12 @@ class BranchRepository with SettingsRpcInvoker {
     return result.data?['branch_id']?.toString() ?? input.branchId;
   }
 
+  @override
   Future<RpcResult> setBranchActive({required String branchId, required bool isActive}) {
     return invokeSettingsRpc('set_branch_active', {'p_branch_id': branchId, 'p_is_active': isActive});
   }
 }
 
 final branchRepositoryProvider = Provider<BranchRepository>((ref) {
-  return BranchRepository(ref.watch(supabaseClientProvider));
+  return BranchRepositoryImpl(ref.watch(supabaseClientProvider));
 });

@@ -14,7 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../support/pump_auth_app.dart';
 import 'package:ai_clinic/testing/auth_test_support.dart';
 
-class _HarnessAuthRepository extends AuthRepository {
+class _HarnessAuthRepository extends AuthRepositoryImpl {
   _HarnessAuthRepository(this._onSignIn) : super(_FakeSupabaseClient());
 
   final Future<void> Function() _onSignIn;

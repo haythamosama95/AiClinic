@@ -3,13 +3,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/auth/domain/repositories/permission_repository.dart';
 
 /// Loads role permission grants from `roles_permissions` (cached in session context).
-class PermissionRepository {
-  PermissionRepository(this._client);
+class PermissionRepositoryImpl implements PermissionRepository {
+  PermissionRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
+  @override
   Future<Set<String>> loadGrantedPermissions(StaffRole role) async {
     final rows = await _client
         .from('roles_permissions')
@@ -37,5 +39,5 @@ class PermissionRepository {
 }
 
 final permissionRepositoryProvider = Provider<PermissionRepository>((ref) {
-  return PermissionRepository(ref.watch(supabaseClientProvider));
+  return PermissionRepositoryImpl(ref.watch(supabaseClientProvider));
 });

@@ -178,7 +178,7 @@ class _ReloadHarnessNotifier extends AuthSessionNotifier {
   AuthSessionState build() => const AuthSessionState(status: AuthSessionStatus.unauthenticated);
 }
 
-class _ReloadAuthRepository extends AuthRepository {
+class _ReloadAuthRepository extends AuthRepositoryImpl {
   _ReloadAuthRepository({required this.session, required void Function() onRefresh})
     : _onRefresh = onRefresh,
       super(_ReloadFakeClient());
@@ -198,7 +198,7 @@ class _ReloadAuthRepository extends AuthRepository {
   Stream<AuthState> get authStateChanges => const Stream.empty();
 }
 
-class _ReloadPermissionRepository extends PermissionRepository {
+class _ReloadPermissionRepository extends PermissionRepositoryImpl {
   _ReloadPermissionRepository({required Future<Set<String>> Function() onLoad})
     : _onLoad = onLoad,
       super(_ReloadFakeClient());

@@ -149,7 +149,7 @@ void main() {
   });
 }
 
-class _RecordingBootstrapRepository extends BootstrapRepository {
+class _RecordingBootstrapRepository extends BootstrapRepositoryImpl {
   _RecordingBootstrapRepository() : super(_ThrowingSupabaseClient());
 
   BootstrapOrganizationInput? organizationInput;
@@ -168,7 +168,7 @@ class _RecordingBootstrapRepository extends BootstrapRepository {
   }
 }
 
-class _FakeBootstrapRepository extends BootstrapRepository {
+class _FakeBootstrapRepository extends BootstrapRepositoryImpl {
   _FakeBootstrapRepository({this.resetResult}) : super(_ThrowingSupabaseClient());
 
   final Object? resetResult;

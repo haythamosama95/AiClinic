@@ -214,7 +214,7 @@ class _DeniedOrganizationNotifier extends OrganizationSettingsNotifier {
   }
 }
 
-class _ReadWriteOrganizationRepository extends OrganizationRepository {
+class _ReadWriteOrganizationRepository extends OrganizationRepositoryImpl {
   _ReadWriteOrganizationRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
     : _fetchClient = fetchClient,
       super(rpcClient);
@@ -223,6 +223,6 @@ class _ReadWriteOrganizationRepository extends OrganizationRepository {
 
   @override
   Future<OrganizationProfile?> fetchProfile({required String organizationId}) {
-    return OrganizationRepository(_fetchClient).fetchProfile(organizationId: organizationId);
+    return OrganizationRepositoryImpl(_fetchClient).fetchProfile(organizationId: organizationId);
   }
 }

@@ -131,7 +131,7 @@ Widget _host({
   ];
 
   final tableClient = SettingsTableTestClient({'staff_members': staff});
-  final rpcRepo = StaffAdminRepository(rpcClient ?? SettingsRpcTestClient());
+  final rpcRepo = StaffAdminRepositoryImpl(rpcClient ?? SettingsRpcTestClient());
 
   return ProviderScope(
     overrides: [
@@ -160,11 +160,11 @@ class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
   AuthSessionState build() => initial;
 }
 
-class _FakeStaffAdminRepository extends StaffAdminRepository {
+class _FakeStaffAdminRepository extends StaffAdminRepositoryImpl {
   _FakeStaffAdminRepository(this._tableClient, this._rpcRepo) : super(_tableClient);
 
   final SettingsTableTestClient _tableClient;
-  final StaffAdminRepository _rpcRepo;
+  final StaffAdminRepositoryImpl _rpcRepo;
 
   @override
   Future<List<StaffListItem>> listStaff({StaffListFilter filter = StaffListFilter.all}) async {

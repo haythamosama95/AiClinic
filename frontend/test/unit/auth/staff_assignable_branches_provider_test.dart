@@ -11,7 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const _activeBranchId = '00000000-0000-4000-8000-000000000101';
 const _inactiveBranchId = '00000000-0000-4000-8000-000000000102';
 
-class _BranchListProvisioningRepository extends ProvisioningRepository {
+class _BranchListProvisioningRepository extends ProvisioningRepositoryImpl {
   _BranchListProvisioningRepository() : super(SupabaseClient('http://localhost', 'anon'));
 
   @override

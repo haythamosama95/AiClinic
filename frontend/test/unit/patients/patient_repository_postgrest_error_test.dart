@@ -50,7 +50,7 @@ void main() {
   group('PatientRepository PostgrestException handling', () {
     test('PGRST202 is mapped to RPC_NOT_APPLIED with migration guidance', () async {
       final client = _PostgrestErrorClient(exception: _pgrst202());
-      final repository = PatientRepository(client);
+      final repository = PatientRepositoryImpl(client);
 
       expect(
         () => repository.searchPatients(scope: PatientListScope.allBranches),
@@ -65,7 +65,7 @@ void main() {
 
     test('PGRST202 on get_patient mentions correct function name', () async {
       final client = _PostgrestErrorClient(exception: _pgrst202(fn: 'get_patient'));
-      final repository = PatientRepository(client);
+      final repository = PatientRepositoryImpl(client);
 
       expect(
         () => repository.getPatient('some-id'),
@@ -79,7 +79,7 @@ void main() {
 
     test('PGRST202 on create_patient mentions correct function name', () async {
       final client = _PostgrestErrorClient(exception: _pgrst202(fn: 'create_patient'));
-      final repository = PatientRepository(client);
+      final repository = PatientRepositoryImpl(client);
 
       expect(
         () => repository.createPatient(
@@ -99,7 +99,7 @@ void main() {
 
     test('PGRST202 on update_patient mentions correct function name', () async {
       final client = _PostgrestErrorClient(exception: _pgrst202(fn: 'update_patient'));
-      final repository = PatientRepository(client);
+      final repository = PatientRepositoryImpl(client);
 
       expect(
         () => repository.updatePatient(
@@ -119,7 +119,7 @@ void main() {
 
     test('PGRST202 on archive_patient mentions correct function name', () async {
       final client = _PostgrestErrorClient(exception: _pgrst202(fn: 'archive_patient'));
-      final repository = PatientRepository(client);
+      final repository = PatientRepositoryImpl(client);
 
       expect(
         () => repository.archivePatient('p1'),
@@ -133,7 +133,7 @@ void main() {
 
     test('PGRST202 on check_patient_duplicates mentions correct function name', () async {
       final client = _PostgrestErrorClient(exception: _pgrst202(fn: 'check_patient_duplicates'));
-      final repository = PatientRepository(client);
+      final repository = PatientRepositoryImpl(client);
 
       expect(
         () => repository.checkDuplicates(fullName: 'Test'),
@@ -151,7 +151,7 @@ void main() {
         code: null,
       );
       final client = _PostgrestErrorClient(exception: exception);
-      final repository = PatientRepository(client);
+      final repository = PatientRepositoryImpl(client);
 
       expect(
         () => repository.searchPatients(scope: PatientListScope.allBranches),
@@ -161,7 +161,7 @@ void main() {
 
     test('non-PGRST202 PostgrestException is rethrown as-is', () async {
       final client = _PostgrestErrorClient(exception: _otherException());
-      final repository = PatientRepository(client);
+      final repository = PatientRepositoryImpl(client);
 
       expect(
         () => repository.searchPatients(scope: PatientListScope.allBranches),
@@ -171,7 +171,7 @@ void main() {
 
     test('RPC_NOT_APPLIED message includes migration file name', () async {
       final client = _PostgrestErrorClient(exception: _pgrst202());
-      final repository = PatientRepository(client);
+      final repository = PatientRepositoryImpl(client);
 
       try {
         await repository.searchPatients(scope: PatientListScope.allBranches);

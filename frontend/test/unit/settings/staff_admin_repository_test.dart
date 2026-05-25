@@ -11,11 +11,11 @@ import '../../support/settings_table_test_client.dart';
 void main() {
   group('StaffAdminRepository', () {
     late SettingsRpcTestClient client;
-    late StaffAdminRepository repository;
+    late StaffAdminRepositoryImpl repository;
 
     setUp(() {
       client = SettingsRpcTestClient();
-      repository = StaffAdminRepository(client);
+      repository = StaffAdminRepositoryImpl(client);
     });
 
     test('updateStaffMember sends role wire value and branch ids', () async {
@@ -79,7 +79,7 @@ void main() {
           {'id': 'bad', 'full_name': '', 'role': 'doctor', 'is_active': true, 'is_deleted': false},
         ],
       });
-      final repo = StaffAdminRepository(client);
+      final repo = StaffAdminRepositoryImpl(client);
 
       final active = await repo.listStaff(filter: StaffListFilter.active);
       final inactive = await repo.listStaff(filter: StaffListFilter.inactive);
@@ -94,7 +94,7 @@ void main() {
           {'id': 'o1', 'full_name': 'Owner', 'role': 'owner', 'is_active': true, 'is_deleted': false},
         ],
       });
-      final repo = StaffAdminRepository(client);
+      final repo = StaffAdminRepositoryImpl(client);
 
       expect(await repo.organizationHasOwner(), isTrue);
     });
@@ -105,7 +105,7 @@ void main() {
           {'id': 'd1', 'full_name': 'Doc', 'role': 'doctor', 'is_active': true, 'is_deleted': false},
         ],
       });
-      final repo = StaffAdminRepository(client);
+      final repo = StaffAdminRepositoryImpl(client);
 
       expect(await repo.organizationHasOwner(), isFalse);
     });

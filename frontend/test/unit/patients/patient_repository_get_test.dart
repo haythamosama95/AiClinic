@@ -9,11 +9,11 @@ import '../../support/patient_rpc_test_client.dart';
 void main() {
   group('PatientRepository.getPatient (US3)', () {
     late PatientRpcTestClient client;
-    late PatientRepository repository;
+    late PatientRepositoryImpl repository;
 
     setUp(() {
       client = PatientRpcTestClient();
-      repository = PatientRepository(client);
+      repository = PatientRepositoryImpl(client);
     });
 
     test('trivial: invokes get_patient with trimmed id and parses profile', () async {

@@ -11,11 +11,11 @@ import '../../support/patient_rpc_test_client.dart';
 void main() {
   group('PatientRepository updatePatient (US4)', () {
     late PatientRpcTestClient client;
-    late PatientRepository repository;
+    late PatientRepositoryImpl repository;
 
     setUp(() {
       client = PatientRpcTestClient();
-      repository = PatientRepository(client);
+      repository = PatientRepositoryImpl(client);
     });
 
     test('trivial: sends patient id, name, expected_updated_at, and phone', () async {

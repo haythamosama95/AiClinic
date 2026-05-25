@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/auth/domain/create_staff_account_result.dart';
 import 'package:ai_clinic/features/auth/domain/admin_reset_staff_password_result.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
+import 'package:ai_clinic/features/auth/domain/repositories/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 
@@ -26,12 +27,13 @@ RpcFailure? provisioningRpcFailureFromPostgrest(PostgrestException error, String
 }
 
 /// Calls staff provisioning RPCs (`create_staff_account`, `admin_reset_staff_password`).
-class ProvisioningRepository {
-  ProvisioningRepository(this._client);
+class ProvisioningRepositoryImpl implements ProvisioningRepository {
+  ProvisioningRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
   /// Lists active staff in the caller's organization (RLS-scoped) for password reset picker.
+  @override
   Future<List<StaffMemberSummary>> listOrgStaffMembers() async {
     final rows = await _client
         .from('staff_members')
@@ -52,6 +54,7 @@ class ProvisioningRepository {
   }
 
   /// Loads branch display fields for IDs the caller is allowed to see (org RLS).
+  @override
   Future<List<BranchSummary>> listBranchesByIds(List<String> branchIds) async {
     if (branchIds.isEmpty) {
       return const [];
@@ -78,6 +81,7 @@ class ProvisioningRepository {
     ];
   }
 
+  @override
   Future<CreateStaffAccountResult> createStaffAccount(CreateStaffAccountInput input) async {
     final result = await _invoke('create_staff_account', {
       'p_username': normalizeStaffUsername(input.username),
@@ -101,6 +105,7 @@ class ProvisioningRepository {
     );
   }
 
+  @override
   Future<AdminResetStaffPasswordResult> resetStaffPassword({
     required String staffMemberId,
     required String newPassword,
@@ -153,5 +158,5 @@ class ProvisioningRepository {
 }
 
 final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
-  return ProvisioningRepository(ref.watch(supabaseClientProvider));
+  return ProvisioningRepositoryImpl(ref.watch(supabaseClientProvider));
 });

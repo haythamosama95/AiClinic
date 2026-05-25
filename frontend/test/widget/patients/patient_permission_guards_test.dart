@@ -49,7 +49,7 @@ Widget _scope({
           ),
         ),
       ),
-      patientRepositoryProvider.overrideWith((ref) => PatientRepository(client ?? PatientRpcTestClient())),
+      patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client ?? PatientRpcTestClient())),
       patientListScopeProvider.overrideWith(PatientListScopeNotifier.new),
       staffAssignableBranchesProvider.overrideWith((ref) async => [_branch]),
     ],

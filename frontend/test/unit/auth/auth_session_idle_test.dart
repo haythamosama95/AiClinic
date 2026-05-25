@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class _IdleHarnessRepository extends AuthRepository {
+class _IdleHarnessRepository extends AuthRepositoryImpl {
   _IdleHarnessRepository() : super(_FakeClient());
 
   int signOutCalls = 0;

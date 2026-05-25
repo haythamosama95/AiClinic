@@ -239,7 +239,7 @@ ProviderContainer _container({
   );
 }
 
-class _MatrixAndRpcRepository extends RolePermissionsRepository {
+class _MatrixAndRpcRepository extends RolePermissionsRepositoryImpl {
   _MatrixAndRpcRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
     : _fetchClient = fetchClient,
       super(rpcClient);
@@ -248,7 +248,7 @@ class _MatrixAndRpcRepository extends RolePermissionsRepository {
 
   @override
   Future<List<PermissionMatrixRow>> fetchMatrix() {
-    return RolePermissionsRepository(_fetchClient).fetchMatrix();
+    return RolePermissionsRepositoryImpl(_fetchClient).fetchMatrix();
   }
 }
 

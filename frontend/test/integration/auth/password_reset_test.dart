@@ -20,7 +20,7 @@ import 'package:ai_clinic/testing/startup_test_support.dart';
 
 const _targetStaff = StaffMemberSummary(id: 'staff-target-1', fullName: 'Lab Tech', role: StaffRole.labStaff);
 
-class _HarnessProvisioningRepository extends ProvisioningRepository {
+class _HarnessProvisioningRepository extends ProvisioningRepositoryImpl {
   _HarnessProvisioningRepository() : super(_FakeSupabaseClient());
 
   int resetCalls = 0;
@@ -73,7 +73,7 @@ void main() {
         authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
         provisioningRepositoryProvider.overrideWith((ref) => repo = _HarnessProvisioningRepository()),
         staffResetCandidatesProvider.overrideWith((ref) async => const [_targetStaff]),
-        staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepository(staffTable)),
+        staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepositoryImpl(staffTable)),
       ],
     );
     await completeStartupBootstrap(tester);

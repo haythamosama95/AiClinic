@@ -44,11 +44,11 @@ void main() {
 
   group('BootstrapRepository RPC contract', () {
     late RpcCaptureSupabaseClient client;
-    late BootstrapRepository repository;
+    late BootstrapRepositoryImpl repository;
 
     setUp(() {
       client = RpcCaptureSupabaseClient();
-      repository = BootstrapRepository(client);
+      repository = BootstrapRepositoryImpl(client);
     });
 
     test('createOrganization sends contract parameter names and trims strings', () async {

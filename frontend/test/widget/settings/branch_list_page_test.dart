@@ -128,7 +128,7 @@ Widget _host({
   }
 
   final tableClient = SettingsTableTestClient({'branches': branches});
-  final rpcRepo = BranchRepository(rpcClient ?? SettingsRpcTestClient());
+  final rpcRepo = BranchRepositoryImpl(rpcClient ?? SettingsRpcTestClient());
 
   return ProviderScope(
     overrides: [
@@ -157,18 +157,18 @@ class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
   AuthSessionState build() => initial;
 }
 
-class _TableBranchRepository extends BranchRepository {
+class _TableBranchRepository extends BranchRepositoryImpl {
   _TableBranchRepository(this._tableClient, this._rpcRepo) : super(_tableClient);
 
   final SettingsTableTestClient _tableClient;
-  final BranchRepository _rpcRepo;
+  final BranchRepositoryImpl _rpcRepo;
 
   @override
   Future<List<BranchListItem>> listBranches({
     required String organizationId,
     BranchListFilter filter = BranchListFilter.all,
   }) {
-    return BranchRepository(_tableClient).listBranches(organizationId: organizationId, filter: filter);
+    return BranchRepositoryImpl(_tableClient).listBranches(organizationId: organizationId, filter: filter);
   }
 
   @override

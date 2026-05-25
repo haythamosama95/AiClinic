@@ -7,11 +7,11 @@ import '../../support/patient_rpc_test_client.dart';
 void main() {
   group('PatientRepository archivePatient (US5)', () {
     late PatientRpcTestClient client;
-    late PatientRepository repository;
+    late PatientRepositoryImpl repository;
 
     setUp(() {
       client = PatientRpcTestClient();
-      repository = PatientRepository(client);
+      repository = PatientRepositoryImpl(client);
     });
 
     test('trivial: archivePatient invokes RPC with patient id', () async {

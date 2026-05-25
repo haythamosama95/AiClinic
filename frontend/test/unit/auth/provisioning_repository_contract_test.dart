@@ -8,11 +8,11 @@ import '../../support/fake_postgrest_rpc.dart';
 void main() {
   group('ProvisioningRepository RPC contract', () {
     late RpcCaptureSupabaseClient client;
-    late ProvisioningRepository repository;
+    late ProvisioningRepositoryImpl repository;
 
     setUp(() {
       client = RpcCaptureSupabaseClient();
-      repository = ProvisioningRepository(client);
+      repository = ProvisioningRepositoryImpl(client);
     });
 
     test('createStaffAccount sends required contract keys and normalizes username/name', () async {

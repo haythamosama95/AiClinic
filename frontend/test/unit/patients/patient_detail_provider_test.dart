@@ -14,7 +14,7 @@ void main() {
     ProviderContainer container() {
       return ProviderContainer(
         overrides: [
-          patientRepositoryProvider.overrideWith((ref) => PatientRepository(client)),
+          patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client)),
         ],
       );
     }

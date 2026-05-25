@@ -12,7 +12,7 @@ import '../../support/pump_auth_app.dart';
 import 'package:ai_clinic/testing/auth_test_support.dart';
 import 'package:ai_clinic/testing/startup_test_support.dart';
 
-class _SignInHarnessAuthRepository extends AuthRepository {
+class _SignInHarnessAuthRepository extends AuthRepositoryImpl {
   _SignInHarnessAuthRepository(this._onSignIn) : super(_UninitializedSupabaseClient());
 
   final void Function() _onSignIn;

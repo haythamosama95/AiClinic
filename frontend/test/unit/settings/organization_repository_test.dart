@@ -9,11 +9,11 @@ import '../../support/settings_rpc_test_client.dart';
 void main() {
   group('OrganizationRepository', () {
     late SettingsRpcTestClient client;
-    late OrganizationRepository repository;
+    late OrganizationRepositoryImpl repository;
 
     setUp(() {
       client = SettingsRpcTestClient();
-      repository = OrganizationRepository(client);
+      repository = OrganizationRepositoryImpl(client);
     });
 
     test('fetchProfile parses organization row', () async {
@@ -24,7 +24,7 @@ void main() {
         'timezone': 'UTC',
         'settings_json': {},
       });
-      final profile = await OrganizationRepository(
+      final profile = await OrganizationRepositoryImpl(
         fetchClient,
       ).fetchProfile(organizationId: '11111111-1111-4111-8111-111111111111');
       expect(profile?.name, 'Test Clinic');
@@ -32,7 +32,7 @@ void main() {
     });
 
     test('fetchProfile returns null when row missing', () async {
-      final profile = await OrganizationRepository(
+      final profile = await OrganizationRepositoryImpl(
         OrganizationFetchTestClient(null),
       ).fetchProfile(organizationId: 'missing');
       expect(profile, isNull);
@@ -88,7 +88,7 @@ void main() {
       );
 
       expect(
-        () => OrganizationRepository(client).updateOrganization(const UpdateOrganizationInput(name: 'X')),
+        () => OrganizationRepositoryImpl(client).updateOrganization(const UpdateOrganizationInput(name: 'X')),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'RPC_NOT_APPLIED')),
       );
     });

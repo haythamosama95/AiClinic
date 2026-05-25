@@ -189,7 +189,7 @@ class _TestProvisioningNotifier extends ProvisioningNotifier {
   ProvisioningUiState build() => const ProvisioningUiState(ownerAlreadyExists: true);
 }
 
-class _FakeStaffAdminRepository extends StaffAdminRepository {
+class _FakeStaffAdminRepository extends StaffAdminRepositoryImpl {
   _FakeStaffAdminRepository(super.client, {required this.ownerAlreadyExists, this.existing});
 
   final bool ownerAlreadyExists;

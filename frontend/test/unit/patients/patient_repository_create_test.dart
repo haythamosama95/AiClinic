@@ -10,11 +10,11 @@ import '../../support/patient_rpc_test_client.dart';
 void main() {
   group('PatientRepository create & duplicates (US1)', () {
     late PatientRpcTestClient client;
-    late PatientRepository repository;
+    late PatientRepositoryImpl repository;
 
     setUp(() {
       client = PatientRpcTestClient();
-      repository = PatientRepository(client);
+      repository = PatientRepositoryImpl(client);
     });
 
     test('trivial: createPatient returns patient_id and sends branch + name + phone', () async {
@@ -128,7 +128,7 @@ void main() {
 
       expect(failure, isNotNull);
       expect(failure!.code, 'DUPLICATE_WARNING');
-      final candidates = PatientRepository.parseDuplicateCandidates(failure.result.data?['candidates']);
+      final candidates = PatientRepositoryImpl.parseDuplicateCandidates(failure.result.data?['candidates']);
       expect(candidates, hasLength(1));
       expect(candidates.first.fullName, 'Ahmed Hassan');
     });

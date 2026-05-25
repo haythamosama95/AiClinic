@@ -69,7 +69,7 @@ class _TestProvisioningNotifier extends ProvisioningNotifier {
   }
 }
 
-class _FakeProvisioningRepository extends ProvisioningRepository {
+class _FakeProvisioningRepository extends ProvisioningRepositoryImpl {
   _FakeProvisioningRepository() : super(_ThrowingClient());
 
   @override

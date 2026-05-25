@@ -191,7 +191,7 @@ Widget _host({
           ),
         ),
       ),
-      patientRepositoryProvider.overrideWith((ref) => PatientRepository(client)),
+      patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client)),
     ],
     child: child,
   );

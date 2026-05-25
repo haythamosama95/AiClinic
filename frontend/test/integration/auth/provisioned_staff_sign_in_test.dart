@@ -39,7 +39,7 @@ class _ProvisionedStaffSessionNotifier extends TestAuthSessionNotifier {
   }
 }
 
-class _ProvisionedStaffAuthRepository extends AuthRepository {
+class _ProvisionedStaffAuthRepository extends AuthRepositoryImpl {
   _ProvisionedStaffAuthRepository() : super(_FakeSupabaseClient());
 
   @override

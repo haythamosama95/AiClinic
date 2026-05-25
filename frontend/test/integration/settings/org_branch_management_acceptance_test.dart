@@ -499,14 +499,14 @@ Future<void> _pumpWithTenant(
 }) async {
   final tableClient = SettingsTableTestClient(tables ?? _steadyStateTenant());
   final rpc = rpcClient ?? SettingsRpcTestClient();
-  final branchRpc = BranchRepository(rpc);
+  final branchRpc = BranchRepositoryImpl(rpc);
   await pumpAuthApp(
     tester,
     extraOverrides: [
       authSessionProvider.overrideWith(_ConfigurableSessionNotifier.new),
       organizationRepositoryProvider.overrideWithValue(_AcceptanceOrganizationRepository(tableClient)),
       branchRepositoryProvider.overrideWithValue(_TableBranchRepository(tableClient, branchRpc)),
-      staffAdminRepositoryProvider.overrideWithValue(_TableStaffRepository(tableClient, StaffAdminRepository(rpc))),
+      staffAdminRepositoryProvider.overrideWithValue(_TableStaffRepository(tableClient, StaffAdminRepositoryImpl(rpc))),
       rolePermissionsRepositoryProvider.overrideWithValue(
         _IntegrationRolePermissionsRepository(fetchClient: tableClient, rpcClient: rpc),
       ),
@@ -520,29 +520,29 @@ Future<void> _pumpWithTenant(
   notifier.setAuthenticated();
 }
 
-class _AcceptanceOrganizationRepository extends OrganizationRepository {
+class _AcceptanceOrganizationRepository extends OrganizationRepositoryImpl {
   _AcceptanceOrganizationRepository(this._fetch) : super(_fetch);
 
   final SupabaseClient _fetch;
 
   @override
   Future<OrganizationProfile?> fetchProfile({required String organizationId}) {
-    return OrganizationRepository(_fetch).fetchProfile(organizationId: organizationId);
+    return OrganizationRepositoryImpl(_fetch).fetchProfile(organizationId: organizationId);
   }
 }
 
-class _TableBranchRepository extends BranchRepository {
+class _TableBranchRepository extends BranchRepositoryImpl {
   _TableBranchRepository(this._tableClient, this._rpcRepo) : super(_tableClient);
 
   final SettingsTableTestClient _tableClient;
-  final BranchRepository _rpcRepo;
+  final BranchRepositoryImpl _rpcRepo;
 
   @override
   Future<List<BranchListItem>> listBranches({
     required String organizationId,
     BranchListFilter filter = BranchListFilter.all,
   }) {
-    return BranchRepository(_tableClient).listBranches(organizationId: organizationId, filter: filter);
+    return BranchRepositoryImpl(_tableClient).listBranches(organizationId: organizationId, filter: filter);
   }
 
   @override
@@ -551,15 +551,15 @@ class _TableBranchRepository extends BranchRepository {
   }
 }
 
-class _TableStaffRepository extends StaffAdminRepository {
+class _TableStaffRepository extends StaffAdminRepositoryImpl {
   _TableStaffRepository(this._tableClient, this._rpcRepo) : super(_tableClient);
 
   final SettingsTableTestClient _tableClient;
-  final StaffAdminRepository _rpcRepo;
+  final StaffAdminRepositoryImpl _rpcRepo;
 
   @override
   Future<List<StaffListItem>> listStaff({StaffListFilter filter = StaffListFilter.all}) {
-    return StaffAdminRepository(_tableClient).listStaff(filter: filter);
+    return StaffAdminRepositoryImpl(_tableClient).listStaff(filter: filter);
   }
 
   @override
@@ -568,7 +568,7 @@ class _TableStaffRepository extends StaffAdminRepository {
   }
 }
 
-class _IntegrationRolePermissionsRepository extends RolePermissionsRepository {
+class _IntegrationRolePermissionsRepository extends RolePermissionsRepositoryImpl {
   _IntegrationRolePermissionsRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
     : _fetchClient = fetchClient,
       super(rpcClient);
@@ -577,7 +577,7 @@ class _IntegrationRolePermissionsRepository extends RolePermissionsRepository {
 
   @override
   Future<List<PermissionMatrixRow>> fetchMatrix() {
-    return RolePermissionsRepository(_fetchClient).fetchMatrix();
+    return RolePermissionsRepositoryImpl(_fetchClient).fetchMatrix();
   }
 }
 

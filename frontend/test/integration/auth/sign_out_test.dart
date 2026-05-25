@@ -15,7 +15,7 @@ import '../../support/pump_auth_app.dart';
 import 'package:ai_clinic/testing/auth_test_support.dart';
 import 'package:ai_clinic/testing/startup_test_support.dart';
 
-class _SignOutHarnessRepository extends AuthRepository {
+class _SignOutHarnessRepository extends AuthRepositoryImpl {
   _SignOutHarnessRepository() : super(_FakeClient());
 
   int signOutCalls = 0;

@@ -365,7 +365,7 @@ class _ThrowingRolePermissionsNotifier extends RolePermissionsNotifier {
   }
 }
 
-class _TestRolePermissionsRepository extends RolePermissionsRepository {
+class _TestRolePermissionsRepository extends RolePermissionsRepositoryImpl {
   _TestRolePermissionsRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
     : _fetchClient = fetchClient,
       super(rpcClient);
@@ -374,7 +374,7 @@ class _TestRolePermissionsRepository extends RolePermissionsRepository {
 
   @override
   Future<List<PermissionMatrixRow>> fetchMatrix() {
-    return RolePermissionsRepository(_fetchClient).fetchMatrix();
+    return RolePermissionsRepositoryImpl(_fetchClient).fetchMatrix();
   }
 }
 

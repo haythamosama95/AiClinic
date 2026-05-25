@@ -11,14 +11,16 @@ import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
+import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 
 /// Patient list/detail mutations via secured RPCs (V1-3).
-class PatientRepository {
-  PatientRepository(this._client);
+class PatientRepositoryImpl implements PatientRepository {
+  PatientRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
+  @override
   Future<PatientSearchPage> searchPatients({
     String? query,
     required PatientListScope scope,
@@ -38,6 +40,7 @@ class PatientRepository {
     return PatientSearchPage.fromRpcData(result.data);
   }
 
+  @override
   Future<PatientDetail> getPatient(String patientId) async {
     final id = patientId.trim();
     if (id.isEmpty) {
@@ -54,6 +57,7 @@ class PatientRepository {
     return detail;
   }
 
+  @override
   Future<List<DuplicateCandidate>> checkDuplicates({
     String? fullName,
     String? phone,
@@ -70,6 +74,7 @@ class PatientRepository {
     return parseDuplicateCandidates(result.data?['candidates']);
   }
 
+  @override
   Future<String> createPatient(CreatePatientInput input) async {
     final name = input.fullName.trim();
     if (name.isEmpty) {
@@ -103,6 +108,7 @@ class PatientRepository {
     return patientId;
   }
 
+  @override
   Future<DateTime> updatePatient(UpdatePatientInput input) async {
     final name = input.fullName.trim();
     if (name.isEmpty) {
@@ -134,6 +140,7 @@ class PatientRepository {
     return parsed;
   }
 
+  @override
   Future<void> archivePatient(String patientId) async {
     await _invoke('archive_patient', {'p_patient_id': patientId});
   }
@@ -188,5 +195,5 @@ class PatientRepository {
 }
 
 final patientRepositoryProvider = Provider<PatientRepository>((ref) {
-  return PatientRepository(ref.watch(supabaseClientProvider));
+  return PatientRepositoryImpl(ref.watch(supabaseClientProvider));
 });

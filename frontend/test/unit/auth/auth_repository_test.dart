@@ -77,7 +77,7 @@ class _InvalidStartupNotifier extends StartupSessionNotifier {
 void main() {
   test('clearPersistedSessionOnColdStart invokes signOut', () async {
     final client = _RecordingSupabaseClient();
-    final repository = AuthRepository(client);
+    final repository = AuthRepositoryImpl(client);
 
     await repository.clearPersistedSessionOnColdStart();
 
@@ -86,14 +86,14 @@ void main() {
 
   test('clearPersistedSessionOnColdStart swallows AuthException', () async {
     final client = _ThrowingSignOutClient();
-    final repository = AuthRepository(client);
+    final repository = AuthRepositoryImpl(client);
 
     await expectLater(repository.clearPersistedSessionOnColdStart(), completes);
   });
 
   test('signIn normalizes username before calling auth client', () async {
     final client = _RecordingSupabaseClient();
-    final repository = AuthRepository(client);
+    final repository = AuthRepositoryImpl(client);
 
     await repository.signIn(username: '  Staff1  ', password: 'secret');
 

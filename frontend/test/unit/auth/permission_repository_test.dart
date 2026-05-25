@@ -2,13 +2,13 @@ import 'package:ai_clinic/features/auth/data/permission_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('PermissionRepository.parseGrantedPermissionKeys', () {
+  group('PermissionRepositoryImpl.parseGrantedPermissionKeys', () {
     test('returns empty set for empty rows', () {
-      expect(PermissionRepository.parseGrantedPermissionKeys([]), isEmpty);
+      expect(PermissionRepositoryImpl.parseGrantedPermissionKeys([]), isEmpty);
     });
 
     test('ignores null, empty, and whitespace-only keys', () {
-      final result = PermissionRepository.parseGrantedPermissionKeys([
+      final result = PermissionRepositoryImpl.parseGrantedPermissionKeys([
         {'permission_key': null},
         {'permission_key': ''},
         {'permission_key': '   '},
@@ -19,7 +19,7 @@ void main() {
     });
 
     test('deduplicates repeated keys', () {
-      final result = PermissionRepository.parseGrantedPermissionKeys([
+      final result = PermissionRepositoryImpl.parseGrantedPermissionKeys([
         {'permission_key': 'ai.access'},
         {'permission_key': 'ai.access'},
       ]);
@@ -28,7 +28,7 @@ void main() {
     });
 
     test('trims surrounding whitespace on keys', () {
-      final result = PermissionRepository.parseGrantedPermissionKeys([
+      final result = PermissionRepositoryImpl.parseGrantedPermissionKeys([
         {'permission_key': '  settings.manage_staff  '},
       ]);
 
@@ -36,7 +36,7 @@ void main() {
     });
 
     test('skips non-map rows (malformed API responses)', () {
-      final result = PermissionRepository.parseGrantedPermissionKeys([
+      final result = PermissionRepositoryImpl.parseGrantedPermissionKeys([
         'not-a-map',
         42,
         {'permission_key': 'patients.view'},
@@ -53,7 +53,7 @@ void main() {
         {'permission_key': 'ai.access'},
       ];
 
-      expect(PermissionRepository.parseGrantedPermissionKeys(rows), {
+      expect(PermissionRepositoryImpl.parseGrantedPermissionKeys(rows), {
         'settings.manage_staff',
         'patients.view',
         'analytics.view',

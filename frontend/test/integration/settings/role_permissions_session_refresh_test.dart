@@ -91,7 +91,7 @@ class _OwnerReloadSessionNotifier extends TestAuthSessionNotifier {
   }
 }
 
-class _IntegrationRolePermissionsRepository extends RolePermissionsRepository {
+class _IntegrationRolePermissionsRepository extends RolePermissionsRepositoryImpl {
   _IntegrationRolePermissionsRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
     : _fetchClient = fetchClient,
       super(rpcClient);
@@ -100,6 +100,6 @@ class _IntegrationRolePermissionsRepository extends RolePermissionsRepository {
 
   @override
   Future<List<PermissionMatrixRow>> fetchMatrix() {
-    return RolePermissionsRepository(_fetchClient).fetchMatrix();
+    return RolePermissionsRepositoryImpl(_fetchClient).fetchMatrix();
   }
 }

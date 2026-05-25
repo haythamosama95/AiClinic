@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/auth/domain/repositories/bootstrap_repository.dart';
 
 /// Maps bootstrap RPC PostgREST failures to [RpcFailure], or returns null to rethrow.
 RpcFailure? bootstrapRpcFailureFromPostgrest(PostgrestException error, String functionName) {
@@ -37,11 +38,12 @@ RpcFailure? bootstrapRpcFailureFromPostgrest(PostgrestException error, String fu
 }
 
 /// Calls bootstrap RPCs (`bootstrap_create_organization`, `bootstrap_create_branch`).
-class BootstrapRepository {
-  BootstrapRepository(this._client);
+class BootstrapRepositoryImpl implements BootstrapRepository {
+  BootstrapRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
+  @override
   Future<String> createOrganization(BootstrapOrganizationInput input) async {
     final result = await _invoke('bootstrap_create_organization', {
       'p_name': input.name.trim(),
@@ -60,10 +62,12 @@ class BootstrapRepository {
   }
 
   /// Removes all organizations/branches (bootstrap admin only). For local development.
+  @override
   Future<RpcResult> resetInstallationForDevelopment() async {
     return _invoke('dev_reset_clinic_installation', null, allowEmptyParams: true);
   }
 
+  @override
   Future<String> createBranch(BootstrapBranchInput input) async {
     final result = await _invoke('bootstrap_create_branch', {
       'p_organization_id': input.organizationId,
@@ -124,5 +128,5 @@ class BootstrapRepository {
 }
 
 final bootstrapRepositoryProvider = Provider<BootstrapRepository>((ref) {
-  return BootstrapRepository(ref.watch(supabaseClientProvider));
+  return BootstrapRepositoryImpl(ref.watch(supabaseClientProvider));
 });

@@ -5,16 +5,18 @@ import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/permission_matrix_row.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/role_permissions_repository.dart';
 
 /// Steady-state role permission matrix reads and owner/administrator updates.
-class RolePermissionsRepository with SettingsRpcInvoker {
-  RolePermissionsRepository(this._client);
+class RolePermissionsRepositoryImpl with SettingsRpcInvoker implements RolePermissionsRepository {
+  RolePermissionsRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
   @override
   SupabaseClient get settingsRpcClient => _client;
 
+  @override
   Future<List<PermissionMatrixRow>> fetchMatrix() async {
     final rows = await _client
         .from('roles_permissions')
@@ -33,6 +35,7 @@ class RolePermissionsRepository with SettingsRpcInvoker {
     return matrix;
   }
 
+  @override
   Future<void> updateRolePermission({
     required StaffRole role,
     required String permissionKey,
@@ -52,5 +55,5 @@ class RolePermissionsRepository with SettingsRpcInvoker {
 }
 
 final rolePermissionsRepositoryProvider = Provider<RolePermissionsRepository>((ref) {
-  return RolePermissionsRepository(ref.watch(supabaseClientProvider));
+  return RolePermissionsRepositoryImpl(ref.watch(supabaseClientProvider));
 });

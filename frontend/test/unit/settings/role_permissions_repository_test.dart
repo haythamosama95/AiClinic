@@ -9,11 +9,11 @@ import '../../support/settings_table_test_client.dart';
 void main() {
   group('RolePermissionsRepository', () {
     late SettingsRpcTestClient client;
-    late RolePermissionsRepository repository;
+    late RolePermissionsRepositoryImpl repository;
 
     setUp(() {
       client = SettingsRpcTestClient();
-      repository = RolePermissionsRepository(client);
+      repository = RolePermissionsRepositoryImpl(client);
     });
 
     test('updateRolePermission sends owner toggle payload', () async {
@@ -37,7 +37,7 @@ void main() {
           {'role': 'doctor', 'permission_key': '', 'is_granted': true, 'is_deleted': false},
         ],
       });
-      final matrix = await RolePermissionsRepository(client).fetchMatrix();
+      final matrix = await RolePermissionsRepositoryImpl(client).fetchMatrix();
 
       expect(matrix, hasLength(2));
       expect(matrix.map((row) => row.permissionKey), containsAll(['settings.manage_staff', 'patients.view']));

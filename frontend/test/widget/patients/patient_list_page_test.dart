@@ -159,7 +159,7 @@ Widget _host({
           ),
         ),
       ),
-      patientRepositoryProvider.overrideWith((ref) => PatientRepository(rpcClient)),
+      patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(rpcClient)),
       patientListScopeProvider.overrideWith(PatientListScopeNotifier.new),
     ],
     child: child,

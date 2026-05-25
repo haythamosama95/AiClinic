@@ -29,7 +29,7 @@ void main() {
         overrides: [
           authSessionProvider.overrideWith(() => _FixedAuth(auth ?? _authSession())),
           patientListScopeProvider.overrideWith(PatientListScopeNotifier.new),
-          patientRepositoryProvider.overrideWith((ref) => PatientRepository(client)),
+          patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client)),
         ],
       );
     }

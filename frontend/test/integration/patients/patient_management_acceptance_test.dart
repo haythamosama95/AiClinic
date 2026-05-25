@@ -54,7 +54,7 @@ Future<void> _pumpPatientApp(
     extraOverrides: [
       authSessionProvider.overrideWith(() => session),
       staffAssignableBranchesProvider.overrideWith((ref) async => branches),
-      patientRepositoryProvider.overrideWith((ref) => PatientRepository(rpcClient)),
+      patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(rpcClient)),
       patientListScopeProvider.overrideWith(PatientListScopeNotifier.new),
     ],
   );
@@ -153,7 +153,7 @@ Future<void> _pumpFocusedPatientPage(
             ),
           ),
         ),
-        patientRepositoryProvider.overrideWith((ref) => PatientRepository(client ?? PatientRpcTestClient())),
+        patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client ?? PatientRpcTestClient())),
         patientListScopeProvider.overrideWith(PatientListScopeNotifier.new),
       ],
       child: MaterialApp(home: page),
