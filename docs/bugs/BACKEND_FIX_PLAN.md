@@ -1,16 +1,16 @@
 # Backend Fix Plan — AiClinic
 
-**Date**: 2026-05-24  
-**Source**: `backend/BACKEND_CODE_REVIEW.md`  
+**Date**: 2026-05-24
+**Source**: `backend/BACKEND_CODE_REVIEW.md`
 **Scope**: All issues identified — 6 bugs, 8 architectural flaws, 5 security issues, 4 performance issues, 8 future-extension concerns, 4 test gaps, 3 config issues
 
 ---
 
 ## Migration Strategy
 
-All fixes will be delivered as **new forward-only migrations** appended after the existing 19 migrations. Each fix section specifies its migration file name. Fixes are grouped into logical migrations to minimize file count while maintaining atomic changesets.
+All fixes will be delivered as **new forward-only migrations** appended after the latest applied migration. Each fix section specifies its migration file name. Fixes are grouped into logical migrations to minimize file count while maintaining atomic changesets.
 
-**Naming convention**: `20260524HHMMSS_fix_<description>.sql`
+**Naming convention**: `20260525HHMMSS_fix_<description>.sql` (timestamps must be strictly after `20260525120000_dev_reset_delete_patients.sql`)
 
 ---
 
@@ -20,7 +20,7 @@ All fixes will be delivered as **new forward-only migrations** appended after th
 
 **Review Issue**: 3.1 — `create_staff_account` and `admin_reset_staff_password` return `assigned_password` in the JSON response body.
 
-**Migration**: `20260524100000_fix_remove_plaintext_password_from_responses.sql`
+**Migration**: `20260525120100_fix_remove_plaintext_password_from_responses.sql`
 
 **Detailed Steps**:
 
@@ -86,7 +86,7 @@ RETURN public.rpc_success(
 
 **Review Issue**: 1.1 — Blanket `GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA auth_internal TO authenticated` exposes helper functions like `build_staff_claims`, `organization_exists`, `normalize_username`.
 
-**Migration**: `20260524100100_fix_restrict_auth_internal_grants.sql`
+**Migration**: `20260525120200_fix_restrict_auth_internal_grants.sql`
 
 **Detailed Steps**:
 
@@ -154,7 +154,7 @@ WHERE n.nspname = 'auth_internal';
 
 **Review Issue**: 3.2 — No password length/complexity check in `create_staff_account` and `admin_reset_staff_password`.
 
-**Migration**: `20260524100200_fix_password_complexity_validation.sql`
+**Migration**: `20260525120300_fix_password_complexity_validation.sql`
 
 **Detailed Steps**:
 
@@ -209,7 +209,7 @@ PERFORM auth_internal.assert_password_complexity(p_new_password);
 
 **Review Issues**: 1.2 (race condition) + 4.3 (duplicate scan performance)
 
-**Migration**: `20260524100300_fix_patient_phone_index.sql`
+**Migration**: `20260525120400_fix_patient_phone_index.sql`
 
 **Detailed Steps**:
 
@@ -255,7 +255,7 @@ CREATE INDEX patients_org_phone_idx
 
 **Review Issues**: 2.5 — No environment guard on destructive reset function.
 
-**Migration**: `20260524100400_fix_dev_reset_environment_guard.sql`
+**Migration**: `20260525120500_fix_dev_reset_environment_guard.sql`
 
 **Detailed Steps**:
 
@@ -306,7 +306,7 @@ $$;
 
 **Review Issue**: 2.2 — Enum ALTER can fail mid-migration if unexpected values exist.
 
-**Migration**: `20260524100500_fix_enum_migration_safety.sql`
+**Migration**: `20260525120600_fix_enum_migration_safety.sql`
 
 This is a **retrospective safeguard** — the original migration already ran. But we add a pattern for future use and verify current state:
 
@@ -373,7 +373,7 @@ $$;
 
 **Review Issues**: 1.3 (dead index condition), 1.4 (unusable name index), 4.2 (LIKE pattern)
 
-**Migration**: `20260524110000_fix_search_indexes.sql`
+**Migration**: `20260525120700_fix_search_indexes.sql`
 
 **Detailed Steps**:
 
@@ -437,7 +437,7 @@ WHERE is_deleted = false
 
 **Review Issue**: 4.1 — `count(*) OVER()` forces full materialization.
 
-**Migration**: `20260524110100_fix_search_patients_pagination.sql`
+**Migration**: `20260525120800_fix_search_patients_pagination.sql`
 
 **Detailed Steps**:
 
@@ -1028,9 +1028,9 @@ Included in Fix 15 above — the public wrapper `public.update_patient` must als
 ```markdown
 ## ADR-001: Single Organization Per Staff Member
 
-**Status**: Accepted  
-**Context**: `build_staff_claims` determines org via "first org in DB". Staff members are implicitly bound to one org.  
-**Decision**: Multi-org support is explicitly out of scope. If required in the future, the auth layer requires a full rewrite including: `organization_id` on `staff_members`, org-selection at login, per-org JWT claims.  
+**Status**: Accepted
+**Context**: `build_staff_claims` determines org via "first org in DB". Staff members are implicitly bound to one org.
+**Decision**: Multi-org support is explicitly out of scope. If required in the future, the auth layer requires a full rewrite including: `organization_id` on `staff_members`, org-selection at login, per-org JWT claims.
 **Consequences**: All current code assumes 1 org per deployment. Multi-clinic-group scenarios need separate installations.
 ```
 
@@ -1183,38 +1183,38 @@ Choose ONE deployment method. Do not mix.
 
 ## Implementation Order (Recommended Sprint Plan)
 
-| Sprint | Fixes | Effort Estimate |
-|--------|-------|-----------------|
-| Sprint 1 (Critical) | Fix 1, 2, 3 | 4 hours |
-| Sprint 2 (High) | Fix 4, 5, 6 | 3 hours |
-| Sprint 3 (Performance) | Fix 7, 8 | 3 hours |
-| Sprint 4 (Features) | Fix 9, 15 | 4 hours |
-| Sprint 5 (Hardening) | Fix 10, 11, 12 | 4 hours |
-| Sprint 6 (Cleanup) | Fix 13, 14, 27 | 1 hour |
-| Sprint 7 (Tests) | Fix 24, 25, 26 | 3 hours |
-| Backlog | Fix 17–23 | Future sprints |
+| Sprint                 | Fixes          | Effort Estimate |
+| ---------------------- | -------------- | --------------- |
+| Sprint 1 (Critical)    | Fix 1, 2, 3    | 4 hours         |
+| Sprint 2 (High)        | Fix 4, 5, 6    | 3 hours         |
+| Sprint 3 (Performance) | Fix 7, 8       | 3 hours         |
+| Sprint 4 (Features)    | Fix 9, 15      | 4 hours         |
+| Sprint 5 (Hardening)   | Fix 10, 11, 12 | 4 hours         |
+| Sprint 6 (Cleanup)     | Fix 13, 14, 27 | 1 hour          |
+| Sprint 7 (Tests)       | Fix 24, 25, 26 | 3 hours         |
+| Backlog                | Fix 17–23      | Future sprints  |
 
-**Total immediate effort**: ~22 hours across 7 sprints  
+**Total immediate effort**: ~22 hours across 7 sprints
 **Backlog (future)**: Fix 17–23 tracked as tech debt
 
 ---
 
 ## Migration File Summary
 
-| Migration File | Fixes Covered |
-|----------------|---------------|
-| `20260524100000_fix_remove_plaintext_password_from_responses.sql` | Fix 1 |
-| `20260524100100_fix_restrict_auth_internal_grants.sql` | Fix 2 |
-| `20260524100200_fix_password_complexity_validation.sql` | Fix 3 |
-| `20260524100300_fix_patient_phone_index.sql` | Fix 4 |
-| `20260524100400_fix_dev_reset_environment_guard.sql` | Fix 5 |
-| `20260524100500_fix_enum_migration_safety.sql` | Fix 6 |
-| `20260524110000_fix_search_indexes.sql` | Fix 7 |
-| `20260524110100_fix_search_patients_pagination.sql` | Fix 8 |
-| `20260524110200_fix_patient_transfer_restore.sql` | Fix 9 |
-| `20260524110300_fix_audit_log_retention.sql` | Fix 10 |
-| `20260524110400_fix_bootstrap_credential_hardening.sql` | Fix 11 |
-| `20260524120000_fix_patient_clearable_fields.sql` | Fix 15 |
+| Migration File                                                    | Fixes Covered |
+| ----------------------------------------------------------------- | ------------- |
+| `20260525120100_fix_remove_plaintext_password_from_responses.sql` | Fix 1         |
+| `20260525120200_fix_restrict_auth_internal_grants.sql`            | Fix 2         |
+| `20260525120300_fix_password_complexity_validation.sql`           | Fix 3         |
+| `20260525120400_fix_patient_phone_index.sql`                      | Fix 4         |
+| `20260525120500_fix_dev_reset_environment_guard.sql`              | Fix 5         |
+| `20260525120600_fix_enum_migration_safety.sql`                    | Fix 6         |
+| `20260525120700_fix_search_indexes.sql`                           | Fix 7         |
+| `20260525120800_fix_search_patients_pagination.sql`               | Fix 8         |
+| `20260524110200_fix_patient_transfer_restore.sql`                 | Fix 9         |
+| `20260524110300_fix_audit_log_retention.sql`                      | Fix 10        |
+| `20260524110400_fix_bootstrap_credential_hardening.sql`           | Fix 11        |
+| `20260524120000_fix_patient_clearable_fields.sql`                 | Fix 15        |
 
 ---
 
@@ -1229,7 +1229,7 @@ Choose ONE deployment method. Do not mix.
 
 # Second Review Cycle — Additional Fixes
 
-**Date**: 2026-05-24 (cycle 2)  
+**Date**: 2026-05-24 (cycle 2)
 **Source**: `backend/BACKEND_CODE_REVIEW.md` — Sections 9–12
 
 ---
@@ -1240,7 +1240,7 @@ Choose ONE deployment method. Do not mix.
 
 **Review Issue**: 9.1 — `update_branch` sets `address`, `phone`, `maps_url` to NULL when omitted.
 
-**Migration**: `20260524130000_fix_update_branch_preserve_fields.sql`
+**Migration**: `20260525120900_fix_update_branch_preserve_fields.sql`
 
 **Detailed Steps**:
 
@@ -1327,7 +1327,7 @@ $$;
 
 **Review Issue**: 10.2 — Any owner/administrator can reset the bootstrap admin's password.
 
-**Migration**: `20260524130100_fix_bootstrap_admin_password_protection.sql`
+**Migration**: `20260525121000_fix_bootstrap_admin_password_protection.sql`
 
 **Detailed Steps**:
 
@@ -1355,7 +1355,7 @@ END IF;
 
 **Review Issue**: 10.1 — Null JWT org falls back to branch's org, bypassing org validation.
 
-**Migration**: `20260524130200_fix_set_branch_active_org_guard.sql`
+**Migration**: `20260525121100_fix_set_branch_active_org_guard.sql`
 
 **Detailed Steps**:
 
@@ -1691,33 +1691,33 @@ CREATE POLICY staff_branch_assignments_select ON public.staff_branch_assignments
 
 ## Updated Implementation Order (Combined Sprints)
 
-| Sprint | Fixes | Effort Estimate |
-|--------|-------|-----------------|
-| Sprint 1 (Critical) | Fix 1, 2, 3 | 4 hours |
-| Sprint 2 (High) | Fix 4, 5, 6, **28, 29, 30** | 5 hours |
-| Sprint 3 (Performance) | Fix 7, 8 | 3 hours |
-| Sprint 4 (Features) | Fix 9, 15, **33** | 5 hours |
-| Sprint 5 (Hardening) | Fix 10, 11, 12, **31, 32, 34, 36** | 5 hours |
-| Sprint 6 (Cleanup) | Fix 13, 14, 27, **37, 38, 39** | 2 hours |
-| Sprint 7 (Tests) | Fix 24, 25, 26 | 3 hours |
-| Backlog | Fix 17–23, **35** | Future sprints |
+| Sprint                 | Fixes                              | Effort Estimate |
+| ---------------------- | ---------------------------------- | --------------- |
+| Sprint 1 (Critical)    | Fix 1, 2, 3                        | 4 hours         |
+| Sprint 2 (High)        | Fix 4, 5, 6, **28, 29, 30**        | 5 hours         |
+| Sprint 3 (Performance) | Fix 7, 8                           | 3 hours         |
+| Sprint 4 (Features)    | Fix 9, 15, **33**                  | 5 hours         |
+| Sprint 5 (Hardening)   | Fix 10, 11, 12, **31, 32, 34, 36** | 5 hours         |
+| Sprint 6 (Cleanup)     | Fix 13, 14, 27, **37, 38, 39**     | 2 hours         |
+| Sprint 7 (Tests)       | Fix 24, 25, 26                     | 3 hours         |
+| Backlog                | Fix 17–23, **35**                  | Future sprints  |
 
-**Updated total immediate effort**: ~27 hours across 7 sprints  
+**Updated total immediate effort**: ~27 hours across 7 sprints
 **New fixes added**: 12 (Fix 28–39)
 
 ---
 
 ## Cycle 2 Migration File Summary
 
-| Migration File | Fixes Covered |
-|----------------|---------------|
-| `20260524130000_fix_update_branch_preserve_fields.sql` | Fix 28 |
-| `20260524130100_fix_bootstrap_admin_password_protection.sql` | Fix 29 |
-| `20260524130200_fix_set_branch_active_org_guard.sql` | Fix 30 |
-| `20260524140000_fix_last_owner_guard.sql` | Fix 31 |
-| `20260524140100_fix_audit_log_write_protection.sql` | Fix 32, 35 |
-| `20260524140200_fix_search_patients_response_fields.sql` | Fix 33 |
-| `20260524140300_fix_username_functions_search_path.sql` | Fix 34 |
-| `20260524150000_fix_audit_log_timestamp_column.sql` | Fix 37 |
-| `20260524150100_fix_set_branch_active_idempotent.sql` | Fix 38 |
-| `20260524150200_fix_staff_branch_assignments_admin_rls.sql` | Fix 39 |
+| Migration File                                               | Fixes Covered |
+| ------------------------------------------------------------ | ------------- |
+| `20260525120900_fix_update_branch_preserve_fields.sql`       | Fix 28        |
+| `20260525121000_fix_bootstrap_admin_password_protection.sql` | Fix 29        |
+| `20260525121100_fix_set_branch_active_org_guard.sql`         | Fix 30        |
+| `20260524140000_fix_last_owner_guard.sql`                    | Fix 31        |
+| `20260524140100_fix_audit_log_write_protection.sql`          | Fix 32, 35    |
+| `20260524140200_fix_search_patients_response_fields.sql`     | Fix 33        |
+| `20260524140300_fix_username_functions_search_path.sql`      | Fix 34        |
+| `20260524150000_fix_audit_log_timestamp_column.sql`          | Fix 37        |
+| `20260524150100_fix_set_branch_active_idempotent.sql`        | Fix 38        |
+| `20260524150200_fix_staff_branch_assignments_admin_rls.sql`  | Fix 39        |

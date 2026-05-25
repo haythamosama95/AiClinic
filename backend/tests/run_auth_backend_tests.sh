@@ -31,6 +31,8 @@ sql_tests=(
   subscription_cache_nonblocking.sql
   rpc_contract_alignment.sql
   rls_isolation.sql
+  auth_rbac_extended.sql
+  dev_reset_clinic_installation.sql
 )
 
 for f in "${sql_tests[@]}"; do

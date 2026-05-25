@@ -22,6 +22,7 @@ String provisioningMessageForRpc(RpcFailure failure) {
     'USERNAME_EXISTS' => 'A staff account with this username already exists.',
     'INVALID_BRANCH' => 'One or more selected branches are invalid.',
     'INVALID_INPUT' => failure.message,
+    'WEAK_PASSWORD' => failure.message,
     'RPC_NOT_APPLIED' => failure.message,
     _ => 'Unable to create the staff account. Check connectivity and try again.',
   };
@@ -34,6 +35,7 @@ String passwordResetMessageForRpc(RpcFailure failure) {
     'STAFF_NOT_FOUND' => 'That staff member was not found. Refresh the list and try again.',
     'CROSS_ORG_DENIED' => 'That staff member is outside your clinic organization.',
     'INVALID_INPUT' => failure.message,
+    'WEAK_PASSWORD' => failure.message,
     'RPC_NOT_APPLIED' => failure.message,
     _ => 'Unable to reset the password. Check connectivity and try again.',
   };

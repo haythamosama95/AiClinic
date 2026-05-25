@@ -93,10 +93,12 @@ class ProvisioningRepositoryImpl implements ProvisioningRepository {
     });
 
     final staffMemberId = result.data?['staff_member_id']?.toString();
-    final assignedPassword = result.data?['assigned_password']?.toString();
-    if (staffMemberId == null || staffMemberId.isEmpty || assignedPassword == null) {
+    if (staffMemberId == null || staffMemberId.isEmpty) {
       throw StateError('Staff account was created but the response was incomplete.');
     }
+
+    // RPC no longer echoes passwords; use the value entered in the form for the share dialog.
+    final assignedPassword = result.data?['assigned_password']?.toString() ?? input.password;
 
     return CreateStaffAccountResult(
       staffMemberId: staffMemberId,
@@ -115,10 +117,8 @@ class ProvisioningRepositoryImpl implements ProvisioningRepository {
       'p_new_password': newPassword,
     });
 
-    final assignedPassword = result.data?['assigned_password']?.toString();
-    if (assignedPassword == null || assignedPassword.isEmpty) {
-      throw StateError('Password was reset but the response was incomplete.');
-    }
+    // RPC no longer echoes passwords; use the value entered in the form for the share dialog.
+    final assignedPassword = result.data?['assigned_password']?.toString() ?? newPassword;
 
     return AdminResetStaffPasswordResult(staffMemberId: staffMemberId, assignedPassword: assignedPassword);
   }

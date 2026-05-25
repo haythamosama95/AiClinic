@@ -277,7 +277,7 @@ PERFORM set_config('role', 'postgres', true);
 
   v_result := public.create_staff_account(
     'owner-admin-attempt',
-    'owner-pass-x',
+    'owner-pass9',
     'Admin Owner Attempt',
     'owner',
     ARRAY[v_branch_id]
@@ -293,7 +293,7 @@ PERFORM set_config('role', 'postgres', true);
   -- Happy path: administrator creates receptionist.
   v_result := public.create_staff_account(
     'reception',
-    'recept-pass',
+    'recept-pass1',
     'Front Desk',
     'receptionist',
     ARRAY[v_branch_id]
@@ -333,7 +333,7 @@ PERFORM set_config('role', 'postgres', true);
 'admin_creates_receptionist',
     v_result.success
       AND v_receptionist_staff_id IS NOT NULL
-      AND (v_result.data ->> 'assigned_password') = 'recept-pass',
+      AND (v_result.data ->> 'username') = 'reception',
     'staff_id=' || COALESCE(v_receptionist_staff_id::text, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -356,7 +356,7 @@ PERFORM set_config('role', 'postgres', true);
   -- Duplicate username rejected.
   v_result := public.create_staff_account(
     'reception',
-    'other-pass',
+    'other-pass1',
     'Duplicate Username',
     'doctor',
     ARRAY[v_branch_id]

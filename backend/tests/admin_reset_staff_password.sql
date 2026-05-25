@@ -81,7 +81,7 @@ BEGIN
 
   v_result := public.create_staff_account(
     'us7-reception',
-    'initial-pass',
+    'initial-pass1',
     'US7 Receptionist',
     'receptionist',
     ARRAY[v_branch_id]
@@ -166,8 +166,9 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO admin_reset_password_results VALUES (
     'bootstrap_admin_resets_receptionist_password',
-    v_result.success AND (v_result.data ->> 'assigned_password') = v_new_password,
-    'assigned=' || COALESCE(v_result.data ->> 'assigned_password', '<null>')
+    v_result.success
+      AND COALESCE((v_result.data ->> 'password_reset')::boolean, false),
+    'password_reset=' || COALESCE(v_result.data ->> 'password_reset', '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 

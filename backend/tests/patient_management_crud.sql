@@ -355,7 +355,7 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'create_with_duplicate_acknowledge',
-    v_result.success,
+    NOT v_result.success AND v_result.error_code = 'DUPLICATE_PHONE',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
