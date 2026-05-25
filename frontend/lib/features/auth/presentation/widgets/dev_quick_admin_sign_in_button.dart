@@ -9,8 +9,23 @@ import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
 
 const bool _kEnableDevTools = bool.fromEnvironment('ENABLE_DEV_TOOLS');
 
-const kDevAdminUsername = String.fromEnvironment('DEV_ADMIN_USER', defaultValue: '');
-const kDevAdminPassword = String.fromEnvironment('DEV_ADMIN_PASS', defaultValue: '');
+const _kDevAdminUsernameEnv = String.fromEnvironment('DEV_ADMIN_USER', defaultValue: '');
+const _kDevAdminPasswordEnv = String.fromEnvironment('DEV_ADMIN_PASS', defaultValue: '');
+
+/// Seeded bootstrap admin from [20260516100400_auth_rbac_seed.sql] (username migration: `admin`).
+const _kDebugBootstrapAdminUsername = 'admin';
+const _kDebugBootstrapAdminPassword = 'admin';
+
+/// Resolves dev admin credentials: `--dart-define` overrides, else bootstrap seed in debug only.
+({String username, String password}) _resolveDevAdminCredentials() {
+  if (_kDevAdminUsernameEnv.isNotEmpty && _kDevAdminPasswordEnv.isNotEmpty) {
+    return (username: _kDevAdminUsernameEnv, password: _kDevAdminPasswordEnv);
+  }
+  if (kDebugMode) {
+    return (username: _kDebugBootstrapAdminUsername, password: _kDebugBootstrapAdminPassword);
+  }
+  return (username: '', password: '');
+}
 
 /// Debug-only one-tap sign-in as the seeded bootstrap administrator.
 class DevQuickAdminSignInButton extends ConsumerWidget {
@@ -22,7 +37,8 @@ class DevQuickAdminSignInButton extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    if (kDevAdminUsername.isEmpty || kDevAdminPassword.isEmpty) {
+    final credentials = _resolveDevAdminCredentials();
+    if (credentials.username.isEmpty || credentials.password.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -37,7 +53,7 @@ class DevQuickAdminSignInButton extends ConsumerWidget {
           ? null
           : () => ref
                 .read(authNotifierProvider.notifier)
-                .signIn(username: kDevAdminUsername, password: kDevAdminPassword),
+                .signIn(username: credentials.username, password: credentials.password),
       icon: const Icon(Icons.developer_mode),
       label: const Text('Dev: sign in as admin'),
     );
