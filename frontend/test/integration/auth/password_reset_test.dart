@@ -2,10 +2,11 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
+import 'package:ai_clinic/features/auth/domain/admin_reset_staff_password_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,12 +15,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../support/pump_auth_app.dart';
 import '../../support/settings_table_test_client.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/auth_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 
 const _targetStaff = StaffMemberSummary(id: 'staff-target-1', fullName: 'Lab Tech', role: StaffRole.labStaff);
 
-class _HarnessProvisioningRepository extends ProvisioningRepository {
+class _HarnessProvisioningRepository extends ProvisioningRepositoryImpl {
   _HarnessProvisioningRepository() : super(_FakeSupabaseClient());
 
   int resetCalls = 0;
@@ -72,7 +73,7 @@ void main() {
         authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
         provisioningRepositoryProvider.overrideWith((ref) => repo = _HarnessProvisioningRepository()),
         staffResetCandidatesProvider.overrideWith((ref) async => const [_targetStaff]),
-        staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepository(staffTable)),
+        staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepositoryImpl(staffTable)),
       ],
     );
     await completeStartupBootstrap(tester);

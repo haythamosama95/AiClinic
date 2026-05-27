@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,17 +6,15 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/core/auth/permission_denied_handler.dart';
-import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
-import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
-import 'package:ai_clinic/features/auth/presentation/widgets/dev_reset_clinic_button.dart';
-import 'package:ai_clinic/features/patients/presentation/widgets/dev_seed_patients_button.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/dev_tools.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/dev_tools.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/no_branch_blocked_panel.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/permission_demo_panel.dart';
-import 'package:ai_clinic/features/settings/presentation/widgets/shell_status_bar.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/widgets/shell_status_bar.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:go_router/go_router.dart';
 
 /// Authenticated placeholder shell: identity header, branch selector, RBAC demo (US3).
@@ -48,15 +47,15 @@ class AuthShellPage extends ConsumerWidget {
   }
 }
 
-class _ShellHomeBody extends StatelessWidget {
+class _ShellHomeBody extends ConsumerWidget {
   const _ShellHomeBody({required this.auth, required this.branchesAsync});
 
   final AuthSessionContext auth;
   final AsyncValue<List<BranchSummary>> branchesAsync;
 
   @override
-  Widget build(BuildContext context) {
-    final permissions = PermissionService(auth);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final permissions = ref.watch(permissionServiceProvider);
 
     final activeBranchLabel = branchesAsync.maybeWhen(
       data: (branches) {
@@ -112,7 +111,7 @@ class _ShellHomeBody extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 24),
-              const PermissionDemoPanel(),
+              if (kDebugMode) const PermissionDemoPanel(),
               if (!auth.setupRequired) ...[
                 const SizedBox(height: 16),
                 FilledButton(onPressed: () => context.go(AppRoutes.settings), child: const Text('Settings')),
@@ -123,7 +122,7 @@ class _ShellHomeBody extends StatelessWidget {
                   onPressed: () {
                     PermissionDeniedHandler.runIfPermitted(
                       context,
-                      permissions: PermissionService(auth),
+                      permissions: permissions,
                       permissionKey: PermissionKeys.manageStaff,
                       action: () => context.go(AppRoutes.settingsStaff),
                     );

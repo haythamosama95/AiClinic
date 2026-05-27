@@ -79,6 +79,70 @@ BEGIN
 END;
 $$;
 
+-- Reset must delete patient rows before branches (FK on patients.branch_id).
+DO $$
+DECLARE
+  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_result public.rpc_result;
+  v_org_id uuid;
+  v_branch_id uuid;
+  v_passed boolean;
+  v_detail text;
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  DELETE FROM public.staff_branch_assignments WHERE true;
+  DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
+  DELETE FROM public.app_settings WHERE true;
+  DELETE FROM public.subscription_cache WHERE true;
+  DELETE FROM public.patients WHERE true;
+  DELETE FROM public.branches WHERE true;
+  DELETE FROM public.organizations WHERE true;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.bootstrap_create_organization('Reset With Patients', '{}'::jsonb, NULL, 'EGP', 'UTC');
+  v_org_id := (v_result.data ->> 'organization_id')::uuid;
+
+  v_result := public.bootstrap_create_branch(
+    v_org_id,
+    'Patient Branch',
+    '1 Main St',
+    '555',
+    'PB1',
+    'https://maps.example'
+  );
+  v_branch_id := (v_result.data ->> 'branch_id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.patients (branch_id, organization_id, full_name, phone, gender, created_by)
+  VALUES (v_branch_id, v_org_id, 'Reset Patient', '01000000001', 'male', v_bootstrap_user);
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.dev_reset_clinic_installation();
+  v_passed := v_result.success
+    AND COALESCE((v_result.data ->> 'patients_deleted')::int, 0) >= 1
+    AND NOT auth_internal.organization_exists();
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO dev_reset_results VALUES (
+    'dev_reset_deletes_patients_before_branches',
+    v_passed,
+    COALESCE(v_result.error_code, 'patients_deleted=' || COALESCE(v_result.data ->> 'patients_deleted', '?'))
+  );
+END;
+$$;
+
 -- Non-bootstrap staff must not reset installation (public wrapper is SECURITY INVOKER).
 DO $$
 DECLARE

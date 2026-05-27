@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/presentation/patient_rpc_messages.dart';
 
 /// Confirms archival of a patient record (US5).
@@ -35,7 +35,7 @@ class _PatientArchiveDialogState extends ConsumerState<PatientArchiveDialog> {
     });
 
     try {
-      await ref.read(patientRepositoryProvider).archivePatient(widget.patientId);
+      await ref.read(archivePatientUseCaseProvider)(widget.patientId);
       if (!mounted) {
         return;
       }

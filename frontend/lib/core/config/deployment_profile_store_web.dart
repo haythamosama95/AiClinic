@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Returns the web profile source label shown in startup diagnostics.
-String resolveDeploymentProfilePath() => 'web/$DeploymentProfileStore.fileName';
+String resolveDeploymentProfilePath() => 'web/${DeploymentProfileStore.fileName}';
 
 /// Loads the deployment profile from the web origin or cached browser storage.
 Future<DeploymentProfile> loadDeploymentProfile() async {

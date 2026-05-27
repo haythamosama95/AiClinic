@@ -1,13 +1,16 @@
 import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/branch_form_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/branch_form_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import '../../helpers/auth_test_support.dart';
 import '../../support/settings_rpc_test_client.dart';
 import '../../support/settings_table_test_client.dart';
 
@@ -137,7 +140,7 @@ Widget _host({String? branchId, bool hasPermission = true, SettingsRpcTestClient
   ];
 
   final tableClient = SettingsTableTestClient({'branches': branches});
-  final rpcRepo = BranchRepository(rpcClient ?? SettingsRpcTestClient());
+  final rpcRepo = BranchRepositoryImpl(rpcClient ?? SettingsRpcTestClient());
 
   return ProviderScope(
     overrides: [
@@ -177,18 +180,18 @@ class _MissingBranchFormNotifier extends BranchFormNotifier {
   }
 }
 
-class _FormBranchRepository extends BranchRepository {
+class _FormBranchRepository extends BranchRepositoryImpl {
   _FormBranchRepository(this._tableClient, this._rpcRepo) : super(_tableClient);
 
   final SettingsTableTestClient _tableClient;
-  final BranchRepository _rpcRepo;
+  final BranchRepositoryImpl _rpcRepo;
 
   @override
   Future<List<BranchListItem>> listBranches({
     required String organizationId,
     BranchListFilter filter = BranchListFilter.all,
   }) {
-    return BranchRepository(_tableClient).listBranches(organizationId: organizationId, filter: filter);
+    return BranchRepositoryImpl(_tableClient).listBranches(organizationId: organizationId, filter: filter);
   }
 
   @override

@@ -6,11 +6,12 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
+import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/staff_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 @immutable
 class StaffFormUiState {
@@ -71,7 +72,7 @@ class StaffFormNotifier extends AsyncNotifier<StaffFormUiState> {
 
     final caller = auth.context!.staffProfile;
     final ownerAlreadyExists =
-        await ref.read(staffAdminRepositoryProvider).organizationHasOwner() ||
+        await ref.read(organizationHasOwnerUseCaseProvider)() ||
         ProvisioningRules.inferOwnerAlreadyExists(caller);
 
     final staffId = _staffId;
@@ -79,7 +80,7 @@ class StaffFormNotifier extends AsyncNotifier<StaffFormUiState> {
       return StaffFormUiState(ownerAlreadyExists: ownerAlreadyExists);
     }
 
-    final existing = await ref.read(staffAdminRepositoryProvider).fetchStaffMember(staffId);
+    final existing = await ref.read(fetchStaffMemberUseCaseProvider)(staffId);
     if (existing == null) {
       return StaffFormUiState(
         ownerAlreadyExists: ownerAlreadyExists,
@@ -149,18 +150,16 @@ class StaffFormNotifier extends AsyncNotifier<StaffFormUiState> {
     AppLog.info('settings.staff.save.start staff_id=${existing.id}');
 
     try {
-      final savedId = await ref
-          .read(staffAdminRepositoryProvider)
-          .updateStaffMember(
-            UpdateStaffMemberInput(
-              staffMemberId: existing.id,
-              fullName: trimmedName,
-              role: role,
-              branchIds: branchIds,
-              phone: phone?.trim(),
-              primaryBranchId: primary,
-            ),
-          );
+      final savedId = await ref.read(updateStaffMemberUseCaseProvider)(
+        UpdateStaffMemberInput(
+          staffMemberId: existing.id,
+          fullName: trimmedName,
+          role: role,
+          branchIds: branchIds,
+          phone: phone?.trim(),
+          primaryBranchId: primary,
+        ),
+      );
 
       state = AsyncData(current.copyWith(isSaving: false, savedStaffId: savedId));
       ref.invalidate(staffListProvider);

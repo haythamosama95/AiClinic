@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/patient_row_parsing.dart';
@@ -73,30 +74,30 @@ class PatientDetail {
   PatientDetail copyWith({
     String? id,
     String? fullName,
-    String? phone,
-    DateTime? dateOfBirth,
-    PatientGender? gender,
-    PatientMaritalStatus? maritalStatus,
-    String? notes,
+    Object? phone = copyWithSentinel,
+    Object? dateOfBirth = copyWithSentinel,
+    Object? gender = copyWithSentinel,
+    Object? maritalStatus = copyWithSentinel,
+    Object? notes = copyWithSentinel,
     String? branchId,
     String? branchName,
     DateTime? createdAt,
     DateTime? updatedAt,
-    String? createdByDisplay,
+    Object? createdByDisplay = copyWithSentinel,
   }) {
     return PatientDetail(
       id: id ?? this.id,
       fullName: fullName ?? this.fullName,
-      phone: phone ?? this.phone,
-      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
-      gender: gender ?? this.gender,
-      maritalStatus: maritalStatus ?? this.maritalStatus,
-      notes: notes ?? this.notes,
+      phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
+      dateOfBirth: identical(dateOfBirth, copyWithSentinel) ? this.dateOfBirth : dateOfBirth as DateTime?,
+      gender: identical(gender, copyWithSentinel) ? this.gender : gender as PatientGender?,
+      maritalStatus: identical(maritalStatus, copyWithSentinel) ? this.maritalStatus : maritalStatus as PatientMaritalStatus?,
+      notes: identical(notes, copyWithSentinel) ? this.notes : notes as String?,
       branchId: branchId ?? this.branchId,
       branchName: branchName ?? this.branchName,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      createdByDisplay: createdByDisplay ?? this.createdByDisplay,
+      createdByDisplay: identical(createdByDisplay, copyWithSentinel) ? this.createdByDisplay : createdByDisplay as String?,
     );
   }
 

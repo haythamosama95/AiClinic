@@ -9,11 +9,11 @@ import '../../support/patient_rpc_test_client.dart';
 void main() {
   group('PatientRepository.getPatient (US3)', () {
     late PatientRpcTestClient client;
-    late PatientRepository repository;
+    late PatientRepositoryImpl repository;
 
     setUp(() {
       client = PatientRpcTestClient();
-      repository = PatientRepository(client);
+      repository = PatientRepositoryImpl(client);
     });
 
     test('trivial: invokes get_patient with trimmed id and parses profile', () async {
@@ -51,7 +51,7 @@ void main() {
       expect(detail.maritalStatus, PatientMaritalStatus.widowed);
       expect(detail.notes, 'Penicillin allergy');
       expect(detail.createdByDisplay, 'Reception');
-      expect(detail.dateOfBirth, DateTime(1985, 3, 20));
+      expect(detail.dateOfBirth, DateTime.utc(1985, 3, 20));
     });
 
     test('stupid usage: blank patient id throws INVALID_INPUT before RPC', () async {

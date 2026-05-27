@@ -13,8 +13,8 @@ import 'package:ai_clinic/core/widgets/app_loading_state.dart';
 import 'package:ai_clinic/core/widgets/demo_scaffold.dart';
 import 'package:ai_clinic/core/widgets/error_state_panel.dart';
 import 'package:ai_clinic/core/widgets/snackbar_service.dart';
-import 'package:ai_clinic/shared/providers/connectivity_provider.dart';
-import 'package:ai_clinic/shared/providers/theme_provider.dart';
+import 'package:ai_clinic/app/providers/connectivity_provider.dart';
+import 'package:ai_clinic/app/providers/theme_provider.dart';
 
 /// Placeholder screen exercising shared foundations for US3 verification.
 class FoundationDemoPage extends ConsumerStatefulWidget {

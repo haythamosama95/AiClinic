@@ -8,7 +8,7 @@ import 'package:ai_clinic/features/settings/domain/idle_timeout_config.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/branch_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/staff_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/idle_timeout_settings_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Post-login clinic workstation settings (session policies, etc.).
 class SettingsPage extends ConsumerWidget {
@@ -22,7 +22,7 @@ class SettingsPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.home)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.home)),
       ),
       body: ListView(
         children: [

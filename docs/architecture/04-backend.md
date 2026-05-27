@@ -16,7 +16,7 @@ There is no custom backend server. Supabase provides the entire backend:
 
 | Supabase Component | Role in This System                                                                                                                      |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **GoTrue (Auth)**  | User authentication, JWT token issuance, session management, password resets                                                             |
+| **GoTrue (Auth)**  | Staff authentication via username + password (usernames stored in GoTrue's `email` field without `@`), JWT token issuance, session management |
 | **PostgREST**      | Auto-generated REST API from the database schema. Handles CRUD for all tables. Enforces RLS on every request.                            |
 | **PostgreSQL RPC** | Complex business logic exposed as database functions callable via `supabase.rpc()`. This is the primary mechanism for domain operations. |
 | **Storage API**    | File uploads/downloads for visit attachments (PDFs, scans, lab reports, examination documents)                                           |
@@ -36,8 +36,10 @@ Responsibilities:
 - Invoice generation and validation
 - Shift overlap validation and creation
 - Visit creation linked to appointments
-- Patient deduplication checks
+- Patient deduplication checks (phone match, name+DOB match)
 - Permission-gated discount application
+- Staff account provisioning (username-based, server-side password hashing)
+- Organization bootstrap and branch management
 - Any operation requiring atomicity or sequential consistency
 
 Design rules:
@@ -45,6 +47,26 @@ Design rules:
 - Functions accept parameters, validate, and return structured results (success/error).
 - Functions are defined in SQL migration files, versioned alongside the schema.
 - Functions run within a transaction, ensuring atomicity.
+
+#### Two-Schema Pattern (`public` + `auth_internal`)
+
+Privileged business logic lives in a private `auth_internal` schema, not directly exposed via PostgREST. The `public` schema exposes thin **SECURITY INVOKER** wrapper functions that delegate to `auth_internal` **SECURITY DEFINER** implementations.
+
+```
+Flutter app
+    │  supabase.rpc('create_patient', params)
+    ▼
+PostgREST → public.create_patient()       ← SECURITY INVOKER (thin wrapper)
+                │
+                ▼
+          auth_internal.create_patient()  ← SECURITY DEFINER (business logic)
+```
+
+Benefits:
+- PostgREST only exposes the `public` schema; `auth_internal` functions are invisible to API consumers.
+- SECURITY DEFINER logic can bypass RLS where necessary (e.g., cross-table lookups for validation).
+- The public wrappers remain SECURITY INVOKER, so RLS on table reads still applies to the caller's context.
+- Resolves Supabase linter rule 0029 (no authenticated + SECURITY DEFINER in public).
 
 #### Flutter Service Layer -- Orchestration and UI Logic
 
@@ -73,11 +95,13 @@ Flutter interacts with Supabase through these patterns:
 
 | Pattern                                    | When to Use                                        | Example                               |
 | ------------------------------------------ | -------------------------------------------------- | ------------------------------------- |
-| `supabase.from('table').select()`          | Simple reads with RLS filtering                    | Fetch patient list for current branch |
-| `supabase.from('table').insert()`          | Simple inserts where DB constraints are sufficient | Create a new patient record           |
-| `supabase.rpc('function_name', params)`    | Complex operations requiring validation logic      | Book appointment with conflict check  |
+| `supabase.from('table').select()`          | Simple reads with RLS filtering                    | Fetch staff list for the organization |
+| `supabase.rpc('function_name', params)`    | All domain write operations and complex queries    | Create patient, search patients, book appointment |
 | `supabase.storage.from('bucket').upload()` | File operations                                    | Upload visit attachment (scan PDF)    |
-| `supabase.auth.signIn()`                   | Authentication                                     | Staff login                           |
+| `supabase.auth.signInWithPassword()`       | Authentication (username + password)               | Staff login                           |
+| `supabase.auth.refreshSession()`           | Token refresh after bootstrap/context change       | Post-bootstrap claims refresh         |
 | `supabase.channel('topic').on(...)`        | Realtime subscriptions                             | Listen for appointment queue changes  |
+
+> **Note:** Direct `INSERT`/`UPDATE` via PostgREST is blocked by restrictive RLS policies on domain tables (e.g., `patients`). All writes go through RPC functions that run as SECURITY DEFINER and perform validation, audit logging, and permission checks internally.
 
 ---

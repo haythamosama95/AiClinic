@@ -13,13 +13,17 @@ void main() {
       expect(PatientGender.tryParse('\tFEMALE\n'), PatientGender.female);
     });
 
-    test('returns null for empty or unknown values', () {
+    test('returns null for empty or unrecognized values', () {
       expect(PatientGender.tryParse(null), isNull);
       expect(PatientGender.tryParse(''), isNull);
       expect(PatientGender.tryParse('   '), isNull);
-      expect(PatientGender.tryParse('other'), isNull);
-      expect(PatientGender.tryParse('unknown'), isNull);
       expect(PatientGender.tryParse('nonbinary'), isNull);
+    });
+
+    test('parses extended enum wire values', () {
+      expect(PatientGender.tryParse('other'), PatientGender.other);
+      expect(PatientGender.tryParse('prefer_not_to_say'), PatientGender.preferNotToSay);
+      expect(PatientGender.tryParse('unknown'), PatientGender.unknown);
     });
 
     test('stupid user input does not throw', () {

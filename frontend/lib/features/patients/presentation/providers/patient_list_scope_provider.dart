@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// In-memory list scope for patient search; resets to [PatientListScope.thisBranch] on sign-in.
 class PatientListScopeNotifier extends Notifier<PatientListScope> {

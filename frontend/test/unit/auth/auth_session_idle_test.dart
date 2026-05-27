@@ -1,12 +1,12 @@
 import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import '../../helpers/auth_test_support.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class _IdleHarnessRepository extends AuthRepository {
+class _IdleHarnessRepository extends AuthRepositoryImpl {
   _IdleHarnessRepository() : super(_FakeClient());
 
   int signOutCalls = 0;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 
 /// Advisory dialog when create/update finds likely duplicate patients (V1-3).
@@ -58,9 +59,7 @@ class _CandidateTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context).textTheme;
     final dob = candidate.dateOfBirth;
-    final dobLabel = dob == null
-        ? null
-        : '${dob.year}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}';
+    final dobLabel = dob == null ? null : formatDate(dob);
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -68,7 +67,7 @@ class _CandidateTile extends StatelessWidget {
       subtitle: Text(
         [
           if (candidate.phone != null && candidate.phone!.isNotEmpty) candidate.phone,
-          if (dobLabel != null) dobLabel,
+          ?dobLabel,
           candidate.branchName,
         ].whereType<String>().join(' · '),
         style: theme.bodySmall,

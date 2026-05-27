@@ -22,6 +22,9 @@ psql_run() {
 sql_tests=(
   patient_management_crud.sql
   patient_management_rls.sql
+  patient_management_extended.sql
+  patient_management_roles.sql
+  patient_management_search_advanced.sql
 )
 
 for f in "${sql_tests[@]}"; do

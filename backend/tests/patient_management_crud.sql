@@ -320,7 +320,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Duplicate advisory (phone) without acknowledge.
+  -- Duplicate advisory (phone) — now hard-blocked by unique index.
   v_result := public.create_patient(
     v_branch_main,
     'Different Name',
@@ -341,7 +341,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Proceed after duplicate acknowledge.
+  -- Duplicate phone with acknowledge — unique index blocks it (DUPLICATE_PHONE).
   v_result := public.create_patient(
     v_branch_main,
     'Different Name',
@@ -354,9 +354,28 @@ BEGIN
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
-    'create_with_duplicate_acknowledge',
-    v_result.success,
+    'create_duplicate_phone_blocked_even_with_acknowledge',
+    NOT v_result.success AND v_result.error_code = 'DUPLICATE_PHONE',
     COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Proceed after duplicate acknowledge (name+DOB match, unique phone).
+  v_result := public.create_patient(
+    v_branch_main,
+    'Ahmed Hassan',
+    '209900005555',
+    '1990-05-15'::date,
+    NULL,
+    NULL,
+    NULL,
+    true
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'create_with_duplicate_acknowledge',
+    v_result.success AND (v_result.data ->> 'patient_id') IS NOT NULL,
+    COALESCE(v_result.error_code, v_result.data ->> 'patient_id')
   );
   PERFORM set_config('role', 'authenticated', true);
 

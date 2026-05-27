@@ -1,14 +1,18 @@
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/data/patient_rpc_failure.dart';
 import 'package:ai_clinic/features/patients/domain/patient_dev_seed_data.dart';
 import 'package:ai_clinic/features/patients/domain/patient_dev_seed_spec.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
-import 'package:ai_clinic/features/settings/data/branch_repository.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 
 /// Outcome of a dev patient seed run.
 class PatientDevSeedOutcome {

@@ -1,10 +1,9 @@
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_scope_provider.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import '../../helpers/auth_test_support.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -29,7 +28,7 @@ void main() {
         overrides: [
           authSessionProvider.overrideWith(() => _FixedAuth(auth ?? _authSession())),
           patientListScopeProvider.overrideWith(PatientListScopeNotifier.new),
-          patientRepositoryProvider.overrideWith((ref) => PatientRepository(client)),
+          patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client)),
         ],
       );
     }

@@ -1,12 +1,13 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
+import 'package:ai_clinic/features/auth/domain/admin_reset_staff_password_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/staff_password_reset_page.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import '../../helpers/auth_test_support.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,7 +69,7 @@ class _TestProvisioningNotifier extends ProvisioningNotifier {
   }
 }
 
-class _FakeProvisioningRepository extends ProvisioningRepository {
+class _FakeProvisioningRepository extends ProvisioningRepositoryImpl {
   _FakeProvisioningRepository() : super(_ThrowingClient());
 
   @override
@@ -156,7 +157,7 @@ void main() {
 
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Front Desk (receptionist)'));
+    await tester.tap(find.text('Front Desk (Receptionist)'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField), 'new-secure-pass');
@@ -174,7 +175,7 @@ void main() {
 
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Front Desk (receptionist)'));
+    await tester.tap(find.text('Front Desk (Receptionist)'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField), 'valid-password');

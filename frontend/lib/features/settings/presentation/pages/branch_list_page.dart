@@ -4,11 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
-import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/branch_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/last_active_branch_blocked_dialog.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Branch list with active/inactive filters and lifecycle actions (US2).
 class BranchListPage extends ConsumerStatefulWidget {
@@ -57,7 +57,7 @@ class _BranchListPageState extends ConsumerState<BranchListPage> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Branches'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
         ),
         body: const Center(
           child: Padding(
@@ -71,7 +71,7 @@ class _BranchListPageState extends ConsumerState<BranchListPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Branches'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(AppRoutes.settingsBranchesNew),

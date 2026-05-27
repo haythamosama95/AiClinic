@@ -1,13 +1,14 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import '../../helpers/auth_test_support.dart';
 import '../../support/settings_rpc_test_client.dart';
 import '../../support/settings_table_test_client.dart';
 
@@ -130,7 +131,7 @@ Widget _host({
   ];
 
   final tableClient = SettingsTableTestClient({'staff_members': staff});
-  final rpcRepo = StaffAdminRepository(rpcClient ?? SettingsRpcTestClient());
+  final rpcRepo = StaffAdminRepositoryImpl(rpcClient ?? SettingsRpcTestClient());
 
   return ProviderScope(
     overrides: [
@@ -159,11 +160,11 @@ class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
   AuthSessionState build() => initial;
 }
 
-class _FakeStaffAdminRepository extends StaffAdminRepository {
+class _FakeStaffAdminRepository extends StaffAdminRepositoryImpl {
   _FakeStaffAdminRepository(this._tableClient, this._rpcRepo) : super(_tableClient);
 
   final SettingsTableTestClient _tableClient;
-  final StaffAdminRepository _rpcRepo;
+  final StaffAdminRepositoryImpl _rpcRepo;
 
   @override
   Future<List<StaffListItem>> listStaff({StaffListFilter filter = StaffListFilter.all}) async {

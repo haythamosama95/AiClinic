@@ -1,9 +1,7 @@
-import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patient_edit_page.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import '../../helpers/auth_test_support.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -280,7 +278,7 @@ Widget _host({
           ),
         ),
       ),
-      patientRepositoryProvider.overrideWith((ref) => PatientRepository(rpcClient)),
+      patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(rpcClient)),
     ],
     child: child,
   );

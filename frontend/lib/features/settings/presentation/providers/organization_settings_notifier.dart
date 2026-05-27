@@ -4,10 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/settings/data/organization_repository.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
+import 'package:ai_clinic/features/settings/domain/update_organization_input.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 @immutable
 class OrganizationSettingsUiState {
@@ -65,7 +66,7 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
     if (orgId == null || orgId.isEmpty) {
       throw StateError('Missing organization id in session');
     }
-    final profile = await ref.read(organizationRepositoryProvider).fetchProfile(organizationId: orgId);
+    final profile = await ref.read(fetchOrganizationProfileUseCaseProvider)(organizationId: orgId);
     if (profile == null) {
       throw StateError('Organization profile not found for $orgId');
     }
@@ -105,21 +106,19 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
     AppLog.info('settings.organization.save.start');
 
     try {
-      await ref
-          .read(organizationRepositoryProvider)
-          .updateOrganization(
-            UpdateOrganizationInput(
-              name: normalizedName,
-              logoUrl: logoUrl?.trim().isEmpty ?? true ? null : logoUrl!.trim(),
-              currencyCode: currencyCode,
-              timezone: timezone,
-              settingsJson: current.profile?.settingsJson,
-            ),
-          );
+      await ref.read(updateOrganizationUseCaseProvider)(
+        UpdateOrganizationInput(
+          name: normalizedName,
+          logoUrl: logoUrl?.trim().isEmpty ?? true ? null : logoUrl!.trim(),
+          currencyCode: currencyCode,
+          timezone: timezone,
+          settingsJson: current.profile?.settingsJson,
+        ),
+      );
 
-      final refreshed = await ref
-          .read(organizationRepositoryProvider)
-          .fetchProfile(organizationId: current.profile!.id);
+      final refreshed = await ref.read(fetchOrganizationProfileUseCaseProvider)(
+        organizationId: current.profile!.id,
+      );
 
       state = AsyncData(
         OrganizationSettingsUiState(

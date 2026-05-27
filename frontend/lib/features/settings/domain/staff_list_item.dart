@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter/foundation.dart';
 
@@ -39,7 +40,7 @@ class StaffListItem {
       role: role,
       isActive: _parseIsActive(row['is_active']),
       phone: optionalString(row['phone']),
-      branchNames: _parseBranchNames(row['branch_names']),
+      branchNames: const [],
     );
   }
 
@@ -49,24 +50,6 @@ class StaffListItem {
     }
     final text = value?.toString().trim().toLowerCase();
     return text == 'true' || text == 't' || text == '1';
-  }
-
-  static List<String> _parseBranchNames(Object? value) {
-    if (value == null) {
-      return const [];
-    }
-    if (value is List) {
-      return value
-          .map((e) => e?.toString().trim())
-          .whereType<String>()
-          .where((name) => name.isNotEmpty)
-          .toList(growable: false);
-    }
-    final text = value.toString().trim();
-    if (text.isEmpty) {
-      return const [];
-    }
-    return [text];
   }
 
   /// Comma-separated branch labels for list subtitle.
@@ -82,7 +65,7 @@ class StaffListItem {
     String? fullName,
     StaffRole? role,
     bool? isActive,
-    String? phone,
+    Object? phone = copyWithSentinel,
     List<String>? branchNames,
   }) {
     return StaffListItem(
@@ -90,7 +73,7 @@ class StaffListItem {
       fullName: fullName ?? this.fullName,
       role: role ?? this.role,
       isActive: isActive ?? this.isActive,
-      phone: phone ?? this.phone,
+      phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
       branchNames: branchNames ?? this.branchNames,
     );
   }

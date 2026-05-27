@@ -2,6 +2,8 @@
 
 This directory replaces the legacy monolithic `docs/architecture_overview.md` with focused architecture references that can be loaded selectively during planning and implementation.
 
+> **Last updated:** Reflects implementation through V1-3 (Patient Management). Includes divergences from original design (username auth, `auth_internal` schema pattern, patient schema changes).
+
 ## How To Use This Architecture Set
 
 1. Start with this index to identify the smallest relevant architecture surface.

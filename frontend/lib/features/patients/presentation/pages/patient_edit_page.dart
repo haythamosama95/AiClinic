@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/core/auth/permission_service.dart';
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/core/widgets/app_form_field.dart';
-import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
+import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 import 'package:ai_clinic/features/patients/data/patient_rpc_failure.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
@@ -14,13 +15,13 @@ import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/presentation/patient_rpc_messages.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/duplicate_candidates_dialog.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 void _leavePatientEdit(BuildContext context, String patientId) {
-  if (context.canPop()) {
-    context.pop();
+  if (context.nav.canPop()) {
+    context.nav.pop();
   } else {
-    context.go(AppRoutes.patientDetail(patientId));
+    context.nav.goPatientDetail(patientId);
   }
 }
 
@@ -83,7 +84,12 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
     return UpdatePatientInput(
       patientId: patientId,
       fullName: _fullNameController.text,
-      expectedUpdatedAt: _expectedUpdatedAt ?? DateTime.now().toUtc(),
+      expectedUpdatedAt:
+          _expectedUpdatedAt ??
+          (throw StateError(
+            'Cannot build patient update input: _expectedUpdatedAt is null. '
+            'Ensure patient detail is loaded before calling _buildInput.',
+          )),
       phone: _phoneController.text.trim(),
       dateOfBirth: _dateOfBirth,
       gender: _gender,
@@ -119,17 +125,12 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       _showStaleBanner = false;
     });
 
-    final repository = ref.read(patientRepositoryProvider);
-    await _updateWithDuplicateHandling(repository: repository, patientId: patientId, acknowledgeDuplicate: false);
+    await _updateWithDuplicateHandling(patientId: patientId, acknowledgeDuplicate: false);
   }
 
-  Future<void> _updateWithDuplicateHandling({
-    required PatientRepository repository,
-    required String patientId,
-    required bool acknowledgeDuplicate,
-  }) async {
+  Future<void> _updateWithDuplicateHandling({required String patientId, required bool acknowledgeDuplicate}) async {
     try {
-      final updatedAt = await repository.updatePatient(
+      final updatedAt = await ref.read(updatePatientUseCaseProvider)(
         _buildInput(patientId: patientId, acknowledgeDuplicate: acknowledgeDuplicate),
       );
 
@@ -139,7 +140,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
 
       ref.invalidate(patientDetailProvider(patientId));
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Patient updated successfully.')));
-      context.go(AppRoutes.patientDetail(patientId));
+      context.nav.goPatientDetail(patientId);
       // Keep analyzer happy about updatedAt being used for optimistic lock refresh on future edits.
       _expectedUpdatedAt = updatedAt;
     } on RpcFailure catch (error) {
@@ -157,7 +158,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
         }
 
         setState(() => _isSaving = true);
-        await _updateWithDuplicateHandling(repository: repository, patientId: patientId, acknowledgeDuplicate: true);
+        await _updateWithDuplicateHandling(patientId: patientId, acknowledgeDuplicate: true);
         return;
       }
 
@@ -180,7 +181,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       }
       setState(() {
         _isSaving = false;
-        _formError = error.toString();
+        _formError = UserErrorMapper.mapToUserMessage(error);
       });
     }
   }
@@ -192,6 +193,7 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       initialDate: _dateOfBirth ?? DateTime(now.year - 30),
       firstDate: DateTime(1900),
       lastDate: now,
+      initialDatePickerMode: DatePickerMode.year,
     );
     if (picked != null && mounted) {
       setState(() => _dateOfBirth = picked);
@@ -204,16 +206,17 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = PermissionService(ref.watch(authSessionProvider).context).canEditPatients();
     final id = widget.patientId?.trim() ?? '';
+    final canEdit = ref.watch(permissionServiceProvider).canEditPatients();
 
     if (!canEdit) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Edit patient'),
           leading: IconButton(
+            tooltip: 'Go back',
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => id.isEmpty ? context.go(AppRoutes.patients) : _leavePatientEdit(context, id),
+            onPressed: () => id.isEmpty ? context.nav.goPatients() : _leavePatientEdit(context, id),
           ),
         ),
         body: const Center(
@@ -230,7 +233,11 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Edit patient'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.patients)),
+          leading: IconButton(
+            tooltip: 'Go back',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.nav.goPatients(),
+          ),
         ),
         body: const Center(
           key: Key('patient_edit_invalid_id'),
@@ -242,6 +249,14 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
       );
     }
 
+    ref.listen(patientDetailProvider(id), (prev, next) {
+      next.whenData((detail) {
+        if (_loadedPatientId != detail.id) {
+          _populateFromDetail(detail);
+        }
+      });
+    });
+
     final detailAsync = ref.watch(patientDetailProvider(id));
 
     return Scaffold(
@@ -250,7 +265,11 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
           data: (detail) => Text('Edit ${detail.fullName}'),
           orElse: () => const Text('Edit patient'),
         ),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientEdit(context, id)),
+        leading: IconButton(
+          tooltip: 'Go back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _leavePatientEdit(context, id),
+        ),
       ),
       body: detailAsync.when(
         loading: () => const Center(key: Key('patient_edit_loading'), child: CircularProgressIndicator()),
@@ -268,18 +287,13 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
             ),
           ),
         ),
-        data: (detail) {
-          _populateFromDetail(detail);
-          return _buildForm(context, detail: detail, patientId: id);
-        },
+        data: (detail) => _buildForm(context, detail: detail, patientId: id),
       ),
     );
   }
 
   Widget _buildForm(BuildContext context, {required PatientDetail detail, required String patientId}) {
-    final dobLabel = _dateOfBirth == null
-        ? 'Not set'
-        : '${_dateOfBirth!.year}-${_dateOfBirth!.month.toString().padLeft(2, '0')}-${_dateOfBirth!.day.toString().padLeft(2, '0')}';
+    final dobLabel = _dateOfBirth == null ? 'Not set' : formatDate(_dateOfBirth);
 
     return SingleChildScrollView(
       key: const Key('patient_edit_body'),
@@ -346,18 +360,17 @@ class _PatientEditPageState extends ConsumerState<PatientEditPage> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<PatientGender?>(
-              value: _gender,
+              initialValue: _gender,
               decoration: const InputDecoration(labelText: 'Gender'),
-              items: const [
-                DropdownMenuItem(value: null, child: Text('Not specified')),
-                DropdownMenuItem(value: PatientGender.male, child: Text('Male')),
-                DropdownMenuItem(value: PatientGender.female, child: Text('Female')),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Not specified')),
+                for (final gender in PatientGender.values) DropdownMenuItem(value: gender, child: Text(gender.label)),
               ],
               onChanged: _isSaving ? null : (value) => setState(() => _gender = value),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<PatientMaritalStatus?>(
-              value: _maritalStatus,
+              initialValue: _maritalStatus,
               decoration: const InputDecoration(labelText: 'Marital status'),
               items: [
                 const DropdownMenuItem(value: null, child: Text('Not specified')),

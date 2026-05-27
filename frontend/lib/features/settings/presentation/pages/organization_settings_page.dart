@@ -74,7 +74,7 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
     return Scaffold(
       appBar: AppBar(
         title: const Text('Organization'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
       ),
       body: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

@@ -3,13 +3,13 @@ import 'package:ai_clinic/features/settings/data/organization_repository.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/organization_settings_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/organization_settings_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import '../../helpers/auth_test_support.dart';
 import '../../support/settings_rpc_test_client.dart';
 
 void main() {
@@ -214,7 +214,7 @@ class _DeniedOrganizationNotifier extends OrganizationSettingsNotifier {
   }
 }
 
-class _ReadWriteOrganizationRepository extends OrganizationRepository {
+class _ReadWriteOrganizationRepository extends OrganizationRepositoryImpl {
   _ReadWriteOrganizationRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
     : _fetchClient = fetchClient,
       super(rpcClient);
@@ -223,6 +223,6 @@ class _ReadWriteOrganizationRepository extends OrganizationRepository {
 
   @override
   Future<OrganizationProfile?> fetchProfile({required String organizationId}) {
-    return OrganizationRepository(_fetchClient).fetchProfile(organizationId: organizationId);
+    return OrganizationRepositoryImpl(_fetchClient).fetchProfile(organizationId: organizationId);
   }
 }

@@ -1,5 +1,6 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,11 +10,11 @@ import '../../support/patient_rpc_test_client.dart';
 void main() {
   group('PatientRepository create & duplicates (US1)', () {
     late PatientRpcTestClient client;
-    late PatientRepository repository;
+    late PatientRepositoryImpl repository;
 
     setUp(() {
       client = PatientRpcTestClient();
-      repository = PatientRepository(client);
+      repository = PatientRepositoryImpl(client);
     });
 
     test('trivial: createPatient returns patient_id and sends branch + name + phone', () async {
@@ -127,17 +128,21 @@ void main() {
 
       expect(failure, isNotNull);
       expect(failure!.code, 'DUPLICATE_WARNING');
-      final candidates = PatientRepository.parseDuplicateCandidates(failure.result.data?['candidates']);
+      final candidates = PatientRepositoryImpl.parseDuplicateCandidates(failure.result.data?['candidates']);
       expect(candidates, hasLength(1));
       expect(candidates.first.fullName, 'Ahmed Hassan');
     });
 
     test('checkDuplicates sends all provided fields', () async {
-      await repository.checkDuplicates(fullName: '  Ahmed  ', phone: ' 2010 ', dateOfBirth: DateTime(1990, 5, 15));
+      await repository.checkDuplicates(
+        fullName: '  Ahmed  ',
+        phone: ' 201005551234 ',
+        dateOfBirth: DateTime(1990, 5, 15),
+      );
 
       expect(client.lastFunction, 'check_patient_duplicates');
       expect(client.lastParams?['p_full_name'], 'Ahmed');
-      expect(client.lastParams?['p_phone'], '2010');
+      expect(client.lastParams?['p_phone'], '201005551234');
       expect(client.lastParams?['p_date_of_birth'], '1990-05-15');
     });
 
@@ -152,7 +157,7 @@ void main() {
         },
       };
 
-      final candidates = await repository.checkDuplicates(phone: '2010');
+      final candidates = await repository.checkDuplicates(phone: '201005551234');
 
       expect(candidates, hasLength(2));
     });
@@ -168,7 +173,7 @@ void main() {
         },
       };
 
-      final candidates = await repository.checkDuplicates(phone: '2010');
+      final candidates = await repository.checkDuplicates(phone: '201005551234');
 
       expect(candidates, hasLength(1));
     });

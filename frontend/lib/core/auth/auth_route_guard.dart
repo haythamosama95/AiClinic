@@ -2,7 +2,8 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Route guard rules for auth session states (see `contracts/auth-session.md`).
 abstract final class AuthRouteGuard {
@@ -113,14 +114,14 @@ abstract final class AuthRouteGuard {
     if (!auth.isAuthenticated || auth.context!.setupRequired) {
       return false;
     }
-    return auth.context!.permissions.contains('settings.manage_branches');
+    return auth.context!.permissions.contains(PermissionKeys.manageBranches);
   }
 
   static bool canAccessStaffManagement(AuthSessionState auth) {
     if (!auth.isAuthenticated || auth.context!.setupRequired) {
       return false;
     }
-    return auth.context!.permissions.contains('settings.manage_staff');
+    return auth.context!.permissions.contains(PermissionKeys.manageStaff);
   }
 
   static bool canAccessPermissionMatrix(AuthSessionState auth) {

@@ -1,5 +1,6 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 import 'package:ai_clinic/features/patients/data/patient_rpc_failure.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
@@ -10,11 +11,11 @@ import '../../support/patient_rpc_test_client.dart';
 void main() {
   group('PatientRepository updatePatient (US4)', () {
     late PatientRpcTestClient client;
-    late PatientRepository repository;
+    late PatientRepositoryImpl repository;
 
     setUp(() {
       client = PatientRpcTestClient();
-      repository = PatientRepository(client);
+      repository = PatientRepositoryImpl(client);
     });
 
     test('trivial: sends patient id, name, expected_updated_at, and phone', () async {

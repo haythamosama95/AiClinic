@@ -6,10 +6,10 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
-import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/permission_matrix_view.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 @immutable
 class RolePermissionsUiState {
@@ -75,7 +75,7 @@ class RolePermissionsNotifier extends AsyncNotifier<RolePermissionsUiState> {
       return RolePermissionsUiState(savedMatrix: empty, workingMatrix: empty, permissionDenied: true);
     }
 
-    final rows = await ref.read(rolePermissionsRepositoryProvider).fetchMatrix();
+    final rows = await ref.read(fetchPermissionMatrixUseCaseProvider)();
     final matrix = PermissionMatrixView.fromRows(rows);
     final role = auth.context!.staffProfile.role;
     final editable = role == StaffRole.owner || role == StaffRole.administrator;
@@ -138,16 +138,15 @@ class RolePermissionsNotifier extends AsyncNotifier<RolePermissionsUiState> {
     AppLog.info('settings.permissions.save.start count=${changes.length}');
 
     try {
-      final repository = ref.read(rolePermissionsRepositoryProvider);
       for (final change in changes) {
-        await repository.updateRolePermission(
+        await ref.read(updateRolePermissionUseCaseProvider)(
           role: change.role,
           permissionKey: change.permissionKey,
           isGranted: change.isGranted,
         );
       }
 
-      final rows = await repository.fetchMatrix();
+      final rows = await ref.read(fetchPermissionMatrixUseCaseProvider)();
       final matrix = PermissionMatrixView.fromRows(rows);
       state = AsyncData(
         RolePermissionsUiState(

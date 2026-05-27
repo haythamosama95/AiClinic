@@ -4,46 +4,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/auth/domain/create_staff_account_result.dart';
+import 'package:ai_clinic/features/auth/domain/admin_reset_staff_password_result.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
+import 'package:ai_clinic/features/auth/domain/repositories/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
-
-/// Input for `create_staff_account` RPC.
-class CreateStaffAccountInput {
-  const CreateStaffAccountInput({
-    required this.username,
-    required this.password,
-    required this.fullName,
-    required this.role,
-    required this.branchIds,
-    this.primaryBranchId,
-  });
-
-  final String username;
-  final String password;
-  final String fullName;
-  final StaffRole role;
-  final List<String> branchIds;
-  final String? primaryBranchId;
-}
-
-/// Successful staff account creation payload.
-class CreateStaffAccountResult {
-  const CreateStaffAccountResult({required this.staffMemberId, required this.username, required this.assignedPassword});
-
-  final String staffMemberId;
-  final String username;
-  final String assignedPassword;
-}
-
-/// Successful administrator password reset payload.
-class AdminResetStaffPasswordResult {
-  const AdminResetStaffPasswordResult({required this.staffMemberId, required this.assignedPassword});
-
-  final String staffMemberId;
-  final String assignedPassword;
-}
 
 /// Maps provisioning RPC PostgREST failures to [RpcFailure], or returns null to rethrow.
 RpcFailure? provisioningRpcFailureFromPostgrest(PostgrestException error, String functionName) {
@@ -60,12 +27,13 @@ RpcFailure? provisioningRpcFailureFromPostgrest(PostgrestException error, String
 }
 
 /// Calls staff provisioning RPCs (`create_staff_account`, `admin_reset_staff_password`).
-class ProvisioningRepository {
-  ProvisioningRepository(this._client);
+class ProvisioningRepositoryImpl implements ProvisioningRepository {
+  ProvisioningRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
   /// Lists active staff in the caller's organization (RLS-scoped) for password reset picker.
+  @override
   Future<List<StaffMemberSummary>> listOrgStaffMembers() async {
     final rows = await _client
         .from('staff_members')
@@ -86,6 +54,7 @@ class ProvisioningRepository {
   }
 
   /// Loads branch display fields for IDs the caller is allowed to see (org RLS).
+  @override
   Future<List<BranchSummary>> listBranchesByIds(List<String> branchIds) async {
     if (branchIds.isEmpty) {
       return const [];
@@ -112,6 +81,7 @@ class ProvisioningRepository {
     ];
   }
 
+  @override
   Future<CreateStaffAccountResult> createStaffAccount(CreateStaffAccountInput input) async {
     final result = await _invoke('create_staff_account', {
       'p_username': normalizeStaffUsername(input.username),
@@ -123,10 +93,12 @@ class ProvisioningRepository {
     });
 
     final staffMemberId = result.data?['staff_member_id']?.toString();
-    final assignedPassword = result.data?['assigned_password']?.toString();
-    if (staffMemberId == null || staffMemberId.isEmpty || assignedPassword == null) {
+    if (staffMemberId == null || staffMemberId.isEmpty) {
       throw StateError('Staff account was created but the response was incomplete.');
     }
+
+    // RPC no longer echoes passwords; use the value entered in the form for the share dialog.
+    final assignedPassword = result.data?['assigned_password']?.toString() ?? input.password;
 
     return CreateStaffAccountResult(
       staffMemberId: staffMemberId,
@@ -135,6 +107,7 @@ class ProvisioningRepository {
     );
   }
 
+  @override
   Future<AdminResetStaffPasswordResult> resetStaffPassword({
     required String staffMemberId,
     required String newPassword,
@@ -144,10 +117,8 @@ class ProvisioningRepository {
       'p_new_password': newPassword,
     });
 
-    final assignedPassword = result.data?['assigned_password']?.toString();
-    if (assignedPassword == null || assignedPassword.isEmpty) {
-      throw StateError('Password was reset but the response was incomplete.');
-    }
+    // RPC no longer echoes passwords; use the value entered in the form for the share dialog.
+    final assignedPassword = result.data?['assigned_password']?.toString() ?? newPassword;
 
     return AdminResetStaffPasswordResult(staffMemberId: staffMemberId, assignedPassword: assignedPassword);
   }
@@ -187,5 +158,5 @@ class ProvisioningRepository {
 }
 
 final provisioningRepositoryProvider = Provider<ProvisioningRepository>((ref) {
-  return ProvisioningRepository(ref.watch(supabaseClientProvider));
+  return ProvisioningRepositoryImpl(ref.watch(supabaseClientProvider));
 });

@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:ai_clinic/features/patients/domain/patient_row_parsing.dart';
 import 'package:flutter/foundation.dart';
 
@@ -49,16 +50,16 @@ class PatientListItem {
   PatientListItem copyWith({
     String? id,
     String? fullName,
-    String? phone,
-    DateTime? dateOfBirth,
+    Object? phone = copyWithSentinel,
+    Object? dateOfBirth = copyWithSentinel,
     String? registeringBranchId,
     String? registeringBranchName,
   }) {
     return PatientListItem(
       id: id ?? this.id,
       fullName: fullName ?? this.fullName,
-      phone: phone ?? this.phone,
-      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
+      dateOfBirth: identical(dateOfBirth, copyWithSentinel) ? this.dateOfBirth : dateOfBirth as DateTime?,
       registeringBranchId: registeringBranchId ?? this.registeringBranchId,
       registeringBranchName: registeringBranchName ?? this.registeringBranchName,
     );

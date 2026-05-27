@@ -40,12 +40,27 @@ class RpcCaptureSupabaseClient extends Fake implements SupabaseClient {
         'data': {'branch_id': '22222222-2222-4222-8222-222222222222'},
       };
     }
+    if (fn == 'create_staff_account') {
+      return {
+        'success': true,
+        'data': {
+          'staff_member_id': '33333333-3333-4333-8333-333333333333',
+          'username': params?['p_username'] ?? 'newstaff',
+        },
+      };
+    }
+    if (fn == 'admin_reset_staff_password') {
+      return {
+        'success': true,
+        'data': {
+          'staff_member_id': params?['p_staff_member_id'] ?? '33333333-3333-4333-8333-333333333333',
+          'password_reset': true,
+        },
+      };
+    }
     return {
       'success': true,
-      'data': {
-        'staff_member_id': '33333333-3333-4333-8333-333333333333',
-        'assigned_password': params?['p_password'] ?? params?['p_new_password'] ?? 'secret',
-      },
+      'data': {'staff_member_id': '33333333-3333-4333-8333-333333333333'},
     };
   }
 }

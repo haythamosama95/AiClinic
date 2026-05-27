@@ -19,13 +19,12 @@ import 'package:ai_clinic/features/patients/presentation/pages/patient_registrat
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_archive_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_scope_provider.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import '../../helpers/auth_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../support/fake_postgrest_rpc.dart';
@@ -54,7 +53,7 @@ Future<void> _pumpPatientApp(
     extraOverrides: [
       authSessionProvider.overrideWith(() => session),
       staffAssignableBranchesProvider.overrideWith((ref) async => branches),
-      patientRepositoryProvider.overrideWith((ref) => PatientRepository(rpcClient)),
+      patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(rpcClient)),
       patientListScopeProvider.overrideWith(PatientListScopeNotifier.new),
     ],
   );
@@ -153,7 +152,7 @@ Future<void> _pumpFocusedPatientPage(
             ),
           ),
         ),
-        patientRepositoryProvider.overrideWith((ref) => PatientRepository(client ?? PatientRpcTestClient())),
+        patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client ?? PatientRpcTestClient())),
         patientListScopeProvider.overrideWith(PatientListScopeNotifier.new),
       ],
       child: MaterialApp(home: page),
@@ -176,7 +175,7 @@ void main() {
       await _pumpPatientApp(tester, session: _ReceptionistSession());
 
       await _go(tester, AppRoutes.home);
-      await tester.tap(find.text('Patients'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Patients'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('patient_list_table')), findsOneWidget);
@@ -452,7 +451,7 @@ class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
 }
 
 class _CallLogPatientClient extends PatientRpcTestClient {
-  _CallLogPatientClient({super.rpcResults});
+  _CallLogPatientClient();
 
   final calls = <String>[];
   Map<String, dynamic>? lastUpdateParams;

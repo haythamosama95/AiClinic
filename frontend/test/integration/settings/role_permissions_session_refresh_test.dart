@@ -3,7 +3,7 @@ import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
 import 'package:ai_clinic/features/settings/domain/permission_matrix_row.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,8 +12,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../support/pump_auth_app.dart';
 import '../../support/settings_rpc_test_client.dart';
 import '../../support/settings_table_test_client.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/auth_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 
 void main() {
   group('role permissions session refresh', () {
@@ -91,7 +91,7 @@ class _OwnerReloadSessionNotifier extends TestAuthSessionNotifier {
   }
 }
 
-class _IntegrationRolePermissionsRepository extends RolePermissionsRepository {
+class _IntegrationRolePermissionsRepository extends RolePermissionsRepositoryImpl {
   _IntegrationRolePermissionsRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
     : _fetchClient = fetchClient,
       super(rpcClient);
@@ -100,6 +100,6 @@ class _IntegrationRolePermissionsRepository extends RolePermissionsRepository {
 
   @override
   Future<List<PermissionMatrixRow>> fetchMatrix() {
-    return RolePermissionsRepository(_fetchClient).fetchMatrix();
+    return RolePermissionsRepositoryImpl(_fetchClient).fetchMatrix();
   }
 }

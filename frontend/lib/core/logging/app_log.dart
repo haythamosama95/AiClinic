@@ -39,11 +39,16 @@ abstract final class AppLog {
     developer.log(formatted, name: name, level: 500);
   }
 
+  static const int _maxDebugRecords = 5000;
+
   static void _record(String level, String message) {
     if (!kDebugMode) {
       return;
     }
     debugRecords.add((level: level, message: message));
+    if (debugRecords.length > _maxDebugRecords) {
+      debugRecords.removeRange(0, debugRecords.length - _maxDebugRecords);
+    }
   }
 
   static final List<RegExp> _redactionPatterns = [
@@ -52,6 +57,11 @@ abstract final class AppLog {
     RegExp(r'Bearer\s+[A-Za-z0-9._-]+', caseSensitive: false),
     RegExp(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'),
     RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'),
+    // PHI patterns
+    RegExp(r'p_full_name[=:]\s*\S+', caseSensitive: false),
+    RegExp(r'p_phone[=:]\s*[\d+\-\s]+', caseSensitive: false),
+    RegExp(r'p_date_of_birth[=:]\s*\d{4}-\d{2}-\d{2}', caseSensitive: false),
+    RegExp(r'p_national_id[=:]\s*\S+', caseSensitive: false),
   ];
 
   /// Strips common secret patterns; never pass raw passwords, tokens, or emails.

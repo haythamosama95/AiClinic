@@ -2,52 +2,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-
-/// Filter for branch list queries.
-enum BranchListFilter { active, inactive, all }
-
-/// Input for [manage_create_branch] RPC.
-class CreateBranchInput {
-  const CreateBranchInput({required this.name, this.code, this.address, this.phone, this.mapsUrl});
-
-  final String name;
-  final String? code;
-  final String? address;
-  final String? phone;
-  final String? mapsUrl;
-}
-
-/// Input for [update_branch] RPC.
-class UpdateBranchInput {
-  const UpdateBranchInput({
-    required this.branchId,
-    required this.name,
-    this.code,
-    this.address,
-    this.phone,
-    this.mapsUrl,
-  });
-
-  final String branchId;
-  final String name;
-  final String? code;
-  final String? address;
-  final String? phone;
-  final String? mapsUrl;
-}
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 
 /// Branch list reads (RLS) and lifecycle mutations (RPC).
-class BranchRepository with SettingsRpcInvoker {
-  BranchRepository(this._client);
+class BranchRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements BranchRepository {
+  BranchRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
   @override
   SupabaseClient get settingsRpcClient => _client;
 
+  @override
   Future<List<BranchListItem>> listBranches({
     required String organizationId,
     BranchListFilter filter = BranchListFilter.all,
@@ -77,6 +50,7 @@ class BranchRepository with SettingsRpcInvoker {
     return items;
   }
 
+  @override
   Future<String> createBranch(CreateBranchInput input) async {
     final name = input.name.trim();
     if (name.isEmpty) {
@@ -100,6 +74,7 @@ class BranchRepository with SettingsRpcInvoker {
     return branchId;
   }
 
+  @override
   Future<String> updateBranch(UpdateBranchInput input) async {
     final name = input.name.trim();
     if (name.isEmpty) {
@@ -120,11 +95,12 @@ class BranchRepository with SettingsRpcInvoker {
     return result.data?['branch_id']?.toString() ?? input.branchId;
   }
 
+  @override
   Future<RpcResult> setBranchActive({required String branchId, required bool isActive}) {
     return invokeSettingsRpc('set_branch_active', {'p_branch_id': branchId, 'p_is_active': isActive});
   }
 }
 
 final branchRepositoryProvider = Provider<BranchRepository>((ref) {
-  return BranchRepository(ref.watch(supabaseClientProvider));
+  return BranchRepositoryImpl(ref.watch(supabaseClientProvider));
 });

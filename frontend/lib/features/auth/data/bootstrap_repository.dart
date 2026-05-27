@@ -4,42 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-
-/// Organization fields for first-time clinic bootstrap.
-class BootstrapOrganizationInput {
-  const BootstrapOrganizationInput({
-    required this.name,
-    this.logoUrl,
-    this.currencyCode,
-    this.timezone,
-    this.settingsJson = const {},
-  });
-
-  final String name;
-  final String? logoUrl;
-  final String? currencyCode;
-  final String? timezone;
-  final Map<String, dynamic> settingsJson;
-}
-
-/// Branch fields for first-time clinic bootstrap.
-class BootstrapBranchInput {
-  const BootstrapBranchInput({
-    required this.organizationId,
-    required this.name,
-    this.code,
-    this.address,
-    this.phone,
-    this.mapsUrl,
-  });
-
-  final String organizationId;
-  final String name;
-  final String? code;
-  final String? address;
-  final String? phone;
-  final String? mapsUrl;
-}
+import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/auth/domain/repositories/bootstrap_repository.dart';
 
 /// Maps bootstrap RPC PostgREST failures to [RpcFailure], or returns null to rethrow.
 RpcFailure? bootstrapRpcFailureFromPostgrest(PostgrestException error, String functionName) {
@@ -67,15 +34,29 @@ RpcFailure? bootstrapRpcFailureFromPostgrest(PostgrestException error, String fu
     );
   }
 
+  if (functionName == 'dev_reset_clinic_installation' &&
+      (error.code == '23503' || error.message.contains('violates foreign key constraint'))) {
+    return RpcFailure(
+      RpcResult(
+        success: false,
+        errorCode: 'RESET_DEPENDENCY_BLOCKED',
+        errorMessage:
+            'Clinic reset could not remove branches or organization data because related records still exist '
+            '(for example patients). Apply migration 20260525120000_dev_reset_delete_patients.sql, restart Supabase, and try again.',
+      ),
+    );
+  }
+
   return null;
 }
 
 /// Calls bootstrap RPCs (`bootstrap_create_organization`, `bootstrap_create_branch`).
-class BootstrapRepository {
-  BootstrapRepository(this._client);
+class BootstrapRepositoryImpl implements BootstrapRepository {
+  BootstrapRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
+  @override
   Future<String> createOrganization(BootstrapOrganizationInput input) async {
     final result = await _invoke('bootstrap_create_organization', {
       'p_name': input.name.trim(),
@@ -94,10 +75,12 @@ class BootstrapRepository {
   }
 
   /// Removes all organizations/branches (bootstrap admin only). For local development.
+  @override
   Future<RpcResult> resetInstallationForDevelopment() async {
     return _invoke('dev_reset_clinic_installation', null, allowEmptyParams: true);
   }
 
+  @override
   Future<String> createBranch(BootstrapBranchInput input) async {
     final result = await _invoke('bootstrap_create_branch', {
       'p_organization_id': input.organizationId,
@@ -158,5 +141,5 @@ class BootstrapRepository {
 }
 
 final bootstrapRepositoryProvider = Provider<BootstrapRepository>((ref) {
-  return BootstrapRepository(ref.watch(supabaseClientProvider));
+  return BootstrapRepositoryImpl(ref.watch(supabaseClientProvider));
 });

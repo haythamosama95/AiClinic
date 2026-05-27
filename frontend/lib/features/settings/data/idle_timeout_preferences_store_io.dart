@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path_provider/path_provider.dart';
+
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/settings/data/idle_timeout_preferences_store.dart';
 import 'package:ai_clinic/features/settings/domain/idle_timeout_config.dart';
@@ -9,7 +11,7 @@ const _idleTimeoutKey = 'idle_timeout_minutes';
 
 Future<Duration> loadIdleDuration() async {
   try {
-    final file = _settingsFile();
+    final file = await _settingsFile();
     if (!await file.exists()) {
       return IdleTimeoutConfig.defaultDuration;
     }
@@ -35,7 +37,7 @@ Future<Duration> loadIdleDuration() async {
 
 Future<void> saveIdleDuration(Duration duration) async {
   final clamped = IdleTimeoutConfig.clampDuration(duration);
-  final file = _settingsFile();
+  final file = await _settingsFile();
   Map<String, dynamic> payload = {};
 
   if (await file.exists()) {
@@ -54,6 +56,7 @@ Future<void> saveIdleDuration(Duration duration) async {
   AppLog.fine('settings.idle_timeout.saved minutes=${clamped.inMinutes}');
 }
 
-File _settingsFile() {
-  return File('${Directory.current.path}${Platform.pathSeparator}${IdleTimeoutPreferencesStore.fileName}');
+Future<File> _settingsFile() async {
+  final dir = await getApplicationSupportDirectory();
+  return File('${dir.path}${Platform.pathSeparator}${IdleTimeoutPreferencesStore.fileName}');
 }

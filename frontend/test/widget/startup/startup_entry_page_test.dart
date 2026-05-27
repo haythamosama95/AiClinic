@@ -1,13 +1,13 @@
 import 'package:ai_clinic/core/config/deployment_profile.dart';
 import 'package:ai_clinic/core/errors/failures.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
-import 'package:ai_clinic/shared/services/startup_health_service.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 
 class _HealthyStartupSessionNotifier extends StartupSessionNotifier {
   _HealthyStartupSessionNotifier(this.profile, this.health);

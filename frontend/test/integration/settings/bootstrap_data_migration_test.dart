@@ -5,18 +5,17 @@ import 'package:ai_clinic/features/settings/data/branch_repository.dart';
 import 'package:ai_clinic/features/settings/data/organization_repository.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../support/pump_auth_app.dart';
-import '../../support/settings_rpc_test_client.dart';
 import '../../support/settings_table_test_client.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/auth_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 
 /// Simulated tenant created by V1-1 bootstrap (spec test case 12).
 const _bootstrapOrgId = '00000000-0000-4000-8000-000000000020';
@@ -185,8 +184,8 @@ void main() {
         tester,
         extraOverrides: [
           authSessionProvider.overrideWith(_OwnerSessionNotifier.new),
-          staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepository(tableClient)),
-          branchRepositoryProvider.overrideWithValue(BranchRepository(tableClient)),
+          staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepositoryImpl(tableClient)),
+          branchRepositoryProvider.overrideWithValue(BranchRepositoryImpl(tableClient)),
         ],
       );
       await completeStartupBootstrap(tester);
@@ -216,7 +215,7 @@ void main() {
       container.read(appRouterProvider).go(AppRoutes.home);
       await tester.pumpAndSettle();
 
-      expect(find.text('Settings'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Settings'), findsOneWidget);
       expect(find.text('Manage staff'), findsOneWidget);
       expect(find.text('Create staff account'), findsNothing);
 
@@ -259,8 +258,8 @@ Future<void> _pumpOwnerWithBootstrapData(WidgetTester tester) async {
     extraOverrides: [
       authSessionProvider.overrideWith(_OwnerSessionNotifier.new),
       organizationRepositoryProvider.overrideWithValue(_BootstrapOrganizationRepository(tableClient)),
-      branchRepositoryProvider.overrideWithValue(BranchRepository(tableClient)),
-      staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepository(tableClient)),
+      branchRepositoryProvider.overrideWithValue(BranchRepositoryImpl(tableClient)),
+      staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepositoryImpl(tableClient)),
     ],
   );
   await completeStartupBootstrap(tester);
@@ -269,14 +268,14 @@ Future<void> _pumpOwnerWithBootstrapData(WidgetTester tester) async {
   (container.read(authSessionProvider.notifier) as _OwnerSessionNotifier).setAuthenticated();
 }
 
-class _BootstrapOrganizationRepository extends OrganizationRepository {
+class _BootstrapOrganizationRepository extends OrganizationRepositoryImpl {
   _BootstrapOrganizationRepository(this._fetchClient) : super(_fetchClient);
 
   final SupabaseClient _fetchClient;
 
   @override
   Future<OrganizationProfile?> fetchProfile({required String organizationId}) {
-    return OrganizationRepository(_fetchClient).fetchProfile(organizationId: organizationId);
+    return OrganizationRepositoryImpl(_fetchClient).fetchProfile(organizationId: organizationId);
   }
 }
 

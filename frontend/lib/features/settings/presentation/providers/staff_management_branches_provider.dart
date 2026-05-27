@@ -1,8 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
-import 'package:ai_clinic/features/settings/data/branch_repository.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Active organization branches available for staff assignment pickers (US3).
 final staffManagementBranchesProvider = FutureProvider.autoDispose<List<BranchSummary>>((ref) async {
@@ -11,9 +12,10 @@ final staffManagementBranchesProvider = FutureProvider.autoDispose<List<BranchSu
     return const [];
   }
 
-  final branches = await ref
-      .read(branchRepositoryProvider)
-      .listBranches(organizationId: orgId, filter: BranchListFilter.active);
+  final branches = await ref.read(listBranchesUseCaseProvider)(
+    organizationId: orgId,
+    filter: BranchListFilter.active,
+  );
 
   return [
     for (final branch in branches)

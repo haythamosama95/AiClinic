@@ -3,12 +3,12 @@ import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dar
 import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
 import 'package:ai_clinic/features/settings/domain/permission_matrix_row.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/role_permissions_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import '../../helpers/auth_test_support.dart';
 import '../../support/settings_rpc_test_client.dart';
 import '../../support/settings_table_test_client.dart';
 
@@ -239,7 +239,7 @@ ProviderContainer _container({
   );
 }
 
-class _MatrixAndRpcRepository extends RolePermissionsRepository {
+class _MatrixAndRpcRepository extends RolePermissionsRepositoryImpl {
   _MatrixAndRpcRepository({required SupabaseClient fetchClient, required SupabaseClient rpcClient})
     : _fetchClient = fetchClient,
       super(rpcClient);
@@ -248,7 +248,7 @@ class _MatrixAndRpcRepository extends RolePermissionsRepository {
 
   @override
   Future<List<PermissionMatrixRow>> fetchMatrix() {
-    return RolePermissionsRepository(_fetchClient).fetchMatrix();
+    return RolePermissionsRepositoryImpl(_fetchClient).fetchMatrix();
   }
 }
 

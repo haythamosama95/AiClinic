@@ -21,5 +21,11 @@ class StaffMemberSummary {
     return StaffMemberSummary(id: id, fullName: fullName, role: role);
   }
 
-  String get roleLabel => role.wireValue;
+  String get roleLabel => switch (role) {
+    StaffRole.owner => 'Owner',
+    StaffRole.administrator => 'Administrator',
+    StaffRole.doctor => 'Doctor',
+    StaffRole.receptionist => 'Receptionist',
+    StaffRole.labStaff => 'Lab staff',
+  };
 }

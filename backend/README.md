@@ -18,7 +18,32 @@ supabase db reset   # or: supabase migration up
 
 Verification scripts: `backend/tests/auth_flow_smoke.sh`, `backend/tests/rls_isolation.sql`.
 
+## Flutter boundary integration tests
+
+After backend SQL tests pass, run the live Flutter repository suite (see `frontend/test/boundary/README.md`):
+
+```bash
+./backend/tests/run_all_backend_tests.sh
+cd frontend && ./tool/run_boundary_tests.py
+```
+
+Requires `frontend/config/local/deployment-profile.json` (anon key from `backend/local/.env`) and GoTrue custom claims on Compose (`GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_*` in `backend/local/docker-compose.yml`).
+
 Bootstrap administrator defaults: `backend/seed/bootstrap_admin.env.example`. First-run guide: `docs/setup/bootstrap-admin.md`.
+
+## Configuration
+
+There are **two** deployment paths. Choose ONE — do not mix them.
+
+| Path               | Config files                                              | Used by                                                        |
+| ------------------ | --------------------------------------------------------- | -------------------------------------------------------------- |
+| Supabase CLI       | `backend/supabase/config.toml`                            | `supabase start`, `supabase db reset`, `supabase migration up` |
+| Raw Docker Compose | `backend/local/docker-compose.yml` + `backend/local/.env` | `docker compose up` from `backend/local/`                      |
+
+- **Supabase CLI** is recommended for migration development (runs a full Supabase stack including Auth, Storage, Realtime, Studio).
+- **Docker Compose** is for self-hosted or CI deployments where the CLI is not available.
+
+Both paths use the same migration files under `backend/supabase/migrations/`.
 
 ---
 

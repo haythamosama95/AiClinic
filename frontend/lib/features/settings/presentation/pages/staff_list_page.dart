@@ -5,10 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/staff_list_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Staff list with active/inactive filters and lifecycle actions (US3).
 class StaffListPage extends ConsumerStatefulWidget {
@@ -51,7 +51,7 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Staff'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
         ),
         body: const Center(
           child: Padding(
@@ -65,7 +65,7 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Staff'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(AppRoutes.settingsStaffNew),

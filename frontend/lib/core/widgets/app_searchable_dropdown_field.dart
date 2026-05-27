@@ -64,8 +64,8 @@ class _AppSearchableDropdownFieldState extends State<AppSearchableDropdownField>
 
   void _handleFocusChange() {
     if (!_focusNode.hasFocus) {
-      // Defer so pointer-down on a suggestion can select before the overlay closes.
-      SchedulerBinding.instance.addPostFrameCallback((_) {
+      // Defer overlay close to allow onTap to fire on suggestion items first.
+      Future.delayed(const Duration(milliseconds: 150), () {
         if (!mounted || _focusNode.hasFocus) return;
         _closeSuggestions();
       });
@@ -188,9 +188,9 @@ class _SuggestionsList extends StatelessWidget {
       itemCount: options.length,
       itemBuilder: (context, index) {
         final option = options[index];
-        return Listener(
+        return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onPointerDown: (_) => onSelect(option),
+          onTap: () => onSelect(option),
           child: ListTile(dense: true, title: Text(option)),
         );
       },

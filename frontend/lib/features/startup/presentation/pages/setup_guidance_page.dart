@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/config/deployment_profile.dart';
 import 'package:ai_clinic/core/config/deployment_profile_store.dart';
 import 'package:ai_clinic/features/startup/presentation/providers/startup_notifier.dart';
 import 'package:ai_clinic/features/startup/presentation/widgets/failure_banner.dart';
@@ -40,7 +39,7 @@ class SetupGuidancePage extends ConsumerWidget {
                   Text('Next step', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   Text(
-                    'Create `${DeploymentProfileStore.fileName}` in the process working directory (for example `frontend/${DeploymentProfileStore.fileName}` when running the app from `frontend/`).',
+                    'Create `${DeploymentProfileStore.localProfilePath}` (copy from `config/examples/deployment-profile.example.json`).',
                   ),
                   const SizedBox(height: 8),
                   const Text('Required fields: deployment_mode=local, supabase_url, and supabase_anon_key.'),

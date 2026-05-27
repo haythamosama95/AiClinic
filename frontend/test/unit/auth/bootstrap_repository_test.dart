@@ -1,4 +1,6 @@
 import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
+import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -30,6 +32,21 @@ void main() {
       expect(failure!.code, 'RESET_NOT_APPLIED');
     });
 
+    test('maps patient FK violation on dev reset to RESET_DEPENDENCY_BLOCKED', () {
+      final failure = bootstrapRpcFailureFromPostgrest(
+        const PostgrestException(
+          message:
+              'update or delete on table "branches" violates foreign key constraint "patients_branch_id_fkey" on table "patients"',
+          code: '23503',
+        ),
+        'dev_reset_clinic_installation',
+      );
+
+      expect(failure, isNotNull);
+      expect(failure!.code, 'RESET_DEPENDENCY_BLOCKED');
+      expect(failure.message, contains('20260525120000'));
+    });
+
     test('returns null for unrelated PostgREST errors', () {
       final failure = bootstrapRpcFailureFromPostgrest(
         const PostgrestException(message: 'permission denied', code: '42501'),
@@ -42,11 +59,11 @@ void main() {
 
   group('BootstrapRepository RPC contract', () {
     late RpcCaptureSupabaseClient client;
-    late BootstrapRepository repository;
+    late BootstrapRepositoryImpl repository;
 
     setUp(() {
       client = RpcCaptureSupabaseClient();
-      repository = BootstrapRepository(client);
+      repository = BootstrapRepositoryImpl(client);
     });
 
     test('createOrganization sends contract parameter names and trims strings', () async {

@@ -8,7 +8,7 @@ import 'package:ai_clinic/features/startup/presentation/widgets/connection_statu
 import 'package:ai_clinic/features/startup/presentation/widgets/degraded_state_notice.dart';
 import 'package:ai_clinic/features/startup/presentation/widgets/failure_banner.dart';
 import 'package:ai_clinic/features/startup/presentation/widgets/startup_scaffold.dart';
-import 'package:ai_clinic/shared/providers/theme_provider.dart';
+import 'package:ai_clinic/app/providers/theme_provider.dart';
 
 /// Main pre-auth entry experience with connection status and safe next-step guidance.
 class StartupEntryPage extends ConsumerWidget {

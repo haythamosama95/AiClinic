@@ -1,0 +1,5 @@
+{
+  "deployment_mode": "local",
+  "supabase_url": "http://127.0.0.1:54321",
+  "supabase_anon_key": "YOUR_SUPABASE_ANON_KEY_HERE"
+}

@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/features/settings/data/idle_timeout_preferences_store.dart';
 import 'package:ai_clinic/features/settings/domain/idle_timeout_config.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 class IdleTimeoutSettingsState {
   const IdleTimeoutSettingsState({required this.duration, this.isSaving = false, this.saveMessage, this.errorMessage});

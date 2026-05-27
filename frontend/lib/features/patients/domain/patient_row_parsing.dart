@@ -4,7 +4,7 @@ DateTime? parsePatientDate(Object? value) {
     return null;
   }
   if (value is DateTime) {
-    return DateTime(value.year, value.month, value.day);
+    return DateTime.utc(value.year, value.month, value.day);
   }
   final text = value.toString().trim();
   if (text.isEmpty) {
@@ -14,7 +14,7 @@ DateTime? parsePatientDate(Object? value) {
   if (parsed == null) {
     return null;
   }
-  return DateTime(parsed.year, parsed.month, parsed.day);
+  return DateTime.utc(parsed.year, parsed.month, parsed.day);
 }
 
 DateTime? parsePatientDateTime(Object? value) {

@@ -7,7 +7,7 @@ import 'package:ai_clinic/core/widgets/app_form_field.dart';
 import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
 import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Administrator-initiated staff password reset (US7).
 class StaffPasswordResetPage extends ConsumerStatefulWidget {

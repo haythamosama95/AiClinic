@@ -1,13 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_query.dart';
 import 'package:ai_clinic/features/patients/presentation/patient_rpc_messages.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_scope_provider.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// UI state for [PatientListPage] (US2).
 class PatientListUiState {
@@ -19,6 +20,7 @@ class PatientListUiState {
     required this.searchQuery,
     this.validationHint,
     this.isLoadingMore = false,
+    this.loadMoreError,
   });
 
   final List<PatientListItem> items;
@@ -28,6 +30,7 @@ class PatientListUiState {
   final String searchQuery;
   final String? validationHint;
   final bool isLoadingMore;
+  final String? loadMoreError;
 
   bool get hasMore => offset + items.length < totalCount;
 
@@ -40,6 +43,8 @@ class PatientListUiState {
     String? validationHint,
     bool clearValidationHint = false,
     bool? isLoadingMore,
+    String? loadMoreError,
+    bool clearLoadMoreError = false,
   }) {
     return PatientListUiState(
       items: items ?? this.items,
@@ -49,6 +54,7 @@ class PatientListUiState {
       searchQuery: searchQuery ?? this.searchQuery,
       validationHint: clearValidationHint ? null : (validationHint ?? this.validationHint),
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadMoreError: clearLoadMoreError ? null : (loadMoreError ?? this.loadMoreError),
     );
   }
 }
@@ -58,6 +64,7 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
   static const pageSize = 25;
 
   String _searchQuery = '';
+  int _reloadGeneration = 0;
 
   @override
   Future<PatientListUiState> build() async {
@@ -83,6 +90,9 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
       _searchQuery = searchQuery.trim();
     }
 
+    _reloadGeneration++;
+    final myGeneration = _reloadGeneration;
+
     final hint = PatientSearchQuery.validationHint(_searchQuery);
     if (hint != null) {
       state = AsyncData(
@@ -101,7 +111,17 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
     if (!state.hasValue) {
       state = const AsyncLoading();
     }
-    state = await AsyncValue.guard(() => _fetchPage(offset: 0));
+    state = await AsyncValue.guard(() async {
+      final result = await _fetchPage(offset: 0);
+      if (_reloadGeneration != myGeneration) {
+        throw _StaleReloadException();
+      }
+      return result;
+    });
+
+    if (state case AsyncError(error: _StaleReloadException())) {
+      return;
+    }
   }
 
   Future<void> loadMore() async {
@@ -110,7 +130,7 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
       return;
     }
 
-    state = AsyncData(current.copyWith(isLoadingMore: true));
+    state = AsyncData(current.copyWith(isLoadingMore: true, clearLoadMoreError: true));
 
     try {
       final page = await _fetchRpc(offset: current.offset + current.limit);
@@ -122,10 +142,16 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
           offset: page.offset,
           isLoadingMore: false,
           clearValidationHint: true,
+          clearLoadMoreError: true,
         ),
       );
-    } catch (error, stack) {
-      state = AsyncError(error, stack);
+    } catch (error, _) {
+      state = AsyncData(
+        current.copyWith(
+          isLoadingMore: false,
+          loadMoreError: error.toString(),
+        ),
+      );
     }
   }
 
@@ -162,15 +188,13 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
     }
 
     try {
-      return await ref
-          .read(patientRepositoryProvider)
-          .searchPatients(
-            query: _searchQuery.isEmpty ? null : _searchQuery,
-            scope: scope,
-            branchId: activeBranchId,
-            limit: pageSize,
-            offset: offset,
-          );
+      return await ref.read(searchPatientsUseCaseProvider)(
+        query: _searchQuery.isEmpty ? null : _searchQuery,
+        scope: scope,
+        branchId: scope == PatientListScope.thisBranch ? activeBranchId : null,
+        limit: pageSize,
+        offset: offset,
+      );
     } on RpcFailure catch (failure) {
       throw StateError(patientMessageForRpc(failure));
     }
@@ -178,3 +202,5 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
 }
 
 final patientListProvider = AsyncNotifierProvider<PatientListNotifier, PatientListUiState>(PatientListNotifier.new);
+
+class _StaleReloadException implements Exception {}

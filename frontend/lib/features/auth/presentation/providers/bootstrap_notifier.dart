@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
+import 'package:ai_clinic/features/auth/domain/usecases/auth_use_case_providers.dart';
+import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_dummy_data.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_field_options.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// User-facing messages for bootstrap RPC error codes.
 String bootstrapMessageForRpc(RpcFailure failure) {
@@ -18,6 +20,7 @@ String bootstrapMessageForRpc(RpcFailure failure) {
     'RESET_INCOMPLETE' => 'Clinic data could not be cleared. Apply the latest database migrations and try again.',
     'RESET_NOT_APPLIED' => failure.message,
     'RESET_SAFE_DELETE' => failure.message,
+    'RESET_DEPENDENCY_BLOCKED' => failure.message,
     _ => 'Unable to save clinic setup. Check connectivity and try again.',
   };
 }
@@ -157,7 +160,7 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
     AppLog.info('bootstrap.dev_reset.start');
 
     try {
-      final result = await ref.read(bootstrapRepositoryProvider).resetInstallationForDevelopment();
+      final result = await ref.read(resetInstallationUseCaseProvider)();
       AppLog.info(
         'bootstrap.dev_reset.rpc_ok orgs=${result.data?['organizations_deleted']} '
         'branches=${result.data?['branches_deleted']}',
@@ -249,8 +252,7 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
     AppLog.info('bootstrap.finish_setup.start');
 
     try {
-      final repository = ref.read(bootstrapRepositoryProvider);
-      final organizationId = await repository.createOrganization(
+      final organizationId = await ref.read(createOrganizationUseCaseProvider)(
         BootstrapOrganizationInput(
           name: draft.name,
           logoUrl: draft.logoUrl,
@@ -260,7 +262,7 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
       );
       AppLog.info('bootstrap.finish_setup.organization_created id=$organizationId');
 
-      final branchId = await repository.createBranch(
+      final branchId = await ref.read(createBootstrapBranchUseCaseProvider)(
         BootstrapBranchInput(
           organizationId: organizationId,
           name: branchName.trim(),

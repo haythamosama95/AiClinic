@@ -2,45 +2,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
-
-/// Filter for staff list queries.
-enum StaffListFilter { active, inactive, all }
-
-/// Input for [update_staff_member] RPC.
-class UpdateStaffMemberInput {
-  const UpdateStaffMemberInput({
-    required this.staffMemberId,
-    required this.fullName,
-    required this.role,
-    required this.branchIds,
-    this.phone,
-    this.primaryBranchId,
-    this.isActive,
-  });
-
-  final String staffMemberId;
-  final String fullName;
-  final StaffRole role;
-  final List<String> branchIds;
-  final String? phone;
-  final String? primaryBranchId;
-  final bool? isActive;
-}
+import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 
 /// Staff administration reads (RLS) and lifecycle RPCs.
-class StaffAdminRepository with SettingsRpcInvoker {
-  StaffAdminRepository(this._client);
+class StaffAdminRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements StaffAdminRepository {
+  StaffAdminRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
   @override
   SupabaseClient get settingsRpcClient => _client;
 
+  @override
   Future<List<StaffListItem>> listStaff({StaffListFilter filter = StaffListFilter.all}) async {
     final base = _client.from('staff_members').select('id, full_name, role, phone, is_active').eq('is_deleted', false);
 
@@ -69,6 +50,7 @@ class StaffAdminRepository with SettingsRpcInvoker {
     return [for (final item in items) item.copyWith(branchNames: branchNamesByStaff[item.id] ?? const [])];
   }
 
+  @override
   Future<StaffMemberDetail?> fetchStaffMember(String staffMemberId) async {
     final row = await _client
         .from('staff_members')
@@ -84,6 +66,7 @@ class StaffAdminRepository with SettingsRpcInvoker {
   }
 
   /// Whether the organization already has at least one owner account.
+  @override
   Future<bool> organizationHasOwner() async {
     final rows = await _client
         .from('staff_members')
@@ -124,6 +107,7 @@ class StaffAdminRepository with SettingsRpcInvoker {
     return map;
   }
 
+  @override
   Future<String> updateStaffMember(UpdateStaffMemberInput input) async {
     final fullName = input.fullName.trim();
     if (fullName.isEmpty) {
@@ -154,11 +138,12 @@ class StaffAdminRepository with SettingsRpcInvoker {
     return result.data?['staff_member_id']?.toString() ?? input.staffMemberId;
   }
 
+  @override
   Future<RpcResult> setStaffActive({required String staffMemberId, required bool isActive}) {
     return invokeSettingsRpc('set_staff_active', {'p_staff_member_id': staffMemberId, 'p_is_active': isActive});
   }
 }
 
 final staffAdminRepositoryProvider = Provider<StaffAdminRepository>((ref) {
-  return StaffAdminRepository(ref.watch(supabaseClientProvider));
+  return StaffAdminRepositoryImpl(ref.watch(supabaseClientProvider));
 });

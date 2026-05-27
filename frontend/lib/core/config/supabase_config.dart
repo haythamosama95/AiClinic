@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/deployment_profile.dart';
+import 'package:ai_clinic/core/config/in_memory_gotrue_async_storage.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 
@@ -58,6 +59,10 @@ class SupabaseConfig {
 
 bool _isFlutterTestRuntime() => supabase_config_env.isFlutterTestRuntimeFromEnvironment();
 
+bool _isBoundaryIntegration() => supabase_config_env.isBoundaryIntegrationFromEnvironment();
+
+bool _useTestStub() => _isFlutterTestRuntime() && !_isBoundaryIntegration();
+
 /// Initializes Supabase without restoring sessions from platform storage.
 class SupabaseBootstrap {
   const SupabaseBootstrap._();
@@ -69,7 +74,7 @@ class SupabaseBootstrap {
   ///
   /// Do not use [Supabase.instance] to check readiness — the SDK throws before init.
   static bool get isReady {
-    if (_isFlutterTestRuntime() && _testReady) {
+    if (_useTestStub() && _testReady) {
       return true;
     }
 
@@ -98,7 +103,7 @@ class SupabaseBootstrap {
       return Future<void>.value();
     }
 
-    if (_isFlutterTestRuntime()) {
+    if (_useTestStub()) {
       debugMarkReadyForTests();
       return Future<void>.value();
     }
@@ -111,7 +116,11 @@ class SupabaseBootstrap {
       await Supabase.initialize(
         url: config.url.toString(),
         anonKey: config.anonKey,
-        authOptions: const FlutterAuthClientOptions(localStorage: EmptyLocalStorage()),
+        authOptions: const FlutterAuthClientOptions(
+          localStorage: EmptyLocalStorage(),
+          // Avoid SharedPreferences in headless `flutter test` (boundary suite).
+          pkceAsyncStorage: InMemoryGotrueAsyncStorage(),
+        ),
       );
       _initialized = true;
       AppLog.info('supabase.bootstrap.ready');
@@ -140,6 +149,7 @@ final supabaseClientProvider = Provider<SupabaseClient>((ref) {
 });
 
 /// Decodes JWT custom claims issued by `get_custom_claims`.
+/// Returns empty map for expired or malformed tokens.
 Map<String, dynamic> decodeAccessTokenClaims(String accessToken) {
   final parts = accessToken.split('.');
   if (parts.length < 2) {
@@ -153,6 +163,16 @@ Map<String, dynamic> decodeAccessTokenClaims(String accessToken) {
     if (decoded is! Map<String, dynamic>) {
       return const {};
     }
+
+    final exp = decoded['exp'];
+    if (exp is int) {
+      final expiryDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true);
+      if (expiryDate.isBefore(DateTime.now().toUtc())) {
+        AppLog.warning('supabase.jwt.expired exp=$expiryDate');
+        return const {};
+      }
+    }
+
     return decoded;
   } on FormatException {
     return const {};

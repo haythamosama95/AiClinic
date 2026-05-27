@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:flutter/foundation.dart';
 
 /// Branch row for administration list and pickers (V1-2).
@@ -65,19 +66,19 @@ class BranchListItem {
     String? id,
     String? name,
     bool? isActive,
-    String? code,
-    String? address,
-    String? phone,
-    String? mapsUrl,
+    Object? code = copyWithSentinel,
+    Object? address = copyWithSentinel,
+    Object? phone = copyWithSentinel,
+    Object? mapsUrl = copyWithSentinel,
   }) {
     return BranchListItem(
       id: id ?? this.id,
       name: name ?? this.name,
       isActive: isActive ?? this.isActive,
-      code: code ?? this.code,
-      address: address ?? this.address,
-      phone: phone ?? this.phone,
-      mapsUrl: mapsUrl ?? this.mapsUrl,
+      code: identical(code, copyWithSentinel) ? this.code : code as String?,
+      address: identical(address, copyWithSentinel) ? this.address : address as String?,
+      phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
+      mapsUrl: identical(mapsUrl, copyWithSentinel) ? this.mapsUrl : mapsUrl as String?,
     );
   }
 

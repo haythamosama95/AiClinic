@@ -11,7 +11,7 @@ import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/branch_assignment_label.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Minimal staff account creation form (US6).
 class StaffCreatePage extends ConsumerStatefulWidget {

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/core/auth/permission_service.dart';
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/core/utils/date_format_utils.dart';
 import 'package:ai_clinic/core/widgets/app_data_table.dart';
+import 'package:ai_clinic/core/widgets/skeleton_list.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
@@ -12,7 +12,7 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_list_
 import 'package:ai_clinic/features/patients/presentation/widgets/dev_seed_patients_button.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_scope_toggle.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_search_field.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Paginated patient list with scope toggle and search (US2).
 class PatientListPage extends ConsumerWidget {
@@ -21,7 +21,7 @@ class PatientListPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authSessionProvider);
-    final permissions = PermissionService(auth.context);
+    final permissions = ref.watch(permissionServiceProvider);
     final canView = permissions.canViewPatients();
     final listAsync = ref.watch(patientListProvider);
     final scope = ref.watch(patientListScopeProvider);
@@ -30,7 +30,7 @@ class PatientListPage extends ConsumerWidget {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Patients'),
-          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.home)),
+          leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.nav.goHome()),
         ),
         body: const Center(
           child: Padding(
@@ -46,13 +46,13 @@ class PatientListPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Patients'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.home)),
+        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.nav.goHome()),
         actions: const [DevSeedPatientsButton()],
       ),
       floatingActionButton: permissions.canCreatePatients()
           ? FloatingActionButton.extended(
               key: const Key('patient_list_register_fab'),
-              onPressed: () => context.push(AppRoutes.patientsNew),
+              onPressed: () => context.nav.goPatientRegister(),
               icon: const Icon(Icons.person_add_outlined),
               label: const Text('Register patient'),
             )
@@ -78,8 +78,20 @@ class PatientListPage extends ConsumerWidget {
             ),
           Expanded(
             child: listAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(child: Text('Failed to load patients: $error')),
+              loading: () => const SkeletonList(),
+              error: (error, _) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Failed to load patients.', style: Theme.of(context).textTheme.bodyLarge),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () => ref.invalidate(patientListProvider),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
               data: (ui) => _PatientListBody(
                 ui: ui,
                 showBranchColumn: scope == PatientListScope.allBranches,
@@ -133,7 +145,7 @@ class _PatientListBody extends StatelessWidget {
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   key: const Key('patient_list_empty_register'),
-                  onPressed: () => context.push(AppRoutes.patientsNew),
+                  onPressed: () => context.nav.goPatientRegister(),
                   icon: const Icon(Icons.person_add_outlined),
                   label: const Text('Register patient'),
                 ),
@@ -162,10 +174,24 @@ class _PatientListBody extends StatelessWidget {
             columns: columns,
             rows: rows,
             emptyMessage: 'No patients to display',
-            onRowTap: (index) => context.push(AppRoutes.patientDetail(ui.items[index].id)),
+            onRowTap: (index) => context.nav.pushPatientDetail(ui.items[index].id),
           ),
         ),
-        if (ui.hasMore)
+        if (ui.loadMoreError != null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Failed to load more patients.', style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 8),
+                  OutlinedButton(onPressed: onLoadMore, child: const Text('Retry')),
+                ],
+              ),
+            ),
+          )
+        else if (ui.hasMore)
           Padding(
             padding: const EdgeInsets.all(16),
             child: Center(
@@ -183,11 +209,6 @@ class _PatientListBody extends StatelessWidget {
   }
 
   List<String> _rowCells(PatientListItem item, {required bool showBranchColumn}) {
-    final dob = item.dateOfBirth;
-    final dobText = dob == null
-        ? '—'
-        : '${dob.year}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}';
-
-    return [item.fullName, item.phone ?? '—', dobText, if (showBranchColumn) item.registeringBranchName];
+    return [item.fullName, item.phone ?? '—', formatDate(item.dateOfBirth), if (showBranchColumn) item.registeringBranchName];
   }
 }

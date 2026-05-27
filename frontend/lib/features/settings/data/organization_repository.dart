@@ -2,36 +2,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
-
-/// Input for steady-state [update_organization] RPC.
-class UpdateOrganizationInput {
-  const UpdateOrganizationInput({
-    required this.name,
-    this.logoUrl,
-    this.currencyCode,
-    this.timezone,
-    this.settingsJson,
-  });
-
-  final String name;
-  final String? logoUrl;
-  final String? currencyCode;
-  final String? timezone;
-  final Map<String, dynamic>? settingsJson;
-}
+import 'package:ai_clinic/features/settings/domain/repositories/organization_repository.dart';
+import 'package:ai_clinic/features/settings/domain/update_organization_input.dart';
 
 /// Organization profile reads (RLS) and updates (RPC).
-class OrganizationRepository with SettingsRpcInvoker {
-  OrganizationRepository(this._client);
+class OrganizationRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements OrganizationRepository {
+  OrganizationRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
   @override
   SupabaseClient get settingsRpcClient => _client;
 
+  @override
   Future<OrganizationProfile?> fetchProfile({required String organizationId}) async {
     final row = await _client
         .from('organizations')
@@ -50,6 +37,7 @@ class OrganizationRepository with SettingsRpcInvoker {
     return OrganizationProfile.fromRow(Map<String, dynamic>.from(row));
   }
 
+  @override
   Future<String> updateOrganization(UpdateOrganizationInput input) async {
     final name = OrganizationProfile.normalizeName(input.name);
     if (name == null) {
@@ -76,5 +64,5 @@ class OrganizationRepository with SettingsRpcInvoker {
 }
 
 final organizationRepositoryProvider = Provider<OrganizationRepository>((ref) {
-  return OrganizationRepository(ref.watch(supabaseClientProvider));
+  return OrganizationRepositoryImpl(ref.watch(supabaseClientProvider));
 });

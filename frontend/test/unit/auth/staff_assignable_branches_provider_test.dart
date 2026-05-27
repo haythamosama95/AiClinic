@@ -2,8 +2,8 @@ import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import '../../helpers/auth_test_support.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,7 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const _activeBranchId = '00000000-0000-4000-8000-000000000101';
 const _inactiveBranchId = '00000000-0000-4000-8000-000000000102';
 
-class _BranchListProvisioningRepository extends ProvisioningRepository {
+class _BranchListProvisioningRepository extends ProvisioningRepositoryImpl {
   _BranchListProvisioningRepository() : super(SupabaseClient('http://localhost', 'anon'));
 
   @override

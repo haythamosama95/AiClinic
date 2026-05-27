@@ -13,8 +13,8 @@ Implement detailed test cases:
 You may implement more tests than described in the md file.
 
 When finished:
-- run ALL frontend tests
-- run ALL backend tests
+- if the changes are frontend related only, run ALL frontend tests using run_all_tests.py
+- if the changes are backend tests only, run ALL backend tests using run_all_backend_tests.sh and run integration tests using run_boundary_tests.py
 - fix all failures before completion
 
 Follow clean architecture Flutter practices.

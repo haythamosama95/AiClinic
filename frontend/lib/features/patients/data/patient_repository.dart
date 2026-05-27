@@ -2,112 +2,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
-import 'package:ai_clinic/core/logging/app_log.dart';
+import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
-import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
-import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
-import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
-
-/// Paginated patient list/search result from `search_patients`.
-class PatientSearchPage {
-  const PatientSearchPage({required this.items, required this.totalCount, required this.limit, required this.offset});
-
-  final List<PatientListItem> items;
-  final int totalCount;
-  final int limit;
-  final int offset;
-
-  factory PatientSearchPage.fromRpcData(Map<String, dynamic>? data) {
-    if (data == null) {
-      return const PatientSearchPage(items: [], totalCount: 0, limit: 25, offset: 0);
-    }
-
-    final rawItems = data['items'];
-    final items = <PatientListItem>[];
-    if (rawItems is List) {
-      for (final entry in rawItems) {
-        if (entry is Map) {
-          final item = PatientListItem.fromRow(Map<String, dynamic>.from(entry));
-          if (item != null) {
-            items.add(item);
-          }
-        }
-      }
-    }
-
-    return PatientSearchPage(
-      items: items,
-      totalCount: _readInt(data['total_count'], fallback: items.length),
-      limit: _readInt(data['limit'], fallback: 25),
-      offset: _readInt(data['offset'], fallback: 0),
-    );
-  }
-
-  static int _readInt(Object? value, {required int fallback}) {
-    if (value is int) {
-      return value;
-    }
-    return int.tryParse(value?.toString() ?? '') ?? fallback;
-  }
-}
-
-/// Input for [PatientRepository.createPatient].
-class CreatePatientInput {
-  const CreatePatientInput({
-    required this.activeBranchId,
-    required this.fullName,
-    required this.phone,
-    this.dateOfBirth,
-    this.gender,
-    this.maritalStatus,
-    this.notes,
-    this.acknowledgeDuplicate = false,
-  });
-
-  final String activeBranchId;
-  final String fullName;
-  final String phone;
-  final DateTime? dateOfBirth;
-  final PatientGender? gender;
-  final PatientMaritalStatus? maritalStatus;
-  final String? notes;
-  final bool acknowledgeDuplicate;
-}
-
-/// Input for [PatientRepository.updatePatient].
-class UpdatePatientInput {
-  const UpdatePatientInput({
-    required this.patientId,
-    required this.fullName,
-    required this.expectedUpdatedAt,
-    this.phone,
-    this.dateOfBirth,
-    this.gender,
-    this.maritalStatus,
-    this.notes,
-    this.acknowledgeDuplicate = false,
-  });
-
-  final String patientId;
-  final String fullName;
-  final DateTime expectedUpdatedAt;
-  final String? phone;
-  final DateTime? dateOfBirth;
-  final PatientGender? gender;
-  final PatientMaritalStatus? maritalStatus;
-  final String? notes;
-  final bool acknowledgeDuplicate;
-}
+import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
+import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 
 /// Patient list/detail mutations via secured RPCs (V1-3).
-class PatientRepository {
-  PatientRepository(this._client);
+class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
+  PatientRepositoryImpl(this._client);
 
   final SupabaseClient _client;
 
+  @override
+  SupabaseClient get rpcClient => _client;
+
+  @override
+  String get migrationHint => '20260523140000_patient_management.sql';
+
+  @override
+  String get rpcLogDomain => 'patients';
+
+  @override
   Future<PatientSearchPage> searchPatients({
     String? query,
     required PatientListScope scope,
@@ -115,18 +35,23 @@ class PatientRepository {
     int limit = 25,
     int offset = 0,
   }) async {
+    if (scope == PatientListScope.thisBranch && (branchId == null || branchId.trim().isEmpty)) {
+      throw ArgumentError('branchId is required when scope is thisBranch');
+    }
+
     final params = <String, dynamic>{
       'p_scope': scope.rpcScopeValue,
       'p_limit': limit,
       'p_offset': offset,
       if (query != null && query.trim().isNotEmpty) 'p_query': query.trim(),
-      if (scope == PatientListScope.thisBranch && branchId != null) 'p_branch_id': branchId,
+      if (branchId != null && branchId.trim().isNotEmpty) 'p_branch_id': branchId,
     };
 
-    final result = await _invoke('search_patients', params);
+    final result = await invokeRpc('search_patients', params);
     return PatientSearchPage.fromRpcData(result.data);
   }
 
+  @override
   Future<PatientDetail> getPatient(String patientId) async {
     final id = patientId.trim();
     if (id.isEmpty) {
@@ -135,7 +60,7 @@ class PatientRepository {
       );
     }
 
-    final result = await _invoke('get_patient', {'p_patient_id': id});
+    final result = await invokeRpc('get_patient', {'p_patient_id': id});
     final detail = PatientDetail.fromRow(result.data ?? {});
     if (detail == null) {
       throw StateError('Patient profile was returned in an unexpected shape.');
@@ -143,22 +68,37 @@ class PatientRepository {
     return detail;
   }
 
+  @override
   Future<List<DuplicateCandidate>> checkDuplicates({
     String? fullName,
     String? phone,
     DateTime? dateOfBirth,
     String? excludePatientId,
   }) async {
-    final result = await _invoke('check_patient_duplicates', {
+    if (phone != null) {
+      final normalized = phone.replaceAll(RegExp(r'\D'), '');
+      if (normalized.length < 8 || normalized.length > 15) {
+        throw RpcFailure(
+          const RpcResult(
+            success: false,
+            errorCode: 'INVALID_INPUT',
+            errorMessage: 'Phone must contain 8 to 15 digits when provided.',
+          ),
+        );
+      }
+    }
+
+    final result = await invokeRpc('check_patient_duplicates', {
       if (fullName != null) 'p_full_name': fullName.trim(),
       if (phone != null) 'p_phone': phone.trim(),
       if (dateOfBirth != null) 'p_date_of_birth': dateOfBirth.toIso8601String().split('T').first,
-      if (excludePatientId != null) 'p_exclude_patient_id': excludePatientId,
+      'p_exclude_patient_id': ?excludePatientId,
     });
 
     return parseDuplicateCandidates(result.data?['candidates']);
   }
 
+  @override
   Future<String> createPatient(CreatePatientInput input) async {
     final name = input.fullName.trim();
     if (name.isEmpty) {
@@ -174,7 +114,7 @@ class PatientRepository {
       );
     }
 
-    final result = await _invoke('create_patient', {
+    final result = await invokeRpc('create_patient', {
       'p_active_branch_id': input.activeBranchId,
       'p_full_name': name,
       'p_phone': phone,
@@ -192,6 +132,7 @@ class PatientRepository {
     return patientId;
   }
 
+  @override
   Future<DateTime> updatePatient(UpdatePatientInput input) async {
     final name = input.fullName.trim();
     if (name.isEmpty) {
@@ -200,7 +141,7 @@ class PatientRepository {
       );
     }
 
-    final result = await _invoke('update_patient', {
+    final result = await invokeRpc('update_patient', {
       'p_patient_id': input.patientId,
       'p_full_name': name,
       'p_expected_updated_at': input.expectedUpdatedAt.toUtc().toIso8601String(),
@@ -220,41 +161,12 @@ class PatientRepository {
     if (parsed == null) {
       throw StateError('Patient updated_at could not be parsed: $updatedAt');
     }
-    return parsed;
+    return parsed.toUtc();
   }
 
+  @override
   Future<void> archivePatient(String patientId) async {
-    await _invoke('archive_patient', {'p_patient_id': patientId});
-  }
-
-  Future<RpcResult> _invoke(String functionName, Map<String, dynamic> params) async {
-    AppLog.fine('patients.rpc.invoke fn=$functionName params=${params.keys.join(',')}');
-
-    try {
-      final raw = await _client.rpc(functionName, params: params);
-      final result = RpcResult.fromDynamic(raw);
-      if (!result.success) {
-        AppLog.warning(
-          'patients.rpc.rejected fn=$functionName code=${result.errorCode} '
-          'message=${result.errorMessage}',
-        );
-        throw RpcFailure(result);
-      }
-      return result;
-    } on PostgrestException catch (error) {
-      if (error.code == 'PGRST202' || error.message.contains('Could not find the function')) {
-        throw RpcFailure(
-          RpcResult(
-            success: false,
-            errorCode: 'RPC_NOT_APPLIED',
-            errorMessage:
-                'Database function "$functionName" is missing. Apply backend migrations '
-                '(20260523140000_patient_management.sql) and restart Supabase.',
-          ),
-        );
-      }
-      rethrow;
-    }
+    await invokeRpc('archive_patient', {'p_patient_id': patientId});
   }
 
   /// Parses `candidates` from RPC success or `DUPLICATE_WARNING` error payloads.
@@ -277,5 +189,5 @@ class PatientRepository {
 }
 
 final patientRepositoryProvider = Provider<PatientRepository>((ref) {
-  return PatientRepository(ref.watch(supabaseClientProvider));
+  return PatientRepositoryImpl(ref.watch(supabaseClientProvider));
 });

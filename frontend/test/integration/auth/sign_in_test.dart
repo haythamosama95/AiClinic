@@ -2,17 +2,17 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../support/pump_auth_app.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/auth_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 
-class _SignInHarnessAuthRepository extends AuthRepository {
+class _SignInHarnessAuthRepository extends AuthRepositoryImpl {
   _SignInHarnessAuthRepository(this._onSignIn) : super(_UninitializedSupabaseClient());
 
   final void Function() _onSignIn;

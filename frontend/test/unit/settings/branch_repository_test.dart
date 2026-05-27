@@ -1,5 +1,8 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,11 +12,11 @@ import '../../support/settings_table_test_client.dart';
 void main() {
   group('BranchRepository', () {
     late SettingsRpcTestClient client;
-    late BranchRepository repository;
+    late BranchRepositoryImpl repository;
 
     setUp(() {
       client = SettingsRpcTestClient();
-      repository = BranchRepository(client);
+      repository = BranchRepositoryImpl(client);
     });
 
     test('createBranch sends manage_create_branch parameters', () async {
@@ -72,7 +75,7 @@ void main() {
           {'id': 'bad', 'name': '', 'is_active': true, 'is_deleted': false, 'organization_id': orgId},
         ],
       });
-      final repo = BranchRepository(client);
+      final repo = BranchRepositoryImpl(client);
 
       final active = await repo.listBranches(organizationId: orgId, filter: BranchListFilter.active);
       final inactive = await repo.listBranches(organizationId: orgId, filter: BranchListFilter.inactive);
@@ -93,7 +96,7 @@ void main() {
       );
 
       expect(
-        () => BranchRepository(client).createBranch(const CreateBranchInput(name: 'X')),
+        () => BranchRepositoryImpl(client).createBranch(const CreateBranchInput(name: 'X')),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'RPC_NOT_APPLIED')),
       );
     });
