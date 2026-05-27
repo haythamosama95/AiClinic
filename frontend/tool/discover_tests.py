@@ -30,6 +30,7 @@ BOUNDARY_SUBSET_ROOTS: dict[str, tuple[str, ...]] = {
     "auth": ("test/boundary/auth",),
     "settings": ("test/boundary/settings",),
     "patients": ("test/boundary/patients",),
+    "appointments": ("test/boundary/appointments",),
     "postgrest": ("test/boundary/postgrest_reads_boundary_test.dart",),
 }
 

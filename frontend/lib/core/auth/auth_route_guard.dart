@@ -67,13 +67,7 @@ abstract final class AuthRouteGuard {
 
   /// V1-4 appointment routes under `/appointments`.
   static bool isAppointmentRoute(String location) {
-    if (AppRoutes.appointmentStaticPaths.contains(location)) {
-      return true;
-    }
-    if (!location.startsWith('${AppRoutes.appointments}/')) {
-      return false;
-    }
-    return location.startsWith('${AppRoutes.appointments}/schedule/');
+    return location == AppRoutes.appointments || location.startsWith('${AppRoutes.appointments}/');
   }
 
   static bool canAccessAppointmentHub(AuthSessionState auth) {

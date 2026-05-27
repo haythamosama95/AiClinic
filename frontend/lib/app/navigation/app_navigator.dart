@@ -31,6 +31,14 @@ class AppNavigator {
   void pushPatientEdit(String id) => _context.push(AppRoutes.patientEdit(id));
   void goPatientRegister() => _context.push(AppRoutes.patientsNew);
 
+  // Appointments (V1-4)
+  void goAppointments() => _context.go(AppRoutes.appointments);
+  void goAppointmentsBook() => _context.push(AppRoutes.appointmentsBook);
+  void goAppointmentsWalkIn() => _context.push(AppRoutes.appointmentsWalkIn);
+  void goAppointmentsQueue() => _context.push(AppRoutes.appointmentsQueue);
+  void goAppointmentsCalendar() => _context.push(AppRoutes.appointmentsCalendar);
+  void goAppointmentsSchedule(String doctorId) => _context.push(AppRoutes.appointmentsSchedule(doctorId));
+
   // Settings
   void goSettings() => _context.go(AppRoutes.settings);
   void goSettingsOrganization() => _context.go(AppRoutes.settingsOrganization);

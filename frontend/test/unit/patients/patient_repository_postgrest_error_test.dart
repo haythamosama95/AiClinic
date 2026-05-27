@@ -148,13 +148,13 @@ void main() {
       );
     });
 
-    test('non-PGRST202 PostgrestException is rethrown as-is', () async {
+    test('non-PGRST202 PostgrestException is mapped to RpcFailure', () async {
       final client = _PostgrestErrorClient(exception: _otherException());
       final repository = PatientRepositoryImpl(client);
 
       expect(
         () => repository.searchPatients(scope: PatientListScope.allBranches),
-        throwsA(isA<PostgrestException>().having((e) => e.code, 'code', '42501')),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'RPC_NOT_CONFIGURED')),
       );
     });
 

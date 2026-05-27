@@ -29,6 +29,8 @@ DECLARE
   v_result public.rpc_result;
   v_visible_count int;
   v_dml_failed boolean;
+  v_create_denied boolean;
+  v_create_detail text;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
@@ -225,6 +227,49 @@ BEGIN
     'direct_insert_denied',
     v_dml_failed,
     CASE WHEN v_dml_failed THEN 'denied' ELSE 'allowed' END
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Cross-org create via RPC denied.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_a::text,
+      'role', 'authenticated',
+      'organization_id', v_org_a::text,
+      'branch_ids', v_branch_a::text,
+      'staff_member_id', v_staff_a::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_create_denied := false;
+  v_create_detail := 'ok';
+  BEGIN
+    v_result := public.create_appointment(
+      v_branch_b,
+      v_patient_b,
+      v_doctor_a,
+      'planned',
+      now() + interval '2 days',
+      30,
+      NULL,
+      NULL
+    );
+    v_create_denied := NOT v_result.success;
+    v_create_detail := COALESCE(v_result.error_code, 'ok');
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_create_denied := SQLERRM IN ('INVALID_BRANCH', 'FORBIDDEN', 'NOT_FOUND');
+      v_create_detail := SQLERRM;
+  END;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_rls_results VALUES (
+    'cross_org_create_appointment_denied',
+    v_create_denied,
+    v_create_detail
   );
 END;
 $$;

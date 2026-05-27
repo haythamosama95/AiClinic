@@ -40,6 +40,7 @@ class DurationField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextFormField(
+          key: const Key('appointment_duration_field'),
           controller: controller,
           enabled: enabled,
           decoration: InputDecoration(

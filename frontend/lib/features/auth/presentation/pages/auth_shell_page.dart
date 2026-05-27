@@ -110,6 +110,24 @@ class _ShellHomeBody extends ConsumerWidget {
                   label: const Text('Register patient'),
                 ),
               ],
+              if (!auth.setupRequired && permissions.canAccessAppointments()) ...[
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  key: const Key('shell_home_appointments'),
+                  onPressed: () => context.go(AppRoutes.appointments),
+                  icon: const Icon(Icons.event_note_outlined),
+                  label: const Text('Appointments'),
+                ),
+              ],
+              if (!auth.setupRequired && permissions.canCreateAppointments()) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  key: const Key('shell_home_book_appointment'),
+                  onPressed: () => context.push(AppRoutes.appointmentsBook),
+                  icon: const Icon(Icons.event_available_outlined),
+                  label: const Text('Book appointment'),
+                ),
+              ],
               const SizedBox(height: 24),
               if (kDebugMode) const PermissionDemoPanel(),
               if (!auth.setupRequired) ...[

@@ -82,12 +82,19 @@ void main() {
     });
 
     test('data as non-Map is coerced to null', () {
-      final result = RpcResult.fromDynamic({
-        'success': true,
-        'data': 'not a map',
-      });
+      final result = RpcResult.fromDynamic({'success': true, 'data': 'not a map'});
 
       expect(result.data, isNull);
+    });
+
+    test('data as JSON string is decoded to Map', () {
+      final result = RpcResult.fromDynamic({
+        'success': true,
+        'data': '{"appointment_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","status":"scheduled"}',
+      });
+
+      expect(result.data?['appointment_id'], 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+      expect(result.data?['status'], 'scheduled');
     });
 
     test('data as Map<Object, Object> is coerced to Map<String, dynamic>', () {
@@ -108,7 +115,12 @@ void main() {
     });
 
     test('parses list with 4+ elements', () {
-      final result = RpcResult.fromDynamic([true, {'id': 'p1'}, 'ERROR_CODE', 'Error message']);
+      final result = RpcResult.fromDynamic([
+        true,
+        {'id': 'p1'},
+        'ERROR_CODE',
+        'Error message',
+      ]);
 
       expect(result.success, isTrue);
       expect(result.data?['id'], 'p1');
@@ -146,25 +158,19 @@ void main() {
     });
 
     test('toString includes code and message', () {
-      final failure = RpcFailure(
-        const RpcResult(success: false, errorCode: 'TEST', errorMessage: 'Test message'),
-      );
+      final failure = RpcFailure(const RpcResult(success: false, errorCode: 'TEST', errorMessage: 'Test message'));
 
       expect(failure.toString(), contains('TEST'));
       expect(failure.toString(), contains('Test message'));
     });
 
     test('code returns errorCode from result', () {
-      final failure = RpcFailure(
-        const RpcResult(success: false, errorCode: 'CUSTOM_CODE'),
-      );
+      final failure = RpcFailure(const RpcResult(success: false, errorCode: 'CUSTOM_CODE'));
       expect(failure.code, 'CUSTOM_CODE');
     });
 
     test('message returns errorMessage from result', () {
-      final failure = RpcFailure(
-        const RpcResult(success: false, errorMessage: 'Custom error'),
-      );
+      final failure = RpcFailure(const RpcResult(success: false, errorMessage: 'Custom error'));
       expect(failure.message, 'Custom error');
     });
   });

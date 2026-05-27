@@ -73,6 +73,35 @@ void main() {
       expect(client.lastParams, containsPair('p_name', 'Renamed Clinic'));
     });
 
+    testWidgets('owner save persists default appointment duration via RPC', (tester) async {
+      final apptClient = AppointmentRpcTestClient();
+      await tester.pumpWidget(_host(role: StaffRole.owner, appointmentClient: apptClient));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Modify').at(4));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), '45');
+      await _tapSave(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Organization settings saved.'), findsOneWidget);
+      expect(apptClient.lastFunction, 'set_appointment_default_duration');
+      expect(apptClient.lastParams?['p_duration_minutes'], 45);
+    });
+
+    testWidgets('stupid usage: duration below minimum shows validation', (tester) async {
+      await tester.pumpWidget(_host(role: StaffRole.owner));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Modify').at(4));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), '3');
+      await _tapSave(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Duration must be between 5 and 240 minutes.'), findsOneWidget);
+    });
+
     testWidgets('advanced: RPC FORBIDDEN shows user-facing error', (tester) async {
       final client = SettingsRpcTestClient(
         rpcResults: {
@@ -166,6 +195,7 @@ Widget _host({
   required StaffRole role,
   bool permissionDenied = false,
   SettingsRpcTestClient? rpcClient,
+  AppointmentRpcTestClient? appointmentClient,
   String? currencyCode = 'USD',
   String? timezone = 'UTC',
 }) {
@@ -202,7 +232,9 @@ Widget _host({
         organizationSettingsProvider.overrideWith(() => _DeniedOrganizationNotifier())
       else
         organizationRepositoryProvider.overrideWithValue(readWriteRepo),
-      appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(AppointmentRpcTestClient())),
+      appointmentRepositoryProvider.overrideWith(
+        (ref) => AppointmentRepository(appointmentClient ?? AppointmentRpcTestClient()),
+      ),
     ],
     child: const MaterialApp(home: OrganizationSettingsPage()),
   );

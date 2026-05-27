@@ -30,7 +30,7 @@ CREATE TYPE public.appointment_status AS ENUM (
 | `id`            | uuid PK                 | `gen_random_uuid()`                                                 |
 | `branch_id`     | uuid FK → branches      | Active branch at create; immutable in V1-4                          |
 | `patient_id`    | uuid FK → patients      | Non-archived patient in org                                         |
-| `doctor_id`     | uuid FK → staff_members | Must be `role = doctor`                                             |
+| `doctor_id`     | uuid FK → staff_members | Optional; when set, must be `role = doctor` at branch               |
 | `start_time`    | timestamptz NOT NULL    |                                                                     |
 | `end_time`      | timestamptz NOT NULL    | Must be > `start_time`                                              |
 | `type`          | appointment_type        | `planned` \| `walk_in`                                              |

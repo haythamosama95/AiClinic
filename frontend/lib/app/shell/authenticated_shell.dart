@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 
 /// Shared navigation shell for authenticated routes.
 ///
@@ -25,6 +26,13 @@ class AuthenticatedShell extends ConsumerWidget {
       permissionKey: 'patients.view',
     ),
     _NavDestination(
+      route: AppRoutes.appointments,
+      icon: Icons.event_note_outlined,
+      selectedIcon: Icons.event_note,
+      label: 'Appointments',
+      anyPermissionKeys: [PermissionKeys.appointmentsCreate, PermissionKeys.appointmentsCancel],
+    ),
+    _NavDestination(
       route: AppRoutes.settings,
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings,
@@ -42,7 +50,12 @@ class AuthenticatedShell extends ConsumerWidget {
     }
 
     final visibleDestinations = _destinations.where((d) {
-      if (d.permissionKey == null) return true;
+      if (d.anyPermissionKeys != null) {
+        return d.anyPermissionKeys!.any(auth.permissions.contains);
+      }
+      if (d.permissionKey == null) {
+        return true;
+      }
       return auth.permissions.contains(d.permissionKey);
     }).toList();
 
@@ -92,6 +105,7 @@ class _NavDestination {
     required this.selectedIcon,
     required this.label,
     this.permissionKey,
+    this.anyPermissionKeys,
   });
 
   final String route;
@@ -99,4 +113,5 @@ class _NavDestination {
   final IconData selectedIcon;
   final String label;
   final String? permissionKey;
+  final List<String>? anyPermissionKeys;
 }

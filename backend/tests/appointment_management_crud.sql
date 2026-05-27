@@ -1,5 +1,10 @@
 -- V1-4 appointment management RPC verification.
 -- Run: psql ... -v ON_ERROR_STOP=1 -f backend/tests/appointment_management_crud.sql
+--
+-- Limitation: this script runs as the psql superuser (postgres). That bypasses
+-- EXECUTE checks on auth_internal that PostgREST enforces for role authenticated.
+-- Grant regressions are covered by appointment_management_grants.sql and Flutter
+-- boundary tests under test/boundary/appointments/.
 
 BEGIN;
 
@@ -26,6 +31,8 @@ DECLARE
   v_appt_planned uuid;
   v_appt_walkin uuid;
   v_appt_second uuid;
+  v_doctor2_staff uuid := 'b1400000-0000-4000-8000-000000000104';
+  v_doctor2_user uuid := 'a1400000-0000-4000-8000-000000000104';
   v_start timestamptz;
   v_end timestamptz;
   v_items jsonb;
@@ -44,7 +51,7 @@ BEGIN
   DELETE FROM public.branches;
   DELETE FROM public.organizations;
   DELETE FROM auth.users
-  WHERE id IN (v_owner_user, v_doctor_user, v_lab_user);
+  WHERE id IN (v_owner_user, v_doctor_user, v_lab_user, v_doctor2_user);
 
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
   VALUES
@@ -53,6 +60,8 @@ BEGIN
     (v_doctor_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'v14-doctor',
      extensions.crypt('test-password', extensions.gen_salt('bf')), now(), now(), now()),
     (v_lab_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'v14-lab',
+     extensions.crypt('test-password', extensions.gen_salt('bf')), now(), now(), now()),
+    (v_doctor2_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'v14-doctor2',
      extensions.crypt('test-password', extensions.gen_salt('bf')), now(), now(), now())
   ON CONFLICT (id) DO NOTHING;
 
@@ -73,12 +82,13 @@ BEGIN
   VALUES
     (v_owner_staff, v_owner_user, 'Clinic Owner', 'owner', false, v_bootstrap_user, v_bootstrap_user),
     (v_doctor_staff, v_doctor_user, 'Dr Smith', 'doctor', false, v_bootstrap_user, v_bootstrap_user),
-    (v_lab_staff, v_lab_user, 'Lab Tech', 'lab_staff', false, v_bootstrap_user, v_bootstrap_user)
+    (v_lab_staff, v_lab_user, 'Lab Tech', 'lab_staff', false, v_bootstrap_user, v_bootstrap_user),
+    (v_doctor2_staff, v_doctor2_user, 'Dr Jones', 'doctor', false, v_bootstrap_user, v_bootstrap_user)
   ON CONFLICT (id) DO NOTHING;
 
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
   SELECT s.id, v_branch_main, true, v_bootstrap_user, v_bootstrap_user
-  FROM (VALUES (v_owner_staff), (v_doctor_staff), (v_lab_staff)) AS s(id);
+  FROM (VALUES (v_owner_staff), (v_doctor_staff), (v_lab_staff), (v_doctor2_staff)) AS s(id);
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
@@ -133,6 +143,15 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
     'set_duration_rejects_too_short',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.set_appointment_default_duration(241, NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'set_duration_rejects_too_long',
     NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
     COALESCE(v_result.error_code, '<null>')
   );
@@ -195,6 +214,66 @@ BEGIN
     'planned_conflict_rejected',
     NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
     COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US1: adjacent non-overlapping slot succeeds (ends where next starts).
+  v_result := public.create_appointment(
+    v_branch_main,
+    v_patient_id,
+    v_doctor_staff,
+    'planned',
+    v_end,
+    20,
+    NULL,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'planned_adjacent_slot_succeeds',
+    v_result.success AND (v_result.data ->> 'status') = 'scheduled',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US1: planned create without explicit duration uses settings default (30).
+  v_start := date_trunc('hour', now() + interval '6 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, NULL, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'planned_create_uses_settings_default_duration',
+    v_result.success
+      AND (v_result.data ->> 'end_time')::timestamptz = v_start + interval '30 minutes',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Planned create without assigned doctor (optional doctor).
+  v_start := date_trunc('hour', now() + interval '7 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, NULL, 'planned', v_start, 25, NULL, 'Unassigned doctor'
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'planned_create_without_doctor',
+    v_result.success
+      AND (v_result.data ->> 'status') = 'scheduled'
+      AND (v_result.data ->> 'type') = 'planned',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Walk-in requires a doctor.
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, NULL, 'walk_in', NULL, 15, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'walk_in_requires_doctor',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_message, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
@@ -386,6 +465,100 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Archived patient cannot be booked.
+  v_result := public.archive_patient(v_patient_id);
+  v_start := date_trunc('hour', now() + interval '8 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'create_rejects_archived_patient',
+    NOT v_result.success AND v_result.error_code = 'PATIENT_ARCHIVED',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Restore patient for remaining tests (new patient row).
+  v_result := public.create_patient(v_branch_main, 'Appt Patient Restored', '201000000142', NULL, NULL, NULL, NULL, false);
+  v_patient_id := (v_result.data ->> 'patient_id')::uuid;
+
+  -- Non-doctor staff id is rejected.
+  v_start := date_trunc('hour', now() + interval '9 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_lab_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'create_rejects_invalid_doctor',
+    NOT v_result.success AND v_result.error_code = 'INVALID_DOCTOR',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- End time override implies duration.
+  v_start := date_trunc('hour', now() + interval '10 days');
+  v_end := v_start + interval '45 minutes';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, NULL, v_end, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'planned_create_with_end_time_override',
+    v_result.success
+      AND (v_result.data ->> 'end_time')::timestamptz = v_end,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Same time different doctors: no conflict.
+  v_start := date_trunc('hour', now() + interval '11 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'planned_same_time_doctor_a',
+    v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'planned_same_time_different_doctors_allowed',
+    v_result.success AND (v_result.data ->> 'status') = 'scheduled',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Two unassigned planned at same time: no doctor overlap check.
+  v_start := date_trunc('hour', now() + interval '12 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'two_planned_without_doctor_first',
+    v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'two_planned_without_doctor_no_overlap',
+    v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Lab staff without appointment permission cannot get settings.
   PERFORM set_config(
     'request.jwt.claims',
@@ -404,6 +577,18 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
     'lab_staff_denied_settings',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_start := date_trunc('hour', now() + interval '13 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'lab_staff_denied_create_appointment',
     NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
     COALESCE(v_result.error_code, '<null>')
   );

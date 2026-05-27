@@ -62,17 +62,17 @@
 
 ### Tests for User Story 1
 
-- [ ] T015 [P] [US1] Add planned create and conflict RPC tests in `backend/tests/appointment_management_crud.sql`
-- [ ] T016 [P] [US1] Add unit tests for `AppointmentRepository.createAppointment` (planned) in `frontend/test/unit/appointments/appointment_repository_create_planned_test.dart`
-- [ ] T017 [P] [US1] Add widget tests for booking form duration pre-fill and conflict error in `frontend/test/widget/appointments/appointment_booking_page_test.dart`
+- [X] T015 [P] [US1] Add planned create and conflict RPC tests in `backend/tests/appointment_management_crud.sql`
+- [X] T016 [P] [US1] Add unit tests for `AppointmentRepository.createAppointment` (planned) in `frontend/test/unit/appointments/appointment_repository_create_planned_test.dart`
+- [X] T017 [P] [US1] Add widget tests for booking form duration pre-fill and conflict error in `frontend/test/widget/appointments/appointment_booking_page_test.dart`
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Implement `AppointmentRepository.getAppointmentSettings` and `createAppointment` (`planned`) with `SCHEDULE_CONFLICT` handling per `contracts/appointment-mutations.md` in `frontend/lib/features/appointments/data/appointment_repository.dart`
-- [ ] T019 [US1] Implement `PatientPicker` reuse from `frontend/lib/features/patients/` and doctor selector widget in `frontend/lib/features/appointments/presentation/widgets/doctor_selector.dart`
-- [ ] T020 [US1] Implement `AppointmentBookingPage` (start time, duration pre-fill, custom override, validation, permission denied) in `frontend/lib/features/appointments/presentation/pages/appointment_booking_page.dart`
-- [ ] T021 [US1] Implement `ConflictErrorBanner` in `frontend/lib/features/appointments/presentation/widgets/conflict_error_banner.dart`
-- [ ] T022 [US1] Gate `/appointments/book` route to `appointments.create` in `frontend/lib/app/router.dart`
+- [X] T018 [US1] Implement `AppointmentRepository.getAppointmentSettings` and `createAppointment` (`planned`) with `SCHEDULE_CONFLICT` handling per `contracts/appointment-mutations.md` in `frontend/lib/features/appointments/data/appointment_repository.dart`
+- [X] T019 [US1] Implement `PatientPicker` reuse from `frontend/lib/features/patients/` and doctor selector widget in `frontend/lib/features/appointments/presentation/widgets/doctor_selector.dart`
+- [X] T020 [US1] Implement `AppointmentBookingPage` (start time, duration pre-fill, custom override, validation, permission denied) in `frontend/lib/features/appointments/presentation/pages/appointment_booking_page.dart`
+- [X] T021 [US1] Implement `ConflictErrorBanner` in `frontend/lib/features/appointments/presentation/widgets/conflict_error_banner.dart`
+- [X] T022 [US1] Gate `/appointments/book` route to `appointments.create` in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 1–2, 7; acceptance criteria 1–3
 
@@ -216,7 +216,7 @@
 
 **Purpose**: Shell navigation, end-to-end acceptance, quickstart validation, regression
 
-- [ ] T061 Add **Appointments** navigation hub on `AuthShellPage` gated by `canAccessAppointments` in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
+- [X] T061 Add **Appointments** navigation hub on `AuthShellPage` gated by `canAccessAppointments` in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
 - [ ] T062 [P] Add integration acceptance test for spec test cases 1–14 in `frontend/test/integration/appointments/appointment_management_acceptance_test.dart`
 - [ ] T063 [P] Add permission guard widget tests (no appointment access without grants) in `frontend/test/widget/appointments/appointment_permission_guards_test.dart`
 - [ ] T064 Run `specs/005-appointment-management/quickstart.md` verification and document operator notes

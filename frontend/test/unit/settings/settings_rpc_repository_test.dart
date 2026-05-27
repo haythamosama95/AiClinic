@@ -64,7 +64,7 @@ void main() {
       );
     });
 
-    test('rethrows unrelated PostgREST errors', () async {
+    test('maps permission denied PostgREST errors to RPC_NOT_CONFIGURED', () async {
       final invoker = _TestSettingsInvoker(
         _PostgrestErrorClient(
           exception: const PostgrestException(message: 'permission denied', code: '42501'),
@@ -73,7 +73,11 @@ void main() {
 
       expect(
         () => invoker.invokeRpc('update_organization', null),
-        throwsA(isA<PostgrestException>().having((e) => e.code, 'code', '42501')),
+        throwsA(
+          isA<RpcFailure>()
+              .having((e) => e.code, 'code', 'RPC_NOT_CONFIGURED')
+              .having((e) => e.message, 'message', contains('20260522100000')),
+        ),
       );
     });
   });

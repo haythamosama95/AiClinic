@@ -37,6 +37,14 @@ void main() {
       expect(detail.queueNumber, isNull);
     });
 
+    test('parses appointment without assigned doctor', () {
+      final detail = AppointmentDetail.fromRow(_detailRow(overrides: {'doctor_id': null, 'doctor_name': null}));
+
+      expect(detail, isNotNull);
+      expect(detail!.doctorId, isNull);
+      expect(detail.doctorDisplayName, 'Unassigned');
+    });
+
     test('accepts created_by_name alias for audit display', () {
       final detail = AppointmentDetail.fromRow(
         _detailRow(overrides: {'created_by_display': null, 'created_by_name': 'Admin User'}),

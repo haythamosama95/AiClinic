@@ -38,9 +38,24 @@ void main() {
     test('returns null when required fields missing or blank', () {
       expect(AppointmentListItem.fromRow({..._listRow(), 'id': ''}), isNull);
       expect(AppointmentListItem.fromRow({..._listRow(), 'patient_name': '  '}), isNull);
-      expect(AppointmentListItem.fromRow({..._listRow(), 'doctor_id': ''}), isNull);
       expect(AppointmentListItem.fromRow({..._listRow(), 'start_time': null}), isNull);
       expect(AppointmentListItem.fromRow({..._listRow(), 'end_time': 'not-a-date'}), isNull);
+    });
+
+    test('parses row without assigned doctor', () {
+      final item = AppointmentListItem.fromRow({..._listRow(), 'doctor_id': null, 'doctor_name': null});
+
+      expect(item, isNotNull);
+      expect(item!.doctorId, isNull);
+      expect(item.doctorName, isNull);
+      expect(item.doctorDisplayName, 'Unassigned');
+    });
+
+    test('treats blank doctor fields as unassigned', () {
+      final item = AppointmentListItem.fromRow({..._listRow(), 'doctor_id': '', 'doctor_name': '  '});
+
+      expect(item!.doctorId, isNull);
+      expect(item.doctorDisplayName, 'Unassigned');
     });
 
     test('returns null for invalid type or status', () {

@@ -17,6 +17,7 @@ void main() {
       expect(AppRoutes.appointmentsBook, '/appointments/book');
       expect(AppRoutes.appointmentsWalkIn, '/appointments/walk-in');
       expect(AppRoutes.appointmentsQueue, '/appointments/queue');
+      expect(AppRoutes.appointmentsCalendar, '/appointments/calendar');
     });
 
     test('schedule path embeds doctor id without double slashes', () {

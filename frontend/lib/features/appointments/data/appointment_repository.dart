@@ -59,7 +59,7 @@ class AppointmentRepository with AppRpcInvoker {
   Future<CreateAppointmentResult> createAppointment({
     required String branchId,
     required String patientId,
-    required String doctorId,
+    String? doctorId,
     required AppointmentType type,
     DateTime? startTime,
     int? durationMinutes,
@@ -68,7 +68,17 @@ class AppointmentRepository with AppRpcInvoker {
   }) async {
     _assertNonEmpty('branchId', branchId);
     _assertNonEmpty('patientId', patientId);
-    _assertNonEmpty('doctorId', doctorId);
+
+    final trimmedDoctorId = doctorId?.trim();
+    if (type == AppointmentType.walkIn && (trimmedDoctorId == null || trimmedDoctorId.isEmpty)) {
+      throw RpcFailure(
+        const RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'A doctor is required for walk-in appointments.',
+        ),
+      );
+    }
 
     if (durationMinutes != null) {
       _assertDurationMinutes(durationMinutes);
@@ -97,7 +107,7 @@ class AppointmentRepository with AppRpcInvoker {
     final params = <String, dynamic>{
       'p_branch_id': branchId.trim(),
       'p_patient_id': patientId.trim(),
-      'p_doctor_id': doctorId.trim(),
+      'p_doctor_id': (trimmedDoctorId == null || trimmedDoctorId.isEmpty) ? null : trimmedDoctorId,
       'p_type': type.wireValue,
       if (startTime != null) 'p_start_time': startTime.toUtc().toIso8601String(),
       if (durationMinutes != null) 'p_duration_minutes': durationMinutes,

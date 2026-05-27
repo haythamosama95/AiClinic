@@ -12,8 +12,8 @@ class AppointmentDetail {
     required this.branchId,
     required this.patientId,
     required this.patientName,
-    required this.doctorId,
-    required this.doctorName,
+    this.doctorId,
+    this.doctorName,
     required this.startTime,
     required this.endTime,
     required this.type,
@@ -30,8 +30,10 @@ class AppointmentDetail {
   final String branchId;
   final String patientId;
   final String patientName;
-  final String doctorId;
-  final String doctorName;
+  final String? doctorId;
+  final String? doctorName;
+
+  String get doctorDisplayName => doctorName?.trim().isNotEmpty == true ? doctorName!.trim() : 'Unassigned';
   final DateTime startTime;
   final DateTime endTime;
   final AppointmentType type;
@@ -48,8 +50,10 @@ class AppointmentDetail {
     final branchId = row['branch_id']?.toString();
     final patientId = row['patient_id']?.toString();
     final patientName = row['patient_name']?.toString().trim();
-    final doctorId = row['doctor_id']?.toString();
-    final doctorName = row['doctor_name']?.toString().trim();
+    final doctorIdRaw = row['doctor_id']?.toString().trim();
+    final doctorId = doctorIdRaw == null || doctorIdRaw.isEmpty ? null : doctorIdRaw;
+    final doctorNameRaw = row['doctor_name']?.toString().trim();
+    final doctorName = doctorNameRaw == null || doctorNameRaw.isEmpty ? null : doctorNameRaw;
     final startTime = parseAppointmentDateTime(row['start_time']);
     final endTime = parseAppointmentDateTime(row['end_time']);
     final type = AppointmentType.tryParse(row['type']?.toString());
@@ -65,10 +69,6 @@ class AppointmentDetail {
         patientId.isEmpty ||
         patientName == null ||
         patientName.isEmpty ||
-        doctorId == null ||
-        doctorId.isEmpty ||
-        doctorName == null ||
-        doctorName.isEmpty ||
         startTime == null ||
         endTime == null ||
         type == null ||

@@ -2,6 +2,9 @@
 -- Keeps bootstrap admin and global role permission seeds intact.
 \set ON_ERROR_STOP on
 
+DELETE FROM public.appointments WHERE true;
+DELETE FROM public.audit_log WHERE true;
+
 DELETE FROM public.staff_branch_assignments sba
 WHERE sba.staff_member_id IN (
   SELECT id FROM public.staff_members WHERE NOT is_bootstrap_admin
@@ -16,7 +19,6 @@ WHERE NOT EXISTS (
 
 DELETE FROM public.staff_branch_assignments WHERE true;
 DELETE FROM public.patients WHERE true;
-DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
 DELETE FROM public.app_settings WHERE true;
 DELETE FROM public.subscription_cache WHERE true;
 DELETE FROM public.branches WHERE true;
