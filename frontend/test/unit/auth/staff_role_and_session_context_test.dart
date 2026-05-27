@@ -1,5 +1,5 @@
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import '../../helpers/auth_test_support.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

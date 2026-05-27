@@ -10,8 +10,8 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/data/permission_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/shared/providers/session_context_loader.dart';
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/providers/session_context_loader.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 
 /// High-level auth lifecycle used by routing and permission services.
 enum AuthSessionStatus { unknown, unauthenticated, loading, authenticated }

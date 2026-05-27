@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/auth/permission_denied_handler.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Demo controls to verify RBAC gating on the placeholder shell (US3 checkpoint).
 class PermissionDemoPanel extends ConsumerWidget {

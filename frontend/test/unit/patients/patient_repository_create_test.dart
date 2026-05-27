@@ -134,11 +134,15 @@ void main() {
     });
 
     test('checkDuplicates sends all provided fields', () async {
-      await repository.checkDuplicates(fullName: '  Ahmed  ', phone: ' 2010 ', dateOfBirth: DateTime(1990, 5, 15));
+      await repository.checkDuplicates(
+        fullName: '  Ahmed  ',
+        phone: ' 201005551234 ',
+        dateOfBirth: DateTime(1990, 5, 15),
+      );
 
       expect(client.lastFunction, 'check_patient_duplicates');
       expect(client.lastParams?['p_full_name'], 'Ahmed');
-      expect(client.lastParams?['p_phone'], '2010');
+      expect(client.lastParams?['p_phone'], '201005551234');
       expect(client.lastParams?['p_date_of_birth'], '1990-05-15');
     });
 
@@ -153,7 +157,7 @@ void main() {
         },
       };
 
-      final candidates = await repository.checkDuplicates(phone: '2010');
+      final candidates = await repository.checkDuplicates(phone: '201005551234');
 
       expect(candidates, hasLength(2));
     });
@@ -169,7 +173,7 @@ void main() {
         },
       };
 
-      final candidates = await repository.checkDuplicates(phone: '2010');
+      final candidates = await repository.checkDuplicates(phone: '201005551234');
 
       expect(candidates, hasLength(1));
     });

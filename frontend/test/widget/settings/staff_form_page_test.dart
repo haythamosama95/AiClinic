@@ -7,12 +7,12 @@ import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dar
 import 'package:ai_clinic/features/settings/presentation/pages/staff_form_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/staff_form_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/staff_management_branches_provider.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import '../../helpers/auth_test_support.dart';
 import '../../support/settings_rpc_test_client.dart';
 
 const _staffId = '00000000-0000-4000-8000-000000000101';

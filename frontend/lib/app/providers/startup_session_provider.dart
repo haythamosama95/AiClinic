@@ -6,7 +6,7 @@ import 'package:ai_clinic/core/config/deployment_profile_store.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
 import 'package:ai_clinic/core/errors/failures.dart';
-import 'package:ai_clinic/shared/services/startup_health_service.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
 
 // Sentinel used by copyWith so nullable fields can be preserved intentionally.
 const Object _noChange = Object();

@@ -8,7 +8,7 @@ import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_pr
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 @immutable
 class BranchListUiState {

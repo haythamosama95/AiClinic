@@ -7,10 +7,11 @@ import 'package:ai_clinic/core/config/deployment_profile_store_io.dart'
 class DeploymentProfileStore {
   const DeploymentProfileStore();
 
+  /// Web bundle filename (served from `web/`).
   static const fileName = 'deployment-profile.json';
 
-  /// Back-compat alias for UI copy that references the profile file name.
-  static const defaultFileName = fileName;
+  /// Desktop IO profile path when [AICLINIC_DEPLOYMENT_PROFILE_PATH] is unset.
+  static const localProfilePath = 'config/local/deployment-profile.json';
 
   /// Returns a human-readable profile location label for the current platform.
   String resolvePath() => platform.resolveDeploymentProfilePath();

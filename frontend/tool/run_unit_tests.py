@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 
+import os
 import subprocess
+from pathlib import Path
+
+from discover_tests import unit_test_files
+from test_run_progress import TestRunProgress
+
+ROOT = Path(__file__).resolve().parent.parent
+os.chdir(ROOT)
 import json
 import sys
 import threading
@@ -13,35 +21,25 @@ CURRENT_TEST = None
 
 RUNNING = True
 
-# progress tracking
-TESTS_STARTED = 0
-TESTS_DONE = 0
-TOTAL_ESTIMATED = 0
+PROGRESS = TestRunProgress()
 
 
 # ---------------- Spinner + Progress ----------------
 
 def spinner_task():
-    global TESTS_STARTED, TESTS_DONE, TOTAL_ESTIMATED
-
     spinner = itertools.cycle(["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"])
 
     while RUNNING:
-        progress = ""
-
-        if TOTAL_ESTIMATED > 0:
-            progress = f"{TESTS_DONE}/{TOTAL_ESTIMATED}"
-        else:
-            progress = f"{TESTS_DONE} tests"
-
         sys.stdout.write(
-            f"\r🧪 Running Flutter tests... {next(spinner)} {progress}"
+            f"\r🧪 Running Flutter tests... {next(spinner)} {PROGRESS.label()}"
         )
         sys.stdout.flush()
 
         time.sleep(0.1)
 
-    sys.stdout.write("\r🧪 Running Flutter tests... Done ✔️\n")
+    PROGRESS.finalize()
+    done = f"\r🧪 Running Flutter tests... Done ✔️ {PROGRESS.label()}"
+    sys.stdout.write(done.ljust(80) + "\n")
     sys.stdout.flush()
 
 
@@ -50,14 +48,20 @@ def spinner_task():
 def run_tests():
     global RUNNING
 
+    test_files = unit_test_files(ROOT)
+    if not test_files:
+        print("ERROR: no unit/widget/integration test files found.", file=sys.stderr)
+        return 1
+
+    PROGRESS.reset(0)
+
     cmd = [
         "flutter",
         "test",
+        *test_files,
         "--concurrency",
         "15",
         "--machine",
-        "--exclude-tags",
-        "boundary",
     ]
 
     process = subprocess.Popen(
@@ -80,6 +84,7 @@ def run_tests():
 
         handle_event(event)
 
+    PROGRESS.finalize()
     RUNNING = False
     return process.wait()
 
@@ -87,7 +92,7 @@ def run_tests():
 # ---------------- Event Handling ----------------
 
 def handle_event(event):
-    global CURRENT_TEST, TESTS_STARTED, TESTS_DONE, TOTAL_ESTIMATED
+    global CURRENT_TEST
 
     # normalize
     if isinstance(event, list):
@@ -103,16 +108,10 @@ def handle_event(event):
     # ---- test lifecycle ----
 
     if event_type == "testStart":
-        TESTS_STARTED += 1
-
-        # crude estimation of total (max seen so far)
-        if TESTS_STARTED > TOTAL_ESTIMATED:
-            TOTAL_ESTIMATED = TESTS_STARTED
-
         CURRENT_TEST = event.get("test", {}).get("name")
 
     elif event_type == "testDone":
-        TESTS_DONE += 1
+        PROGRESS.handle_event(event)
 
     # ---- failures ----
 
@@ -127,9 +126,10 @@ def handle_event(event):
 # ---------------- Summary ----------------
 
 def print_summary():
-    print("\n" + "=" * 90)
-    print("❌ FLUTTER TEST FAILURE REPORT")
-    print("=" * 90)
+    if FAILURES:
+        print("\n" + "=" * 90)
+        print("❌ FLUTTER TEST FAILURE REPORT")
+        print("=" * 90)
 
     if not FAILURES:
         print("🎉 All tests passed successfully!")

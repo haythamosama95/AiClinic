@@ -7,7 +7,7 @@ import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/domain/permission_matrix_view.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/role_permissions_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Role permission matrix: owners and administrators edit toggles (US5).
 class RolePermissionsPage extends ConsumerWidget {

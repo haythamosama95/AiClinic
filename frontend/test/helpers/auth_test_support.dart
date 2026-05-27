@@ -3,7 +3,7 @@
 
 import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 AuthSessionContext sampleAuthSessionContext({
   bool setupRequired = false,

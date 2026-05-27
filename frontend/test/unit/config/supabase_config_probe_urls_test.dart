@@ -1,5 +1,5 @@
 import 'package:ai_clinic/core/config/supabase_config.dart';
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

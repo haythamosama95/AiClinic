@@ -13,8 +13,8 @@ import 'package:ai_clinic/features/auth/presentation/widgets/dev_tools.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/dev_tools.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/no_branch_blocked_panel.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/permission_demo_panel.dart';
-import 'package:ai_clinic/shared/widgets/shell_status_bar.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/widgets/shell_status_bar.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:go_router/go_router.dart';
 
 /// Authenticated placeholder shell: identity header, branch selector, RBAC demo (US3).

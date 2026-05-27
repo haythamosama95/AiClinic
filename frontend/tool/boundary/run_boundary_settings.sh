@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-exec "$(dirname "$0")/run_boundary_tests.sh" settings
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+exec "$ROOT/tool/run_boundary_tests.py" settings

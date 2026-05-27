@@ -2,7 +2,7 @@
 # Ensures every manifest row with owner=boundary has a matching ManifestScenario in test/boundary.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MANIFEST="$ROOT/test/boundary/boundary_coverage_manifest.md"
 BOUNDARY_DIR="$ROOT/test/boundary"
 

@@ -84,7 +84,7 @@ class LiveSupabaseHarness {
   }
 
   static Future<DeploymentProfile> _loadProfile() async {
-    final path = Platform.environment['AICLINIC_DEPLOYMENT_PROFILE_PATH'] ?? 'deployment-profile.json';
+    final path = Platform.environment['AICLINIC_DEPLOYMENT_PROFILE_PATH'] ?? 'config/local/deployment-profile.json';
     final file = File(path);
     if (!await file.exists()) {
       markTestSkipped('Missing deployment profile at $path');

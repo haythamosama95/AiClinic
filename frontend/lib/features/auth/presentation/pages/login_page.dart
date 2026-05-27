@@ -8,8 +8,8 @@ import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_quick_admin_sign_in_button.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 
 /// Staff username/password sign-in for clinic workstations.
 class LoginPage extends ConsumerStatefulWidget {

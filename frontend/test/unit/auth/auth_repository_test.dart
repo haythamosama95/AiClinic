@@ -1,8 +1,8 @@
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
-import 'package:ai_clinic/shared/services/startup_health_service.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

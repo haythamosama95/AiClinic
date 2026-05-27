@@ -27,8 +27,8 @@ import 'package:ai_clinic/features/settings/presentation/pages/staff_settings_pa
 import 'package:ai_clinic/features/patients/presentation/pages/patient_pages.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {

@@ -24,10 +24,10 @@ After backend SQL tests pass, run the live Flutter repository suite (see `fronte
 
 ```bash
 ./backend/tests/run_all_backend_tests.sh
-cd frontend && ./scripts/run_boundary_tests.sh
+cd frontend && ./tool/run_boundary_tests.py
 ```
 
-Requires `frontend/deployment-profile.json` (anon key from `backend/local/.env`) and GoTrue custom claims on Compose (`GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_*` in `backend/local/docker-compose.yml`).
+Requires `frontend/config/local/deployment-profile.json` (anon key from `backend/local/.env`) and GoTrue custom claims on Compose (`GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_*` in `backend/local/docker-compose.yml`).
 
 Bootstrap administrator defaults: `backend/seed/bootstrap_admin.env.example`. First-run guide: `docs/setup/bootstrap-admin.md`.
 

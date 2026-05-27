@@ -8,7 +8,7 @@ import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart
 import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_dummy_data.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_field_options.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// User-facing messages for bootstrap RPC error codes.
 String bootstrapMessageForRpc(RpcFailure failure) {

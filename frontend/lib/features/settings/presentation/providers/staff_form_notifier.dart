@@ -11,7 +11,7 @@ import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/staff_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 @immutable
 class StaffFormUiState {

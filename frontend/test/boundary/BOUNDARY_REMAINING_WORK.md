@@ -15,7 +15,7 @@ Reference: plan `flutter_supabase_boundary_tests_d97aa219` (do not edit the plan
 | Live green run on CI/local stack  | **Not verified**                                     |
 | CI job for boundary + backend SQL | **Not wired**                                        |
 
-Existing assets: [`harness/`](harness/), [`boundary_coverage_manifest.md`](boundary_coverage_manifest.md), [`README.md`](README.md), [`../../scripts/run_boundary_tests.sh`](../../scripts/run_boundary_tests.sh).
+Existing assets: [`harness/`](harness/), [`boundary_coverage_manifest.md`](boundary_coverage_manifest.md), [`README.md`](README.md), [`../../tool/run_boundary_tests.py`](../../tool/run_boundary_tests.py).
 
 ---
 
@@ -60,8 +60,8 @@ For each new scenario:
 
 1. Add row to [`boundary_coverage_manifest.md`](boundary_coverage_manifest.md) (`owner=boundary`).
 2. Add `test('...')` with `ManifestScenario('...')` in the appropriate `*_boundary_test.dart`.
-3. Run `./scripts/verify_boundary_manifest.sh`.
-4. Run `./scripts/run_boundary_tests.sh` against a live stack.
+3. Run `./tool/boundary/verify_boundary_manifest.sh`.
+4. Run `./tool/run_boundary_tests.py` against a live stack.
 5. Fix harness/fixtures if new DB state is required.
 
 ---

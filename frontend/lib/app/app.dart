@@ -8,9 +8,9 @@ import 'package:ai_clinic/app/session_activity_scope.dart';
 import 'package:ai_clinic/app/theme/app_theme.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/idle_timeout_settings_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
-import 'package:ai_clinic/shared/providers/theme_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/providers/theme_provider.dart';
 
 /// Root widget that wires together startup state, routing, and theming.
 class AiClinicApp extends ConsumerStatefulWidget {

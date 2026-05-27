@@ -9,7 +9,7 @@ import 'package:ai_clinic/features/settings/data/branch_repository.dart';
 import 'package:ai_clinic/features/settings/data/organization_repository.dart';
 import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
-import 'package:ai_clinic/shared/providers/session_context_loader.dart';
+import 'package:ai_clinic/app/providers/session_context_loader.dart';
 
 import 'fixture_factory.dart';
 import 'live_supabase_harness.dart';

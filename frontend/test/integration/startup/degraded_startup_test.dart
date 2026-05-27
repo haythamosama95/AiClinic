@@ -1,8 +1,8 @@
 import 'package:ai_clinic/core/errors/exceptions.dart';
-import 'package:ai_clinic/shared/services/startup_health_service.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 
 void main() {
   testWidgets('keeps the entry experience visible when clinic-local services are unreachable', (tester) async {

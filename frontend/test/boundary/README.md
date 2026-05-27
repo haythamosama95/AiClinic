@@ -1,41 +1,32 @@
-# Flutter ↔ Supabase boundary tests
+# Boundary integration tests
 
-Live integration tests for repository implementations against local Supabase (GoTrue + PostgREST + RLS + RPC). No UI, no mocks.
+Live Flutter ↔ Supabase tests (`@Tags(['boundary'])`). They require a running `backend/local` stack and valid credentials.
 
 ## Prerequisites
 
-1. Start stack: `cd backend/local && docker compose up -d`
-2. Apply migrations: `cd backend && supabase db reset` (or `supabase migration up`)
-3. Copy `backend/local/.env` anon key into `frontend/deployment-profile.json` (see `deployment-profile.boundary.json.example`)
-4. Restart auth after hook changes: `cd backend/local && docker compose restart auth`
+1. `cd backend/local && docker compose up -d`
+2. Apply migrations (including dev-reset helpers used by the harness).
+3. Copy `backend/local/.env` anon key into `frontend/config/local/deployment-profile.json` (see `config/examples/deployment-profile.boundary.json.example`).
 
-## Run order (CI / pre-merge)
-
-```bash
-./backend/tests/run_all_backend_tests.sh
-cd frontend && ./scripts/run_boundary_tests.sh
-```
-
-Subset runners:
+## Run
 
 ```bash
-./scripts/run_boundary_auth.sh
-./scripts/run_boundary_settings.sh
-./scripts/run_boundary_patients.sh
+cd frontend
+./tool/run_boundary_tests.py
 ```
 
-## Default unit/widget suite
-
-`test-runner.py` and `flutter test` exclude the `boundary` tag. Boundary tests only run with:
+Subsets:
 
 ```bash
-AICLINIC_BOUNDARY_INTEGRATION=1 ./scripts/run_boundary_tests.sh
+./tool/boundary/run_boundary_auth.sh
+./tool/boundary/run_boundary_settings.sh
+./tool/boundary/run_boundary_patients.sh
 ```
 
-## Coverage manifest
+## Tags
 
-[`boundary_coverage_manifest.md`](boundary_coverage_manifest.md) lists every scenario. `scripts/verify_boundary_manifest.sh` fails CI if a `owner=boundary` row has no matching `ManifestScenario` in tests.
+`tool/run_unit_tests.py` and `flutter test` exclude the `boundary` tag. Boundary tests only run via the runner above (sets `AICLINIC_BOUNDARY_INTEGRATION=1`).
 
-## Remaining work (strict plan gap)
+## Manifest
 
-See [`BOUNDARY_REMAINING_WORK.md`](BOUNDARY_REMAINING_WORK.md) for everything not yet implemented (~90–170 scenarios vs the plan’s ~200–280 target), plus CI and live-run tasks.
+[`boundary_coverage_manifest.md`](boundary_coverage_manifest.md) lists every scenario. `tool/boundary/verify_boundary_manifest.sh` fails if a `owner=boundary` row has no matching `ManifestScenario` in tests.

@@ -10,7 +10,7 @@ import 'package:ai_clinic/features/auth/presentation/providers/provisioning_noti
 import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Password reset for a specific staff member from settings (US3).
 class StaffSettingsPasswordResetPage extends ConsumerStatefulWidget {

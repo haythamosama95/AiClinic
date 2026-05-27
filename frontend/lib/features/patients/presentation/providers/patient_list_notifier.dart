@@ -8,7 +8,7 @@ import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_query.dart';
 import 'package:ai_clinic/features/patients/presentation/patient_rpc_messages.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_scope_provider.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// UI state for [PatientListPage] (US2).
 class PatientListUiState {

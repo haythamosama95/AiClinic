@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/config/deployment_profile.dart';
 import 'package:ai_clinic/core/config/deployment_profile_store.dart';
 import 'package:ai_clinic/core/errors/failures.dart';
-import 'package:ai_clinic/shared/providers/connectivity_provider.dart';
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
-import 'package:ai_clinic/shared/services/startup_health_service.dart';
+import 'package:ai_clinic/app/providers/connectivity_provider.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
 
 /// Presentation-facing startup state derived from the shared session model.
 @immutable
@@ -45,7 +45,7 @@ class StartupUiState {
   List<String> get deploymentProfileLines => [
     'Configuration: ${configurationStatusLabel(configurationStatus)}',
     'Mode: ${deploymentProfile?.deploymentMode.wireValue ?? 'unknown'}',
-    'Profile file: ${deploymentProfile?.sourcePath ?? DeploymentProfileStore.defaultFileName}',
+    'Profile file: ${deploymentProfile?.sourcePath ?? DeploymentProfileStore.localProfilePath}',
     'Supabase URL: ${deploymentProfile?.supabaseUrl ?? 'unavailable'}',
   ];
 

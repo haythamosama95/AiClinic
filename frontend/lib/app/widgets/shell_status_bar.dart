@@ -5,9 +5,9 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/no_branch_blocked_panel.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/shared/providers/connectivity_provider.dart';
-import 'package:ai_clinic/shared/services/startup_health_service.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/connectivity_provider.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
 
 /// Persistent shell footer: active branch | signed-in user | clinic connectivity (V1-2 US4).
 class ShellStatusBar extends ConsumerWidget {

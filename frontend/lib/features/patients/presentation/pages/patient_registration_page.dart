@@ -14,7 +14,7 @@ import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/presentation/patient_rpc_messages.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/duplicate_candidates_dialog.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 void _leavePatientRegistration(BuildContext context) {
   context.nav.popOrHome();

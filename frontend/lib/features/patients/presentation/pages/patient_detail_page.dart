@@ -9,7 +9,7 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_detai
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_archive_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visits_placeholder.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 void _leavePatientDetail(BuildContext context) {
   if (context.nav.canPop()) {

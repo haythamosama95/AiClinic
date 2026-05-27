@@ -12,7 +12,7 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_list_
 import 'package:ai_clinic/features/patients/presentation/widgets/dev_seed_patients_button.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_scope_toggle.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_search_field.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Paginated patient list with scope toggle and search (US2).
 class PatientListPage extends ConsumerWidget {

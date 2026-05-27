@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 
 /// Exposes the active theme mode from startup session state for feature screens.
 final themeModeProvider = Provider<ThemeMode>((ref) {

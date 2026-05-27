@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 
 void main() {
   testWidgets('redirects protected navigation back to the safe startup experience', (tester) async {

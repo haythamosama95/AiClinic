@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/domain/usecases/auth_use_case_providers.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Generic sign-in failure copy — must not reveal whether the username exists.
 const String kGenericSignInFailureMessage = 'Username or password is incorrect.';

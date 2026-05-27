@@ -1,16 +1,16 @@
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
-import 'package:ai_clinic/features/settings/presentation/widgets/shell_status_bar.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart'
+import 'package:ai_clinic/app/widgets/shell_status_bar.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart'
     show
         StartupConfigurationStatus,
         StartupCurrentView,
         StartupSessionNotifier,
         StartupSessionState,
         startupSessionProvider;
-import 'package:ai_clinic/shared/services/startup_health_service.dart';
-import 'package:ai_clinic/testing/auth_test_support.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
+import '../../helpers/auth_test_support.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -1,12 +1,12 @@
 import 'package:ai_clinic/app/theme/app_theme.dart';
 import 'package:ai_clinic/features/foundation_demo/presentation/pages/foundation_demo_page.dart';
-import 'package:ai_clinic/shared/providers/startup_session_provider.dart';
-import 'package:ai_clinic/shared/services/startup_health_service.dart';
+import 'package:ai_clinic/app/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 
 class _DemoStartupSessionNotifier extends StartupSessionNotifier {
   @override

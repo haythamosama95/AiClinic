@@ -11,7 +11,7 @@ import 'package:ai_clinic/features/auth/presentation/providers/bootstrap_notifie
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_reset_clinic_button.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/first_sign_in_warning_dialog.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Two-step wizard: organization, then first branch (US5). Database writes occur on finish only.
 class ClinicBootstrapPage extends ConsumerStatefulWidget {

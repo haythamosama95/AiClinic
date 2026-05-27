@@ -13,44 +13,39 @@ import itertools
 from collections import defaultdict
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+from discover_tests import (
+    BOUNDARY_SUBSET_ROOTS,
+    boundary_test_files,
+)
+from test_run_progress import TestRunProgress
+
+ROOT = Path(__file__).resolve().parent.parent
+os.chdir(ROOT)
 REPO_ROOT = ROOT.parent
 COMPOSE_FILE = REPO_ROOT / "backend" / "local" / "docker-compose.yml"
-DEPLOYMENT_PROFILE = ROOT / "deployment-profile.json"
-DB_RESET_SQL = ROOT / "scripts" / "boundary_force_db_reset.sql"
-VERIFY_MANIFEST = ROOT / "scripts" / "verify_boundary_manifest.sh"
-
-SUBSET_PATHS = {
-    "auth": "test/boundary/auth",
-    "settings": "test/boundary/settings",
-    "patients": "test/boundary/patients",
-    "postgrest": "test/boundary/postgrest_reads_boundary_test.dart",
-}
+DEPLOYMENT_PROFILE = ROOT / "config/local/deployment-profile.json"
+DB_RESET_SQL = ROOT / "tool/boundary/boundary_force_db_reset.sql"
+VERIFY_MANIFEST = ROOT / "tool/boundary/verify_boundary_manifest.sh"
 
 FAILURES = []
 CURRENT_TEST = None
 RUNNING = True
-TESTS_STARTED = 0
-TESTS_DONE = 0
-TOTAL_ESTIMATED = 0
+PROGRESS = TestRunProgress()
 
 
 def spinner_task():
-    global TESTS_STARTED, TESTS_DONE, TOTAL_ESTIMATED
-
     spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
 
     while RUNNING:
-        if TOTAL_ESTIMATED > 0:
-            progress = f"{TESTS_DONE}/{TOTAL_ESTIMATED}"
-        else:
-            progress = f"{TESTS_DONE} tests"
-
-        sys.stdout.write(f"\r🧪 Running boundary tests... {next(spinner)} {progress}")
+        sys.stdout.write(
+            f"\r🧪 Running boundary tests... {next(spinner)} {PROGRESS.label()}"
+        )
         sys.stdout.flush()
         time.sleep(0.1)
 
-    sys.stdout.write("\r🧪 Running boundary tests... Done ✔️\n")
+    PROGRESS.finalize()
+    done = f"\r🧪 Running boundary tests... Done ✔️ {PROGRESS.label()}"
+    sys.stdout.write(done.ljust(80) + "\n")
     sys.stdout.flush()
 
 
@@ -71,7 +66,7 @@ def ensure_deployment_profile():
     if not DEPLOYMENT_PROFILE.is_file():
         print(
             f"ERROR: Missing {DEPLOYMENT_PROFILE} "
-            "(copy from deployment-profile.example.json).",
+            "(copy from config/examples/deployment-profile.example.json).",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -103,28 +98,25 @@ def boundary_force_db_reset():
     )
 
 
-def resolve_test_path(subset: str | None) -> str:
-    if not subset:
-        return "test/boundary"
-    if subset not in SUBSET_PATHS:
-        print(f"Usage: {sys.argv[0]} [auth|settings|patients|postgrest]", file=sys.stderr)
-        sys.exit(2)
-    return SUBSET_PATHS[subset]
-
-
-def run_tests(test_path: str) -> int:
+def run_tests(test_files: list[str]) -> int:
     global RUNNING
+
+    if not test_files:
+        print("ERROR: no boundary test files found.", file=sys.stderr)
+        return 1
+
+    PROGRESS.reset(0)
 
     env = {
         **os.environ,
         "AICLINIC_BOUNDARY_INTEGRATION": "1",
-        "AICLINIC_DEPLOYMENT_PROFILE_PATH": "deployment-profile.json",
+        "AICLINIC_DEPLOYMENT_PROFILE_PATH": "config/local/deployment-profile.json",
     }
 
     cmd = [
         "flutter",
         "test",
-        test_path,
+        *test_files,
         "--tags",
         "boundary",
         "--concurrency",
@@ -156,12 +148,13 @@ def run_tests(test_path: str) -> int:
 
         handle_event(event)
 
+    PROGRESS.finalize()
     RUNNING = False
     return process.wait()
 
 
 def handle_event(event):
-    global CURRENT_TEST, TESTS_STARTED, TESTS_DONE, TOTAL_ESTIMATED
+    global CURRENT_TEST
 
     if isinstance(event, list):
         for e in event:
@@ -174,13 +167,10 @@ def handle_event(event):
     event_type = event.get("type")
 
     if event_type == "testStart":
-        TESTS_STARTED += 1
-        if TESTS_STARTED > TOTAL_ESTIMATED:
-            TOTAL_ESTIMATED = TESTS_STARTED
         CURRENT_TEST = event.get("test", {}).get("name")
 
     elif event_type == "testDone":
-        TESTS_DONE += 1
+        PROGRESS.handle_event(event)
 
     elif event_type == "error":
         FAILURES.append(
@@ -193,9 +183,10 @@ def handle_event(event):
 
 
 def print_summary():
-    print("\n" + "=" * 90)
-    print("❌ BOUNDARY TEST FAILURE REPORT")
-    print("=" * 90)
+    if FAILURES:
+        print("\n" + "=" * 90)
+        print("❌ BOUNDARY TEST FAILURE REPORT")
+        print("=" * 90)
 
     if not FAILURES:
         print("🎉 All boundary tests passed successfully!")
@@ -239,7 +230,7 @@ def main():
     parser.add_argument(
         "subset",
         nargs="?",
-        choices=[*SUBSET_PATHS.keys()],
+        choices=[*BOUNDARY_SUBSET_ROOTS.keys()],
         help="Run a subset: auth, settings, patients, or postgrest",
     )
     args = parser.parse_args()
@@ -250,12 +241,12 @@ def main():
     atexit.register(boundary_force_db_reset)
     boundary_force_db_reset()
 
-    test_path = resolve_test_path(args.subset)
+    test_files = boundary_test_files(ROOT, args.subset)
 
     spinner = threading.Thread(target=spinner_task)
     spinner.start()
 
-    exit_code = run_tests(test_path)
+    exit_code = run_tests(test_files)
 
     spinner.join()
     print_summary()

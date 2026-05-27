@@ -1,4 +1,4 @@
-import 'package:ai_clinic/shared/services/startup_health_service.dart';
+import 'package:ai_clinic/app/services/startup_health_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -8,8 +8,8 @@ import 'package:ai_clinic/features/patients/data/patient_dev_seed_service.dart';
 import 'package:ai_clinic/features/patients/domain/patient_dev_seed_data.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
-import 'package:ai_clinic/shared/providers/repository_providers.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/repository_providers.dart';
 
 final _patientDevSeedServiceProvider = Provider<PatientDevSeedService>((ref) {
   return PatientDevSeedService(

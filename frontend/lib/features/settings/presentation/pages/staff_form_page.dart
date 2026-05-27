@@ -10,7 +10,7 @@ import 'package:ai_clinic/features/auth/presentation/providers/provisioning_noti
 import 'package:ai_clinic/features/settings/presentation/providers/staff_form_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/staff_management_branches_provider.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/staff_form_fields.dart';
-import 'package:ai_clinic/shared/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Create or edit a staff member from settings (US3).
 class StaffFormPage extends ConsumerStatefulWidget {

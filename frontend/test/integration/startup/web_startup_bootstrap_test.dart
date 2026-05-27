@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:ai_clinic/testing/startup_test_support.dart';
+import '../../helpers/startup_test_support.dart';
 
 const _webProfileJson =
     '{"deployment_mode":"local","supabase_url":"http://127.0.0.1:54321","supabase_anon_key":"test-anon-key"}';
