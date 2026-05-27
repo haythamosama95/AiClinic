@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
+import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
@@ -510,6 +511,7 @@ Future<void> _pumpWithTenant(
       rolePermissionsRepositoryProvider.overrideWithValue(
         _IntegrationRolePermissionsRepository(fetchClient: tableClient, rpcClient: rpc),
       ),
+      appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(rpc)),
     ],
   );
   await completeStartupBootstrap(tester);

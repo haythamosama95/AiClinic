@@ -39,16 +39,16 @@
 
 **⚠️ CRITICAL**: No user story phase work until this phase is complete
 
-- [ ] T005 Add migration `backend/supabase/migrations/20260526140000_appointment_management.sql` with `appointment_type` and `appointment_status` enums, `appointments` table, indexes, branch RLS (SELECT scoped; INSERT/UPDATE/DELETE denied), `auth_internal` helpers (overlap check, walk-in gap finder, duration resolver, doctor/patient asserts), and RPCs `get_appointment_settings`, `set_appointment_default_duration`, `create_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`, `list_appointments` per `contracts/` and `data-model.md`
-- [ ] T006 [P] Add CRUD verification SQL in `backend/tests/appointment_management_crud.sql` (planned create, walk-in auto-slot, conflict, status transitions, reschedule, cancel, no-show, settings default, `NO_SLOT_AVAILABLE`)
-- [ ] T007 [P] Add RLS isolation SQL in `backend/tests/appointment_management_rls.sql` (cross-org and cross-branch denial)
-- [ ] T008 [P] Add test runner `backend/tests/run_appointment_management_tests.sh`
-- [ ] T009 [P] Extend `PermissionKeys` with `appointmentsCreate` and `appointmentsCancel` in `frontend/lib/features/auth/domain/permission_keys.dart`
-- [ ] T010 [P] Add `canAccessAppointments`, `canCreateAppointments`, and `canCancelAppointments` helpers in `frontend/lib/core/auth/permission_service.dart`
-- [ ] T011 Implement `AppointmentRepository` RPC wrappers in `frontend/lib/features/appointments/data/appointment_repository.dart` (`getSettings`, `createAppointment`, `listAppointments`, `updateStatus`, `reschedule`, `cancel`)
-- [ ] T012 [P] Add `DurationField` widget (minutes input, end-time preview) in `frontend/lib/features/appointments/presentation/widgets/duration_field.dart`
-- [ ] T013 Register appointment routes with `appointments.create` / `appointments.cancel` view guards in `frontend/lib/app/router.dart`
-- [ ] T014 [P] Add default appointment duration field on `OrganizationSettingsPage` calling `set_appointment_default_duration` in `frontend/lib/features/settings/presentation/pages/organization_settings_page.dart`
+- [X] T005 Add migration `backend/supabase/migrations/20260526140000_appointment_management.sql` with `appointment_type` and `appointment_status` enums, `appointments` table, indexes, branch RLS (SELECT scoped; INSERT/UPDATE/DELETE denied), `auth_internal` helpers (overlap check, walk-in gap finder, duration resolver, doctor/patient asserts), and RPCs `get_appointment_settings`, `set_appointment_default_duration`, `create_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`, `list_appointments` per `contracts/` and `data-model.md`
+- [X] T006 [P] Add CRUD verification SQL in `backend/tests/appointment_management_crud.sql` (planned create, walk-in auto-slot, conflict, status transitions, reschedule, cancel, no-show, settings default, `NO_SLOT_AVAILABLE`)
+- [X] T007 [P] Add RLS isolation SQL in `backend/tests/appointment_management_rls.sql` (cross-org and cross-branch denial)
+- [X] T008 [P] Add test runner `backend/tests/run_appointment_management_tests.sh`
+- [X] T009 [P] Extend `PermissionKeys` with `appointmentsCreate` and `appointmentsCancel` in `frontend/lib/features/auth/domain/permission_keys.dart`
+- [X] T010 [P] Add `canAccessAppointments`, `canCreateAppointments`, and `canCancelAppointments` helpers in `frontend/lib/core/auth/permission_service.dart`
+- [X] T011 Implement `AppointmentRepository` RPC wrappers in `frontend/lib/features/appointments/data/appointment_repository.dart` (`getSettings`, `createAppointment`, `listAppointments`, `updateStatus`, `reschedule`, `cancel`)
+- [X] T012 [P] Add `DurationField` widget (minutes input, end-time preview) in `frontend/lib/features/appointments/presentation/widgets/duration_field.dart`
+- [X] T013 Register appointment routes with `appointments.create` / `appointments.cancel` view guards in `frontend/lib/app/router.dart`
+- [X] T014 [P] Add default appointment duration field on `OrganizationSettingsPage` calling `set_appointment_default_duration` in `frontend/lib/features/settings/presentation/pages/organization_settings_page.dart`
 
 **Checkpoint**: `supabase migration up` succeeds; `run_appointment_management_tests.sh` passes; appointment routes registered (pages may 404 until story phases)
 

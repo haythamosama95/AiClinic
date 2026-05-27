@@ -22,7 +22,9 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
   final _logoUrlController = TextEditingController();
   final _currencyController = TextEditingController();
   final _timezoneController = TextEditingController();
+  final _defaultDurationController = TextEditingController();
   OrganizationProfile? _lastSyncedProfile;
+  int? _lastSyncedDuration;
 
   @override
   void dispose() {
@@ -30,25 +32,34 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
     _logoUrlController.dispose();
     _currencyController.dispose();
     _timezoneController.dispose();
+    _defaultDurationController.dispose();
     super.dispose();
   }
 
   void _syncControllers(OrganizationSettingsUiState ui) {
     final profile = ui.profile;
-    if (profile == null || profile == _lastSyncedProfile) {
+    final duration = ui.defaultAppointmentDurationMinutes;
+    if (profile == null || (profile == _lastSyncedProfile && duration == _lastSyncedDuration)) {
       return;
     }
     _nameController.text = profile.name;
     _logoUrlController.text = profile.logoUrl ?? '';
     _currencyController.text = profile.currencyCode ?? '';
     _timezoneController.text = profile.timezone ?? '';
+    if (duration != null) {
+      _defaultDurationController.text = duration.toString();
+    }
     _lastSyncedProfile = profile;
+    _lastSyncedDuration = duration;
   }
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
+
+    final durationText = _defaultDurationController.text.trim();
+    final duration = durationText.isEmpty ? null : int.tryParse(durationText);
 
     await ref
         .read(organizationSettingsProvider.notifier)
@@ -57,6 +68,7 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
           logoUrl: _logoUrlController.text,
           currencyCode: OrganizationProfile.normalizeCurrencyCode(_currencyController.text),
           timezone: OrganizationProfile.normalizeTimezone(_timezoneController.text),
+          defaultAppointmentDurationMinutes: duration,
         );
   }
 
@@ -74,7 +86,11 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
     return Scaffold(
       appBar: AppBar(
         title: const Text('Organization'),
-        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => context.go(AppRoutes.settings)),
+        leading: IconButton(
+          tooltip: 'Go back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go(AppRoutes.settings),
+        ),
       ),
       body: settingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -159,6 +175,28 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
                         return 'Select a timezone from the list';
                       }
                       return ui.fieldErrors['timezone'];
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  AppModifiableFormField(
+                    label: 'Default appointment duration (minutes)',
+                    currentValue: ui.defaultAppointmentDurationMinutes?.toString(),
+                    controller: _defaultDurationController,
+                    enabled: !ui.isSaving,
+                    keyboardType: TextInputType.number,
+                    hint: 'e.g. 20',
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return ui.fieldErrors['defaultAppointmentDuration'];
+                      }
+                      final minutes = int.tryParse(value.trim());
+                      if (minutes == null) {
+                        return 'Enter a whole number of minutes.';
+                      }
+                      if (minutes < 5 || minutes > 240) {
+                        return 'Duration must be between 5 and 240 minutes.';
+                      }
+                      return ui.fieldErrors['defaultAppointmentDuration'];
                     },
                   ),
                   const SizedBox(height: 24),

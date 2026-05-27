@@ -25,6 +25,7 @@ import 'package:ai_clinic/features/settings/presentation/pages/staff_form_page.d
 import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_settings_password_reset_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patient_pages.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_placeholder_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -76,6 +77,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '${AppRoutes.patients}/:patientId/edit',
             builder: (context, state) => PatientEditPage(patientId: state.pathParameters['patientId']),
+          ),
+
+          // Appointments (V1-4 placeholders until story phases)
+          GoRoute(
+            path: AppRoutes.appointments,
+            builder: (context, state) => const AppointmentPlaceholderPage(title: 'Appointments'),
+          ),
+          GoRoute(
+            path: AppRoutes.appointmentsBook,
+            builder: (context, state) => const AppointmentPlaceholderPage(title: 'Book appointment'),
+          ),
+          GoRoute(
+            path: AppRoutes.appointmentsWalkIn,
+            builder: (context, state) => const AppointmentPlaceholderPage(title: 'Walk-in registration'),
+          ),
+          GoRoute(
+            path: AppRoutes.appointmentsQueue,
+            builder: (context, state) => const AppointmentPlaceholderPage(title: "Today's queue"),
+          ),
+          GoRoute(
+            path: '${AppRoutes.appointments}/schedule/:doctorId',
+            builder: (context, state) =>
+                AppointmentPlaceholderPage(title: 'Doctor schedule (${state.pathParameters['doctorId']})'),
           ),
 
           // Settings
@@ -169,6 +193,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final patientRedirect = AuthRouteGuard.patientRouteRedirect(location: location, auth: auth);
         if (patientRedirect != null) {
           return patientRedirect;
+        }
+
+        final appointmentRedirect = AuthRouteGuard.appointmentRouteRedirect(location: location, auth: auth);
+        if (appointmentRedirect != null) {
+          return appointmentRedirect;
         }
 
         final provisioningRedirect = AuthRouteGuard.steadyStateProvisioningRedirect(location: location, auth: auth);

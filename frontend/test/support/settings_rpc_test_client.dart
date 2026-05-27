@@ -63,6 +63,14 @@ class SettingsRpcTestClient extends RpcCaptureSupabaseClient {
           'is_granted': lastParams?['p_is_granted'],
         },
       },
+      'get_appointment_settings' => {
+        'success': true,
+        'data': {'default_duration_minutes': 20, 'min_duration_minutes': 5, 'max_duration_minutes': 240},
+      },
+      'set_appointment_default_duration' => {
+        'success': true,
+        'data': {'default_duration_minutes': lastParams?['p_duration_minutes'] ?? 20},
+      },
       _ => {'success': true, 'data': {}},
     };
   }

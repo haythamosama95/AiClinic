@@ -86,6 +86,11 @@ run_sql_test "Patient management roles" "patient_management_roles.sql"
 run_sql_test "Patient management search advanced" "patient_management_search_advanced.sql"
 run_sql_test "Patient management concurrent" "patient_management_concurrent.sql"
 
+# --- Appointment Management ---
+printf '\n--- Appointment Management ---\n'
+run_sql_test "Appointment management CRUD" "appointment_management_crud.sql"
+run_sql_test "Appointment management RLS" "appointment_management_rls.sql"
+
 # --- Safety ---
 printf '\n--- Safety ---\n'
 run_sql_test "Dev reset safety" "dev_reset_safety.sql"

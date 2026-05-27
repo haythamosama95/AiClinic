@@ -42,7 +42,7 @@ void main() {
         final clinic = await ctx.ensureClinic(label: 'matrix_${role.wireValue}_create');
         final sessions = RoleSessions(ctx, clinic);
         await sessions.signInAs(role);
-        final run = () => ctx.patients.createPatient(
+        Future<void> run() => ctx.patients.createPatient(
           CreatePatientInput(activeBranchId: clinic.branchId, fullName: 'Matrix Create', phone: clinic.phone('20')),
         );
         if (labMutationsForbidden) {
@@ -87,7 +87,7 @@ void main() {
         final clinic = await ctx.ensureClinic(label: 'matrix_${role.wireValue}_dup');
         final sessions = RoleSessions(ctx, clinic);
         await sessions.signInAs(role);
-        final run = () => ctx.patients.checkDuplicates(fullName: 'X', phone: clinic.phone('50'));
+        Future<void> run() => ctx.patients.checkDuplicates(fullName: 'X', phone: clinic.phone('50'));
         if (labMutationsForbidden) {
           await expectRpcCode(run, 'FORBIDDEN');
         } else {
@@ -101,7 +101,7 @@ void main() {
         final id = await ctx.fixtures.createPatientAsAdmin(clinic: clinic, phone: clinic.phone('60'));
         final sessions = RoleSessions(ctx, clinic);
         await sessions.signInAs(role);
-        final run = () => ctx.patients.archivePatient(id);
+        Future<void> run() => ctx.patients.archivePatient(id);
         if (labMutationsForbidden) {
           await expectRpcCode(run, 'FORBIDDEN');
         } else {

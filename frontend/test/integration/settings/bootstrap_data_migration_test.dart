@@ -1,3 +1,4 @@
+import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -12,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../support/pump_auth_app.dart';
+import '../../support/settings_rpc_test_client.dart';
 import '../../support/settings_table_test_client.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import '../../helpers/auth_test_support.dart';
@@ -253,6 +255,7 @@ void main() {
 
 Future<void> _pumpOwnerWithBootstrapData(WidgetTester tester) async {
   final tableClient = SettingsTableTestClient(_bootstrapTenantTables());
+  final rpc = SettingsRpcTestClient();
   await pumpAuthApp(
     tester,
     extraOverrides: [
@@ -260,6 +263,7 @@ Future<void> _pumpOwnerWithBootstrapData(WidgetTester tester) async {
       organizationRepositoryProvider.overrideWithValue(_BootstrapOrganizationRepository(tableClient)),
       branchRepositoryProvider.overrideWithValue(BranchRepositoryImpl(tableClient)),
       staffAdminRepositoryProvider.overrideWithValue(StaffAdminRepositoryImpl(tableClient)),
+      appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(rpc)),
     ],
   );
   await completeStartupBootstrap(tester);

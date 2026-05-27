@@ -24,6 +24,7 @@ abstract final class AuthRouteGuard {
         location == AppRoutes.bootstrap ||
         isSettingsRoute(location) ||
         isPatientRoute(location) ||
+        isAppointmentRoute(location) ||
         isStaffProvisioningRoute(location) ||
         location.startsWith('${AppRoutes.protectedPrefix}/');
   }
@@ -62,6 +63,61 @@ abstract final class AuthRouteGuard {
       return false;
     }
     return PermissionService(auth.context).canEditPatients();
+  }
+
+  /// V1-4 appointment routes under `/appointments`.
+  static bool isAppointmentRoute(String location) {
+    if (AppRoutes.appointmentStaticPaths.contains(location)) {
+      return true;
+    }
+    if (!location.startsWith('${AppRoutes.appointments}/')) {
+      return false;
+    }
+    return location.startsWith('${AppRoutes.appointments}/schedule/');
+  }
+
+  static bool canAccessAppointmentHub(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canAccessAppointments();
+  }
+
+  static bool canAccessAppointmentBooking(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canCreateAppointments();
+  }
+
+  static bool canAccessAppointmentCancelActions(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canCancelAppointments();
+  }
+
+  /// Returns redirect when [location] is an appointment route the session cannot access.
+  static String? appointmentRouteRedirect({required String location, required AuthSessionState auth}) {
+    if (!isAppointmentRoute(location)) {
+      return null;
+    }
+
+    if (!auth.isAuthenticated) {
+      return AppRoutes.login;
+    }
+
+    if (auth.context!.setupRequired) {
+      return AppRoutes.bootstrap;
+    }
+
+    final allowed = switch (location) {
+      AppRoutes.appointmentsBook || AppRoutes.appointmentsWalkIn => canAccessAppointmentBooking(auth),
+      _ when location.startsWith('${AppRoutes.appointments}/schedule/') => canAccessAppointmentHub(auth),
+      _ => canAccessAppointmentHub(auth),
+    };
+
+    return allowed ? null : AppRoutes.home;
   }
 
   /// Returns redirect when [location] is a patient route the session cannot access.

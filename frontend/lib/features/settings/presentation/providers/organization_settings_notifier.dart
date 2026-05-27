@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/features/settings/domain/update_organization_input.dart';
@@ -14,6 +15,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 class OrganizationSettingsUiState {
   const OrganizationSettingsUiState({
     this.profile,
+    this.defaultAppointmentDurationMinutes,
     this.isSaving = false,
     this.permissionDenied = false,
     this.errorMessage,
@@ -22,6 +24,7 @@ class OrganizationSettingsUiState {
   });
 
   final OrganizationProfile? profile;
+  final int? defaultAppointmentDurationMinutes;
   final bool isSaving;
   final bool permissionDenied;
   final String? errorMessage;
@@ -30,6 +33,7 @@ class OrganizationSettingsUiState {
 
   OrganizationSettingsUiState copyWith({
     OrganizationProfile? profile,
+    int? defaultAppointmentDurationMinutes,
     bool? isSaving,
     bool? permissionDenied,
     String? errorMessage,
@@ -41,6 +45,7 @@ class OrganizationSettingsUiState {
   }) {
     return OrganizationSettingsUiState(
       profile: profile ?? this.profile,
+      defaultAppointmentDurationMinutes: defaultAppointmentDurationMinutes ?? this.defaultAppointmentDurationMinutes,
       isSaving: isSaving ?? this.isSaving,
       permissionDenied: permissionDenied ?? this.permissionDenied,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
@@ -71,7 +76,18 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
       throw StateError('Organization profile not found for $orgId');
     }
 
-    return OrganizationSettingsUiState(profile: profile);
+    final branchId = auth.context!.activeBranchId ?? auth.context!.branchIds.firstOrNull;
+    int? defaultDuration;
+    if (branchId != null && branchId.isNotEmpty) {
+      try {
+        final settings = await ref.read(appointmentRepositoryProvider).getSettings(branchId: branchId);
+        defaultDuration = settings.defaultDurationMinutes;
+      } catch (error) {
+        AppLog.warning('settings.organization.appointment_duration.load_failed reason=${error.runtimeType}');
+      }
+    }
+
+    return OrganizationSettingsUiState(profile: profile, defaultAppointmentDurationMinutes: defaultDuration);
   }
 
   void clearSaveMessage() {
@@ -82,7 +98,13 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
     state = AsyncData(current.copyWith(clearSaveMessage: true));
   }
 
-  Future<bool> save({required String name, String? logoUrl, String? currencyCode, String? timezone}) async {
+  Future<bool> save({
+    required String name,
+    String? logoUrl,
+    String? currencyCode,
+    String? timezone,
+    int? defaultAppointmentDurationMinutes,
+  }) async {
     final current = state.value;
     if (current == null || current.permissionDenied) {
       return false;
@@ -105,6 +127,18 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
     );
     AppLog.info('settings.organization.save.start');
 
+    if (defaultAppointmentDurationMinutes != null &&
+        (defaultAppointmentDurationMinutes < 5 || defaultAppointmentDurationMinutes > 240)) {
+      state = AsyncData(
+        current.copyWith(
+          fieldErrors: {'defaultAppointmentDuration': 'Duration must be between 5 and 240 minutes.'},
+          clearError: true,
+          clearSaveMessage: true,
+        ),
+      );
+      return false;
+    }
+
     try {
       await ref.read(updateOrganizationUseCaseProvider)(
         UpdateOrganizationInput(
@@ -116,13 +150,20 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
         ),
       );
 
-      final refreshed = await ref.read(fetchOrganizationProfileUseCaseProvider)(
-        organizationId: current.profile!.id,
-      );
+      var savedDuration = current.defaultAppointmentDurationMinutes;
+      if (defaultAppointmentDurationMinutes != null &&
+          defaultAppointmentDurationMinutes != current.defaultAppointmentDurationMinutes) {
+        savedDuration = await ref
+            .read(appointmentRepositoryProvider)
+            .setDefaultDuration(durationMinutes: defaultAppointmentDurationMinutes);
+      }
+
+      final refreshed = await ref.read(fetchOrganizationProfileUseCaseProvider)(organizationId: current.profile!.id);
 
       state = AsyncData(
         OrganizationSettingsUiState(
           profile: refreshed ?? current.profile!.copyWith(name: normalizedName),
+          defaultAppointmentDurationMinutes: savedDuration,
           saveMessage: 'Organization settings saved.',
         ),
       );
@@ -157,6 +198,9 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
     }
     if (lower.contains('name')) {
       return {'name': message};
+    }
+    if (lower.contains('duration')) {
+      return {'defaultAppointmentDuration': message};
     }
     return {};
   }

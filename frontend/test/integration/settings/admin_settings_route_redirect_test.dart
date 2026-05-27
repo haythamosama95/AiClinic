@@ -1,3 +1,4 @@
+import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -37,13 +38,15 @@ void main() {
         'timezone': 'UTC',
         'settings_json': {},
       });
+      final rpc = SettingsRpcTestClient();
       await pumpAuthApp(
         tester,
         extraOverrides: [
           authSessionProvider.overrideWith(_OwnerSessionNotifier.new),
           organizationRepositoryProvider.overrideWithValue(
-            _IntegrationOrganizationRepository(fetchClient: fetchClient, rpcClient: SettingsRpcTestClient()),
+            _IntegrationOrganizationRepository(fetchClient: fetchClient, rpcClient: rpc),
           ),
+          appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(rpc)),
         ],
       );
       await completeStartupBootstrap(tester);

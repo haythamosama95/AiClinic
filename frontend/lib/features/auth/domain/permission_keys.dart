@@ -8,6 +8,8 @@ abstract final class PermissionKeys {
   static const patientsCreate = 'patients.create';
   static const patientsEdit = 'patients.edit';
   static const patientsDelete = 'patients.delete';
+  static const appointmentsCreate = 'appointments.create';
+  static const appointmentsCancel = 'appointments.cancel';
   static const analyticsView = 'analytics.view';
   static const aiAccess = 'ai.access';
   static const invoicesCreate = 'invoices.create';
@@ -22,6 +24,8 @@ abstract final class RolePermissionSeed {
     PermissionKeys.patientsCreate,
     PermissionKeys.patientsEdit,
     PermissionKeys.patientsDelete,
+    PermissionKeys.appointmentsCreate,
+    PermissionKeys.appointmentsCancel,
     PermissionKeys.analyticsView,
     PermissionKeys.aiAccess,
     PermissionKeys.invoicesCreate,
@@ -29,9 +33,20 @@ abstract final class RolePermissionSeed {
 
   static const administrator = owner;
 
-  static const doctor = {PermissionKeys.patientsView, PermissionKeys.patientsCreate, PermissionKeys.aiAccess};
+  static const doctor = {
+    PermissionKeys.patientsView,
+    PermissionKeys.patientsCreate,
+    PermissionKeys.appointmentsCreate,
+    PermissionKeys.appointmentsCancel,
+    PermissionKeys.aiAccess,
+  };
 
-  static const receptionist = {PermissionKeys.patientsView, PermissionKeys.invoicesCreate};
+  static const receptionist = {
+    PermissionKeys.patientsView,
+    PermissionKeys.appointmentsCreate,
+    PermissionKeys.appointmentsCancel,
+    PermissionKeys.invoicesCreate,
+  };
 
   static const labStaff = {PermissionKeys.patientsView};
 

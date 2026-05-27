@@ -1,3 +1,4 @@
+import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/organization_repository.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
@@ -10,7 +11,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../helpers/auth_test_support.dart';
+import '../../support/appointment_rpc_test_client.dart';
 import '../../support/settings_rpc_test_client.dart';
+
+Future<void> _tapSave(WidgetTester tester) async {
+  final save = find.text('Save organization settings');
+  await tester.ensureVisible(save);
+  await tester.tap(save);
+}
 
 void main() {
   group('OrganizationSettingsPage', () {
@@ -22,7 +30,8 @@ void main() {
       expect(find.text('Test Clinic'), findsOneWidget);
       expect(find.text('Currency code'), findsOneWidget);
       expect(find.text('USD'), findsOneWidget);
-      expect(find.text('Modify'), findsNWidgets(4));
+      expect(find.text('Modify'), findsNWidgets(5));
+      expect(find.text('Default appointment duration (minutes)'), findsOneWidget);
       expect(find.byType(TextFormField), findsNothing);
       expect(find.text('Save organization settings'), findsOneWidget);
     });
@@ -42,7 +51,7 @@ void main() {
       await tester.tap(find.text('Modify').first);
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField), '   ');
-      await tester.tap(find.text('Save organization settings'));
+      await _tapSave(tester);
       await tester.pumpAndSettle();
 
       expect(find.text('Organization name is required.'), findsOneWidget);
@@ -56,7 +65,7 @@ void main() {
       await tester.tap(find.text('Modify').first);
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField), 'Renamed Clinic');
-      await tester.tap(find.text('Save organization settings'));
+      await _tapSave(tester);
       await tester.pumpAndSettle();
 
       expect(find.text('Organization settings saved.'), findsOneWidget);
@@ -73,7 +82,7 @@ void main() {
       await tester.pumpWidget(_host(role: StaffRole.owner, rpcClient: client));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Save organization settings'));
+      await _tapSave(tester);
       await tester.pumpAndSettle();
 
       expect(find.textContaining('do not have permission'), findsOneWidget);
@@ -119,7 +128,7 @@ void main() {
       await tester.tap(find.widgetWithText(ListTile, 'EGP'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Save organization settings'));
+      await _tapSave(tester);
       await tester.pumpAndSettle();
 
       expect(client.lastParams, containsPair('p_currency_code', 'EGP'));
@@ -193,6 +202,7 @@ Widget _host({
         organizationSettingsProvider.overrideWith(() => _DeniedOrganizationNotifier())
       else
         organizationRepositoryProvider.overrideWithValue(readWriteRepo),
+      appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(AppointmentRpcTestClient())),
     ],
     child: const MaterialApp(home: OrganizationSettingsPage()),
   );
