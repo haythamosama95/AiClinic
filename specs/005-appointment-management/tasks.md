@@ -26,10 +26,10 @@
 
 **Purpose**: Appointments feature module layout, routes, and test workspace before migration/UI work
 
-- [ ] T001 Create appointments feature directories in `frontend/lib/features/appointments/data/`, `frontend/lib/features/appointments/domain/`, `frontend/lib/features/appointments/presentation/pages/`, `frontend/lib/features/appointments/presentation/providers/`, and `frontend/lib/features/appointments/presentation/widgets/`
-- [ ] T002 [P] Create test directories `frontend/test/unit/appointments/`, `frontend/test/widget/appointments/`, and `frontend/test/integration/appointments/`
-- [ ] T003 [P] Add appointment route constants in `frontend/lib/app/app_routes.dart` (`/appointments`, `/appointments/book`, `/appointments/walk-in`, `/appointments/queue`, `/appointments/schedule/:doctorId` plus path builders)
-- [ ] T004 [P] Add domain model stubs per `data-model.md` in `frontend/lib/features/appointments/domain/appointment_list_item.dart`, `appointment_detail.dart`, `appointment_type.dart`, and `appointment_status.dart`
+- [X] T001 Create appointments feature directories in `frontend/lib/features/appointments/data/`, `frontend/lib/features/appointments/domain/`, `frontend/lib/features/appointments/presentation/pages/`, `frontend/lib/features/appointments/presentation/providers/`, and `frontend/lib/features/appointments/presentation/widgets/`
+- [X] T002 [P] Create test directories `frontend/test/unit/appointments/`, `frontend/test/widget/appointments/`, and `frontend/test/integration/appointments/`
+- [X] T003 [P] Add appointment route constants in `frontend/lib/app/app_routes.dart` (`/appointments`, `/appointments/book`, `/appointments/walk-in`, `/appointments/queue`, `/appointments/schedule/:doctorId` plus path builders)
+- [X] T004 [P] Add domain model stubs per `data-model.md` in `frontend/lib/features/appointments/domain/appointment_list_item.dart`, `appointment_detail.dart`, `appointment_type.dart`, and `appointment_status.dart`
 
 ---
 

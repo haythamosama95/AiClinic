@@ -61,4 +61,16 @@ abstract final class AppRoutes {
 
   /// Static patient hub paths (list + register).
   static const patientStaticPaths = <String>[patients, patientsNew];
+
+  // V1-4 appointment management
+  static const appointments = '/appointments';
+  static const appointmentsBook = '/appointments/book';
+  static const appointmentsWalkIn = '/appointments/walk-in';
+  static const appointmentsQueue = '/appointments/queue';
+
+  /// Doctor schedule: `/appointments/schedule/:doctorId`
+  static String appointmentsSchedule(String doctorId) => '$appointments/schedule/$doctorId';
+
+  /// Static appointment hub paths (calendar, book, walk-in, queue).
+  static const appointmentStaticPaths = <String>[appointments, appointmentsBook, appointmentsWalkIn, appointmentsQueue];
 }
