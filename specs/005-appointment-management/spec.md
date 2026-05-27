@@ -37,6 +37,10 @@ V1-3 (`specs/004-patient-management`) delivered the patient registry. This featu
 - Q: How should today's queue be sorted? → A: **`start_time` ascending** only. Walk-ins and planned appointments share one ordered queue by assigned/ booked time; `queue_number` is not used for V1-4 ordering.
 - Q: How are walk-ins placed in the queue relative to confirmed appointments? → A: Confirmed planned appointments reserve their booked times. Walk-ins receive an auto-assigned `start_time` (and `end_time`) in a non-overlapping slot on the same day for the selected doctor at the branch; the queue order follows `start_time` because walk-ins are timed like other appointments.
 
+### Session 2026-05-24
+
+- Q: What is the default appointment slot duration for planned and walk-in bookings? → A: A clinic-configurable **default duration** (stored in settings, applied to both planned and walk-in flows). Booking and walk-in forms **pre-fill** from that default; staff may **override** with a custom duration (or explicit end time) per appointment. Walk-in auto-slot assignment uses the duration in effect on the form (default or override) to compute `end_time` when placing the gap.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Book a Planned Appointment (Priority: P1)
@@ -51,9 +55,11 @@ As reception staff (or another role with appointment-create permission), I can b
 
 1. **Given** a signed-in user with `appointments.create` and an active branch, **When** they submit a valid booking for a non-archived patient and available doctor/time, **Then** an appointment is created with type `planned`, status `scheduled`, `branch_id` equal to the active branch, and success is confirmed.
 2. **Given** a time range that overlaps an existing non-cancelled appointment for the same doctor at the branch, **When** the user attempts to book, **Then** creation is rejected with a clear conflict message and no duplicate slot is stored.
-3. **Given** required selections are missing (patient, doctor, start/end time), **When** the user submits, **Then** field-level errors are shown and no appointment is created.
-4. **Given** a user without `appointments.create`, **When** they attempt to book, **Then** the action is blocked at UI and server layers.
-5. **Given** an archived patient, **When** the user attempts to book, **Then** the patient cannot be selected or creation is rejected with a clear message.
+3. **Given** clinic settings define a default appointment duration, **When** the user opens the booking form, **Then** duration is pre-filled from settings and `end_time` is derived from `start_time` plus that duration until changed.
+4. **Given** a default duration is pre-filled, **When** the user enters a custom duration or explicit end time, **Then** the booking uses the custom values for conflict checking and storage.
+5. **Given** required selections are missing (patient, doctor, start time, or valid duration/end), **When** the user submits, **Then** field-level errors are shown and no appointment is created.
+6. **Given** a user without `appointments.create`, **When** they attempt to book, **Then** the action is blocked at UI and server layers.
+7. **Given** an archived patient, **When** the user attempts to book, **Then** the patient cannot be selected or creation is rejected with a clear message.
 
 ---
 
@@ -69,9 +75,10 @@ As reception staff, I can register a walk-in appointment for a patient who arriv
 
 1. **Given** `appointments.create` and an active branch, **When** the user completes walk-in registration for a patient and doctor, **Then** an appointment is created with type `walk_in`, status `checked_in` (not `scheduled`), and appears in today's queue.
 2. **Given** a walk-in appointment, **When** it is created, **Then** no separate check-in action is required because the patient is already checked in at registration.
-3. **Given** confirmed planned appointments occupying slots for a doctor today, **When** a walk-in is registered, **Then** the system assigns `start_time`/`end_time` to the next available non-overlapping slot (same conflict rules as planned booking) and the walk-in appears in queue order by that `start_time`.
-4. **Given** no available slot remains for the doctor today under clinic slot-duration rules, **When** walk-in registration is attempted, **Then** creation is rejected with a clear no-slots-available message.
-5. **Given** a walk-in was assigned a slot, **When** the user views today's queue, **Then** the walk-in appears interleaved with planned appointments by `start_time`, not in a separate numbering scheme.
+3. **Given** confirmed planned appointments occupying slots for a doctor today, **When** a walk-in is registered with the default or custom duration shown on the form, **Then** the system assigns `start_time`/`end_time` to the next available non-overlapping slot of that length (same conflict rules as planned booking) and the walk-in appears in queue order by that `start_time`.
+4. **Given** clinic default duration in settings, **When** the walk-in form opens, **Then** duration is pre-filled from settings and the user may override with a custom duration before submit.
+5. **Given** no available slot remains for the doctor today for the requested duration, **When** walk-in registration is attempted, **Then** creation is rejected with a clear no-slots-available message.
+6. **Given** a walk-in was assigned a slot, **When** the user views today's queue, **Then** the walk-in appears interleaved with planned appointments by `start_time`, not in a separate numbering scheme.
 
 ---
 
@@ -179,7 +186,8 @@ As staff with cancel permission, I can cancel an appointment or mark it as no-sh
 - Cancelled and no-show appointments excluded from conflict detection for the same doctor/time window.
 - Visit creation is not triggered on complete in V1-4; downstream V1-5 owns visit linkage.
 - Walk-in type must not be created with status `scheduled`; planned type must not skip `scheduled` on create unless rescheduled or transitioned through check-in.
-- Walk-in registration when the doctor's day has no remaining gap: rejected with clear messaging.
+- Walk-in registration when the doctor's day has no remaining gap for the requested duration: rejected with clear messaging.
+- Settings default duration missing or invalid: use a documented system fallback for pre-fill until an administrator sets the clinic default.
 - Multiple walk-ins for same doctor: each receives distinct non-overlapping assigned times via auto-slot logic.
 
 ## Requirements *(mandatory)*
@@ -192,10 +200,12 @@ As staff with cancel permission, I can cancel an appointment or mark it as no-sh
 - **FR-004**: The system MUST enforce permission key `appointments.create` for booking, walk-in registration, and all forward status transitions (check-in, in progress, complete) at UI and server layers; users with this permission MAY perform these transitions on any appointment at their branch regardless of assigned `doctor_id`.
 - **FR-005**: The system MUST enforce permission key `appointments.cancel` for cancellation and no-show at UI and server layers.
 - **FR-006**: The system MUST allow users with either `appointments.create` or `appointments.cancel` to view calendar, queue, and doctor schedule data for branches they are assigned to; users with neither key MUST NOT access appointment operational screens.
-- **FR-007**: The system MUST provide planned appointment booking with patient selection (organization patients, non-archived), doctor selection, time slot selection, optional notes, and client-side validation before server submission.
+- **FR-007**: The system MUST provide planned appointment booking with patient selection (organization patients, non-archived), doctor selection, start time, appointment duration (defaulted from clinic settings), optional custom duration or explicit end time, optional notes, and client-side validation before server submission.
+- **FR-007b**: The system MUST store a configurable default appointment duration in clinic settings (branch-level or organization-wide per settings model from V1-2); booking and walk-in forms MUST pre-fill duration from that setting.
+- **FR-007c**: The system MUST allow staff to override the pre-filled default duration (or set a custom end time) on each planned booking and walk-in registration; the effective duration MUST be used for conflict detection and stored `end_time`.
 - **FR-008**: The system MUST provide walk-in registration flow sharing patient and doctor selection with type `walk_in`, initial status `checked_in` (never `scheduled`), for today at the active branch.
 - **FR-008a**: The system MUST set initial status `scheduled` only for `planned` appointments; `walk_in` appointments MUST be created with status `checked_in`.
-- **FR-008b**: The system MUST auto-assign `start_time` and `end_time` on walk-in create by placing the appointment in the next available slot for the selected doctor at the branch on the current day that does not overlap any confirmed appointment (any non–`cancelled`, non–`no_show` appointment for that doctor, including other walk-ins once assigned).
+- **FR-008b**: The system MUST auto-assign `start_time` on walk-in create and set `end_time` from the effective duration on the form (settings default or staff override), placing the slot in the next available gap for the selected doctor at the branch on the current day that does not overlap any non–`cancelled`, non–`no_show` appointment for that doctor (including other walk-ins once assigned).
 - **FR-008c**: Confirmed appointments are planned (`type` `planned`) bookings with reserved times; walk-ins MUST NOT displace or override confirmed slot times—only use gaps or free time.
 - **FR-009**: The system MUST reject overlapping appointments for the same `doctor_id`, `branch_id`, and overlapping `start_time`/`end_time` when either appointment is not `cancelled` or `no_show`.
 - **FR-010**: The system MUST expose conflict feedback on failed create and reschedule identifying the conflicting slot or appointment.
@@ -255,7 +265,7 @@ Exact names follow architecture; required capabilities:
 - **Create appointment**: Validate `appointments.create`, active branch, patient and doctor validity; for `planned`, accept staff-chosen time range and conflict rule; for `walk_in`, auto-assign next available slot today with conflict rule, set status `checked_in`; set type and initial status (`planned` → `scheduled`); audit log.
 - **Cancel appointment**: Validate `appointments.cancel`, allowed current status, optional reason; set `cancelled`; audit log.
 - **Update appointment status**: Validate permission (create for all forward transitions per transition table, cancel for cancel/no-show), branch scope, and valid transition only—do not require the actor to be the assigned doctor; audit log.
-- **Reschedule appointment**: Validate `appointments.create`, status is `scheduled`, branch scope, new time range, conflict rule (exclude self); update times; audit log.
+- **Reschedule appointment**: Validate `appointments.create`, status is `scheduled`, branch scope, new start time and duration (default pre-fill or custom override, same rules as create), conflict rule (exclude self); update times; audit log.
 
 ### Status Transition Rules
 
@@ -295,7 +305,8 @@ Visit, billing, and AI APIs remain out of scope.
 - **Calendar - Loading / Daily / Weekly / Empty / Error / Permission Denied**
 - **Booking Form - Initial / Validation Error / Conflict Error / Submitting / Success / Permission Denied**
 - **Reschedule Form - Initial / Validation Error / Conflict Error / Submitting / Success / Not allowed (wrong status) / Permission Denied**
-- **Walk-In Form - Initial / Validation Error / Conflict Error / Submitting / Success / Permission Denied**
+- **Walk-In Form - Initial (duration pre-filled) / Custom duration / Validation Error / Conflict Error / No slot available / Submitting / Success / Permission Denied**
+- **Clinic Settings (duration) - View default / Edit default / Save success / Permission Denied** (within existing settings access model)
 - **Today's Queue - Loading / Loaded / Live connected / Live degraded (manual refresh) / Empty / Error / Permission Denied**
 - **Doctor Schedule - Loading / Loaded / Empty / Error / Permission Denied**
 - **Status Actions - Available / Disabled by transition / Submitting / Error**
@@ -304,8 +315,9 @@ Navigation integrates with the main app shell, patient picker from patient manag
 
 ### Validation Rules
 
-- Patient, doctor, `start_time`, and `end_time` are required for **planned** booking (staff-selected).
-- Walk-in registration requires patient and doctor; `start_time` and `end_time` are assigned by the system unless planning adds optional manual override.
+- Patient, doctor, and `start_time` are required for **planned** booking; `end_time` is required and MUST equal start plus effective duration (from settings default or staff override) unless staff enters an explicit end time that satisfies validation.
+- Walk-in registration requires patient and doctor; effective duration comes from settings default with optional staff override; `start_time` is auto-assigned and `end_time` is computed from that duration unless staff supplies a valid explicit end time.
+- Effective duration MUST be a positive value within allowed min/max bounds defined in planning (e.g., 5–240 minutes).
 - `end_time` must be after `start_time`.
 - Doctor must be eligible to practice at the branch (per staff/role data from V1-2).
 - Patient must belong to the user's organization and not be archived.
@@ -355,6 +367,7 @@ This feature introduces no AI-assisted workflow. Scheduling remains fully manual
 11. Book with patient registered at another branch in same org; verify success at active branch.
 12. Reschedule `scheduled` appointment to new slot; verify conflict rejection and blocked reschedule after check-in.
 13. Run backend verification utilities for conflict, transitions, reschedule, and cross-org denial.
+14. Change default duration in settings; verify planned booking and walk-in forms pre-fill; book with custom override and verify stored `end_time`.
 
 ### Implementation Constraints
 
@@ -399,7 +412,8 @@ This feature introduces no AI-assisted workflow. Scheduling remains fully manual
 - Permission keys `appointments.create` and `appointments.cancel` are seeded per V1-1; viewing operational appointment UI requires at least one of these grants.
 - Doctors are identified from staff records with the doctor role; planning aligns `doctor_id` with staff member identifiers used elsewhere.
 - Today's queue sort order is `start_time` ascending only; walk-ins receive auto-assigned times in slots not occupied by confirmed (non–cancelled, non–no-show) appointments for the same doctor.
-- Default walk-in slot duration and gap-finding algorithm are defined in implementation planning (e.g., fixed minutes per walk-in); must be consistent and testable.
+- Default appointment duration is stored in clinic settings and applies to both planned and walk-in flows; staff may override per booking. Initial fallback when unset is defined in planning (e.g., 20 minutes).
+- Walk-in gap-finding uses the effective duration on the form and selects the next available slot at or after the current time on the same day unless planning specifies otherwise.
 - Walk-in appointments are always created as `checked_in`; only `planned` appointments use `scheduled` as the initial status.
 - Reschedule is in scope for V1-4: dedicated update of `start_time`/`end_time` for `scheduled` appointments only, with conflict detection equivalent to create.
 - `specs/operations/appointments.spec.md` will be authored later; this feature spec is authoritative for V1-4 until that shared spec exists.
