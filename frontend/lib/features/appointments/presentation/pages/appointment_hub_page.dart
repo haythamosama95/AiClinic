@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/dev_seed_appointments_button.dart';
 
 /// Appointments entry hub: links to book, walk-in, queue, and calendar (V1-4).
 class AppointmentHubPage extends ConsumerWidget {
@@ -38,6 +39,7 @@ class AppointmentHubPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Appointments'),
+        actions: const [DevSeedAppointmentsButton()],
         leading: IconButton(
           tooltip: 'Go back',
           icon: const Icon(Icons.arrow_back),
@@ -91,14 +93,13 @@ class AppointmentHubPage extends ConsumerWidget {
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   key: const Key('appointments_hub_calendar'),
-                  onPressed: missingBranch ? null : () => context.nav.goAppointmentsCalendar(),
+                  onPressed: () => context.nav.goAppointmentsCalendar(),
                   icon: const Icon(Icons.calendar_month_outlined),
                   label: const Text('Calendar & schedules'),
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'Calendar, walk-in auto-slot, and live queue views are added in upcoming releases. '
-                  'Planned booking is available now.',
+                  'Use Calendar & schedules to open the day/week appointment calendar.',
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),

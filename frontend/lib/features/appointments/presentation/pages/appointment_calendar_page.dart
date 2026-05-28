@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:calendar_view/calendar_view.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/dev_seed_doctors_button.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -22,12 +22,17 @@ class AppointmentCalendarPage extends ConsumerStatefulWidget {
 
 class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPage> {
   int _doctorFilterReloadToken = 0;
+  final EventController<AppointmentListItem> _eventController = EventController<AppointmentListItem>();
+  final GlobalKey<DayViewState<AppointmentListItem>> _dayViewKey = GlobalKey<DayViewState<AppointmentListItem>>();
+  final GlobalKey<WeekViewState<AppointmentListItem>> _weekViewKey = GlobalKey<WeekViewState<AppointmentListItem>>();
+  int _eventsFingerprint = 0;
 
   @override
   Widget build(BuildContext context) {
     final canAccess = ref.watch(permissionServiceProvider).canAccessAppointments();
     final state = ref.watch(appointmentCalendarProvider);
     final controller = ref.read(appointmentCalendarProvider.notifier);
+    _syncCalendarEvents(state.items);
 
     if (!canAccess) {
       return Scaffold(
@@ -71,19 +76,19 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                 ),
                 OutlinedButton.icon(
                   key: const Key('appointments_calendar_prev'),
-                  onPressed: controller.previousPeriod,
+                  onPressed: () => _goToPreviousPeriod(controller, state.mode),
                   icon: const Icon(Icons.chevron_left),
                   label: const Text('Previous'),
                 ),
                 OutlinedButton.icon(
                   key: const Key('appointments_calendar_next'),
-                  onPressed: controller.nextPeriod,
+                  onPressed: () => _goToNextPeriod(controller, state.mode),
                   icon: const Icon(Icons.chevron_right),
                   label: const Text('Next'),
                 ),
                 FilledButton.tonal(
                   key: const Key('appointments_calendar_today'),
-                  onPressed: () => controller.setFocusDate(DateTime.now()),
+                  onPressed: () => _jumpToToday(controller, state.mode),
                   child: const Text('Today'),
                 ),
               ],
@@ -103,12 +108,36 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
               const SizedBox(height: 8),
               OutlinedButton(onPressed: controller.refresh, child: const Text('Retry')),
             ],
-            if (!state.loading && state.error == null && state.items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.only(top: 24),
-                child: Text('No appointments in this range.', textAlign: TextAlign.center),
+            if (!state.loading && state.error == null)
+              Container(
+                height: 640,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: state.mode == AppointmentCalendarMode.day
+                      ? DayView<AppointmentListItem>(
+                          key: _dayViewKey,
+                          controller: _eventController,
+                          initialDay: state.focusDate,
+                          onPageChange: (date, _) => controller.setFocusDate(date),
+                          onEventTap: _onCalendarEventTap,
+                          eventTileBuilder: _eventTileBuilder,
+                        )
+                      : WeekView<AppointmentListItem>(
+                          key: _weekViewKey,
+                          controller: _eventController,
+                          initialDay: state.focusDate,
+                          onPageChange: (date, _) => controller.setFocusDate(date),
+                          onEventTap: _onCalendarEventTap,
+                          eventTileBuilder: _eventTileBuilder,
+                          showWeekends: true,
+                        ),
+                ),
               ),
-            if (!state.loading && state.items.isNotEmpty) ...state.items.map((item) => _AppointmentTile(item: item)),
           ],
         ),
       ),
@@ -117,6 +146,116 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
   void _reloadDoctorFilter() {
     setState(() => _doctorFilterReloadToken++);
+  }
+
+  void _syncCalendarEvents(List<AppointmentListItem> items) {
+    final fingerprint = Object.hashAll(
+      items.map((item) => Object.hash(item.id, item.startTime, item.endTime, item.status, item.type)),
+    );
+    if (fingerprint == _eventsFingerprint) {
+      return;
+    }
+
+    _eventsFingerprint = fingerprint;
+    _eventController
+      ..clear()
+      ..addAll(
+        items
+            .map(
+              (item) => CalendarEventData<AppointmentListItem>(
+                date: item.startTime.toLocal(),
+                startTime: item.startTime.toLocal(),
+                endTime: item.endTime.toLocal(),
+                title: item.patientName,
+                description: item.doctorDisplayName,
+                color: _statusColor(item.status),
+                event: item,
+              ),
+            )
+            .toList(growable: false),
+      );
+  }
+
+  Future<void> _goToPreviousPeriod(AppointmentCalendarController controller, AppointmentCalendarMode mode) async {
+    await controller.previousPeriod();
+    final focusDate = ref.read(appointmentCalendarProvider).focusDate;
+    if (mode == AppointmentCalendarMode.day) {
+      _dayViewKey.currentState?.animateToDate(focusDate);
+    } else {
+      _weekViewKey.currentState?.animateToWeek(focusDate);
+    }
+  }
+
+  Future<void> _goToNextPeriod(AppointmentCalendarController controller, AppointmentCalendarMode mode) async {
+    await controller.nextPeriod();
+    final focusDate = ref.read(appointmentCalendarProvider).focusDate;
+    if (mode == AppointmentCalendarMode.day) {
+      _dayViewKey.currentState?.animateToDate(focusDate);
+    } else {
+      _weekViewKey.currentState?.animateToWeek(focusDate);
+    }
+  }
+
+  void _jumpToToday(AppointmentCalendarController controller, AppointmentCalendarMode mode) {
+    final today = DateTime.now();
+    if (mode == AppointmentCalendarMode.day) {
+      _dayViewKey.currentState?.animateToDate(today);
+    } else {
+      _weekViewKey.currentState?.animateToWeek(today);
+    }
+    controller.setFocusDate(today);
+  }
+
+  void _onCalendarEventTap(List<CalendarEventData<AppointmentListItem>> events, DateTime date) {
+    if (events.isEmpty) {
+      return;
+    }
+    final item = events.first.event;
+    if (item == null) {
+      return;
+    }
+    context.nav.pushPatientDetail(item.patientId);
+  }
+
+  Widget _eventTileBuilder(
+    DateTime date,
+    List<CalendarEventData<AppointmentListItem>> events,
+    Rect boundary,
+    DateTime startDuration,
+    DateTime endDuration,
+  ) {
+    final event = events.first;
+    final item = event.event;
+    final subtitle = item == null ? '' : item.doctorDisplayName;
+    final tileColor = event.color;
+    final brightness = ThemeData.estimateBrightnessForColor(tileColor);
+    final textColor = brightness == Brightness.dark ? Colors.white : Colors.black87;
+    return Container(
+      margin: const EdgeInsets.all(2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: tileColor.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tileColor.withValues(alpha: 0.95), width: 1.1),
+      ),
+      child: Text(
+        subtitle.isEmpty ? event.title : '${event.title}\n$subtitle',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: textColor),
+      ),
+    );
+  }
+
+  Color _statusColor(AppointmentStatus status) {
+    return switch (status) {
+      AppointmentStatus.scheduled => Colors.blue,
+      AppointmentStatus.checkedIn => Colors.cyan,
+      AppointmentStatus.inProgress => Colors.orange,
+      AppointmentStatus.completed => Colors.green,
+      AppointmentStatus.cancelled => Colors.red,
+      AppointmentStatus.noShow => Colors.deepPurple,
+    };
   }
 
   String _rangeLabel(BuildContext context, DateTime focus, AppointmentCalendarMode mode) {
@@ -190,52 +329,5 @@ class _DoctorFilterState extends ConsumerState<_DoctorFilter> {
         );
       },
     );
-  }
-}
-
-class _AppointmentTile extends StatelessWidget {
-  const _AppointmentTile({required this.item});
-
-  final AppointmentListItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final localizations = MaterialLocalizations.of(context);
-    final start = item.startTime.toLocal();
-    final end = item.endTime.toLocal();
-    final startLabel = localizations.formatTimeOfDay(TimeOfDay.fromDateTime(start));
-    final endLabel = localizations.formatTimeOfDay(TimeOfDay.fromDateTime(end));
-    return Card(
-      child: ListTile(
-        onTap: () => context.nav.pushPatientDetail(item.patientId),
-        title: Text(item.patientName),
-        subtitle: Text('$startLabel - $endLabel  |  ${item.doctorDisplayName}'),
-        trailing: Wrap(
-          spacing: 8,
-          children: [
-            Chip(label: Text(_typeLabel(item.type))),
-            Chip(label: Text(_statusLabel(item.status))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _typeLabel(AppointmentType type) {
-    return switch (type) {
-      AppointmentType.planned => 'Planned',
-      AppointmentType.walkIn => 'Walk-in',
-    };
-  }
-
-  String _statusLabel(AppointmentStatus status) {
-    return switch (status) {
-      AppointmentStatus.scheduled => 'Scheduled',
-      AppointmentStatus.checkedIn => 'Checked in',
-      AppointmentStatus.inProgress => 'In progress',
-      AppointmentStatus.completed => 'Completed',
-      AppointmentStatus.cancelled => 'Cancelled',
-      AppointmentStatus.noShow => 'No-show',
-    };
   }
 }

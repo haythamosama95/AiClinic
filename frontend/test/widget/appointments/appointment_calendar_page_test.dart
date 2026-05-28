@@ -23,14 +23,14 @@ import '../../support/appointment_rpc_test_client.dart';
 
 void main() {
   group('Appointment calendar and doctor schedule pages', () {
-    testWidgets('calendar shows list results and doctor filter', (tester) async {
+    testWidgets('calendar shows controls and doctor filter', (tester) async {
       await tester.pumpWidget(_host(initialLocation: AppRoutes.appointmentsCalendar));
       await tester.pumpAndSettle();
 
       expect(find.text('Appointment calendar'), findsOneWidget);
       expect(find.byKey(const Key('appointments_calendar_doctor_filter')), findsOneWidget);
-      expect(find.text('Test Patient'), findsOneWidget);
-      expect(find.text('Scheduled'), findsOneWidget);
+      expect(find.byKey(const Key('appointments_calendar_prev')), findsOneWidget);
+      expect(find.byKey(const Key('appointments_calendar_next')), findsOneWidget);
     });
 
     testWidgets('doctor schedule route resolves and loads calendar', (tester) async {
@@ -38,22 +38,27 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Appointment calendar'), findsOneWidget);
-      expect(find.text('Test Patient'), findsOneWidget);
+      expect(find.byKey(const Key('appointments_calendar_today')), findsOneWidget);
     });
 
-    testWidgets('pressing patient opens patient detail page', (tester) async {
+    testWidgets('navigation controls are enabled', (tester) async {
       await tester.pumpWidget(_host(initialLocation: AppRoutes.appointmentsCalendar));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Test Patient'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Patient detail page'), findsOneWidget);
+      final previousButton = tester.widget<OutlinedButton>(find.byKey(const Key('appointments_calendar_prev')));
+      final nextButton = tester.widget<OutlinedButton>(find.byKey(const Key('appointments_calendar_next')));
+      final todayButton = tester.widget<FilledButton>(find.byKey(const Key('appointments_calendar_today')));
+      expect(previousButton.onPressed, isNotNull);
+      expect(nextButton.onPressed, isNotNull);
+      expect(todayButton.onPressed, isNotNull);
     });
   });
 }
 
 Widget _host({required String initialLocation}) {
+  final now = DateTime.now();
+  final start = DateTime(now.year, now.month, now.day, 9);
+  final end = start.add(const Duration(minutes: 30));
   final branchId = '44444444-4444-4444-8444-444444444444';
   final authState = AuthSessionState(
     status: AuthSessionStatus.authenticated,
@@ -67,7 +72,32 @@ Widget _host({required String initialLocation}) {
   return ProviderScope(
     overrides: [
       authSessionProvider.overrideWith(() => _PresetAuth(authState)),
-      appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(AppointmentRpcTestClient())),
+      appointmentRepositoryProvider.overrideWith(
+        (ref) => AppointmentRepository(
+          AppointmentRpcTestClient(
+            rpcResults: {
+              'list_appointments': {
+                'success': true,
+                'data': {
+                  'items': [
+                    {
+                      'id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+                      'patient_id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+                      'patient_name': 'Test Patient',
+                      'doctor_id': 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+                      'doctor_name': 'Dr Test',
+                      'start_time': start.toUtc().toIso8601String(),
+                      'end_time': end.toUtc().toIso8601String(),
+                      'type': 'planned',
+                      'status': 'scheduled',
+                    },
+                  ],
+                },
+              },
+            },
+          ),
+        ),
+      ),
       staffAdminRepositoryProvider.overrideWithValue(_FakeStaffAdminRepository()),
     ],
     child: MaterialApp.router(

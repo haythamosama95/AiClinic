@@ -92,7 +92,11 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   }
 
   Future<void> setFocusDate(DateTime date) async {
-    state = state.copyWith(focusDate: DateTime(date.year, date.month, date.day));
+    final normalized = DateTime(date.year, date.month, date.day);
+    if (normalized == state.focusDate) {
+      return;
+    }
+    state = state.copyWith(focusDate: normalized);
     await refresh();
   }
 
