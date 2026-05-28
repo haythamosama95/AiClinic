@@ -108,17 +108,17 @@
 
 ### Tests for User Story 3
 
-- [ ] T029 [P] [US3] Add `list_appointments` range and doctor filter tests in `backend/tests/appointment_management_crud.sql`
-- [ ] T030 [P] [US3] Add unit tests for `AppointmentRepository.listAppointments` in `frontend/test/unit/appointments/appointment_repository_list_test.dart`
-- [ ] T031 [P] [US3] Add widget tests for calendar and schedule pages in `frontend/test/widget/appointments/appointment_calendar_page_test.dart`
+- [X] T029 [P] [US3] Add `list_appointments` range and doctor filter tests in `backend/tests/appointment_management_crud.sql`
+- [X] T030 [P] [US3] Add unit tests for `AppointmentRepository.listAppointments` in `frontend/test/unit/appointments/appointment_repository_list_test.dart`
+- [X] T031 [P] [US3] Add widget tests for calendar and schedule pages in `frontend/test/widget/appointments/appointment_calendar_page_test.dart`
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Implement `AppointmentRepository.listAppointments` per `contracts/appointment-queries.md` in `frontend/lib/features/appointments/data/appointment_repository.dart`
-- [ ] T033 [US3] Implement `AppointmentCalendarProvider` (day/week mode, active branch, org TZ date bounds) in `frontend/lib/features/appointments/presentation/providers/appointment_calendar_provider.dart`
-- [ ] T034 [US3] Implement `AppointmentCalendarPage` in `frontend/lib/features/appointments/presentation/pages/appointment_calendar_page.dart`
-- [ ] T035 [US3] Implement `DoctorSchedulePage` (doctor filter) in `frontend/lib/features/appointments/presentation/pages/doctor_schedule_page.dart`
-- [ ] T036 [US3] Gate `/appointments` and `/appointments/schedule/:doctorId` to appointment view access in `frontend/lib/app/router.dart`
+- [X] T032 [US3] Implement `AppointmentRepository.listAppointments` per `contracts/appointment-queries.md` in `frontend/lib/features/appointments/data/appointment_repository.dart`
+- [X] T033 [US3] Implement `AppointmentCalendarProvider` (day/week mode, active branch, org TZ date bounds) in `frontend/lib/features/appointments/presentation/providers/appointment_calendar_provider.dart`
+- [X] T034 [US3] Implement `AppointmentCalendarPage` in `frontend/lib/features/appointments/presentation/pages/appointment_calendar_page.dart`
+- [X] T035 [US3] Implement `DoctorSchedulePage` (doctor filter) in `frontend/lib/features/appointments/presentation/pages/doctor_schedule_page.dart`
+- [X] T036 [US3] Gate `/appointments` and `/appointments/schedule/:doctorId` to appointment view access in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test case 10; acceptance criteria 9
 

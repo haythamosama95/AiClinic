@@ -26,6 +26,8 @@ import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.d
 import 'package:ai_clinic/features/settings/presentation/pages/staff_settings_password_reset_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patient_pages.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_booking_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/doctor_schedule_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_hub_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_placeholder_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/walk_in_registration_page.dart';
@@ -90,14 +92,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.appointmentsQueue,
             builder: (context, state) => const AppointmentPlaceholderPage(title: "Today's queue"),
           ),
-          GoRoute(
-            path: AppRoutes.appointmentsCalendar,
-            builder: (context, state) => const AppointmentPlaceholderPage(title: 'Appointment calendar'),
-          ),
+          GoRoute(path: AppRoutes.appointmentsCalendar, builder: (context, state) => const AppointmentCalendarPage()),
           GoRoute(
             path: '${AppRoutes.appointments}/schedule/:doctorId',
-            builder: (context, state) =>
-                AppointmentPlaceholderPage(title: 'Doctor schedule (${state.pathParameters['doctorId']})'),
+            builder: (context, state) => DoctorSchedulePage(doctorId: state.pathParameters['doctorId']),
           ),
 
           // Settings

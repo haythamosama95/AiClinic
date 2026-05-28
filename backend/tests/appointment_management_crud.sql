@@ -424,10 +424,37 @@ BEGIN
 
   -- Doctor filter.
   v_result := public.list_appointments(v_branch_main, v_day_start, v_day_end, v_doctor_staff, NULL);
+  v_items := v_result.data -> 'items';
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
     'list_appointments_doctor_filter',
-    v_result.success,
+    v_result.success
+      AND COALESCE(
+        (SELECT bool_and((item ->> 'doctor_id')::uuid = v_doctor_staff)
+         FROM jsonb_array_elements(v_items) AS item),
+        true
+      ),
+    'count=' || COALESCE(jsonb_array_length(v_items)::text, '0')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Range bounds: end is exclusive.
+  v_start := v_day_end;
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 15, NULL, 'boundary'
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.list_appointments(v_branch_main, v_day_start, v_day_end, NULL, NULL);
+  v_items := v_result.data -> 'items';
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'list_appointments_end_exclusive',
+    v_result.success
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_items) AS item
+        WHERE (item ->> 'id')::uuid = v_appt_second
+      ),
     COALESCE(v_result.error_code, 'ok')
   );
   PERFORM set_config('role', 'authenticated', true);
