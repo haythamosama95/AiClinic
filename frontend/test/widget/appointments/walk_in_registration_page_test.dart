@@ -121,6 +121,23 @@ void main() {
       expect(find.textContaining('No walk-in slot is available today'), findsOneWidget);
       expect(find.byKey(const Key('walk_in_assigned_slot_card')), findsNothing);
     });
+
+    testWidgets('regression: PATIENT_ALREADY_BOOKED_SAME_DAY displays mapped user message', (tester) async {
+      final client = AppointmentRpcTestClient()
+        ..rpcResults['create_appointment'] = {
+          'success': false,
+          'error_code': 'PATIENT_ALREADY_BOOKED_SAME_DAY',
+          'error_message': 'Already booked',
+        };
+
+      await _pumpWalkInPage(tester, _host(rpcClient: client));
+      await _fillWalkInForm(tester);
+      await tester.tap(find.byKey(const Key('walk_in_registration_submit')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('same day'), findsOneWidget);
+      expect(find.byKey(const Key('walk_in_assigned_slot_card')), findsNothing);
+    });
   });
 }
 

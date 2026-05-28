@@ -159,6 +159,25 @@ void main() {
       );
     });
 
+    test('regression: PATIENT_ALREADY_BOOKED_SAME_DAY surfaces from RPC', () async {
+      client.rpcResults['create_appointment'] = {
+        'success': false,
+        'error_code': 'PATIENT_ALREADY_BOOKED_SAME_DAY',
+        'error_message': 'Already booked',
+      };
+
+      expect(
+        () => repository.createAppointment(
+          branchId: '44444444-4444-4444-8444-444444444444',
+          patientId: '11111111-1111-4111-8111-111111111111',
+          doctorId: '22222222-2222-4222-8222-222222222222',
+          type: AppointmentType.planned,
+          startTime: DateTime.utc(2026, 6, 15, 10),
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'PATIENT_ALREADY_BOOKED_SAME_DAY')),
+      );
+    });
+
     test('stupid usage: notes over 2000 chars rejected locally', () async {
       expect(
         () => repository.createAppointment(

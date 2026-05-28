@@ -66,6 +66,22 @@ void main() {
       final doctor = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.doctor);
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.receptionist);
+      await ctx.sql.execute('''
+UPDATE public.branches
+SET working_schedule = jsonb_build_object(
+  'days',
+  jsonb_build_array(
+    jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
+  )
+)
+WHERE id = '${clinic.branchId}'::uuid;
+''');
 
       final start = DateTime.now().toUtc().add(const Duration(days: 3));
       await ctx.appointments.createAppointment(

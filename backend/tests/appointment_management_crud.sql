@@ -28,6 +28,7 @@ DECLARE
   v_org_id uuid;
   v_branch_main uuid;
   v_patient_id uuid;
+  v_patient2_id uuid;
   v_appt_planned uuid;
   v_appt_walkin uuid;
   v_appt_second uuid;
@@ -39,6 +40,7 @@ DECLARE
   v_default int;
   v_day_start timestamptz;
   v_day_end timestamptz;
+  v_today_name text;
   v_i int;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
@@ -77,6 +79,24 @@ BEGIN
   v_result := public.bootstrap_create_branch(v_org_id, 'Main', NULL, NULL, 'MAIN', NULL);
   v_branch_main := (v_result.data ->> 'branch_id')::uuid;
 
+  -- Keep test timings deterministic: all days open full day unless overridden.
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches b
+  SET working_schedule = jsonb_build_object(
+    'days',
+    jsonb_build_array(
+      jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
+    )
+  )
+  WHERE b.id = v_branch_main;
+  PERFORM set_config('role', 'authenticated', true);
+
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
   VALUES
@@ -107,6 +127,8 @@ BEGIN
 
   v_result := public.create_patient(v_branch_main, 'Appt Patient', '201000000141', NULL, NULL, NULL, NULL, false);
   v_patient_id := (v_result.data ->> 'patient_id')::uuid;
+  v_result := public.create_patient(v_branch_main, 'Appt Patient 2', '201000000144', NULL, NULL, NULL, NULL, false);
+  v_patient2_id := (v_result.data ->> 'patient_id')::uuid;
 
   -- Trivial: settings default fallback 20.
   v_result := public.get_appointment_settings(v_branch_main);
@@ -181,6 +203,54 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Planned create outside branch working hours is rejected.
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches b
+  SET working_schedule = jsonb_build_object(
+    'days',
+    jsonb_build_array(
+      jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00')
+    )
+  )
+  WHERE b.id = v_branch_main;
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_start := date_trunc('day', now() + interval '2 days') + interval '2 hours';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 30, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'planned_outside_working_hours_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Restore full-day schedule for remaining legacy tests.
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches b
+  SET working_schedule = jsonb_build_object(
+    'days',
+    jsonb_build_array(
+      jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
+    )
+  )
+  WHERE b.id = v_branch_main;
+  PERFORM set_config('role', 'authenticated', true);
+
   v_start := date_trunc('hour', now() + interval '2 days');
   v_end := v_start + interval '30 minutes';
 
@@ -218,16 +288,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- US1: adjacent non-overlapping slot succeeds (ends where next starts).
-  v_result := public.create_appointment(
-    v_branch_main,
-    v_patient_id,
-    v_doctor_staff,
-    'planned',
-    v_end,
-    20,
-    NULL,
-    NULL
-  );
+  v_result := public.create_appointment(v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_end, 20, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
     'planned_adjacent_slot_succeeds',
@@ -265,18 +326,15 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Walk-in without doctor is allowed and starts immediately.
+  -- Walk-in without doctor is rejected.
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, NULL, 'walk_in', NULL, 15, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'walk_in_without_doctor_allowed',
-    v_result.success
-      AND (v_result.data ->> 'status') = 'checked_in'
-      AND (v_result.data ->> 'type') = 'walk_in'
-      AND (v_result.data ->> 'start_time') IS NOT NULL,
-    COALESCE(v_result.error_code, 'ok')
+    'walk_in_without_doctor_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
@@ -495,6 +553,64 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Walk-in is rejected when branch is closed today.
+  v_today_name := CASE extract(isodow FROM (now() AT TIME ZONE 'UTC'))
+    WHEN 1 THEN 'monday'
+    WHEN 2 THEN 'tuesday'
+    WHEN 3 THEN 'wednesday'
+    WHEN 4 THEN 'thursday'
+    WHEN 5 THEN 'friday'
+    WHEN 6 THEN 'saturday'
+    ELSE 'sunday'
+  END;
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches b
+  SET working_schedule = jsonb_build_object(
+    'days',
+    (
+      SELECT jsonb_agg(
+        CASE
+          WHEN lower(trim(COALESCE(d.value ->> 'day', ''))) = v_today_name
+            THEN jsonb_set(d.value, '{is_working_day}', 'false'::jsonb, true)
+          ELSE d.value
+        END
+      )
+      FROM jsonb_array_elements(b.working_schedule -> 'days') AS d(value)
+    )
+  )
+  WHERE b.id = v_branch_main;
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'walk_in', NULL, 15, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'walk_in_rejected_when_branch_closed_today',
+    NOT v_result.success AND v_result.error_code = 'NO_SLOT_AVAILABLE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Restore today's working day for downstream same-day tests.
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches b
+  SET working_schedule = jsonb_build_object(
+    'days',
+    (
+      SELECT jsonb_agg(
+        CASE
+          WHEN lower(trim(COALESCE(d.value ->> 'day', ''))) = v_today_name
+            THEN jsonb_set(d.value, '{is_working_day}', 'true'::jsonb, true)
+          ELSE d.value
+        END
+      )
+      FROM jsonb_array_elements(b.working_schedule -> 'days') AS d(value)
+    )
+  )
+  WHERE b.id = v_branch_main;
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Archived patient cannot be booked.
   v_result := public.archive_patient(v_patient_id);
   v_start := date_trunc('hour', now() + interval '8 days');
@@ -541,7 +657,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Same time different doctors: no conflict.
+  -- Same time different doctors: conflict because slots are branch-wide.
   v_start := date_trunc('hour', now() + interval '11 days');
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
@@ -559,13 +675,13 @@ BEGIN
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'planned_same_time_different_doctors_allowed',
-    v_result.success AND (v_result.data ->> 'status') = 'scheduled',
+    'planned_same_time_different_doctors_conflict',
+    NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Two unassigned planned at same time: no doctor overlap check.
+  -- Two unassigned planned at same time: still conflicts due to slot uniqueness.
   v_start := date_trunc('hour', now() + interval '12 days');
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
@@ -583,8 +699,34 @@ BEGIN
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'two_planned_without_doctor_no_overlap',
+    'two_planned_without_doctor_conflict',
+    NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Same-day duplicate patient is rejected.
+  v_result := public.create_patient(v_branch_main, 'Appt Patient Same Day', '201000000143', NULL, NULL, NULL, NULL, false);
+  v_patient_id := (v_result.data ->> 'patient_id')::uuid;
+  v_start := date_trunc('day', now() + interval '14 days') + interval '9 hours';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'same_day_first_booking_succeeds',
     v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor2_staff, 'planned', v_start + interval '3 hours', 20, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'same_day_second_booking_rejected',
+    NOT v_result.success AND v_result.error_code = 'PATIENT_ALREADY_BOOKED_SAME_DAY',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

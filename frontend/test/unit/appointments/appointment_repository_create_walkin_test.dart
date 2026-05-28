@@ -101,6 +101,25 @@ void main() {
       );
     });
 
+    test('regression: PATIENT_ALREADY_BOOKED_SAME_DAY propagates with stable error code', () async {
+      client.rpcResults['create_appointment'] = {
+        'success': false,
+        'error_code': 'PATIENT_ALREADY_BOOKED_SAME_DAY',
+        'error_message': 'Already booked',
+      };
+
+      expect(
+        () => repository.createAppointment(
+          branchId: '44444444-4444-4444-8444-444444444444',
+          patientId: '11111111-1111-4111-8111-111111111111',
+          doctorId: '22222222-2222-4222-8222-222222222222',
+          type: AppointmentType.walkIn,
+          durationMinutes: 15,
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'PATIENT_ALREADY_BOOKED_SAME_DAY')),
+      );
+    });
+
     test('stupid usage: blank branch id is rejected before RPC', () async {
       expect(
         () => repository.createAppointment(

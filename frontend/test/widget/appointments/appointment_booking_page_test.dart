@@ -95,7 +95,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('conflict_error_banner')), findsOneWidget);
-      expect(find.textContaining('overlaps another appointment'), findsOneWidget);
+      expect(find.textContaining('overlaps another booked slot'), findsOneWidget);
     });
 
     testWidgets('advanced: book without doctor omits doctor id on RPC', (tester) async {
@@ -248,6 +248,23 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('archived'), findsOneWidget);
+    });
+
+    testWidgets('advanced: PATIENT_ALREADY_BOOKED_SAME_DAY shows form error', (tester) async {
+      final client = AppointmentRpcTestClient()
+        ..rpcResults['create_appointment'] = {
+          'success': false,
+          'error_code': 'PATIENT_ALREADY_BOOKED_SAME_DAY',
+          'error_message': 'Already booked',
+        };
+
+      await _pumpBookingPage(tester, _host(rpcClient: client));
+      await _fillMinimalBookingForm(tester);
+      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('same day'), findsOneWidget);
+      expect(find.textContaining('existing appointment'), findsOneWidget);
     });
   });
 }

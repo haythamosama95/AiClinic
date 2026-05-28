@@ -27,6 +27,17 @@ void main() {
       expect(message, contains('overlaps'));
     });
 
+    test('PATIENT_ALREADY_BOOKED_SAME_DAY explains duplicate same-day booking', () {
+      final message = appointmentMessageForRpc(
+        RpcFailure(
+          const RpcResult(success: false, errorCode: 'PATIENT_ALREADY_BOOKED_SAME_DAY', errorMessage: 'Already booked'),
+        ),
+      );
+
+      expect(message.toLowerCase(), contains('same day'));
+      expect(message.toLowerCase(), contains('existing appointment'));
+    });
+
     test('INVALID_DOCTOR explains doctor assignment', () {
       final message = appointmentMessageForRpc(
         RpcFailure(const RpcResult(success: false, errorCode: 'INVALID_DOCTOR', errorMessage: 'Bad doctor')),
