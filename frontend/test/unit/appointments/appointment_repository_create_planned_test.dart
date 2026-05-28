@@ -53,21 +53,15 @@ void main() {
       expect(client.lastParams?['p_doctor_id'], isNull);
     });
 
-    test('invalid state: walk-in without doctor rejected locally', () async {
-      expect(
-        () => repository.createAppointment(
-          branchId: '44444444-4444-4444-8444-444444444444',
-          patientId: '11111111-1111-4111-8111-111111111111',
-          type: AppointmentType.walkIn,
-          durationMinutes: 15,
-        ),
-        throwsA(
-          isA<RpcFailure>()
-              .having((e) => e.code, 'code', 'INVALID_INPUT')
-              .having((e) => e.message, 'message', contains('doctor')),
-        ),
+    test('regression: walk-in without doctor is allowed and sends null doctor', () async {
+      await repository.createAppointment(
+        branchId: '44444444-4444-4444-8444-444444444444',
+        patientId: '11111111-1111-4111-8111-111111111111',
+        type: AppointmentType.walkIn,
+        durationMinutes: 15,
       );
-      expect(client.lastFunction, isNull);
+      expect(client.lastFunction, 'create_appointment');
+      expect(client.lastParams?['p_doctor_id'], isNull);
     });
 
     test('advanced: omits duration when using server default from settings', () async {

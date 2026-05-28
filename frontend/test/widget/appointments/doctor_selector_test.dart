@@ -6,7 +6,6 @@ import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

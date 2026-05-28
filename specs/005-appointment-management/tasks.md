@@ -86,15 +86,15 @@
 
 ### Tests for User Story 2
 
-- [ ] T023 [P] [US2] Add walk-in auto-slot and `NO_SLOT_AVAILABLE` tests in `backend/tests/appointment_management_crud.sql`
-- [ ] T024 [P] [US2] Add unit tests for `AppointmentRepository.createAppointment` (`walk_in`) in `frontend/test/unit/appointments/appointment_repository_create_walkin_test.dart`
-- [ ] T025 [P] [US2] Add widget tests for walk-in form in `frontend/test/widget/appointments/walk_in_registration_page_test.dart`
+- [X] T023 [P] [US2] Add walk-in auto-slot and `NO_SLOT_AVAILABLE` tests in `backend/tests/appointment_management_crud.sql`
+- [X] T024 [P] [US2] Add unit tests for `AppointmentRepository.createAppointment` (`walk_in`) in `frontend/test/unit/appointments/appointment_repository_create_walkin_test.dart`
+- [X] T025 [P] [US2] Add widget tests for walk-in form in `frontend/test/widget/appointments/walk_in_registration_page_test.dart`
 
 ### Implementation for User Story 2
 
-- [ ] T026 [US2] Extend `AppointmentRepository.createAppointment` for `walk_in` (ignore client start; surface assigned times) in `frontend/lib/features/appointments/data/appointment_repository.dart`
-- [ ] T027 [US2] Implement `WalkInRegistrationPage` (duration pre-fill/override, assigned slot display, no check-in button) in `frontend/lib/features/appointments/presentation/pages/walk_in_registration_page.dart`
-- [ ] T028 [US2] Gate `/appointments/walk-in` route to `appointments.create` in `frontend/lib/app/router.dart`
+- [X] T026 [US2] Extend `AppointmentRepository.createAppointment` for `walk_in` (ignore client start; surface assigned times) in `frontend/lib/features/appointments/data/appointment_repository.dart`
+- [X] T027 [US2] Implement `WalkInRegistrationPage` (duration pre-fill/override, assigned slot display, no check-in button) in `frontend/lib/features/appointments/presentation/pages/walk_in_registration_page.dart`
+- [X] T028 [US2] Gate `/appointments/walk-in` route to `appointments.create` in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 3, 11; acceptance criteria 4
 

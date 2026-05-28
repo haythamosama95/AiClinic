@@ -70,16 +70,6 @@ class AppointmentRepository with AppRpcInvoker {
     _assertNonEmpty('patientId', patientId);
 
     final trimmedDoctorId = doctorId?.trim();
-    if (type == AppointmentType.walkIn && (trimmedDoctorId == null || trimmedDoctorId.isEmpty)) {
-      throw RpcFailure(
-        const RpcResult(
-          success: false,
-          errorCode: 'INVALID_INPUT',
-          errorMessage: 'A doctor is required for walk-in appointments.',
-        ),
-      );
-    }
-
     if (durationMinutes != null) {
       _assertDurationMinutes(durationMinutes);
     }
@@ -109,10 +99,12 @@ class AppointmentRepository with AppRpcInvoker {
       'p_patient_id': patientId.trim(),
       'p_doctor_id': (trimmedDoctorId == null || trimmedDoctorId.isEmpty) ? null : trimmedDoctorId,
       'p_type': type.wireValue,
-      if (startTime != null) 'p_start_time': startTime.toUtc().toIso8601String(),
-      if (durationMinutes != null) 'p_duration_minutes': durationMinutes,
-      if (endTime != null) 'p_end_time': endTime.toUtc().toIso8601String(),
-      if (notes != null && notes.trim().isNotEmpty) 'p_notes': notes.trim(),
+      ...?(type == AppointmentType.planned && startTime != null)
+          ? {'p_start_time': startTime.toUtc().toIso8601String()}
+          : null,
+      ...?(durationMinutes != null) ? {'p_duration_minutes': durationMinutes} : null,
+      ...?(endTime != null) ? {'p_end_time': endTime.toUtc().toIso8601String()} : null,
+      ...?(notes != null && notes.trim().isNotEmpty) ? {'p_notes': notes.trim()} : null,
     };
 
     final result = await invokeRpc('create_appointment', params);

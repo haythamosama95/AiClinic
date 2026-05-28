@@ -265,15 +265,18 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Walk-in requires a doctor.
+  -- Walk-in without doctor is allowed and starts immediately.
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, NULL, 'walk_in', NULL, 15, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'walk_in_requires_doctor',
-    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
-    COALESCE(v_result.error_message, '<null>')
+    'walk_in_without_doctor_allowed',
+    v_result.success
+      AND (v_result.data ->> 'status') = 'checked_in'
+      AND (v_result.data ->> 'type') = 'walk_in'
+      AND (v_result.data ->> 'start_time') IS NOT NULL,
+    COALESCE(v_result.error_code, 'ok')
   );
   PERFORM set_config('role', 'authenticated', true);
 
