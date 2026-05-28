@@ -6,7 +6,11 @@ String appointmentMessageForRpc(RpcFailure failure) {
     'SCHEDULE_CONFLICT' => 'This time overlaps another booked slot. Choose a different slot.',
     'PATIENT_ALREADY_BOOKED_SAME_DAY' =>
       'This patient already has an appointment on the same day. Update the existing appointment instead.',
-    'INVALID_TRANSITION' => 'That status change is not allowed for this appointment.',
+    'INVALID_TRANSITION' => switch (failure.message.toLowerCase()) {
+      final message when message.contains('appointment day') =>
+        'This status change is only allowed on or after the appointment day.',
+      _ => 'That status change is not allowed for this appointment.',
+    },
     'PATIENT_ARCHIVED' => 'This patient is archived and cannot be booked.',
     'INVALID_DOCTOR' => 'The selected doctor is not available at this branch.',
     'RPC_NOT_CONFIGURED' =>

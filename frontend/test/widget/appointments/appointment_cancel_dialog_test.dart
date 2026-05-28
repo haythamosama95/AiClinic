@@ -137,20 +137,27 @@ void main() {
   });
 }
 
-AppointmentListItem _item() {
+AppointmentListItem _item({bool onAppointmentDay = true}) {
+  final start = onAppointmentDay
+      ? DateTime.now().subtract(const Duration(hours: 1))
+      : DateTime.now().add(const Duration(days: 7));
   return AppointmentListItem(
     id: 'appt-1',
     patientId: 'patient-1',
     patientName: 'Jane Doe',
     doctorName: 'Dr Smith',
-    startTime: DateTime.utc(2026, 6, 1, 10),
-    endTime: DateTime.utc(2026, 6, 1, 10, 30),
+    startTime: start,
+    endTime: start.add(const Duration(minutes: 30)),
     type: AppointmentType.planned,
     status: AppointmentStatus.scheduled,
   );
 }
 
-Widget _host({AppointmentRpcTestClient? client, void Function(AppointmentStatus? status)? onClosed}) {
+Widget _host({
+  AppointmentRpcTestClient? client,
+  void Function(AppointmentStatus? status)? onClosed,
+  bool onAppointmentDay = true,
+}) {
   final branchId = '44444444-4444-4444-8444-444444444444';
   final authState = AuthSessionState(
     status: AuthSessionStatus.authenticated,
@@ -169,7 +176,10 @@ Widget _host({AppointmentRpcTestClient? client, void Function(AppointmentStatus?
             body: Center(
               child: FilledButton(
                 onPressed: () async {
-                  final result = await AppointmentCancelDialog.show(context, item: _item());
+                  final result = await AppointmentCancelDialog.show(
+                    context,
+                    item: _item(onAppointmentDay: onAppointmentDay),
+                  );
                   onClosed?.call(result);
                 },
                 child: const Text('Open'),

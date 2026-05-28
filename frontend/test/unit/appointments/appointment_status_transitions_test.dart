@@ -7,13 +7,16 @@ import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 
 void main() {
   group('appointment status transitions', () {
-    AppointmentListItem item({AppointmentStatus status = AppointmentStatus.scheduled}) {
+    final reference = DateTime(2026, 6, 2);
+
+    AppointmentListItem item({AppointmentStatus status = AppointmentStatus.scheduled, DateTime? startTime}) {
+      final start = startTime ?? DateTime.utc(2026, 6, 1, 9);
       return AppointmentListItem(
         id: 'a',
         patientId: 'p',
         patientName: 'Pat',
-        startTime: DateTime.utc(2026, 6, 1, 9),
-        endTime: DateTime.utc(2026, 6, 1, 9, 30),
+        startTime: start,
+        endTime: start.add(const Duration(minutes: 30)),
         type: AppointmentType.planned,
         status: status,
       );
@@ -21,20 +24,25 @@ void main() {
 
     test('scheduled offers confirm', () {
       final row = item();
-      expect(forwardStatusTargetFor(row), AppointmentStatus.confirmed);
-      expect(forwardStatusActionLabelFor(row), 'Confirm');
+      expect(forwardStatusTargetFor(row, reference: reference), AppointmentStatus.confirmed);
+      expect(forwardStatusActionLabelFor(row, reference: reference), 'Confirm');
     });
 
-    test('confirmed offers check-in', () {
+    test('confirmed offers check-in on appointment day', () {
       final row = item(status: AppointmentStatus.confirmed);
-      expect(forwardStatusTargetFor(row), AppointmentStatus.checkedIn);
-      expect(forwardStatusActionLabelFor(row), 'Check in');
+      expect(forwardStatusTargetFor(row, reference: reference), AppointmentStatus.checkedIn);
+      expect(forwardStatusActionLabelFor(row, reference: reference), 'Check in');
+    });
+
+    test('confirmed hides check-in before appointment day', () {
+      final row = item(status: AppointmentStatus.confirmed);
+      expect(forwardStatusTargetFor(row, reference: DateTime(2026, 5, 31)), isNull);
     });
 
     test('checked_in offers start', () {
       final row = item(status: AppointmentStatus.checkedIn);
-      expect(forwardStatusTargetFor(row), AppointmentStatus.inProgress);
-      expect(forwardStatusActionLabelFor(row), 'Start');
+      expect(forwardStatusTargetFor(row, reference: reference), AppointmentStatus.inProgress);
+      expect(forwardStatusActionLabelFor(row, reference: reference), 'Start');
     });
 
     test('terminal completed offers no forward action', () {
@@ -44,10 +52,17 @@ void main() {
     });
 
     test('cancel allowed from scheduled, confirmed, and checked_in', () {
-      expect(canCancelOrNoShowAppointment(item()), isTrue);
-      expect(canCancelOrNoShowAppointment(item(status: AppointmentStatus.confirmed)), isTrue);
-      expect(canCancelOrNoShowAppointment(item(status: AppointmentStatus.checkedIn)), isTrue);
-      expect(canCancelOrNoShowAppointment(item(status: AppointmentStatus.completed)), isFalse);
+      expect(canCancelAppointment(item()), isTrue);
+      expect(canCancelAppointment(item(status: AppointmentStatus.confirmed)), isTrue);
+      expect(canCancelAppointment(item(status: AppointmentStatus.checkedIn)), isTrue);
+      expect(canCancelAppointment(item(status: AppointmentStatus.completed)), isFalse);
+    });
+
+    test('no-show only on or after appointment day', () {
+      final future = item();
+      expect(canMarkNoShowAppointment(future, reference: DateTime(2026, 5, 31)), isFalse);
+      expect(canMarkNoShowAppointment(future, reference: reference), isTrue);
+      expect(canCancelOrNoShowAppointment(future, reference: DateTime(2026, 5, 31)), isTrue);
     });
   });
 }

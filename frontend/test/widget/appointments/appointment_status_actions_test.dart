@@ -24,12 +24,19 @@ void main() {
       expect(find.byKey(const Key('appointments_status_check_in')), findsNothing);
     });
 
-    testWidgets('confirmed shows check-in', (tester) async {
-      await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.confirmed)));
+    testWidgets('confirmed shows check-in on appointment day', (tester) async {
+      await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.confirmed, onAppointmentDay: true)));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('appointments_status_check_in')), findsOneWidget);
       expect(find.byKey(const Key('appointments_status_start')), findsNothing);
+    });
+
+    testWidgets('confirmed hides check-in before appointment day', (tester) async {
+      await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.confirmed, onAppointmentDay: false)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_status_check_in')), findsNothing);
     });
 
     testWidgets('advanced: successful confirm calls RPC and callback', (tester) async {
@@ -141,7 +148,7 @@ void main() {
 
       await tester.pumpWidget(
         _host(
-          item: _item(status: AppointmentStatus.checkedIn),
+          item: _item(status: AppointmentStatus.checkedIn, onAppointmentDay: true),
           permissions: const {PermissionKeys.appointmentsCreate, PermissionKeys.appointmentsCancel},
           client: client,
           onStatusChanged: (status) => changed = status,
@@ -160,12 +167,12 @@ void main() {
       expect(find.text('Appointment cancelled.'), findsOneWidget);
     });
 
-    testWidgets('no-show from dialog updates status', (tester) async {
+    testWidgets('no-show from dialog updates status on appointment day', (tester) async {
       AppointmentStatus? changed;
 
       await tester.pumpWidget(
         _host(
-          item: _item(status: AppointmentStatus.scheduled),
+          item: _item(status: AppointmentStatus.scheduled, onAppointmentDay: true),
           permissions: const {PermissionKeys.appointmentsCancel},
           onStatusChanged: (status) => changed = status,
         ),
@@ -235,14 +242,18 @@ void main() {
 AppointmentListItem _item({
   AppointmentStatus status = AppointmentStatus.scheduled,
   AppointmentType type = AppointmentType.planned,
+  bool onAppointmentDay = false,
 }) {
+  final start = onAppointmentDay
+      ? DateTime.now().subtract(const Duration(hours: 1))
+      : DateTime.now().add(const Duration(days: 7));
   return AppointmentListItem(
     id: 'appt-1',
     patientId: 'patient-1',
     patientName: 'Jane Doe',
     doctorName: 'Dr Smith',
-    startTime: DateTime.utc(2026, 6, 1, 10),
-    endTime: DateTime.utc(2026, 6, 1, 10, 30),
+    startTime: start,
+    endTime: start.add(const Duration(minutes: 30)),
     type: type,
     status: status,
   );

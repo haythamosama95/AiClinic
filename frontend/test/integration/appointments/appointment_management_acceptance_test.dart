@@ -92,7 +92,7 @@ void main() {
   group('spec case 4 — status lifecycle (reception on any doctor)', () {
     testWidgets('confirm, check-in, start, and complete advance status via RPC', (tester) async {
       final client = AppointmentRpcTestClient();
-      var item = _item(status: AppointmentStatus.scheduled);
+      var item = _item(status: AppointmentStatus.scheduled, onAppointmentDay: true);
 
       await _pumpHost(
         tester,
@@ -174,7 +174,7 @@ void main() {
           child: MaterialApp(
             home: Scaffold(
               body: AppointmentStatusActions(
-                item: _item(status: AppointmentStatus.checkedIn),
+                item: _item(status: AppointmentStatus.checkedIn, onAppointmentDay: true),
                 onStatusChanged: (s) => changed = s,
               ),
             ),
@@ -477,8 +477,9 @@ AppointmentListItem _item({
   AppointmentStatus status = AppointmentStatus.scheduled,
   AppointmentType type = AppointmentType.planned,
   String doctorId = _doctorB,
+  bool onAppointmentDay = false,
 }) {
-  final start = DateTime.utc(2026, 6, 1, 10);
+  final start = onAppointmentDay ? DateTime.now().subtract(const Duration(hours: 1)) : DateTime.utc(2026, 6, 1, 10);
   return AppointmentListItem(
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     patientId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',

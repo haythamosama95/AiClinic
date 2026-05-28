@@ -251,7 +251,11 @@ BEGIN
   WHERE b.id = v_branch_main;
   PERFORM set_config('role', 'authenticated', true);
 
-  v_start := date_trunc('hour', now() + interval '2 days');
+  -- Lifecycle tests use an appointment on today's calendar day (org TZ UTC in this suite).
+  v_start := greatest(
+    date_trunc('hour', now() + interval '1 hour'),
+    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '1 hour'
+  );
   v_end := v_start + interval '30 minutes';
 
   v_result := public.create_appointment(
@@ -348,6 +352,30 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Future appointment: confirm allowed, check-in blocked until appointment day.
+  v_start := date_trunc('hour', now() + interval '20 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_future_confirm_allowed',
+    v_result.success AND (v_result.data ->> 'status') = 'confirmed',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_future_check_in_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_TRANSITION',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   v_result := public.update_appointment_status(v_appt_planned, 'checked_in');
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -415,8 +443,11 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Reception (bootstrap user) may advance another doctor's appointment.
-  v_start := date_trunc('hour', now() + interval '17 days');
+  -- Reception (bootstrap user) may advance another doctor's appointment on the appointment day.
+  v_start := greatest(
+    date_trunc('hour', now() + interval '2 hours'),
+    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '2 hours'
+  );
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
   );
@@ -434,7 +465,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- checked_in -> completed is rejected (skip in_progress).
-  v_start := date_trunc('hour', now() + interval '18 days');
+  v_start := greatest(
+    date_trunc('hour', now() + interval '3 hours'),
+    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '3 hours'
+  );
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
@@ -534,8 +568,11 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- No-show from scheduled.
-  v_start := date_trunc('hour', now() + interval '5 days');
+  -- No-show from scheduled on the appointment day.
+  v_start := greatest(
+    date_trunc('hour', now() + interval '4 hours'),
+    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '4 hours'
+  );
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
@@ -545,6 +582,21 @@ BEGIN
   INSERT INTO appointment_crud_results VALUES (
     'no_show_from_scheduled',
     v_result.success AND (v_result.data ->> 'status') = 'no_show',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- No-show before the appointment day is rejected.
+  v_start := date_trunc('hour', now() + interval '21 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'no_show');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'no_show_before_appointment_day_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_TRANSITION',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -566,7 +618,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Cancel checked-in appointment.
-  v_start := date_trunc('hour', now() + interval '5 days 2 hours');
+  v_start := greatest(
+    date_trunc('hour', now() + interval '5 hours'),
+    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '5 hours'
+  );
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
@@ -583,7 +638,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Cannot cancel completed appointment.
-  v_start := date_trunc('hour', now() + interval '19 days');
+  v_start := greatest(
+    date_trunc('hour', now() + interval '6 hours'),
+    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '6 hours'
+  );
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
@@ -602,7 +660,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- No-show from checked_in.
-  v_start := date_trunc('hour', now() + interval '7 days 1 hour');
+  v_start := greatest(
+    date_trunc('hour', now() + interval '7 hours'),
+    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '7 hours'
+  );
   v_result := public.create_appointment(
     v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
@@ -673,7 +734,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- No-show from confirmed (patient confirmed by phone but did not arrive).
-  v_start := date_trunc('hour', now() + interval '7 days 2 hours');
+  v_start := greatest(
+    date_trunc('hour', now() + interval '8 hours'),
+    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '8 hours'
+  );
   v_result := public.create_appointment(
     v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );

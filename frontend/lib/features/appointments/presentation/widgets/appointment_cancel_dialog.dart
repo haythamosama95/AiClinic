@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/presentation/appointment_rpc_messages.dart';
 
 /// Cancel or mark no-show for a cancellable appointment (V1-4 US7).
@@ -108,6 +109,8 @@ class _AppointmentCancelDialogState extends ConsumerState<AppointmentCancelDialo
 
   @override
   Widget build(BuildContext context) {
+    final canMarkNoShow = canMarkNoShowAppointment(_item);
+
     return AlertDialog(
       key: const Key('appointment_cancel_dialog'),
       title: const Text('Cancel or no-show'),
@@ -151,11 +154,12 @@ class _AppointmentCancelDialogState extends ConsumerState<AppointmentCancelDialo
           onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
           child: const Text('Close'),
         ),
-        OutlinedButton(
-          key: const Key('appointment_cancel_no_show'),
-          onPressed: _isSaving ? null : _markNoShow,
-          child: const Text('Mark no-show'),
-        ),
+        if (canMarkNoShow)
+          OutlinedButton(
+            key: const Key('appointment_cancel_no_show'),
+            onPressed: _isSaving ? null : _markNoShow,
+            child: const Text('Mark no-show'),
+          ),
         FilledButton(
           key: const Key('appointment_cancel_confirm'),
           onPressed: _isSaving ? null : _cancel,
