@@ -62,13 +62,13 @@ void main() {
       expect(plannedCalls, hasLength(appointmentDevSeedPlannedCount));
       for (final params in plannedCalls) {
         expect(params.containsKey('p_start_time'), isTrue);
-        expect(params.containsKey('p_doctor_id'), isTrue);
+        expect(params['p_doctor_id'], isNotNull);
         final start = DateTime.parse(params['p_start_time'] as String).toLocal();
         expect(start.hour * 60 + start.minute + 30, lessThanOrEqualTo(17 * 60));
       }
     });
 
-    test('omits p_doctor_id when no doctors are available', () async {
+    test('sends null p_doctor_id when no doctors are available', () async {
       staffAdmin.staff = [];
 
       final outcome = await service.seed(
@@ -81,7 +81,7 @@ void main() {
       expect(outcome.plannedCreated, appointmentDevSeedPlannedCount);
       expect(outcome.walkInCreated, 0);
       for (final params in rpcClient.createAppointmentCalls) {
-        expect(params.containsKey('p_doctor_id'), isFalse);
+        expect(params['p_doctor_id'], isNull);
       }
     });
 

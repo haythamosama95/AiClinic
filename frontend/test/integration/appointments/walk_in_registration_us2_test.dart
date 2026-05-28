@@ -54,7 +54,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(client.lastParams?['p_type'], 'walk_in');
-      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
+      expect(client.lastParams?['p_doctor_id'], isNull);
       expect(client.lastParams?.containsKey('p_start_time'), isFalse);
       expect(find.byKey(const Key('walk_in_assigned_slot_card')), findsOneWidget);
     });

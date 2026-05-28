@@ -132,15 +132,15 @@
 
 ### Tests for User Story 4
 
-- [ ] T037 [P] [US4] Add today-boundary `list_appointments` sort-order tests in `backend/tests/appointment_management_crud.sql`
-- [ ] T038 [P] [US4] Add unit tests for `AppointmentQueueProvider` in `frontend/test/unit/appointments/appointment_queue_provider_test.dart`
-- [ ] T039 [P] [US4] Add widget tests for queue live/degraded states in `frontend/test/widget/appointments/appointment_queue_page_test.dart`
+- [X] T037 [P] [US4] Add today-boundary `list_appointments` sort-order tests in `backend/tests/appointment_management_crud.sql`
+- [X] T038 [P] [US4] Add unit tests for `AppointmentQueueProvider` in `frontend/test/unit/appointments/appointment_queue_provider_test.dart`
+- [X] T039 [P] [US4] Add widget tests for queue live/degraded states in `frontend/test/widget/appointments/appointment_queue_page_test.dart`
 
 ### Implementation for User Story 4
 
-- [ ] T040 [US4] Implement `AppointmentQueueProvider` with `list_appointments` today filter, `start_time` sort, Supabase Realtime subscription, and manual refresh in `frontend/lib/features/appointments/presentation/providers/appointment_queue_provider.dart`
-- [ ] T041 [US4] Implement `AppointmentQueuePage` (loading, empty, live connected, degraded banner) in `frontend/lib/features/appointments/presentation/pages/appointment_queue_page.dart`
-- [ ] T042 [US4] Gate `/appointments/queue` route to appointment view access in `frontend/lib/app/router.dart`
+- [X] T040 [US4] Implement `AppointmentQueueProvider` with `list_appointments` today filter, `start_time` sort, Supabase Realtime subscription, and manual refresh in `frontend/lib/features/appointments/presentation/providers/appointment_queue_provider.dart`
+- [X] T041 [US4] Implement `AppointmentQueuePage` (loading, empty, live connected, degraded banner) in `frontend/lib/features/appointments/presentation/pages/appointment_queue_page.dart`
+- [X] T042 [US4] Gate `/appointments/queue` route to appointment view access in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 8–9; acceptance criteria 5; SC-005, SC-008
 

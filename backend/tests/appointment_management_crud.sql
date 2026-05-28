@@ -29,6 +29,7 @@ DECLARE
   v_branch_main uuid;
   v_patient_id uuid;
   v_patient2_id uuid;
+  v_patient3_id uuid;
   v_appt_planned uuid;
   v_appt_walkin uuid;
   v_appt_second uuid;
@@ -764,6 +765,91 @@ BEGIN
     NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
     COALESCE(v_result.error_code, '<null>')
   );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Today's queue: list_appointments returns start_time ASC and excludes other days.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+  PERFORM set_config('role', 'postgres', true);
+  DELETE FROM public.appointments WHERE branch_id = v_branch_main;
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_day_start := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
+  v_day_end := v_day_start + interval '1 day';
+
+  v_result := public.create_patient(v_branch_main, 'Queue Patient 3', '201000000145', NULL, NULL, NULL, NULL, false);
+  v_patient3_id := (v_result.data ->> 'patient_id')::uuid;
+
+  -- Use future slots today so create_appointment does not reject past times.
+  v_start := date_trunc('hour', now()) + interval '3 hours';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-late'
+  );
+  v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
+
+  v_start := date_trunc('hour', now()) + interval '1 hour';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-early'
+  );
+  v_appt_walkin := (v_result.data ->> 'appointment_id')::uuid;
+
+  v_start := date_trunc('hour', now()) + interval '2 hours';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient3_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-mid'
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+
+  v_start := v_day_end + interval '2 hours';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-tomorrow'
+  );
+
+  v_result := public.list_appointments(v_branch_main, v_day_start, v_day_end, NULL, NULL);
+  v_items := v_result.data -> 'items';
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'list_appointments_today_queue_sort_order',
+    v_result.success
+      AND jsonb_array_length(v_items) = 3
+      AND COALESCE(
+        (SELECT bool_and(prev <= cur)
+         FROM (
+           SELECT
+             lag((item ->> 'start_time')::timestamptz) OVER (ORDER BY ord) AS prev,
+             (item ->> 'start_time')::timestamptz AS cur
+           FROM jsonb_array_elements(v_items) WITH ORDINALITY AS t(item, ord)
+         ) ordered
+         WHERE prev IS NOT NULL),
+        true
+      )
+      AND (v_items -> 0 ->> 'id')::uuid = v_appt_walkin
+      AND (v_items -> 2 ->> 'id')::uuid = v_appt_planned,
+    'count=' || COALESCE(jsonb_array_length(v_items)::text, '0')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results
+  SELECT
+    'list_appointments_today_excludes_tomorrow',
+    NOT EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(v_items) AS item
+      WHERE (item ->> 'start_time')::timestamptz >= v_day_end
+    ),
+    'ok';
+  PERFORM set_config('role', 'postgres', true);
 END;
 $$;
 

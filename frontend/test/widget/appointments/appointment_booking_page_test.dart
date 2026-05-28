@@ -120,8 +120,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(client.lastFunction, 'create_appointment');
-      expect(client.lastParams?.containsKey('p_doctor_id'), isTrue);
-      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
+      expect(client.lastParams?['p_doctor_id'], isNull);
       expect(find.textContaining('unexpected error'), findsNothing);
     });
 

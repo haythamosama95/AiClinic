@@ -66,7 +66,7 @@ void main() {
 
       expect(result.type, AppointmentType.walkIn);
       expect(client.lastFunction, 'create_appointment');
-      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
+      expect(client.lastParams?['p_doctor_id'], isNull);
     });
 
     test('edge case: duration above max is rejected locally', () async {

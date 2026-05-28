@@ -29,7 +29,7 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_b
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/doctor_schedule_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_hub_page.dart';
-import 'package:ai_clinic/features/appointments/presentation/pages/appointment_placeholder_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/walk_in_registration_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
@@ -88,10 +88,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: AppRoutes.appointments, builder: (context, state) => const AppointmentHubPage()),
           GoRoute(path: AppRoutes.appointmentsBook, builder: (context, state) => const AppointmentBookingPage()),
           GoRoute(path: AppRoutes.appointmentsWalkIn, builder: (context, state) => const WalkInRegistrationPage()),
-          GoRoute(
-            path: AppRoutes.appointmentsQueue,
-            builder: (context, state) => const AppointmentPlaceholderPage(title: "Today's queue"),
-          ),
+          GoRoute(path: AppRoutes.appointmentsQueue, builder: (context, state) => const AppointmentQueuePage()),
           GoRoute(path: AppRoutes.appointmentsCalendar, builder: (context, state) => const AppointmentCalendarPage()),
           GoRoute(
             path: '${AppRoutes.appointments}/schedule/:doctorId',
