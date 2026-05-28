@@ -133,8 +133,8 @@ void main() {
       );
     });
 
-    test('advanced: updateStatus forwards wire value', () async {
-      final status = await repository.updateStatus(
+    test('advanced: updateAppointmentStatus forwards wire value', () async {
+      final status = await repository.updateAppointmentStatus(
         appointmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         newStatus: AppointmentStatus.checkedIn,
       );

@@ -7,6 +7,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_actions.dart';
 
 /// Today's appointment queue for the active branch (V1-4 US4).
 class AppointmentQueuePage extends ConsumerWidget {
@@ -120,37 +121,47 @@ class _QueueBody extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: state.items.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) => _QueueRow(item: state.items[index]),
+      itemBuilder: (context, index) => _QueueRow(item: state.items[index], onStatusChanged: onRetry),
     );
   }
 }
 
-class _QueueRow extends StatelessWidget {
-  const _QueueRow({required this.item});
+class _QueueRow extends ConsumerWidget {
+  const _QueueRow({required this.item, required this.onStatusChanged});
 
   final AppointmentListItem item;
+  final Future<void> Function() onStatusChanged;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final timeLabel = DateFormat.jm().format(item.startTime.toLocal());
     final statusColor = _statusColor(item.status);
 
-    return ListTile(
-      key: Key('appointments_queue_row_${item.id}'),
-      title: Text(item.patientName),
-      subtitle: Text('${item.doctorDisplayName} · ${item.type.label}'),
-      leading: CircleAvatar(
-        backgroundColor: statusColor.withValues(alpha: 0.2),
-        child: Text(timeLabel, style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
-      ),
-      trailing: Chip(
-        label: Text(item.status.label, style: TextStyle(color: statusColor, fontSize: 12)),
-        side: BorderSide(color: statusColor.withValues(alpha: 0.6)),
-        backgroundColor: statusColor.withValues(alpha: 0.12),
-        visualDensity: VisualDensity.compact,
-        padding: EdgeInsets.zero,
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          key: Key('appointments_queue_row_${item.id}'),
+          title: Text(item.patientName),
+          subtitle: Text('${item.doctorDisplayName} · ${item.type.label}'),
+          leading: CircleAvatar(
+            backgroundColor: statusColor.withValues(alpha: 0.2),
+            child: Text(timeLabel, style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
+          ),
+          trailing: Chip(
+            label: Text(item.status.label, style: TextStyle(color: statusColor, fontSize: 12)),
+            side: BorderSide(color: statusColor.withValues(alpha: 0.6)),
+            backgroundColor: statusColor.withValues(alpha: 0.12),
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 72, right: 16, bottom: 8),
+          child: AppointmentStatusActions(item: item, dense: true, onStatusChanged: (_) => onStatusChanged()),
+        ),
+      ],
     );
   }
 

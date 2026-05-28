@@ -13,6 +13,25 @@ import '../harness/manifest_scenario.dart';
 import '../harness/reset.dart';
 import '../harness/role_sessions.dart';
 
+Future<void> _openBranchHours24x7(BoundaryTestContext ctx, String branchId) {
+  return ctx.sql.execute('''
+UPDATE public.branches
+SET working_schedule = jsonb_build_object(
+  'days',
+  jsonb_build_array(
+    jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+    jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
+  )
+)
+WHERE id = '$branchId'::uuid;
+''');
+}
+
 void main() {
   late BoundaryTestContext ctx;
 
@@ -43,6 +62,7 @@ void main() {
       final doctor = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.doctor);
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.receptionist);
+      await _openBranchHours24x7(ctx, clinic.branchId);
 
       final start = DateTime.now().toUtc().add(const Duration(days: 2));
       final created = await ctx.appointments.createAppointment(
@@ -66,22 +86,7 @@ void main() {
       final doctor = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.doctor);
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.receptionist);
-      await ctx.sql.execute('''
-UPDATE public.branches
-SET working_schedule = jsonb_build_object(
-  'days',
-  jsonb_build_array(
-    jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
-    jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
-    jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
-    jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
-    jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
-    jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
-    jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
-  )
-)
-WHERE id = '${clinic.branchId}'::uuid;
-''');
+      await _openBranchHours24x7(ctx, clinic.branchId);
 
       final start = DateTime.now().toUtc().add(const Duration(days: 3));
       await ctx.appointments.createAppointment(
@@ -112,6 +117,7 @@ WHERE id = '${clinic.branchId}'::uuid;
       final patientId = await ctx.fixtures.createPatientAsAdmin(clinic: clinic);
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.receptionist);
+      await _openBranchHours24x7(ctx, clinic.branchId);
 
       final start = DateTime.now().toUtc().add(const Duration(days: 4));
       final created = await ctx.appointments.createAppointment(
@@ -156,6 +162,72 @@ WHERE id = '${clinic.branchId}'::uuid;
       await sessions.signInAs(StaffRole.labStaff);
 
       await expectRpcCode(() => ctx.appointments.getSettings(branchId: clinic.branchId), 'FORBIDDEN');
+    });
+
+    test('appointments.updateAppointmentStatus.lifecycle.success', () async {
+      const ManifestScenario('appointments.updateAppointmentStatus.lifecycle.success');
+      final clinic = await ctx.ensureClinic(label: 'appt_status');
+      final patientId = await ctx.fixtures.createPatientAsAdmin(clinic: clinic);
+      final doctor = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.doctor);
+      final sessions = RoleSessions(ctx, clinic);
+      await sessions.signInAs(StaffRole.receptionist);
+      await _openBranchHours24x7(ctx, clinic.branchId);
+
+      final start = DateTime.now().toUtc().add(const Duration(days: 6));
+      final created = await ctx.appointments.createAppointment(
+        branchId: clinic.branchId,
+        patientId: patientId,
+        doctorId: doctor.staffMemberId,
+        type: AppointmentType.planned,
+        startTime: start,
+        durationMinutes: 20,
+      );
+
+      var status = await ctx.appointments.updateAppointmentStatus(
+        appointmentId: created.appointmentId,
+        newStatus: AppointmentStatus.checkedIn,
+      );
+      expect(status, AppointmentStatus.checkedIn);
+
+      status = await ctx.appointments.updateAppointmentStatus(
+        appointmentId: created.appointmentId,
+        newStatus: AppointmentStatus.inProgress,
+      );
+      expect(status, AppointmentStatus.inProgress);
+
+      status = await ctx.appointments.updateAppointmentStatus(
+        appointmentId: created.appointmentId,
+        newStatus: AppointmentStatus.completed,
+      );
+      expect(status, AppointmentStatus.completed);
+    });
+
+    test('appointments.updateAppointmentStatus.INVALID_TRANSITION', () async {
+      const ManifestScenario('appointments.updateAppointmentStatus.INVALID_TRANSITION');
+      final clinic = await ctx.ensureClinic(label: 'appt_status_invalid');
+      final patientId = await ctx.fixtures.createPatientAsAdmin(clinic: clinic);
+      final doctor = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.doctor);
+      final sessions = RoleSessions(ctx, clinic);
+      await sessions.signInAs(StaffRole.receptionist);
+      await _openBranchHours24x7(ctx, clinic.branchId);
+
+      final start = DateTime.now().toUtc().add(const Duration(days: 7));
+      final created = await ctx.appointments.createAppointment(
+        branchId: clinic.branchId,
+        patientId: patientId,
+        doctorId: doctor.staffMemberId,
+        type: AppointmentType.planned,
+        startTime: start,
+        durationMinutes: 20,
+      );
+
+      await expectRpcCode(
+        () => ctx.appointments.updateAppointmentStatus(
+          appointmentId: created.appointmentId,
+          newStatus: AppointmentStatus.inProgress,
+        ),
+        'INVALID_TRANSITION',
+      );
     });
 
     test('appointments.getSettings.FORBIDDEN.unauthenticated', () async {

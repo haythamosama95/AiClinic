@@ -159,7 +159,13 @@ class AppointmentRepository with AppRpcInvoker {
     ].whereType<AppointmentListItem>().toList(growable: false);
   }
 
-  Future<AppointmentStatus> updateStatus({required String appointmentId, required AppointmentStatus newStatus}) async {
+  /// Advances appointment status via `update_appointment_status` (V1-4 US5).
+  ///
+  /// Throws [RpcFailure] with code `INVALID_TRANSITION` when the server rejects the change.
+  Future<AppointmentStatus> updateAppointmentStatus({
+    required String appointmentId,
+    required AppointmentStatus newStatus,
+  }) async {
     _assertNonEmpty('appointmentId', appointmentId);
 
     final result = await invokeRpc('update_appointment_status', {
@@ -169,7 +175,7 @@ class AppointmentRepository with AppRpcInvoker {
 
     final status = AppointmentStatus.tryParse(result.data?['status']?.toString());
     if (status == null) {
-      throw StateError('Update status returned an unexpected shape.');
+      throw StateError('Update appointment status returned an unexpected shape.');
     }
     return status;
   }

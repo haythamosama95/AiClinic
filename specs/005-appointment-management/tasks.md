@@ -154,15 +154,15 @@
 
 ### Tests for User Story 5
 
-- [ ] T043 [P] [US5] Add `update_appointment_status` transition matrix tests in `backend/tests/appointment_management_crud.sql`
-- [ ] T044 [P] [US5] Add unit tests for `AppointmentRepository.updateAppointmentStatus` in `frontend/test/unit/appointments/appointment_repository_status_test.dart`
-- [ ] T045 [P] [US5] Add widget tests for `AppointmentStatusActions` in `frontend/test/widget/appointments/appointment_status_actions_test.dart`
+- [X] T043 [P] [US5] Add `update_appointment_status` transition matrix tests in `backend/tests/appointment_management_crud.sql`
+- [X] T044 [P] [US5] Add unit tests for `AppointmentRepository.updateAppointmentStatus` in `frontend/test/unit/appointments/appointment_repository_status_test.dart`
+- [X] T045 [P] [US5] Add widget tests for `AppointmentStatusActions` in `frontend/test/widget/appointments/appointment_status_actions_test.dart`
 
 ### Implementation for User Story 5
 
-- [ ] T046 [US5] Implement `AppointmentRepository.updateAppointmentStatus` with `INVALID_TRANSITION` handling in `frontend/lib/features/appointments/data/appointment_repository.dart`
-- [ ] T047 [US5] Implement `AppointmentStatusActions` (check-in hidden for walk-in at `checked_in`, start, complete) in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
-- [ ] T048 [US5] Wire status actions on `AppointmentQueuePage` and `AppointmentCalendarPage` in `frontend/lib/features/appointments/presentation/pages/appointment_queue_page.dart` and `appointment_calendar_page.dart`
+- [X] T046 [US5] Implement `AppointmentRepository.updateAppointmentStatus` with `INVALID_TRANSITION` handling in `frontend/lib/features/appointments/data/appointment_repository.dart`
+- [X] T047 [US5] Implement `AppointmentStatusActions` (check-in hidden for walk-in at `checked_in`, start, complete) in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
+- [X] T048 [US5] Wire status actions on `AppointmentQueuePage` and `AppointmentCalendarPage` in `frontend/lib/features/appointments/presentation/pages/appointment_queue_page.dart` and `appointment_calendar_page.dart`
 
 **Checkpoint**: Spec test cases 4, 6; acceptance criteria 6–7
 

@@ -393,6 +393,73 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Transition matrix: scheduled -> in_progress is rejected (skip check-in).
+  v_start := date_trunc('hour', now() + interval '16 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'in_progress');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_invalid_skip_scheduled_to_in_progress',
+    NOT v_result.success AND v_result.error_code = 'INVALID_TRANSITION',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Walk-in lifecycle: checked_in -> in_progress -> completed (no scheduled step).
+  v_result := public.update_appointment_status(v_appt_walkin, 'in_progress');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'walk_in_checked_in_to_in_progress',
+    v_result.success AND (v_result.data ->> 'status') = 'in_progress',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.update_appointment_status(v_appt_walkin, 'completed');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'walk_in_in_progress_to_completed',
+    v_result.success AND (v_result.data ->> 'status') = 'completed',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Reception (bootstrap user) may advance another doctor's appointment.
+  v_start := date_trunc('hour', now() + interval '17 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  v_result := public.update_appointment_status(v_appt_second, 'in_progress');
+  v_result := public.update_appointment_status(v_appt_second, 'completed');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_reception_advances_other_doctor_appointment',
+    v_result.success AND (v_result.data ->> 'status') = 'completed',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- checked_in -> completed is rejected (skip in_progress).
+  v_start := date_trunc('hour', now() + interval '18 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  v_result := public.update_appointment_status(v_appt_second, 'completed');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_invalid_skip_checked_in_to_completed',
+    NOT v_result.success AND v_result.error_code = 'INVALID_TRANSITION',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Reschedule requires scheduled planned — use new appointment.
   v_start := date_trunc('hour', now() + interval '3 days');
   v_result := public.create_appointment(

@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_actions.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
@@ -383,7 +384,22 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     if (item == null) {
       return;
     }
-    context.nav.pushPatientDetail(item.patientId);
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => _AppointmentEventSheet(
+        item: item,
+        onStatusChanged: () {
+          Navigator.of(sheetContext).pop();
+          ref.read(appointmentCalendarProvider.notifier).refresh();
+        },
+        onOpenPatient: () {
+          Navigator.of(sheetContext).pop();
+          context.nav.pushPatientDetail(item.patientId);
+        },
+      ),
+    );
   }
 
   Widget _eventTileBuilder(
@@ -436,6 +452,47 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final start = day.subtract(Duration(days: day.weekday - 1));
     final end = start.add(const Duration(days: 6));
     return '${localizations.formatMediumDate(start)} - ${localizations.formatMediumDate(end)}';
+  }
+}
+
+class _AppointmentEventSheet extends StatelessWidget {
+  const _AppointmentEventSheet({required this.item, required this.onStatusChanged, required this.onOpenPatient});
+
+  final AppointmentListItem item;
+  final VoidCallback onStatusChanged;
+  final VoidCallback onOpenPatient;
+
+  @override
+  Widget build(BuildContext context) {
+    final localStart = item.startTime.toLocal();
+    final localEnd = item.endTime.toLocal();
+    final timeRange =
+        '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(localStart))} – '
+        '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(localEnd))}';
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(item.patientName, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text('${item.doctorDisplayName} · ${item.type.label} · ${item.status.label}'),
+            const SizedBox(height: 4),
+            Text(timeRange),
+            const SizedBox(height: 16),
+            AppointmentStatusActions(item: item, onStatusChanged: (_) => onStatusChanged()),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(onPressed: onOpenPatient, child: const Text('Open patient record')),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
