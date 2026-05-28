@@ -198,15 +198,15 @@
 
 ### Tests for User Story 7
 
-- [ ] T055 [P] [US7] Add `cancel_appointment` and no-show tests in `backend/tests/appointment_management_crud.sql`
-- [ ] T056 [P] [US7] Add unit tests for `AppointmentRepository.cancelAppointment` in `frontend/test/unit/appointments/appointment_repository_cancel_test.dart`
-- [ ] T057 [P] [US7] Add widget tests for cancel confirm dialog in `frontend/test/widget/appointments/appointment_cancel_dialog_test.dart`
+- [X] T055 [P] [US7] Add `cancel_appointment` and no-show tests in `backend/tests/appointment_management_crud.sql`
+- [X] T056 [P] [US7] Add unit tests for `AppointmentRepository.cancelAppointment` in `frontend/test/unit/appointments/appointment_repository_cancel_test.dart`
+- [X] T057 [P] [US7] Add widget tests for cancel confirm dialog in `frontend/test/widget/appointments/appointment_cancel_dialog_test.dart`
 
 ### Implementation for User Story 7
 
-- [ ] T058 [US7] Implement `AppointmentRepository.cancelAppointment` and no-show via `updateAppointmentStatus` in `frontend/lib/features/appointments/data/appointment_repository.dart`
-- [ ] T059 [US7] Implement `AppointmentCancelDialog` (cancel reason optional, no-show action) in `frontend/lib/features/appointments/presentation/widgets/appointment_cancel_dialog.dart`
-- [ ] T060 [US7] Wire cancel/no-show on queue and calendar rows gated by `appointments.cancel` in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
+- [X] T058 [US7] Implement `AppointmentRepository.cancelAppointment` and no-show via `updateAppointmentStatus` in `frontend/lib/features/appointments/data/appointment_repository.dart`
+- [X] T059 [US7] Implement `AppointmentCancelDialog` (cancel reason optional, no-show action) in `frontend/lib/features/appointments/presentation/widgets/appointment_cancel_dialog.dart`
+- [X] T060 [US7] Wire cancel/no-show on queue and calendar rows gated by `appointments.cancel` in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
 
 **Checkpoint**: Spec test cases 5–6; acceptance criteria 8
 

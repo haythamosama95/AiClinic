@@ -574,6 +574,56 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Cancel checked-in appointment.
+  v_start := date_trunc('hour', now() + interval '5 days 1 hour');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  v_result := public.cancel_appointment(v_appt_second, 'Clinic closed early');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'cancel_checked_in_appointment',
+    v_result.success AND (v_result.data ->> 'status') = 'cancelled',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Cannot cancel completed appointment.
+  v_start := date_trunc('hour', now() + interval '19 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  v_result := public.update_appointment_status(v_appt_second, 'in_progress');
+  v_result := public.update_appointment_status(v_appt_second, 'completed');
+  v_result := public.cancel_appointment(v_appt_second, 'Too late');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'cancel_rejects_completed',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- No-show from checked_in.
+  v_start := date_trunc('hour', now() + interval '7 days 1 hour');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  v_result := public.update_appointment_status(v_appt_second, 'no_show');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'no_show_from_checked_in',
+    v_result.success AND (v_result.data ->> 'status') = 'no_show',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- list_appointments returns items sorted by start_time.
   v_day_start := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
   v_day_end := v_day_start + interval '2 days';

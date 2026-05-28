@@ -216,7 +216,10 @@ class AppointmentRepository with AppRpcInvoker {
     return rescheduled;
   }
 
-  Future<AppointmentStatus> cancel({required String appointmentId, String? reason}) async {
+  /// Cancels a `scheduled` or `checked_in` appointment via `cancel_appointment` (V1-4 US7).
+  ///
+  /// Throws [RpcFailure] with `INVALID_INPUT` when the server rejects the cancellation.
+  Future<AppointmentStatus> cancelAppointment({required String appointmentId, String? reason}) async {
     _assertNonEmpty('appointmentId', appointmentId);
 
     if (reason != null && reason.trim().length > 2000) {
@@ -239,6 +242,11 @@ class AppointmentRepository with AppRpcInvoker {
       throw StateError('Cancel appointment returned an unexpected shape.');
     }
     return status;
+  }
+
+  /// Marks an appointment as no-show via `update_appointment_status` (V1-4 US7).
+  Future<AppointmentStatus> markAppointmentNoShow({required String appointmentId}) {
+    return updateAppointmentStatus(appointmentId: appointmentId, newStatus: AppointmentStatus.noShow);
   }
 
   void _assertNonEmpty(String field, String value) {

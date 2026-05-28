@@ -143,13 +143,14 @@ void main() {
       expect(client.lastParams?['p_new_status'], 'checked_in');
     });
 
-    test('advanced: cancel forwards optional reason', () async {
-      final status = await repository.cancel(
+    test('advanced: cancelAppointment forwards optional reason', () async {
+      final status = await repository.cancelAppointment(
         appointmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         reason: 'Patient called',
       );
 
       expect(status, AppointmentStatus.cancelled);
+      expect(client.lastFunction, 'cancel_appointment');
       expect(client.lastParams?['p_reason'], 'Patient called');
     });
 

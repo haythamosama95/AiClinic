@@ -17,6 +17,14 @@ bool canRescheduleAppointment(AppointmentListItem item) {
   return item.type == AppointmentType.planned && item.status == AppointmentStatus.scheduled;
 }
 
+/// Whether cancel or no-show is allowed for [item] (V1-4 US7).
+bool canCancelOrNoShowAppointment(AppointmentListItem item) {
+  return switch (item.status) {
+    AppointmentStatus.scheduled || AppointmentStatus.checkedIn => true,
+    _ => false,
+  };
+}
+
 /// Label for the next forward action button.
 String forwardStatusActionLabelFor(AppointmentListItem item) {
   return switch (forwardStatusTargetFor(item)) {
