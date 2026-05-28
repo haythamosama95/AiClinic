@@ -21,7 +21,7 @@ void main() {
       expect(AppointmentType.tryParse('walk-in'), isNull);
     });
 
-    test('stupid user input does not throw', () {
+    test('malformed user input does not throw', () {
       expect(() => AppointmentType.tryParse('null'), returnsNormally);
       expect(AppointmentType.tryParse('null'), isNull);
       expect(AppointmentType.tryParse('undefined'), isNull);

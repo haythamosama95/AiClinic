@@ -50,10 +50,11 @@ class AppointmentRepository with AppRpcInvoker {
     };
 
     final result = await invokeRpc('set_appointment_default_duration', params);
-    final parsed = AppointmentSettings.fromRpcData(
-      result.data != null ? {'default_duration_minutes': result.data!['default_duration_minutes']} : null,
-    );
-    return parsed?.defaultDurationMinutes ?? durationMinutes;
+    final savedMinutes = _parseDurationMinutes(result.data?['default_duration_minutes']);
+    if (result.data != null && savedMinutes == null) {
+      throw StateError('Set default duration returned an unexpected shape.');
+    }
+    return savedMinutes ?? durationMinutes;
   }
 
   Future<CreateAppointmentResult> createAppointment({
@@ -195,8 +196,8 @@ class AppointmentRepository with AppRpcInvoker {
     final rescheduled = CreateAppointmentResult.fromRpcData({
       ...?result.data,
       'appointment_id': result.data?['appointment_id'] ?? appointmentId,
-      'type': AppointmentType.planned.wireValue,
-      'status': AppointmentStatus.scheduled.wireValue,
+      'type': result.data?['type'] ?? AppointmentType.planned.wireValue,
+      'status': result.data?['status'] ?? AppointmentStatus.scheduled.wireValue,
     });
     if (rescheduled == null) {
       throw StateError('Reschedule appointment returned an unexpected shape.');
@@ -233,6 +234,16 @@ class AppointmentRepository with AppRpcInvoker {
     if (value.trim().isEmpty) {
       throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
     }
+  }
+
+  static int? _parseDurationMinutes(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '');
   }
 
   void _assertDurationMinutes(int minutes) {

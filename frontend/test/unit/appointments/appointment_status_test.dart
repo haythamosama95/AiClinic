@@ -25,7 +25,7 @@ void main() {
       expect(AppointmentStatus.tryParse('noshow'), isNull);
     });
 
-    test('stupid user input does not throw', () {
+    test('malformed user input does not throw', () {
       expect(() => AppointmentStatus.tryParse('null'), returnsNormally);
       expect(AppointmentStatus.tryParse('null'), isNull);
     });

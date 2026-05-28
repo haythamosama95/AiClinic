@@ -90,6 +90,7 @@ run_sql_test "Patient management concurrent" "patient_management_concurrent.sql"
 printf '\n--- Appointment Management ---\n'
 run_sql_test "Appointment management CRUD" "appointment_management_crud.sql"
 run_sql_test "Appointment management RLS" "appointment_management_rls.sql"
+run_sql_test "Appointment management grants" "appointment_management_grants.sql"
 
 # --- Safety ---
 printf '\n--- Safety ---\n'

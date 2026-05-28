@@ -33,6 +33,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   @override
   void dispose() {
     _pageScrollController.dispose();
+    _eventController.dispose();
     super.dispose();
   }
 

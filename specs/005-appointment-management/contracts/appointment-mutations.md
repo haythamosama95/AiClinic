@@ -41,8 +41,8 @@ Create, reschedule, cancel, status updates, and default duration settings (V1-4)
 
 ## RPC: `set_appointment_default_duration`
 
-| Parameter            | Type | Required |
-| -------------------- | ---- | -------- |
+| Parameter            | Type | Required | Notes               |
+| -------------------- | ---- | -------- | ------------------- |
 | `p_branch_id`        | uuid | No       | NULL = org-wide row |
 | `p_duration_minutes` | int  | Yes      | 5–240               |
 
