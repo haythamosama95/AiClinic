@@ -483,7 +483,11 @@ class _AppointmentEventSheet extends StatelessWidget {
             const SizedBox(height: 4),
             Text(timeRange),
             const SizedBox(height: 16),
-            AppointmentStatusActions(item: item, onStatusChanged: (_) => onStatusChanged()),
+            AppointmentStatusActions(
+              item: item,
+              onStatusChanged: (_) => onStatusChanged(),
+              onRescheduled: (_) => onStatusChanged(),
+            ),
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,

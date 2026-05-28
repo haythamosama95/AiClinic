@@ -355,6 +355,21 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Walk-in cannot be rescheduled while checked_in.
+  v_result := public.reschedule_appointment(
+    v_appt_walkin,
+    (v_result.data ->> 'start_time')::timestamptz + interval '2 hours',
+    15,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'reschedule_walk_in_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Status: scheduled -> checked_in -> in_progress -> completed.
   v_result := public.update_appointment_status(v_appt_planned, 'checked_in');
   PERFORM set_config('role', 'postgres', true);
@@ -476,7 +491,31 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
     'reschedule_scheduled_planned',
-    v_result.success,
+    v_result.success AND (v_result.data ->> 'appointment_id') IS NOT NULL,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Reschedule conflict: another appointment blocks the target slot.
+  v_start := date_trunc('hour', now() + interval '6 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 30, NULL, NULL
+  );
+  v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.create_appointment(
+    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start + interval '4 hours', 30, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.reschedule_appointment(
+    v_appt_second,
+    v_start + interval '15 minutes',
+    30,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'reschedule_conflict_rejected',
+    NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

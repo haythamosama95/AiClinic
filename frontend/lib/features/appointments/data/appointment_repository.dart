@@ -180,7 +180,10 @@ class AppointmentRepository with AppRpcInvoker {
     return status;
   }
 
-  Future<CreateAppointmentResult> reschedule({
+  /// Reschedules a `scheduled` planned appointment via `reschedule_appointment` (V1-4 US6).
+  ///
+  /// Throws [RpcFailure] with `SCHEDULE_CONFLICT` or `INVALID_INPUT` when rejected.
+  Future<CreateAppointmentResult> rescheduleAppointment({
     required String appointmentId,
     required DateTime startTime,
     int? durationMinutes,
@@ -192,12 +195,14 @@ class AppointmentRepository with AppRpcInvoker {
       _assertDurationMinutes(durationMinutes);
     }
 
-    final result = await invokeRpc('reschedule_appointment', {
+    final params = <String, dynamic>{
       'p_appointment_id': appointmentId.trim(),
       'p_start_time': startTime.toUtc().toIso8601String(),
-      'p_duration_minutes': durationMinutes,
-      'p_end_time': endTime?.toUtc().toIso8601String(),
-    });
+      ...?(durationMinutes != null) ? {'p_duration_minutes': durationMinutes} : null,
+      ...?(endTime != null) ? {'p_end_time': endTime.toUtc().toIso8601String()} : null,
+    };
+
+    final result = await invokeRpc('reschedule_appointment', params);
 
     final rescheduled = CreateAppointmentResult.fromRpcData({
       ...?result.data,

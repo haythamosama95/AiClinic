@@ -159,7 +159,12 @@ class _QueueRow extends ConsumerWidget {
         ),
         Padding(
           padding: const EdgeInsets.only(left: 72, right: 16, bottom: 8),
-          child: AppointmentStatusActions(item: item, dense: true, onStatusChanged: (_) => onStatusChanged()),
+          child: AppointmentStatusActions(
+            item: item,
+            dense: true,
+            onStatusChanged: (_) => onStatusChanged(),
+            onRescheduled: (_) => onStatusChanged(),
+          ),
         ),
       ],
     );

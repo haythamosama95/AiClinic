@@ -176,15 +176,15 @@
 
 ### Tests for User Story 6
 
-- [ ] T049 [P] [US6] Add `reschedule_appointment` tests in `backend/tests/appointment_management_crud.sql`
-- [ ] T050 [P] [US6] Add unit tests for `AppointmentRepository.rescheduleAppointment` in `frontend/test/unit/appointments/appointment_repository_reschedule_test.dart`
-- [ ] T051 [P] [US6] Add widget tests for reschedule flow in `frontend/test/widget/appointments/appointment_reschedule_dialog_test.dart`
+- [X] T049 [P] [US6] Add `reschedule_appointment` tests in `backend/tests/appointment_management_crud.sql`
+- [X] T050 [P] [US6] Add unit tests for `AppointmentRepository.rescheduleAppointment` in `frontend/test/unit/appointments/appointment_repository_reschedule_test.dart`
+- [X] T051 [P] [US6] Add widget tests for reschedule flow in `frontend/test/widget/appointments/appointment_reschedule_dialog_test.dart`
 
 ### Implementation for User Story 6
 
-- [ ] T052 [US6] Implement `AppointmentRepository.rescheduleAppointment` in `frontend/lib/features/appointments/data/appointment_repository.dart`
-- [ ] T053 [US6] Implement `AppointmentRescheduleDialog` in `frontend/lib/features/appointments/presentation/widgets/appointment_reschedule_dialog.dart`
-- [ ] T054 [US6] Add reschedule entry from calendar/queue for `scheduled` planned rows in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
+- [X] T052 [US6] Implement `AppointmentRepository.rescheduleAppointment` in `frontend/lib/features/appointments/data/appointment_repository.dart`
+- [X] T053 [US6] Implement `AppointmentRescheduleDialog` in `frontend/lib/features/appointments/presentation/widgets/appointment_reschedule_dialog.dart`
+- [X] T054 [US6] Add reschedule entry from calendar/queue for `scheduled` planned rows in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
 
 **Checkpoint**: Spec test case 12; acceptance criteria 11
 

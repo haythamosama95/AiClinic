@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/appointments/data/appointment_repository.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
+import 'package:ai_clinic/features/appointments/domain/create_appointment_result.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_actions.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 
@@ -102,6 +103,57 @@ void main() {
       expect(find.byKey(const Key('appointments_status_complete')), findsNothing);
       expect(find.byKey(const Key('appointments_status_start')), findsNothing);
     });
+
+    testWidgets('scheduled planned shows reschedule alongside check-in', (tester) async {
+      await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.scheduled)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_status_reschedule')), findsOneWidget);
+      expect(find.byKey(const Key('appointments_status_check_in')), findsOneWidget);
+    });
+
+    testWidgets('checked_in planned hides reschedule', (tester) async {
+      await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.checkedIn)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_status_reschedule')), findsNothing);
+    });
+
+    testWidgets('reschedule success invokes onRescheduled callback', (tester) async {
+      CreateAppointmentResult? rescheduled;
+      final client = AppointmentRpcTestClient(
+        rpcResults: {
+          'reschedule_appointment': {
+            'success': true,
+            'data': {
+              'appointment_id': 'appt-1',
+              'start_time': '2026-06-01T11:00:00.000Z',
+              'end_time': '2026-06-01T11:30:00.000Z',
+              'status': 'scheduled',
+              'type': 'planned',
+            },
+          },
+        },
+      );
+
+      await tester.pumpWidget(
+        _host(
+          item: _item(status: AppointmentStatus.scheduled),
+          client: client,
+          onRescheduled: (result) => rescheduled = result,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('appointments_status_reschedule')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
+      await tester.pumpAndSettle();
+
+      expect(rescheduled, isNotNull);
+      expect(find.text('Appointment rescheduled.'), findsOneWidget);
+    });
   });
 }
 
@@ -126,6 +178,7 @@ Widget _host({
   Set<String> permissions = const {PermissionKeys.appointmentsCreate},
   AppointmentRpcTestClient? client,
   ValueChanged<AppointmentStatus>? onStatusChanged,
+  ValueChanged<CreateAppointmentResult>? onRescheduled,
 }) {
   final branchId = '44444444-4444-4444-8444-444444444444';
   final authState = AuthSessionState(
@@ -140,7 +193,7 @@ Widget _host({
     ],
     child: MaterialApp(
       home: Scaffold(
-        body: AppointmentStatusActions(item: item, onStatusChanged: onStatusChanged),
+        body: AppointmentStatusActions(item: item, onStatusChanged: onStatusChanged, onRescheduled: onRescheduled),
       ),
     ),
   );

@@ -8,14 +8,23 @@ import 'package:ai_clinic/features/appointments/data/appointment_repository.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
+import 'package:ai_clinic/features/appointments/domain/create_appointment_result.dart';
 import 'package:ai_clinic/features/appointments/presentation/appointment_rpc_messages.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_reschedule_dialog.dart';
 
-/// Check-in / start / complete controls for a single appointment row (V1-4 US5).
+/// Check-in / start / complete and reschedule controls for an appointment row (V1-4 US5/US6).
 class AppointmentStatusActions extends ConsumerStatefulWidget {
-  const AppointmentStatusActions({super.key, required this.item, this.onStatusChanged, this.dense = false});
+  const AppointmentStatusActions({
+    super.key,
+    required this.item,
+    this.onStatusChanged,
+    this.onRescheduled,
+    this.dense = false,
+  });
 
   final AppointmentListItem item;
   final ValueChanged<AppointmentStatus>? onStatusChanged;
+  final ValueChanged<CreateAppointmentResult>? onRescheduled;
   final bool dense;
 
   @override
@@ -81,13 +90,29 @@ class _AppointmentStatusActionsState extends ConsumerState<AppointmentStatusActi
     }
   }
 
+  Future<void> _openReschedule() async {
+    if (_submitting) {
+      return;
+    }
+
+    final result = await AppointmentRescheduleDialog.show(context, item: _item);
+    if (!mounted || result == null) {
+      return;
+    }
+
+    widget.onRescheduled?.call(result);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Appointment rescheduled.')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
     final target = forwardStatusTargetFor(_item);
     final label = forwardStatusActionLabelFor(_item);
+    final showStatus = canCreate && target != null && label.isNotEmpty && !_item.status.isTerminal;
+    final showReschedule = canCreate && canRescheduleAppointment(_item);
 
-    if (!canCreate || target == null || label.isEmpty || _item.status.isTerminal) {
+    if (!showStatus && !showReschedule) {
       return const SizedBox.shrink();
     }
 
@@ -98,7 +123,7 @@ class _AppointmentStatusActionsState extends ConsumerState<AppointmentStatusActi
       _ => const Key('appointments_status_advance'),
     };
 
-    final button = _submitting
+    final statusButton = _submitting
         ? SizedBox(
             width: widget.dense ? 20 : 24,
             height: widget.dense ? 20 : 24,
@@ -108,11 +133,27 @@ class _AppointmentStatusActionsState extends ConsumerState<AppointmentStatusActi
         ? TextButton(key: buttonKey, onPressed: _advance, child: Text(label))
         : FilledButton.tonal(key: buttonKey, onPressed: _advance, child: Text(label));
 
+    final rescheduleButton = TextButton(
+      key: const Key('appointments_status_reschedule'),
+      onPressed: _submitting ? null : _openReschedule,
+      child: const Text('Reschedule'),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        button,
+        if (showStatus && showReschedule)
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [statusButton, rescheduleButton],
+          )
+        else if (showStatus)
+          statusButton
+        else
+          rescheduleButton,
         if (_error != null) ...[
           const SizedBox(height: 4),
           Text(

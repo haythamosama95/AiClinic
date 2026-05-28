@@ -12,6 +12,11 @@ AppointmentStatus? forwardStatusTargetFor(AppointmentListItem item) {
   };
 }
 
+/// Whether a planned appointment in `scheduled` status may be rescheduled (V1-4 US6).
+bool canRescheduleAppointment(AppointmentListItem item) {
+  return item.type == AppointmentType.planned && item.status == AppointmentStatus.scheduled;
+}
+
 /// Label for the next forward action button.
 String forwardStatusActionLabelFor(AppointmentListItem item) {
   return switch (forwardStatusTargetFor(item)) {

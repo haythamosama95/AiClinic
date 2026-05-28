@@ -143,19 +143,6 @@ void main() {
       expect(client.lastParams?['p_new_status'], 'checked_in');
     });
 
-    test('advanced: reschedule sends appointment id and start', () async {
-      final start = DateTime.utc(2026, 6, 1, 12);
-      await repository.reschedule(
-        appointmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        startTime: start,
-        durationMinutes: 25,
-      );
-
-      expect(client.lastFunction, 'reschedule_appointment');
-      expect(client.lastParams?['p_start_time'], start.toIso8601String());
-      expect(client.lastParams?['p_duration_minutes'], 25);
-    });
-
     test('advanced: cancel forwards optional reason', () async {
       final status = await repository.cancel(
         appointmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
