@@ -166,10 +166,12 @@ class _LandingDevToolsPanel extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text('Developer tools'),
-            SizedBox(height: 8),
-            Wrap(
+          children: [
+            const Text('Developer tools'),
+            const SizedBox(height: 8),
+            const DevSeedAllButton(),
+            const SizedBox(height: 8),
+            const Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [

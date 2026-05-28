@@ -4,20 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
-import 'package:ai_clinic/features/patients/data/patient_dev_seed_service.dart';
 import 'package:ai_clinic/features/patients/domain/patient_dev_seed_data.dart';
+import 'package:ai_clinic/features/auth/presentation/dev/dev_seed_providers.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/app/providers/repository_providers.dart';
-
-final _patientDevSeedServiceProvider = Provider<PatientDevSeedService>((ref) {
-  return PatientDevSeedService(
-    patients: ref.watch(patientRepositoryProvider),
-    branches: ref.watch(branchRepositoryProvider),
-    staffAdmin: ref.watch(staffAdminRepositoryProvider),
-  );
-});
 
 const bool _kEnableDevTools = bool.fromEnvironment('ENABLE_DEV_TOOLS');
 
@@ -88,7 +79,7 @@ class _DevSeedPatientsButtonState extends ConsumerState<DevSeedPatientsButton> {
     AppLog.info('patients.dev_seed.ui_confirmed');
 
     final outcome = await ref
-        .read(_patientDevSeedServiceProvider)
+        .read(patientDevSeedServiceProvider)
         .seed(auth, reloadAuthContext: () => ref.read(authSessionProvider.notifier).reloadContext());
 
     if (!mounted) {

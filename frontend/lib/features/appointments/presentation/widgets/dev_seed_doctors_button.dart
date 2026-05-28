@@ -4,18 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
-import 'package:ai_clinic/features/appointments/data/doctor_dev_seed_service.dart';
 import 'package:ai_clinic/features/appointments/domain/doctor_dev_seed_data.dart';
-import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
-import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/auth/presentation/dev/dev_seed_providers.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-
-final _doctorDevSeedServiceProvider = Provider<DoctorDevSeedService>((ref) {
-  return DoctorDevSeedService(
-    staffAdmin: ref.watch(staffAdminRepositoryProvider),
-    provisioning: ref.watch(provisioningRepositoryProvider),
-  );
-});
 
 const bool _kEnableDevTools = bool.fromEnvironment('ENABLE_DEV_TOOLS');
 
@@ -87,7 +78,7 @@ class _DevSeedDoctorsButtonState extends ConsumerState<DevSeedDoctorsButton> {
     setState(() => _isBusy = true);
     AppLog.info('appointments.dev_seed_doctors.ui_confirmed');
 
-    final outcome = await ref.read(_doctorDevSeedServiceProvider).seed(auth);
+    final outcome = await ref.read(doctorDevSeedServiceProvider).seed(auth);
 
     if (!mounted) {
       return;

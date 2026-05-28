@@ -13,3 +13,7 @@ class DevResetClinicButton extends SizedBox {
 class DevQuickAdminSignInButton extends SizedBox {
   const DevQuickAdminSignInButton({super.key});
 }
+
+class DevSeedAllButton extends SizedBox {
+  const DevSeedAllButton({super.key});
+}

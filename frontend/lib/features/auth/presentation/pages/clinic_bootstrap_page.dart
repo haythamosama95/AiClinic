@@ -9,8 +9,7 @@ import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart'
 import 'package:ai_clinic/features/settings/presentation/widgets/branch_form_fields.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/bootstrap_notifier.dart';
-import 'package:ai_clinic/features/auth/presentation/widgets/dev_fill_dummy_clinic_button.dart';
-import 'package:ai_clinic/features/auth/presentation/widgets/dev_reset_clinic_button.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/dev_tools.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/first_sign_in_warning_dialog.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
@@ -146,7 +145,7 @@ class _ClinicBootstrapPageState extends ConsumerState<ClinicBootstrapPage> {
       appBar: AppBar(
         title: const Text('Clinic setup'),
         automaticallyImplyLeading: false,
-        actions: const [DevFillDummyClinicButton(), DevResetClinicButton()],
+        actions: const [DevSeedAllButton(), DevFillDummyClinicButton(), DevResetClinicButton()],
       ),
       body: Center(
         child: ConstrainedBox(
