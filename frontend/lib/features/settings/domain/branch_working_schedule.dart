@@ -18,12 +18,7 @@ extension BranchWeekdayLabel on BranchWeekday {
 
 @immutable
 class BranchWorkingDayHours {
-  const BranchWorkingDayHours({
-    required this.day,
-    required this.isWorkingDay,
-    this.openTime,
-    this.closeTime,
-  });
+  const BranchWorkingDayHours({required this.day, required this.isWorkingDay, this.openTime, this.closeTime});
 
   final BranchWeekday day;
   final bool isWorkingDay;
@@ -63,8 +58,9 @@ class BranchWorkingDayHours {
     }
 
     final workingRaw = json['is_working_day'];
-    final isWorkingDay =
-        workingRaw is bool ? workingRaw : (workingRaw?.toString().toLowerCase() == 'true' || workingRaw == 1);
+    final isWorkingDay = workingRaw is bool
+        ? workingRaw
+        : (workingRaw?.toString().toLowerCase() == 'true' || workingRaw == 1);
 
     String? normalizeTime(Object? value) {
       final text = value?.toString().trim();
@@ -118,19 +114,20 @@ class BranchWorkingSchedule {
   Map<String, dynamic> toJson() => {'days': days.map((day) => day.toJson()).toList(growable: false)};
 
   static BranchWorkingSchedule? fromJson(Object? json) {
-    if (json is! Map<String, dynamic>) {
+    if (json is! Map) {
       return null;
     }
-    final rawDays = json['days'];
+    final map = Map<String, dynamic>.from(json);
+    final rawDays = map['days'];
     if (rawDays is! List) {
       return null;
     }
     final parsed = <BranchWorkingDayHours>[];
     for (final raw in rawDays) {
-      if (raw is! Map<String, dynamic>) {
+      if (raw is! Map) {
         continue;
       }
-      final day = BranchWorkingDayHours.fromJson(raw);
+      final day = BranchWorkingDayHours.fromJson(Map<String, dynamic>.from(raw));
       if (day != null) {
         parsed.add(day);
       }
@@ -144,7 +141,8 @@ class BranchWorkingSchedule {
       BranchWeekday.values
           .map(
             (weekday) =>
-                indexed[weekday] ?? BranchWorkingDayHours(day: weekday, isWorkingDay: false, openTime: null, closeTime: null),
+                indexed[weekday] ??
+                BranchWorkingDayHours(day: weekday, isWorkingDay: false, openTime: null, closeTime: null),
           )
           .toList(growable: false),
     );

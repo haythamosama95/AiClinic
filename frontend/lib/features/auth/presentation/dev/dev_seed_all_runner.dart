@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/appointments/domain/doctor_dev_seed_data.dart';
-import 'package:ai_clinic/features/auth/presentation/dev/appointment_dev_seed_service.dart';
 import 'package:ai_clinic/features/auth/presentation/dev/dev_seed_providers.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/bootstrap_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
@@ -87,21 +86,30 @@ class DevSeedAllRunner {
 
     auth = _ref.read(authSessionProvider).context;
     final branchId = auth?.activeBranchId;
+    final organizationId = auth?.organizationId;
     if (branchId == null || branchId.isEmpty) {
       return DevSeedAllOutcome(
         isSuccess: false,
         summaryLines: [...lines, 'Select an active branch before seeding appointments.'],
       );
     }
+    if (organizationId == null || organizationId.isEmpty) {
+      return DevSeedAllOutcome(
+        isSuccess: false,
+        summaryLines: [...lines, 'Organization context is missing. Sign in again.'],
+      );
+    }
 
     AppLog.info('dev_seed_all.appointments.start branch=$branchId');
-    final appointmentsOutcome = await _ref.read(appointmentDevSeedServiceProvider).seed(branchId: branchId);
+    final appointmentsOutcome = await _ref
+        .read(appointmentDevSeedServiceProvider)
+        .seed(branchId: branchId, organizationId: organizationId);
     if (!appointmentsOutcome.isSuccess) {
       return DevSeedAllOutcome(isSuccess: false, summaryLines: [...lines, appointmentsOutcome.errorMessage!]);
     }
     lines.add(
-      'Appointments: created ${appointmentDevSeedPlannedCount + appointmentDevSeedWalkInCount} '
-      '($appointmentDevSeedPlannedCount planned, $appointmentDevSeedWalkInCount walk-ins).',
+      'Appointments: created ${appointmentsOutcome.plannedCreated + appointmentsOutcome.walkInCreated} '
+      '(${appointmentsOutcome.plannedCreated} planned, ${appointmentsOutcome.walkInCreated} walk-ins).',
     );
 
     AppLog.info('dev_seed_all.done');

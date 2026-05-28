@@ -98,7 +98,7 @@ class AppointmentRepository with AppRpcInvoker {
     final params = <String, dynamic>{
       'p_branch_id': branchId.trim(),
       'p_patient_id': patientId.trim(),
-      'p_doctor_id': (trimmedDoctorId == null || trimmedDoctorId.isEmpty) ? null : trimmedDoctorId,
+      if (trimmedDoctorId != null && trimmedDoctorId.isNotEmpty) 'p_doctor_id': trimmedDoctorId,
       'p_type': type.wireValue,
       ...?(type == AppointmentType.planned && startTime != null)
           ? {'p_start_time': startTime.toUtc().toIso8601String()}

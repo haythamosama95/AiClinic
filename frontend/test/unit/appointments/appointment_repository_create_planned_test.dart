@@ -40,7 +40,7 @@ void main() {
       expect(client.lastParams?['p_notes'], 'Follow-up');
     });
 
-    test('advanced: planned create without doctor sends null p_doctor_id', () async {
+    test('advanced: planned create without doctor omits p_doctor_id', () async {
       final start = DateTime.utc(2026, 6, 16, 11);
       await repository.createAppointment(
         branchId: '44444444-4444-4444-8444-444444444444',
@@ -50,10 +50,10 @@ void main() {
         durationMinutes: 20,
       );
 
-      expect(client.lastParams?['p_doctor_id'], isNull);
+      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
     });
 
-    test('regression: walk-in without doctor is allowed and sends null doctor', () async {
+    test('regression: walk-in without doctor is allowed and omits p_doctor_id', () async {
       await repository.createAppointment(
         branchId: '44444444-4444-4444-8444-444444444444',
         patientId: '11111111-1111-4111-8111-111111111111',
@@ -61,7 +61,7 @@ void main() {
         durationMinutes: 15,
       );
       expect(client.lastFunction, 'create_appointment');
-      expect(client.lastParams?['p_doctor_id'], isNull);
+      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
     });
 
     test('advanced: omits duration when using server default from settings', () async {

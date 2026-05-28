@@ -29,5 +29,6 @@ final appointmentDevSeedServiceProvider = Provider<AppointmentDevSeedService>((r
     appointments: ref.watch(appointmentRepositoryProvider),
     searchPatients: ref.watch(searchPatientsUseCaseProvider),
     listStaff: ref.watch(listStaffUseCaseProvider),
+    branches: ref.watch(branchRepositoryProvider),
   );
 });

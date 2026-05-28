@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -37,6 +38,30 @@ void main() {
 
       expect(item!.code, isNull);
       expect(item.phone, isNull);
+    });
+
+    test('parses nested working_schedule maps from supabase rows', () {
+      final item = BranchListItem.fromRow({
+        'id': '1',
+        'name': 'A',
+        'is_active': true,
+        'working_schedule': <String, Object?>{
+          'days': [
+            <String, Object?>{
+              'day': 'monday',
+              'is_working_day': true,
+              'open_time': '09:00:00',
+              'close_time': '17:00:00',
+            },
+          ],
+        },
+      });
+
+      expect(item, isNotNull);
+      expect(item!.workingSchedule, isA<BranchWorkingSchedule>());
+      final monday = item.workingSchedule!.days.firstWhere((day) => day.day.name == 'monday');
+      expect(monday.openTime, '09:00:00');
+      expect(monday.isWorkingDay, isTrue);
     });
   });
 

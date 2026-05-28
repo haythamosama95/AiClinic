@@ -121,7 +121,7 @@ void main() {
 
       expect(client.lastFunction, 'create_appointment');
       expect(client.lastParams?.containsKey('p_doctor_id'), isTrue);
-      expect(client.lastParams?['p_doctor_id'], isNull);
+      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
       expect(find.textContaining('unexpected error'), findsNothing);
     });
 

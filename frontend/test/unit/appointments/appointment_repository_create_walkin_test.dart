@@ -56,7 +56,7 @@ void main() {
       expect(client.lastParams?.containsKey('p_start_time'), isFalse);
     });
 
-    test('advanced: walk-in without doctor is accepted and sends null p_doctor_id', () async {
+    test('advanced: walk-in without doctor omits p_doctor_id param', () async {
       final result = await repository.createAppointment(
         branchId: '44444444-4444-4444-8444-444444444444',
         patientId: '11111111-1111-4111-8111-111111111111',
@@ -66,7 +66,7 @@ void main() {
 
       expect(result.type, AppointmentType.walkIn);
       expect(client.lastFunction, 'create_appointment');
-      expect(client.lastParams?['p_doctor_id'], isNull);
+      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
     });
 
     test('edge case: duration above max is rejected locally', () async {

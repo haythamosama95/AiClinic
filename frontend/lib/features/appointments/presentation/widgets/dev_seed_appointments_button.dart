@@ -71,6 +71,7 @@ class _DevSeedAppointmentsButtonState extends ConsumerState<DevSeedAppointmentsB
 
     final auth = ref.read(authSessionProvider).context;
     final branchId = auth?.activeBranchId;
+    final organizationId = auth?.organizationId;
     if (branchId == null || branchId.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -79,12 +80,22 @@ class _DevSeedAppointmentsButtonState extends ConsumerState<DevSeedAppointmentsB
       }
       return;
     }
+    if (organizationId == null || organizationId.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Organization context is missing. Sign in again.')));
+      }
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Seeding demo appointments...')));
     setState(() => _isBusy = true);
     AppLog.info('appointments.dev_seed.ui_confirmed branch=$branchId');
 
-    final outcome = await ref.read(appointmentDevSeedServiceProvider).seed(branchId: branchId);
+    final outcome = await ref
+        .read(appointmentDevSeedServiceProvider)
+        .seed(branchId: branchId, organizationId: organizationId);
 
     if (!mounted) {
       return;
@@ -104,8 +115,8 @@ class _DevSeedAppointmentsButtonState extends ConsumerState<DevSeedAppointmentsB
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Created ${appointmentDevSeedPlannedCount + appointmentDevSeedWalkInCount} demo appointments '
-          '($appointmentDevSeedPlannedCount planned, $appointmentDevSeedWalkInCount walk-ins).',
+          'Created ${outcome.plannedCreated + outcome.walkInCreated} demo appointments '
+          '(${outcome.plannedCreated} planned, ${outcome.walkInCreated} walk-ins).',
         ),
       ),
     );

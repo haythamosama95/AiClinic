@@ -7,11 +7,15 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
   AppointmentRpcTestClient({Map<String, Map<String, dynamic>>? rpcResults}) : rpcResults = rpcResults ?? {};
 
   final Map<String, Map<String, dynamic>> rpcResults;
+  final List<Map<String, dynamic>> createAppointmentCalls = [];
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
     lastFunction = fn;
     lastParams = params == null ? null : Map<String, dynamic>.from(params);
+    if (fn == 'create_appointment' && lastParams != null) {
+      createAppointmentCalls.add(Map<String, dynamic>.from(lastParams!));
+    }
     final override = rpcResults[fn];
     final payload = override ?? _defaultPayload(fn);
     return FakePostgrestRpc(payload) as PostgrestFilterBuilder<T>;
@@ -33,7 +37,7 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
           'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
           'start_time': '2026-06-01T10:00:00.000Z',
           'end_time': '2026-06-01T10:30:00.000Z',
-          'status': 'scheduled',
+          'status': lastParams?['p_type'] == 'walk_in' ? 'checked_in' : 'scheduled',
           'type': lastParams?['p_type'] ?? 'planned',
         },
       },
