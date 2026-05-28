@@ -11,6 +11,8 @@ import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dar
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_tools.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/dev_tools.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/dev_seed_appointments_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/dev_seed_doctors_button.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/no_branch_blocked_panel.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/permission_demo_panel.dart';
 import 'package:ai_clinic/app/widgets/shell_status_bar.dart';
@@ -31,9 +33,6 @@ class AuthShellPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('AiClinic'),
         actions: [
-          const DevFillDummyClinicButton(),
-          const DevResetClinicButton(),
-          const DevSeedPatientsButton(),
           TextButton(onPressed: () => ref.read(authNotifierProvider.notifier).signOut(), child: const Text('Sign out')),
         ],
       ),
@@ -128,6 +127,7 @@ class _ShellHomeBody extends ConsumerWidget {
                   label: const Text('Book appointment'),
                 ),
               ],
+              if (!auth.setupRequired) ...[const SizedBox(height: 20), const _LandingDevToolsPanel()],
               const SizedBox(height: 24),
               if (kDebugMode) const PermissionDemoPanel(),
               if (!auth.setupRequired) ...[
@@ -150,6 +150,37 @@ class _ShellHomeBody extends ConsumerWidget {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LandingDevToolsPanel extends StatelessWidget {
+  const _LandingDevToolsPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text('Developer tools'),
+            SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                DevSeedDoctorsButton(),
+                DevSeedPatientsButton(),
+                DevSeedAppointmentsButton(),
+                DevFillDummyClinicButton(),
+                DevResetClinicButton(),
+              ],
+            ),
+          ],
         ),
       ),
     );

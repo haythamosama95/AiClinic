@@ -1,4 +1,5 @@
 import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:flutter/foundation.dart';
 
 /// Branch row for administration list and pickers (V1-2).
@@ -12,6 +13,7 @@ class BranchListItem {
     this.address,
     this.phone,
     this.mapsUrl,
+    this.workingSchedule,
   });
 
   final String id;
@@ -21,6 +23,7 @@ class BranchListItem {
   final String? address;
   final String? phone;
   final String? mapsUrl;
+  final BranchWorkingSchedule? workingSchedule;
 
   static BranchListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
@@ -42,6 +45,7 @@ class BranchListItem {
       address: optionalString(row['address']),
       phone: optionalString(row['phone']),
       mapsUrl: optionalString(row['maps_url']),
+      workingSchedule: BranchWorkingSchedule.fromJson(row['working_schedule']),
     );
   }
 
@@ -70,6 +74,7 @@ class BranchListItem {
     Object? address = copyWithSentinel,
     Object? phone = copyWithSentinel,
     Object? mapsUrl = copyWithSentinel,
+    Object? workingSchedule = copyWithSentinel,
   }) {
     return BranchListItem(
       id: id ?? this.id,
@@ -79,6 +84,9 @@ class BranchListItem {
       address: identical(address, copyWithSentinel) ? this.address : address as String?,
       phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
       mapsUrl: identical(mapsUrl, copyWithSentinel) ? this.mapsUrl : mapsUrl as String?,
+      workingSchedule: identical(workingSchedule, copyWithSentinel)
+          ? this.workingSchedule
+          : workingSchedule as BranchWorkingSchedule?,
     );
   }
 
@@ -93,9 +101,10 @@ class BranchListItem {
             code == other.code &&
             address == other.address &&
             phone == other.phone &&
-            mapsUrl == other.mapsUrl;
+            mapsUrl == other.mapsUrl &&
+            workingSchedule == other.workingSchedule;
   }
 
   @override
-  int get hashCode => Object.hash(id, name, isActive, code, address, phone, mapsUrl);
+  int get hashCode => Object.hash(id, name, isActive, code, address, phone, mapsUrl, workingSchedule);
 }

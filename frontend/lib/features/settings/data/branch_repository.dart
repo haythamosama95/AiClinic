@@ -27,7 +27,7 @@ class BranchRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements Bra
   }) async {
     final base = _client
         .from('branches')
-        .select('id, name, code, address, phone, maps_url, is_active')
+        .select('id, name, code, address, phone, maps_url, working_schedule, is_active')
         .eq('organization_id', organizationId)
         .eq('is_deleted', false);
 
@@ -61,6 +61,7 @@ class BranchRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements Bra
 
     final result = await invokeSettingsRpc('manage_create_branch', {
       'p_name': name,
+      'p_working_schedule': input.workingSchedule.toJson(),
       if (input.code != null) 'p_code': input.code!.trim(),
       if (input.address != null) 'p_address': input.address!.trim(),
       if (input.phone != null) 'p_phone': input.phone!.trim(),
@@ -86,6 +87,7 @@ class BranchRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements Bra
     final result = await invokeSettingsRpc('update_branch', {
       'p_branch_id': input.branchId,
       'p_name': name,
+      'p_working_schedule': input.workingSchedule.toJson(),
       if (input.code != null) 'p_code': input.code!.trim(),
       if (input.address != null) 'p_address': input.address!.trim(),
       if (input.phone != null) 'p_phone': input.phone!.trim(),

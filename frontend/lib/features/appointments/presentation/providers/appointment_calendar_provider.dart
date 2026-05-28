@@ -13,6 +13,7 @@ class AppointmentCalendarState {
     required this.mode,
     required this.focusDate,
     required this.items,
+    this.selectedBranchId,
     this.selectedDoctorId,
     this.loading = false,
     this.error,
@@ -21,6 +22,7 @@ class AppointmentCalendarState {
   final AppointmentCalendarMode mode;
   final DateTime focusDate;
   final List<AppointmentListItem> items;
+  final String? selectedBranchId;
   final String? selectedDoctorId;
   final bool loading;
   final String? error;
@@ -29,6 +31,7 @@ class AppointmentCalendarState {
     AppointmentCalendarMode? mode,
     DateTime? focusDate,
     List<AppointmentListItem>? items,
+    Object? selectedBranchId = _sentinel,
     Object? selectedDoctorId = _sentinel,
     bool? loading,
     Object? error = _sentinel,
@@ -37,6 +40,7 @@ class AppointmentCalendarState {
       mode: mode ?? this.mode,
       focusDate: focusDate ?? this.focusDate,
       items: items ?? this.items,
+      selectedBranchId: identical(selectedBranchId, _sentinel) ? this.selectedBranchId : selectedBranchId as String?,
       selectedDoctorId: identical(selectedDoctorId, _sentinel) ? this.selectedDoctorId : selectedDoctorId as String?,
       loading: loading ?? this.loading,
       error: identical(error, _sentinel) ? this.error : error as String?,
@@ -50,10 +54,12 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   @override
   AppointmentCalendarState build() {
     final today = DateTime.now();
+    final initialBranchId = _normalizedOrNull(ref.read(authSessionProvider).context?.activeBranchId);
     final initial = AppointmentCalendarState(
       mode: AppointmentCalendarMode.day,
       focusDate: DateTime(today.year, today.month, today.day),
       items: const [],
+      selectedBranchId: initialBranchId,
       loading: true,
     );
     Future<void>(refresh);
@@ -61,8 +67,8 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   }
 
   Future<void> refresh() async {
-    final branchId = ref.read(authSessionProvider).context?.activeBranchId;
-    if (branchId == null || branchId.trim().isEmpty) {
+    final branchId = _normalizedOrNull(state.selectedBranchId);
+    if (branchId == null) {
       state = state.copyWith(
         loading: false,
         items: const [],
@@ -116,6 +122,15 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
     await refresh();
   }
 
+  Future<void> setBranchFilter(String? branchId) async {
+    final normalized = _normalizedOrNull(branchId);
+    if (normalized == state.selectedBranchId) {
+      return;
+    }
+    state = state.copyWith(selectedBranchId: normalized);
+    await refresh();
+  }
+
   (DateTime, DateTime) _boundsFor(DateTime focusDate, AppointmentCalendarMode mode) {
     final dayStart = DateTime(focusDate.year, focusDate.month, focusDate.day);
     final start = mode == AppointmentCalendarMode.day
@@ -125,6 +140,14 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
         ? start.add(const Duration(days: 1))
         : start.add(const Duration(days: 7));
     return (start.toUtc(), end.toUtc());
+  }
+
+  static String? _normalizedOrNull(String? value) {
+    final normalized = value?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+    return normalized;
   }
 }
 

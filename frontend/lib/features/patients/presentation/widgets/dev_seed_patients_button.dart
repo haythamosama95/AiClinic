@@ -83,6 +83,7 @@ class _DevSeedPatientsButtonState extends ConsumerState<DevSeedPatientsButton> {
       return;
     }
 
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Seeding demo patients...')));
     setState(() => _isBusy = true);
     AppLog.info('patients.dev_seed.ui_confirmed');
 

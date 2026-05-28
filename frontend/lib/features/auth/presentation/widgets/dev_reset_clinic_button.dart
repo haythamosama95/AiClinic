@@ -62,6 +62,7 @@ class DevResetClinicButton extends ConsumerWidget {
       return;
     }
 
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Resetting clinic data...')));
     AppLog.info('bootstrap.dev_reset.ui_confirmed');
     final ok = await ref.read(bootstrapNotifierProvider.notifier).resetInstallationForDevelopment();
     if (!context.mounted) {

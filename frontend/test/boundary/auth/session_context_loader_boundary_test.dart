@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
 
 import '../harness/boundary_test_context.dart';
@@ -65,7 +66,11 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'session_multi_branch');
       await ctx.signInAdmin();
       final secondBranchId = await ctx.branches.createBranch(
-        CreateBranchInput(name: 'Second ${clinic.suffix}', code: 'S2${clinic.suffix.hashCode.abs() % 999}'),
+        CreateBranchInput(
+          name: 'Second ${clinic.suffix}',
+          workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+          code: 'S2${clinic.suffix.hashCode.abs() % 999}',
+        ),
       );
       final username = clinic.usernameFor(StaffRole.doctor);
       await ctx.provisioning.createStaffAccount(

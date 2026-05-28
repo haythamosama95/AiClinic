@@ -24,6 +24,17 @@ DECLARE
   v_result public.rpc_result;
   v_org_b_name text;
   v_branch_b_count int;
+  v_working_schedule jsonb := '{
+    "days": [
+      {"day":"monday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"tuesday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"wednesday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"thursday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"friday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"saturday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"sunday","is_working_day":false}
+    ]
+  }'::jsonb;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
@@ -43,10 +54,10 @@ BEGIN
     (v_org_b, 'RLS Org B V12', v_user_b, v_user_b)
   ON CONFLICT (id) DO NOTHING;
 
-  INSERT INTO public.branches (id, organization_id, name, code, created_by, updated_by)
+  INSERT INTO public.branches (id, organization_id, name, code, working_schedule, created_by, updated_by)
   VALUES
-    (v_branch_a, v_org_a, 'Branch A', 'A1', v_user_a, v_user_a),
-    (v_branch_b, v_org_b, 'Branch B', 'B1', v_user_b, v_user_b)
+    (v_branch_a, v_org_a, 'Branch A', 'A1', v_working_schedule, v_user_a, v_user_a),
+    (v_branch_b, v_org_b, 'Branch B', 'B1', v_working_schedule, v_user_b, v_user_b)
   ON CONFLICT (id) DO NOTHING;
 
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, created_by, updated_by)
@@ -79,7 +90,7 @@ BEGIN
   );
 
   -- User A cannot update branch in org B.
-  v_result := public.update_branch(v_branch_b, 'Hijacked', 'HIJ', NULL, NULL, NULL);
+  v_result := public.update_branch(v_branch_b, 'Hijacked', v_working_schedule, 'HIJ', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_branch_rls_results VALUES (
     'cross_org_update_branch_denied',
@@ -142,7 +153,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Branch create is scoped to caller organization (org B unchanged).
-  v_result := public.manage_create_branch('East Wing', 'EAST', NULL, NULL, NULL);
+  v_result := public.manage_create_branch('East Wing', v_working_schedule, 'EAST', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   SELECT count(*)::int
   INTO v_branch_b_count

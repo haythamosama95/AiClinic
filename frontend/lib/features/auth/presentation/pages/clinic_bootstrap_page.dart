@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/widgets/app_form_field.dart';
 import 'package:ai_clinic/core/widgets/app_searchable_dropdown_field.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/branch_form_fields.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/bootstrap_notifier.dart';
@@ -33,10 +34,19 @@ class _ClinicBootstrapPageState extends ConsumerState<ClinicBootstrapPage> {
   final _branchAddressController = TextEditingController();
   final _branchPhoneController = TextEditingController();
   final _branchMapsController = TextEditingController();
+  final _dayEnabled = <BranchWeekday, bool>{};
+  final _openTimeControllers = <BranchWeekday, TextEditingController>{};
+  final _closeTimeControllers = <BranchWeekday, TextEditingController>{};
 
   @override
   void initState() {
     super.initState();
+    for (final day in BranchWeekday.values) {
+      _dayEnabled[day] = false;
+      _openTimeControllers[day] = TextEditingController();
+      _closeTimeControllers[day] = TextEditingController();
+    }
+    _applySchedule(BranchWorkingSchedule.defaultSchedule());
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowPasswordWarning());
   }
 
@@ -51,7 +61,21 @@ class _ClinicBootstrapPageState extends ConsumerState<ClinicBootstrapPage> {
     _branchAddressController.dispose();
     _branchPhoneController.dispose();
     _branchMapsController.dispose();
+    for (final controller in _openTimeControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _closeTimeControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  void _applySchedule(BranchWorkingSchedule schedule) {
+    for (final day in schedule.days) {
+      _dayEnabled[day.day] = day.isWorkingDay;
+      _openTimeControllers[day.day]!.text = day.openTime ?? '';
+      _closeTimeControllers[day.day]!.text = day.closeTime ?? '';
+    }
   }
 
   void _maybeShowPasswordWarning() {
@@ -175,6 +199,18 @@ class _ClinicBootstrapPageState extends ConsumerState<ClinicBootstrapPage> {
                     addressController: _branchAddressController,
                     phoneController: _branchPhoneController,
                     mapsController: _branchMapsController,
+                    dayEnabled: _dayEnabled,
+                    openTimeControllers: _openTimeControllers,
+                    closeTimeControllers: _closeTimeControllers,
+                    onDayEnabledChanged: (day, enabled) {
+                      setState(() {
+                        _dayEnabled[day] = enabled;
+                        if (!enabled) {
+                          _openTimeControllers[day]!.clear();
+                          _closeTimeControllers[day]!.clear();
+                        }
+                      });
+                    },
                     isBusy: isBusy,
                     onSubmit: _finishSetup,
                     onBack: isBusy
@@ -353,6 +389,10 @@ class _BranchStep extends StatelessWidget {
     required this.addressController,
     required this.phoneController,
     required this.mapsController,
+    required this.dayEnabled,
+    required this.openTimeControllers,
+    required this.closeTimeControllers,
+    required this.onDayEnabledChanged,
     required this.isBusy,
     required this.onSubmit,
     required this.onBack,
@@ -364,6 +404,10 @@ class _BranchStep extends StatelessWidget {
   final TextEditingController addressController;
   final TextEditingController phoneController;
   final TextEditingController mapsController;
+  final Map<BranchWeekday, bool> dayEnabled;
+  final Map<BranchWeekday, TextEditingController> openTimeControllers;
+  final Map<BranchWeekday, TextEditingController> closeTimeControllers;
+  final void Function(BranchWeekday day, bool enabled) onDayEnabledChanged;
   final bool isBusy;
   final Future<void> Function() onSubmit;
   final VoidCallback? onBack;
@@ -382,6 +426,10 @@ class _BranchStep extends StatelessWidget {
             addressController: addressController,
             phoneController: phoneController,
             mapsUrlController: mapsController,
+            dayEnabled: dayEnabled,
+            openTimeControllers: openTimeControllers,
+            closeTimeControllers: closeTimeControllers,
+            onDayEnabledChanged: onDayEnabledChanged,
             enabled: !isBusy,
           ),
           const SizedBox(height: 24),

@@ -1,6 +1,7 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/data/branch_repository.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,8 +22,9 @@ void main() {
 
     test('createBranch sends manage_create_branch parameters', () async {
       final id = await repository.createBranch(
-        const CreateBranchInput(
+        CreateBranchInput(
           name: '  North  ',
+          workingSchedule: BranchWorkingSchedule.defaultSchedule(),
           code: ' N1 ',
           address: ' 1 St ',
           phone: ' 555 ',
@@ -38,7 +40,7 @@ void main() {
 
     test('stupid usage: empty branch name rejected locally', () async {
       expect(
-        () => repository.createBranch(const CreateBranchInput(name: '  ')),
+        () => repository.createBranch(CreateBranchInput(name: '  ', workingSchedule: BranchWorkingSchedule.defaultSchedule())),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
       );
     });
@@ -58,7 +60,12 @@ void main() {
 
     test('updateBranch omits optional empty fields but keeps name', () async {
       await repository.updateBranch(
-        UpdateBranchInput(branchId: '22222222-2222-4222-8222-222222222222', name: 'Renamed', code: ''),
+        UpdateBranchInput(
+          branchId: '22222222-2222-4222-8222-222222222222',
+          name: 'Renamed',
+          workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+          code: '',
+        ),
       );
 
       expect(client.lastFunction, 'update_branch');
@@ -96,7 +103,8 @@ void main() {
       );
 
       expect(
-        () => BranchRepositoryImpl(client).createBranch(const CreateBranchInput(name: 'X')),
+        () => BranchRepositoryImpl(client)
+            .createBranch(CreateBranchInput(name: 'X', workingSchedule: BranchWorkingSchedule.defaultSchedule())),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'RPC_NOT_APPLIED')),
       );
     });
@@ -109,7 +117,9 @@ void main() {
       };
 
       expect(
-        () => repository.createBranch(const CreateBranchInput(name: 'X', code: 'MAIN')),
+        () => repository.createBranch(
+          CreateBranchInput(name: 'X', workingSchedule: BranchWorkingSchedule.defaultSchedule(), code: 'MAIN'),
+        ),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'DUPLICATE_CODE')),
       );
     });

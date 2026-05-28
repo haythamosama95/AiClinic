@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 
@@ -29,7 +30,11 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'branch_list');
       await ctx.signInAdmin();
       final secondId = await ctx.branches.createBranch(
-        CreateBranchInput(name: 'Inactive Target ${clinic.suffix}', code: 'IN${clinic.suffix.hashCode.abs() % 999}'),
+        CreateBranchInput(
+          name: 'Inactive Target ${clinic.suffix}',
+          workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+          code: 'IN${clinic.suffix.hashCode.abs() % 999}',
+        ),
       );
       await ctx.branches.setBranchActive(branchId: secondId, isActive: false);
       final all = await ctx.branches.listBranches(organizationId: clinic.organizationId);
@@ -62,7 +67,11 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'branch_inactive_only');
       await ctx.signInAdmin();
       final secondId = await ctx.branches.createBranch(
-        CreateBranchInput(name: 'To Deactivate ${clinic.suffix}', code: 'TD${clinic.suffix.hashCode.abs() % 999}'),
+        CreateBranchInput(
+          name: 'To Deactivate ${clinic.suffix}',
+          workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+          code: 'TD${clinic.suffix.hashCode.abs() % 999}',
+        ),
       );
       await ctx.branches.setBranchActive(branchId: secondId, isActive: false);
       final rows = await ctx.branches.listBranches(
@@ -77,7 +86,11 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'branch_create');
       await ctx.signInAdmin();
       final id = await ctx.branches.createBranch(
-        CreateBranchInput(name: 'Secondary ${clinic.suffix}', code: 'SEC${clinic.suffix.hashCode.abs() % 9999}'),
+        CreateBranchInput(
+          name: 'Secondary ${clinic.suffix}',
+          workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+          code: 'SEC${clinic.suffix.hashCode.abs() % 9999}',
+        ),
       );
       expect(id, isNotEmpty);
     });
@@ -87,7 +100,12 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'branch_update');
       await ctx.signInAdmin();
       await ctx.branches.updateBranch(
-        UpdateBranchInput(branchId: clinic.branchId, name: 'Renamed ${clinic.suffix}', phone: '+19998887777'),
+        UpdateBranchInput(
+          branchId: clinic.branchId,
+          name: 'Renamed ${clinic.suffix}',
+          workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+          phone: '+19998887777',
+        ),
       );
     });
 
@@ -99,6 +117,7 @@ void main() {
         UpdateBranchInput(
           branchId: clinic.branchId,
           name: 'Full Branch ${clinic.suffix}',
+          workingSchedule: BranchWorkingSchedule.defaultSchedule(),
           code: clinic.branchCode,
           address: '123 Main St',
           phone: '+15551234567',
@@ -113,7 +132,11 @@ void main() {
       await ctx.signInAdmin();
       await expectRpcCode(
         () => ctx.branches.updateBranch(
-          UpdateBranchInput(branchId: '00000000-0000-4000-8000-000000000099', name: 'Ghost Branch'),
+          UpdateBranchInput(
+            branchId: '00000000-0000-4000-8000-000000000099',
+            name: 'Ghost Branch',
+            workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+          ),
         ),
         'BRANCH_NOT_FOUND',
       );
@@ -125,7 +148,11 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'branch_deactivate');
       await ctx.signInAdmin();
       final secondId = await ctx.branches.createBranch(
-        CreateBranchInput(name: 'Extra ${clinic.suffix}', code: 'X${clinic.suffix.hashCode.abs() % 999}'),
+        CreateBranchInput(
+          name: 'Extra ${clinic.suffix}',
+          workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+          code: 'X${clinic.suffix.hashCode.abs() % 999}',
+        ),
       );
       final result = await ctx.branches.setBranchActive(branchId: secondId, isActive: false);
       expect(result.success, isTrue);
@@ -136,7 +163,13 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'branch_dup');
       await ctx.signInAdmin();
       await expectRpcCode(
-        () => ctx.branches.createBranch(CreateBranchInput(name: 'Dup Branch', code: clinic.branchCode)),
+        () => ctx.branches.createBranch(
+          CreateBranchInput(
+            name: 'Dup Branch',
+            workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+            code: clinic.branchCode,
+          ),
+        ),
         'DUPLICATE_CODE',
       );
     });
@@ -144,7 +177,10 @@ void main() {
     test('branch.INVALID_INPUT.client', () async {
       const ManifestScenario('branch.INVALID_INPUT.client');
       await ctx.signInAdmin();
-      await expectRpcCode(() => ctx.branches.createBranch(const CreateBranchInput(name: '  ')), 'INVALID_INPUT');
+      await expectRpcCode(
+        () => ctx.branches.createBranch(CreateBranchInput(name: '  ', workingSchedule: BranchWorkingSchedule.defaultSchedule())),
+        'INVALID_INPUT',
+      );
     });
 
     test('branch.LAST_ACTIVE_BRANCH', () async {
@@ -163,7 +199,13 @@ void main() {
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.receptionist);
       await expectRpcCode(
-        () => ctx.branches.createBranch(CreateBranchInput(name: 'No Auth Branch', code: 'NA${clinic.suffix}')),
+        () => ctx.branches.createBranch(
+          CreateBranchInput(
+            name: 'No Auth Branch',
+            workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+            code: 'NA${clinic.suffix}',
+          ),
+        ),
         'FORBIDDEN',
       );
     });

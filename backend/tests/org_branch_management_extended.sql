@@ -32,6 +32,17 @@ DECLARE
   v_branch_name text;
   v_audit_count int;
   v_active_count int;
+  v_working_schedule jsonb := '{
+    "days": [
+      {"day":"monday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"tuesday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"wednesday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"thursday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"friday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"saturday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"sunday","is_working_day":false}
+    ]
+  }'::jsonb;
 BEGIN
   -- ===========================================================================
   -- FIXTURE SETUP
@@ -101,7 +112,7 @@ BEGIN
     )::text,
     true
   );
-  v_result := public.manage_create_branch('Doctor Branch', 'DOC', NULL, NULL, NULL);
+  v_result := public.manage_create_branch('Doctor Branch', v_working_schedule, 'DOC', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_ext_results VALUES (
     'branch_create_doctor_forbidden',
@@ -124,7 +135,7 @@ BEGIN
     )::text,
     true
   );
-  v_result := public.manage_create_branch('Recep Branch', 'REC', NULL, NULL, NULL);
+  v_result := public.manage_create_branch('Recep Branch', v_working_schedule, 'REC', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_ext_results VALUES (
     'branch_create_receptionist_forbidden',
@@ -147,7 +158,7 @@ BEGIN
     )::text,
     true
   );
-  v_result := public.manage_create_branch('Second Branch', 'SEC', '2 Sec St', '+9876543210', NULL);
+  v_result := public.manage_create_branch('Second Branch', v_working_schedule, 'SEC', '2 Sec St', '+9876543210', NULL);
   v_branch_second := (v_result.data ->> 'branch_id')::uuid;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_ext_results VALUES (
@@ -161,7 +172,7 @@ BEGIN
   -- BRANCH CREATE: empty name rejected
   -- ===========================================================================
 
-  v_result := public.manage_create_branch('   ', 'EMPTY', NULL, NULL, NULL);
+  v_result := public.manage_create_branch('   ', v_working_schedule, 'EMPTY', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_ext_results VALUES (
     'branch_create_empty_name_rejected',
@@ -174,7 +185,7 @@ BEGIN
   -- BRANCH CREATE: empty code rejected
   -- ===========================================================================
 
-  v_result := public.manage_create_branch('No Code', '   ', NULL, NULL, NULL);
+  v_result := public.manage_create_branch('No Code', v_working_schedule, '   ', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_ext_results VALUES (
     'branch_create_empty_code_rejected',
@@ -187,7 +198,7 @@ BEGIN
   -- BRANCH CREATE: duplicate code (case-insensitive)
   -- ===========================================================================
 
-  v_result := public.manage_create_branch('Third Branch', 'sec', NULL, NULL, NULL);
+  v_result := public.manage_create_branch('Third Branch', v_working_schedule, 'sec', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_ext_results VALUES (
     'branch_create_duplicate_code_case_insensitive',
@@ -197,7 +208,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Unique code succeeds.
-  v_result := public.manage_create_branch('Third Branch', 'THR', NULL, NULL, NULL);
+  v_result := public.manage_create_branch('Third Branch', v_working_schedule, 'THR', NULL, NULL, NULL);
   v_branch_third := (v_result.data ->> 'branch_id')::uuid;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_ext_results VALUES (

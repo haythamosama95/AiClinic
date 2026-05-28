@@ -254,6 +254,7 @@ void main() {
       expect(bootstrap.continueCalls, 1);
       expect(bootstrap.finishSetupCalls, 0);
       expect(find.text('Branch name'), findsOneWidget);
+      expect(find.text('Working days and hours'), findsOneWidget);
       expect(find.text('Finish setup'), findsOneWidget);
     });
 

@@ -19,7 +19,7 @@ class DevFillDummyClinicButton extends ConsumerWidget {
     }
 
     final auth = ref.watch(authSessionProvider).context;
-    if (auth == null || !auth.staffProfile.isBootstrapAdmin || !auth.setupRequired) {
+    if (auth == null || !auth.staffProfile.isBootstrapAdmin) {
       return const SizedBox.shrink();
     }
 
@@ -34,6 +34,19 @@ class DevFillDummyClinicButton extends ConsumerWidget {
   }
 
   Future<void> _confirmAndFill(BuildContext context, WidgetRef ref) async {
+    final auth = ref.read(authSessionProvider).context;
+    if (auth == null) {
+      return;
+    }
+    if (!auth.setupRequired) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Clinic is already set up. Reset clinic first to seed a new organization.')),
+        );
+      }
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -53,6 +66,7 @@ class DevFillDummyClinicButton extends ConsumerWidget {
       return;
     }
 
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Creating dummy clinic data...')));
     AppLog.info('bootstrap.dev_dummy_fill.ui_confirmed');
     final ok = await ref.read(bootstrapNotifierProvider.notifier).finishSetupWithDummyData();
     if (!context.mounted) {

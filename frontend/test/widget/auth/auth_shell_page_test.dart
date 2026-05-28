@@ -350,6 +350,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('View analytics (denied demo)'));
     await tester.tap(find.text('View analytics (denied demo)'));
     await tester.pump();
 

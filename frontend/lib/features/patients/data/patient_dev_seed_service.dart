@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
@@ -83,7 +84,12 @@ class PatientDevSeedService {
 
       if (otherBranchId == null) {
         otherBranchId = await _branches.createBranch(
-          const CreateBranchInput(name: _secondBranchName, code: _secondBranchCode, address: 'Dev seed address'),
+          CreateBranchInput(
+            name: _secondBranchName,
+            workingSchedule: BranchWorkingSchedule.defaultSchedule(),
+            code: _secondBranchCode,
+            address: 'Dev seed address',
+          ),
         );
         AppLog.info('patients.dev_seed.second_branch_created id=$otherBranchId');
       }

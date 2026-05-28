@@ -24,7 +24,7 @@ void main() {
 
       expect(find.text('New branch'), findsOneWidget);
       expect(find.text('Create branch'), findsOneWidget);
-      expect(find.byType(TextFormField), findsNWidgets(5));
+      expect(find.byType(TextFormField), findsNWidgets(19));
       expect(find.text('Modify'), findsNothing);
     });
 
@@ -38,13 +38,14 @@ void main() {
       expect(find.text('main'), findsOneWidget);
       expect(find.text('1 Main St'), findsOneWidget);
       expect(find.text('Modify'), findsNWidgets(5));
-      expect(find.byType(TextFormField), findsNothing);
+      expect(find.byType(TextFormField), findsNWidgets(14));
     });
 
     testWidgets('stupid usage: empty name blocked on save', (tester) async {
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('Create branch'));
       await tester.tap(find.text('Create branch'));
       await tester.pumpAndSettle();
 
@@ -57,6 +58,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextFormField).first, 'North Clinic');
+      await tester.ensureVisible(find.text('Create branch'));
       await tester.tap(find.text('Create branch'));
       await tester.pumpAndSettle();
 
@@ -75,6 +77,7 @@ void main() {
 
       await tester.enterText(find.byType(TextFormField).at(0), 'Branch X');
       await tester.enterText(find.byType(TextFormField).at(1), 'MAIN');
+      await tester.ensureVisible(find.text('Create branch'));
       await tester.tap(find.text('Create branch'));
       await tester.pumpAndSettle();
 
@@ -115,12 +118,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Main Branch'), findsOneWidget);
-      expect(find.byType(TextFormField), findsNothing);
+      expect(find.byType(TextFormField), findsNWidgets(14));
 
       await tester.tap(find.text('Modify').first);
       await tester.pumpAndSettle();
 
-      expect(find.byType(TextFormField), findsOneWidget);
+      expect(find.byType(TextFormField), findsNWidgets(15));
       expect(find.widgetWithText(TextFormField, 'Main Branch'), findsOneWidget);
     });
   });

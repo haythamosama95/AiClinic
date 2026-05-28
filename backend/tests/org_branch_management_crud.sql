@@ -29,6 +29,17 @@ DECLARE
   v_grant boolean;
   v_audit_count int;
   v_staff_active boolean;
+  v_working_schedule jsonb := '{
+    "days": [
+      {"day":"monday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"tuesday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"wednesday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"thursday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"friday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"saturday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"sunday","is_working_day":false}
+    ]
+  }'::jsonb;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.staff_branch_assignments;
@@ -224,7 +235,7 @@ BEGIN
     )::text,
     true
   );
-  v_result := public.manage_create_branch('North Wing', 'NORTH', '2 North St', '+2', NULL);
+  v_result := public.manage_create_branch('North Wing', v_working_schedule, 'NORTH', '2 North St', '+2', NULL);
   v_branch_second := (v_result.data ->> 'branch_id')::uuid;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_branch_crud_results VALUES (
@@ -235,7 +246,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Stupid usage: duplicate branch code.
-  v_result := public.manage_create_branch('Duplicate Code Branch', 'NORTH', NULL, NULL, NULL);
+  v_result := public.manage_create_branch('Duplicate Code Branch', v_working_schedule, 'NORTH', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_branch_crud_results VALUES (
     'branch_create_duplicate_code_rejected',

@@ -12,10 +12,16 @@ import 'package:ai_clinic/features/appointments/presentation/pages/doctor_schedu
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 
 import '../../helpers/auth_test_support.dart';
@@ -98,6 +104,7 @@ Widget _host({required String initialLocation}) {
           ),
         ),
       ),
+      branchRepositoryProvider.overrideWithValue(_FakeBranchRepository(branchId: branchId)),
       staffAdminRepositoryProvider.overrideWithValue(_FakeStaffAdminRepository()),
     ],
     child: MaterialApp.router(
@@ -149,4 +156,27 @@ class _FakeStaffAdminRepository implements StaffAdminRepository {
   @override
   Future<RpcResult> setStaffActive({required String staffMemberId, required bool isActive}) =>
       throw UnimplementedError();
+}
+
+class _FakeBranchRepository implements BranchRepository {
+  _FakeBranchRepository({required this.branchId});
+
+  final String branchId;
+
+  @override
+  Future<List<BranchListItem>> listBranches({
+    required String organizationId,
+    BranchListFilter filter = BranchListFilter.all,
+  }) async {
+    return [BranchListItem(id: branchId, name: 'Main Branch', isActive: true)];
+  }
+
+  @override
+  Future<String> createBranch(CreateBranchInput input) => throw UnimplementedError();
+
+  @override
+  Future<RpcResult> setBranchActive({required String branchId, required bool isActive}) => throw UnimplementedError();
+
+  @override
+  Future<String> updateBranch(UpdateBranchInput input) => throw UnimplementedError();
 }

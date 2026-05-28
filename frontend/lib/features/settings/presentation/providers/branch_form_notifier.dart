@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/branch_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
@@ -99,7 +100,14 @@ class BranchFormNotifier extends AsyncNotifier<BranchFormUiState> {
     return BranchFormUiState(existing: existing);
   }
 
-  Future<String?> save({required String name, String? code, String? address, String? phone, String? mapsUrl}) async {
+  Future<String?> save({
+    required String name,
+    required BranchWorkingSchedule workingSchedule,
+    String? code,
+    String? address,
+    String? phone,
+    String? mapsUrl,
+  }) async {
     final current = state.value;
     if (current == null || current.permissionDenied) {
       return null;
@@ -108,6 +116,17 @@ class BranchFormNotifier extends AsyncNotifier<BranchFormUiState> {
     final trimmedName = name.trim();
     if (trimmedName.isEmpty) {
       state = AsyncData(current.copyWith(fieldErrors: {'name': 'Branch name is required.'}, clearError: true));
+      return null;
+    }
+    final hasWorkingDay = workingSchedule.days.any((day) => day.isWorkingDay);
+    if (!hasWorkingDay) {
+      state = AsyncData(
+        current.copyWith(
+          errorMessage: 'Select at least one working day and provide its working hours.',
+          clearFieldErrors: true,
+          clearSavedBranchId: true,
+        ),
+      );
       return null;
     }
 
@@ -124,6 +143,7 @@ class BranchFormNotifier extends AsyncNotifier<BranchFormUiState> {
         savedId = await ref.read(createBranchUseCaseProvider)(
           CreateBranchInput(
             name: trimmedName,
+            workingSchedule: workingSchedule,
             code: _optionalTrim(code),
             address: _optionalTrim(address),
             phone: _optionalTrim(phone),
@@ -135,6 +155,7 @@ class BranchFormNotifier extends AsyncNotifier<BranchFormUiState> {
           UpdateBranchInput(
             branchId: branchId,
             name: trimmedName,
+            workingSchedule: workingSchedule,
             code: _optionalTrim(code),
             address: _optionalTrim(address),
             phone: _optionalTrim(phone),
