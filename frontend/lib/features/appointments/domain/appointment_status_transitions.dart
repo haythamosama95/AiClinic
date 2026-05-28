@@ -24,15 +24,12 @@ bool canRescheduleAppointment(AppointmentListItem item) {
 
 /// Whether cancel is allowed for [item] (V1-4 US7); may be done before the appointment day.
 bool canCancelAppointment(AppointmentListItem item) {
-  return switch (item.status) {
-    AppointmentStatus.scheduled || AppointmentStatus.confirmed || AppointmentStatus.checkedIn => true,
-    _ => false,
-  };
+  return item.status.canTransitionTo(AppointmentStatus.cancelled);
 }
 
 /// Whether no-show is allowed for [item] (V1-4 US7); only on or after the appointment day.
 bool canMarkNoShowAppointment(AppointmentListItem item, {DateTime? reference}) {
-  if (!canCancelAppointment(item)) {
+  if (!item.status.canTransitionTo(AppointmentStatus.noShow)) {
     return false;
   }
   return canTransitionToStatusOnDate(AppointmentStatus.noShow, item.startTime, reference);

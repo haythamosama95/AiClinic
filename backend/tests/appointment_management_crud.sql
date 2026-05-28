@@ -14,6 +14,24 @@ CREATE TEMP TABLE appointment_crud_results (
   detail text
 );
 
+-- Same-calendar-day slot in org TZ (UTC in this suite). Avoids greatest(now()+Nh, day+Nh)
+-- rolling to tomorrow after ~20:00 UTC, which breaks day-gated status transitions.
+CREATE OR REPLACE FUNCTION pg_temp.test_appointment_same_day_slot(p_offset_hours int)
+RETURNS timestamptz
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_tz text := 'UTC';
+  v_day_start timestamptz;
+BEGIN
+  IF p_offset_hours < 1 OR p_offset_hours > 23 THEN
+    RAISE EXCEPTION 'test_appointment_same_day_slot: offset must be 1..23, got %', p_offset_hours;
+  END IF;
+  v_day_start := date_trunc('day', now() AT TIME ZONE v_tz) AT TIME ZONE v_tz;
+  RETURN v_day_start + make_interval(hours => p_offset_hours);
+END;
+$$;
+
 DO $$
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
@@ -30,6 +48,7 @@ DECLARE
   v_patient_id uuid;
   v_patient2_id uuid;
   v_patient3_id uuid;
+  v_sd_patient uuid;
   v_appt_planned uuid;
   v_appt_second uuid;
   v_doctor2_staff uuid := 'b1400000-0000-4000-8000-000000000104';
@@ -251,11 +270,25 @@ BEGIN
   WHERE b.id = v_branch_main;
   PERFORM set_config('role', 'authenticated', true);
 
+  -- One patient per same-day slot (patient_has_same_day_appointment counts completed bookings).
+  CREATE TEMP TABLE same_day_slot_patients (slot int PRIMARY KEY, patient_id uuid NOT NULL);
+  FOR v_i IN 2..12 LOOP
+    v_result := public.create_patient(
+      v_branch_main,
+      'Same Day Slot ' || v_i,
+      '2010000002' || lpad(v_i::text, 2, '0'),
+      NULL,
+      NULL,
+      NULL,
+      NULL,
+      false
+    );
+    INSERT INTO same_day_slot_patients (slot, patient_id)
+    VALUES (v_i, (v_result.data ->> 'patient_id')::uuid);
+  END LOOP;
+
   -- Lifecycle tests use an appointment on today's calendar day (org TZ UTC in this suite).
-  v_start := greatest(
-    date_trunc('hour', now() + interval '1 hour'),
-    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '1 hour'
-  );
+  v_start := pg_temp.test_appointment_same_day_slot(1);
   v_end := v_start + interval '30 minutes';
 
   v_result := public.create_appointment(
@@ -444,12 +477,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Reception (bootstrap user) may advance another doctor's appointment on the appointment day.
-  v_start := greatest(
-    date_trunc('hour', now() + interval '2 hours'),
-    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '2 hours'
-  );
+  v_start := pg_temp.test_appointment_same_day_slot(2);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 2;
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
+    v_branch_main, v_sd_patient, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -465,12 +496,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- checked_in -> completed is rejected (skip in_progress).
-  v_start := greatest(
-    date_trunc('hour', now() + interval '3 hours'),
-    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '3 hours'
-  );
+  v_start := pg_temp.test_appointment_same_day_slot(3);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 3;
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -569,12 +598,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- No-show from scheduled on the appointment day.
-  v_start := greatest(
-    date_trunc('hour', now() + interval '4 hours'),
-    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '4 hours'
-  );
+  v_start := pg_temp.test_appointment_same_day_slot(4);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 4;
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'no_show');
@@ -618,12 +645,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Cancel checked-in appointment.
-  v_start := greatest(
-    date_trunc('hour', now() + interval '5 hours'),
-    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '5 hours'
-  );
+  v_start := pg_temp.test_appointment_same_day_slot(5);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 5;
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -638,12 +663,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Cannot cancel completed appointment.
-  v_start := greatest(
-    date_trunc('hour', now() + interval '6 hours'),
-    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '6 hours'
-  );
+  v_start := pg_temp.test_appointment_same_day_slot(6);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 6;
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -660,12 +683,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- No-show from checked_in.
-  v_start := greatest(
-    date_trunc('hour', now() + interval '7 hours'),
-    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '7 hours'
-  );
+  v_start := pg_temp.test_appointment_same_day_slot(7);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 7;
   v_result := public.create_appointment(
-    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -682,9 +703,10 @@ BEGIN
   -- list_appointments returns items sorted by start_time.
   v_day_start := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
   v_day_end := v_day_start + interval '2 days';
-  v_start := greatest(now() + interval '1 hour', v_day_start + interval '1 hour');
+  v_start := pg_temp.test_appointment_same_day_slot(9);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 9;
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'list-range'
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, 'list-range'
   );
   v_result := public.list_appointments(v_branch_main, v_day_start, v_day_end, NULL, NULL);
   v_items := v_result.data -> 'items';
@@ -734,12 +756,10 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- No-show from confirmed (patient confirmed by phone but did not arrive).
-  v_start := greatest(
-    date_trunc('hour', now() + interval '8 hours'),
-    (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') + interval '8 hours'
-  );
+  v_start := pg_temp.test_appointment_same_day_slot(8);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 8;
   v_result := public.create_appointment(
-    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -931,22 +951,25 @@ BEGIN
   v_result := public.create_patient(v_branch_main, 'Queue Patient 3', '201000000145', NULL, NULL, NULL, NULL, false);
   v_patient3_id := (v_result.data ->> 'patient_id')::uuid;
 
-  -- Use future slots today so create_appointment does not reject past times.
-  v_start := date_trunc('hour', now()) + interval '3 hours';
+  -- Fixed UTC hour offsets avoid now()+Nh rolling past midnight and dropping from today's list.
+  v_start := pg_temp.test_appointment_same_day_slot(12);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 12;
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-late'
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-late'
   );
   v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
 
-  v_start := date_trunc('hour', now()) + interval '1 hour';
+  v_start := pg_temp.test_appointment_same_day_slot(10);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 10;
   v_result := public.create_appointment(
-    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-early'
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-early'
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
 
-  v_start := date_trunc('hour', now()) + interval '2 hours';
+  v_start := pg_temp.test_appointment_same_day_slot(11);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 11;
   v_result := public.create_appointment(
-    v_branch_main, v_patient3_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-mid'
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-mid'
   );
 
   v_start := v_day_end + interval '2 hours';

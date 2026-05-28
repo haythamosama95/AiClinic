@@ -183,6 +183,7 @@ Only rows with `owner=boundary` must have `ManifestScenario('scenario')` in `tes
 | appointments.getSettings.success                        | happy      |                        | boundary | appointment_management_grants.sql                |
 | appointments.createAppointment.planned.success          | happy      |                        | boundary | appointment_management_crud.sql                  |
 | appointments.createAppointment.SCHEDULE_CONFLICT        | negative   | SCHEDULE_CONFLICT      | boundary | appointment_management_crud.sql                  |
+| appointments.rebookAfterCancel.sameSlot.success         | happy      |                        | boundary | appointment_management_crud.sql                  |
 | appointments.createAppointment.planned.noDoctor         | happy      |                        | boundary | appointment_management_crud.sql                  |
 | appointments.createAppointment.FORBIDDEN.lab_staff      | negative   | FORBIDDEN              | boundary | appointment_management_crud.sql                  |
 | appointments.getSettings.FORBIDDEN.lab_staff            | negative   | FORBIDDEN              | boundary | appointment_management_crud.sql                  |

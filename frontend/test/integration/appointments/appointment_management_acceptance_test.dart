@@ -135,6 +135,35 @@ void main() {
   });
 
   group('spec cases 5–6 — cancel and no-show', () {
+    testWidgets('case 5a: cancel confirmed appointment calls cancel_appointment RPC', (tester) async {
+      final client = AppointmentRpcTestClient();
+      AppointmentStatus? changed;
+
+      await _pumpHost(
+        tester,
+        _scope(
+          client: client,
+          auth: _auth(permissions: {PermissionKeys.appointmentsCancel}),
+          child: MaterialApp(
+            home: Scaffold(
+              body: AppointmentStatusActions(
+                item: _item(status: AppointmentStatus.confirmed),
+                onStatusChanged: (s) => changed = s,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('appointments_status_cancel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('appointment_cancel_confirm')));
+      await tester.pumpAndSettle();
+
+      expect(client.lastFunction, 'cancel_appointment');
+      expect(changed, AppointmentStatus.cancelled);
+    });
+
     testWidgets('case 5: cancel scheduled appointment calls cancel_appointment RPC', (tester) async {
       final client = AppointmentRpcTestClient();
       AppointmentStatus? changed;

@@ -5,10 +5,15 @@ import 'package:ai_clinic/features/appointments/domain/appointment_status_day_ru
 
 void main() {
   group('appointment status day rules', () {
-    test('confirmed does not require appointment day', () {
+    test('confirmed and cancelled do not require appointment day', () {
       expect(appointmentStatusRequiresAppointmentDay(AppointmentStatus.confirmed), isFalse);
+      expect(appointmentStatusRequiresAppointmentDay(AppointmentStatus.cancelled), isFalse);
       expect(
         canTransitionToStatusOnDate(AppointmentStatus.confirmed, DateTime.utc(2099, 1, 1), DateTime(2026, 1, 1)),
+        isTrue,
+      );
+      expect(
+        canTransitionToStatusOnDate(AppointmentStatus.cancelled, DateTime.utc(2099, 1, 1), DateTime(2026, 1, 1)),
         isTrue,
       );
     });

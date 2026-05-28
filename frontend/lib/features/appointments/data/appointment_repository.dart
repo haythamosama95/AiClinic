@@ -214,7 +214,7 @@ class AppointmentRepository with AppRpcInvoker {
     return rescheduled;
   }
 
-  /// Cancels a `scheduled` or `checked_in` appointment via `cancel_appointment` (V1-4 US7).
+  /// Cancels a `scheduled`, `confirmed`, or `checked_in` appointment via `cancel_appointment` (V1-4 US7).
   ///
   /// Throws [RpcFailure] with `INVALID_INPUT` when the server rejects the cancellation.
   Future<AppointmentStatus> cancelAppointment({required String appointmentId, String? reason}) async {

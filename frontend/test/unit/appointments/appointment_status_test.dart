@@ -61,4 +61,28 @@ void main() {
       expect(AppointmentStatus.noShow.label, 'No-show');
     });
   });
+
+  group('AppointmentStatus.canTransitionTo', () {
+    test('confirmed may transition to checked_in, cancelled, or no_show', () {
+      expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.checkedIn), isTrue);
+      expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.cancelled), isTrue);
+      expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.noShow), isTrue);
+      expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.confirmed), isFalse);
+      expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.completed), isFalse);
+    });
+
+    test('scheduled may transition to confirmed or cancel paths', () {
+      expect(AppointmentStatus.scheduled.canTransitionTo(AppointmentStatus.confirmed), isTrue);
+      expect(AppointmentStatus.scheduled.canTransitionTo(AppointmentStatus.cancelled), isTrue);
+      expect(AppointmentStatus.scheduled.canTransitionTo(AppointmentStatus.checkedIn), isFalse);
+    });
+
+    test('terminal statuses cannot transition', () {
+      for (final status in AppointmentStatus.values) {
+        expect(AppointmentStatus.completed.canTransitionTo(status), isFalse);
+        expect(AppointmentStatus.cancelled.canTransitionTo(status), isFalse);
+        expect(AppointmentStatus.noShow.canTransitionTo(status), isFalse);
+      }
+    });
+  });
 }

@@ -32,6 +32,18 @@ WHERE id = '$branchId'::uuid;
 ''');
 }
 
+/// Planned start on today's UTC calendar day (org TZ in crud suite is UTC).
+DateTime _boundarySameDayPlannedStartUtc({int hourOffset = 10}) {
+  final now = DateTime.now().toUtc();
+  final dayStart = DateTime.utc(now.year, now.month, now.day);
+  var start = dayStart.add(Duration(hours: hourOffset));
+  if (!start.isAfter(now.add(const Duration(minutes: 30)))) {
+    start = now.add(const Duration(hours: 1));
+    start = DateTime.utc(start.year, start.month, start.day, start.hour);
+  }
+  return start;
+}
+
 void main() {
   late BoundaryTestContext ctx;
 
@@ -173,7 +185,7 @@ void main() {
       await sessions.signInAs(StaffRole.receptionist);
       await _openBranchHours24x7(ctx, clinic.branchId);
 
-      final start = DateTime.now().toUtc().add(const Duration(days: 6));
+      final start = _boundarySameDayPlannedStartUtc(hourOffset: 10);
       final created = await ctx.appointments.createAppointment(
         branchId: clinic.branchId,
         patientId: patientId,
@@ -206,6 +218,45 @@ void main() {
         newStatus: AppointmentStatus.completed,
       );
       expect(status, AppointmentStatus.completed);
+    });
+
+    test('appointments.rebookAfterCancel.sameSlot.success', () async {
+      const ManifestScenario('appointments.rebookAfterCancel.sameSlot.success');
+      final clinic = await ctx.ensureClinic(label: 'appt_rebook_cancel');
+      final patientId = await ctx.fixtures.createPatientAsAdmin(clinic: clinic);
+      final doctor = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.doctor);
+      final sessions = RoleSessions(ctx, clinic);
+      await sessions.signInAs(StaffRole.receptionist);
+      await _openBranchHours24x7(ctx, clinic.branchId);
+
+      final start = DateTime.now().toUtc().add(const Duration(days: 10));
+      final first = await ctx.appointments.createAppointment(
+        branchId: clinic.branchId,
+        patientId: patientId,
+        doctorId: doctor.staffMemberId,
+        type: AppointmentType.planned,
+        startTime: start,
+        durationMinutes: 30,
+      );
+
+      final cancelled = await ctx.appointments.cancelAppointment(
+        appointmentId: first.appointmentId,
+        reason: 'Patient called',
+      );
+      expect(cancelled, AppointmentStatus.cancelled);
+
+      final second = await ctx.appointments.createAppointment(
+        branchId: clinic.branchId,
+        patientId: patientId,
+        doctorId: doctor.staffMemberId,
+        type: AppointmentType.planned,
+        startTime: start,
+        durationMinutes: 30,
+      );
+
+      expect(second.status, AppointmentStatus.scheduled);
+      expect(second.appointmentId, isNotEmpty);
+      expect(second.appointmentId, isNot(first.appointmentId));
     });
 
     test('appointments.updateAppointmentStatus.INVALID_TRANSITION', () async {

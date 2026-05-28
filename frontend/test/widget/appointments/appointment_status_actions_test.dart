@@ -122,6 +122,42 @@ void main() {
       expect(find.byKey(const Key('appointments_status_reschedule')), findsNothing);
     });
 
+    testWidgets('confirmed shows cancel when cancel grant present', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          item: _item(status: AppointmentStatus.confirmed, onAppointmentDay: false),
+          permissions: const {PermissionKeys.appointmentsCancel},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_status_cancel')), findsOneWidget);
+      expect(find.byKey(const Key('appointments_status_check_in')), findsNothing);
+    });
+
+    testWidgets('cancel from confirmed invokes cancel_appointment RPC', (tester) async {
+      AppointmentStatus? changed;
+      final client = AppointmentRpcTestClient();
+
+      await tester.pumpWidget(
+        _host(
+          item: _item(status: AppointmentStatus.confirmed, onAppointmentDay: false),
+          permissions: const {PermissionKeys.appointmentsCreate, PermissionKeys.appointmentsCancel},
+          client: client,
+          onStatusChanged: (status) => changed = status,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('appointments_status_cancel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('appointment_cancel_confirm')));
+      await tester.pumpAndSettle();
+
+      expect(client.lastFunction, 'cancel_appointment');
+      expect(changed, AppointmentStatus.cancelled);
+    });
+
     testWidgets('scheduled shows cancel when cancel grant present', (tester) async {
       await tester.pumpWidget(
         _host(

@@ -66,7 +66,7 @@ void main() {
           'cancel_appointment': {
             'success': false,
             'error_code': 'INVALID_INPUT',
-            'error_message': 'Only scheduled or checked-in appointments can be cancelled.',
+            'error_message': 'Only scheduled, confirmed, or checked-in appointments can be cancelled.',
           },
         },
       );
@@ -80,7 +80,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('appointment_cancel_error')), findsOneWidget);
-      expect(find.textContaining('checked-in'), findsOneWidget);
+      expect(find.textContaining('confirmed'), findsOneWidget);
     });
 
     testWidgets('stupid usage: dismiss closes without RPC', (tester) async {

@@ -58,6 +58,13 @@ void main() {
       expect(canCancelAppointment(item(status: AppointmentStatus.completed)), isFalse);
     });
 
+    test('confirmed can cancel before appointment day', () {
+      final row = item(status: AppointmentStatus.confirmed);
+      expect(canCancelAppointment(row), isTrue);
+      expect(canMarkNoShowAppointment(row, reference: DateTime(2026, 5, 31)), isFalse);
+      expect(canCancelOrNoShowAppointment(row, reference: DateTime(2026, 5, 31)), isTrue);
+    });
+
     test('no-show only on or after appointment day', () {
       final future = item();
       expect(canMarkNoShowAppointment(future, reference: DateTime(2026, 5, 31)), isFalse);

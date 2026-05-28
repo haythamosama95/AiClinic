@@ -53,4 +53,28 @@ enum AppointmentStatus {
     AppointmentStatus.noShow => true,
     _ => false,
   };
+
+  /// Whether [target] is an allowed next status from [this] (V1-4 lifecycle matrix).
+  bool canTransitionTo(AppointmentStatus target) {
+    if (isTerminal) {
+      return false;
+    }
+
+    return switch (this) {
+      AppointmentStatus.scheduled =>
+        target == AppointmentStatus.confirmed ||
+            target == AppointmentStatus.cancelled ||
+            target == AppointmentStatus.noShow,
+      AppointmentStatus.confirmed =>
+        target == AppointmentStatus.checkedIn ||
+            target == AppointmentStatus.cancelled ||
+            target == AppointmentStatus.noShow,
+      AppointmentStatus.checkedIn =>
+        target == AppointmentStatus.inProgress ||
+            target == AppointmentStatus.cancelled ||
+            target == AppointmentStatus.noShow,
+      AppointmentStatus.inProgress => target == AppointmentStatus.completed,
+      _ => false,
+    };
+  }
 }

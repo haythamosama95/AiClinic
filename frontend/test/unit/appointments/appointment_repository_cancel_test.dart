@@ -48,7 +48,7 @@ void main() {
       client.rpcResults['cancel_appointment'] = {
         'success': false,
         'error_code': 'INVALID_INPUT',
-        'error_message': 'Only scheduled or checked-in appointments can be cancelled.',
+        'error_message': 'Only scheduled, confirmed, or checked-in appointments can be cancelled.',
       };
 
       expect(
