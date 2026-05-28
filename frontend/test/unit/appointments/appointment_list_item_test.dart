@@ -28,11 +28,14 @@ void main() {
       expect(item.endTime, DateTime.parse('2026-05-27T09:20:00.000Z'));
     });
 
-    test('parses walk-in checked_in row', () {
-      final item = AppointmentListItem.fromRow(_listRow(type: 'walk_in', status: 'checked_in'));
+    test('parses confirmed status row', () {
+      final item = AppointmentListItem.fromRow(_listRow(status: 'confirmed'));
 
-      expect(item!.type, AppointmentType.walkIn);
-      expect(item.status, AppointmentStatus.checkedIn);
+      expect(item!.status, AppointmentStatus.confirmed);
+    });
+
+    test('returns null for legacy walk_in type', () {
+      expect(AppointmentListItem.fromRow(_listRow(type: 'walk_in', status: 'checked_in')), isNull);
     });
 
     test('returns null when required fields missing or blank', () {

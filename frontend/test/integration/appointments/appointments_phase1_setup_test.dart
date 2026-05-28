@@ -14,7 +14,6 @@ void main() {
       final paths = [
         AppRoutes.appointments,
         AppRoutes.appointmentsBook,
-        AppRoutes.appointmentsWalkIn,
         AppRoutes.appointmentsQueue,
         AppRoutes.appointmentsSchedule(doctorId),
       ];
@@ -55,16 +54,16 @@ void main() {
         'doctor_name': 'Doctor',
         'start_time': '2026-05-27T09:00:00.000Z',
         'end_time': '2026-05-27T09:20:00.000Z',
-        'type': 'walk_in',
-        'status': 'checked_in',
+        'type': 'planned',
+        'status': 'confirmed',
         'created_at': '2026-05-27T08:00:00.000Z',
         'updated_at': '2026-05-27T08:00:00.000Z',
       });
 
       expect(detail, isNotNull);
       expect(detail!.branchId, 'b1');
-      expect(detail.type, AppointmentType.walkIn);
-      expect(detail.status, AppointmentStatus.checkedIn);
+      expect(detail.type, AppointmentType.planned);
+      expect(detail.status, AppointmentStatus.confirmed);
     });
 
     test('invalid states: malformed rows fail closed without throwing', () {

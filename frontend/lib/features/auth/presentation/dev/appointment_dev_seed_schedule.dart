@@ -60,28 +60,6 @@ class AppointmentDevSeedSchedule {
     return slots;
   }
 
-  /// Whether walk-in auto-slot assignment can succeed today for [durationMinutes].
-  static bool canAssignWalkInToday({
-    required BranchWorkingSchedule schedule,
-    int durationMinutes = 20,
-    DateTime? reference,
-  }) {
-    final now = (reference ?? DateTime.now()).toLocal();
-    final dayHours = _hoursForDate(schedule, now);
-    if (dayHours == null || !dayHours.isWorkingDay) {
-      return false;
-    }
-
-    final openMinutes = _parseHm(dayHours.openTime);
-    final closeMinutes = _parseHm(dayHours.closeTime);
-    if (openMinutes == null || closeMinutes == null || openMinutes >= closeMinutes) {
-      return false;
-    }
-
-    final nowMinutes = now.hour * 60 + now.minute;
-    return nowMinutes + durationMinutes <= closeMinutes;
-  }
-
   static BranchWorkingDayHours? _hoursForDate(BranchWorkingSchedule schedule, DateTime date) {
     final weekday = switch (date.weekday) {
       DateTime.monday => BranchWeekday.monday,

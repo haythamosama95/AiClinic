@@ -163,9 +163,8 @@ Backend deliverables:
 Frontend deliverables:
 - Appointment calendar/schedule view (daily, weekly)
 - Appointment booking form (doctor selection, time slot picker, conflict display)
-- Walk-in registration flow
 - Appointment queue view (today's queue for the branch, real-time updates via Supabase Realtime)
-- Appointment status management (check-in, start, complete, cancel, no-show)
+- Appointment status management (confirm by phone, check-in, start, complete, cancel, no-show)
 - Doctor schedule view
 
 ### V1-5: Visits and Medical Records

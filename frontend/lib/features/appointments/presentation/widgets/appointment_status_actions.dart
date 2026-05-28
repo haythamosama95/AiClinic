@@ -140,6 +140,7 @@ class _AppointmentStatusActionsState extends ConsumerState<AppointmentStatusActi
     }
 
     final buttonKey = switch (target) {
+      AppointmentStatus.confirmed => const Key('appointments_status_confirm'),
       AppointmentStatus.checkedIn => const Key('appointments_status_check_in'),
       AppointmentStatus.inProgress => const Key('appointments_status_start'),
       AppointmentStatus.completed => const Key('appointments_status_complete'),

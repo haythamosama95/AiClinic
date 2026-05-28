@@ -10,11 +10,14 @@ Introduces `public.appointments` and appointment settings (V1-4). Builds on V1-1
 CREATE TYPE public.appointment_type AS ENUM ('planned', 'walk_in');
 ```
 
+`walk_in` remains in the enum for backward compatibility but is **rejected** by `create_appointment` (booking is planned-only).
+
 ### ENUM: `appointment_status`
 
 ```sql
 CREATE TYPE public.appointment_status AS ENUM (
   'scheduled',
+  'confirmed',
   'checked_in',
   'in_progress',
   'completed',
@@ -33,8 +36,8 @@ CREATE TYPE public.appointment_status AS ENUM (
 | `doctor_id`     | uuid FK → staff_members | Optional; when set, must be `role = doctor` at branch               |
 | `start_time`    | timestamptz NOT NULL    |                                                                     |
 | `end_time`      | timestamptz NOT NULL    | Must be > `start_time`                                              |
-| `type`          | appointment_type        | `planned` \| `walk_in`                                              |
-| `status`        | appointment_status      | Entry: planned→`scheduled`, walk_in→`checked_in`                    |
+| `type`          | appointment_type        | `planned` only (new bookings)                                       |
+| `status`        | appointment_status      | Entry: `scheduled` on create                                        |
 | `queue_number`  | int                     | Nullable; **unused** in V1-4 (always NULL)                          |
 | `notes`         | text                    | Optional; max 2000 chars (app + DB)                                 |
 | `cancel_reason` | text                    | Optional; set on cancel                                             |
@@ -79,44 +82,46 @@ Resolution: branch row → org row (`branch_id IS NULL`) → RPC fallback 20.
 
 ## Entity lifecycle
 
-### Appointment
+### Appointment (planned booking only)
 
-| Type      | Entry status | Happy path                                               |
-| --------- | ------------ | -------------------------------------------------------- |
-| `planned` | `scheduled`  | scheduled → checked_in → in_progress → completed         |
-| `walk_in` | `checked_in` | checked_in → in_progress → completed (never `scheduled`) |
+| Entry status | Happy path                                                   |
+| ------------ | ------------------------------------------------------------ |
+| `scheduled`  | scheduled → confirmed → checked_in → in_progress → completed |
 
 | From          | To                                    | Permission      |
 | ------------- | ------------------------------------- | --------------- |
-| `scheduled`   | `checked_in`, `cancelled`, `no_show`  | create / cancel |
+| `scheduled`   | `confirmed`, `cancelled`, `no_show`   | create / cancel |
+| `confirmed`   | `checked_in`, `cancelled`, `no_show`  | create / cancel |
 | `checked_in`  | `in_progress`, `cancelled`, `no_show` | create / cancel |
 | `in_progress` | `completed`                           | create          |
 | Terminal      | —                                     | —               |
 
-**Reschedule**: only `status = scheduled` and `type = planned`.
+**Phone confirmation**: Reception advances `scheduled` → `confirmed` after calling the patient. `confirmed` → `checked_in` on arrival, or `confirmed` → `cancelled` if the patient does not confirm.
+
+**Reschedule**: only `status = scheduled` (before confirmation).
 
 **Conflict**: No overlap for same `doctor_id` + `branch_id` when either side status ∉ (`cancelled`, `no_show`).
 
 ## Authorization matrix (V1-4)
 
-| Operation                                              | Permission key                                         | Notes                |
-| ------------------------------------------------------ | ------------------------------------------------------ | -------------------- |
-| View calendar / queue / schedule                       | `appointments.create` OR `appointments.cancel`         | Either grant         |
-| Create planned / walk-in / reschedule / forward status | `appointments.create`                                  | Any doctor at branch |
-| Cancel / no-show                                       | `appointments.cancel`                                  |                      |
-| Edit default duration (settings)                       | `settings.manage_branches` or owner/admin org settings |                      |
+| Operation                          | Permission key                                         | Notes                |
+| ---------------------------------- | ------------------------------------------------------ | -------------------- |
+| View calendar / queue / schedule   | `appointments.create` OR `appointments.cancel`         | Either grant         |
+| Book / reschedule / forward status | `appointments.create`                                  | Any doctor at branch |
+| Cancel / no-show                   | `appointments.cancel`                                  |                      |
+| Edit default duration (settings)   | `settings.manage_branches` or owner/admin org settings |                      |
 
 ## RPC inventory
 
-| RPC                                | Purpose                                      |
-| ---------------------------------- | -------------------------------------------- |
-| `get_appointment_settings`         | Default duration for branch                  |
-| `set_appointment_default_duration` | Persist `app_settings`                       |
-| `create_appointment`               | Planned (staff times) or walk-in (auto slot) |
-| `reschedule_appointment`           | `scheduled` planned only                     |
-| `cancel_appointment`               | → `cancelled` + optional reason              |
-| `update_appointment_status`        | Validated transitions incl. no_show          |
-| `list_appointments`                | Calendar, queue, doctor schedule             |
+| RPC                                | Purpose                                     |
+| ---------------------------------- | ------------------------------------------- |
+| `get_appointment_settings`         | Default duration for branch                 |
+| `set_appointment_default_duration` | Persist `app_settings`                      |
+| `create_appointment`               | Planned booking only → `scheduled`          |
+| `reschedule_appointment`           | `scheduled` planned only                    |
+| `cancel_appointment`               | From `scheduled`, `confirmed`, `checked_in` |
+| `update_appointment_status`        | Validated transitions incl. no_show         |
+| `list_appointments`                | Calendar, queue, doctor schedule            |
 
 ## Client models (Flutter)
 
@@ -125,7 +130,6 @@ Resolution: branch row → org row (`branch_id IS NULL`) → RPC fallback 20.
 | `AppointmentListItem`    | id, patientName, doctorName, startTime, endTime, type, status    |
 | `AppointmentDetail`      | full row + audit metadata                                        |
 | `AppointmentBookingForm` | patientId, doctorId, startTime, durationMinutes, endTime?, notes |
-| `WalkInFormState`        | patientId, doctorId, durationMinutes (pre-filled), notes         |
 | `CalendarViewMode`       | day \| week                                                      |
 
 ## Relationships

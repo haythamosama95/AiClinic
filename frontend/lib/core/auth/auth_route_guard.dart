@@ -106,7 +106,7 @@ abstract final class AuthRouteGuard {
     }
 
     final allowed = switch (location) {
-      AppRoutes.appointmentsBook || AppRoutes.appointmentsWalkIn => canAccessAppointmentBooking(auth),
+      AppRoutes.appointmentsBook => canAccessAppointmentBooking(auth),
       _ when location.startsWith('${AppRoutes.appointments}/schedule/') => canAccessAppointmentHub(auth),
       _ => canAccessAppointmentHub(auth),
     };

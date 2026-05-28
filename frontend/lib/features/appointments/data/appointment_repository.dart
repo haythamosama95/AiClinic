@@ -85,12 +85,12 @@ class AppointmentRepository with AppRpcInvoker {
       );
     }
 
-    if (type == AppointmentType.planned && startTime == null) {
+    if (startTime == null) {
       throw RpcFailure(
         const RpcResult(
           success: false,
           errorCode: 'INVALID_INPUT',
-          errorMessage: 'Start time is required for planned appointments.',
+          errorMessage: 'Start time is required for appointments.',
         ),
       );
     }
@@ -100,9 +100,7 @@ class AppointmentRepository with AppRpcInvoker {
       'p_patient_id': patientId.trim(),
       'p_doctor_id': (trimmedDoctorId != null && trimmedDoctorId.isNotEmpty) ? trimmedDoctorId : null,
       'p_type': type.wireValue,
-      ...?(type == AppointmentType.planned && startTime != null)
-          ? {'p_start_time': startTime.toUtc().toIso8601String()}
-          : null,
+      'p_start_time': startTime.toUtc().toIso8601String(),
       ...?(durationMinutes != null) ? {'p_duration_minutes': durationMinutes} : null,
       ...?(endTime != null) ? {'p_end_time': endTime.toUtc().toIso8601String()} : null,
       ...?(notes != null && notes.trim().isNotEmpty) ? {'p_notes': notes.trim()} : null,

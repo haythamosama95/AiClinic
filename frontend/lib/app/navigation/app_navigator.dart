@@ -34,7 +34,6 @@ class AppNavigator {
   // Appointments (V1-4)
   void goAppointments() => _context.go(AppRoutes.appointments);
   void goAppointmentsBook() => _context.push(AppRoutes.appointmentsBook);
-  void goAppointmentsWalkIn() => _context.push(AppRoutes.appointmentsWalkIn);
   void goAppointmentsQueue() => _context.push(AppRoutes.appointmentsQueue);
   void goAppointmentsCalendar() => _context.push(AppRoutes.appointmentsCalendar);
   void goAppointmentsSchedule(String doctorId) => _context.push(AppRoutes.appointmentsSchedule(doctorId));

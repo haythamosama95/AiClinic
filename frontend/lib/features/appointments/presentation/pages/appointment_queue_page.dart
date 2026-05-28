@@ -173,6 +173,7 @@ class _QueueRow extends ConsumerWidget {
   Color _statusColor(AppointmentStatus status) {
     return switch (status) {
       AppointmentStatus.scheduled => Colors.blue,
+      AppointmentStatus.confirmed => Colors.teal,
       AppointmentStatus.checkedIn => Colors.cyan,
       AppointmentStatus.inProgress => Colors.orange,
       AppointmentStatus.completed => Colors.green,

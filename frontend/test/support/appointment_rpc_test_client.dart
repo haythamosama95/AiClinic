@@ -37,7 +37,7 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
           'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
           'start_time': '2026-06-01T10:00:00.000Z',
           'end_time': '2026-06-01T10:30:00.000Z',
-          'status': lastParams?['p_type'] == 'walk_in' ? 'checked_in' : 'scheduled',
+          'status': 'scheduled',
           'type': lastParams?['p_type'] ?? 'planned',
         },
       },

@@ -1,6 +1,7 @@
 /// Appointment status aligned with PostgreSQL `appointment_status` enum (V1-4).
 enum AppointmentStatus {
   scheduled,
+  confirmed,
   checkedIn,
   inProgress,
   completed,
@@ -15,6 +16,7 @@ enum AppointmentStatus {
 
     return switch (normalized) {
       'scheduled' => AppointmentStatus.scheduled,
+      'confirmed' => AppointmentStatus.confirmed,
       'checked_in' => AppointmentStatus.checkedIn,
       'in_progress' => AppointmentStatus.inProgress,
       'completed' => AppointmentStatus.completed,
@@ -26,6 +28,7 @@ enum AppointmentStatus {
 
   String get wireValue => switch (this) {
     AppointmentStatus.scheduled => 'scheduled',
+    AppointmentStatus.confirmed => 'confirmed',
     AppointmentStatus.checkedIn => 'checked_in',
     AppointmentStatus.inProgress => 'in_progress',
     AppointmentStatus.completed => 'completed',
@@ -35,6 +38,7 @@ enum AppointmentStatus {
 
   String get label => switch (this) {
     AppointmentStatus.scheduled => 'Scheduled',
+    AppointmentStatus.confirmed => 'Confirmed',
     AppointmentStatus.checkedIn => 'Checked in',
     AppointmentStatus.inProgress => 'In progress',
     AppointmentStatus.completed => 'Completed',

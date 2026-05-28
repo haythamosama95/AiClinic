@@ -10,7 +10,7 @@ import 'package:ai_clinic/features/auth/presentation/dev/dev_seed_providers.dart
 
 const bool _kEnableDevTools = bool.fromEnvironment('ENABLE_DEV_TOOLS');
 
-/// Debug-only control to seed mixed planned and walk-in appointments.
+/// Debug-only control to seed planned appointments.
 class DevSeedAppointmentsButton extends ConsumerStatefulWidget {
   const DevSeedAppointmentsButton({super.key, this.onSeeded});
 
@@ -54,8 +54,7 @@ class _DevSeedAppointmentsButtonState extends ConsumerState<DevSeedAppointmentsB
       builder: (context) => AlertDialog(
         title: const Text('Seed demo appointments?'),
         content: Text(
-          'Creates ${appointmentDevSeedPlannedCount + appointmentDevSeedWalkInCount} appointments at the active branch: '
-          '$appointmentDevSeedPlannedCount planned plus $appointmentDevSeedWalkInCount walk-ins. '
+          'Creates $appointmentDevSeedPlannedCount planned appointments at the active branch. '
           'Requires patients in the active branch.',
         ),
         actions: [
@@ -112,13 +111,8 @@ class _DevSeedAppointmentsButtonState extends ConsumerState<DevSeedAppointmentsB
     }
 
     widget.onSeeded?.call();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Created ${outcome.plannedCreated + outcome.walkInCreated} demo appointments '
-          '(${outcome.plannedCreated} planned, ${outcome.walkInCreated} walk-ins).',
-        ),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Created ${outcome.plannedCreated} planned demo appointments.')));
   }
 }

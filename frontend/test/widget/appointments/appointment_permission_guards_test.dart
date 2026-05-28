@@ -7,7 +7,6 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_b
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_hub_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
-import 'package:ai_clinic/features/appointments/presentation/pages/walk_in_registration_page.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
@@ -49,7 +48,6 @@ void main() {
         ),
         GoRoute(path: AppRoutes.appointments, builder: (context, state) => const AppointmentHubPage()),
         GoRoute(path: AppRoutes.appointmentsBook, builder: (context, state) => const AppointmentBookingPage()),
-        GoRoute(path: AppRoutes.appointmentsWalkIn, builder: (context, state) => const WalkInRegistrationPage()),
         GoRoute(path: AppRoutes.appointmentsQueue, builder: (context, state) => const AppointmentQueuePage()),
         GoRoute(path: AppRoutes.appointmentsCalendar, builder: (context, state) => const AppointmentCalendarPage()),
       ],
@@ -99,7 +97,7 @@ void main() {
       expect(find.byKey(const Key('appointments_queue_list')), findsNothing);
     });
 
-    testWidgets('cancel-only grant: hub and calendar allowed, book and walk-in blocked', (tester) async {
+    testWidgets('cancel-only grant: hub and calendar allowed, book blocked', (tester) async {
       final auth = authWith({PermissionKeys.appointmentsCancel});
       final router = buildGuardedRouter(auth);
       await pumpRouter(tester, router, auth);
@@ -116,10 +114,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Home'), findsOneWidget);
       expect(find.text('Duration (minutes)'), findsNothing);
-
-      router.go(AppRoutes.appointmentsWalkIn);
-      await tester.pumpAndSettle();
-      expect(find.text('Home'), findsOneWidget);
     });
 
     testWidgets('create grant: booking page loads', (tester) async {

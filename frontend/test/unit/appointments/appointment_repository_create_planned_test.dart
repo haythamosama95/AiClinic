@@ -53,17 +53,6 @@ void main() {
       expect(client.lastParams?['p_doctor_id'], isNull);
     });
 
-    test('regression: walk-in without doctor sends null p_doctor_id', () async {
-      await repository.createAppointment(
-        branchId: '44444444-4444-4444-8444-444444444444',
-        patientId: '11111111-1111-4111-8111-111111111111',
-        type: AppointmentType.walkIn,
-        durationMinutes: 15,
-      );
-      expect(client.lastFunction, 'create_appointment');
-      expect(client.lastParams?['p_doctor_id'], isNull);
-    });
-
     test('advanced: omits duration when using server default from settings', () async {
       await repository.createAppointment(
         branchId: '44444444-4444-4444-8444-444444444444',

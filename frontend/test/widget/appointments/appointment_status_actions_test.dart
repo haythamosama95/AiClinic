@@ -16,27 +16,23 @@ import '../../support/appointment_rpc_test_client.dart';
 
 void main() {
   group('AppointmentStatusActions', () {
-    testWidgets('trivial: scheduled planned shows check-in', (tester) async {
+    testWidgets('trivial: scheduled shows confirm', (tester) async {
       await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.scheduled)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_status_confirm')), findsOneWidget);
+      expect(find.byKey(const Key('appointments_status_check_in')), findsNothing);
+    });
+
+    testWidgets('confirmed shows check-in', (tester) async {
+      await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.confirmed)));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('appointments_status_check_in')), findsOneWidget);
       expect(find.byKey(const Key('appointments_status_start')), findsNothing);
     });
 
-    testWidgets('walk-in checked_in shows start not check-in', (tester) async {
-      await tester.pumpWidget(
-        _host(
-          item: _item(status: AppointmentStatus.checkedIn, type: AppointmentType.walkIn),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('appointments_status_check_in')), findsNothing);
-      expect(find.byKey(const Key('appointments_status_start')), findsOneWidget);
-    });
-
-    testWidgets('advanced: successful check-in calls RPC and callback', (tester) async {
+    testWidgets('advanced: successful confirm calls RPC and callback', (tester) async {
       AppointmentStatus? changed;
       final client = AppointmentRpcTestClient();
 
@@ -49,13 +45,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointments_status_check_in')));
+      await tester.tap(find.byKey(const Key('appointments_status_confirm')));
       await tester.pumpAndSettle();
 
       expect(client.lastFunction, 'update_appointment_status');
-      expect(client.lastParams?['p_new_status'], 'checked_in');
-      expect(changed, AppointmentStatus.checkedIn);
-      expect(find.text('Status updated to Checked in.'), findsOneWidget);
+      expect(client.lastParams?['p_new_status'], 'confirmed');
+      expect(changed, AppointmentStatus.confirmed);
+      expect(find.text('Status updated to Confirmed.'), findsOneWidget);
     });
 
     testWidgets('invalid transition shows error banner', (tester) async {
@@ -77,7 +73,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointments_status_check_in')));
+      await tester.tap(find.byKey(const Key('appointments_status_confirm')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('appointments_status_error')), findsOneWidget);
@@ -93,7 +89,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('appointments_status_check_in')), findsNothing);
+      expect(find.byKey(const Key('appointments_status_confirm')), findsNothing);
     });
 
     testWidgets('terminal completed hides all actions', (tester) async {
@@ -104,12 +100,12 @@ void main() {
       expect(find.byKey(const Key('appointments_status_start')), findsNothing);
     });
 
-    testWidgets('scheduled planned shows reschedule alongside check-in', (tester) async {
+    testWidgets('scheduled shows reschedule alongside confirm', (tester) async {
       await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.scheduled)));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('appointments_status_reschedule')), findsOneWidget);
-      expect(find.byKey(const Key('appointments_status_check_in')), findsOneWidget);
+      expect(find.byKey(const Key('appointments_status_confirm')), findsOneWidget);
     });
 
     testWidgets('checked_in planned hides reschedule', (tester) async {

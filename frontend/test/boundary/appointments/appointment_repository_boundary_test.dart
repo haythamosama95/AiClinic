@@ -185,6 +185,12 @@ void main() {
 
       var status = await ctx.appointments.updateAppointmentStatus(
         appointmentId: created.appointmentId,
+        newStatus: AppointmentStatus.confirmed,
+      );
+      expect(status, AppointmentStatus.confirmed);
+
+      status = await ctx.appointments.updateAppointmentStatus(
+        appointmentId: created.appointmentId,
         newStatus: AppointmentStatus.checkedIn,
       );
       expect(status, AppointmentStatus.checkedIn);

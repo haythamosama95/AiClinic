@@ -7,29 +7,32 @@ import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 
 void main() {
   group('appointment status transitions', () {
-    AppointmentListItem item({
-      AppointmentType type = AppointmentType.planned,
-      AppointmentStatus status = AppointmentStatus.scheduled,
-    }) {
+    AppointmentListItem item({AppointmentStatus status = AppointmentStatus.scheduled}) {
       return AppointmentListItem(
         id: 'a',
         patientId: 'p',
         patientName: 'Pat',
         startTime: DateTime.utc(2026, 6, 1, 9),
         endTime: DateTime.utc(2026, 6, 1, 9, 30),
-        type: type,
+        type: AppointmentType.planned,
         status: status,
       );
     }
 
-    test('planned scheduled offers check-in', () {
+    test('scheduled offers confirm', () {
       final row = item();
+      expect(forwardStatusTargetFor(row), AppointmentStatus.confirmed);
+      expect(forwardStatusActionLabelFor(row), 'Confirm');
+    });
+
+    test('confirmed offers check-in', () {
+      final row = item(status: AppointmentStatus.confirmed);
       expect(forwardStatusTargetFor(row), AppointmentStatus.checkedIn);
       expect(forwardStatusActionLabelFor(row), 'Check in');
     });
 
-    test('walk-in at checked_in hides check-in and offers start', () {
-      final row = item(type: AppointmentType.walkIn, status: AppointmentStatus.checkedIn);
+    test('checked_in offers start', () {
+      final row = item(status: AppointmentStatus.checkedIn);
       expect(forwardStatusTargetFor(row), AppointmentStatus.inProgress);
       expect(forwardStatusActionLabelFor(row), 'Start');
     });
@@ -40,9 +43,11 @@ void main() {
       expect(forwardStatusActionLabelFor(row), isEmpty);
     });
 
-    test('invalid skip: scheduled walk-in has no check-in path', () {
-      final row = item(type: AppointmentType.walkIn, status: AppointmentStatus.scheduled);
-      expect(forwardStatusTargetFor(row), isNull);
+    test('cancel allowed from scheduled, confirmed, and checked_in', () {
+      expect(canCancelOrNoShowAppointment(item()), isTrue);
+      expect(canCancelOrNoShowAppointment(item(status: AppointmentStatus.confirmed)), isTrue);
+      expect(canCancelOrNoShowAppointment(item(status: AppointmentStatus.checkedIn)), isTrue);
+      expect(canCancelOrNoShowAppointment(item(status: AppointmentStatus.completed)), isFalse);
     });
   });
 }

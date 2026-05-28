@@ -26,7 +26,7 @@ GRANT EXECUTE ON FUNCTION auth_internal.search_patients(text, text, uuid, int, i
 GRANT EXECUTE ON FUNCTION auth_internal.get_patient(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION auth_internal.check_patient_duplicates(text, text, date, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION auth_internal.create_patient(uuid, text, text, date, text, text, text, boolean) TO authenticated;
-GRANT EXECUTE ON FUNCTION auth_internal.update_patient(uuid, text, timestamptz, text, date, text, text, text, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION auth_internal.update_patient(uuid, text, timestamptz, text, date, text, text, text, boolean, boolean, boolean, boolean, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION auth_internal.archive_patient(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION auth_internal.dev_reset_clinic_installation() TO authenticated;
 

@@ -15,7 +15,6 @@ void main() {
     test('static paths match spec segment names', () {
       expect(AppRoutes.appointments, '/appointments');
       expect(AppRoutes.appointmentsBook, '/appointments/book');
-      expect(AppRoutes.appointmentsWalkIn, '/appointments/walk-in');
       expect(AppRoutes.appointmentsQueue, '/appointments/queue');
       expect(AppRoutes.appointmentsCalendar, '/appointments/calendar');
     });
@@ -31,12 +30,6 @@ void main() {
         expect(AppRoutes.appointmentsSchedule(id), contains(id));
         expect(AppRoutes.appointmentsSchedule(id), startsWith('${AppRoutes.appointments}/schedule/'));
       }
-    });
-
-    test('book and walk-in routes are distinct', () {
-      expect(AppRoutes.appointmentsBook, isNot(AppRoutes.appointmentsWalkIn));
-      expect(AppRoutes.appointmentsBook, isNot(endsWith('/walk-in')));
-      expect(AppRoutes.appointmentsWalkIn, endsWith('/walk-in'));
     });
 
     test('appointment routes do not collide with patient or settings paths', () {

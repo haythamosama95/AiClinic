@@ -2,7 +2,7 @@
 //
 // Split coverage:
 // - Cases 1–2, 7, 14 (booking): `appointment_booking_us1_test.dart`
-// - Cases 3, 11 (walk-in): `walk_in_registration_us2_test.dart`
+// - Case 3 (walk-in) removed; booking-only flow in `appointment_booking_us1_test.dart`
 // - Case 13 (backend harness): `backend/tests/run_appointment_management_tests.sh`
 // - Remaining UI flows: this file (calendar, queue, status, cancel, reschedule, guards).
 
@@ -20,7 +20,6 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_b
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/doctor_schedule_page.dart';
-import 'package:ai_clinic/features/appointments/presentation/pages/walk_in_registration_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_actions.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
@@ -91,7 +90,7 @@ Widget _scope({
 
 void main() {
   group('spec case 4 — status lifecycle (reception on any doctor)', () {
-    testWidgets('check-in, start, and complete advance status via RPC', (tester) async {
+    testWidgets('confirm, check-in, start, and complete advance status via RPC', (tester) async {
       final client = AppointmentRpcTestClient();
       var item = _item(status: AppointmentStatus.scheduled);
 
@@ -113,6 +112,11 @@ void main() {
           ),
         ),
       );
+
+      await tester.tap(find.byKey(const Key('appointments_status_confirm')));
+      await tester.pumpAndSettle();
+      expect(client.lastParams?['p_new_status'], 'confirmed');
+      expect(find.byKey(const Key('appointments_status_check_in')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('appointments_status_check_in')));
       await tester.pumpAndSettle();
@@ -400,7 +404,7 @@ void main() {
     });
   });
 
-  group('spec case 14 — default duration pre-fill on booking and walk-in', () {
+  group('spec case 14 — default duration pre-fill on booking', () {
     testWidgets('booking form pre-fills settings default (30 min)', (tester) async {
       final client = AppointmentRpcTestClient(
         rpcResults: {
@@ -425,32 +429,6 @@ void main() {
       );
 
       expect(find.text('30'), findsOneWidget);
-    });
-
-    testWidgets('walk-in form pre-fills same settings default', (tester) async {
-      final client = AppointmentRpcTestClient(
-        rpcResults: {
-          'get_appointment_settings': {
-            'success': true,
-            'data': {'default_duration_minutes': 25, 'min_duration_minutes': 5, 'max_duration_minutes': 240},
-          },
-        },
-      );
-
-      await _pumpHost(
-        tester,
-        _scope(
-          client: client,
-          child: MaterialApp.router(
-            routerConfig: GoRouter(
-              initialLocation: AppRoutes.appointmentsWalkIn,
-              routes: [GoRoute(path: AppRoutes.appointmentsWalkIn, builder: (_, _) => const WalkInRegistrationPage())],
-            ),
-          ),
-        ),
-      );
-
-      expect(find.text('25'), findsOneWidget);
     });
   });
 

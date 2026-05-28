@@ -42,13 +42,6 @@ void main() {
       expect(slots.last.weekday, DateTime.friday);
     });
 
-    test('canAssignWalkInToday is false on non-working days', () {
-      final schedule = BranchWorkingSchedule.defaultSchedule();
-      final sunday = DateTime(2026, 5, 31, 10, 0);
-
-      expect(AppointmentDevSeedSchedule.canAssignWalkInToday(schedule: schedule, reference: sunday), isFalse);
-    });
-
     test('plannedStartTimes accept postgres HH:mm:ss open and close times', () {
       final schedule = BranchWorkingSchedule.fromJson({
         'days': [
@@ -64,13 +57,6 @@ void main() {
 
       expect(slots, hasLength(1));
       expect(slots.first.hour, 9);
-    });
-
-    test('canAssignWalkInToday is false after close', () {
-      final schedule = BranchWorkingSchedule.defaultSchedule();
-      final late = DateTime(2026, 5, 28, 16, 50);
-
-      expect(AppointmentDevSeedSchedule.canAssignWalkInToday(schedule: schedule, reference: late), isFalse);
     });
   });
 }

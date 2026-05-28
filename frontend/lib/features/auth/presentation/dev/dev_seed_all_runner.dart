@@ -107,10 +107,7 @@ class DevSeedAllRunner {
     if (!appointmentsOutcome.isSuccess) {
       return DevSeedAllOutcome(isSuccess: false, summaryLines: [...lines, appointmentsOutcome.errorMessage!]);
     }
-    lines.add(
-      'Appointments: created ${appointmentsOutcome.plannedCreated + appointmentsOutcome.walkInCreated} '
-      '(${appointmentsOutcome.plannedCreated} planned, ${appointmentsOutcome.walkInCreated} walk-ins).',
-    );
+    lines.add('Appointments: created ${appointmentsOutcome.plannedCreated} planned.');
 
     AppLog.info('dev_seed_all.done');
     return DevSeedAllOutcome(isSuccess: true, summaryLines: lines);

@@ -11,11 +11,18 @@ cd backend
 supabase migration up
 ```
 
-Expected new migration:
+Key migrations:
 
-- `backend/supabase/migrations/20260526140000_appointment_management.sql` — enums, `appointments`, RLS, settings helpers, appointment RPCs
+- `backend/supabase/migrations/20260526140000_appointment_management.sql` — enums, `appointments`, RLS, RPCs
+- `backend/supabase/migrations/20260528160000_appointment_confirmed_remove_walkin.sql` — `confirmed` status; planned-only booking
 
 ## 2. Run backend verification
+
+```bash
+./backend/tests/run_all_backend_tests.sh
+```
+
+Appointment subset:
 
 ```bash
 ./backend/tests/run_appointment_management_tests.sh
@@ -24,10 +31,9 @@ Expected new migration:
 Covers:
 
 - Planned create + conflict rejection
-- Walk-in auto-slot in gap; `NO_SLOT_AVAILABLE` when full
-- Status transitions; invalid skip rejected
+- Status transitions including `confirmed` step; invalid skip rejected
 - Reschedule `scheduled` only
-- Cancel / no-show frees slot
+- Cancel / no-show from `scheduled`, `confirmed`, `checked_in`
 - Cross-org / cross-branch denial
 - Default duration from `app_settings`
 
@@ -42,13 +48,12 @@ flutter run -d windows
 1. Sign in as receptionist (or role with `appointments.create`)
 2. Set **default appointment duration** in organization settings (e.g. 20 minutes)
 3. Open **Appointments** from shell
-4. **Book planned** appointment — confirm duration pre-fill; try custom duration
-5. **Register walk-in** — confirm auto time in gap, status `checked_in`, queue order by time
-6. Open **Today's queue** — confirm sort by `start_time`; optional second client for live update
-7. **Check in** planned → **Start** → **Complete**
-8. **Reschedule** a `scheduled` appointment
-9. **Cancel** and **no-show** scenarios
-10. Doctor schedule filter — only that doctor's rows
+4. **Book appointment** — confirm duration pre-fill; try custom duration
+5. Open **Today's queue** — confirm sort by `start_time`
+6. **Confirm** (phone) → **Check in** → **Start** → **Complete**
+7. **Reschedule** a `scheduled` appointment (before confirmation)
+8. **Cancel** from `confirmed` when patient does not confirm; **no-show** scenarios
+9. Doctor schedule filter — only that doctor's rows
 
 ## 4. Regression checks
 
@@ -59,31 +64,34 @@ flutter run -d windows
 
 ```bash
 cd frontend
+python3 tool/run_all_tests.py
+```
+
+Or targeted:
+
+```bash
 flutter test test/unit/appointments/
 flutter test test/widget/appointments/
-flutter test test/integration/appointments/appointment_management_acceptance_test.dart
+flutter test test/integration/appointments/
 ```
 
 ## 6. Desk staff notes
 
-- Queue order follows **appointment time**, not arrival order alone.
-- Walk-ins get a **time slot** automatically; they appear among booked patients at that time.
+- Queue order follows **appointment time**.
+- After booking, reception **calls the patient** and taps **Confirm**; on arrival tap **Check in**.
+- If the patient does not confirm, **Cancel** from `confirmed`.
 - Default visit length is set in **settings**; each booking can use a different length if needed.
 - Completing an appointment does **not** open a visit chart yet (V1-5).
 
 ## 7. Operator verification log (Phase 10)
 
-Verified during V1-4 polish (automated unless noted):
+| Step            | Command / action                               | Expected                                                           |
+| --------------- | ---------------------------------------------- | ------------------------------------------------------------------ |
+| Migrations      | `cd backend && supabase migration up`          | Appointment migrations applied incl. `confirmed`                   |
+| Backend harness | `./backend/tests/run_all_backend_tests.sh`     | All suites pass                                                    |
+| Flutter suite   | `cd frontend && python3 tool/run_all_tests.py` | Unit green; boundary includes appointment lifecycle                |
+| Manual (desk)   | quickstart §3 on Windows client                | Book, confirm, check-in, queue, reschedule, cancel behave per spec |
 
-| Step                | Command / action                                                                | Expected                                                                      |
-| ------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Migrations          | `cd backend && supabase migration up`                                           | `20260526140000_appointment_management.sql` applied                           |
-| Backend harness     | `./backend/tests/run_appointment_management_tests.sh`                           | CRUD + RLS pass (conflict, walk-in slot, transitions, reschedule, cancel)     |
-| Flutter unit/widget | `cd frontend && flutter test test/unit/appointments/ test/widget/appointments/` | All appointment tests green                                                   |
-| Flutter integration | `flutter test test/integration/appointments/`                                   | US1/US2 smoke + `appointment_management_acceptance_test.dart` (cases 4–14 UI) |
-| Full frontend suite | `python3 tool/run_all_tests.py` from `frontend/`                                | Full regression including patients/settings smoke                             |
-| Manual (desk)       | quickstart §3 steps 1–10 on Windows client                                      | Calendar, queue, booking, walk-in, status, reschedule, cancel behave per spec |
-
-**Permission reminder**: Viewing appointment screens requires `appointments.create` and/or `appointments.cancel`; booking and walk-in require `appointments.create` only.
+**Permission reminder**: Viewing appointment screens requires `appointments.create` and/or `appointments.cancel`; booking requires `appointments.create` only.
 
 **Realtime**: If the queue shows a degraded banner, use **Refresh** — list data still comes from `list_appointments` RPC; Realtime is optional UX.

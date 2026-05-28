@@ -31,7 +31,6 @@ DECLARE
   v_patient2_id uuid;
   v_patient3_id uuid;
   v_appt_planned uuid;
-  v_appt_walkin uuid;
   v_appt_second uuid;
   v_doctor2_staff uuid := 'b1400000-0000-4000-8000-000000000104';
   v_doctor2_user uuid := 'a1400000-0000-4000-8000-000000000104';
@@ -327,55 +326,48 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Walk-in without doctor is rejected.
-  v_result := public.create_appointment(
-    v_branch_main, v_patient_id, NULL, 'walk_in', NULL, 15, NULL, NULL
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results VALUES (
-    'walk_in_without_doctor_rejected',
-    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Walk-in auto slot.
+  -- Walk-in type is no longer supported.
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor_staff, 'walk_in', NULL, 15, NULL, NULL
   );
-  v_appt_walkin := (v_result.data ->> 'appointment_id')::uuid;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'walk_in_create_checked_in',
-    v_result.success
-      AND (v_result.data ->> 'status') = 'checked_in'
-      AND (v_result.data ->> 'type') = 'walk_in'
-      AND (v_result.data ->> 'start_time') IS NOT NULL,
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Walk-in cannot be rescheduled while checked_in.
-  v_result := public.reschedule_appointment(
-    v_appt_walkin,
-    (v_result.data ->> 'start_time')::timestamptz + interval '2 hours',
-    15,
-    NULL
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results VALUES (
-    'reschedule_walk_in_rejected',
+    'walk_in_type_rejected',
     NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Status: scheduled -> checked_in -> in_progress -> completed.
+  -- Status: scheduled -> confirmed -> checked_in -> in_progress -> completed.
+  v_result := public.update_appointment_status(v_appt_planned, 'confirmed');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_scheduled_to_confirmed',
+    v_result.success AND (v_result.data ->> 'status') = 'confirmed',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   v_result := public.update_appointment_status(v_appt_planned, 'checked_in');
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'status_scheduled_to_checked_in',
+    'status_confirmed_to_checked_in',
     v_result.success AND (v_result.data ->> 'status') = 'checked_in',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Invalid skip: scheduled -> checked_in (must confirm first).
+  v_start := date_trunc('hour', now() + interval '15 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_invalid_skip_scheduled_to_checked_in',
+    NOT v_result.success AND v_result.error_code = 'INVALID_TRANSITION',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -423,31 +415,13 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Walk-in lifecycle: checked_in -> in_progress -> completed (no scheduled step).
-  v_result := public.update_appointment_status(v_appt_walkin, 'in_progress');
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results VALUES (
-    'walk_in_checked_in_to_in_progress',
-    v_result.success AND (v_result.data ->> 'status') = 'in_progress',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.update_appointment_status(v_appt_walkin, 'completed');
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results VALUES (
-    'walk_in_in_progress_to_completed',
-    v_result.success AND (v_result.data ->> 'status') = 'completed',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
   -- Reception (bootstrap user) may advance another doctor's appointment.
   v_start := date_trunc('hour', now() + interval '17 days');
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
   v_result := public.update_appointment_status(v_appt_second, 'checked_in');
   v_result := public.update_appointment_status(v_appt_second, 'in_progress');
   v_result := public.update_appointment_status(v_appt_second, 'completed');
@@ -465,6 +439,7 @@ BEGIN
     v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
   v_result := public.update_appointment_status(v_appt_second, 'checked_in');
   v_result := public.update_appointment_status(v_appt_second, 'completed');
   PERFORM set_config('role', 'postgres', true);
@@ -520,12 +495,12 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Cannot reschedule after check-in.
-  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  -- Cannot reschedule after confirmation.
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
   v_result := public.reschedule_appointment(v_appt_second, v_start + interval '4 hours', 20, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'reschedule_rejects_after_check_in',
+    'reschedule_rejects_after_confirmed',
     NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
     COALESCE(v_result.error_code, '<null>')
   );
@@ -574,12 +549,29 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Cancel checked-in appointment.
+  -- Cancel confirmed appointment (patient did not confirm after phone call).
   v_start := date_trunc('hour', now() + interval '5 days 1 hour');
   v_result := public.create_appointment(
     v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
+  v_result := public.cancel_appointment(v_appt_second, 'Patient did not confirm');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'cancel_confirmed_appointment',
+    v_result.success AND (v_result.data ->> 'status') = 'cancelled',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Cancel checked-in appointment.
+  v_start := date_trunc('hour', now() + interval '5 days 2 hours');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
   v_result := public.update_appointment_status(v_appt_second, 'checked_in');
   v_result := public.cancel_appointment(v_appt_second, 'Clinic closed early');
   PERFORM set_config('role', 'postgres', true);
@@ -596,6 +588,7 @@ BEGIN
     v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
   v_result := public.update_appointment_status(v_appt_second, 'checked_in');
   v_result := public.update_appointment_status(v_appt_second, 'in_progress');
   v_result := public.update_appointment_status(v_appt_second, 'completed');
@@ -614,6 +607,7 @@ BEGIN
     v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
   v_result := public.update_appointment_status(v_appt_second, 'checked_in');
   v_result := public.update_appointment_status(v_appt_second, 'no_show');
   PERFORM set_config('role', 'postgres', true);
@@ -627,6 +621,10 @@ BEGIN
   -- list_appointments returns items sorted by start_time.
   v_day_start := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
   v_day_end := v_day_start + interval '2 days';
+  v_start := greatest(now() + interval '1 hour', v_day_start + interval '1 hour');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'list-range'
+  );
   v_result := public.list_appointments(v_branch_main, v_day_start, v_day_end, NULL, NULL);
   v_items := v_result.data -> 'items';
   PERFORM set_config('role', 'postgres', true);
@@ -674,98 +672,20 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- NO_SLOT_AVAILABLE: pack doctor day with 15-min slots in UTC today.
-  PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.appointments WHERE doctor_id = v_doctor_staff;
-  v_day_start := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
-  v_day_end := v_day_start + interval '1 day';
-  v_start := v_day_start;
-  FOR v_i IN 1..96 LOOP
-    INSERT INTO public.appointments (
-      branch_id, patient_id, doctor_id, start_time, end_time, type, status, created_by, updated_by
-    )
-    VALUES (
-      v_branch_main,
-      v_patient_id,
-      v_doctor_staff,
-      v_start,
-      v_start + interval '15 minutes',
-      'planned',
-      'scheduled',
-      v_owner_user,
-      v_owner_user
-    );
-    v_start := v_start + interval '15 minutes';
-  END LOOP;
-  PERFORM set_config('role', 'authenticated', true);
-
+  -- No-show from confirmed (patient confirmed by phone but did not arrive).
+  v_start := date_trunc('hour', now() + interval '7 days 2 hours');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'walk_in', NULL, 15, NULL, NULL
+    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
   );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
+  v_result := public.update_appointment_status(v_appt_second, 'no_show');
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'walk_in_no_slot_available',
-    NOT v_result.success AND v_result.error_code = 'NO_SLOT_AVAILABLE',
+    'no_show_from_confirmed',
+    v_result.success AND (v_result.data ->> 'status') = 'no_show',
     COALESCE(v_result.error_code, '<null>')
   );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Walk-in is rejected when branch is closed today.
-  v_today_name := CASE extract(isodow FROM (now() AT TIME ZONE 'UTC'))
-    WHEN 1 THEN 'monday'
-    WHEN 2 THEN 'tuesday'
-    WHEN 3 THEN 'wednesday'
-    WHEN 4 THEN 'thursday'
-    WHEN 5 THEN 'friday'
-    WHEN 6 THEN 'saturday'
-    ELSE 'sunday'
-  END;
-  PERFORM set_config('role', 'postgres', true);
-  UPDATE public.branches b
-  SET working_schedule = jsonb_build_object(
-    'days',
-    (
-      SELECT jsonb_agg(
-        CASE
-          WHEN lower(trim(COALESCE(d.value ->> 'day', ''))) = v_today_name
-            THEN jsonb_set(d.value, '{is_working_day}', 'false'::jsonb, true)
-          ELSE d.value
-        END
-      )
-      FROM jsonb_array_elements(b.working_schedule -> 'days') AS d(value)
-    )
-  )
-  WHERE b.id = v_branch_main;
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'walk_in', NULL, 15, NULL, NULL
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results VALUES (
-    'walk_in_rejected_when_branch_closed_today',
-    NOT v_result.success AND v_result.error_code = 'NO_SLOT_AVAILABLE',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Restore today's working day for downstream same-day tests.
-  PERFORM set_config('role', 'postgres', true);
-  UPDATE public.branches b
-  SET working_schedule = jsonb_build_object(
-    'days',
-    (
-      SELECT jsonb_agg(
-        CASE
-          WHEN lower(trim(COALESCE(d.value ->> 'day', ''))) = v_today_name
-            THEN jsonb_set(d.value, '{is_working_day}', 'true'::jsonb, true)
-          ELSE d.value
-        END
-      )
-      FROM jsonb_array_elements(b.working_schedule -> 'days') AS d(value)
-    )
-  )
-  WHERE b.id = v_branch_main;
   PERFORM set_config('role', 'authenticated', true);
 
   -- Archived patient cannot be booked.
@@ -958,13 +878,12 @@ BEGIN
   v_result := public.create_appointment(
     v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-early'
   );
-  v_appt_walkin := (v_result.data ->> 'appointment_id')::uuid;
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
 
   v_start := date_trunc('hour', now()) + interval '2 hours';
   v_result := public.create_appointment(
     v_branch_main, v_patient3_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-mid'
   );
-  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
 
   v_start := v_day_end + interval '2 hours';
   v_result := public.create_appointment(
@@ -989,7 +908,7 @@ BEGIN
          WHERE prev IS NOT NULL),
         true
       )
-      AND (v_items -> 0 ->> 'id')::uuid = v_appt_walkin
+      AND (v_items -> 0 ->> 'id')::uuid = v_appt_second
       AND (v_items -> 2 ->> 'id')::uuid = v_appt_planned,
     'count=' || COALESCE(jsonb_array_length(v_items)::text, '0')
   );

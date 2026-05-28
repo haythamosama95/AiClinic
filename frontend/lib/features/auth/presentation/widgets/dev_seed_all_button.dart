@@ -60,7 +60,7 @@ class _DevSeedAllButtonState extends ConsumerState<DevSeedAllButton> {
 
     final doctorCount = DoctorDevSeedData.doctors.length;
     final patientCount = PatientDevSeedData.patients.length;
-    final appointmentCount = appointmentDevSeedPlannedCount + appointmentDevSeedWalkInCount;
+    final appointmentCount = appointmentDevSeedPlannedCount;
 
     final confirmed = await showDialog<bool>(
       context: context,

@@ -12,24 +12,17 @@ import 'package:ai_clinic/features/settings/domain/repositories/branch_repositor
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/list_staff.dart';
 
-const int appointmentDevSeedPlannedCount = 6;
-const int appointmentDevSeedWalkInCount = 4;
+const int appointmentDevSeedPlannedCount = 10;
 
 class AppointmentDevSeedOutcome {
-  const AppointmentDevSeedOutcome({
-    required this.isSuccess,
-    this.errorMessage,
-    this.plannedCreated = 0,
-    this.walkInCreated = 0,
-  });
+  const AppointmentDevSeedOutcome({required this.isSuccess, this.errorMessage, this.plannedCreated = 0});
 
   final bool isSuccess;
   final String? errorMessage;
   final int plannedCreated;
-  final int walkInCreated;
 }
 
-/// Creates mixed planned and walk-in demo appointments at the active branch.
+/// Creates planned demo appointments at the active branch.
 class AppointmentDevSeedService {
   AppointmentDevSeedService({
     required AppointmentRepository appointments,
@@ -95,36 +88,7 @@ class AppointmentDevSeedService {
         );
       }
 
-      var walkInCreated = 0;
-      if (doctorIds.isEmpty) {
-        AppLog.info('appointments.dev_seed.walk_ins_skipped reason=no_doctors');
-        return AppointmentDevSeedOutcome(isSuccess: true, plannedCreated: appointmentDevSeedPlannedCount);
-      }
-
-      if (!AppointmentDevSeedSchedule.canAssignWalkInToday(schedule: schedule, reference: referenceNow)) {
-        AppLog.info('appointments.dev_seed.walk_ins_skipped reason=outside_working_hours');
-        return AppointmentDevSeedOutcome(isSuccess: true, plannedCreated: appointmentDevSeedPlannedCount);
-      }
-
-      for (var i = 0; i < appointmentDevSeedWalkInCount; i++) {
-        final patient = patients[(appointmentDevSeedPlannedCount + i) % patients.length];
-        final doctorId = doctorIds[(appointmentDevSeedPlannedCount + i) % doctorIds.length];
-        await _appointments.createAppointment(
-          branchId: branchId,
-          patientId: patient.id,
-          doctorId: doctorId,
-          type: AppointmentType.walkIn,
-          durationMinutes: 20,
-          notes: '[Dev] Walk-in seed #${i + 1}',
-        );
-        walkInCreated++;
-      }
-
-      return AppointmentDevSeedOutcome(
-        isSuccess: true,
-        plannedCreated: appointmentDevSeedPlannedCount,
-        walkInCreated: walkInCreated,
-      );
+      return AppointmentDevSeedOutcome(isSuccess: true, plannedCreated: appointmentDevSeedPlannedCount);
     } on RpcFailure catch (error) {
       return AppointmentDevSeedOutcome(
         isSuccess: false,

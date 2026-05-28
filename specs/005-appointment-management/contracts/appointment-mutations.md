@@ -52,32 +52,26 @@ Create, reschedule, cancel, status updates, and default duration settings (V1-4)
 
 ## RPC: `create_appointment`
 
-| Parameter            | Type        | Required    | Notes                                                                                       |
-| -------------------- | ----------- | ----------- | ------------------------------------------------------------------------------------------- |
-| `p_branch_id`        | uuid        | Yes         | Active branch; ∈ JWT `branch_ids`                                                           |
-| `p_patient_id`       | uuid        | Yes         | Non-archived; same org                                                                      |
-| `p_doctor_id`        | uuid        | No          | Staff doctor at branch; omit or null for planned without assignment; required for `walk_in` |
-| `p_type`             | text        | Yes         | `planned` \| `walk_in`                                                                      |
-| `p_start_time`       | timestamptz | Conditional | Required for `planned`                                                                      |
-| `p_duration_minutes` | int         | No          | Default from settings if omitted                                                            |
-| `p_end_time`         | timestamptz | No          | Optional override; must imply valid duration                                                |
-| `p_notes`            | text        | No          |                                                                                             |
+| Parameter            | Type        | Required    | Notes                                                               |
+| -------------------- | ----------- | ----------- | ------------------------------------------------------------------- |
+| `p_branch_id`        | uuid        | Yes         | Active branch; ∈ JWT `branch_ids`                                   |
+| `p_patient_id`       | uuid        | Yes         | Non-archived; same org                                              |
+| `p_doctor_id`        | uuid        | No          | Staff doctor at branch; omit or null for booking without assignment |
+| `p_type`             | text        | Yes         | `planned` only (`walk_in` rejected)                                 |
+| `p_start_time`       | timestamptz | Conditional | Required for `planned`                                              |
+| `p_duration_minutes` | int         | No          | Default from settings if omitted                                    |
+| `p_end_time`         | timestamptz | No          | Optional override; must imply valid duration                        |
+| `p_notes`            | text        | No          |                                                                     |
 
-### Planned (`p_type = planned`)
+### Planned booking (`p_type = planned`)
 
 - Initial `status` = `scheduled`
 - Validate `p_start_time` + effective duration; conflict check
 - Staff-selected times
 
-### Walk-in (`p_type = walk_in`)
-
-- Initial `status` = `checked_in`
-- Ignore client `p_start_time` (or reject if sent); server assigns earliest gap ≥ now today (org TZ) for `p_duration_minutes`
-- `queue_number` = NULL
-
 **Conflict**: Overlap with any same doctor+branch appointment where status ∉ (`cancelled`, `no_show`).
 
-**Errors**: `FORBIDDEN`, `INVALID_INPUT`, `SCHEDULE_CONFLICT`, `NO_SLOT_AVAILABLE`, `PATIENT_ARCHIVED`, `INVALID_DOCTOR`
+**Errors**: `FORBIDDEN`, `INVALID_INPUT`, `SCHEDULE_CONFLICT`, `PATIENT_ARCHIVED`, `INVALID_DOCTOR`
 
 **Returns**: `data.appointment_id`, `data.start_time`, `data.end_time`, `data.status`, `data.type`
 
@@ -110,7 +104,7 @@ Create, reschedule, cancel, status updates, and default duration settings (V1-4)
 | `p_appointment_id` | uuid | Yes      |
 | `p_reason`         | text | No       |
 
-**Rules**: From `scheduled` or `checked_in` → `cancelled`.
+**Rules**: From `scheduled`, `confirmed`, or `checked_in` → `cancelled`.
 
 **Audit**: `appointment.cancel`
 

@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
-/// Appointments entry hub: links to book, walk-in, queue, and calendar (V1-4).
+/// Appointments entry hub: links to book, queue, and calendar (V1-4).
 class AppointmentHubPage extends ConsumerWidget {
   const AppointmentHubPage({super.key});
 
@@ -60,7 +60,7 @@ class AppointmentHubPage extends ConsumerWidget {
                 if (missingBranch) ...[
                   const SizedBox(height: 16),
                   Text(
-                    'Select an active branch in the status bar before booking or registering walk-ins.',
+                    'Select an active branch in the status bar before booking appointments.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.error),
                     textAlign: TextAlign.center,
                   ),
@@ -72,13 +72,6 @@ class AppointmentHubPage extends ConsumerWidget {
                     onPressed: missingBranch ? null : () => context.nav.goAppointmentsBook(),
                     icon: const Icon(Icons.event_available_outlined),
                     label: const Text('Book appointment'),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    key: const Key('appointments_hub_walk_in'),
-                    onPressed: missingBranch ? null : () => context.nav.goAppointmentsWalkIn(),
-                    icon: const Icon(Icons.directions_walk_outlined),
-                    label: const Text('Register walk-in'),
                   ),
                   const SizedBox(height: 12),
                 ],

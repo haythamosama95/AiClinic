@@ -46,7 +46,7 @@ void main() {
       );
     });
 
-    test('creates planned and walk-in appointments within working hours', () async {
+    test('creates planned appointments within working hours', () async {
       final outcome = await service.seed(
         branchId: branchId,
         organizationId: organizationId,
@@ -55,8 +55,7 @@ void main() {
 
       expect(outcome.isSuccess, isTrue);
       expect(outcome.plannedCreated, appointmentDevSeedPlannedCount);
-      expect(outcome.walkInCreated, appointmentDevSeedWalkInCount);
-      expect(rpcClient.createAppointmentCalls, hasLength(10));
+      expect(rpcClient.createAppointmentCalls, hasLength(appointmentDevSeedPlannedCount));
 
       final plannedCalls = rpcClient.createAppointmentCalls.where((p) => p['p_type'] == 'planned').toList();
       expect(plannedCalls, hasLength(appointmentDevSeedPlannedCount));
@@ -79,7 +78,6 @@ void main() {
 
       expect(outcome.isSuccess, isTrue);
       expect(outcome.plannedCreated, appointmentDevSeedPlannedCount);
-      expect(outcome.walkInCreated, 0);
       for (final params in rpcClient.createAppointmentCalls) {
         expect(params['p_doctor_id'], isNull);
       }

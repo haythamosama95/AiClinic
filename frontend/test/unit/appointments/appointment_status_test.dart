@@ -5,6 +5,7 @@ void main() {
   group('AppointmentStatus.tryParse', () {
     test('parses all lifecycle wire values', () {
       expect(AppointmentStatus.tryParse('scheduled'), AppointmentStatus.scheduled);
+      expect(AppointmentStatus.tryParse('confirmed'), AppointmentStatus.confirmed);
       expect(AppointmentStatus.tryParse('checked_in'), AppointmentStatus.checkedIn);
       expect(AppointmentStatus.tryParse('in_progress'), AppointmentStatus.inProgress);
       expect(AppointmentStatus.tryParse('completed'), AppointmentStatus.completed);
@@ -48,6 +49,7 @@ void main() {
 
     test('active workflow statuses are not terminal', () {
       expect(AppointmentStatus.scheduled.isTerminal, isFalse);
+      expect(AppointmentStatus.confirmed.isTerminal, isFalse);
       expect(AppointmentStatus.checkedIn.isTerminal, isFalse);
       expect(AppointmentStatus.inProgress.isTerminal, isFalse);
     });

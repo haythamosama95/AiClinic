@@ -65,18 +65,16 @@ abstract final class AppRoutes {
   // V1-4 appointment management
   static const appointments = '/appointments';
   static const appointmentsBook = '/appointments/book';
-  static const appointmentsWalkIn = '/appointments/walk-in';
   static const appointmentsQueue = '/appointments/queue';
   static const appointmentsCalendar = '/appointments/calendar';
 
   /// Doctor schedule: `/appointments/schedule/:doctorId`
   static String appointmentsSchedule(String doctorId) => '$appointments/schedule/$doctorId';
 
-  /// Static appointment hub paths (hub, book, walk-in, queue, calendar).
+  /// Static appointment hub paths (hub, book, queue, calendar).
   static const appointmentStaticPaths = <String>[
     appointments,
     appointmentsBook,
-    appointmentsWalkIn,
     appointmentsQueue,
     appointmentsCalendar,
   ];

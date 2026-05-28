@@ -61,18 +61,18 @@ All queries (via PostgREST and RPC functions) include `WHERE is_deleted = false`
 
 #### Organization & Tenancy
 
-| Table           | Key Columns                                                                                                     | Notes                                                                          |
-| --------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `organizations` | `id`, `name`, `logo_url`, `currency_code`, `timezone`, `subscription_tier`, `subscription_valid_until`, `settings_json` | Tenant root. One record per clinic organization. Includes branding and locale.  |
-| `branches`      | `id`, `organization_id`, `name`, `code`, `address`, `phone`, `maps_url`, `is_active`                            | Each branch under an organization. `code` is unique per org (partial index).   |
+| Table           | Key Columns                                                                                                             | Notes                                                                          |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `organizations` | `id`, `name`, `logo_url`, `currency_code`, `timezone`, `subscription_tier`, `subscription_valid_until`, `settings_json` | Tenant root. One record per clinic organization. Includes branding and locale. |
+| `branches`      | `id`, `organization_id`, `name`, `code`, `address`, `phone`, `maps_url`, `is_active`                                    | Each branch under an organization. `code` is unique per org (partial index).   |
 
 #### Staff & Auth
 
-| Table                      | Key Columns                                                                              | Notes                                                                                                      |
-| -------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `staff_members`            | `id`, `auth_user_id`, `full_name`, `role`, `phone`, `is_active`, `is_bootstrap_admin`    | Links to `auth.users`. Role is an enum. `is_bootstrap_admin` marks the initial installer.                  |
-| `staff_branch_assignments` | `id`, `staff_member_id`, `branch_id`, `is_primary`, UNIQUE(`staff_member_id`, `branch_id`) | Many-to-many. A staff member can work at multiple branches. `is_primary` sets UI default.                 |
-| `roles_permissions`        | `id`, `role`, `permission_key`, `is_granted`, UNIQUE(`role`, `permission_key`)           | Defines what each role can do. Seeded at migration time for all known permission keys.                     |
+| Table                      | Key Columns                                                                                | Notes                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `staff_members`            | `id`, `auth_user_id`, `full_name`, `role`, `phone`, `is_active`, `is_bootstrap_admin`      | Links to `auth.users`. Role is an enum. `is_bootstrap_admin` marks the initial installer. |
+| `staff_branch_assignments` | `id`, `staff_member_id`, `branch_id`, `is_primary`, UNIQUE(`staff_member_id`, `branch_id`) | Many-to-many. A staff member can work at multiple branches. `is_primary` sets UI default. |
+| `roles_permissions`        | `id`, `role`, `permission_key`, `is_granted`, UNIQUE(`role`, `permission_key`)             | Defines what each role can do. Seeded at migration time for all known permission keys.    |
 
 Staff roles enum: `owner`, `administrator`, `doctor`, `receptionist`, `lab_staff`.
 
@@ -80,8 +80,8 @@ Authentication uses **usernames** (not email). Usernames are stored in GoTrue's 
 
 #### Patients
 
-| Table      | Key Columns                                                                                                       | Notes                                                                                                |
-| ---------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Table      | Key Columns                                                                                                                 | Notes                                                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `patients` | `id`, `branch_id`, `organization_id`, `full_name`, `phone` (NOT NULL), `date_of_birth`, `gender`, `marital_status`, `notes` | `branch_id` is the registering branch. `organization_id` is denormalized for RLS. Cross-branch visibility within the same organization. |
 
 Key differences from original spec:
@@ -93,9 +93,9 @@ Key differences from original spec:
 
 #### Appointments
 
-| Table          | Key Columns                                                                                                                         | Notes                                                                                       |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `appointments` | `id`, `branch_id`, `patient_id`, `doctor_id`, `start_time`, `end_time`, `type` (planned/walk_in), `status`, `queue_number`, `notes` | Status enum: `scheduled`, `checked_in`, `in_progress`, `completed`, `cancelled`, `no_show`. |
+| Table          | Key Columns                                                                                                                                    | Notes                                                                                                                                                                                     |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `appointments` | `id`, `branch_id`, `patient_id`, `doctor_id`, `start_time`, `end_time`, `type` (`planned` for new bookings), `status`, `queue_number`, `notes` | Status enum: `scheduled`, `confirmed`, `checked_in`, `in_progress`, `completed`, `cancelled`, `no_show`. Lifecycle: scheduled → confirmed (phone) → checked_in → in_progress → completed. |
 
 Conflict rule: no overlapping appointments for the same doctor at the same branch (enforced in `create_appointment` RPC function).
 
@@ -135,11 +135,11 @@ Overlap rule: no overlapping shifts for the same staff member at the same branch
 
 #### System
 
-| Table                | Key Columns                                                                                                                         | Notes                                                                                      |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `app_settings`       | `id`, `organization_id` (NOT NULL FK), `branch_id` (nullable FK), `key`, `value_json`                                              | Branch-level or org-wide settings (null `branch_id` = all branches). Org explicit.         |
+| Table                | Key Columns                                                                                                                                        | Notes                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `app_settings`       | `id`, `organization_id` (NOT NULL FK), `branch_id` (nullable FK), `key`, `value_json`                                                              | Branch-level or org-wide settings (null `branch_id` = all branches). Org explicit.           |
 | `audit_log`          | `id`, `user_id`, `organization_id` (nullable FK), `action`, `table_name`, `record_id`, `old_data_json`, `new_data_json`, `ip_address`, `timestamp` | Detailed audit trail for sensitive operations. Org stored directly (nullable pre-bootstrap). |
-| `subscription_cache` | `organization_id` (PK, FK with CASCADE), `tier`, `valid_until`, `last_checked_at`                                                  | Local cache for offline subscription validation.                                           |
+| `subscription_cache` | `organization_id` (PK, FK with CASCADE), `tier`, `valid_until`, `last_checked_at`                                                                  | Local cache for offline subscription validation.                                             |
 
 ### Row Level Security (RLS) Strategy
 
@@ -185,39 +185,39 @@ All domain functions live in the `auth_internal` schema (SECURITY DEFINER) with 
 
 #### Implemented Functions (V1-1 through V1-3)
 
-| Public Wrapper                        | Purpose                                                  | Validation                                                                  |
-| ------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `bootstrap_create_organization(...)`  | First-time org setup (bootstrap admin only)              | Only callable by `is_bootstrap_admin`, fails if org already exists          |
-| `bootstrap_create_branch(...)`        | First branch creation during setup                       | Auto-assigns bootstrap admin to first branch                                |
-| `create_staff_account(...)`           | Provision a new staff login + profile + branch assignments | Username validation, owner-creation guards, branch existence checks         |
-| `admin_reset_staff_password(...)`     | Admin resets another staff member's password             | Cross-org denied, target must exist in caller's org                          |
-| `update_organization(...)`            | Update org name/logo/currency/timezone/settings          | ISO 4217 currency validation, IANA timezone validation                      |
-| `manage_create_branch(...)`           | Create branch (post-bootstrap)                           | Permission check (`settings.manage_branches`), unique code enforcement       |
-| `update_branch(...)`                  | Edit branch details                                      | Org scope check, unique code enforcement                                     |
-| `set_branch_active(...)`              | Activate/deactivate branch                               | Cannot deactivate last active branch                                         |
-| `update_staff_member(...)`            | Edit staff profile/role/branches                         | Permission check, cross-org safety, owner-role promotion guards              |
-| `set_staff_active(...)`               | Activate/deactivate staff                                | Org scope check                                                              |
-| `update_role_permission(...)`         | Toggle permission grant for a role                       | Owner/admin only, permission key must exist in catalog                        |
-| `search_patients(...)`                | Paginated patient search (name or phone)                 | Branch or org scope, min query length enforcement                            |
-| `get_patient(...)`                    | Fetch full patient detail                                | Org ownership check, archived check                                          |
-| `check_patient_duplicates(...)`       | Pre-registration duplicate check                         | Phone or name+DOB matching                                                   |
-| `create_patient(...)`                 | Register a new patient                                   | Phone required (8-15 digits), duplicate warning, gender/marital_status validation |
-| `update_patient(...)`                 | Edit patient record                                      | Optimistic concurrency (`p_expected_updated_at`), duplicate warning           |
-| `archive_patient(...)`                | Soft-delete a patient                                    | Permission check (`patients.delete`), idempotent archive                     |
-| `dev_reset_clinic_installation()`     | DEV ONLY: wipe org/branch data for re-bootstrap          | Bootstrap admin only, not for production                                     |
-| `get_custom_claims(event jsonb)`      | GoTrue auth hook to build JWT custom claims              | Looks up staff org, branches, role, setup_required flag                       |
+| Public Wrapper                       | Purpose                                                    | Validation                                                                        |
+| ------------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `bootstrap_create_organization(...)` | First-time org setup (bootstrap admin only)                | Only callable by `is_bootstrap_admin`, fails if org already exists                |
+| `bootstrap_create_branch(...)`       | First branch creation during setup                         | Auto-assigns bootstrap admin to first branch                                      |
+| `create_staff_account(...)`          | Provision a new staff login + profile + branch assignments | Username validation, owner-creation guards, branch existence checks               |
+| `admin_reset_staff_password(...)`    | Admin resets another staff member's password               | Cross-org denied, target must exist in caller's org                               |
+| `update_organization(...)`           | Update org name/logo/currency/timezone/settings            | ISO 4217 currency validation, IANA timezone validation                            |
+| `manage_create_branch(...)`          | Create branch (post-bootstrap)                             | Permission check (`settings.manage_branches`), unique code enforcement            |
+| `update_branch(...)`                 | Edit branch details                                        | Org scope check, unique code enforcement                                          |
+| `set_branch_active(...)`             | Activate/deactivate branch                                 | Cannot deactivate last active branch                                              |
+| `update_staff_member(...)`           | Edit staff profile/role/branches                           | Permission check, cross-org safety, owner-role promotion guards                   |
+| `set_staff_active(...)`              | Activate/deactivate staff                                  | Org scope check                                                                   |
+| `update_role_permission(...)`        | Toggle permission grant for a role                         | Owner/admin only, permission key must exist in catalog                            |
+| `search_patients(...)`               | Paginated patient search (name or phone)                   | Branch or org scope, min query length enforcement                                 |
+| `get_patient(...)`                   | Fetch full patient detail                                  | Org ownership check, archived check                                               |
+| `check_patient_duplicates(...)`      | Pre-registration duplicate check                           | Phone or name+DOB matching                                                        |
+| `create_patient(...)`                | Register a new patient                                     | Phone required (8-15 digits), duplicate warning, gender/marital_status validation |
+| `update_patient(...)`                | Edit patient record                                        | Optimistic concurrency (`p_expected_updated_at`), duplicate warning               |
+| `archive_patient(...)`               | Soft-delete a patient                                      | Permission check (`patients.delete`), idempotent archive                          |
+| `dev_reset_clinic_installation()`    | DEV ONLY: wipe org/branch data for re-bootstrap            | Bootstrap admin only, not for production                                          |
+| `get_custom_claims(event jsonb)`     | GoTrue auth hook to build JWT custom claims                | Looks up staff org, branches, role, setup_required flag                           |
 
 #### Planned Functions (V1-4+)
 
-| Function                  | Purpose                                   | Validation                                                         |
-| ------------------------- | ----------------------------------------- | ------------------------------------------------------------------ |
-| `create_appointment(...)` | Book an appointment                       | Checks doctor schedule, time conflicts, branch validity            |
-| `cancel_appointment(...)` | Cancel with reason tracking               | Checks status transition validity                                  |
-| `create_invoice(...)`     | Generate invoice for a visit              | Validates line items, calculates totals                            |
-| `apply_payment(...)`      | Record partial/full payment               | Validates amount against remaining balance, updates invoice status |
-| `apply_discount(...)`     | Apply discount with permission check      | Validates caller has discount permission for the amount threshold  |
-| `create_shift(...)`       | Create shift with staff assignments       | Validates no overlapping shifts for assigned staff                 |
-| `create_visit(...)`       | Create visit record from appointment      | Validates appointment exists and is in correct status              |
+| Function                  | Purpose                              | Validation                                                         |
+| ------------------------- | ------------------------------------ | ------------------------------------------------------------------ |
+| `create_appointment(...)` | Book an appointment                  | Checks doctor schedule, time conflicts, branch validity            |
+| `cancel_appointment(...)` | Cancel with reason tracking          | Checks status transition validity                                  |
+| `create_invoice(...)`     | Generate invoice for a visit         | Validates line items, calculates totals                            |
+| `apply_payment(...)`      | Record partial/full payment          | Validates amount against remaining balance, updates invoice status |
+| `apply_discount(...)`     | Apply discount with permission check | Validates caller has discount permission for the amount threshold  |
+| `create_shift(...)`       | Create shift with staff assignments  | Validates no overlapping shifts for assigned staff                 |
+| `create_visit(...)`       | Create visit record from appointment | Validates appointment exists and is in correct status              |
 
 #### Standard Return Type
 
@@ -236,8 +236,8 @@ Helper constructors: `rpc_success(data)` and `rpc_error(code, message)`.
 
 #### Permission Assertion Helpers (auth_internal)
 
-| Function                           | Purpose                                                    |
-| ---------------------------------- | ---------------------------------------------------------- |
+| Function                           | Purpose                                                     |
+| ---------------------------------- | ----------------------------------------------------------- |
 | `assert_bootstrap_admin()`         | Raises `NOT_BOOTSTRAP_ADMIN` if caller is not the installer |
 | `assert_owner_or_administrator()`  | Raises `FORBIDDEN` if caller is not owner/admin/bootstrap   |
 | `assert_permission(key)`           | Raises `FORBIDDEN` if caller's role lacks the permission    |

@@ -6,7 +6,7 @@
 
 ## Summary
 
-Deliver V1-4 appointment scheduling: `appointments` table with branch-scoped RLS, secured RPCs for planned booking, walk-in auto-slot assignment, reschedule, cancel/no-show, status lifecycle, default duration via `app_settings`, and Flutter `features/appointments` (calendar day/week, booking, walk-in, today's queue with Realtime fallback, doctor schedule). Queue sorts by `start_time`; walk-ins enter as `checked_in`. Builds on V1-3 patients, V1-2 branch/staff/settings, V1-1 auth and `appointments.*` seeds. No visits, billing, shifts, or AI.
+Deliver V1-4 appointment scheduling: `appointments` table with branch-scoped RLS, secured RPCs for planned booking, phone-confirmation status (`confirmed`), reschedule, cancel/no-show, status lifecycle, default duration via `app_settings`, and Flutter `features/appointments` (calendar day/week, booking, today's queue with Realtime fallback, doctor schedule). Queue sorts by `start_time`; lifecycle is `scheduled` → `confirmed` → `checked_in` → `in_progress` → `completed`. Walk-in registration removed. Builds on V1-3 patients, V1-2 branch/staff/settings, V1-1 auth and `appointments.*` seeds. No visits, billing, shifts, or AI.
 
 ## Technical Context
 
@@ -24,7 +24,7 @@ Deliver V1-4 appointment scheduling: `appointments` table with branch-scoped RLS
 
 **Performance Goals**: Booking confirmation within 20s (SC-001); queue usable at 200 appointments/branch/day (NFR-002); conflict feedback interactive (NFR-003); 100% cross-org denial; Realtime queue update within 5s in 95% of trials when enabled (SC-008)
 
-**Constraints**: Branch-scoped RLS; mutations via RPC only; walk-in auto-slot; duration 5–240 min with settings default + per-booking override; reschedule `scheduled` planned only; any `appointments.create` may advance status; `queue_number` unused; no visit on complete
+**Constraints**: Branch-scoped RLS; mutations via RPC only; planned booking only; duration 5–240 min with settings default + per-booking override; reschedule `scheduled` only; any `appointments.create` may advance status; `queue_number` unused; no visit on complete
 
 **Scale/Scope**: 1 migration; 7 RPCs; ~6 Flutter pages; 2 contract docs; Realtime subscription on queue
 
@@ -44,7 +44,7 @@ Deliver V1-4 appointment scheduling: `appointments` table with branch-scoped RLS
 ### Post-Design Re-Check
 
 - [x] Conflict and status rules enforced only in PostgreSQL functions
-- [x] Walk-in slot assignment server-side (not client guess)
+- [x] Phone confirmation (`confirmed`) enforced server-side before check-in
 - [x] Realtime is enhancement only; manual refresh when degraded
 - [x] Settings default duration stored in `app_settings`, not hard-coded-only
 - [x] No visit creation on `completed` (deferred V1-5)

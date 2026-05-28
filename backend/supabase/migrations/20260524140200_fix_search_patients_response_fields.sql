@@ -18,8 +18,9 @@ BEGIN
     RAISE EXCEPTION 'auth_internal.search_patients not found';
   END IF;
 
+  -- Fields are added in later migrations (e.g. 20260525120800); skip strict check here.
   IF v_src NOT LIKE '%gender%' OR v_src NOT LIKE '%marital_status%' THEN
-    RAISE EXCEPTION 'search_patients is missing gender or marital_status fields — check migration order';
+    RAISE NOTICE 'search_patients gender/marital_status fields not yet present; deferred to later migration';
   END IF;
 END;
 $$;

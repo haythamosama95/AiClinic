@@ -436,6 +436,29 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Administrator cannot deactivate the sole active owner.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_admin_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_admin_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_result := public.set_staff_active(v_owner_staff, false);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_branch_crud_results VALUES (
+    'staff_deactivate_last_owner_rejected',
+    NOT v_result.success AND v_result.error_code = 'LAST_OWNER',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Owner and administrator may toggle permission matrix; other roles denied.
   PERFORM set_config(
     'request.jwt.claims',

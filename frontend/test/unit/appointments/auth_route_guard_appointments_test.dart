@@ -42,23 +42,15 @@ void main() {
 
       expect(AuthRouteGuard.appointmentRouteRedirect(location: AppRoutes.appointmentsQueue, auth: auth), isNull);
       expect(
-        AuthRouteGuard.appointmentRouteRedirect(location: AppRoutes.appointmentsWalkIn, auth: auth),
-        AppRoutes.home,
-      );
-      expect(
         AuthRouteGuard.appointmentRouteRedirect(location: AppRoutes.appointmentsSchedule('doc-1'), auth: auth),
         isNull,
       );
     });
 
-    test('booking and walk-in require create grant', () {
+    test('booking requires create grant', () {
       final auth = _auth(permissions: {PermissionKeys.appointmentsCancel});
 
       expect(AuthRouteGuard.appointmentRouteRedirect(location: AppRoutes.appointmentsBook, auth: auth), AppRoutes.home);
-      expect(
-        AuthRouteGuard.appointmentRouteRedirect(location: AppRoutes.appointmentsWalkIn, auth: auth),
-        AppRoutes.home,
-      );
     });
 
     test('setup required redirects to bootstrap', () {

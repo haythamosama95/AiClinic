@@ -77,19 +77,6 @@ void main() {
       );
     });
 
-    test('advanced: walk-in create omits start time', () async {
-      await repository.createAppointment(
-        branchId: '44444444-4444-4444-8444-444444444444',
-        patientId: '11111111-1111-4111-8111-111111111111',
-        doctorId: '22222222-2222-4222-8222-222222222222',
-        type: AppointmentType.walkIn,
-        durationMinutes: 15,
-      );
-
-      expect(client.lastParams?['p_type'], 'walk_in');
-      expect(client.lastParams?.containsKey('p_start_time'), isFalse);
-    });
-
     test('regression: SCHEDULE_CONFLICT surfaces from RPC', () async {
       client.rpcResults['create_appointment'] = {
         'success': false,
@@ -160,7 +147,8 @@ void main() {
           branchId: '44444444-4444-4444-8444-444444444444',
           patientId: '11111111-1111-4111-8111-111111111111',
           doctorId: '22222222-2222-4222-8222-222222222222',
-          type: AppointmentType.walkIn,
+          type: AppointmentType.planned,
+          startTime: DateTime.utc(2026, 6, 1, 10),
           notes: 'x' * 2001,
         ),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
