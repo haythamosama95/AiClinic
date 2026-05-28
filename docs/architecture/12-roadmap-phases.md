@@ -18,17 +18,17 @@ V1 delivers a fully functional clinic management system with no AI. This is the 
 
 ### Implementation Status
 
-| Phase | Status |
-| ----- | ------ |
-| V1-0: Project Scaffolding | **Complete** |
-| V1-1: Auth and RBAC | **Complete** |
+| Phase                                    | Status       |
+| ---------------------------------------- | ------------ |
+| V1-0: Project Scaffolding                | **Complete** |
+| V1-1: Auth and RBAC                      | **Complete** |
 | V1-2: Organization and Branch Management | **Complete** |
-| V1-3: Patient Management | **Complete** |
-| V1-4: Appointments | Pending |
-| V1-5: Visits and Medical Records | Pending |
-| V1-6: Billing | Pending |
-| V1-7: Shifts | Pending |
-| V1-8: Deployment and Installer | Pending |
+| V1-3: Patient Management                 | **Complete** |
+| V1-4: Appointments                       | **Complete** |
+| V1-5: Visits and Medical Records         | Pending      |
+| V1-6: Billing                            | Pending      |
+| V1-7: Shifts                             | Pending      |
+| V1-8: Deployment and Installer           | Pending      |
 
 ### V1-0: Project Scaffolding
 
@@ -151,7 +151,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/operations/appointments.spec.md`
+- `specs/005-appointment-management/spec.md` (authoritative for V1-4; shared `specs/operations/appointments.spec.md` deferred)
 
 Backend deliverables:
 - Database migration: `appointments` table

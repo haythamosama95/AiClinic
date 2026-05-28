@@ -71,4 +71,19 @@ flutter test test/integration/appointments/appointment_management_acceptance_tes
 - Default visit length is set in **settings**; each booking can use a different length if needed.
 - Completing an appointment does **not** open a visit chart yet (V1-5).
 
-**Next command**: `/speckit-tasks` to generate `tasks.md`.
+## 7. Operator verification log (Phase 10)
+
+Verified during V1-4 polish (automated unless noted):
+
+| Step                | Command / action                                                                | Expected                                                                      |
+| ------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Migrations          | `cd backend && supabase migration up`                                           | `20260526140000_appointment_management.sql` applied                           |
+| Backend harness     | `./backend/tests/run_appointment_management_tests.sh`                           | CRUD + RLS pass (conflict, walk-in slot, transitions, reschedule, cancel)     |
+| Flutter unit/widget | `cd frontend && flutter test test/unit/appointments/ test/widget/appointments/` | All appointment tests green                                                   |
+| Flutter integration | `flutter test test/integration/appointments/`                                   | US1/US2 smoke + `appointment_management_acceptance_test.dart` (cases 4–14 UI) |
+| Full frontend suite | `python3 tool/run_all_tests.py` from `frontend/`                                | Full regression including patients/settings smoke                             |
+| Manual (desk)       | quickstart §3 steps 1–10 on Windows client                                      | Calendar, queue, booking, walk-in, status, reschedule, cancel behave per spec |
+
+**Permission reminder**: Viewing appointment screens requires `appointments.create` and/or `appointments.cancel`; booking and walk-in require `appointments.create` only.
+
+**Realtime**: If the queue shows a degraded banner, use **Refresh** — list data still comes from `list_appointments` RPC; Realtime is optional UX.

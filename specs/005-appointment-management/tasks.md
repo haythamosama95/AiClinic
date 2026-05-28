@@ -217,11 +217,11 @@
 **Purpose**: Shell navigation, end-to-end acceptance, quickstart validation, regression
 
 - [X] T061 Add **Appointments** navigation hub on `AuthShellPage` gated by `canAccessAppointments` in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
-- [ ] T062 [P] Integration acceptance for spec test cases 1–14 is split across `frontend/test/integration/appointments/appointment_booking_us1_test.dart`, `appointments_phase1_setup_test.dart`, and `walk_in_registration_us2_test.dart`; extend or add coverage for remaining cases (calendar, queue, status transitions) when US3–US5 land
-- [ ] T063 [P] Add permission guard widget tests (no appointment access without grants) in `frontend/test/widget/appointments/appointment_permission_guards_test.dart`
-- [ ] T064 Run `specs/005-appointment-management/quickstart.md` verification and document operator notes
-- [ ] T065 [P] Regression smoke: patients and settings flows unchanged (`frontend/test/integration/patients/patient_management_acceptance_test.dart` targeted subset)
-- [ ] T066 [P] Verify `docs/architecture/12-roadmap-phases.md` V1-4 references remain accurate after implementation
+- [X] T062 [P] Integration acceptance for spec test cases 1–14 is split across `frontend/test/integration/appointments/appointment_booking_us1_test.dart`, `appointments_phase1_setup_test.dart`, `walk_in_registration_us2_test.dart`, and `appointment_management_acceptance_test.dart` (calendar, queue, status, cancel, reschedule, shell)
+- [X] T063 [P] Add permission guard widget tests (no appointment access without grants) in `frontend/test/widget/appointments/appointment_permission_guards_test.dart`
+- [X] T064 Run `specs/005-appointment-management/quickstart.md` verification and document operator notes
+- [X] T065 [P] Regression smoke: patients and settings flows unchanged (`frontend/test/integration/patients/patient_management_acceptance_test.dart` targeted subset)
+- [X] T066 [P] Verify `docs/architecture/12-roadmap-phases.md` V1-4 references remain accurate after implementation
 
 ---
 
