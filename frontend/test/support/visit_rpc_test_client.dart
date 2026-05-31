@@ -62,6 +62,32 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           'updated_at': '2026-05-31T10:05:00.000Z',
         },
       },
+      'complete_visit' => {
+        'success': true,
+        'data': {
+          'visit_id': lastParams?['p_visit_id'] ?? 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          'visit_status': 'completed',
+          'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          'appointment_status': 'completed',
+        },
+      },
+      'list_patient_visits' => {
+        'success': true,
+        'data': {
+          'items': [
+            {
+              'id': 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+              'visit_date': '2026-05-31',
+              'doctor_name': 'Dr Test',
+              'status': 'completed',
+              'branch_name': 'Main',
+            },
+          ],
+          'total_count': 1,
+          'limit': lastParams?['p_limit'] ?? 50,
+          'offset': lastParams?['p_offset'] ?? 0,
+        },
+      },
       _ => {'success': false, 'error_code': 'UNKNOWN', 'error_message': 'Unhandled RPC $fn'},
     };
   }

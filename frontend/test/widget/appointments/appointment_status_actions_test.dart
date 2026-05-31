@@ -331,7 +331,7 @@ void main() {
 
         await tester.pumpWidget(
           _host(
-            item: _item(status: AppointmentStatus.scheduled),
+            item: _item(startTime: DateTime(2026, 6, 1, 10), endTime: DateTime(2026, 6, 1, 10, 30)),
             client: client,
             onRescheduled: (result) => rescheduled = result,
           ),
@@ -341,6 +341,7 @@ void main() {
         await tester.tap(find.byKey(const Key('appointments_status_reschedule')));
         await tester.pumpAndSettle();
 
+        expect(find.byKey(const Key('appointment_reschedule_dialog')), findsOneWidget);
         await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
         await tester.pumpAndSettle();
 
@@ -355,17 +356,22 @@ AppointmentListItem _item({
   AppointmentStatus status = AppointmentStatus.scheduled,
   AppointmentType type = AppointmentType.planned,
   bool onAppointmentDay = false,
+  DateTime? startTime,
+  DateTime? endTime,
 }) {
-  final start = onAppointmentDay
-      ? DateTime.now().subtract(const Duration(hours: 1))
-      : DateTime.now().add(const Duration(days: 7));
+  final start =
+      startTime ??
+      (onAppointmentDay
+          ? DateTime.now().subtract(const Duration(hours: 1))
+          : DateTime.now().add(const Duration(days: 7)));
+  final end = endTime ?? start.add(const Duration(minutes: 30));
   return AppointmentListItem(
     id: 'appt-1',
     patientId: 'patient-1',
     patientName: 'Jane Doe',
     doctorName: 'Dr Smith',
     startTime: start,
-    endTime: start.add(const Duration(minutes: 30)),
+    endTime: end,
     type: type,
     status: status,
   );

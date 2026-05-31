@@ -23,5 +23,6 @@ When finished:
 - if the changes are frontend related only, run ALL frontend tests using run_all_tests.py [takes around 10 minutes]
 - if the changes are backend tests only, run ALL backend tests using run_all_backend_tests.sh and run integration tests using run_boundary_tests.py [takes around 5 minutes]
 - do not exit until all tests pass
+- you will find the test cases full artificats in the frontend/test-results directory
 
 Follow clean architecture Flutter practices, and secure backend practices.

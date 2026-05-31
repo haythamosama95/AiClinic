@@ -113,21 +113,21 @@
 
 ### Tests for User Story 6
 
-- [ ] T034 [P] [US6] Add `complete_visit`, `list_patient_visits`, and empty-SOAP rejection tests in `backend/tests/visit_medical_records_crud.sql`
-- [ ] T035 [P] [US6] Add manual appointment complete rejection test in `backend/tests/appointment_management_crud.sql`
-- [ ] T036 [P] [US6] Add unit tests for `VisitRepository.completeVisit`, `listPatientVisits`, and `getVisit` permission subsets in `frontend/test/unit/visits/visit_repository_complete_history_test.dart`
-- [ ] T037 [P] [US6] Add widget tests for `VisitSubmitDialog` in `frontend/test/widget/visits/visit_submit_dialog_test.dart`
-- [ ] T038 [P] [US6] Add widget tests for `PatientVisitHistorySection` metadata vs detail gating in `frontend/test/widget/visits/patient_visit_history_section_test.dart`
+- [X] T034 [P] [US6] Add `complete_visit`, `list_patient_visits`, and empty-SOAP rejection tests in `backend/tests/visit_medical_records_crud.sql`
+- [X] T035 [P] [US6] Add manual appointment complete rejection test in `backend/tests/appointment_management_crud.sql`
+- [X] T036 [P] [US6] Add unit tests for `VisitRepository.completeVisit`, `listPatientVisits`, and `getVisit` permission subsets in `frontend/test/unit/visits/visit_repository_complete_history_test.dart`
+- [X] T037 [P] [US6] Add widget tests for `VisitSubmitDialog` in `frontend/test/widget/visits/visit_submit_dialog_test.dart`
+- [X] T038 [P] [US6] Add widget tests for `PatientVisitHistorySection` metadata vs detail gating in `frontend/test/widget/visits/patient_visit_history_section_test.dart`
 
 ### Implementation for User Story 6
 
-- [ ] T039 [US6] Implement `VisitRepository.completeVisit`, `listPatientVisits`, and `getVisit` in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T040 [US6] Implement `VisitSubmitDialog` (confirm, submitting, success, SOAP-required error) in `frontend/lib/features/visits/presentation/widgets/visit_submit_dialog.dart`
-- [ ] T041 [US6] Wire submit action on `VisitDocumentationPage` in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
-- [ ] T042 [US6] Implement `PatientVisitHistorySection` with pagination in `frontend/lib/features/patients/presentation/widgets/patient_visit_history_section.dart`
-- [ ] T043 [US6] Replace `PatientVisitsPlaceholder` with `PatientVisitHistorySection` in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`
-- [ ] T044 [US6] Implement `VisitDetailPage` (read-only clinical view from history) in `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
-- [ ] T045 [US6] Gate `/visits/:visitId/detail` route to clinical visit permissions in `frontend/lib/app/router.dart`
+- [X] T039 [US6] Implement `VisitRepository.completeVisit`, `listPatientVisits`, and `getVisit` in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T040 [US6] Implement `VisitSubmitDialog` (confirm, submitting, success, SOAP-required error) in `frontend/lib/features/visits/presentation/widgets/visit_submit_dialog.dart`
+- [X] T041 [US6] Wire submit action on `VisitDocumentationPage` in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T042 [US6] Implement `PatientVisitHistorySection` with pagination in `frontend/lib/features/patients/presentation/widgets/patient_visit_history_section.dart`
+- [X] T043 [US6] Replace `PatientVisitsPlaceholder` with `PatientVisitHistorySection` in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`
+- [X] T044 [US6] Implement `VisitDetailPage` (read-only clinical view from history) in `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
+- [X] T045 [US6] Gate `/visits/:visitId/detail` route to clinical visit permissions in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 11–13, 11b; acceptance criteria 7–8; SC-006, SC-008
 

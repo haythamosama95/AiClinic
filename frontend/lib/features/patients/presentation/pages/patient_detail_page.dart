@@ -8,7 +8,7 @@ import 'package:ai_clinic/features/patients/domain/patient_exceptions.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_archive_dialog.dart';
-import 'package:ai_clinic/features/patients/presentation/widgets/patient_visits_placeholder.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_visit_history_section.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 void _leavePatientDetail(BuildContext context) {
@@ -74,7 +74,7 @@ class PatientDetailPage extends ConsumerWidget {
           message: error.toString(),
           onRetry: () => ref.invalidate(patientDetailProvider(id)),
         ),
-        data: (detail) => _PatientDetailBody(detail: detail),
+        data: (detail) => _PatientDetailBody(detail: detail, patientId: id),
       ),
     );
   }
@@ -92,7 +92,11 @@ class _PatientScaffold extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        leading: IconButton(tooltip: 'Go back', icon: const Icon(Icons.arrow_back), onPressed: () => _leavePatientDetail(context)),
+        leading: IconButton(
+          tooltip: 'Go back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _leavePatientDetail(context),
+        ),
         actions: actions == null ? null : [actions!],
       ),
       body: body,
@@ -186,9 +190,10 @@ class _PatientDetailError extends StatelessWidget {
 }
 
 class _PatientDetailBody extends StatelessWidget {
-  const _PatientDetailBody({required this.detail});
+  const _PatientDetailBody({required this.detail, required this.patientId});
 
   final PatientDetail detail;
+  final String patientId;
 
   @override
   Widget build(BuildContext context) {
@@ -234,7 +239,7 @@ class _PatientDetailBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        const PatientVisitsPlaceholder(),
+        PatientVisitHistorySection(patientId: patientId),
         const SizedBox(height: 24),
         Text('Record history', style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
@@ -251,7 +256,6 @@ class _PatientDetailBody extends StatelessWidget {
       ],
     );
   }
-
 }
 
 class _ProfileRow extends StatelessWidget {

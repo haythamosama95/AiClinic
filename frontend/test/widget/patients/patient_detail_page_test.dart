@@ -8,7 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import '../../support/patient_rpc_test_client.dart';
+import '../../support/visit_rpc_test_client.dart';
 
 Future<void> _pump(WidgetTester tester, Widget child) async {
   await tester.binding.setSurfaceSize(const Size(1000, 1200));
@@ -47,8 +49,8 @@ void main() {
       expect(find.text('Main'), findsOneWidget);
       expect(find.text('VIP patient'), findsOneWidget);
       expect(find.text('Reception'), findsOneWidget);
-      expect(find.byKey(const Key('patient_visits_placeholder')), findsOneWidget);
-      expect(find.textContaining('Visit records will appear'), findsOneWidget);
+      expect(find.byKey(const Key('patient_visits_placeholder')), findsNothing);
+      expect(find.byKey(const Key('patient_visit_history_section')), findsOneWidget);
     });
 
     testWidgets('edge case: empty notes shows placeholder copy', (tester) async {
@@ -213,6 +215,7 @@ Widget _host({
         ),
       ),
       patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(rpcClient)),
+      visitRepositoryProvider.overrideWith((ref) => VisitRepository(VisitRpcTestClient())),
     ],
     child: child,
   );

@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/soap_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_submit_dialog.dart';
 
 /// Visit documentation — SOAP and related sections (V1-5).
 class VisitDocumentationPage extends ConsumerWidget {
@@ -22,9 +25,28 @@ class VisitDocumentationPage extends ConsumerWidget {
     }
 
     final docAsync = ref.watch(visitDocumentationProvider(id));
+    final canSubmit = ref.watch(permissionServiceProvider).canEditVisitSoap();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Visit documentation')),
+      appBar: AppBar(
+        title: const Text('Visit documentation'),
+        actions: [
+          docAsync.maybeWhen(
+            data: (state) {
+              if (!canSubmit || state.visit.status != VisitStatus.inProgress) {
+                return null;
+              }
+              return TextButton.icon(
+                key: const Key('visit_submit_button'),
+                onPressed: () => _submitVisit(context, ref, id, state),
+                icon: const Icon(Icons.check_circle_outline),
+                label: const Text('Submit visit'),
+              );
+            },
+            orElse: () => null,
+          ),
+        ].whereType<Widget>().toList(),
+      ),
       body: docAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
@@ -46,6 +68,20 @@ class VisitDocumentationPage extends ConsumerWidget {
         data: (state) => _VisitHeaderAndSoap(visitId: id, state: state),
       ),
     );
+  }
+
+  Future<void> _submitVisit(BuildContext context, WidgetRef ref, String visitId, VisitDocumentationState state) async {
+    final result = await VisitSubmitDialog.show(context, visitId: visitId, expectedUpdatedAt: state.expectedUpdatedAt);
+
+    if (result == null || !context.mounted) {
+      return;
+    }
+
+    ref.invalidate(visitDocumentationProvider(visitId));
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Visit submitted. The linked appointment is now completed.')));
   }
 }
 

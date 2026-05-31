@@ -18,6 +18,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../support/patient_rpc_test_client.dart';
+import '../../support/visit_rpc_test_client.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 
 const _branchId = '44444444-4444-4444-8444-444444444444';
 const _branch = BranchSummary(id: _branchId, name: 'Main');
@@ -50,6 +52,7 @@ Widget _scope({
         ),
       ),
       patientRepositoryProvider.overrideWith((ref) => PatientRepositoryImpl(client ?? PatientRpcTestClient())),
+      visitRepositoryProvider.overrideWith((ref) => VisitRepository(VisitRpcTestClient())),
       patientListScopeProvider.overrideWith(PatientListScopeNotifier.new),
       staffAssignableBranchesProvider.overrideWith((ref) async => [_branch]),
     ],
@@ -75,7 +78,7 @@ void main() {
       expect(find.byKey(const Key('patient_list_empty_register')), findsNothing);
     });
 
-    testWidgets('advanced: can open detail and visits placeholder', (tester) async {
+    testWidgets('advanced: can open detail and visit history section', (tester) async {
       await _pump(
         tester,
         _scope(
@@ -84,7 +87,7 @@ void main() {
       );
 
       expect(find.byKey(const Key('patient_detail_profile')), findsOneWidget);
-      expect(find.byKey(const Key('patient_visits_placeholder')), findsOneWidget);
+      expect(find.byKey(const Key('patient_visit_history_section')), findsOneWidget);
       expect(find.byKey(const Key('patient_detail_edit')), findsNothing);
       expect(find.byKey(const Key('patient_detail_archive')), findsNothing);
     });
