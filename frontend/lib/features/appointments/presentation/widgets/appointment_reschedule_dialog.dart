@@ -8,7 +8,9 @@ import 'package:ai_clinic/features/appointments/data/appointment_repository.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/create_appointment_result.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_working_hours.dart';
 import 'package:ai_clinic/features/appointments/presentation/appointment_rpc_messages.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_branch_providers.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/conflict_error_banner.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/duration_field.dart';
 
@@ -137,6 +139,23 @@ class _AppointmentRescheduleDialogState extends ConsumerState<AppointmentResched
     });
 
     try {
+      final branchId = ref.read(authSessionProvider).context?.activeBranchId;
+      if (branchId != null && branchId.isNotEmpty) {
+        final schedule = await loadBranchWorkingSchedule(ref, branchId: branchId);
+        final endTime = _startTime.add(Duration(minutes: duration));
+        if (schedule != null &&
+            !AppointmentWorkingHours.isWithinSchedule(schedule: schedule, start: _startTime, end: endTime)) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _isSaving = false;
+            _formError = 'Appointment must be within branch working hours.';
+          });
+          return;
+        }
+      }
+
       final result = await ref
           .read(appointmentRepositoryProvider)
           .rescheduleAppointment(appointmentId: _item.id, startTime: _startTime, durationMinutes: duration);

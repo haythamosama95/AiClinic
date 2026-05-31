@@ -10,9 +10,11 @@ import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/domain/create_appointment_result.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_actions.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 
 import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
+import '../../support/visit_rpc_test_client.dart';
 
 void main() {
   group('AppointmentStatusActions', () {
@@ -99,12 +101,75 @@ void main() {
       expect(find.byKey(const Key('appointments_status_confirm')), findsNothing);
     });
 
+    testWidgets('in_progress shows create visit instead of complete', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          item: _item(status: AppointmentStatus.inProgress, onAppointmentDay: true),
+          permissions: const {PermissionKeys.appointmentsCreate, PermissionKeys.visitsCreate},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_visit_create')), findsOneWidget);
+      expect(find.byKey(const Key('appointments_status_complete')), findsNothing);
+    });
+
+    testWidgets('checked_in shows create visit when visits.create granted', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          item: _item(status: AppointmentStatus.checkedIn, onAppointmentDay: true),
+          permissions: const {PermissionKeys.appointmentsCreate, PermissionKeys.visitsCreate},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_visit_create')), findsOneWidget);
+      expect(find.byKey(const Key('appointments_status_start')), findsOneWidget);
+    });
+
+    testWidgets('in_progress with linked visit shows open visit', (tester) async {
+      final visitClient = VisitRpcTestClient(
+        rpcResults: {
+          'get_visit_by_appointment': {
+            'success': true,
+            'data': {'visit_id': 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'status': 'in_progress'},
+          },
+        },
+      );
+
+      await tester.pumpWidget(
+        _host(
+          item: _item(status: AppointmentStatus.inProgress, onAppointmentDay: true),
+          permissions: const {PermissionKeys.appointmentsCreate, PermissionKeys.visitsCreate},
+          visitClient: visitClient,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_visit_open')), findsOneWidget);
+      expect(find.byKey(const Key('appointments_visit_create')), findsNothing);
+    });
+
+    testWidgets('visit actions hidden without visits.create grant', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          item: _item(status: AppointmentStatus.checkedIn, onAppointmentDay: true),
+          permissions: const {PermissionKeys.appointmentsCreate},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_visit_create')), findsNothing);
+      expect(find.byKey(const Key('appointments_visit_open')), findsNothing);
+    });
+
     testWidgets('terminal completed hides all actions', (tester) async {
       await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.completed)));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('appointments_status_complete')), findsNothing);
       expect(find.byKey(const Key('appointments_status_start')), findsNothing);
+      expect(find.byKey(const Key('appointments_visit_create')), findsNothing);
     });
 
     testWidgets('scheduled shows reschedule alongside confirm', (tester) async {
@@ -299,6 +364,7 @@ Widget _host({
   required AppointmentListItem item,
   Set<String> permissions = const {PermissionKeys.appointmentsCreate},
   AppointmentRpcTestClient? client,
+  VisitRpcTestClient? visitClient,
   ValueChanged<AppointmentStatus>? onStatusChanged,
   ValueChanged<CreateAppointmentResult>? onRescheduled,
 }) {
@@ -312,6 +378,7 @@ Widget _host({
     overrides: [
       authSessionProvider.overrideWith(() => _PresetAuth(authState)),
       appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client ?? AppointmentRpcTestClient())),
+      visitRepositoryProvider.overrideWith((ref) => VisitRepository(visitClient ?? VisitRpcTestClient())),
     ],
     child: MaterialApp(
       home: Scaffold(

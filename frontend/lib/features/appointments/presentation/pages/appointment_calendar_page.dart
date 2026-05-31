@@ -5,10 +5,10 @@ import 'package:calendar_view/calendar_view.dart';
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_branch_providers.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_actions.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
@@ -43,7 +43,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final canAccess = ref.watch(permissionServiceProvider).canAccessAppointments();
     final state = ref.watch(appointmentCalendarProvider);
     final controller = ref.read(appointmentCalendarProvider.notifier);
-    final branchesAsync = ref.watch(_calendarBranchesProvider);
+    final branchesAsync = ref.watch(appointmentActiveBranchesProvider);
     final branches = branchesAsync.maybeWhen(data: (items) => items, orElse: () => const <BranchListItem>[]);
     final selectedBranch = branches.where((item) => item.id == state.selectedBranchId).firstOrNull;
     final selectedSchedule = (selectedBranch?.id.isNotEmpty ?? false)
@@ -80,7 +80,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         ),
       ),
       body: RefreshIndicator(
-        onRefresh: controller.refresh,
+        onRefresh: () async {
+          ref.invalidate(appointmentActiveBranchesProvider);
+          await controller.refresh();
+        },
         child: ListView(
           controller: _pageScrollController,
           primary: false,
@@ -488,6 +491,7 @@ class _AppointmentEventSheet extends StatelessWidget {
               item: item,
               onStatusChanged: (_) => onStatusChanged(),
               onRescheduled: (_) => onStatusChanged(),
+              onVisitChanged: onStatusChanged,
             ),
             const SizedBox(height: 8),
             Align(
@@ -500,16 +504,6 @@ class _AppointmentEventSheet extends StatelessWidget {
     );
   }
 }
-
-final _calendarBranchesProvider = FutureProvider.autoDispose<List<BranchListItem>>((ref) async {
-  final auth = ref.read(authSessionProvider).context;
-  final orgId = auth?.organizationId;
-  if (orgId == null || orgId.trim().isEmpty) {
-    return const <BranchListItem>[];
-  }
-  final branches = await ref.read(listBranchesUseCaseProvider)(organizationId: orgId, filter: BranchListFilter.active);
-  return branches..sort((a, b) => a.name.compareTo(b.name));
-});
 
 class _DoctorFilter extends ConsumerStatefulWidget {
   const _DoctorFilter({required this.selectedDoctorId, required this.onChanged});

@@ -274,6 +274,38 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- get_visit_by_appointment returns in-progress visit for linked appointment.
+  v_result := public.get_visit_by_appointment(v_appt_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'get_visit_by_appointment_in_progress',
+    v_result.success
+      AND (v_result.data ->> 'visit_id') IS NOT NULL
+      AND (v_result.data ->> 'status') = 'in_progress',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- get_visit_by_appointment empty when no visit exists.
+  v_start := pg_temp.test_appointment_same_day_slot(15);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 15;
+  v_result := public.create_appointment(
+    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt2_id := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt2_id, 'confirmed');
+  v_result := public.update_appointment_status(v_appt2_id, 'checked_in');
+  v_result := public.get_visit_by_appointment(v_appt2_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'get_visit_by_appointment_no_visit',
+    v_result.success
+      AND (v_result.data ->> 'visit_id') IS NULL
+      AND (v_result.data ->> 'status') IS NULL,
+    COALESCE(v_result.error_code, 'visit_id=' || COALESCE(v_result.data ->> 'visit_id', '<null>'))
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- SOAP workflow on a dedicated visit.
   v_start := pg_temp.test_appointment_same_day_slot(5);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 5;

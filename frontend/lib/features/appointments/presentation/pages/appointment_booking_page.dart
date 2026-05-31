@@ -8,7 +8,9 @@ import 'package:ai_clinic/core/widgets/app_form_field.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_working_hours.dart';
 import 'package:ai_clinic/features/appointments/presentation/appointment_rpc_messages.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_branch_providers.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/conflict_error_banner.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/doctor_selector.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/duration_field.dart';
@@ -147,6 +149,20 @@ class _AppointmentBookingPageState extends ConsumerState<AppointmentBookingPage>
     });
 
     try {
+      final schedule = await loadBranchWorkingSchedule(ref, branchId: branchId);
+      final endTime = _startTime!.add(Duration(minutes: duration));
+      if (schedule != null &&
+          !AppointmentWorkingHours.isWithinSchedule(schedule: schedule, start: _startTime!, end: endTime)) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isSaving = false;
+          _formError = 'Appointment must be within branch working hours.';
+        });
+        return;
+      }
+
       await ref
           .read(appointmentRepositoryProvider)
           .createAppointment(

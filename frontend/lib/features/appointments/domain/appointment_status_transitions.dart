@@ -8,7 +8,6 @@ AppointmentStatus? forwardStatusTargetFor(AppointmentListItem item, {DateTime? r
     AppointmentStatus.scheduled => AppointmentStatus.confirmed,
     AppointmentStatus.confirmed => AppointmentStatus.checkedIn,
     AppointmentStatus.checkedIn => AppointmentStatus.inProgress,
-    AppointmentStatus.inProgress => AppointmentStatus.completed,
     _ => null,
   };
   if (target == null || !canTransitionToStatusOnDate(target, item.startTime, reference)) {
@@ -46,7 +45,6 @@ String forwardStatusActionLabelFor(AppointmentListItem item, {DateTime? referenc
     AppointmentStatus.confirmed => 'Confirm',
     AppointmentStatus.checkedIn => 'Check in',
     AppointmentStatus.inProgress => 'Start',
-    AppointmentStatus.completed => 'Complete',
     _ => '',
   };
 }

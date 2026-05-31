@@ -4,6 +4,13 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_b
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -265,6 +272,22 @@ void main() {
       expect(find.textContaining('same day'), findsOneWidget);
       expect(find.textContaining('existing appointment'), findsOneWidget);
     });
+
+    testWidgets('advanced: reloads branch working schedule from server before booking', (tester) async {
+      final branchId = '44444444-4444-4444-8444-444444444444';
+      final branches = _FakeBranchRepository(branchId: branchId);
+      final client = AppointmentRpcTestClient();
+
+      await _pumpBookingPage(tester, _host(rpcClient: client, branchRepository: branches));
+      await _fillMinimalBookingForm(tester);
+
+      expect(branches.listBranchesCalls, 0);
+      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+      await tester.pumpAndSettle();
+
+      expect(branches.listBranchesCalls, greaterThanOrEqualTo(1));
+      expect(client.lastFunction, 'create_appointment');
+    });
   });
 }
 
@@ -315,13 +338,50 @@ class _FakeStaffAdminRepository implements StaffAdminRepository {
       throw UnimplementedError();
 }
 
+BranchWorkingSchedule _allDayWorkingSchedule() {
+  return BranchWorkingSchedule(
+    BranchWeekday.values
+        .map((day) => BranchWorkingDayHours(day: day, isWorkingDay: true, openTime: '00:00', closeTime: '23:59'))
+        .toList(growable: false),
+  );
+}
+
+class _FakeBranchRepository implements BranchRepository {
+  _FakeBranchRepository({required this.branchId, BranchWorkingSchedule? schedule})
+    : schedule = schedule ?? _allDayWorkingSchedule();
+
+  final String branchId;
+  BranchWorkingSchedule schedule;
+  int listBranchesCalls = 0;
+
+  @override
+  Future<List<BranchListItem>> listBranches({
+    required String organizationId,
+    BranchListFilter filter = BranchListFilter.all,
+  }) async {
+    listBranchesCalls++;
+    return [BranchListItem(id: branchId, name: 'Main Branch', isActive: true, workingSchedule: schedule)];
+  }
+
+  @override
+  Future<String> createBranch(CreateBranchInput input) => throw UnimplementedError();
+
+  @override
+  Future<RpcResult> setBranchActive({required String branchId, required bool isActive}) => throw UnimplementedError();
+
+  @override
+  Future<String> updateBranch(UpdateBranchInput input) => throw UnimplementedError();
+}
+
 Widget _host({
   AppointmentRpcTestClient? rpcClient,
   Set<String> permissions = const {PermissionKeys.appointmentsCreate, PermissionKeys.patientsView},
   GoRouter? router,
+  _FakeBranchRepository? branchRepository,
 }) {
   final client = rpcClient ?? AppointmentRpcTestClient();
   final branchId = '44444444-4444-4444-8444-444444444444';
+  final branches = branchRepository ?? _FakeBranchRepository(branchId: branchId);
   final routerConfig =
       router ??
       GoRouter(
@@ -352,6 +412,7 @@ Widget _host({
       appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
       patientRepositoryProvider.overrideWith((ref) => FakePatientRepository(patients: [samplePatientListItem()])),
       staffAdminRepositoryProvider.overrideWithValue(_FakeStaffAdminRepository()),
+      branchRepositoryProvider.overrideWithValue(branches),
     ],
     child: MaterialApp.router(routerConfig: routerConfig),
   );

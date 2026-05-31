@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_branch_providers.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/branch_list_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/settings_rpc_messages.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -166,6 +167,7 @@ class BranchFormNotifier extends AsyncNotifier<BranchFormUiState> {
 
       state = AsyncData(current.copyWith(isSaving: false, savedBranchId: savedId));
       ref.invalidate(branchListProvider);
+      ref.invalidate(appointmentActiveBranchesProvider);
       AppLog.info('settings.branch.save.ok branch_id=$savedId');
       return savedId;
     } on RpcFailure catch (error) {

@@ -164,6 +164,7 @@ class _QueueRow extends ConsumerWidget {
             dense: true,
             onStatusChanged: (_) => onStatusChanged(),
             onRescheduled: (_) => onStatusChanged(),
+            onVisitChanged: onStatusChanged,
           ),
         ),
       ],

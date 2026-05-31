@@ -25,6 +25,7 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/auth_shell_page.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
@@ -40,6 +41,7 @@ import 'package:go_router/go_router.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/patient_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
+import '../../support/visit_rpc_test_client.dart';
 
 const _repoRoot = '..';
 const _branchAId = '44444444-4444-4444-8444-444444444444';
@@ -72,6 +74,7 @@ Widget _scope({
   required Widget child,
   AuthSessionState? auth,
   AppointmentRpcTestClient? client,
+  VisitRpcTestClient? visitClient,
   AppointmentQueueRealtimeConnection realtime = AppointmentQueueRealtimeConnection.live,
   Map<String, Map<String, dynamic>>? rpcResults,
 }) {
@@ -80,6 +83,7 @@ Widget _scope({
     overrides: [
       authSessionProvider.overrideWith(() => _PresetAuth(auth ?? _auth())),
       appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(rpcClient)),
+      visitRepositoryProvider.overrideWith((ref) => VisitRepository(visitClient ?? VisitRpcTestClient())),
       appointmentQueueRealtimeClientProvider.overrideWithValue(_FakeRealtime(realtime)),
       patientRepositoryProvider.overrideWith((ref) => FakePatientRepository(patients: [samplePatientListItem()])),
       staffAdminRepositoryProvider.overrideWithValue(_SmokeStaffRepo()),
@@ -90,7 +94,7 @@ Widget _scope({
 
 void main() {
   group('spec case 4 — status lifecycle (reception on any doctor)', () {
-    testWidgets('confirm, check-in, start, and complete advance status via RPC', (tester) async {
+    testWidgets('confirm, check-in, start, then offer create visit (not manual complete)', (tester) async {
       final client = AppointmentRpcTestClient();
       var item = _item(status: AppointmentStatus.scheduled, onAppointmentDay: true);
 
@@ -98,6 +102,7 @@ void main() {
         tester,
         _scope(
           client: client,
+          auth: _auth(permissions: {PermissionKeys.appointmentsCreate, PermissionKeys.visitsCreate}),
           child: MaterialApp(
             home: Scaffold(
               body: StatefulBuilder(
@@ -127,10 +132,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(client.lastParams?['p_new_status'], 'in_progress');
 
-      await tester.tap(find.byKey(const Key('appointments_status_complete')));
-      await tester.pumpAndSettle();
-      expect(client.lastParams?['p_new_status'], 'completed');
       expect(find.byKey(const Key('appointments_status_complete')), findsNothing);
+      expect(find.byKey(const Key('appointments_visit_create')), findsOneWidget);
     });
   });
 

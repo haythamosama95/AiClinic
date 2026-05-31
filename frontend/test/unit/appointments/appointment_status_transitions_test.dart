@@ -45,6 +45,12 @@ void main() {
       expect(forwardStatusActionLabelFor(row, reference: reference), 'Start');
     });
 
+    test('in_progress does not offer complete (visit submit required)', () {
+      final row = item(status: AppointmentStatus.inProgress);
+      expect(forwardStatusTargetFor(row, reference: reference), isNull);
+      expect(forwardStatusActionLabelFor(row, reference: reference), isEmpty);
+    });
+
     test('terminal completed offers no forward action', () {
       final row = item(status: AppointmentStatus.completed);
       expect(forwardStatusTargetFor(row), isNull);

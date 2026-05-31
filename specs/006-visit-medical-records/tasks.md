@@ -64,19 +64,19 @@
 
 ### Tests for User Story 1
 
-- [ ] T017 [P] [US1] Add `create_visit` and `get_visit_by_appointment` tests (eligible statuses, duplicate rejection, doctor required, checked_in advance) in `backend/tests/visit_medical_records_crud.sql`
-- [ ] T018 [P] [US1] Add unit tests for `VisitRepository.createVisit` and `getVisitByAppointment` in `frontend/test/unit/visits/visit_repository_create_test.dart`
-- [ ] T019 [P] [US1] Add widget tests for doctor selection and eligibility errors in `frontend/test/widget/visits/visit_create_dialog_test.dart`
+- [X] T017 [P] [US1] Add `create_visit` and `get_visit_by_appointment` tests (eligible statuses, duplicate rejection, doctor required, checked_in advance) in `backend/tests/visit_medical_records_crud.sql`
+- [X] T018 [P] [US1] Add unit tests for `VisitRepository.createVisit` and `getVisitByAppointment` in `frontend/test/unit/visits/visit_repository_create_test.dart`
+- [X] T019 [P] [US1] Add widget tests for doctor selection and eligibility errors in `frontend/test/widget/visits/visit_create_dialog_test.dart`
 
 ### Implementation for User Story 1
 
-- [ ] T020 [US1] Implement `VisitRepository.createVisit` and `getVisitByAppointment` per `contracts/visit-mutations.md` and `contracts/visit-queries.md` in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T021 [US1] Implement `VisitCreateDialog` with optional doctor picker (branch doctors) in `frontend/lib/features/appointments/presentation/widgets/visit_create_dialog.dart`
-- [ ] T022 [US1] Remove `in_progress` → `completed` from `forwardStatusTargetFor` in `frontend/lib/features/appointments/domain/appointment_status_transitions.dart`
-- [ ] T023 [US1] Replace **Complete** with **Create visit** / **Open visit** actions gated by `visits.create` in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
-- [ ] T024 [US1] Wire visit create/open actions on `AppointmentQueuePage` and `AppointmentCalendarPage` in `frontend/lib/features/appointments/presentation/pages/appointment_queue_page.dart` and `appointment_calendar_page.dart`
-- [ ] T025 [US1] Implement `VisitDocumentationPage` shell (loads visit context, placeholder sections until later stories) in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
-- [ ] T026 [US1] Gate `/visits/:visitId/document` route to `visits.create` or `visits.edit_soap` in `frontend/lib/app/router.dart`
+- [X] T020 [US1] Implement `VisitRepository.createVisit` and `getVisitByAppointment` per `contracts/visit-mutations.md` and `contracts/visit-queries.md` in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T021 [US1] Implement `VisitCreateDialog` with optional doctor picker (branch doctors) in `frontend/lib/features/appointments/presentation/widgets/visit_create_dialog.dart`
+- [X] T022 [US1] Remove `in_progress` → `completed` from `forwardStatusTargetFor` in `frontend/lib/features/appointments/domain/appointment_status_transitions.dart`
+- [X] T023 [US1] Replace **Complete** with **Create visit** / **Open visit** actions gated by `visits.create` in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
+- [X] T024 [US1] Wire visit create/open actions on `AppointmentQueuePage` and `AppointmentCalendarPage` in `frontend/lib/features/appointments/presentation/pages/appointment_queue_page.dart` and `appointment_calendar_page.dart`
+- [X] T025 [US1] Implement `VisitDocumentationPage` shell (loads visit context, placeholder sections until later stories) in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T026 [US1] Gate `/visits/:visitId/document` route to `visits.create` or `visits.edit_soap` in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 1–4, 2b, 14–15; acceptance criteria 1–2
 
