@@ -2,7 +2,7 @@
 
 This directory replaces the legacy monolithic `docs/architecture_overview.md` with focused architecture references that can be loaded selectively during planning and implementation.
 
-> **Last updated:** Reflects implementation through V1-3 (Patient Management). Includes divergences from original design (username auth, `auth_internal` schema pattern, patient schema changes).
+> **Last updated:** Reflects implementation through V1-4 (Appointment Management). Includes divergences from original design (username auth, `auth_internal` schema pattern, patient schema changes, branch `working_schedule`, planned-only appointments with `confirmed` status).
 
 ## How To Use This Architecture Set
 
@@ -30,7 +30,7 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
 ## Common Routing Shortcuts
 
 - Auth, staff, roles, and branch setup: `04-backend.md`, `05-database.md`, `07-frontend.md`, `09-security-rbac.md`, plus the relevant spec in `specs/common/`.
-- Operational features like patients, appointments, visits, billing, and shifts: `04-backend.md`, `05-database.md`, `07-frontend.md`, `09-security-rbac.md`, plus the relevant spec in `specs/operations/`.
+- Operational features like patients, appointments, visits, billing, and shifts: `04-backend.md`, `05-database.md`, `07-frontend.md`, `09-security-rbac.md`, plus the relevant feature spec (`specs/005-appointment-management/` for V1-4 appointments; shared `specs/operations/` specs when authored).
 - AI features: `02-system-overview.md`, `06-ai.md`, `07-frontend.md`, optionally `04-backend.md` or `05-database.md`, plus the relevant spec in `specs/ai/`.
 - Deployment and installer work: `03-deployment-networking.md`, `07-frontend.md`, `10-resilience-and-scale.md`, plus the relevant deployment spec.
 - Analytics: `04-backend.md`, `05-database.md`, `06-ai.md`, `07-frontend.md`, `09-security-rbac.md`, `10-resilience-and-scale.md`, plus `specs/analytics/dashboards.spec.md`.

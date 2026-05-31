@@ -2,10 +2,10 @@
 
 ## Product Overview Document
 
-Version: 1.0  
-Status: Foundational Product Definition  
-Target Audience: AI Planning Agents, Architects, Developers, Product Managers  
-Primary Stack: Flutter + Supabase + Local AI Models  
+Version: 1.0
+Status: Foundational Product Definition
+Target Audience: AI Planning Agents, Architects, Developers, Product Managers
+Primary Stack: Flutter + Supabase + Local AI Models
 Architecture Style: Modular Domain-Driven Hybrid Local/Cloud SaaS
 
 ---
@@ -327,7 +327,7 @@ Branches are NOT implemented as separate database tables.
 
 Instead:
 
-- all operational records reference branch_id. 
+- all operational records reference branch_id.
 - the branch record references the organization_id.
 
 This ensures:
@@ -404,8 +404,7 @@ Supported attachments:
 
 Supported appointment types:
 
-- planned appointments
-- walk-ins
+- planned appointments (staff-chosen date and time)
 
 Rules:
 
@@ -692,7 +691,7 @@ Frontend:
 
 - Flutter
 - Follows TDD Clean Architecture Best Practices
-- 
+-
 
 Cloud Services:
 

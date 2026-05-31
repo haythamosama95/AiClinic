@@ -2,7 +2,7 @@
 //
 // Split coverage:
 // - Cases 1–2, 7, 14 (booking): `appointment_booking_us1_test.dart`
-// - Case 3 (walk-in) removed; booking-only flow in `appointment_booking_us1_test.dart`
+// Booking-only flow covered in `appointment_booking_us1_test.dart`
 // - Case 13 (backend harness): `backend/tests/run_appointment_management_tests.sh`
 // - Remaining UI flows: this file (calendar, queue, status, cancel, reschedule, guards).
 

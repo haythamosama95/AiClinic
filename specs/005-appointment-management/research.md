@@ -3,7 +3,7 @@
 ## Decision 1: `auth_internal` + public RPC wrappers (`rpc_result`)
 
 - **Decision**: Appointment mutations and list queries run in `auth_internal` (SECURITY DEFINER) with thin `public.*` INVOKER wrappers returning `public.rpc_result`.
-- **Rationale**: Constitution III/IV; conflict detection, status transitions, walk-in slot assignment, permission checks (`appointments.create` / `appointments.cancel`), and audit stay in PostgreSQL.
+- **Rationale**: Constitution III/IV; conflict detection, status transitions, permission checks (`appointments.create` / `appointments.cancel`), and audit stay in PostgreSQL.
 - **Alternatives considered**: Direct PostgREST writes (rejected). Edge Functions (rejected — cloud-only).
 
 ## Decision 2: Branch-scoped RLS on `appointments`
@@ -12,16 +12,16 @@
 - **Rationale**: `docs/architecture/05-database.md` appointments example uses branch isolation; differs from patients (org-wide).
 - **Alternatives considered**: Org-wide appointment reads (rejected — contradicts architecture and spec FR-003).
 
-## Decision 3: Conflict detection via `tstzrange` overlap
+## Decision 3: Conflict detection via time overlap (branch-wide)
 
-- **Decision**: Overlap predicate `start_time < p_end AND end_time > p_start` (equivalent to `tstzrange` overlap) for same `doctor_id`, `branch_id`, excluding `cancelled` and `no_show`, and excluding self on reschedule.
-- **Rationale**: FR-009; architecture conflict rule; index-friendly with `(branch_id, doctor_id, start_time)`.
-- **Alternatives considered**: Advisory locks only (rejected — no DB guarantee). Per-patient conflicts (rejected — spec is doctor-scoped).
+- **Decision**: Overlap predicate `start_time < p_end AND end_time > p_start` for same `branch_id`, excluding `cancelled` and `no_show`, and excluding self on reschedule. Branch-wide slot uniqueness (not per-doctor).
+- **Rationale**: FR-009; implemented and verified in `appointment_management_crud.sql`.
+- **Alternatives considered**: Per-doctor-only overlap (rejected — double-booking same room/time). Advisory locks only (rejected — no DB guarantee).
 
 ## Decision 4: ENUM types for type and status
 
-- **Decision**: `appointment_type`: `planned`, `walk_in`. `appointment_status`: `scheduled`, `checked_in`, `in_progress`, `completed`, `cancelled`, `no_show`.
-- **Rationale**: Architecture schema; spec FR-011; entry status by type enforced in `create_appointment`.
+- **Decision**: `appointment_type`: `planned` only. `appointment_status`: `scheduled`, `confirmed`, `checked_in`, `in_progress`, `completed`, `cancelled`, `no_show`.
+- **Rationale**: Architecture schema; spec FR-011; phone confirmation requires `confirmed` before check-in.
 - **Alternatives considered**: Text columns with CHECK (rejected — weaker typing).
 
 ## Decision 5: Default duration in `app_settings`
@@ -36,11 +36,11 @@
 - **Rationale**: Prevents zero-length and absurd slots; supports custom end time on forms.
 - **Alternatives considered**: End time only without duration field (rejected — worse UX for desk staff).
 
-## Decision 7: Walk-in auto-slot algorithm
+## Decision 7: Same-day patient limit
 
-- **Decision**: On `create_appointment` with `walk_in`: (1) resolve duration from params or settings default; (2) consider existing appointments for doctor+branch today where status ∉ (`cancelled`,`no_show`), ordered by `start_time`; (3) find earliest interval ≥ `max(now(), start_of_today_in_org_tz)` where interval length = duration fits without overlap; (4) if none, return `NO_SLOT_AVAILABLE`.
-- **Rationale**: Spec FR-008b/c and clarifications — walk-ins fill gaps; queue sorts by assigned `start_time`.
-- **Alternatives considered**: Append after last appointment only (rejected — ignores midday gaps). Manual start time on walk-in (rejected — clarified auto-assign).
+- **Decision**: `create_appointment` rejects a second non-terminal appointment for the same patient at the same branch on the same local calendar day (`PATIENT_ALREADY_BOOKED_SAME_DAY`).
+- **Rationale**: Prevents duplicate same-day bookings; verified in backend tests.
+- **Alternatives considered**: Unlimited same-day bookings (rejected — front-desk error risk).
 
 ## Decision 8: `queue_number` unused in V1-4
 
@@ -50,13 +50,13 @@
 
 ## Decision 9: Status transitions in single RPC
 
-- **Decision**: `update_appointment_status(p_appointment_id, p_new_status, p_cancel_reason nullable)` validates transition matrix; cancel/no-show require `appointments.cancel`; forward transitions require `appointments.create`; no assigned-doctor check.
+- **Decision**: `update_appointment_status(p_appointment_id, p_new_status)` validates transition matrix; cancel/no-show require `appointments.cancel`; forward transitions require `appointments.create`; day-gating for in-day statuses; no assigned-doctor check.
 - **Rationale**: Clarification — reception may complete full flow; architecture function name.
 - **Alternatives considered**: Separate RPC per transition (rejected — verbose).
 
 ## Decision 10: `reschedule_appointment` for `scheduled` only
 
-- **Decision**: Dedicated RPC updates `start_time`/`end_time` with conflict check excluding self; only when `status = scheduled` and `type = planned` (walk-ins never scheduled).
+- **Decision**: Dedicated RPC updates `start_time`/`end_time` with conflict check excluding self; only when `status = scheduled`.
 - **Rationale**: Clarification session 2026-05-23 option A.
 - **Alternatives considered**: Cancel+rebook only (rejected by clarification).
 
@@ -74,15 +74,15 @@
 
 ## Decision 13: Flutter module `features/appointments`
 
-- **Decision**: Routes under `/appointments` (calendar home, book, walk-in, queue, doctor schedule); shell nav when `appointments.create` OR `appointments.cancel`.
+- **Decision**: Routes under `/appointments` (hub, book, queue, calendar, doctor schedule); shell nav when `appointments.create` OR `appointments.cancel`.
 - **Rationale**: `docs/architecture/07-frontend.md` appointments folder; separation from patients/settings.
 - **Alternatives considered**: Embed in patients feature (rejected).
 
-## Decision 14: `doctor_id` references `staff_members.id`
+## Decision 14: `doctor_id` references `staff_members.id` (optional)
 
-- **Decision**: FK `doctor_id` → `staff_members(id)`; RPC asserts `role = 'doctor'` and staff active, assigned to branch (via `staff_branch_assignments` or org doctor list per V1-2).
-- **Rationale**: Spec data model; scheduling is per clinical staff doctor.
-- **Alternatives considered**: Separate doctors table (rejected — not in schema).
+- **Decision**: FK `doctor_id` → `staff_members(id)` nullable; RPC asserts `role = 'doctor'` and branch assignment when `doctor_id` is set.
+- **Rationale**: Spec data model; supports unassigned provider slots.
+- **Alternatives considered**: Separate doctors table (rejected — not in schema). Required doctor (rejected — optional assignment implemented).
 
 ## Decision 15: PermissionKeys extension
 
@@ -92,6 +92,6 @@
 
 ## Decision 16: Default duration UI in settings
 
-- **Decision**: Add numeric field on organization settings page (and optional per-branch override later in branch form if time permits) writing `app_settings` via `set_appointment_default_duration`; booking/walk-in forms read via `get_appointment_settings(p_branch_id)`.
+- **Decision**: Add numeric field on organization settings page (and optional per-branch override later in branch form if time permits) writing `app_settings` via `set_appointment_default_duration`; booking form reads via `get_appointment_settings(p_branch_id)`.
 - **Rationale**: Clarification — user-editable default; org settings already exists in V1-2.
 - **Alternatives considered**: Hidden config file (rejected).

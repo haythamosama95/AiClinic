@@ -57,7 +57,7 @@ Create, reschedule, cancel, status updates, and default duration settings (V1-4)
 | `p_branch_id`        | uuid        | Yes         | Active branch; ∈ JWT `branch_ids`                                   |
 | `p_patient_id`       | uuid        | Yes         | Non-archived; same org                                              |
 | `p_doctor_id`        | uuid        | No          | Staff doctor at branch; omit or null for booking without assignment |
-| `p_type`             | text        | Yes         | `planned` only (`walk_in` rejected)                                 |
+| `p_type`             | text        | Yes         | Must be `planned`                                                   |
 | `p_start_time`       | timestamptz | Conditional | Required for `planned`                                              |
 | `p_duration_minutes` | int         | No          | Default from settings if omitted                                    |
 | `p_end_time`         | timestamptz | No          | Optional override; must imply valid duration                        |

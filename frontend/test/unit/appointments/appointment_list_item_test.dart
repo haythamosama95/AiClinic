@@ -34,8 +34,8 @@ void main() {
       expect(item!.status, AppointmentStatus.confirmed);
     });
 
-    test('returns null for legacy walk_in type', () {
-      expect(AppointmentListItem.fromRow(_listRow(type: 'walk_in', status: 'checked_in')), isNull);
+    test('returns null for unknown appointment type', () {
+      expect(AppointmentListItem.fromRow(_listRow(type: 'unknown', status: 'checked_in')), isNull);
     });
 
     test('returns null when required fields missing or blank', () {

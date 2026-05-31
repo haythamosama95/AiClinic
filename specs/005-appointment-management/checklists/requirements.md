@@ -32,7 +32,7 @@
 ## Notes
 
 - Validation passed on the first review iteration.
-- Clarification session 2026-05-23 (second pass): queue ordering, walk-in slot assignment, reschedule scope, status permissions, and planned vs walk-in entry status updated in spec.
+- Clarification session 2026-05-23 (second pass): queue ordering, reschedule scope, status permissions, and phone-confirmation (`confirmed`) lifecycle updated in spec.
 - `specs/operations/appointments.spec.md` is referenced by the roadmap but is not yet present; this feature spec is authoritative for V1-4 until that shared spec is authored.
 - Visit creation on appointment completion is explicitly deferred to V1-5.
 - Appointment viewing is gated by `appointments.create` or `appointments.cancel` because no separate `appointments.view` key exists in the V1-1 seed; documented in Clarifications and Assumptions.

@@ -37,7 +37,7 @@ Requires `appointments.create` OR `appointments.cancel`.
   "doctor_name": "string",
   "start_time": "timestamptz",
   "end_time": "timestamptz",
-  "type": "planned|walk_in",
+  "type": "planned",
   "status": "scheduled|..."
 }
 ```
@@ -65,11 +65,10 @@ Not an RPC — Flutter subscription:
 
 ## Error codes (shared)
 
-| Code                 | Meaning                       |
-| -------------------- | ----------------------------- |
-| `FORBIDDEN`          | Permission or branch          |
-| `NOT_FOUND`          | Unknown id                    |
-| `INVALID_INPUT`      | Validation                    |
-| `SCHEDULE_CONFLICT`  | Overlapping doctor slot       |
-| `NO_SLOT_AVAILABLE`  | Walk-in; no gap fits duration |
-| `INVALID_TRANSITION` | Status change not allowed     |
+| Code                 | Meaning                      |
+| -------------------- | ---------------------------- |
+| `FORBIDDEN`          | Permission or branch         |
+| `NOT_FOUND`          | Unknown id                   |
+| `INVALID_INPUT`      | Validation                   |
+| `SCHEDULE_CONFLICT`  | Overlapping branch time slot |
+| `INVALID_TRANSITION` | Status change not allowed    |

@@ -14,14 +14,14 @@
 
 There is no custom backend server. Supabase provides the entire backend:
 
-| Supabase Component | Role in This System                                                                                                                      |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Supabase Component | Role in This System                                                                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | **GoTrue (Auth)**  | Staff authentication via username + password (usernames stored in GoTrue's `email` field without `@`), JWT token issuance, session management |
-| **PostgREST**      | Auto-generated REST API from the database schema. Handles CRUD for all tables. Enforces RLS on every request.                            |
-| **PostgreSQL RPC** | Complex business logic exposed as database functions callable via `supabase.rpc()`. This is the primary mechanism for domain operations. |
-| **Storage API**    | File uploads/downloads for visit attachments (PDFs, scans, lab reports, examination documents)                                           |
-| **Realtime**       | WebSocket subscriptions for live UI updates (appointment queue changes, new patient check-ins)                                           |
-| **RLS Policies**   | Row-level authorization. Every table has policies that restrict access based on the authenticated user's organization, branch, and role. |
+| **PostgREST**      | Auto-generated REST API from the database schema. Handles CRUD for all tables. Enforces RLS on every request.                                 |
+| **PostgreSQL RPC** | Complex business logic exposed as database functions callable via `supabase.rpc()`. This is the primary mechanism for domain operations.      |
+| **Storage API**    | File uploads/downloads for visit attachments (PDFs, scans, lab reports, examination documents)                                                |
+| **Realtime**       | WebSocket subscriptions for live UI updates (appointment queue changes, new patient check-ins)                                                |
+| **RLS Policies**   | Row-level authorization. Every table has policies that restrict access based on the authenticated user's organization, branch, and role.      |
 
 ### Business Logic Distribution
 
@@ -32,7 +32,8 @@ Business logic is distributed across two locations, with clear ownership rules:
 These functions ARE the backend business logic. They run inside PostgreSQL and are invoked via `supabase.rpc('function_name', params)`.
 
 Responsibilities:
-- Appointment conflict detection and creation
+- Appointment booking, reschedule, cancellation, status lifecycle (including `confirmed` phone confirmation), and branch-scoped listing
+- Appointment slot conflict detection (branch-wide), same-day patient limits, and branch working-hours validation
 - Invoice generation and validation
 - Shift overlap validation and creation
 - Visit creation linked to appointments
@@ -93,14 +94,14 @@ Edge Functions are NOT used for core business logic. They are supplementary. The
 
 Flutter interacts with Supabase through these patterns:
 
-| Pattern                                    | When to Use                                        | Example                               |
-| ------------------------------------------ | -------------------------------------------------- | ------------------------------------- |
-| `supabase.from('table').select()`          | Simple reads with RLS filtering                    | Fetch staff list for the organization |
-| `supabase.rpc('function_name', params)`    | All domain write operations and complex queries    | Create patient, search patients, book appointment |
-| `supabase.storage.from('bucket').upload()` | File operations                                    | Upload visit attachment (scan PDF)    |
-| `supabase.auth.signInWithPassword()`       | Authentication (username + password)               | Staff login                           |
-| `supabase.auth.refreshSession()`           | Token refresh after bootstrap/context change       | Post-bootstrap claims refresh         |
-| `supabase.channel('topic').on(...)`        | Realtime subscriptions                             | Listen for appointment queue changes  |
+| Pattern                                    | When to Use                                     | Example                                                                         |
+| ------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| `supabase.from('table').select()`          | Simple reads with RLS filtering                 | Fetch staff list for the organization                                           |
+| `supabase.rpc('function_name', params)`    | All domain write operations and complex queries | Create patient, search patients, book/reschedule appointment, list appointments |
+| `supabase.storage.from('bucket').upload()` | File operations                                 | Upload visit attachment (scan PDF)                                              |
+| `supabase.auth.signInWithPassword()`       | Authentication (username + password)            | Staff login                                                                     |
+| `supabase.auth.refreshSession()`           | Token refresh after bootstrap/context change    | Post-bootstrap claims refresh                                                   |
+| `supabase.channel('topic').on(...)`        | Realtime subscriptions                          | Listen for appointment queue changes                                            |
 
 > **Note:** Direct `INSERT`/`UPDATE` via PostgREST is blocked by restrictive RLS policies on domain tables (e.g., `patients`). All writes go through RPC functions that run as SECURITY DEFINER and perform validation, audit logging, and permission checks internally.
 

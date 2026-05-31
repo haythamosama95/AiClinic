@@ -15,6 +15,7 @@ Key migrations:
 
 - `backend/supabase/migrations/20260526140000_appointment_management.sql` — enums, `appointments`, RLS, RPCs
 - `backend/supabase/migrations/20260528160000_appointment_confirmed_remove_walkin.sql` — `confirmed` status; planned-only booking
+- `backend/supabase/migrations/20260531120000_remove_appointment_walk_in_type.sql` — `appointment_type` enum is `planned` only
 
 ## 2. Run backend verification
 

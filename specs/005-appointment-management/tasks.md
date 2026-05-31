@@ -28,7 +28,7 @@
 
 - [X] T001 Create appointments feature directories in `frontend/lib/features/appointments/data/`, `frontend/lib/features/appointments/domain/`, `frontend/lib/features/appointments/presentation/pages/`, `frontend/lib/features/appointments/presentation/providers/`, and `frontend/lib/features/appointments/presentation/widgets/`
 - [X] T002 [P] Create test directories `frontend/test/unit/appointments/`, `frontend/test/widget/appointments/`, and `frontend/test/integration/appointments/`
-- [X] T003 [P] Add appointment route constants in `frontend/lib/app/app_routes.dart` (`/appointments`, `/appointments/book`, `/appointments/walk-in`, `/appointments/queue`, `/appointments/schedule/:doctorId` plus path builders)
+- [X] T003 [P] Add appointment route constants in `frontend/lib/app/app_routes.dart` (`/appointments`, `/appointments/book`, `/appointments/queue`, `/appointments/schedule/:doctorId` plus path builders)
 - [X] T004 [P] Add domain model stubs per `data-model.md` in `frontend/lib/features/appointments/domain/appointment_list_item.dart`, `appointment_detail.dart`, `appointment_type.dart`, and `appointment_status.dart`
 
 ---
@@ -39,8 +39,8 @@
 
 **⚠️ CRITICAL**: No user story phase work until this phase is complete
 
-- [X] T005 Add migration `backend/supabase/migrations/20260526140000_appointment_management.sql` with `appointment_type` and `appointment_status` enums, `appointments` table, indexes, branch RLS (SELECT scoped; INSERT/UPDATE/DELETE denied), `auth_internal` helpers (overlap check, walk-in gap finder, duration resolver, doctor/patient asserts), and RPCs `get_appointment_settings`, `set_appointment_default_duration`, `create_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`, `list_appointments` per `contracts/` and `data-model.md`
-- [X] T006 [P] Add CRUD verification SQL in `backend/tests/appointment_management_crud.sql` (planned create, walk-in auto-slot, conflict, status transitions, reschedule, cancel, no-show, settings default, `NO_SLOT_AVAILABLE`)
+- [X] T005 Add migration `backend/supabase/migrations/20260526140000_appointment_management.sql` with `appointment_type` and `appointment_status` enums, `appointments` table, indexes, branch RLS (SELECT scoped; INSERT/UPDATE/DELETE denied), `auth_internal` helpers (overlap check, duration resolver, doctor/patient asserts), and RPCs `get_appointment_settings`, `set_appointment_default_duration`, `create_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`, `list_appointments` per `contracts/` and `data-model.md`
+- [X] T006 [P] Add CRUD verification SQL in `backend/tests/appointment_management_crud.sql` (planned create, conflict, status transitions, reschedule, cancel, no-show, settings default)
 - [X] T007 [P] Add RLS isolation SQL in `backend/tests/appointment_management_rls.sql` (cross-org and cross-branch denial)
 - [X] T008 [P] Add test runner `backend/tests/run_appointment_management_tests.sh`
 - [X] T009 [P] Extend `PermissionKeys` with `appointmentsCreate` and `appointmentsCancel` in `frontend/lib/features/auth/domain/permission_keys.dart`
@@ -78,25 +78,9 @@
 
 ---
 
-## Phase 4: User Story 2 - Register a Walk-In (Priority: P1)
+## Phase 4: User Story 2 — Removed (superseded)
 
-**Goal**: Register walk-in with auto-assigned slot in gap, status `checked_in`, queue order by `start_time`
-
-**Independent Test**: Register walk-in with confirmed slots on calendar → auto time in gap → `checked_in` → appears in queue at assigned time
-
-### Tests for User Story 2
-
-- [X] T023 [P] [US2] Add walk-in auto-slot and `NO_SLOT_AVAILABLE` tests in `backend/tests/appointment_management_crud.sql`
-- [X] T024 [P] [US2] Add unit tests for `AppointmentRepository.createAppointment` (`walk_in`) in `frontend/test/unit/appointments/appointment_repository_create_walkin_test.dart`
-- [X] T025 [P] [US2] Add widget tests for walk-in form in `frontend/test/widget/appointments/walk_in_registration_page_test.dart`
-
-### Implementation for User Story 2
-
-- [X] T026 [US2] Extend `AppointmentRepository.createAppointment` for `walk_in` (ignore client start; surface assigned times) in `frontend/lib/features/appointments/data/appointment_repository.dart`
-- [X] T027 [US2] Implement `WalkInRegistrationPage` (duration pre-fill/override, assigned slot display, no check-in button) in `frontend/lib/features/appointments/presentation/pages/walk_in_registration_page.dart`
-- [X] T028 [US2] Gate `/appointments/walk-in` route to `appointments.create` in `frontend/lib/app/router.dart`
-
-**Checkpoint**: Spec test cases 3, 11; acceptance criteria 4
+User Story 2 was removed from scope. Same-day urgent arrivals use planned booking (User Story 1). Historical tasks T023–T028 are superseded.
 
 ---
 
@@ -161,7 +145,7 @@
 ### Implementation for User Story 5
 
 - [X] T046 [US5] Implement `AppointmentRepository.updateAppointmentStatus` with `INVALID_TRANSITION` handling in `frontend/lib/features/appointments/data/appointment_repository.dart`
-- [X] T047 [US5] Implement `AppointmentStatusActions` (check-in hidden for walk-in at `checked_in`, start, complete) in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
+- [X] T047 [US5] Implement `AppointmentStatusActions` (confirm, check-in, start, complete) in `frontend/lib/features/appointments/presentation/widgets/appointment_status_actions.dart`
 - [X] T048 [US5] Wire status actions on `AppointmentQueuePage` and `AppointmentCalendarPage` in `frontend/lib/features/appointments/presentation/pages/appointment_queue_page.dart` and `appointment_calendar_page.dart`
 
 **Checkpoint**: Spec test cases 4, 6; acceptance criteria 6–7
@@ -217,7 +201,7 @@
 **Purpose**: Shell navigation, end-to-end acceptance, quickstart validation, regression
 
 - [X] T061 Add **Appointments** navigation hub on `AuthShellPage` gated by `canAccessAppointments` in `frontend/lib/features/auth/presentation/pages/auth_shell_page.dart`
-- [X] T062 [P] Integration acceptance for spec test cases 1–14 is split across `frontend/test/integration/appointments/appointment_booking_us1_test.dart`, `appointments_phase1_setup_test.dart`, `walk_in_registration_us2_test.dart`, and `appointment_management_acceptance_test.dart` (calendar, queue, status, cancel, reschedule, shell)
+- [X] T062 [P] Integration acceptance for spec test cases is split across `frontend/test/integration/appointments/appointment_booking_us1_test.dart`, `appointments_phase1_setup_test.dart`, and `appointment_management_acceptance_test.dart` (calendar, queue, status, cancel, reschedule, shell)
 - [X] T063 [P] Add permission guard widget tests (no appointment access without grants) in `frontend/test/widget/appointments/appointment_permission_guards_test.dart`
 - [X] T064 Run `specs/005-appointment-management/quickstart.md` verification and document operator notes
 - [X] T065 [P] Regression smoke: patients and settings flows unchanged (`frontend/test/integration/patients/patient_management_acceptance_test.dart` targeted subset)
@@ -236,21 +220,20 @@
 
 ### User Story Dependencies
 
-| Story | Priority | Depends on             | Notes                                              |
-| ----- | -------- | ---------------------- | -------------------------------------------------- |
-| US1   | P1       | Foundational           | MVP — planned booking                              |
-| US2   | P1       | Foundational           | Walk-in; shares `create_appointment` RPC           |
-| US3   | P1       | Foundational           | Calendar/schedule; benefits from US1/US2 seed data |
-| US4   | P1       | Foundational, US3 (UI) | Queue; reuses list + calendar navigation           |
-| US5   | P1       | Foundational, US1/US2  | Status actions on queue/calendar surfaces          |
-| US6   | P2       | Foundational, US1      | Reschedule `scheduled` planned only                |
-| US7   | P2       | Foundational, US5 (UI) | Cancel/no-show on shared status action widget      |
+| Story | Priority | Depends on             | Notes                                          |
+| ----- | -------- | ---------------------- | ---------------------------------------------- |
+| US1   | P1       | Foundational           | MVP — planned booking                          |
+| US3   | P1       | Foundational           | Calendar/schedule; benefits from US1 seed data |
+| US4   | P1       | Foundational, US3 (UI) | Queue; reuses list + calendar navigation       |
+| US5   | P1       | Foundational, US1      | Status actions on queue/calendar surfaces      |
+| US6   | P2       | Foundational, US1      | Reschedule `scheduled` planned only            |
+| US7   | P2       | Foundational, US5 (UI) | Cancel/no-show on shared status action widget  |
 
 ### Recommended execution order (single developer)
 
 1. Phase 1 → Phase 2
 2. US1 (**MVP checkpoint** — planned booking)
-3. US2 → US3 → US4 → US5
+3. US3 → US4 → US5
 4. US6 → US7
 5. Phase 10
 
@@ -259,7 +242,7 @@
 - Phase 1: T002, T003, T004 in parallel
 - Phase 2: T006–T010, T012, T014 in parallel after T005
 - Per story: all `[P]` test tasks before implementation tasks in that story
-- US3 calendar (T032–T035) can parallel US2 walk-in UI (T026–T027) after Foundational if two developers
+- US3 calendar (T032–T035) can parallel US1 booking UI polish after Foundational if two developers
 
 ### Parallel Example: Foundational
 
@@ -299,18 +282,17 @@ T021 conflict_error_banner.dart
 
 1. **Foundation**: Phase 1 + Phase 2
 2. **MVP**: + US1 (planned book)
-3. **Walk-in**: + US2
-4. **Visibility**: + US3 (calendar/schedule)
-5. **Desk queue**: + US4 (queue + Realtime)
-6. **Clinical flow**: + US5 (status)
-7. **Changes**: + US6 (reschedule) + US7 (cancel/no-show)
-8. **Polish**: Phase 10 (shell nav + acceptance)
+3. **Visibility**: + US3 (calendar/schedule)
+4. **Desk queue**: + US4 (queue + Realtime)
+5. **Clinical flow**: + US5 (status)
+6. **Changes**: + US6 (reschedule) + US7 (cancel/no-show)
+7. **Polish**: Phase 10 (shell nav + acceptance)
 
 ### Parallel team strategy
 
 - **Developer A**: Phase 2 migration + backend tests (T005–T008)
 - **Developer B**: Phase 2 Flutter scaffold + US1 (T009–T022)
-- After Foundational: **C** → US2–US3, **D** → US4–US5, **E** → US6–US7 + Phase 10
+- After Foundational: **C** → US3, **D** → US4–US5, **E** → US6–US7 + Phase 10
 
 ---
 
@@ -318,7 +300,7 @@ T021 conflict_error_banner.dart
 
 - Builds on `patients` and org/branch migrations — do not break patient or settings RPCs
 - Branch-scoped RLS on `appointments` (unlike org-wide `patients`)
-- Walk-ins enter as `checked_in`; planned enter as `scheduled`; queue sorts by `start_time` only
+- All appointments enter as `scheduled`; queue sorts by `start_time` only
 - `queue_number` column unused in V1-4 (always NULL)
 - No visit creation on `completed` (V1-5)
 - Preserve constitution: RPC/RLS authority in PostgreSQL; Realtime is UX enhancement only

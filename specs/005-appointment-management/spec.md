@@ -26,15 +26,15 @@ V1-3 (`specs/004-patient-management`) delivered the patient registry. This featu
 
 - Q: Which permission keys gate appointment actions? → A: Use seeded keys `appointments.create` and `appointments.cancel` from V1-1; viewing schedules and queues requires at least one of these grants (or owner/administrator full access). Lab staff without these keys cannot access appointment screens.
 - Q: Who may advance appointment status (confirm, check-in, in progress, complete)? → A: Any user with `appointments.create` at the branch may perform all forward transitions (`scheduled` → `confirmed` → `checked_in` → `in_progress` → `completed`), including phone confirmation, check-in, start, and complete, regardless of whether they are the assigned doctor; `appointments.cancel` gates cancel and no-show. Doctor assignment affects schedule display and booking only, not who may advance status in V1-4.
-- Q: How are scheduling conflicts handled? → A: The system rejects create or reschedule that would overlap another non-cancelled, non–no-show appointment for the same doctor at the same branch; the user sees which slot conflicts and can choose another time.
-- Q: What is phone confirmation? → A: After booking (`scheduled`), reception calls the patient and advances to `confirmed`. On arrival the patient is `checked_in`. If the patient does not confirm by phone, reception cancels from `confirmed`. Walk-in registration was removed; all bookings are planned with staff-chosen times.
+- Q: How are scheduling conflicts handled? → A: The system rejects create or reschedule that would overlap another non-cancelled, non–no-show appointment in the same branch time slot (branch-wide uniqueness); the user sees conflict feedback and can choose another time.
+- Q: What is phone confirmation? → A: After booking (`scheduled`), reception calls the patient and advances to `confirmed`. On arrival the patient is `checked_in`. If the patient does not confirm by phone, reception cancels from `confirmed`. All bookings are planned with staff-chosen times.
 - Q: Can appointments reference patients from other branches? → A: Yes, within the same organization: any non-archived patient in the organization may be selected when booking at the active branch; the appointment's `branch_id` is always the active branch at create time.
 - Q: Are visits created in this feature? → A: No. Completing an appointment records `completed` status only; visit creation from appointments is V1-5.
 - Q: What happens when realtime updates are unavailable? → A: Queue and calendar views fall back to manual refresh; core booking and status changes remain available through standard requests.
 - Q: Is rescheduling existing appointments in V1-4 scope? → A: Yes — dedicated reschedule updates `start_time` and `end_time` on an existing appointment with the same conflict detection as create; only while status is `scheduled` (not after check-in or terminal states).
 - Q: What is the initial status and lifecycle? → A: Created as `scheduled`, then `scheduled` → `confirmed` (phone) → `checked_in` → `in_progress` → `completed`.
 - Q: Who may set `in_progress` and `completed`? → A: Any user with `appointments.create` for the branch (e.g. receptionist or doctor), not restricted to the assigned doctor.
-- Q: How should today's queue be sorted? → A: **`start_time` ascending** only. Walk-ins and planned appointments share one ordered queue by assigned/ booked time; `queue_number` is not used for V1-4 ordering.
+- Q: How should today's queue be sorted? → A: **`start_time` ascending** only; `queue_number` is not used for V1-4 ordering.
 ### Session 2026-05-24
 
 - Q: What is the default appointment slot duration? → A: A clinic-configurable **default duration** (stored in settings). The booking form **pre-fills** from that default; staff may **override** with a custom duration (or explicit end time) per appointment.
@@ -52,18 +52,12 @@ As reception staff (or another role with appointment-create permission), I can b
 **Acceptance Scenarios**:
 
 1. **Given** a signed-in user with `appointments.create` and an active branch, **When** they submit a valid booking for a non-archived patient and available doctor/time, **Then** an appointment is created with type `planned`, status `scheduled`, `branch_id` equal to the active branch, and success is confirmed.
-2. **Given** a time range that overlaps an existing non-cancelled appointment for the same doctor at the branch, **When** the user attempts to book, **Then** creation is rejected with a clear conflict message and no duplicate slot is stored.
+2. **Given** a time range that overlaps an existing non-cancelled appointment at the branch, **When** the user attempts to book, **Then** creation is rejected with a clear conflict message and no duplicate slot is stored.
 3. **Given** clinic settings define a default appointment duration, **When** the user opens the booking form, **Then** duration is pre-filled from settings and `end_time` is derived from `start_time` plus that duration until changed.
 4. **Given** a default duration is pre-filled, **When** the user enters a custom duration or explicit end time, **Then** the booking uses the custom values for conflict checking and storage.
 5. **Given** required selections are missing (patient, doctor, start time, or valid duration/end), **When** the user submits, **Then** field-level errors are shown and no appointment is created.
 6. **Given** a user without `appointments.create`, **When** they attempt to book, **Then** the action is blocked at UI and server layers.
 7. **Given** an archived patient, **When** the user attempts to book, **Then** the patient cannot be selected or creation is rejected with a clear message.
-
----
-
-### User Story 2 - Register a Walk-In — REMOVED
-
-Walk-in registration was removed. Use **User Story 1** (book appointment) and **User Story 5** (phone confirmation → check-in). Same-day urgent arrivals are booked as planned appointments.
 
 ---
 
@@ -133,7 +127,7 @@ As reception staff with appointment-create permission, I can change the date and
 **Acceptance Scenarios**:
 
 1. **Given** a `scheduled` appointment and `appointments.create`, **When** the user selects a new non-conflicting `start_time`/`end_time`, **Then** the appointment times update, success is confirmed, and views reflect the new slot.
-2. **Given** the new time overlaps another non-cancelled, non–no-show appointment for the same doctor at the branch, **When** the user attempts reschedule, **Then** the update is rejected with conflict feedback and times remain unchanged.
+2. **Given** the new time overlaps another non-cancelled, non–no-show appointment at the branch, **When** the user attempts reschedule, **Then** the update is rejected with conflict feedback and times remain unchanged.
 3. **Given** an appointment in `checked_in`, `in_progress`, `completed`, `cancelled`, or `no_show`, **When** the user attempts reschedule, **Then** the action is rejected with a clear message.
 4. **Given** a user without `appointments.create`, **When** they attempt reschedule, **Then** the action is blocked.
 
@@ -169,7 +163,7 @@ As staff with cancel permission, I can cancel an appointment or mark it as no-sh
 - Completed appointments cannot be edited back to scheduled without an explicit out-of-scope admin correction path.
 - Permission grant changes follow V1-2 rules: client cache updates on auth-context reload; server enforces current grants immediately.
 - Realtime disconnect: banner or indicator with manual refresh; booking and status RPCs still work.
-- Cancelled and no-show appointments excluded from conflict detection for the same doctor/time window.
+- Cancelled and no-show appointments excluded from slot conflict detection at the branch.
 - Visit creation is not triggered on complete in V1-4; downstream V1-5 owns visit linkage.
 - `scheduled` must not skip directly to `checked_in`; phone confirmation (`confirmed`) is required first.
 - Settings default duration missing or invalid: use a documented system fallback for pre-fill until an administrator sets the clinic default.
@@ -178,7 +172,7 @@ As staff with cancel permission, I can cancel an appointment or mark it as no-sh
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST introduce an `appointments` store with fields aligned to architecture: `branch_id`, `patient_id`, `doctor_id`, `start_time`, `end_time`, `type` (`planned` or `walk_in`), `status`, optional `queue_number`, `notes`, plus standard audit columns.
+- **FR-001**: The system MUST introduce an `appointments` store with fields aligned to architecture: `branch_id`, `patient_id`, `doctor_id`, `start_time`, `end_time`, `type` (`planned`), `status`, optional `queue_number`, `notes`, plus standard audit columns.
 - **FR-002**: The system MUST set `branch_id` from the signed-in user's active branch at create time; branch reassignment is out of scope for V1-4.
 - **FR-003**: The system MUST enforce branch-scoped isolation for appointment reads and writes via data-layer policies limited to the user's assigned branches within their organization.
 - **FR-004**: The system MUST enforce permission key `appointments.create` for booking and all forward status transitions (confirm, check-in, in progress, complete) at UI and server layers; users with this permission MAY perform these transitions on any appointment at their branch regardless of assigned `doctor_id`.
@@ -187,16 +181,16 @@ As staff with cancel permission, I can cancel an appointment or mark it as no-sh
 - **FR-007**: The system MUST provide planned appointment booking with patient selection (organization patients, non-archived), doctor selection, start time, appointment duration (defaulted from clinic settings), optional custom duration or explicit end time, optional notes, and client-side validation before server submission.
 - **FR-007b**: The system MUST store a configurable default appointment duration in clinic settings (branch-level or organization-wide per settings model from V1-2); the booking form MUST pre-fill duration from that setting.
 - **FR-007c**: The system MUST allow staff to override the pre-filled default duration (or set a custom end time) on each booking; the effective duration MUST be used for conflict detection and stored `end_time`.
-- **FR-008**: The system MUST reject walk-in type on create; booking is planned-only with initial status `scheduled`.
+- **FR-008**: The system MUST create appointments with type `planned` and initial status `scheduled`.
 - **FR-008a**: The system MUST support status `confirmed` between `scheduled` and `checked_in` for phone confirmation by reception.
-- **FR-009**: The system MUST reject overlapping appointments for the same `doctor_id`, `branch_id`, and overlapping `start_time`/`end_time` when either appointment is not `cancelled` or `no_show`.
+- **FR-009**: The system MUST reject overlapping appointments at the same `branch_id` for overlapping `start_time`/`end_time` when either appointment is not `cancelled` or `no_show` (branch-wide slot conflict).
 - **FR-010**: The system MUST expose conflict feedback on failed create and reschedule identifying the conflicting slot or appointment.
 - **FR-010a**: The system MUST provide reschedule of `scheduled` appointments (update `start_time` and `end_time`) with the same overlap conflict rules as create, excluding the appointment being rescheduled from the conflict set.
 - **FR-011**: The system MUST support appointment status values: `scheduled`, `confirmed`, `checked_in`, `in_progress`, `completed`, `cancelled`, `no_show`.
 - **FR-012**: The system MUST enforce valid status transitions server-side; invalid transitions MUST be rejected with actionable errors.
 - **FR-013**: The system MUST provide daily and weekly calendar views of branch appointments with status and type visible.
 - **FR-014**: The system MUST provide a doctor schedule view filtered to one doctor at the active branch for a selected period.
-- **FR-015**: The system MUST provide today's queue view for the active branch sorted by `start_time` ascending only (planned and walk-in interleaved).
+- **FR-015**: The system MUST provide today's queue view for the active branch sorted by `start_time` ascending only.
 - **FR-015a**: The system MUST NOT use `queue_number` for queue ordering in V1-4; ordering is determined solely by `start_time`.
 - **FR-016**: The system MUST support live queue updates when realtime connectivity is available, with manual refresh when it is not.
 - **FR-017**: The system MUST implement appointment creation, reschedule, cancellation, and status updates through secured server-side functions with permission, branch, conflict, and transition validation—not unguarded direct client writes for protected operations.
@@ -232,7 +226,7 @@ As staff with cancel permission, I can cancel an appointment or mark it as no-sh
 
 ### Data Model
 
-- **Appointment**: Scheduled or walk-in encounter slot at a branch linking a patient and doctor with start/end time, status, and notes. Branch-scoped; organization scope derived via branch. `queue_number` may exist in schema but is not used for V1-4 queue ordering.
+- **Appointment**: Planned encounter slot at a branch linking a patient and optional doctor with start/end time, status, and notes. Branch-scoped; organization scope derived via branch. `queue_number` may exist in schema but is not used for V1-4 queue ordering.
 - **Confirmed appointment**: A planned booking with a reserved `start_time`/`end_time` that is not `cancelled` or `no_show`; occupies the doctor's schedule until terminal.
 - **Patient** (existing): Linked subject of care; must be non-archived for booking.
 - **Staff member / Doctor** (existing): `doctor_id` references clinical staff designated as doctors for the branch or organization per staff model from V1-2.
@@ -244,7 +238,7 @@ No new core tenancy tables are required beyond the `appointments` table and its 
 
 Exact names follow architecture; required capabilities:
 
-- **Create appointment**: Validate `appointments.create`, active branch, patient and doctor validity; for `planned`, accept staff-chosen time range and conflict rule; for `walk_in`, auto-assign next available slot today with conflict rule, set status `checked_in`; set type and initial status (`planned` → `scheduled`); audit log.
+- **Create appointment**: Validate `appointments.create`, active branch, patient and optional doctor validity; accept staff-chosen time range, branch hours, slot and same-day patient rules; set type `planned` and initial status `scheduled`; audit log.
 - **Cancel appointment**: Validate `appointments.cancel`, allowed current status, optional reason; set `cancelled`; audit log.
 - **Update appointment status**: Validate permission (create for all forward transitions per transition table, cancel for cancel/no-show), branch scope, and valid transition only—do not require the actor to be the assigned doctor; audit log.
 - **Reschedule appointment**: Validate `appointments.create`, status is `scheduled`, branch scope, new start time and duration (default pre-fill or custom override, same rules as create), conflict rule (exclude self); update times; audit log.
@@ -255,7 +249,8 @@ Exact names follow architecture; required capabilities:
 
 | From          | Allowed to                            | Permission      |
 | ------------- | ------------------------------------- | --------------- |
-| `scheduled`   | `checked_in`, `cancelled`, `no_show`  | create / cancel |
+| `scheduled`   | `confirmed`, `cancelled`, `no_show`   | create / cancel |
+| `confirmed`   | `checked_in`, `cancelled`, `no_show`  | create / cancel |
 | `checked_in`  | `in_progress`, `cancelled`, `no_show` | create / cancel |
 | `in_progress` | `completed`                           | create          |
 | `completed`   | (none)                                | —               |
@@ -273,7 +268,7 @@ Policies on `appointments` MUST enforce:
 
 ### API Contracts
 
-- Create appointment (planned and walk-in) with conflict detection.
+- Create appointment (planned) with conflict detection.
 - Reschedule appointment (`scheduled` only) with conflict detection.
 - Cancel appointment with reason.
 - Update appointment status with transition validation.
@@ -287,7 +282,6 @@ Visit, billing, and AI APIs remain out of scope.
 - **Calendar - Loading / Daily / Weekly / Empty / Error / Permission Denied**
 - **Booking Form - Initial / Validation Error / Conflict Error / Submitting / Success / Permission Denied**
 - **Reschedule Form - Initial / Validation Error / Conflict Error / Submitting / Success / Not allowed (wrong status) / Permission Denied**
-- **Walk-In Form - Initial (duration pre-filled) / Custom duration / Validation Error / Conflict Error / No slot available / Submitting / Success / Permission Denied**
 - **Clinic Settings (duration) - View default / Edit default / Save success / Permission Denied** (within existing settings access model)
 - **Today's Queue - Loading / Loaded / Live connected / Live degraded (manual refresh) / Empty / Error / Permission Denied**
 - **Doctor Schedule - Loading / Loaded / Empty / Error / Permission Denied**
@@ -297,14 +291,13 @@ Navigation integrates with the main app shell, patient picker from patient manag
 
 ### Validation Rules
 
-- Patient, doctor, and `start_time` are required for **planned** booking; `end_time` is required and MUST equal start plus effective duration (from settings default or staff override) unless staff enters an explicit end time that satisfies validation.
-- Walk-in registration requires patient and doctor; effective duration comes from settings default with optional staff override; `start_time` is auto-assigned and `end_time` is computed from that duration unless staff supplies a valid explicit end time.
+- Patient and `start_time` are required for booking; doctor is optional; `end_time` is required and MUST equal start plus effective duration (from settings default or staff override) unless staff enters an explicit end time that satisfies validation.
 - Effective duration MUST be a positive value within allowed min/max bounds defined in planning (e.g., 5–240 minutes).
 - `end_time` must be after `start_time`.
 - Doctor must be eligible to practice at the branch (per staff/role data from V1-2).
 - Patient must belong to the user's organization and not be archived.
 - Conflict check runs on every create and reschedule.
-- Reschedule is allowed only when status is `scheduled`; walk-in and checked-in-or-later appointments cannot be rescheduled in V1-4.
+- Reschedule is allowed only when status is `scheduled`; checked-in-or-later appointments cannot be rescheduled in V1-4.
 - Cancel and no-show require confirmation per product UX standards.
 - Notes length must respect schema maximum.
 
@@ -323,33 +316,31 @@ This feature introduces no AI-assisted workflow. Scheduling remains fully manual
 
 1. User with `appointments.create` can book a non-conflicting planned appointment at the active branch; it appears on calendar and today's queue when dated today.
 2. User without `appointments.create` cannot book.
-3. Overlapping booking for the same doctor at the same branch is rejected with conflict messaging.
-4. Walk-in registration creates a `walk_in` appointment with status `checked_in`, auto-assigned `start_time` in a non-conflicting slot, visible in today's queue ordered by time (never `scheduled`).
-5. User with queue access sees only today's appointments for the active branch, sorted by `start_time` ascending.
-6. Valid status progression from `scheduled` through `completed` succeeds with audit entries.
-7. Invalid status skip is rejected.
-8. User with `appointments.cancel` can cancel and mark no-show; user without it cannot.
-9. Doctor schedule shows only selected doctor's appointments at the branch.
-10. Backend verification utilities demonstrate conflict detection, transition rules, and cross-organization denial.
-11. User with `appointments.create` can reschedule a `scheduled` appointment to a non-conflicting slot; overlap and wrong-status attempts are rejected.
-12. No visit, billing, shift, or AI workflow is required to pass this feature.
+3. Overlapping booking in the same branch time slot is rejected with conflict messaging.
+4. User with queue access sees only today's appointments for the active branch, sorted by `start_time` ascending.
+5. Valid status progression from `scheduled` through `completed` succeeds with audit entries.
+6. Invalid status skip is rejected.
+7. User with `appointments.cancel` can cancel and mark no-show; user without it cannot.
+8. Doctor schedule shows only selected doctor's appointments at the branch.
+9. Backend verification utilities demonstrate conflict detection, transition rules, and cross-organization denial.
+10. User with `appointments.create` can reschedule a `scheduled` appointment to a non-conflicting slot; overlap and wrong-status attempts are rejected.
+11. No visit, billing, shift, or AI workflow is required to pass this feature.
 
 ### Test Cases
 
 1. Book planned appointment; verify calendar and queue.
 2. Attempt overlapping second booking; verify rejection.
-3. Register walk-in with confirmed slots on calendar; verify auto-assigned time in a gap, status `checked_in`, queue position by `start_time`, and type `walk_in`.
-4. Check in, start, and complete as receptionist on another doctor's appointment; verify statuses and audit.
-5. Cancel scheduled appointment; verify slot reusable.
-6. Mark no-show; verify status and display rules.
-7. Attempt booking without permission; verify denial.
-8. Open queue as user at branch A; verify no branch B appointments.
-9. Simulate realtime update on queue; verify UI updates or refresh fallback.
-10. Doctor views own schedule filter; verify other doctors' appointments hidden in that view.
-11. Book with patient registered at another branch in same org; verify success at active branch.
-12. Reschedule `scheduled` appointment to new slot; verify conflict rejection and blocked reschedule after check-in.
-13. Run backend verification utilities for conflict, transitions, reschedule, and cross-org denial.
-14. Change default duration in settings; verify planned booking and walk-in forms pre-fill; book with custom override and verify stored `end_time`.
+3. Step appointment through `scheduled` → `confirmed` → `checked_in` → `in_progress` → `completed`; verify audit.
+4. Cancel scheduled appointment; verify slot reusable.
+5. Mark no-show; verify status and display rules.
+6. Attempt booking without permission; verify denial.
+7. Open queue as user at branch A; verify no branch B appointments.
+8. Simulate realtime update on queue; verify UI updates or refresh fallback.
+9. Doctor views own schedule filter; verify other doctors' appointments hidden in that view.
+10. Book with patient registered at another branch in same org; verify success at active branch.
+11. Reschedule `scheduled` appointment to new slot; verify conflict rejection and blocked reschedule after check-in.
+12. Run backend verification utilities for conflict, transitions, reschedule, and cross-org denial.
+13. Change default duration in settings; verify booking form pre-fill; book with custom override and verify stored `end_time`.
 
 ### Implementation Constraints
 
@@ -361,7 +352,7 @@ This feature introduces no AI-assisted workflow. Scheduling remains fully manual
 
 ### Key Entities *(include if feature involves data)*
 
-- **Appointment**: Branch-scoped scheduled or walk-in slot linking patient and doctor with lifecycle status.
+- **Appointment**: Branch-scoped planned slot linking patient and optional doctor with lifecycle status.
 - **Active Branch Context**: Session field from V1-2 used for all V1-4 operational views and create `branch_id`.
 - **Patient** (existing): Subject of the appointment.
 - **Doctor** (existing): Clinical staff member assigned to the appointment.
@@ -370,8 +361,8 @@ This feature introduces no AI-assisted workflow. Scheduling remains fully manual
 
 ### Architecture & Operations Impact
 
-- **Clinic Fit**: Serves small-to-mid-size multi-branch clinics where reception books and checks in patients at the desk, doctors follow a daily schedule, and walk-ins share the same queue as planned arrivals. Hospital OR scheduling, telehealth, and resource scheduling beyond doctors are out of scope.
-- **Layer Placement**: The desktop client owns calendar, booking and walk-in forms, queue presentation, doctor schedule filter, status action controls, conflict messaging, and permission-aware UI. The backend platform owns secured create, cancel, and status functions, optional realtime delivery, and audit writes. The database layer owns the `appointments` schema, branch isolation policies, conflict detection, indexes, and verification utilities. The AI layer remains absent.
+- **Clinic Fit**: Serves small-to-mid-size multi-branch clinics where reception books and checks in patients at the desk and doctors follow a daily schedule. Hospital OR scheduling, telehealth, and resource scheduling beyond doctors are out of scope.
+- **Layer Placement**: The desktop client owns calendar, booking form, queue presentation, doctor schedule filter, status action controls, conflict messaging, and permission-aware UI. The backend platform owns secured create, cancel, and status functions, optional realtime delivery, and audit writes. The database layer owns the `appointments` schema, branch isolation policies, conflict detection, indexes, and verification utilities. The AI layer remains absent.
 - **Data Integrity & Security**: Mutations use audit conventions; row-level policies preserve branch isolation within the organization; permission keys gate operations; conflict rules prevent double-booking; defense in depth applies across UI, RPC, and policies.
 - **Failure Handling**: Booking and status failures surface clear errors without false success; queue and calendar show last known good data with connectivity messaging when degraded; realtime loss falls back to manual refresh; AI unavailability does not affect appointments; subscription state does not block core scheduling workflows.
 
@@ -380,23 +371,20 @@ This feature introduces no AI-assisted workflow. Scheduling remains fully manual
 ### Measurable Outcomes
 
 - **SC-001**: In 95% of test runs, authorized users complete a planned booking and see confirmation within 20 seconds under normal local clinic network conditions.
-- **SC-002**: In 100% of conflict test scenarios, overlapping bookings for the same doctor at the same branch are rejected.
+- **SC-002**: In 100% of conflict test scenarios, overlapping bookings in the same branch time slot are rejected.
 - **SC-003**: In 100% of status transition test scenarios, only valid lifecycle changes succeed; invalid skips are rejected with clear errors.
 - **SC-004**: In 100% of permission test scenarios, users without `appointments.create` cannot book or perform create-gated status changes, and users without `appointments.cancel` cannot cancel or mark no-show.
-- **SC-005**: In 100% of queue test scenarios, today's queue for the active branch lists only same-day branch appointments sorted by `start_time` ascending, with walk-ins interleaved at their assigned times.
+- **SC-005**: In 100% of queue test scenarios, today's queue for the active branch lists only same-day branch appointments sorted by `start_time` ascending.
 - **SC-006**: In 100% of backend verification scenarios, cross-organization appointment access is blocked.
-- **SC-007**: In 100% of walk-in test scenarios, walk-in appointments appear in today's queue with type `walk_in`, status `checked_in` at creation, and distinguishable from `planned` appointments that start as `scheduled`.
-- **SC-008**: When realtime is enabled in test environments, queue view reflects another user's status change within 5 seconds in at least 95% of trials; when disabled, manual refresh shows the change.
+- **SC-007**: When realtime is enabled in test environments, queue view reflects another user's status change within 5 seconds in at least 95% of trials; when disabled, manual refresh shows the change.
 
 ## Assumptions
 
 - `specs/002-auth-rbac`, `specs/003-org-branch-management`, and `specs/004-patient-management` are implemented.
 - Permission keys `appointments.create` and `appointments.cancel` are seeded per V1-1; viewing operational appointment UI requires at least one of these grants.
 - Doctors are identified from staff records with the doctor role; planning aligns `doctor_id` with staff member identifiers used elsewhere.
-- Today's queue sort order is `start_time` ascending only; walk-ins receive auto-assigned times in slots not occupied by confirmed (non–cancelled, non–no-show) appointments for the same doctor.
-- Default appointment duration is stored in clinic settings and applies to both planned and walk-in flows; staff may override per booking. Initial fallback when unset is defined in planning (e.g., 20 minutes).
-- Walk-in gap-finding uses the effective duration on the form and selects the next available slot at or after the current time on the same day unless planning specifies otherwise.
-- Walk-in appointments are always created as `checked_in`; only `planned` appointments use `scheduled` as the initial status.
+- Today's queue sort order is `start_time` ascending only.
+- Default appointment duration is stored in clinic settings and applies to the booking form; staff may override per booking. Initial fallback when unset is defined in planning (e.g., 20 minutes).
 - Reschedule is in scope for V1-4: dedicated update of `start_time`/`end_time` for `scheduled` appointments only, with conflict detection equivalent to create.
 - `specs/operations/appointments.spec.md` will be authored later; this feature spec is authoritative for V1-4 until that shared spec exists.
 - AI remains optional and non-blocking for all appointment flows.

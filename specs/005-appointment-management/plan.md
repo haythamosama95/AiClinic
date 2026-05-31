@@ -6,7 +6,7 @@
 
 ## Summary
 
-Deliver V1-4 appointment scheduling: `appointments` table with branch-scoped RLS, secured RPCs for planned booking, phone-confirmation status (`confirmed`), reschedule, cancel/no-show, status lifecycle, default duration via `app_settings`, and Flutter `features/appointments` (calendar day/week, booking, today's queue with Realtime fallback, doctor schedule). Queue sorts by `start_time`; lifecycle is `scheduled` → `confirmed` → `checked_in` → `in_progress` → `completed`. Walk-in registration removed. Builds on V1-3 patients, V1-2 branch/staff/settings, V1-1 auth and `appointments.*` seeds. No visits, billing, shifts, or AI.
+Deliver V1-4 appointment scheduling: `appointments` table with branch-scoped RLS, secured RPCs for planned booking, phone-confirmation status (`confirmed`), reschedule, cancel/no-show, status lifecycle, default duration via `app_settings`, and Flutter `features/appointments` (calendar day/week, booking, today's queue with Realtime fallback, doctor schedule). Queue sorts by `start_time`; lifecycle is `scheduled` → `confirmed` → `checked_in` → `in_progress` → `completed`. Builds on V1-3 patients, V1-2 branch/staff/settings, V1-1 auth and `appointments.*` seeds. No visits, billing, shifts, or AI.
 
 ## Technical Context
 
@@ -99,7 +99,6 @@ frontend/lib/
 │           ├── pages/
 │           │   ├── appointment_calendar_page.dart
 │           │   ├── appointment_booking_page.dart
-│           │   ├── walk_in_registration_page.dart
 │           │   ├── appointment_queue_page.dart
 │           │   └── doctor_schedule_page.dart
 │           └── widgets/
@@ -122,13 +121,13 @@ frontend/test/
 ### Phase A — Backend: schema & RPCs
 
 1. Migration: enums, `appointments` table, indexes, branch RLS (SELECT only; deny direct writes)
-2. Helpers: overlap check, walk-in gap finder, resolve default duration, assert doctor/patient/branch
+2. Helpers: overlap check, same-day patient check, branch working hours, resolve default duration, assert doctor/patient/branch
 3. RPCs: `get_appointment_settings`, `set_appointment_default_duration`, `create_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`, `list_appointments`
 4. Grants + audit log entries per data-model.md
 
 ### Phase B — Backend verification
 
-1. `appointment_management_crud.sql` — create, walk-in slot, conflict, status, reschedule, cancel, settings
+1. `appointment_management_crud.sql` — create, conflict, status, reschedule, cancel, settings
 2. `appointment_management_rls.sql` — cross-branch/org denial
 3. `run_appointment_management_tests.sh`
 
@@ -138,9 +137,8 @@ frontend/test/
 2. `AppointmentRepository` wrapping RPCs
 3. Routes and guards under `/appointments`
 4. Calendar (day/week), booking form with duration pre-fill/override
-5. Walk-in form + auto-slot result display
-6. Today's queue + Realtime subscription + degraded refresh
-7. Doctor schedule filter; status action bar; reschedule flow
+5. Today's queue + Realtime subscription + degraded refresh
+6. Doctor schedule filter; status action bar; reschedule flow
 
 ### Phase D — Settings & shell
 

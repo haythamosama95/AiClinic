@@ -7,7 +7,7 @@ import 'package:ai_clinic/features/patients/domain/patient_search_query.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_search_field.dart';
 
-/// Search-and-select patient field for booking and walk-in forms (V1-4).
+/// Search-and-select patient field for appointment booking forms (V1-4).
 class PatientPicker extends ConsumerStatefulWidget {
   const PatientPicker({
     required this.branchId,
@@ -39,21 +39,14 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        PatientSearchField(
-          enabled: widget.enabled,
-          onSearch: _onSearch,
-        ),
+        PatientSearchField(enabled: widget.enabled, onSearch: _onSearch),
         if (selected != null) ...[
           const SizedBox(height: 8),
           InputDecorator(
             decoration: const InputDecoration(labelText: 'Selected patient'),
             child: Row(
               children: [
-                Expanded(
-                  child: Text(
-                    '${selected.fullName}${selected.phone != null ? ' · ${selected.phone}' : ''}',
-                  ),
-                ),
+                Expanded(child: Text('${selected.fullName}${selected.phone != null ? ' · ${selected.phone}' : ''}')),
                 if (widget.enabled)
                   TextButton(
                     key: const Key('patient_picker_clear'),
@@ -64,10 +57,7 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
             ),
           ),
         ],
-        if (_loading) ...[
-          const SizedBox(height: 8),
-          const LinearProgressIndicator(),
-        ],
+        if (_loading) ...[const SizedBox(height: 8), const LinearProgressIndicator()],
         if (_error != null) ...[
           const SizedBox(height: 8),
           Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),

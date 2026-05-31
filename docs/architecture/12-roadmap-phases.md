@@ -104,12 +104,12 @@ Required specs:
 - `specs/common/staff.spec.md`
 
 Backend deliverables:
-- RPC functions for organization and branch CRUD operations
+- RPC functions for organization and branch CRUD operations (branch create/update require `working_schedule`)
 - Backend test utilities to verify CRUD and RLS
 
 Frontend deliverables:
 - Organization settings page (name, basic config)
-- Branch management CRUD (list, create, edit, deactivate)
+- Branch management CRUD (list, create, edit, deactivate) with per-weekday working hours editor
 - Staff management CRUD (list, create, edit, deactivate, assign to branches)
 - Role/permission management UI (view/edit permission matrix per role)
 - Branch switcher component (dropdown in status bar or sidebar)
@@ -154,18 +154,19 @@ Required specs:
 - `specs/005-appointment-management/spec.md` (authoritative for V1-4; shared `specs/operations/appointments.spec.md` deferred)
 
 Backend deliverables:
-- Database migration: `appointments` table
-- RPC functions: `create_appointment` (with conflict detection), `cancel_appointment`, `update_appointment_status`
-- RLS policies (branch-scoped)
-- Indexes: `appointments(branch_id, doctor_id, start_time)`, `appointments(branch_id, status, start_time)`
-- Backend test utilities to verify conflict detection and status transitions
+- Database migrations: `appointments` table and enums; optional `doctor_id`; `confirmed` status; branch `working_schedule` (required on branches); branch working-hours and slot/patient-day conflict enforcement
+- RPC functions: `get_appointment_settings`, `set_appointment_default_duration`, `create_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`, `list_appointments`
+- RLS policies (branch-scoped; mutations via RPC only)
+- Indexes: `appointments(branch_id, doctor_id, start_time)`, `appointments(branch_id, status, start_time)`, `appointments(branch_id, start_time)`
+- `app_settings` key `appointment.default_duration_minutes` (branch → org resolution)
+- Backend test utilities: `appointment_management_crud.sql`, `appointment_management_rls.sql`, `appointment_management_grants.sql`
 
 Frontend deliverables:
-- Appointment calendar/schedule view (daily, weekly)
-- Appointment booking form (doctor selection, time slot picker, conflict display)
-- Appointment queue view (today's queue for the branch, real-time updates via Supabase Realtime)
-- Appointment status management (confirm by phone, check-in, start, complete, cancel, no-show)
-- Doctor schedule view
+- `features/appointments`: hub, booking, calendar (day/week), today's queue (Realtime with manual refresh fallback), doctor schedule, reschedule/cancel dialogs, status actions
+- Appointment booking form (optional doctor, duration from settings with override, conflict and same-day patient error display)
+- Phone confirmation (`scheduled` → `confirmed`) before check-in; day-gated check-in/start/complete/no-show aligned with server rules
+- Navigation and permission gates (`appointments.create` / `appointments.cancel`)
+- Dev seed helpers for appointments and doctors (local development only)
 
 ### V1-5: Visits and Medical Records
 
@@ -181,7 +182,7 @@ Required specs:
 
 Backend deliverables:
 - Database migration: `visits`, `soap_notes`, `treatment_plans`, `visit_attachments` tables
-- RPC functions: `create_visit` (from appointment), `save_soap_note`
+- RPC functions: `create_visit` (from a **completed** appointment; V1-4 leaves appointments at `completed` without creating visits), `save_soap_note`
 - Supabase Storage bucket configuration for visit attachments
 - RLS policies (branch-scoped, doctor-specific for SOAP)
 - Indexes on visit lookups by patient and by branch/date

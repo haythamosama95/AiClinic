@@ -11,11 +11,10 @@ void main() {
       expect(AppointmentType.tryParse('  PLANNED '), AppointmentType.planned);
     });
 
-    test('returns null for empty, walk-in, or unrecognized values', () {
+    test('returns null for empty or unrecognized values', () {
       expect(AppointmentType.tryParse(null), isNull);
       expect(AppointmentType.tryParse(''), isNull);
-      expect(AppointmentType.tryParse('walk_in'), isNull);
-      expect(AppointmentType.tryParse('walkin'), isNull);
+      expect(AppointmentType.tryParse('invalid'), isNull);
     });
   });
 

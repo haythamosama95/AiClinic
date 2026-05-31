@@ -363,13 +363,13 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Walk-in type is no longer supported.
+  -- Invalid appointment type is rejected.
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'walk_in', NULL, 15, NULL, NULL
+    v_branch_main, v_patient_id, v_doctor_staff, 'invalid_type', NULL, 15, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'walk_in_type_rejected',
+    'invalid_type_rejected',
     NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
     COALESCE(v_result.error_code, '<null>')
   );

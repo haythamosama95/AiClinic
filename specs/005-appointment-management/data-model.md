@@ -7,10 +7,10 @@ Introduces `public.appointments` and appointment settings (V1-4). Builds on V1-1
 ### ENUM: `appointment_type`
 
 ```sql
-CREATE TYPE public.appointment_type AS ENUM ('planned', 'walk_in');
+CREATE TYPE public.appointment_type AS ENUM ('planned');
 ```
 
-`walk_in` remains in the enum for backward compatibility but is **rejected** by `create_appointment` (booking is planned-only).
+All appointments are planned bookings with staff-chosen times.
 
 ### ENUM: `appointment_status`
 
@@ -36,7 +36,7 @@ CREATE TYPE public.appointment_status AS ENUM (
 | `doctor_id`     | uuid FK → staff_members | Optional; when set, must be `role = doctor` at branch               |
 | `start_time`    | timestamptz NOT NULL    |                                                                     |
 | `end_time`      | timestamptz NOT NULL    | Must be > `start_time`                                              |
-| `type`          | appointment_type        | `planned` only (new bookings)                                       |
+| `type`          | appointment_type        | Always `planned`                                                    |
 | `status`        | appointment_status      | Entry: `scheduled` on create                                        |
 | `queue_number`  | int                     | Nullable; **unused** in V1-4 (always NULL)                          |
 | `notes`         | text                    | Optional; max 2000 chars (app + DB)                                 |
@@ -82,7 +82,7 @@ Resolution: branch row → org row (`branch_id IS NULL`) → RPC fallback 20.
 
 ## Entity lifecycle
 
-### Appointment (planned booking only)
+### Appointment (planned booking)
 
 | Entry status | Happy path                                                   |
 | ------------ | ------------------------------------------------------------ |
@@ -100,7 +100,9 @@ Resolution: branch row → org row (`branch_id IS NULL`) → RPC fallback 20.
 
 **Reschedule**: only `status = scheduled` (before confirmation).
 
-**Conflict**: No overlap for same `doctor_id` + `branch_id` when either side status ∉ (`cancelled`, `no_show`).
+**Conflict**: No time overlap with any non-terminal appointment at the same branch.
+
+**Same-day patient rule**: At most one non-terminal appointment per patient per branch calendar day.
 
 ## Authorization matrix (V1-4)
 
@@ -117,8 +119,8 @@ Resolution: branch row → org row (`branch_id IS NULL`) → RPC fallback 20.
 | ---------------------------------- | ------------------------------------------- |
 | `get_appointment_settings`         | Default duration for branch                 |
 | `set_appointment_default_duration` | Persist `app_settings`                      |
-| `create_appointment`               | Planned booking only → `scheduled`          |
-| `reschedule_appointment`           | `scheduled` planned only                    |
+| `create_appointment`               | Planned booking → `scheduled`               |
+| `reschedule_appointment`           | `scheduled` only                            |
 | `cancel_appointment`               | From `scheduled`, `confirmed`, `checked_in` |
 | `update_appointment_status`        | Validated transitions incl. no_show         |
 | `list_appointments`                | Calendar, queue, doctor schedule            |

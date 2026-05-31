@@ -119,6 +119,23 @@ frontend/lib/
 │   │       ├── pages/                      # patient_list, registration, edit, detail
 │   │       └── widgets/                    # patient_search_field, archive_dialog
 │   │
+│   ├── appointments/                       # V1-4: scheduling, queue, calendar, doctor schedule
+│   │   ├── data/
+│   │   │   ├── appointment_repository.dart     # RPC: create, reschedule, cancel, status, list, settings
+│   │   │   ├── appointment_queue_realtime.dart # Supabase Realtime subscription for today's queue
+│   │   │   └── doctor_dev_seed_service.dart    # Dev-only doctor seeding
+│   │   ├── domain/
+│   │   │   ├── appointment_list_item.dart, appointment_detail.dart
+│   │   │   ├── appointment_status.dart, appointment_type.dart
+│   │   │   ├── appointment_status_transitions.dart   # Forward/cancel/no-show UI rules
+│   │   │   ├── appointment_status_day_rules.dart     # Mirrors server day-gating
+│   │   │   ├── appointment_settings.dart, create_appointment_result.dart
+│   │   │   └── appointment_today_range.dart
+│   │   └── presentation/
+│   │       ├── pages/                      # hub, book, queue, calendar, doctor_schedule
+│   │       ├── providers/                  # calendar + queue providers (Realtime-aware)
+│   │       └── widgets/                    # status actions, reschedule/cancel dialogs, conflict banner
+│   │
 │   ├── settings/                           # Organization, branch, staff, permissions, idle timeout
 │   │   ├── data/
 │   │   │   ├── organization_repository.dart    # OrganizationRepositoryImpl
@@ -131,6 +148,7 @@ frontend/lib/
 │   │   │   ├── organization_profile.dart
 │   │   │   ├── branch_list_item.dart
 │   │   │   ├── branch_list_filter.dart
+│   │   │   ├── branch_working_schedule.dart  # Per-weekday hours (required on branch create/edit)
 │   │   │   ├── create_branch_input.dart
 │   │   │   ├── update_branch_input.dart
 │   │   │   ├── update_organization_input.dart
@@ -179,11 +197,11 @@ frontend/lib/
 
 ### Layer Responsibilities (Per Feature)
 
-| Layer            | Directory       | Contains                                                                                                   | Depends On                                                    |
-| ---------------- | --------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Presentation** | `presentation/` | Pages (screens), Widgets, Riverpod Providers/Notifiers                                                    | Domain use cases (via providers)                              |
-| **Domain**       | `domain/`       | Value objects, enums, DTOs, abstract repository interfaces (`repositories/`), use cases (`usecases/`)      | Nothing (innermost layer)                                     |
-| **Data**         | `data/`         | Concrete repository implementations (`*Impl`), RPC call logic, error mapping                               | Domain interfaces, Supabase SDK                               |
+| Layer            | Directory       | Contains                                                                                              | Depends On                       |
+| ---------------- | --------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------- |
+| **Presentation** | `presentation/` | Pages (screens), Widgets, Riverpod Providers/Notifiers                                                | Domain use cases (via providers) |
+| **Domain**       | `domain/`       | Value objects, enums, DTOs, abstract repository interfaces (`repositories/`), use cases (`usecases/`) | Nothing (innermost layer)        |
+| **Data**         | `data/`         | Concrete repository implementations (`*Impl`), RPC call logic, error mapping                          | Domain interfaces, Supabase SDK  |
 
 Implementation note: The project uses **full clean architecture** with abstract repository interfaces in `domain/repositories/` and single-responsibility use case classes in `domain/usecases/`. Each use case has a single public `call()` method. Concrete repository classes (suffixed `Impl`) live in `data/` and implement the domain interface. Presentation-layer notifiers inject use cases via Riverpod providers, not repositories directly. The `auth_session_provider.dart` in `shared/providers/` is an exception — it uses repositories directly as infrastructure-level code.
 
@@ -191,13 +209,13 @@ Implementation note: The project uses **full clean architecture** with abstract 
 
 #### Provider Types by Use Case
 
-| Riverpod Concept        | Use Case                                     | Example                                                  |
-| ----------------------- | -------------------------------------------- | -------------------------------------------------------- |
-| `Provider`              | Repository instances, use case instances     | `patientRepositoryProvider`, `searchPatientsUseCaseProvider` |
-| `FutureProvider`        | One-shot async data fetching                 | `patientByIdProvider(id)`                                |
-| `StreamProvider`        | Realtime data (Supabase subscriptions)       | `appointmentQueueProvider(branchId)`                     |
-| `AsyncNotifierProvider` | Mutable async state with actions             | `appointmentListNotifierProvider` (load, create, cancel) |
-| `NotifierProvider`      | Synchronous mutable state                    | `selectedBranchProvider`, `themeProvider`                |
+| Riverpod Concept        | Use Case                                 | Example                                                      |
+| ----------------------- | ---------------------------------------- | ------------------------------------------------------------ |
+| `Provider`              | Repository instances, use case instances | `patientRepositoryProvider`, `searchPatientsUseCaseProvider` |
+| `FutureProvider`        | One-shot async data fetching             | `patientByIdProvider(id)`                                    |
+| `StreamProvider`        | Realtime data (Supabase subscriptions)   | `appointmentQueueProvider(branchId)`                         |
+| `AsyncNotifierProvider` | Mutable async state with actions         | `appointmentListNotifierProvider` (load, create, cancel)     |
+| `NotifierProvider`      | Synchronous mutable state                | `selectedBranchProvider`, `themeProvider`                    |
 
 #### State Architecture Pattern
 
@@ -305,5 +323,15 @@ A shell layout with persistent sidebar navigation:
 ```
 
 Navigation is router-based (GoRouter). Deep links are supported for future web deployment.
+
+**V1-4 appointment routes** (permission: `appointments.create` or `appointments.cancel`):
+
+| Path                               | Screen                                    |
+| ---------------------------------- | ----------------------------------------- |
+| `/appointments`                    | Hub (links to book, queue, calendar)      |
+| `/appointments/book`               | Planned booking form                      |
+| `/appointments/queue`              | Today's queue (Realtime + manual refresh) |
+| `/appointments/calendar`           | Day/week calendar                         |
+| `/appointments/schedule/:doctorId` | Doctor schedule filter                    |
 
 ---

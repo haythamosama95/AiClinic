@@ -108,7 +108,7 @@ VALUES (auth.uid(), 'appointment.create', 'appointments', v_new_id, row_to_json(
 
 Logged operations include:
 - Patient creation, modification, deletion
-- Appointment creation, cancellation, status changes
+- Appointment creation, reschedule, cancellation, status changes (including `confirmed` phone confirmation)
 - Invoice creation, payment, discount application
 - SOAP note creation and modification
 - Staff role/permission changes
