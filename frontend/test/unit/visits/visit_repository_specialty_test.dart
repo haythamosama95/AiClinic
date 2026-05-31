@@ -91,5 +91,35 @@ void main() {
         expect(client.lastParams?['p_specialty_form_json'], isNull);
       });
     });
+
+    group('setSpecialtyFormSchema', () {
+      test('trivial: calls set_specialty_form_schema and returns schema_json map', () async {
+        const schema = {
+          'type': 'object',
+          'properties': {
+            'pain_score': {'type': 'number', 'title': 'Pain score'},
+          },
+        };
+
+        final saved = await repository.setSpecialtyFormSchema(schemaJson: schema);
+
+        expect(client.lastFunction, 'set_specialty_form_schema');
+        expect(client.lastParams?['p_schema_json'], schema);
+        expect(saved['properties'], isA<Map>());
+      });
+
+      test('invalid state: RpcFailure propagates from backend validation', () async {
+        client.rpcResults['set_specialty_form_schema'] = {
+          'success': false,
+          'error_code': 'INVALID_INPUT',
+          'error_message': 'Specialty form schema is not valid.',
+        };
+
+        expect(
+          () => repository.setSpecialtyFormSchema(schemaJson: const {'type': 'array'}),
+          throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+        );
+      });
+    });
   });
 }

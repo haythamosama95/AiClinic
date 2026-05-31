@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,8 +25,10 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
   final _currencyController = TextEditingController();
   final _timezoneController = TextEditingController();
   final _defaultDurationController = TextEditingController();
+  final _specialtySchemaController = TextEditingController();
   OrganizationProfile? _lastSyncedProfile;
   int? _lastSyncedDuration;
+  String? _lastSyncedSpecialtySchemaText;
 
   @override
   void dispose() {
@@ -33,13 +37,18 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
     _currencyController.dispose();
     _timezoneController.dispose();
     _defaultDurationController.dispose();
+    _specialtySchemaController.dispose();
     super.dispose();
   }
 
   void _syncControllers(OrganizationSettingsUiState ui) {
     final profile = ui.profile;
     final duration = ui.defaultAppointmentDurationMinutes;
-    if (profile == null || (profile == _lastSyncedProfile && duration == _lastSyncedDuration)) {
+    final specialtyText = _encodeSpecialtySchema(ui.specialtyFormSchemaJson);
+    if (profile == null ||
+        (profile == _lastSyncedProfile &&
+            duration == _lastSyncedDuration &&
+            specialtyText == _lastSyncedSpecialtySchemaText)) {
       return;
     }
     _nameController.text = profile.name;
@@ -49,8 +58,21 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
     if (duration != null) {
       _defaultDurationController.text = duration.toString();
     }
+    _specialtySchemaController.text = specialtyText;
     _lastSyncedProfile = profile;
     _lastSyncedDuration = duration;
+    _lastSyncedSpecialtySchemaText = specialtyText;
+  }
+
+  String _encodeSpecialtySchema(Map<String, dynamic> schema) {
+    if (schema.isEmpty) {
+      return '{}';
+    }
+    return const JsonEncoder.withIndent('  ').convert(schema);
+  }
+
+  void _clearSpecialtySchema() {
+    _specialtySchemaController.text = '{}';
   }
 
   Future<void> _save() async {
@@ -69,6 +91,7 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
           currencyCode: OrganizationProfile.normalizeCurrencyCode(_currencyController.text),
           timezone: OrganizationProfile.normalizeTimezone(_timezoneController.text),
           defaultAppointmentDurationMinutes: duration,
+          specialtyFormSchemaText: _specialtySchemaController.text,
         );
   }
 
@@ -198,6 +221,37 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
                       }
                       return ui.fieldErrors['defaultAppointmentDuration'];
                     },
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Specialty visit form', style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  Text(
+                    'JSON Schema for extra visit fields (text, number, select, checkbox). '
+                    'Use {} to show SOAP only.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: const Key('org_settings_specialty_schema'),
+                    controller: _specialtySchemaController,
+                    enabled: !ui.isSaving,
+                    maxLines: 12,
+                    decoration: InputDecoration(
+                      labelText: 'Specialty form schema (JSON)',
+                      alignLabelWithHint: true,
+                      border: const OutlineInputBorder(),
+                      errorText: ui.fieldErrors['specialtyFormSchema'],
+                    ),
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      key: const Key('org_settings_clear_specialty_schema'),
+                      onPressed: ui.isSaving ? null : _clearSpecialtySchema,
+                      child: const Text('Clear specialty form'),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   Text('Subscription', style: Theme.of(context).textTheme.titleSmall),

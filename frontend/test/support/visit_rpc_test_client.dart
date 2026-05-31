@@ -102,6 +102,17 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           },
         },
       },
+      'set_specialty_form_schema' => {
+        'success': true,
+        'data': {
+          'schema_json': {
+            'type': 'object',
+            'properties': {
+              'pain_score': {'type': 'number', 'title': 'Pain score'},
+            },
+          },
+        },
+      },
       'list_patient_visits' => {
         'success': true,
         'data': {

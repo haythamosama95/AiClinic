@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/visits/domain/specialty_form_schema.dart';
 import 'package:ai_clinic/features/visits/domain/soap_note.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
+import 'package:ai_clinic/features/visits/domain/visit_status.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/specialty_form_schema_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_read_only_section.dart';
 
 /// Read-only clinical visit detail from patient history (V1-5 US6).
 class VisitDetailPage extends ConsumerWidget {
@@ -25,9 +32,28 @@ class VisitDetailPage extends ConsumerWidget {
     }
 
     final detailAsync = ref.watch(visitDetailProvider(id));
+    final schemaAsync = ref.watch(specialtyFormSchemaProvider);
+    final canEdit = ref.watch(permissionServiceProvider).canEditVisitSoap();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Visit detail')),
+      appBar: AppBar(
+        title: const Text('Visit detail'),
+        actions: [
+          detailAsync.maybeWhen(
+            data: (visit) {
+              if (!canEdit || visit.status != VisitStatus.inProgress) {
+                return null;
+              }
+              return TextButton(
+                key: const Key('visit_detail_edit_documentation'),
+                onPressed: () => context.go(AppRoutes.visitDocument(id)),
+                child: const Text('Edit documentation'),
+              );
+            },
+            orElse: () => null,
+          ),
+        ].whereType<Widget>().toList(),
+      ),
       body: detailAsync.when(
         loading: () => const Center(key: Key('visit_detail_loading'), child: CircularProgressIndicator()),
         error: (error, _) => Center(
@@ -43,21 +69,27 @@ class VisitDetailPage extends ConsumerWidget {
             ),
           ),
         ),
-        data: (visit) => _VisitDetailBody(visit: visit),
+        data: (visit) => schemaAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stackTrace) => _VisitDetailBody(visit: visit, schema: const SpecialtyFormSchema()),
+          data: (schema) => _VisitDetailBody(visit: visit, schema: schema),
+        ),
       ),
     );
   }
 }
 
 class _VisitDetailBody extends StatelessWidget {
-  const _VisitDetailBody({required this.visit});
+  const _VisitDetailBody({required this.visit, required this.schema});
 
   final VisitDetail visit;
+  final SpecialtyFormSchema schema;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dateLabel = DateFormat.yMMMd().format(visit.visitDate.toLocal());
+    final specialtyValues = visit.soap?.specialtyFormJson ?? const {};
 
     return ListView(
       key: const Key('visit_detail_body'),
@@ -67,6 +99,10 @@ class _VisitDetailBody extends StatelessWidget {
         const SizedBox(height: 8),
         _DetailRow(label: 'Doctor', value: visit.doctorName),
         _DetailRow(label: 'Status', value: visit.status.label),
+        if (specialtyValues.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          SpecialtyFormReadOnlySection(values: specialtyValues, schema: schema),
+        ],
         if (visit.soap != null) ...[
           const SizedBox(height: 24),
           Text('SOAP note', key: const Key('visit_detail_soap_section'), style: theme.textTheme.titleMedium),

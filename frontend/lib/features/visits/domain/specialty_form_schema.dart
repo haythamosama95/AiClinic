@@ -147,6 +147,31 @@ class SpecialtyFormSchema {
     return errors;
   }
 
+  /// Human-readable rows for read-only visit detail display.
+  List<({String label, String value})> readOnlyRows(Map<String, dynamic> values) {
+    if (values.isEmpty) {
+      return const [];
+    }
+
+    final labelByKey = {for (final field in fields) field.key: field.label};
+    final typeByKey = {for (final field in fields) field.key: field.type};
+    final keys = values.keys.toList()..sort();
+
+    return [
+      for (final key in keys)
+        if (values[key] != null)
+          (label: labelByKey[key] ?? _labelFromKey(key), value: _formatReadOnlyValue(values[key], typeByKey[key])),
+    ];
+  }
+
+  static String _formatReadOnlyValue(Object? raw, String? type) {
+    if (raw is bool || type == 'boolean') {
+      final boolValue = raw is bool ? raw : raw?.toString() == 'true';
+      return boolValue ? 'Yes' : 'No';
+    }
+    return raw?.toString() ?? '—';
+  }
+
   /// Values sent to `save_soap_note` (only defined schema keys).
   Map<String, dynamic> encodeForSave(Map<String, dynamic> draft) {
     if (!hasFields) {

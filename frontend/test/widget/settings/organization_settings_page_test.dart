@@ -4,6 +4,7 @@ import 'package:ai_clinic/features/settings/data/organization_repository.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/organization_settings_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/organization_settings_notifier.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,11 +14,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
 import '../../support/settings_rpc_test_client.dart';
+import '../../support/visit_rpc_test_client.dart';
 
 Future<void> _tapSave(WidgetTester tester) async {
   final save = find.text('Save organization settings');
   await tester.ensureVisible(save);
   await tester.tap(save);
+}
+
+/// Modifiable org profile fields (excludes always-visible specialty JSON editor).
+Finder _modifiableTextFormFields() {
+  return find.byWidgetPredicate(
+    (widget) => widget is TextFormField && widget.key != const Key('org_settings_specialty_schema'),
+  );
 }
 
 void main() {
@@ -32,7 +41,9 @@ void main() {
       expect(find.text('USD'), findsOneWidget);
       expect(find.text('Modify'), findsNWidgets(5));
       expect(find.text('Default appointment duration (minutes)'), findsOneWidget);
-      expect(find.byType(TextFormField), findsNothing);
+      expect(find.text('Specialty visit form'), findsOneWidget);
+      expect(find.byKey(const Key('org_settings_specialty_schema')), findsOneWidget);
+      expect(_modifiableTextFormFields(), findsNothing);
       expect(find.text('Save organization settings'), findsOneWidget);
     });
 
@@ -50,7 +61,7 @@ void main() {
 
       await tester.tap(find.text('Modify').first);
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField), '   ');
+      await tester.enterText(_modifiableTextFormFields(), '   ');
       await _tapSave(tester);
       await tester.pumpAndSettle();
 
@@ -64,7 +75,7 @@ void main() {
 
       await tester.tap(find.text('Modify').first);
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField), 'Renamed Clinic');
+      await tester.enterText(_modifiableTextFormFields(), 'Renamed Clinic');
       await _tapSave(tester);
       await tester.pumpAndSettle();
 
@@ -80,7 +91,7 @@ void main() {
 
       await tester.tap(find.text('Modify').at(4));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField), '45');
+      await tester.enterText(_modifiableTextFormFields(), '45');
       await _tapSave(tester);
       await tester.pumpAndSettle();
 
@@ -95,7 +106,7 @@ void main() {
 
       await tester.tap(find.text('Modify').at(4));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextFormField), '3');
+      await tester.enterText(_modifiableTextFormFields(), '3');
       await _tapSave(tester);
       await tester.pumpAndSettle();
 
@@ -115,6 +126,43 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('do not have permission'), findsOneWidget);
+    });
+
+    testWidgets('owner save persists specialty form schema via RPC', (tester) async {
+      final visitClient = VisitRpcTestClient();
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_host(role: StaffRole.owner, visitClient: visitClient));
+      await tester.pumpAndSettle();
+
+      final schemaField = find.byKey(const Key('org_settings_specialty_schema'));
+      await tester.ensureVisible(schemaField);
+      await tester.enterText(
+        schemaField,
+        '{"type":"object","properties":{"pain_score":{"type":"number","title":"Pain score"}}}',
+      );
+      await _tapSave(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Organization settings saved.'), findsOneWidget);
+      expect(visitClient.lastFunction, 'set_specialty_form_schema');
+      expect(visitClient.lastParams?['p_schema_json'], isA<Map>());
+    });
+
+    testWidgets('clear specialty form sets empty JSON object', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_host(role: StaffRole.owner));
+      await tester.pumpAndSettle();
+
+      final clear = find.byKey(const Key('org_settings_clear_specialty_schema'));
+      await tester.ensureVisible(clear);
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('org_settings_specialty_schema')), findsOneWidget);
+      final field = tester.widget<TextFormField>(find.byKey(const Key('org_settings_specialty_schema')));
+      expect(field.controller?.text, '{}');
     });
 
     testWidgets('corner case: subscription tier displayed read-only', (tester) async {
@@ -167,12 +215,13 @@ void main() {
       await tester.pumpWidget(_host(role: StaffRole.owner));
       await tester.pumpAndSettle();
 
-      expect(find.byType(TextFormField), findsNothing);
+      expect(find.byKey(const Key('org_settings_specialty_schema')), findsOneWidget);
+      expect(_modifiableTextFormFields(), findsNothing);
 
       await tester.tap(find.text('Modify').first);
       await tester.pumpAndSettle();
 
-      expect(find.byType(TextFormField), findsOneWidget);
+      expect(_modifiableTextFormFields(), findsOneWidget);
       expect(find.widgetWithText(TextFormField, 'Test Clinic'), findsOneWidget);
     });
 
@@ -186,7 +235,7 @@ void main() {
       await tester.tap(find.text('Modify').at(1));
       await tester.pumpAndSettle();
 
-      expect(find.byType(TextFormField), findsOneWidget);
+      expect(_modifiableTextFormFields(), findsOneWidget);
     });
   });
 }
@@ -196,6 +245,7 @@ Widget _host({
   bool permissionDenied = false,
   SettingsRpcTestClient? rpcClient,
   AppointmentRpcTestClient? appointmentClient,
+  VisitRpcTestClient? visitClient,
   String? currencyCode = 'USD',
   String? timezone = 'UTC',
 }) {
@@ -235,6 +285,7 @@ Widget _host({
       appointmentRepositoryProvider.overrideWith(
         (ref) => AppointmentRepository(appointmentClient ?? AppointmentRpcTestClient()),
       ),
+      visitRepositoryProvider.overrideWith((ref) => VisitRepository(visitClient ?? VisitRpcTestClient())),
     ],
     child: const MaterialApp(home: OrganizationSettingsPage()),
   );

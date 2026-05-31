@@ -665,6 +665,92 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- set_specialty_form_schema upserts org schema and round-trips via get_specialty_form_schema.
+  v_result := public.set_specialty_form_schema(
+    '{"type":"object","properties":{"severity":{"type":"string","title":"Severity"}},"required":["severity"]}'::jsonb
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'set_specialty_form_schema_success',
+    v_result.success
+      AND v_result.data -> 'schema_json' ? 'properties'
+      AND v_result.data -> 'schema_json' -> 'properties' ? 'severity',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.get_specialty_form_schema();
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'set_specialty_form_schema_round_trip',
+    v_result.success
+      AND v_result.data -> 'schema_json' -> 'properties' ? 'severity',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- set_specialty_form_schema rejects invalid schema shape.
+  v_result := public.set_specialty_form_schema('[]'::jsonb);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'set_specialty_form_schema_invalid_input',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- set_specialty_form_schema clear with empty object.
+  v_result := public.set_specialty_form_schema('{}'::jsonb);
+  v_result := public.get_specialty_form_schema();
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'set_specialty_form_schema_clear',
+    v_result.success AND v_result.data -> 'schema_json' = '{}'::jsonb,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Restore schema for subsequent save_soap_note specialty tests if needed.
+  v_result := public.set_specialty_form_schema(
+    '{"type":"object","properties":{"pain_score":{"type":"number","title":"Pain score"},"notes":{"type":"string","title":"Notes"}},"required":["pain_score"]}'::jsonb
+  );
+
+  -- set_specialty_form_schema forbidden for doctor role.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_doctor_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_doctor_staff::text,
+      'staff_role', 'doctor',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_result := public.set_specialty_form_schema('{}'::jsonb);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'set_specialty_form_schema_forbidden_doctor',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+
   -- update_appointment_status in_progress -> completed requires visit completion.
   v_start := pg_temp.test_appointment_same_day_slot(9);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 9;

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,7 @@ import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/features/settings/domain/update_organization_input.dart';
@@ -16,6 +19,7 @@ class OrganizationSettingsUiState {
   const OrganizationSettingsUiState({
     this.profile,
     this.defaultAppointmentDurationMinutes,
+    this.specialtyFormSchemaJson = const {},
     this.isSaving = false,
     this.permissionDenied = false,
     this.errorMessage,
@@ -25,6 +29,7 @@ class OrganizationSettingsUiState {
 
   final OrganizationProfile? profile;
   final int? defaultAppointmentDurationMinutes;
+  final Map<String, dynamic> specialtyFormSchemaJson;
   final bool isSaving;
   final bool permissionDenied;
   final String? errorMessage;
@@ -34,6 +39,7 @@ class OrganizationSettingsUiState {
   OrganizationSettingsUiState copyWith({
     OrganizationProfile? profile,
     int? defaultAppointmentDurationMinutes,
+    Map<String, dynamic>? specialtyFormSchemaJson,
     bool? isSaving,
     bool? permissionDenied,
     String? errorMessage,
@@ -46,6 +52,7 @@ class OrganizationSettingsUiState {
     return OrganizationSettingsUiState(
       profile: profile ?? this.profile,
       defaultAppointmentDurationMinutes: defaultAppointmentDurationMinutes ?? this.defaultAppointmentDurationMinutes,
+      specialtyFormSchemaJson: specialtyFormSchemaJson ?? this.specialtyFormSchemaJson,
       isSaving: isSaving ?? this.isSaving,
       permissionDenied: permissionDenied ?? this.permissionDenied,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
@@ -78,6 +85,7 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
 
     final branchId = auth.context!.activeBranchId ?? auth.context!.branchIds.firstOrNull;
     int? defaultDuration;
+    Map<String, dynamic> specialtySchema = const {};
     if (branchId != null && branchId.isNotEmpty) {
       try {
         final settings = await ref.read(appointmentRepositoryProvider).getSettings(branchId: branchId);
@@ -87,7 +95,17 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
       }
     }
 
-    return OrganizationSettingsUiState(profile: profile, defaultAppointmentDurationMinutes: defaultDuration);
+    try {
+      specialtySchema = await ref.read(visitRepositoryProvider).getSpecialtyFormSchema();
+    } catch (error) {
+      AppLog.warning('settings.organization.specialty_schema.load_failed reason=${error.runtimeType}');
+    }
+
+    return OrganizationSettingsUiState(
+      profile: profile,
+      defaultAppointmentDurationMinutes: defaultDuration,
+      specialtyFormSchemaJson: specialtySchema,
+    );
   }
 
   void clearSaveMessage() {
@@ -104,6 +122,7 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
     String? currencyCode,
     String? timezone,
     int? defaultAppointmentDurationMinutes,
+    String? specialtyFormSchemaText,
   }) async {
     final current = state.value;
     if (current == null || current.permissionDenied) {
@@ -120,6 +139,23 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
         ),
       );
       return false;
+    }
+
+    Map<String, dynamic>? specialtySchemaToSave;
+    if (specialtyFormSchemaText != null) {
+      final parseResult = _parseSpecialtySchemaText(specialtyFormSchemaText);
+      if (parseResult.error != null) {
+        state = AsyncData(
+          current.copyWith(
+            isSaving: false,
+            fieldErrors: {'specialtyFormSchema': parseResult.error!},
+            clearError: true,
+            clearSaveMessage: true,
+          ),
+        );
+        return false;
+      }
+      specialtySchemaToSave = parseResult.schema;
     }
 
     state = AsyncData(
@@ -158,12 +194,20 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
             .setDefaultDuration(durationMinutes: defaultAppointmentDurationMinutes);
       }
 
+      var savedSpecialtySchema = current.specialtyFormSchemaJson;
+      if (specialtySchemaToSave != null && !mapEquals(specialtySchemaToSave, current.specialtyFormSchemaJson)) {
+        savedSpecialtySchema = await ref
+            .read(visitRepositoryProvider)
+            .setSpecialtyFormSchema(schemaJson: specialtySchemaToSave);
+      }
+
       final refreshed = await ref.read(fetchOrganizationProfileUseCaseProvider)(organizationId: current.profile!.id);
 
       state = AsyncData(
         OrganizationSettingsUiState(
           profile: refreshed ?? current.profile!.copyWith(name: normalizedName),
           defaultAppointmentDurationMinutes: savedDuration,
+          specialtyFormSchemaJson: savedSpecialtySchema,
           saveMessage: 'Organization settings saved.',
         ),
       );
@@ -202,6 +246,33 @@ class OrganizationSettingsNotifier extends AsyncNotifier<OrganizationSettingsUiS
     if (lower.contains('duration')) {
       return {'defaultAppointmentDuration': message};
     }
+    if (lower.contains('specialty') || lower.contains('schema')) {
+      return {'specialtyFormSchema': message};
+    }
     return {};
   }
+
+  static _SpecialtySchemaParseResult _parseSpecialtySchemaText(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return const _SpecialtySchemaParseResult(schema: {});
+    }
+
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is! Map) {
+        return const _SpecialtySchemaParseResult(error: 'Schema must be a JSON object.');
+      }
+      return _SpecialtySchemaParseResult(schema: Map<String, dynamic>.from(decoded));
+    } on FormatException {
+      return const _SpecialtySchemaParseResult(error: 'Enter valid JSON for the specialty form schema.');
+    }
+  }
+}
+
+class _SpecialtySchemaParseResult {
+  const _SpecialtySchemaParseResult({this.schema = const {}, this.error});
+
+  final Map<String, dynamic> schema;
+  final String? error;
 }

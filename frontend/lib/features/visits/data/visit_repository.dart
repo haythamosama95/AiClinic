@@ -211,7 +211,15 @@ class VisitRepository with AppRpcInvoker {
 
   Future<Map<String, dynamic>> getSpecialtyFormSchema() async {
     final result = await invokeRpc('get_specialty_form_schema', null);
-    final schema = result.data?['schema_json'];
+    return _parseSchemaJson(result.data?['schema_json']);
+  }
+
+  Future<Map<String, dynamic>> setSpecialtyFormSchema({required Map<String, dynamic> schemaJson}) async {
+    final result = await invokeRpc('set_specialty_form_schema', {'p_schema_json': schemaJson});
+    return _parseSchemaJson(result.data?['schema_json']);
+  }
+
+  Map<String, dynamic> _parseSchemaJson(Object? schema) {
     if (schema is Map<String, dynamic>) {
       return schema;
     }

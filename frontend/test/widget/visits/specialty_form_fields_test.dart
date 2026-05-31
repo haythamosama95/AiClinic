@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_documentation_page.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_fields.dart';
 
@@ -39,6 +40,23 @@ void main() {
       await _pumpFields(tester, client: client, permissions: {PermissionKeys.visitsEditSoap});
 
       expect(find.byKey(const Key('specialty_field_pain_score')), findsNothing);
+    });
+
+    testWidgets('shows info banner when schema empty and user can edit SOAP', (tester) async {
+      final client = VisitRpcTestClient(
+        rpcResults: {
+          'get_specialty_form_schema': {
+            'success': true,
+            'data': {'schema_json': {}},
+          },
+        },
+      );
+
+      await _pumpDocumentation(tester, client: client, permissions: {PermissionKeys.visitsEditSoap});
+
+      expect(find.byKey(const Key('specialty_schema_empty_banner')), findsOneWidget);
+      expect(find.textContaining('No specialty form configured'), findsOneWidget);
+      expect(find.byKey(const Key('specialty_schema_settings_link')), findsOneWidget);
     });
 
     testWidgets('advanced: client validation shows required error before RPC', (tester) async {
@@ -294,6 +312,32 @@ Future<void> _pumpFields(
           ),
         ),
       ),
+    ),
+  );
+
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpDocumentation(
+  WidgetTester tester, {
+  Set<String> permissions = const {PermissionKeys.visitsEditSoap},
+  VisitRpcTestClient? client,
+}) async {
+  const visitId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const branchId = '44444444-4444-4444-8444-444444444444';
+
+  final authState = AuthSessionState(
+    status: AuthSessionStatus.authenticated,
+    context: sampleAuthSessionContext(permissions: permissions, activeBranchId: branchId, branchIds: [branchId]),
+  );
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        authSessionProvider.overrideWith(() => _PresetAuth(authState)),
+        visitRepositoryProvider.overrideWith((ref) => VisitRepository(client ?? VisitRpcTestClient())),
+      ],
+      child: MaterialApp(home: VisitDocumentationPage(visitId: visitId)),
     ),
   );
 

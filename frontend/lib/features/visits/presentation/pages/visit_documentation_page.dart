@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
@@ -86,14 +88,14 @@ class VisitDocumentationPage extends ConsumerWidget {
   }
 }
 
-class _VisitHeaderAndSoap extends StatelessWidget {
+class _VisitHeaderAndSoap extends ConsumerWidget {
   const _VisitHeaderAndSoap({required this.visitId, required this.state});
 
   final String visitId;
   final VisitDocumentationState state;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final visit = state.visit;
     final dateLabel = DateFormat.yMMMd().format(visit.visitDate.toLocal());
 
@@ -105,6 +107,20 @@ class _VisitHeaderAndSoap extends StatelessWidget {
         Text('Doctor: ${visit.doctorName}'),
         const SizedBox(height: 4),
         Text('Status: ${visit.status.label}'),
+        if (!state.specialtySchema.hasFields && state.canEdit) ...[
+          const SizedBox(height: 16),
+          MaterialBanner(
+            key: const Key('specialty_schema_empty_banner'),
+            content: const Text('No specialty form configured. Configure in Organization settings.'),
+            actions: [
+              TextButton(
+                key: const Key('specialty_schema_settings_link'),
+                onPressed: () => context.go(AppRoutes.settingsOrganization),
+                child: const Text('Organization settings'),
+              ),
+            ],
+          ),
+        ],
         if (state.specialtySchema.hasFields) ...[
           const SizedBox(height: 24),
           Text('Specialty fields', style: Theme.of(context).textTheme.titleMedium),
