@@ -28,5 +28,24 @@ void main() {
 
       expect(AppointmentWorkingHours.isWithinSchedule(schedule: schedule, start: start, end: end), isFalse);
     });
+
+    test('accepts slots ending at midnight when close is 23:59 sentinel', () {
+      final schedule = BranchWorkingSchedule(
+        BranchWeekday.values
+            .map(
+              (day) => BranchWorkingDayHours(
+                day: day,
+                isWorkingDay: day != BranchWeekday.sunday,
+                openTime: day == BranchWeekday.sunday ? null : '09:00',
+                closeTime: day == BranchWeekday.sunday ? null : '23:59',
+              ),
+            )
+            .toList(growable: false),
+      );
+      final start = DateTime(2026, 6, 1, 23, 0);
+      final end = DateTime(2026, 6, 2, 0, 0);
+
+      expect(AppointmentWorkingHours.isWithinSchedule(schedule: schedule, start: start, end: end), isTrue);
+    });
   });
 }

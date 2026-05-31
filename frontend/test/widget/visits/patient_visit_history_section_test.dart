@@ -53,7 +53,7 @@ void main() {
     });
 
     testWidgets('invalid state: receptionist sees metadata-only caption without chevron', (tester) async {
-      await _pumpSection(tester, permissions: {PermissionKeys.patientsView});
+      await _pumpSection(tester, permissions: RolePermissionSeed.receptionist);
 
       expect(find.byKey(const Key('patient_visit_history_metadata_only')), findsOneWidget);
       expect(find.byIcon(Icons.chevron_right), findsNothing);
