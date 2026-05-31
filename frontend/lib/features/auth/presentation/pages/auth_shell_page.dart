@@ -9,6 +9,7 @@ import 'package:ai_clinic/core/auth/permission_denied_handler.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/dev_seed_all_feedback_listener.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_tools.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/dev_tools.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/dev_seed_appointments_button.dart';
@@ -29,19 +30,24 @@ class AuthShellPage extends ConsumerWidget {
     final auth = session.context;
     final branchesAsync = ref.watch(staffAssignableBranchesProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('AiClinic'),
-        actions: [
-          TextButton(onPressed: () => ref.read(authNotifierProvider.notifier).signOut(), child: const Text('Sign out')),
-        ],
+    return DevSeedAllFeedbackListener(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('AiClinic'),
+          actions: [
+            TextButton(
+              onPressed: () => ref.read(authNotifierProvider.notifier).signOut(),
+              child: const Text('Sign out'),
+            ),
+          ],
+        ),
+        body: auth == null
+            ? const Center(child: Text('Loading session context…'))
+            : !auth.hasBranchAssignment
+            ? NoBranchBlockedPanel(staffName: auth.staffProfile.fullName)
+            : _ShellHomeBody(auth: auth, branchesAsync: branchesAsync),
+        bottomNavigationBar: auth != null ? ShellStatusBar(branchesAsync: branchesAsync) : null,
       ),
-      body: auth == null
-          ? const Center(child: Text('Loading session context…'))
-          : !auth.hasBranchAssignment
-          ? NoBranchBlockedPanel(staffName: auth.staffProfile.fullName)
-          : _ShellHomeBody(auth: auth, branchesAsync: branchesAsync),
-      bottomNavigationBar: auth != null ? ShellStatusBar(branchesAsync: branchesAsync) : null,
     );
   }
 }

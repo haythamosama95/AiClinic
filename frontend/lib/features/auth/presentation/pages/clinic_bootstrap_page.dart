@@ -9,6 +9,8 @@ import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart'
 import 'package:ai_clinic/features/settings/presentation/widgets/branch_form_fields.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/bootstrap_notifier.dart';
+import 'package:ai_clinic/features/auth/presentation/dev/dev_seed_all_runner.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/dev_seed_all_feedback_listener.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/dev_tools.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/first_sign_in_warning_dialog.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -128,10 +130,11 @@ class _ClinicBootstrapPageState extends ConsumerState<ClinicBootstrapPage> {
   Widget build(BuildContext context) {
     final session = ref.watch(authSessionProvider);
     final bootstrap = ref.watch(bootstrapNotifierProvider);
+    final seedInProgress = ref.watch(devFullSeedInProgressProvider);
     final auth = session.context;
     final isBusy = bootstrap.isSubmitting;
 
-    if (session.isAuthenticated && auth != null && !auth.setupRequired) {
+    if (session.isAuthenticated && auth != null && !auth.setupRequired && !seedInProgress) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -141,92 +144,94 @@ class _ClinicBootstrapPageState extends ConsumerState<ClinicBootstrapPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Clinic setup'),
-        automaticallyImplyLeading: false,
-        actions: const [DevSeedAllButton(), DevFillDummyClinicButton(), DevResetClinicButton()],
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Set up your clinic', style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 8),
-                Text(
-                  auth == null
-                      ? 'Loading your administrator session…'
-                      : 'Signed in as ${auth.staffProfile.fullName}. '
-                            'Enter organization and branch details, then save both together.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 8),
-                _StepIndicator(current: bootstrap.step),
-                if (bootstrap.errorMessage != null) ...[
-                  const SizedBox(height: 16),
-                  MaterialBanner(
-                    content: Text(bootstrap.errorMessage!),
-                    leading: const Icon(Icons.error_outline),
-                    backgroundColor: Theme.of(context).colorScheme.errorContainer,
-                    actions: [
-                      TextButton(
-                        onPressed: isBusy ? null : () => ref.read(bootstrapNotifierProvider.notifier).clearError(),
-                        child: const Text('Dismiss'),
-                      ),
-                    ],
+    return DevSeedAllFeedbackListener(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Clinic setup'),
+          automaticallyImplyLeading: false,
+          actions: const [DevSeedAllButton(), DevFillDummyClinicButton(), DevResetClinicButton()],
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Set up your clinic', style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 8),
+                  Text(
+                    auth == null
+                        ? 'Loading your administrator session…'
+                        : 'Signed in as ${auth.staffProfile.fullName}. '
+                              'Enter organization and branch details, then save both together.',
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
+                  const SizedBox(height: 8),
+                  _StepIndicator(current: bootstrap.step),
+                  if (bootstrap.errorMessage != null) ...[
+                    const SizedBox(height: 16),
+                    MaterialBanner(
+                      content: Text(bootstrap.errorMessage!),
+                      leading: const Icon(Icons.error_outline),
+                      backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                      actions: [
+                        TextButton(
+                          onPressed: isBusy ? null : () => ref.read(bootstrapNotifierProvider.notifier).clearError(),
+                          child: const Text('Dismiss'),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  switch (bootstrap.step) {
+                    BootstrapWizardStep.organization => _OrganizationStep(
+                      formKey: _orgFormKey,
+                      nameController: _orgNameController,
+                      logoController: _logoUrlController,
+                      currencyController: _currencyController,
+                      timezoneController: _timezoneController,
+                      isBusy: isBusy,
+                      onContinue: _continueToBranch,
+                    ),
+                    BootstrapWizardStep.branch => _BranchStep(
+                      formKey: _branchFormKey,
+                      nameController: _branchNameController,
+                      codeController: _branchCodeController,
+                      addressController: _branchAddressController,
+                      phoneController: _branchPhoneController,
+                      mapsController: _branchMapsController,
+                      dayEnabled: _dayEnabled,
+                      openTimeControllers: _openTimeControllers,
+                      closeTimeControllers: _closeTimeControllers,
+                      onDayEnabledChanged: (day, enabled) {
+                        setState(() {
+                          _dayEnabled[day] = enabled;
+                          if (!enabled) {
+                            _openTimeControllers[day]!.clear();
+                            _closeTimeControllers[day]!.clear();
+                          }
+                        });
+                      },
+                      isBusy: isBusy,
+                      onSubmit: _finishSetup,
+                      onBack: isBusy
+                          ? null
+                          : () => ref.read(bootstrapNotifierProvider.notifier).goBackToOrganizationStep(),
+                    ),
+                    BootstrapWizardStep.complete => _CompleteStep(
+                      organizationId: bootstrap.organizationId,
+                      branchId: bootstrap.branchId,
+                      onGoHome: () => context.go(AppRoutes.home),
+                      onCreateStaff: () {
+                        final setupRequired = ref.read(authSessionProvider).context?.setupRequired ?? true;
+                        context.go(setupRequired ? AppRoutes.staffCreate : AppRoutes.settingsStaffNew);
+                      },
+                    ),
+                  },
                 ],
-                const SizedBox(height: 24),
-                switch (bootstrap.step) {
-                  BootstrapWizardStep.organization => _OrganizationStep(
-                    formKey: _orgFormKey,
-                    nameController: _orgNameController,
-                    logoController: _logoUrlController,
-                    currencyController: _currencyController,
-                    timezoneController: _timezoneController,
-                    isBusy: isBusy,
-                    onContinue: _continueToBranch,
-                  ),
-                  BootstrapWizardStep.branch => _BranchStep(
-                    formKey: _branchFormKey,
-                    nameController: _branchNameController,
-                    codeController: _branchCodeController,
-                    addressController: _branchAddressController,
-                    phoneController: _branchPhoneController,
-                    mapsController: _branchMapsController,
-                    dayEnabled: _dayEnabled,
-                    openTimeControllers: _openTimeControllers,
-                    closeTimeControllers: _closeTimeControllers,
-                    onDayEnabledChanged: (day, enabled) {
-                      setState(() {
-                        _dayEnabled[day] = enabled;
-                        if (!enabled) {
-                          _openTimeControllers[day]!.clear();
-                          _closeTimeControllers[day]!.clear();
-                        }
-                      });
-                    },
-                    isBusy: isBusy,
-                    onSubmit: _finishSetup,
-                    onBack: isBusy
-                        ? null
-                        : () => ref.read(bootstrapNotifierProvider.notifier).goBackToOrganizationStep(),
-                  ),
-                  BootstrapWizardStep.complete => _CompleteStep(
-                    organizationId: bootstrap.organizationId,
-                    branchId: bootstrap.branchId,
-                    onGoHome: () => context.go(AppRoutes.home),
-                    onCreateStaff: () {
-                      final setupRequired = ref.read(authSessionProvider).context?.setupRequired ?? true;
-                      context.go(setupRequired ? AppRoutes.staffCreate : AppRoutes.settingsStaffNew);
-                    },
-                  ),
-                },
-              ],
+              ),
             ),
           ),
         ),

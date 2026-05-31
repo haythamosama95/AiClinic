@@ -13,19 +13,12 @@ import 'package:ai_clinic/features/patients/domain/patient_dev_seed_data.dart';
 
 const bool _kEnableDevTools = bool.fromEnvironment('ENABLE_DEV_TOOLS');
 
-/// Runs dummy clinic setup (when needed) plus doctor, patient, and appointment dev seeds.
-class DevSeedAllButton extends ConsumerStatefulWidget {
+/// Runs dummy clinic setup (when needed) plus patient, doctor, and appointment dev seeds.
+class DevSeedAllButton extends ConsumerWidget {
   const DevSeedAllButton({super.key});
 
   @override
-  ConsumerState<DevSeedAllButton> createState() => _DevSeedAllButtonState();
-}
-
-class _DevSeedAllButtonState extends ConsumerState<DevSeedAllButton> {
-  bool _isBusy = false;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (!kDebugMode && !_kEnableDevTools) {
       return const SizedBox.shrink();
     }
@@ -40,11 +33,12 @@ class _DevSeedAllButtonState extends ConsumerState<DevSeedAllButton> {
     }
 
     final bootstrapBusy = ref.watch(bootstrapNotifierProvider).isSubmitting;
-    final isBusy = _isBusy || bootstrapBusy;
+    final seedInProgress = ref.watch(devFullSeedInProgressProvider);
+    final isBusy = bootstrapBusy || seedInProgress;
 
     return FilledButton.tonalIcon(
       key: const Key('dev_seed_all_button'),
-      onPressed: isBusy ? null : () => _confirmAndRun(context),
+      onPressed: isBusy ? null : () => _confirmAndRun(context, ref),
       icon: isBusy
           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
           : const Icon(Icons.layers_outlined),
@@ -52,7 +46,7 @@ class _DevSeedAllButtonState extends ConsumerState<DevSeedAllButton> {
     );
   }
 
-  Future<void> _confirmAndRun(BuildContext context) async {
+  Future<void> _confirmAndRun(BuildContext context, WidgetRef ref) async {
     final auth = ref.read(authSessionProvider).context;
     if (auth == null) {
       return;
@@ -70,13 +64,13 @@ class _DevSeedAllButtonState extends ConsumerState<DevSeedAllButton> {
           auth.setupRequired
               ? 'Runs all dev setup steps in order:\n'
                     '1. Create demo organization and branch\n'
-                    '2. Seed $doctorCount doctors (password: ${DoctorDevSeedData.defaultPassword})\n'
-                    '3. Seed $patientCount patients (active, second branch, archived)\n'
+                    '2. Seed $patientCount patients (active, second branch, archived)\n'
+                    '3. Seed $doctorCount doctors (password: ${DoctorDevSeedData.defaultPassword})\n'
                     '4. Create $appointmentCount appointments at the active branch\n\n'
                     'Existing dev doctors or patients are skipped; appointments are always created.'
               : 'Seeds demo data at your clinic in order:\n'
-                    '1. $doctorCount doctors (password: ${DoctorDevSeedData.defaultPassword})\n'
-                    '2. $patientCount patients\n'
+                    '1. $patientCount patients\n'
+                    '2. $doctorCount doctors (password: ${DoctorDevSeedData.defaultPassword})\n'
                     '3. $appointmentCount appointments\n\n'
                     'Existing dev doctors or patients are skipped; appointments are always created.',
         ),
@@ -87,25 +81,33 @@ class _DevSeedAllButtonState extends ConsumerState<DevSeedAllButton> {
       ),
     );
 
-    if (confirmed != true || !mounted) {
+    if (confirmed != true || !context.mounted) {
       return;
     }
 
-    if (!context.mounted) {
-      return;
-    }
+    // Capture notifiers before any await — bootstrap redirect can unmount this widget
+    // while [DevSeedAllRunner.run] continues on [devSeedAllRunnerProvider]'s Ref.
+    final seedProgress = ref.read(devFullSeedInProgressProvider.notifier);
+    final feedbackNotifier = ref.read(devSeedAllFeedbackProvider.notifier);
+    final runner = ref.read(devSeedAllRunnerProvider);
+
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Running full dev seed…')));
-    setState(() => _isBusy = true);
+    seedProgress.setInProgress(true);
     AppLog.info('dev_seed_all.ui_confirmed setup_required=${auth.setupRequired}');
 
-    final outcome = await DevSeedAllRunner(ref).run();
-
-    if (!mounted) {
-      return;
+    DevSeedAllOutcome outcome;
+    try {
+      outcome = await runner.run();
+    } catch (error, stack) {
+      AppLog.warning('dev_seed_all.ui_failed reason=${error.runtimeType}');
+      AppLog.fine('dev_seed_all.ui_stack $stack');
+      outcome = DevSeedAllOutcome(isSuccess: false, summaryLines: ['Dev seed failed: $error']);
+    } finally {
+      seedProgress.setInProgress(false);
     }
-    setState(() => _isBusy = false);
 
     if (!context.mounted) {
+      feedbackNotifier.publish(outcome);
       return;
     }
 
