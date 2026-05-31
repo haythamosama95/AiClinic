@@ -39,18 +39,18 @@
 
 **⚠️ CRITICAL**: No user story phase work until this phase is complete
 
-- [ ] T005 Add migration `backend/supabase/migrations/20260531180000_visit_medical_records.sql` with `visit_status` and `visit_attachment_file_type` enums, `visits`, `soap_notes`, `treatment_plans`, `visit_attachments` tables, indexes, partial unique on `appointment_id`, branch RLS (SELECT scoped; INSERT/UPDATE/DELETE denied), private `visit-attachments` storage bucket + policies, `visits.upload_attachment` permission seed, `auth_internal` helpers, and RPCs `create_visit`, `save_soap_note`, `complete_visit`, `create_treatment_plan`, `update_treatment_plan`, `archive_treatment_plan`, `register_visit_attachment`, `get_visit_attachment_download`, `get_visit`, `get_visit_by_appointment`, `list_patient_visits`, `get_specialty_form_schema` per `contracts/` and `data-model.md`; patch `update_appointment_status` to reject `in_progress` → `completed` with `VISIT_REQUIRED_FOR_COMPLETION`
-- [ ] T006 [P] Add CRUD verification SQL in `backend/tests/visit_medical_records_crud.sql` (create visit, SOAP save, complete visit, treatment plans, attachment register/download, appointment integration stubs)
-- [ ] T007 [P] Add RLS isolation SQL in `backend/tests/visit_medical_records_rls.sql` (cross-org, cross-branch denial, lab own-download rule)
-- [ ] T008 [P] Add test runner `backend/tests/run_visit_medical_records_tests.sh`
-- [ ] T009 [P] Update `backend/tests/appointment_management_crud.sql` completion scenarios to use `complete_visit` instead of `update_appointment_status(..., 'completed')` and add rejection test for manual complete
-- [ ] T010 [P] Wire `run_visit_medical_records_tests.sh` into `backend/tests/run_all_backend_tests.sh`
-- [ ] T011 [P] Extend `PermissionKeys` with `visitsCreate`, `visitsEditSoap`, and `visitsUploadAttachment` in `frontend/lib/features/auth/domain/permission_keys.dart`; update `RolePermissionSeed` for clinical roles and `labStaff`
-- [ ] T012 [P] Add `canCreateVisits`, `canEditVisitSoap`, `canUploadVisitAttachments`, and `canViewVisitClinicalDetail` helpers in `frontend/lib/core/auth/permission_service.dart`
-- [ ] T013 Implement `VisitRepository` RPC wrapper scaffold in `frontend/lib/features/visits/data/visit_repository.dart` (method stubs for all visit RPCs per `contracts/`)
-- [ ] T014 [P] Implement `VisitAttachmentService` scaffold (storage upload path builder, register/download method stubs) in `frontend/lib/features/visits/data/visit_attachment_service.dart`
-- [ ] T015 [P] Add visit RPC error message mapping in `frontend/lib/features/visits/presentation/visit_rpc_messages.dart` (`STALE_SOAP`, `APPOINTMENT_NOT_ELIGIBLE`, `VISIT_ALREADY_EXISTS`, `SOAP_REQUIRED_FOR_COMPLETE`, etc.)
-- [ ] T016 Register visit routes with `visits.create` / `visits.edit_soap` guards in `frontend/lib/app/router.dart`
+- [X] T005 Add migration `backend/supabase/migrations/20260531180000_visit_medical_records.sql` with `visit_status` and `visit_attachment_file_type` enums, `visits`, `soap_notes`, `treatment_plans`, `visit_attachments` tables, indexes, partial unique on `appointment_id`, branch RLS (SELECT scoped; INSERT/UPDATE/DELETE denied), private `visit-attachments` storage bucket + policies, `visits.upload_attachment` permission seed, `auth_internal` helpers, and RPCs `create_visit`, `save_soap_note`, `complete_visit`, `create_treatment_plan`, `update_treatment_plan`, `archive_treatment_plan`, `register_visit_attachment`, `get_visit_attachment_download`, `get_visit`, `get_visit_by_appointment`, `list_patient_visits`, `get_specialty_form_schema` per `contracts/` and `data-model.md`; patch `update_appointment_status` to reject `in_progress` → `completed` with `VISIT_REQUIRED_FOR_COMPLETION`
+- [X] T006 [P] Add CRUD verification SQL in `backend/tests/visit_medical_records_crud.sql` (create visit, SOAP save, complete visit, treatment plans, attachment register/download, appointment integration stubs)
+- [X] T007 [P] Add RLS isolation SQL in `backend/tests/visit_medical_records_rls.sql` (cross-org, cross-branch denial, lab own-download rule)
+- [X] T008 [P] Add test runner `backend/tests/run_visit_medical_records_tests.sh`
+- [X] T009 [P] Update `backend/tests/appointment_management_crud.sql` completion scenarios to use `complete_visit` instead of `update_appointment_status(..., 'completed')` and add rejection test for manual complete
+- [X] T010 [P] Wire `run_visit_medical_records_tests.sh` into `backend/tests/run_all_backend_tests.sh`
+- [X] T011 [P] Extend `PermissionKeys` with `visitsCreate`, `visitsEditSoap`, and `visitsUploadAttachment` in `frontend/lib/features/auth/domain/permission_keys.dart`; update `RolePermissionSeed` for clinical roles and `labStaff`
+- [X] T012 [P] Add `canCreateVisits`, `canEditVisitSoap`, `canUploadVisitAttachments`, and `canViewVisitClinicalDetail` helpers in `frontend/lib/core/auth/permission_service.dart`
+- [X] T013 Implement `VisitRepository` RPC wrapper scaffold in `frontend/lib/features/visits/data/visit_repository.dart` (method stubs for all visit RPCs per `contracts/`)
+- [X] T014 [P] Implement `VisitAttachmentService` scaffold (storage upload path builder, register/download method stubs) in `frontend/lib/features/visits/data/visit_attachment_service.dart`
+- [X] T015 [P] Add visit RPC error message mapping in `frontend/lib/features/visits/presentation/visit_rpc_messages.dart` (`STALE_SOAP`, `APPOINTMENT_NOT_ELIGIBLE`, `VISIT_ALREADY_EXISTS`, `SOAP_REQUIRED_FOR_COMPLETE`, etc.)
+- [X] T016 Register visit routes with `visits.create` / `visits.edit_soap` guards in `frontend/lib/app/router.dart`
 
 **Checkpoint**: `supabase migration up` succeeds; `run_visit_medical_records_tests.sh` passes; visit routes registered (pages may be placeholders until story phases)
 

@@ -6,6 +6,7 @@ import 'package:ai_clinic/features/auth/data/permission_repository.dart';
 import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/settings/data/branch_repository.dart';
 import 'package:ai_clinic/features/settings/data/organization_repository.dart';
 import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
@@ -30,6 +31,7 @@ class BoundaryTestContext {
       rolePermissions = RolePermissionsRepositoryImpl(client),
       patients = PatientRepositoryImpl(client),
       appointments = AppointmentRepository(client),
+      visits = VisitRepository(client),
       sessionLoader = SessionContextLoader(client, PermissionRepositoryImpl(client)),
       fixtures = FixtureFactory(client),
       sql = SqlFixtureHelper();
@@ -45,6 +47,7 @@ class BoundaryTestContext {
   final RolePermissionsRepositoryImpl rolePermissions;
   final PatientRepositoryImpl patients;
   final AppointmentRepository appointments;
+  final VisitRepository visits;
   final SessionContextLoader sessionLoader;
   final FixtureFactory fixtures;
   final SqlFixtureHelper sql;

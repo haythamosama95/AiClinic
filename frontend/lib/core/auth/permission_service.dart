@@ -49,6 +49,18 @@ class PermissionService {
 
   bool canCancelAppointments() => hasPermission(PermissionKeys.appointmentsCancel);
 
+  bool canCreateVisits() => hasPermission(PermissionKeys.visitsCreate);
+
+  bool canEditVisitSoap() => hasPermission(PermissionKeys.visitsEditSoap);
+
+  bool canUploadVisitAttachments() => hasAnyPermission([
+    PermissionKeys.visitsUploadAttachment,
+    PermissionKeys.visitsCreate,
+    PermissionKeys.visitsEditSoap,
+  ]);
+
+  bool canViewVisitClinicalDetail() => hasAnyPermission([PermissionKeys.visitsCreate, PermissionKeys.visitsEditSoap]);
+
   void requirePermission(String key) {
     if (!hasPermission(key)) {
       throw const PermissionDeniedException('You do not have permission to perform this action.');

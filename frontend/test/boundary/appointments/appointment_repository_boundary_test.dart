@@ -213,11 +213,19 @@ void main() {
       );
       expect(status, AppointmentStatus.inProgress);
 
-      status = await ctx.appointments.updateAppointmentStatus(
-        appointmentId: created.appointmentId,
-        newStatus: AppointmentStatus.completed,
+      // V1-5: in_progress → completed requires visit documentation (not a direct status RPC).
+      await sessions.signInAs(StaffRole.doctor);
+      final visit = await ctx.visits.createVisit(appointmentId: created.appointmentId);
+      final detail = await ctx.visits.getVisit(visitId: visit.visitId);
+      expect(detail.soap, isNotNull);
+      await ctx.visits.saveSoapNote(
+        visitId: visit.visitId,
+        expectedUpdatedAt: detail.soap!.updatedAt,
+        subjective: 'Chief complaint documented.',
       );
-      expect(status, AppointmentStatus.completed);
+      final completed = await ctx.visits.completeVisit(visitId: visit.visitId);
+      expect(completed.visitStatus, 'completed');
+      expect(completed.appointmentStatus, 'completed');
     });
 
     test('appointments.rebookAfterCancel.sameSlot.success', () async {

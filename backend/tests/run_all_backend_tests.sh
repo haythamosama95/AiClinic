@@ -92,6 +92,10 @@ run_sql_test "Appointment management CRUD" "appointment_management_crud.sql"
 run_sql_test "Appointment management RLS" "appointment_management_rls.sql"
 run_sql_test "Appointment management grants" "appointment_management_grants.sql"
 
+# --- Visit Medical Records ---
+printf '\n--- Visit Medical Records ---\n'
+run_shell_test "Visit medical records suite" "run_visit_medical_records_tests.sh"
+
 # --- Safety ---
 printf '\n--- Safety ---\n'
 run_sql_test "Dev reset safety" "dev_reset_safety.sql"

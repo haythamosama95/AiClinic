@@ -25,6 +25,7 @@ abstract final class AuthRouteGuard {
         isSettingsRoute(location) ||
         isPatientRoute(location) ||
         isAppointmentRoute(location) ||
+        isVisitRoute(location) ||
         isStaffProvisioningRoute(location) ||
         location.startsWith('${AppRoutes.protectedPrefix}/');
   }
@@ -89,6 +90,50 @@ abstract final class AuthRouteGuard {
       return false;
     }
     return PermissionService(auth.context).canCancelAppointments();
+  }
+
+  /// V1-5 visit routes under `/visits`.
+  static bool isVisitRoute(String location) {
+    return location.startsWith('${AppRoutes.visits}/');
+  }
+
+  static bool canAccessVisitDocumentation(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    final permissions = PermissionService(auth.context);
+    return permissions.canCreateVisits() || permissions.canEditVisitSoap();
+  }
+
+  static bool canAccessVisitDetail(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    final permissions = PermissionService(auth.context);
+    return permissions.canViewVisitClinicalDetail() || permissions.canUploadVisitAttachments();
+  }
+
+  /// Returns redirect when [location] is a visit route the session cannot access.
+  static String? visitRouteRedirect({required String location, required AuthSessionState auth}) {
+    if (!isVisitRoute(location)) {
+      return null;
+    }
+
+    if (!auth.isAuthenticated) {
+      return AppRoutes.login;
+    }
+
+    if (auth.context!.setupRequired) {
+      return AppRoutes.bootstrap;
+    }
+
+    final allowed = location.endsWith('/${AppRoutes.visitDocumentSegment}')
+        ? canAccessVisitDocumentation(auth)
+        : location.endsWith('/${AppRoutes.visitDetailSegment}')
+        ? canAccessVisitDetail(auth)
+        : false;
+
+    return allowed ? null : AppRoutes.home;
   }
 
   /// Returns redirect when [location] is an appointment route the session cannot access.

@@ -39,18 +39,20 @@ DECLARE
   v_owner_user uuid := 'a1400000-0000-4000-8000-000000000101';
   v_owner_staff uuid := 'b1400000-0000-4000-8000-000000000101';
   v_doctor_user uuid := 'a1400000-0000-4000-8000-000000000102';
-  v_doctor_staff uuid := 'b1400000-0000-4000-8000-000000000102';
+  c_doctor_staff_id constant uuid := 'b1400000-0000-4000-8000-000000000102';
   v_lab_user uuid := 'a1400000-0000-4000-8000-000000000103';
   v_lab_staff uuid := 'b1400000-0000-4000-8000-000000000103';
   v_result public.rpc_result;
   v_org_id uuid;
-  v_branch_main uuid;
+  v_main_branch_id uuid;
   v_patient_id uuid;
   v_patient2_id uuid;
   v_patient3_id uuid;
   v_sd_patient uuid;
   v_appt_planned uuid;
   v_appt_second uuid;
+  v_visit_id uuid;
+  v_visit_updated_at timestamptz;
   v_doctor2_staff uuid := 'b1400000-0000-4000-8000-000000000104';
   v_doctor2_user uuid := 'a1400000-0000-4000-8000-000000000104';
   v_start timestamptz;
@@ -63,6 +65,10 @@ DECLARE
   v_i int;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
+  DELETE FROM public.visit_attachments;
+  DELETE FROM public.soap_notes;
+  DELETE FROM public.treatment_plans;
+  DELETE FROM public.visits;
   DELETE FROM public.appointments;
   DELETE FROM public.patients;
   DELETE FROM public.app_settings WHERE key = 'appointment.default_duration_minutes';
@@ -96,7 +102,7 @@ BEGIN
   v_result := public.bootstrap_create_organization('V14 Clinic', '{}'::jsonb, NULL, 'USD', 'UTC');
   v_org_id := (v_result.data ->> 'organization_id')::uuid;
   v_result := public.bootstrap_create_branch(v_org_id, 'Main', NULL, NULL, 'MAIN', NULL);
-  v_branch_main := (v_result.data ->> 'branch_id')::uuid;
+  v_main_branch_id := (v_result.data ->> 'branch_id')::uuid;
 
   -- Keep test timings deterministic: all days open full day unless overridden.
   PERFORM set_config('role', 'postgres', true);
@@ -113,21 +119,21 @@ BEGIN
       jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
     )
   )
-  WHERE b.id = v_branch_main;
+  WHERE b.id = v_main_branch_id;
   PERFORM set_config('role', 'authenticated', true);
 
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
   VALUES
     (v_owner_staff, v_owner_user, 'Clinic Owner', 'owner', false, v_bootstrap_user, v_bootstrap_user),
-    (v_doctor_staff, v_doctor_user, 'Dr Smith', 'doctor', false, v_bootstrap_user, v_bootstrap_user),
+    (c_doctor_staff_id, v_doctor_user, 'Dr Smith', 'doctor', false, v_bootstrap_user, v_bootstrap_user),
     (v_lab_staff, v_lab_user, 'Lab Tech', 'lab_staff', false, v_bootstrap_user, v_bootstrap_user),
     (v_doctor2_staff, v_doctor2_user, 'Dr Jones', 'doctor', false, v_bootstrap_user, v_bootstrap_user)
   ON CONFLICT (id) DO NOTHING;
 
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
-  SELECT s.id, v_branch_main, true, v_bootstrap_user, v_bootstrap_user
-  FROM (VALUES (v_owner_staff), (v_doctor_staff), (v_lab_staff), (v_doctor2_staff)) AS s(id);
+  SELECT s.id, v_main_branch_id, true, v_bootstrap_user, v_bootstrap_user
+  FROM (VALUES (v_owner_staff), (c_doctor_staff_id), (v_lab_staff), (v_doctor2_staff)) AS s(id);
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
@@ -136,7 +142,7 @@ BEGIN
       'sub', v_owner_user::text,
       'role', 'authenticated',
       'organization_id', v_org_id::text,
-      'branch_ids', v_branch_main::text,
+      'branch_ids', v_main_branch_id::text,
       'staff_member_id', v_owner_staff::text,
       'staff_role', 'owner',
       'setup_required', false
@@ -144,13 +150,13 @@ BEGIN
     true
   );
 
-  v_result := public.create_patient(v_branch_main, 'Appt Patient', '201000000141', NULL, NULL, NULL, NULL, false);
+  v_result := public.create_patient(v_main_branch_id, 'Appt Patient', '201000000141', NULL, NULL, NULL, NULL, false);
   v_patient_id := (v_result.data ->> 'patient_id')::uuid;
-  v_result := public.create_patient(v_branch_main, 'Appt Patient 2', '201000000144', NULL, NULL, NULL, NULL, false);
+  v_result := public.create_patient(v_main_branch_id, 'Appt Patient 2', '201000000144', NULL, NULL, NULL, NULL, false);
   v_patient2_id := (v_result.data ->> 'patient_id')::uuid;
 
   -- Trivial: settings default fallback 20.
-  v_result := public.get_appointment_settings(v_branch_main);
+  v_result := public.get_appointment_settings(v_main_branch_id);
   v_default := (v_result.data ->> 'default_duration_minutes')::int;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -170,7 +176,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.get_appointment_settings(v_branch_main);
+  v_result := public.get_appointment_settings(v_main_branch_id);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
     'settings_reflects_org_default',
@@ -200,7 +206,7 @@ BEGIN
 
   -- Stupid: invalid type on create.
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'invalid', now(), 30, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'invalid', now(), 30, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -212,7 +218,7 @@ BEGIN
 
   -- Planned create without start time.
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', NULL, 30, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', NULL, 30, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -237,12 +243,12 @@ BEGIN
       jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00')
     )
   )
-  WHERE b.id = v_branch_main;
+  WHERE b.id = v_main_branch_id;
   PERFORM set_config('role', 'authenticated', true);
 
   v_start := date_trunc('day', now() + interval '2 days') + interval '2 hours';
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 30, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 30, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -267,14 +273,14 @@ BEGIN
       jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
     )
   )
-  WHERE b.id = v_branch_main;
+  WHERE b.id = v_main_branch_id;
   PERFORM set_config('role', 'authenticated', true);
 
   -- One patient per same-day slot (patient_has_same_day_appointment counts completed bookings).
   CREATE TEMP TABLE same_day_slot_patients (slot int PRIMARY KEY, patient_id uuid NOT NULL);
   FOR v_i IN 2..12 LOOP
     v_result := public.create_patient(
-      v_branch_main,
+      v_main_branch_id,
       'Same Day Slot ' || v_i,
       '2010000002' || lpad(v_i::text, 2, '0'),
       NULL,
@@ -292,7 +298,7 @@ BEGIN
   v_end := v_start + interval '30 minutes';
 
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 30, NULL, 'First visit'
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 30, NULL, 'First visit'
   );
   v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
   PERFORM set_config('role', 'postgres', true);
@@ -307,9 +313,9 @@ BEGIN
 
   -- Conflict: overlapping planned slot.
   v_result := public.create_appointment(
-    v_branch_main,
+    v_main_branch_id,
     v_patient_id,
-    v_doctor_staff,
+    c_doctor_staff_id,
     'planned',
     v_start + interval '15 minutes',
     30,
@@ -325,7 +331,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- US1: adjacent non-overlapping slot succeeds (ends where next starts).
-  v_result := public.create_appointment(v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_end, 20, NULL, NULL);
+  v_result := public.create_appointment(v_main_branch_id, v_patient2_id, c_doctor_staff_id, 'planned', v_end, 20, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
     'planned_adjacent_slot_succeeds',
@@ -337,7 +343,7 @@ BEGIN
   -- US1: planned create without explicit duration uses settings default (30).
   v_start := date_trunc('hour', now() + interval '6 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, NULL, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, NULL, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -351,7 +357,7 @@ BEGIN
   -- Planned create without assigned doctor (optional doctor).
   v_start := date_trunc('hour', now() + interval '7 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, NULL, 'planned', v_start, 25, NULL, 'Unassigned doctor'
+    v_main_branch_id, v_patient_id, NULL, 'planned', v_start, 25, NULL, 'Unassigned doctor'
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -365,7 +371,7 @@ BEGIN
 
   -- Invalid appointment type is rejected.
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'invalid_type', NULL, 15, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'invalid_type', NULL, 15, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -388,7 +394,7 @@ BEGIN
   -- Future appointment: confirm allowed, check-in blocked until appointment day.
   v_start := date_trunc('hour', now() + interval '20 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient2_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -421,7 +427,7 @@ BEGIN
   -- Invalid skip: scheduled -> checked_in (must confirm first).
   v_start := date_trunc('hour', now() + interval '15 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'checked_in');
@@ -445,8 +451,8 @@ BEGIN
   v_result := public.update_appointment_status(v_appt_planned, 'completed');
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'status_in_progress_to_completed',
-    v_result.success AND (v_result.data ->> 'status') = 'completed',
+    'status_in_progress_to_completed_requires_visit',
+    NOT v_result.success AND v_result.error_code = 'VISIT_REQUIRED_FOR_COMPLETION',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -464,7 +470,7 @@ BEGIN
   -- Transition matrix: scheduled -> in_progress is rejected (skip check-in).
   v_start := date_trunc('hour', now() + interval '16 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'in_progress');
@@ -480,17 +486,31 @@ BEGIN
   v_start := pg_temp.test_appointment_same_day_slot(2);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 2;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_sd_patient, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
   v_result := public.update_appointment_status(v_appt_second, 'checked_in');
   v_result := public.update_appointment_status(v_appt_second, 'in_progress');
-  v_result := public.update_appointment_status(v_appt_second, 'completed');
+  v_result := public.create_visit(v_appt_second, NULL);
+  v_visit_id := (v_result.data ->> 'visit_id')::uuid;
+  SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
+  v_result := public.save_soap_note(
+    v_visit_id,
+    v_visit_updated_at,
+    'Chief complaint documented.',
+    NULL,
+    NULL,
+    NULL,
+    NULL
+  );
+  v_result := public.complete_visit(v_visit_id, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'status_reception_advances_other_doctor_appointment',
-    v_result.success AND (v_result.data ->> 'status') = 'completed',
+    'status_reception_completes_via_visit_submit',
+    v_result.success
+      AND (v_result.data ->> 'visit_status') = 'completed'
+      AND (v_result.data ->> 'appointment_status') = 'completed',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -499,7 +519,7 @@ BEGIN
   v_start := pg_temp.test_appointment_same_day_slot(3);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 3;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -516,7 +536,7 @@ BEGIN
   -- Reschedule requires scheduled planned — use new appointment.
   v_start := date_trunc('hour', now() + interval '3 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
 
@@ -537,11 +557,11 @@ BEGIN
   -- Reschedule conflict: another appointment blocks the target slot.
   v_start := date_trunc('hour', now() + interval '6 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 30, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 30, NULL, NULL
   );
   v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.create_appointment(
-    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start + interval '4 hours', 30, NULL, NULL
+    v_main_branch_id, v_patient2_id, c_doctor_staff_id, 'planned', v_start + interval '4 hours', 30, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.reschedule_appointment(
@@ -572,7 +592,7 @@ BEGIN
   -- Cancel scheduled appointment (third).
   v_start := date_trunc('hour', now() + interval '4 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
 
@@ -587,7 +607,7 @@ BEGIN
 
   -- Cancelled slot can be rebooked (no conflict).
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -601,7 +621,7 @@ BEGIN
   v_start := pg_temp.test_appointment_same_day_slot(4);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 4;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'no_show');
@@ -616,7 +636,7 @@ BEGIN
   -- No-show before the appointment day is rejected.
   v_start := date_trunc('hour', now() + interval '21 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'no_show');
@@ -631,7 +651,7 @@ BEGIN
   -- Cancel confirmed appointment (patient did not confirm after phone call).
   v_start := date_trunc('hour', now() + interval '5 days 1 hour');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -648,7 +668,7 @@ BEGIN
   v_start := pg_temp.test_appointment_same_day_slot(5);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 5;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -666,13 +686,17 @@ BEGIN
   v_start := pg_temp.test_appointment_same_day_slot(6);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 6;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
   v_result := public.update_appointment_status(v_appt_second, 'checked_in');
   v_result := public.update_appointment_status(v_appt_second, 'in_progress');
-  v_result := public.update_appointment_status(v_appt_second, 'completed');
+  v_result := public.create_visit(v_appt_second, NULL);
+  v_visit_id := (v_result.data ->> 'visit_id')::uuid;
+  SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
+  v_result := public.save_soap_note(v_visit_id, v_visit_updated_at, 'Done.', NULL, NULL, NULL, NULL);
+  v_result := public.complete_visit(v_visit_id, NULL);
   v_result := public.cancel_appointment(v_appt_second, 'Too late');
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -686,7 +710,7 @@ BEGIN
   v_start := pg_temp.test_appointment_same_day_slot(7);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 7;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -700,66 +724,11 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- list_appointments returns items sorted by start_time.
-  v_day_start := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
-  v_day_end := v_day_start + interval '2 days';
-  v_start := pg_temp.test_appointment_same_day_slot(9);
-  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 9;
-  v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, 'list-range'
-  );
-  v_result := public.list_appointments(v_branch_main, v_day_start, v_day_end, NULL, NULL);
-  v_items := v_result.data -> 'items';
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results VALUES (
-    'list_appointments_returns_items',
-    v_result.success AND jsonb_typeof(v_items) = 'array' AND jsonb_array_length(v_items) > 0,
-    'count=' || COALESCE(jsonb_array_length(v_items)::text, '0')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Doctor filter.
-  v_result := public.list_appointments(v_branch_main, v_day_start, v_day_end, v_doctor_staff, NULL);
-  v_items := v_result.data -> 'items';
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results VALUES (
-    'list_appointments_doctor_filter',
-    v_result.success
-      AND COALESCE(
-        (SELECT bool_and((item ->> 'doctor_id')::uuid = v_doctor_staff)
-         FROM jsonb_array_elements(v_items) AS item),
-        true
-      ),
-    'count=' || COALESCE(jsonb_array_length(v_items)::text, '0')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Range bounds: end is exclusive.
-  v_start := v_day_end;
-  v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 15, NULL, 'boundary'
-  );
-  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
-  v_result := public.list_appointments(v_branch_main, v_day_start, v_day_end, NULL, NULL);
-  v_items := v_result.data -> 'items';
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results VALUES (
-    'list_appointments_end_exclusive',
-    v_result.success
-      AND NOT EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements(v_items) AS item
-        WHERE (item ->> 'id')::uuid = v_appt_second
-      ),
-    COALESCE(v_result.error_code, 'ok')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
   -- No-show from confirmed (patient confirmed by phone but did not arrive).
-  v_start := pg_temp.test_appointment_same_day_slot(8);
-  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 8;
+  v_start := pg_temp.test_appointment_same_day_slot(10);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 10;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
   v_result := public.update_appointment_status(v_appt_second, 'confirmed');
@@ -772,11 +741,120 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Range bounds: end is exclusive (appointment at day_end must not appear in [day_start, day_end) list).
+  v_day_start := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
+  v_day_end := v_day_start + interval '2 days';
+  v_start := v_day_end;
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 11;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.appointments (
+    branch_id,
+    patient_id,
+    doctor_id,
+    start_time,
+    end_time,
+    type,
+    status,
+    created_by,
+    updated_by
+  )
+  VALUES (
+    v_main_branch_id,
+    v_sd_patient,
+    c_doctor_staff_id,
+    v_start,
+    v_start + interval '15 minutes',
+    'planned',
+    'scheduled',
+    v_bootstrap_user,
+    v_bootstrap_user
+  )
+  RETURNING id INTO v_appt_second;
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.rpc_success(jsonb_build_object('appointment_id', v_appt_second));
+  v_result := public.list_appointments(v_main_branch_id, v_day_start, v_day_end, NULL, NULL);
+  v_items := v_result.data -> 'items';
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'list_appointments_end_exclusive',
+    v_result.success
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_items) AS item
+        WHERE (item ->> 'id')::uuid = v_appt_second
+      )
+      AND v_start >= v_day_end,
+    COALESCE(v_result.error_code, 'ok')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  -- list_appointments returns items sorted by start_time.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_main_branch_id::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_day_start := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
+  v_day_end := v_day_start + interval '2 days';
+  v_start := pg_temp.test_appointment_same_day_slot(12);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 12;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
+  VALUES (c_doctor_staff_id, v_main_branch_id, true, v_bootstrap_user, v_bootstrap_user)
+  ON CONFLICT DO NOTHING;
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.create_appointment(
+    p_branch_id => v_main_branch_id,
+    p_patient_id => v_sd_patient,
+    p_doctor_id => c_doctor_staff_id,
+    p_type => 'planned',
+    p_start_time => v_start,
+    p_duration_minutes => 20
+  );
+  v_result := public.list_appointments(v_main_branch_id, v_day_start, v_day_end, NULL, NULL);
+  v_items := v_result.data -> 'items';
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'list_appointments_returns_items',
+    v_result.success AND jsonb_typeof(v_items) = 'array' AND jsonb_array_length(v_items) > 0,
+    'count=' || COALESCE(jsonb_array_length(v_items)::text, '0')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Doctor filter (qualify doctor id — unqualified doctor_id can clobber PL variables).
+  v_result := public.list_appointments(v_main_branch_id, v_day_start, v_day_end, c_doctor_staff_id, NULL);
+  v_items := v_result.data -> 'items';
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'list_appointments_doctor_filter',
+    v_result.success
+      AND COALESCE(
+        (
+          SELECT bool_and((item ->> 'doctor_id')::uuid = expected.expected_doctor_id)
+          FROM jsonb_array_elements(v_items) AS item
+          CROSS JOIN (SELECT c_doctor_staff_id AS expected_doctor_id) AS expected
+        ),
+        true
+      ),
+    'count=' || COALESCE(jsonb_array_length(v_items)::text, '0')
+  );
   -- Archived patient cannot be booked.
   v_result := public.archive_patient(v_patient_id);
   v_start := date_trunc('hour', now() + interval '8 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    p_branch_id => v_main_branch_id,
+    p_patient_id => v_patient_id,
+    p_doctor_id => c_doctor_staff_id,
+    p_type => 'planned',
+    p_start_time => v_start,
+    p_duration_minutes => 20
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -787,13 +865,13 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Restore patient for remaining tests (new patient row).
-  v_result := public.create_patient(v_branch_main, 'Appt Patient Restored', '201000000142', NULL, NULL, NULL, NULL, false);
+  v_result := public.create_patient(v_main_branch_id, 'Appt Patient Restored', '201000000142', NULL, NULL, NULL, NULL, false);
   v_patient_id := (v_result.data ->> 'patient_id')::uuid;
 
   -- Non-doctor staff id is rejected.
   v_start := date_trunc('hour', now() + interval '9 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_lab_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, v_lab_staff, 'planned', v_start, 20, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -807,7 +885,7 @@ BEGIN
   v_start := date_trunc('hour', now() + interval '10 days');
   v_end := v_start + interval '45 minutes';
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, NULL, v_end, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, NULL, v_end, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -821,7 +899,7 @@ BEGIN
   -- Same time different doctors: conflict because slots are branch-wide.
   v_start := date_trunc('hour', now() + interval '11 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -832,7 +910,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -845,7 +923,7 @@ BEGIN
   -- Two unassigned planned at same time: still conflicts due to slot uniqueness.
   v_start := date_trunc('hour', now() + interval '12 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
+    v_main_branch_id, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -856,7 +934,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
+    v_main_branch_id, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -867,11 +945,11 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Same-day duplicate patient is rejected.
-  v_result := public.create_patient(v_branch_main, 'Appt Patient Same Day', '201000000143', NULL, NULL, NULL, NULL, false);
+  v_result := public.create_patient(v_main_branch_id, 'Appt Patient Same Day', '201000000143', NULL, NULL, NULL, NULL, false);
   v_patient_id := (v_result.data ->> 'patient_id')::uuid;
   v_start := date_trunc('day', now() + interval '14 days') + interval '9 hours';
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -882,7 +960,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor2_staff, 'planned', v_start + interval '3 hours', 20, NULL, NULL
+    v_main_branch_id, v_patient_id, v_doctor2_staff, 'planned', v_start + interval '3 hours', 20, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -899,14 +977,14 @@ BEGIN
       'sub', v_lab_user::text,
       'role', 'authenticated',
       'organization_id', v_org_id::text,
-      'branch_ids', v_branch_main::text,
+      'branch_ids', v_main_branch_id::text,
       'staff_member_id', v_lab_staff::text,
       'staff_role', 'lab_staff',
       'setup_required', false
     )::text,
     true
   );
-  v_result := public.get_appointment_settings(v_branch_main);
+  v_result := public.get_appointment_settings(v_main_branch_id);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
     'lab_staff_denied_settings',
@@ -917,7 +995,7 @@ BEGIN
 
   v_start := date_trunc('hour', now() + interval '13 days');
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
@@ -934,7 +1012,7 @@ BEGIN
       'sub', v_owner_user::text,
       'role', 'authenticated',
       'organization_id', v_org_id::text,
-      'branch_ids', v_branch_main::text,
+      'branch_ids', v_main_branch_id::text,
       'staff_member_id', v_owner_staff::text,
       'staff_role', 'owner',
       'setup_required', false
@@ -942,42 +1020,52 @@ BEGIN
     true
   );
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.appointments WHERE branch_id = v_branch_main;
+  DELETE FROM public.visit_attachments WHERE visit_id IN (
+    SELECT v.id FROM public.visits v WHERE v.branch_id = v_main_branch_id
+  );
+  DELETE FROM public.soap_notes WHERE visit_id IN (
+    SELECT v.id FROM public.visits v WHERE v.branch_id = v_main_branch_id
+  );
+  DELETE FROM public.treatment_plans WHERE visit_id IN (
+    SELECT v.id FROM public.visits v WHERE v.branch_id = v_main_branch_id
+  );
+  DELETE FROM public.visits WHERE branch_id = v_main_branch_id;
+  DELETE FROM public.appointments WHERE branch_id = v_main_branch_id;
   PERFORM set_config('role', 'authenticated', true);
 
   v_day_start := date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
   v_day_end := v_day_start + interval '1 day';
 
-  v_result := public.create_patient(v_branch_main, 'Queue Patient 3', '201000000145', NULL, NULL, NULL, NULL, false);
+  v_result := public.create_patient(v_main_branch_id, 'Queue Patient 3', '201000000145', NULL, NULL, NULL, NULL, false);
   v_patient3_id := (v_result.data ->> 'patient_id')::uuid;
 
   -- Fixed UTC hour offsets avoid now()+Nh rolling past midnight and dropping from today's list.
   v_start := pg_temp.test_appointment_same_day_slot(12);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 12;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-late'
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, 'queue-late'
   );
   v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
 
   v_start := pg_temp.test_appointment_same_day_slot(10);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 10;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-early'
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, 'queue-early'
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
 
   v_start := pg_temp.test_appointment_same_day_slot(11);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 11;
   v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-mid'
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, 'queue-mid'
   );
 
   v_start := v_day_end + interval '2 hours';
   v_result := public.create_appointment(
-    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, 'queue-tomorrow'
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, 'queue-tomorrow'
   );
 
-  v_result := public.list_appointments(v_branch_main, v_day_start, v_day_end, NULL, NULL);
+  v_result := public.list_appointments(v_main_branch_id, v_day_start, v_day_end, NULL, NULL);
   v_items := v_result.data -> 'items';
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
