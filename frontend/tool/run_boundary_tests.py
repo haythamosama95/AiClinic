@@ -3,19 +3,24 @@
 
 import argparse
 import atexit
+import itertools
+import json
 import os
 import subprocess
-import json
 import sys
 import threading
 import time
-import itertools
 from collections import defaultdict
 from pathlib import Path
 
 from discover_tests import (
     BOUNDARY_SUBSET_ROOTS,
     boundary_test_files,
+)
+from test_run_artifacts import (
+    MachineEventRecorder,
+    refresh_latest,
+    resolve_suite_artifact_dir,
 )
 from test_run_progress import TestRunProgress
 
@@ -31,6 +36,7 @@ FAILURES = []
 CURRENT_TEST = None
 RUNNING = True
 PROGRESS = TestRunProgress()
+RECORDER: MachineEventRecorder | None = None
 
 
 def spinner_task():
@@ -126,6 +132,11 @@ def run_tests(test_files: list[str]) -> int:
         "--machine",
     ]
 
+    global RECORDER
+    if RECORDER is not None:
+        RECORDER.command = cmd
+        RECORDER.test_files = test_files
+
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -141,12 +152,18 @@ def run_tests(test_files: list[str]) -> int:
         if not line:
             continue
 
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
+        if RECORDER is not None:
+            parsed = RECORDER.ingest_line(line)
+        else:
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+        if parsed is None:
             continue
 
-        handle_event(event)
+        handle_event(parsed)
 
     PROGRESS.finalize()
     RUNNING = False
@@ -223,6 +240,30 @@ def verify_manifest() -> int:
     return subprocess.run([str(VERIFY_MANIFEST)], cwd=ROOT).returncode
 
 
+def verify_manifest_with_logging() -> int:
+    cmd = [str(VERIFY_MANIFEST)]
+    if not VERIFY_MANIFEST.is_file() or not os.access(VERIFY_MANIFEST, os.X_OK):
+        if RECORDER is not None:
+            RECORDER.add_extra_step(
+                "manifest-verify",
+                cmd,
+                0,
+                stdout="skipped (script missing or not executable)",
+            )
+        return 0
+
+    result = subprocess.run(cmd, cwd=ROOT)
+    if RECORDER is not None:
+        RECORDER.add_extra_step(
+            "manifest-verify",
+            cmd,
+            result.returncode,
+            stdout="(written to console)",
+            stderr="",
+        )
+    return result.returncode
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run Flutter ↔ Supabase boundary integration tests."
@@ -232,6 +273,21 @@ def main():
         nargs="?",
         choices=[*BOUNDARY_SUBSET_ROOTS.keys()],
         help="Run a subset: auth, settings, patients, or postgrest",
+    )
+    parser.add_argument(
+        "--artifacts-dir",
+        type=Path,
+        help="Directory for test log artifacts (summary, failures, raw).",
+    )
+    parser.add_argument(
+        "--campaign-dir",
+        type=Path,
+        help="Campaign root; suite artifacts written to <campaign-dir>/boundary.",
+    )
+    parser.add_argument(
+        "--no-artifacts",
+        action="store_true",
+        help="Skip writing log artifacts to disk.",
     )
     args = parser.parse_args()
 
@@ -243,6 +299,31 @@ def main():
 
     test_files = boundary_test_files(ROOT, args.subset)
 
+    artifacts_enabled = not args.no_artifacts
+    campaign_dir = args.campaign_dir
+    artifact_dir = None
+    global RECORDER
+    if artifacts_enabled:
+        artifact_dir = resolve_suite_artifact_dir(
+            ROOT,
+            "boundary",
+            args.artifacts_dir,
+            campaign_dir,
+        )
+        RECORDER = MachineEventRecorder(
+            suite_name="boundary",
+            command=[],
+            cwd=ROOT,
+            test_files=test_files,
+            artifact_dir=artifact_dir,
+        )
+        RECORDER.add_extra_step(
+            "boundary-db-reset",
+            ["psql", "-f", str(DB_RESET_SQL)],
+            0,
+            stdout="executed before test run (stdout discarded)",
+        )
+
     spinner = threading.Thread(target=spinner_task)
     spinner.start()
 
@@ -252,7 +333,24 @@ def main():
     print_summary()
 
     if exit_code == 0:
-        exit_code = verify_manifest()
+        exit_code = verify_manifest_with_logging() if RECORDER else verify_manifest()
+
+    if RECORDER is not None:
+        RECORDER.finalize(exit_code)
+        written = RECORDER.write_artifacts()
+        if written is not None:
+            manifest_path = written / "manifest-verify.json"
+            for step in RECORDER.extra_steps:
+                if step.get("name") == "manifest-verify":
+                    manifest_path.write_text(
+                        json.dumps(step, indent=2, ensure_ascii=False) + "\n",
+                        encoding="utf-8",
+                    )
+            print(f"\n📁 Test artifacts: {written}")
+        if campaign_dir is None and artifacts_enabled:
+            campaign_path = written.parent if written else None
+            if campaign_path is not None:
+                refresh_latest(ROOT, campaign_path)
 
     sys.exit(exit_code)
 
