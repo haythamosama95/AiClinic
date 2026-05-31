@@ -21,7 +21,10 @@ String visitMessageForRpc(RpcFailure failure) {
       'Visit medical records are not installed on this database. Ask your administrator to run Supabase migrations.',
     'FORBIDDEN' => 'You do not have permission to perform this action.',
     'NOT_FOUND' => failure.message,
-    'INVALID_INPUT' => failure.message,
+    'INVALID_INPUT' =>
+      failure.message.contains('Specialty')
+          ? 'Specialty form data is not valid. Check required fields and try again.'
+          : failure.message,
     _ => failure.message,
   };
 }

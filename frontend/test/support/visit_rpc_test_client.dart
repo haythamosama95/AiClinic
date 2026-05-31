@@ -8,12 +8,25 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
 
   final Map<String, Map<String, dynamic>> rpcResults;
   final List<String> rpcLog = [];
+  final List<({String fn, Map<String, dynamic>? params})> rpcCalls = [];
+
+  /// Params from the most recent call to [fn], if any.
+  Map<String, dynamic>? paramsForFunction(String fn) {
+    for (var i = rpcCalls.length - 1; i >= 0; i--) {
+      if (rpcCalls[i].fn == fn) {
+        return rpcCalls[i].params;
+      }
+    }
+    return null;
+  }
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
     rpcLog.add(fn);
+    final copied = params == null ? null : Map<String, dynamic>.from(params);
+    rpcCalls.add((fn: fn, params: copied));
     lastFunction = fn;
-    lastParams = params == null ? null : Map<String, dynamic>.from(params);
+    lastParams = copied;
     final override = rpcResults[fn];
     final payload = override ?? _defaultPayload(fn);
     return FakePostgrestRpc(payload) as PostgrestFilterBuilder<T>;
@@ -69,6 +82,24 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           'visit_status': 'completed',
           'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
           'appointment_status': 'completed',
+        },
+      },
+      'get_specialty_form_schema' => {
+        'success': true,
+        'data': {
+          'schema_json': {
+            'type': 'object',
+            'properties': {
+              'pain_score': {'type': 'number', 'title': 'Pain score'},
+              'follow_up': {'type': 'boolean', 'title': 'Follow up'},
+              'site': {
+                'type': 'string',
+                'title': 'Site',
+                'enum': ['arm', 'leg'],
+              },
+            },
+            'required': ['pain_score'],
+          },
         },
       },
       'list_patient_visits' => {

@@ -130,7 +130,7 @@ BEGIN
     v_org_id,
     NULL,
     'specialty.form_schema_json',
-    '{"type":"object","properties":{"pain_score":{"type":"number"}}}'::jsonb,
+    '{"type":"object","properties":{"pain_score":{"type":"number","title":"Pain score"},"notes":{"type":"string","title":"Notes"}},"required":["pain_score"]}'::jsonb,
     v_bootstrap_user,
     v_bootstrap_user
   );
@@ -599,6 +599,68 @@ BEGIN
     'get_specialty_form_schema',
     v_result.success
       AND (v_result.data -> 'schema_json' ? 'properties'),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- save_soap_note persists valid specialty_form_json.
+  v_result := public.save_soap_note(
+    v_visit_id,
+    v_soap_updated_at,
+    'Subjective with specialty.',
+    NULL,
+    NULL,
+    NULL,
+    '{"pain_score": 4}'::jsonb
+  );
+  v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'save_soap_note_specialty_json_valid',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM public.soap_notes sn
+        WHERE sn.visit_id = v_visit_id
+          AND sn.subjective = 'Subjective with specialty.'
+          AND (sn.specialty_form_json ->> 'pain_score') = '4'
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- save_soap_note rejects unknown specialty field keys.
+  v_result := public.save_soap_note(
+    v_visit_id,
+    v_soap_updated_at,
+    'Subjective with invalid specialty.',
+    NULL,
+    NULL,
+    NULL,
+    '{"unknown_field": 1}'::jsonb
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'save_soap_note_specialty_json_unknown_field',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- save_soap_note rejects specialty JSON missing required pain_score.
+  v_result := public.save_soap_note(
+    v_visit_id,
+    v_soap_updated_at,
+    'Subjective missing required specialty field.',
+    NULL,
+    NULL,
+    NULL,
+    '{"notes": "only notes"}'::jsonb
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'save_soap_note_specialty_json_missing_required',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

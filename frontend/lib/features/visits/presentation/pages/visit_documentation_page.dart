@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/soap_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_fields.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submit_dialog.dart';
 
 /// Visit documentation — SOAP and related sections (V1-5).
@@ -104,6 +105,12 @@ class _VisitHeaderAndSoap extends StatelessWidget {
         Text('Doctor: ${visit.doctorName}'),
         const SizedBox(height: 4),
         Text('Status: ${visit.status.label}'),
+        if (state.specialtySchema.hasFields) ...[
+          const SizedBox(height: 24),
+          Text('Specialty fields', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          SpecialtyFormFields(visitId: visitId, state: state),
+        ],
         const SizedBox(height: 24),
         Text('SOAP note', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 12),

@@ -141,15 +141,15 @@
 
 ### Tests for User Story 3
 
-- [ ] T046 [P] [US3] Add `get_specialty_form_schema` and specialty JSON validation tests in `backend/tests/visit_medical_records_crud.sql`
-- [ ] T047 [P] [US3] Add unit tests for specialty schema load and save in `frontend/test/unit/visits/visit_repository_specialty_test.dart`
-- [ ] T048 [P] [US3] Add widget tests for dynamic field rendering and validation errors in `frontend/test/widget/visits/specialty_form_fields_test.dart`
+- [X] T046 [P] [US3] Add `get_specialty_form_schema` and specialty JSON validation tests in `backend/tests/visit_medical_records_crud.sql`
+- [X] T047 [P] [US3] Add unit tests for specialty schema load and save in `frontend/test/unit/visits/visit_repository_specialty_test.dart`
+- [X] T048 [P] [US3] Add widget tests for dynamic field rendering and validation errors in `frontend/test/widget/visits/specialty_form_fields_test.dart`
 
 ### Implementation for User Story 3
 
-- [ ] T049 [US3] Implement `VisitRepository.getSpecialtyFormSchema` in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T050 [US3] Implement `SpecialtyFormFields` widget (text/number/select/checkbox from JSON schema) in `frontend/lib/features/visits/presentation/widgets/specialty_form_fields.dart`
-- [ ] T051 [US3] Integrate specialty fields into `VisitDocumentationNotifier` and `VisitDocumentationPage` in `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart` and `visit_documentation_page.dart`
+- [X] T049 [US3] Implement `VisitRepository.getSpecialtyFormSchema` in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T050 [US3] Implement `SpecialtyFormFields` widget (text/number/select/checkbox from JSON schema) in `frontend/lib/features/visits/presentation/widgets/specialty_form_fields.dart`
+- [X] T051 [US3] Integrate specialty fields into `VisitDocumentationNotifier` and `VisitDocumentationPage` in `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart` and `visit_documentation_page.dart`
 
 **Checkpoint**: Spec test case 7; acceptance criteria 3 (specialty JSON)
 
