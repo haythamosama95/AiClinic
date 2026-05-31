@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 
+import argparse
+import itertools
+import json
 import os
 import subprocess
+import sys
+import threading
+import time
+from collections import defaultdict
 from pathlib import Path
 
 from discover_tests import unit_test_files
+from test_run_artifacts import (
+    MachineEventRecorder,
+    refresh_latest,
+    resolve_suite_artifact_dir,
+)
 from test_run_progress import TestRunProgress
 
 ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
-import json
-import sys
-import threading
-import time
-import itertools
-from collections import defaultdict
 
 FAILURES = []
 CURRENT_TEST = None
@@ -22,12 +28,13 @@ CURRENT_TEST = None
 RUNNING = True
 
 PROGRESS = TestRunProgress()
+RECORDER: MachineEventRecorder | None = None
 
 
 # ---------------- Spinner + Progress ----------------
 
 def spinner_task():
-    spinner = itertools.cycle(["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"])
+    spinner = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
 
     while RUNNING:
         sys.stdout.write(
@@ -45,7 +52,7 @@ def spinner_task():
 
 # ---------------- Runner ----------------
 
-def run_tests():
+def run_tests() -> int:
     global RUNNING
 
     test_files = unit_test_files(ROOT)
@@ -64,6 +71,11 @@ def run_tests():
         "--machine",
     ]
 
+    global RECORDER
+    if RECORDER is not None:
+        RECORDER.command = cmd
+        RECORDER.test_files = test_files
+
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -77,12 +89,18 @@ def run_tests():
         if not line:
             continue
 
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
+        if RECORDER is not None:
+            parsed = RECORDER.ingest_line(line)
+        else:
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+        if parsed is None:
             continue
 
-        handle_event(event)
+        handle_event(parsed)
 
     PROGRESS.finalize()
     RUNNING = False
@@ -159,9 +177,51 @@ def print_summary():
     print("=" * 90)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run Flutter unit/widget/integration tests.")
+    parser.add_argument(
+        "--artifacts-dir",
+        type=Path,
+        help="Directory for test log artifacts (summary, failures, raw).",
+    )
+    parser.add_argument(
+        "--campaign-dir",
+        type=Path,
+        help="Campaign root; suite artifacts written to <campaign-dir>/unit.",
+    )
+    parser.add_argument(
+        "--no-artifacts",
+        action="store_true",
+        help="Skip writing log artifacts to disk.",
+    )
+    return parser.parse_args()
+
+
 # ---------------- Main ----------------
 
 def main():
+    args = parse_args()
+    artifacts_enabled = not args.no_artifacts
+    campaign_dir = args.campaign_dir
+    artifact_dir = None
+    if artifacts_enabled:
+        artifact_dir = resolve_suite_artifact_dir(
+            ROOT,
+            "unit",
+            args.artifacts_dir,
+            campaign_dir,
+        )
+
+    global RECORDER
+    if artifacts_enabled and artifact_dir is not None:
+        RECORDER = MachineEventRecorder(
+            suite_name="unit",
+            command=[],
+            cwd=ROOT,
+            test_files=[],
+            artifact_dir=artifact_dir,
+        )
+
     spinner = threading.Thread(target=spinner_task)
     spinner.start()
 
@@ -169,6 +229,16 @@ def main():
 
     spinner.join()
     print_summary()
+
+    if RECORDER is not None:
+        RECORDER.finalize(exit_code)
+        written = RECORDER.write_artifacts()
+        if written is not None:
+            print(f"\n📁 Test artifacts: {written}")
+        if campaign_dir is None and artifacts_enabled:
+            campaign_path = written.parent if written else None
+            if campaign_path is not None:
+                refresh_latest(ROOT, campaign_path)
 
     sys.exit(exit_code)
 

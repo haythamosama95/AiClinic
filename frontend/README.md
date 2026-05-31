@@ -24,6 +24,11 @@ cd frontend
 flutter analyze
 ```
 
+Test campaigns write machine-readable artifacts under `test-results/latest/` (and
+`test-results/campaigns/<timestamp>/`): `raw.jsonl`, `summary.json`, `failures.json`,
+plus Markdown companions. Use these for triage without re-running tests. Pass
+`--no-artifacts` to skip file output.
+
 Boundary subsets: `./tool/boundary/run_boundary_auth.sh`, `run_boundary_settings.sh`, `run_boundary_patients.sh`.
 
 ## Configuration
