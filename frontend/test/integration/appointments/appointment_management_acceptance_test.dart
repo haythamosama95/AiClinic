@@ -26,8 +26,15 @@ import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/auth_shell_page.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/settings/data/branch_repository.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
@@ -87,6 +94,7 @@ Widget _scope({
       appointmentQueueRealtimeClientProvider.overrideWithValue(_FakeRealtime(realtime)),
       patientRepositoryProvider.overrideWith((ref) => FakePatientRepository(patients: [samplePatientListItem()])),
       staffAdminRepositoryProvider.overrideWithValue(_SmokeStaffRepo()),
+      branchRepositoryProvider.overrideWithValue(_SmokeBranchRepo(activeBranchId: auth?.context?.activeBranchId ?? _branchAId)),
     ],
     child: child,
   );
@@ -375,7 +383,7 @@ void main() {
       await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
       await tester.pumpAndSettle();
 
-      expect(client.lastFunction, 'reschedule_appointment');
+      expect(client.rpcLog, contains('reschedule_appointment'));
     });
 
     testWidgets('invalid: checked-in hides reschedule control', (tester) async {
@@ -573,4 +581,40 @@ class _SmokeStaffRepo implements StaffAdminRepository {
   @override
   Future<RpcResult> setStaffActive({required String staffMemberId, required bool isActive}) =>
       throw UnimplementedError();
+}
+
+class _SmokeBranchRepo implements BranchRepository {
+  _SmokeBranchRepo({required this.activeBranchId});
+
+  final String activeBranchId;
+
+  @override
+  Future<List<BranchListItem>> listBranches({
+    required String organizationId,
+    BranchListFilter filter = BranchListFilter.all,
+  }) async {
+    return [
+      BranchListItem(
+        id: activeBranchId,
+        name: 'Main Branch',
+        isActive: true,
+        workingSchedule: BranchWorkingSchedule(
+          BranchWeekday.values
+              .map(
+                (day) => BranchWorkingDayHours(day: day, isWorkingDay: true, openTime: '00:00', closeTime: '23:59'),
+              )
+              .toList(growable: false),
+        ),
+      ),
+    ];
+  }
+
+  @override
+  Future<String> createBranch(CreateBranchInput input) => throw UnimplementedError();
+
+  @override
+  Future<RpcResult> setBranchActive({required String branchId, required bool isActive}) => throw UnimplementedError();
+
+  @override
+  Future<String> updateBranch(UpdateBranchInput input) => throw UnimplementedError();
 }

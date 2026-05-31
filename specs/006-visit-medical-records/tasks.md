@@ -90,16 +90,16 @@
 
 ### Tests for User Story 2
 
-- [ ] T027 [P] [US2] Add `save_soap_note` tests including partial save and `STALE_SOAP` in `backend/tests/visit_medical_records_crud.sql`
-- [ ] T028 [P] [US2] Add unit tests for `VisitRepository.saveSoapNote` optimistic concurrency in `frontend/test/unit/visits/visit_repository_soap_test.dart`
-- [ ] T029 [P] [US2] Add widget tests for save states and stale conflict UX in `frontend/test/widget/visits/soap_editor_test.dart`
+- [X] T027 [P] [US2] Add `save_soap_note` tests including partial save and `STALE_SOAP` in `backend/tests/visit_medical_records_crud.sql`
+- [X] T028 [P] [US2] Add unit tests for `VisitRepository.saveSoapNote` optimistic concurrency in `frontend/test/unit/visits/visit_repository_soap_test.dart`
+- [X] T029 [P] [US2] Add widget tests for save states and stale conflict UX in `frontend/test/widget/visits/soap_editor_test.dart`
 
 ### Implementation for User Story 2
 
-- [ ] T030 [US2] Implement `VisitRepository.saveSoapNote` with `p_expected_updated_at` handling per `contracts/visit-mutations.md` in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T031 [US2] Implement `VisitDocumentationNotifier` (load SOAP, track `updated_at`, save, stale refresh) in `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
-- [ ] T032 [US2] Implement `SoapEditor` widget (S/O/A/P fields, saving/saved/stale states) in `frontend/lib/features/visits/presentation/widgets/soap_editor.dart`
-- [ ] T033 [US2] Integrate `SoapEditor` into `VisitDocumentationPage` gated by `visits.edit_soap` in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T030 [US2] Implement `VisitRepository.saveSoapNote` with `p_expected_updated_at` handling per `contracts/visit-mutations.md` in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T031 [US2] Implement `VisitDocumentationNotifier` (load SOAP, track `updated_at`, save, stale refresh) in `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
+- [X] T032 [US2] Implement `SoapEditor` widget (S/O/A/P fields, saving/saved/stale states) in `frontend/lib/features/visits/presentation/widgets/soap_editor.dart`
+- [X] T033 [US2] Integrate `SoapEditor` into `VisitDocumentationPage` gated by `visits.edit_soap` in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
 
 **Checkpoint**: Spec test cases 5–6, 6b; acceptance criteria 3
 

@@ -32,7 +32,9 @@ class AppointmentWorkingHours {
 
     final startMinutes = localStart.hour * 60 + localStart.minute;
     final endMinutes = localEnd.hour * 60 + localEnd.minute;
-    return startMinutes >= openMinutes && endMinutes <= closeMinutes;
+    // Treat 23:59 close as end-of-day so slots ending at midnight are not rejected.
+    final effectiveCloseMinutes = closeMinutes >= (23 * 60 + 59) ? 24 * 60 : closeMinutes;
+    return startMinutes >= openMinutes && endMinutes <= effectiveCloseMinutes;
   }
 
   static BranchWorkingDayHours? _hoursForDay(BranchWorkingSchedule schedule, BranchWeekday weekday) {

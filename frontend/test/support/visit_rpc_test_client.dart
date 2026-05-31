@@ -7,9 +7,11 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
   VisitRpcTestClient({Map<String, Map<String, dynamic>>? rpcResults}) : rpcResults = rpcResults ?? {};
 
   final Map<String, Map<String, dynamic>> rpcResults;
+  final List<String> rpcLog = [];
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    rpcLog.add(fn);
     lastFunction = fn;
     lastParams = params == null ? null : Map<String, dynamic>.from(params);
     final override = rpcResults[fn];
@@ -43,6 +45,21 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           'doctor_name': 'Dr Test',
           'visit_date': '2026-05-31',
           'status': 'in_progress',
+          'soap': {
+            'subjective': null,
+            'objective': null,
+            'assessment': null,
+            'plan': null,
+            'specialty_form_json': {},
+            'updated_at': '2026-05-31T10:00:00.000Z',
+          },
+        },
+      },
+      'save_soap_note' => {
+        'success': true,
+        'data': {
+          'visit_id': lastParams?['p_visit_id'] ?? 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          'updated_at': '2026-05-31T10:05:00.000Z',
         },
       },
       _ => {'success': false, 'error_code': 'UNKNOWN', 'error_message': 'Unhandled RPC $fn'},

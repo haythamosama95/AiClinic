@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -88,7 +89,7 @@ class _AppointmentBookingPageState extends ConsumerState<AppointmentBookingPage>
   }
 
   Future<void> _pickStartTime() async {
-    final now = DateTime.now();
+    final now = clock.now();
     final date = await showDatePicker(
       context: context,
       initialDate: _startTime ?? now,

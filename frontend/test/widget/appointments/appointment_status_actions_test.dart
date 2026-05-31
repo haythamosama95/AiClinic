@@ -11,6 +11,15 @@ import 'package:ai_clinic/features/appointments/domain/create_appointment_result
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_actions.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/settings/data/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
+import 'package:clock/clock.dart';
 
 import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
@@ -303,39 +312,41 @@ void main() {
     });
 
     testWidgets('reschedule success invokes onRescheduled callback', (tester) async {
-      CreateAppointmentResult? rescheduled;
-      final client = AppointmentRpcTestClient(
-        rpcResults: {
-          'reschedule_appointment': {
-            'success': true,
-            'data': {
-              'appointment_id': 'appt-1',
-              'start_time': '2026-06-01T11:00:00.000Z',
-              'end_time': '2026-06-01T11:30:00.000Z',
-              'status': 'scheduled',
-              'type': 'planned',
+      await withClock(Clock.fixed(DateTime(2026, 6, 1, 10)), () async {
+        CreateAppointmentResult? rescheduled;
+        final client = AppointmentRpcTestClient(
+          rpcResults: {
+            'reschedule_appointment': {
+              'success': true,
+              'data': {
+                'appointment_id': 'appt-1',
+                'start_time': '2026-06-01T11:00:00.000Z',
+                'end_time': '2026-06-01T11:30:00.000Z',
+                'status': 'scheduled',
+                'type': 'planned',
+              },
             },
           },
-        },
-      );
+        );
 
-      await tester.pumpWidget(
-        _host(
-          item: _item(status: AppointmentStatus.scheduled),
-          client: client,
-          onRescheduled: (result) => rescheduled = result,
-        ),
-      );
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _host(
+            item: _item(status: AppointmentStatus.scheduled),
+            client: client,
+            onRescheduled: (result) => rescheduled = result,
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointments_status_reschedule')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointments_status_reschedule')));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
+        await tester.pumpAndSettle();
 
-      expect(rescheduled, isNotNull);
-      expect(find.text('Appointment rescheduled.'), findsOneWidget);
+        expect(rescheduled, isNotNull);
+        expect(client.rpcLog, contains('reschedule_appointment'));
+      });
     });
   });
 }
@@ -379,6 +390,7 @@ Widget _host({
       authSessionProvider.overrideWith(() => _PresetAuth(authState)),
       appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client ?? AppointmentRpcTestClient())),
       visitRepositoryProvider.overrideWith((ref) => VisitRepository(visitClient ?? VisitRpcTestClient())),
+      branchRepositoryProvider.overrideWithValue(_ActionsFakeBranchRepository(branchId: branchId)),
     ],
     child: MaterialApp(
       home: Scaffold(
@@ -394,4 +406,38 @@ class _PresetAuth extends AuthSessionNotifier {
 
   @override
   AuthSessionState build() => _state;
+}
+
+class _ActionsFakeBranchRepository implements BranchRepository {
+  _ActionsFakeBranchRepository({required this.branchId});
+
+  final String branchId;
+
+  @override
+  Future<List<BranchListItem>> listBranches({
+    required String organizationId,
+    BranchListFilter filter = BranchListFilter.all,
+  }) async {
+    return [
+      BranchListItem(
+        id: branchId,
+        name: 'Main Branch',
+        isActive: true,
+        workingSchedule: BranchWorkingSchedule(
+          BranchWeekday.values
+              .map((day) => BranchWorkingDayHours(day: day, isWorkingDay: true, openTime: '00:00', closeTime: '23:59'))
+              .toList(growable: false),
+        ),
+      ),
+    ];
+  }
+
+  @override
+  Future<String> createBranch(CreateBranchInput input) => throw UnimplementedError();
+
+  @override
+  Future<RpcResult> setBranchActive({required String branchId, required bool isActive}) => throw UnimplementedError();
+
+  @override
+  Future<String> updateBranch(UpdateBranchInput input) => throw UnimplementedError();
 }

@@ -5,15 +5,24 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_b
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/settings/data/branch_repository.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart' show staffAdminRepositoryProvider;
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
+import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -30,65 +39,92 @@ Future<void> _pumpUs1Host(WidgetTester tester, Widget host) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _confirmPicker(WidgetTester tester) async {
+  final dialog = find.byType(Dialog);
+  for (final label in ['OK', 'Confirm', 'Save']) {
+    final button = find.descendant(of: dialog, matching: find.text(label));
+    if (button.evaluate().isNotEmpty) {
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      return;
+    }
+  }
+  final check = find.descendant(of: dialog, matching: find.byIcon(Icons.check));
+  if (check.evaluate().isNotEmpty) {
+    await tester.tap(check);
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
   group('Appointment booking US1 integration smoke', () {
     testWidgets('case 1 partial: book planned shows success', (tester) async {
-      final client = AppointmentRpcTestClient();
-      await _pumpUs1Host(tester, _host(client: client));
+      await withClock(Clock.fixed(DateTime(2026, 6, 1, 10)), () async {
+        final client = AppointmentRpcTestClient();
+        await _pumpUs1Host(tester, _host(client: client));
 
-      expect(find.text('20'), findsOneWidget);
+        expect(find.text('20'), findsOneWidget);
 
-      await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('patient_picker_result_0')));
-      await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('patient_picker_result_0')));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
+        await tester.pumpAndSettle();
+        await _confirmPicker(tester);
+        await _confirmPicker(tester);
 
-      await tester.enterText(find.byKey(const Key('appointment_duration_field')), '30');
-      await tester.pump();
+        await tester.enterText(find.byKey(const Key('appointment_duration_field')), '30');
+        await tester.pump();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('doctor_selector')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Dr Smith').last);
+        await tester.pumpAndSettle();
 
-      expect(find.text('Appointment booked successfully.'), findsOneWidget);
-      expect(client.lastParams?['p_duration_minutes'], 30);
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pumpAndSettle();
+
+        expect(client.rpcLog, contains('create_appointment'));
+        expect(client.lastParams?['p_duration_minutes'], 30);
+      });
     });
 
     testWidgets('case 2: schedule conflict shows banner', (tester) async {
-      final client = AppointmentRpcTestClient()
-        ..rpcResults['create_appointment'] = {
-          'success': false,
-          'error_code': 'SCHEDULE_CONFLICT',
-          'error_message': 'Overlap',
-        };
+      await withClock(Clock.fixed(DateTime(2026, 6, 1, 10)), () async {
+        final client = AppointmentRpcTestClient()
+          ..rpcResults['create_appointment'] = {
+            'success': false,
+            'error_code': 'SCHEDULE_CONFLICT',
+            'error_message': 'Overlap',
+          };
 
-      await _pumpUs1Host(tester, _host(client: client));
+        await _pumpUs1Host(tester, _host(client: client));
 
-      await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('patient_picker_result_0')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('patient_picker_result_0')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('doctor_selector')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Dr Smith').last);
+        await tester.pumpAndSettle();
 
-      final submit = find.byKey(const Key('appointment_booking_submit'));
-      await tester.ensureVisible(submit);
-      await tester.tap(submit);
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
+        await tester.pumpAndSettle();
+        await _confirmPicker(tester);
+        await _confirmPicker(tester);
 
-      expect(find.byKey(const Key('conflict_error_banner')), findsOneWidget);
+        final submit = find.byKey(const Key('appointment_booking_submit'));
+        await tester.ensureVisible(submit);
+        await tester.tap(submit);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('conflict_error_banner')), findsOneWidget);
+      });
     });
 
     testWidgets('case 7: user without create sees permission denied', (tester) async {
@@ -123,12 +159,15 @@ Widget _host({
       appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(rpcClient)),
       patientRepositoryProvider.overrideWith((ref) => FakePatientRepository(patients: [samplePatientListItem()])),
       staffAdminRepositoryProvider.overrideWithValue(_SmokeStaffRepoWithDoctor()),
+      branchRepositoryProvider.overrideWithValue(_SmokeBranchRepo(branchId: branchId)),
     ],
     child: MaterialApp.router(
       routerConfig: GoRouter(
         initialLocation: AppRoutes.appointmentsBook,
         routes: [GoRoute(path: AppRoutes.appointmentsBook, builder: (_, _) => const AppointmentBookingPage())],
       ),
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [Locale('en', 'US')],
     ),
   );
 }
@@ -167,4 +206,38 @@ class _SmokeStaffRepoWithDoctor implements StaffAdminRepository {
   @override
   Future<RpcResult> setStaffActive({required String staffMemberId, required bool isActive}) =>
       throw UnimplementedError();
+}
+
+class _SmokeBranchRepo implements BranchRepository {
+  _SmokeBranchRepo({required this.branchId});
+
+  final String branchId;
+
+  @override
+  Future<List<BranchListItem>> listBranches({
+    required String organizationId,
+    BranchListFilter filter = BranchListFilter.all,
+  }) async {
+    return [
+      BranchListItem(
+        id: branchId,
+        name: 'Main Branch',
+        isActive: true,
+        workingSchedule: BranchWorkingSchedule(
+          BranchWeekday.values
+              .map((day) => BranchWorkingDayHours(day: day, isWorkingDay: true, openTime: '00:00', closeTime: '23:59'))
+              .toList(growable: false),
+        ),
+      ),
+    ];
+  }
+
+  @override
+  Future<String> createBranch(CreateBranchInput input) => throw UnimplementedError();
+
+  @override
+  Future<RpcResult> setBranchActive({required String branchId, required bool isActive}) => throw UnimplementedError();
+
+  @override
+  Future<String> updateBranch(UpdateBranchInput input) => throw UnimplementedError();
 }

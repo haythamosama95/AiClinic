@@ -2,6 +2,10 @@
 -- Keeps bootstrap admin and global role permission seeds intact.
 \set ON_ERROR_STOP on
 
+DELETE FROM public.visit_attachments WHERE true;
+DELETE FROM public.treatment_plans WHERE true;
+DELETE FROM public.soap_notes WHERE true;
+DELETE FROM public.visits WHERE true;
 DELETE FROM public.appointments WHERE true;
 DELETE FROM public.audit_log WHERE true;
 

@@ -8,9 +8,11 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
 
   final Map<String, Map<String, dynamic>> rpcResults;
   final List<Map<String, dynamic>> createAppointmentCalls = [];
+  final List<String> rpcLog = [];
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    rpcLog.add(fn);
     lastFunction = fn;
     lastParams = params == null ? null : Map<String, dynamic>.from(params);
     if (fn == 'create_appointment' && lastParams != null) {

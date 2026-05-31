@@ -15,7 +15,9 @@ import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -34,6 +36,10 @@ Future<void> _pumpBookingPage(WidgetTester tester, Widget host) async {
   await tester.pumpWidget(host);
   await tester.pump();
   await tester.pumpAndSettle();
+}
+
+Future<void> _withFixedBookingClock(Future<void> Function() body) {
+  return withClock(Clock.fixed(DateTime(2026, 6, 1, 10)), body);
 }
 
 void main() {
@@ -70,65 +76,65 @@ void main() {
     });
 
     testWidgets('advanced: SCHEDULE_CONFLICT shows conflict banner', (tester) async {
-      final client = AppointmentRpcTestClient()
-        ..rpcResults['create_appointment'] = {
-          'success': false,
-          'error_code': 'SCHEDULE_CONFLICT',
-          'error_message': 'Overlap',
-        };
+      await _withFixedBookingClock(() async {
+        final client = AppointmentRpcTestClient()
+          ..rpcResults['create_appointment'] = {
+            'success': false,
+            'error_code': 'SCHEDULE_CONFLICT',
+            'error_message': 'Overlap',
+          };
 
-      await _pumpBookingPage(tester, _host(rpcClient: client));
+        await _pumpBookingPage(tester, _host(rpcClient: client));
 
-      await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('patient_picker_result_0')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('patient_picker_result_0')));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('doctor_selector')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Dr Smith').last);
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('doctor_selector')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Dr Smith').last);
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
+        await tester.pumpAndSettle();
+        await _confirmPicker(tester);
+        await _confirmPicker(tester);
 
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('conflict_error_banner')), findsOneWidget);
-      expect(find.textContaining('overlaps another booked slot'), findsOneWidget);
+        expect(find.byKey(const Key('conflict_error_banner')), findsOneWidget);
+        expect(find.textContaining('overlaps another booked slot'), findsOneWidget);
+      });
     });
 
     testWidgets('advanced: book without doctor omits doctor id on RPC', (tester) async {
-      final client = AppointmentRpcTestClient();
+      await _withFixedBookingClock(() async {
+        final client = AppointmentRpcTestClient();
 
-      await _pumpBookingPage(tester, _host(rpcClient: client));
+        await _pumpBookingPage(tester, _host(rpcClient: client));
 
-      await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('patient_picker_result_0')));
-      await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('patient_picker_result_0')));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
+        await tester.pumpAndSettle();
+        await _confirmPicker(tester);
+        await _confirmPicker(tester);
 
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pumpAndSettle();
 
-      expect(client.lastFunction, 'create_appointment');
-      expect(client.lastParams?['p_doctor_id'], isNull);
-      expect(find.textContaining('unexpected error'), findsNothing);
+        expect(client.rpcLog, contains('create_appointment'));
+        expect(client.lastParams?['p_doctor_id'], isNull);
+        expect(find.textContaining('unexpected error'), findsNothing);
+      });
     });
 
     testWidgets('stupid usage: submit without patient shows validation message', (tester) async {
@@ -146,48 +152,51 @@ void main() {
     });
 
     testWidgets('edge case: custom duration override is sent on book', (tester) async {
-      final client = AppointmentRpcTestClient();
+      await _withFixedBookingClock(() async {
+        final client = AppointmentRpcTestClient();
 
-      await _pumpBookingPage(tester, _host(rpcClient: client));
+        await _pumpBookingPage(tester, _host(rpcClient: client));
 
-      await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('patient_picker_result_0')));
-      await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('patient_picker_result_0')));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('doctor_selector')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Dr Smith').last);
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('doctor_selector')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Dr Smith').last);
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
+        await tester.pumpAndSettle();
+        await _confirmPicker(tester);
+        await _confirmPicker(tester);
 
-      await tester.enterText(find.byKey(const Key('appointment_duration_field')), '45');
-      await tester.pump();
+        await tester.enterText(find.byKey(const Key('appointment_duration_field')), '45');
+        await tester.pump();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pumpAndSettle();
 
-      expect(client.lastParams?['p_duration_minutes'], 45);
+        expect(client.lastParams?['p_duration_minutes'], 45);
+      });
     });
 
     testWidgets('happy path: successful book shows confirmation', (tester) async {
-      final client = AppointmentRpcTestClient();
+      await _withFixedBookingClock(() async {
+        final client = AppointmentRpcTestClient();
 
-      await _pumpBookingPage(tester, _host(rpcClient: client));
-      await _fillMinimalBookingForm(tester);
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pumpAndSettle();
+        await _pumpBookingPage(tester, _host(rpcClient: client));
+        await _fillMinimalBookingForm(tester);
 
-      expect(find.text('Appointment booked successfully.'), findsOneWidget);
-      expect(client.lastFunction, 'create_appointment');
-      expect(client.lastParams?['p_type'], 'planned');
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pumpAndSettle();
+
+        expect(client.rpcLog, contains('create_appointment'));
+        expect(client.lastParams?['p_type'], 'planned');
+        expect(find.text('Home shell'), findsOneWidget);
+      });
     });
 
     testWidgets('stupid usage: submit without start time shows validation message', (tester) async {
@@ -224,71 +233,104 @@ void main() {
     });
 
     testWidgets('advanced: INVALID_DOCTOR shows form error', (tester) async {
-      final client = AppointmentRpcTestClient()
-        ..rpcResults['create_appointment'] = {
-          'success': false,
-          'error_code': 'INVALID_DOCTOR',
-          'error_message': 'Bad doctor',
-        };
+      await _withFixedBookingClock(() async {
+        final client = AppointmentRpcTestClient()
+          ..rpcResults['create_appointment'] = {
+            'success': false,
+            'error_code': 'INVALID_DOCTOR',
+            'error_message': 'Bad doctor',
+          };
 
-      await _pumpBookingPage(tester, _host(rpcClient: client));
-      await _fillMinimalBookingForm(tester);
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pumpAndSettle();
+        await _pumpBookingPage(tester, _host(rpcClient: client));
+        await _fillMinimalBookingForm(tester);
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pumpAndSettle();
 
-      expect(find.textContaining('doctor'), findsOneWidget);
-      expect(find.byKey(const Key('conflict_error_banner')), findsNothing);
+        expect(find.textContaining('doctor'), findsOneWidget);
+        expect(find.byKey(const Key('conflict_error_banner')), findsNothing);
+      });
     });
 
     testWidgets('advanced: PATIENT_ARCHIVED shows form error', (tester) async {
-      final client = AppointmentRpcTestClient()
-        ..rpcResults['create_appointment'] = {
-          'success': false,
-          'error_code': 'PATIENT_ARCHIVED',
-          'error_message': 'Archived',
-        };
+      await _withFixedBookingClock(() async {
+        final client = AppointmentRpcTestClient()
+          ..rpcResults['create_appointment'] = {
+            'success': false,
+            'error_code': 'PATIENT_ARCHIVED',
+            'error_message': 'Archived',
+          };
 
-      await _pumpBookingPage(tester, _host(rpcClient: client));
-      await _fillMinimalBookingForm(tester);
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pumpAndSettle();
+        await _pumpBookingPage(tester, _host(rpcClient: client));
+        await _fillMinimalBookingForm(tester);
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pumpAndSettle();
 
-      expect(find.textContaining('archived'), findsOneWidget);
+        expect(find.textContaining('archived'), findsOneWidget);
+      });
     });
 
     testWidgets('advanced: PATIENT_ALREADY_BOOKED_SAME_DAY shows form error', (tester) async {
-      final client = AppointmentRpcTestClient()
-        ..rpcResults['create_appointment'] = {
-          'success': false,
-          'error_code': 'PATIENT_ALREADY_BOOKED_SAME_DAY',
-          'error_message': 'Already booked',
-        };
+      await _withFixedBookingClock(() async {
+        final client = AppointmentRpcTestClient()
+          ..rpcResults['create_appointment'] = {
+            'success': false,
+            'error_code': 'PATIENT_ALREADY_BOOKED_SAME_DAY',
+            'error_message': 'Already booked',
+          };
 
-      await _pumpBookingPage(tester, _host(rpcClient: client));
-      await _fillMinimalBookingForm(tester);
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pumpAndSettle();
+        await _pumpBookingPage(tester, _host(rpcClient: client));
+        await _fillMinimalBookingForm(tester);
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pumpAndSettle();
 
-      expect(find.textContaining('same day'), findsOneWidget);
-      expect(find.textContaining('existing appointment'), findsOneWidget);
+        expect(find.textContaining('same day'), findsOneWidget);
+        expect(find.textContaining('existing appointment'), findsOneWidget);
+      });
     });
 
     testWidgets('advanced: reloads branch working schedule from server before booking', (tester) async {
-      final branchId = '44444444-4444-4444-8444-444444444444';
-      final branches = _FakeBranchRepository(branchId: branchId);
-      final client = AppointmentRpcTestClient();
+      await _withFixedBookingClock(() async {
+        final branchId = '44444444-4444-4444-8444-444444444444';
+        final branches = _FakeBranchRepository(branchId: branchId);
+        final client = AppointmentRpcTestClient();
 
-      await _pumpBookingPage(tester, _host(rpcClient: client, branchRepository: branches));
-      await _fillMinimalBookingForm(tester);
+        await _pumpBookingPage(tester, _host(rpcClient: client, branchRepository: branches));
+        await _fillMinimalBookingForm(tester);
 
-      expect(branches.listBranchesCalls, 0);
-      await tester.tap(find.byKey(const Key('appointment_booking_submit')));
-      await tester.pumpAndSettle();
+        expect(branches.listBranchesCalls, 0);
+        await tester.tap(find.byKey(const Key('appointment_booking_submit')));
+        await tester.pumpAndSettle();
 
-      expect(branches.listBranchesCalls, greaterThanOrEqualTo(1));
-      expect(client.lastFunction, 'create_appointment');
+        expect(branches.listBranchesCalls, greaterThanOrEqualTo(1));
+        expect(client.rpcLog, contains('create_appointment'));
+      });
     });
   });
+}
+
+Future<void> _confirmPicker(WidgetTester tester) async {
+  final dialog = find.byType(Dialog);
+  if (dialog.evaluate().isEmpty) {
+    throw TestFailure('No dialog found for picker confirmation.');
+  }
+
+  for (final label in ['OK', 'Confirm', 'Save']) {
+    final button = find.descendant(of: dialog, matching: find.text(label));
+    if (button.evaluate().isNotEmpty) {
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      return;
+    }
+  }
+
+  final check = find.descendant(of: dialog, matching: find.byIcon(Icons.check));
+  if (check.evaluate().isNotEmpty) {
+    await tester.tap(check);
+    await tester.pumpAndSettle();
+    return;
+  }
+
+  throw TestFailure('No date/time picker confirm button found.');
 }
 
 Future<void> _fillMinimalBookingForm(WidgetTester tester) async {
@@ -305,10 +347,8 @@ Future<void> _fillMinimalBookingForm(WidgetTester tester) async {
 
   await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('OK'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('OK'));
-  await tester.pumpAndSettle();
+  await _confirmPicker(tester);
+  await _confirmPicker(tester);
 }
 
 class _FakeStaffAdminRepository implements StaffAdminRepository {
@@ -414,7 +454,11 @@ Widget _host({
       staffAdminRepositoryProvider.overrideWithValue(_FakeStaffAdminRepository()),
       branchRepositoryProvider.overrideWithValue(branches),
     ],
-    child: MaterialApp.router(routerConfig: routerConfig),
+    child: MaterialApp.router(
+      routerConfig: routerConfig,
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [Locale('en', 'US')],
+    ),
   );
 }
 
