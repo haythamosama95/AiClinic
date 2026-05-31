@@ -26,10 +26,10 @@
 
 **Purpose**: Visits feature module layout, routes, and test workspace before migration/UI work
 
-- [ ] T001 Create visits feature directories in `frontend/lib/features/visits/data/`, `frontend/lib/features/visits/domain/`, `frontend/lib/features/visits/presentation/pages/`, `frontend/lib/features/visits/presentation/providers/`, and `frontend/lib/features/visits/presentation/widgets/`
-- [ ] T002 [P] Create test directories `frontend/test/unit/visits/`, `frontend/test/widget/visits/`, and `frontend/test/integration/visits/`
-- [ ] T003 [P] Add visit route constants in `frontend/lib/app/app_routes.dart` (`/visits/:visitId/document`, `/visits/:visitId/detail` plus path builders)
-- [ ] T004 [P] Add domain model stubs per `data-model.md` in `frontend/lib/features/visits/domain/visit_list_item.dart`, `visit_detail.dart`, `visit_status.dart`, `soap_note.dart`, `treatment_plan_item.dart`, and `visit_attachment_item.dart`
+- [X] T001 Create visits feature directories in `frontend/lib/features/visits/data/`, `frontend/lib/features/visits/domain/`, `frontend/lib/features/visits/presentation/pages/`, `frontend/lib/features/visits/presentation/providers/`, and `frontend/lib/features/visits/presentation/widgets/`
+- [X] T002 [P] Create test directories `frontend/test/unit/visits/`, `frontend/test/widget/visits/`, and `frontend/test/integration/visits/`
+- [X] T003 [P] Add visit route constants in `frontend/lib/app/app_routes.dart` (`/visits/:visitId/document`, `/visits/:visitId/detail` plus path builders)
+- [X] T004 [P] Add domain model stubs per `data-model.md` in `frontend/lib/features/visits/domain/visit_list_item.dart`, `visit_detail.dart`, `visit_status.dart`, `soap_note.dart`, `treatment_plan_item.dart`, and `visit_attachment_item.dart`
 
 ---
 

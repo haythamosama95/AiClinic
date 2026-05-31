@@ -78,4 +78,15 @@ abstract final class AppRoutes {
     appointmentsQueue,
     appointmentsCalendar,
   ];
+
+  // V1-5 visit medical records
+  static const visits = '/visits';
+  static const visitDocumentSegment = 'document';
+  static const visitDetailSegment = 'detail';
+
+  /// Visit documentation: `/visits/:visitId/document`
+  static String visitDocument(String visitId) => '$visits/$visitId/$visitDocumentSegment';
+
+  /// Visit clinical detail: `/visits/:visitId/detail`
+  static String visitDetail(String visitId) => '$visits/$visitId/$visitDetailSegment';
 }
