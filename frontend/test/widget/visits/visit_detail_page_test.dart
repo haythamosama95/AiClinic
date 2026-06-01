@@ -110,6 +110,61 @@ void main() {
       expect(find.byType(VisitDocumentationPage), findsOneWidget);
     });
 
+    testWidgets('completed visit shows attachment download without upload or edit', (tester) async {
+      const attachmentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      final client = VisitRpcTestClient(
+        rpcResults: {
+          'get_visit': {
+            'success': true,
+            'data': {
+              'id': visitId,
+              'branch_id': branchId,
+              'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              'patient_id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+              'doctor_id': 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+              'doctor_name': 'Dr Test',
+              'visit_date': '2026-05-31',
+              'status': 'completed',
+              'soap': {
+                'subjective': 'Done',
+                'objective': null,
+                'assessment': null,
+                'plan': null,
+                'specialty_form_json': {},
+                'updated_at': '2026-05-31T10:00:00.000Z',
+              },
+              'attachments': [
+                {
+                  'id': attachmentId,
+                  'file_type': 'pdf',
+                  'label': 'Lab result',
+                  'uploaded_by': 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+                  'uploaded_by_name': 'Dr Test',
+                  'size_bytes': 2048,
+                  'created_at': '2026-05-31T10:00:00.000Z',
+                  'can_download': true,
+                },
+              ],
+            },
+          },
+          'get_specialty_form_schema': {
+            'success': true,
+            'data': {
+              'schema_json': {'type': 'object', 'properties': {}},
+            },
+          },
+        },
+      );
+
+      await tester.pumpWidget(_host(client: client, permissions: {PermissionKeys.patientsView}));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('visit_detail_edit_documentation')), findsNothing);
+      expect(find.byKey(const Key('visit_attachment_upload_button')), findsNothing);
+      expect(find.byKey(Key('visit_attachment_download_$attachmentId')), findsOneWidget);
+      expect(find.text('Lab result'), findsOneWidget);
+    });
+
     testWidgets('hides edit action without visits.edit_soap', (tester) async {
       final client = VisitRpcTestClient(
         rpcResults: {

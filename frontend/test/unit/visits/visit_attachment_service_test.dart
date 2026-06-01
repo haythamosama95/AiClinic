@@ -1,12 +1,15 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:storage_client/storage_client.dart' show FileObject;
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:storage_client/storage_client.dart' show FileObject, StorageException;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
-import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart'
+    show VisitAttachmentDownloadResult, VisitRepository;
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
 
 import '../../support/visit_rpc_test_client.dart';
@@ -14,6 +17,7 @@ import '../../support/visit_rpc_test_client.dart';
 class _RecordingStorageBucket extends Fake implements StorageFileApi {
   final List<({String path, Uint8List bytes})> uploads = [];
   final List<String> removed = [];
+  final Map<String, Uint8List> stored = {};
 
   @override
   Future<String> uploadBinary(
@@ -24,7 +28,17 @@ class _RecordingStorageBucket extends Fake implements StorageFileApi {
     StorageRetryController? retryController,
   }) async {
     uploads.add((path: path, bytes: data));
+    stored[path] = data;
     return path;
+  }
+
+  @override
+  Future<Uint8List> download(String path, {TransformOptions? transform, Map<String, String>? queryParams}) async {
+    final bytes = stored[path];
+    if (bytes == null) {
+      throw const StorageException('Object not found');
+    }
+    return bytes;
   }
 
   @override
@@ -156,7 +170,43 @@ void main() {
     test('getVisitAttachmentDownload returns signed URL', () async {
       final download = await service.getVisitAttachmentDownload(attachmentId: 'att-1');
       expect(download.signedUrl, 'https://example.test/download');
+      expect(download.filePath, 'org-1/branch-1/visit-1/lab-result.pdf');
       expect(download.filename, 'lab-result.pdf');
+    });
+
+    test('downloadAttachmentBytes reads from storage when file_path is set', () async {
+      final storageClient = _AttachmentStorageTestClient(_RecordingStorageBucket());
+      final storageBucket = (storageClient.storage as _FakeStorageClient).bucket;
+      storageBucket.stored['org-1/branch-1/visit-1/lab-result.pdf'] = Uint8List.fromList([9, 8, 7]);
+      final storageService = VisitAttachmentService(storageClient, VisitRepository(testClient));
+
+      final bytes = await storageService.downloadAttachmentBytes(
+        const VisitAttachmentDownloadResult(
+          signedUrl: 'org-1/branch-1/visit-1/lab-result.pdf',
+          filePath: 'org-1/branch-1/visit-1/lab-result.pdf',
+          fileType: 'pdf',
+          filename: 'lab-result.pdf',
+          expiresAt: null,
+        ),
+      );
+      expect(bytes, Uint8List.fromList([9, 8, 7]));
+    });
+
+    test('downloadBytesFromSignedUrl returns response body on success', () async {
+      final client = MockClient((request) async {
+        expect(request.url.toString(), 'https://example.test/file');
+        return http.Response.bytes(Uint8List.fromList([9, 8, 7]), 200);
+      });
+      final bytes = await service.downloadBytesFromSignedUrl('https://example.test/file', client: client);
+      expect(bytes, Uint8List.fromList([9, 8, 7]));
+    });
+
+    test('downloadBytesFromSignedUrl throws on non-200 response', () async {
+      final client = MockClient((request) async => http.Response('missing', 404));
+      await expectLater(
+        service.downloadBytesFromSignedUrl('https://example.test/file', client: client),
+        throwsA(isA<StateError>()),
+      );
     });
   });
 

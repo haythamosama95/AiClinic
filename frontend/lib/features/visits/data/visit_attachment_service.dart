@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
@@ -158,6 +159,31 @@ class VisitAttachmentService {
 
   Future<VisitAttachmentDownloadResult> getVisitAttachmentDownload({required String attachmentId}) {
     return _visitRepository.getVisitAttachmentDownload(attachmentId: attachmentId);
+  }
+
+  /// Downloads attachment bytes after [getVisitAttachmentDownload] authorizes access.
+  ///
+  /// Uses authenticated storage download when [VisitAttachmentDownloadResult.filePath] is set
+  /// (reliable on desktop). Falls back to HTTP only for absolute signed URLs.
+  Future<Uint8List> downloadAttachmentBytes(VisitAttachmentDownloadResult download, {http.Client? client}) async {
+    final path = download.filePath?.trim();
+    if (path != null && path.isNotEmpty) {
+      return _client.storage.from(bucketName).download(path);
+    }
+    return downloadBytesFromSignedUrl(download.signedUrl, client: client);
+  }
+
+  /// Fetches attachment bytes from an absolute signed storage URL.
+  Future<Uint8List> downloadBytesFromSignedUrl(String signedUrl, {http.Client? client}) async {
+    final uri = Uri.tryParse(signedUrl);
+    if (uri == null || !uri.hasScheme || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      throw StateError('Download URL was invalid.');
+    }
+    final response = client == null ? await http.get(uri) : await client.get(uri);
+    if (response.statusCode != 200) {
+      throw StateError('Could not download the file (${response.statusCode}).');
+    }
+    return response.bodyBytes;
   }
 
   String _sanitizeFilename(String name) {

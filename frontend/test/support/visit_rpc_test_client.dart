@@ -144,6 +144,7 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
         'success': true,
         'data': {
           'signed_url': 'https://example.test/download',
+          'file_path': 'org-1/branch-1/visit-1/lab-result.pdf',
           'file_type': 'pdf',
           'filename': 'lab-result.pdf',
           'expires_at': '2026-05-31T12:00:00.000Z',

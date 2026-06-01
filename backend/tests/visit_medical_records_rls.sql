@@ -250,16 +250,17 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Cross-branch within org: user assigned only to branch A cannot see branch A2 visit.
+  -- Cross-branch within org: doctor assigned only to branch A cannot access branch A2 visit.
+  -- (Owner/administrator have org-wide branch access; see visit_attachment_storage_rls.sql.)
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(
-      'sub', v_user_a::text,
+      'sub', v_doctor_user_a::text,
       'role', 'authenticated',
       'organization_id', v_org_a::text,
       'branch_ids', v_branch_a::text,
-      'staff_member_id', v_staff_a::text,
-      'staff_role', 'owner',
+      'staff_member_id', v_doctor_a::text,
+      'staff_role', 'doctor',
       'setup_required', false
     )::text,
     true

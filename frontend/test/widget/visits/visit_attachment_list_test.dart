@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:storage_client/storage_client.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -50,17 +51,21 @@ void main() {
   late VisitRpcTestClient testClient;
   var uploadCount = 0;
   var shouldFailUpload = false;
+  Object? uploadError;
 
   setUp(() {
     testClient = VisitRpcTestClient();
     uploadCount = 0;
     shouldFailUpload = false;
+    uploadError = null;
   });
 
   Widget buildWidget({
     List<VisitAttachmentItem> attachments = const [],
     bool canUpload = true,
     Future<VisitAttachmentPickInput?> Function()? pickAttachment,
+    Future<Uint8List> Function(String signedUrl)? fetchDownloadBytes,
+    Future<bool> Function(String filename, Uint8List bytes)? saveDownloadedAttachment,
   }) {
     final authState = AuthSessionState(
       status: AuthSessionStatus.authenticated,
@@ -84,9 +89,8 @@ void main() {
             uploadCount++;
             await Future<void>.delayed(const Duration(milliseconds: 50));
             if (shouldFailUpload) {
-              throw RpcFailure(
-                const RpcResult(success: false, errorCode: 'INVALID_FILE_TYPE', errorMessage: 'bad type'),
-              );
+              throw uploadError ??
+                  RpcFailure(const RpcResult(success: false, errorCode: 'INVALID_FILE_TYPE', errorMessage: 'bad type'));
             }
             return 'new-attachment-id';
           },
@@ -109,6 +113,14 @@ void main() {
               pickAttachment:
                   pickAttachment ??
                   () async => VisitAttachmentPickInput(filename: 'lab.pdf', bytes: Uint8List.fromList([1, 2, 3])),
+              fetchDownloadBytes: fetchDownloadBytes ?? (_) async => Uint8List.fromList([4, 5, 6]),
+              saveDownloadedAttachment:
+                  saveDownloadedAttachment ??
+                  (filename, bytes) async {
+                    expect(filename, 'lab-result.pdf');
+                    expect(bytes, Uint8List.fromList([4, 5, 6]));
+                    return true;
+                  },
             ),
           ),
         ),
@@ -134,6 +146,17 @@ void main() {
     expect(find.byKey(const Key('visit_attachment_upload_progress')), findsOneWidget);
     await tester.pumpAndSettle();
     expect(uploadCount, 1);
+  });
+
+  testWidgets('shows friendly message after storage permission failure', (tester) async {
+    shouldFailUpload = true;
+    uploadError = const StorageException('new row violates row level security policy');
+    await tester.pumpWidget(buildWidget());
+    await tester.tap(find.byKey(const Key('visit_attachment_upload_button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('visit_attachment_error')), findsOneWidget);
+    expect(find.textContaining('StorageException'), findsNothing);
+    expect(find.textContaining('permission'), findsOneWidget);
   });
 
   testWidgets('shows RPC error after failed upload', (tester) async {
@@ -176,6 +199,61 @@ void main() {
     expect(find.byKey(const Key('visit_attachment_row_att-1')), findsOneWidget);
     expect(find.text('Lab result'), findsOneWidget);
     expect(find.byKey(const Key('visit_attachment_download_att-1')), findsOneWidget);
+  });
+
+  testWidgets('download prompts to save file with attachment filename', (tester) async {
+    var saveCalled = false;
+    final attachments = [
+      VisitAttachmentItem(
+        id: 'att-1',
+        fileType: VisitAttachmentFileType.pdf,
+        label: 'Lab result',
+        uploadedBy: 'staff-1',
+        sizeBytes: 2048,
+        createdAt: DateTime.utc(2026, 5, 31, 10),
+        canDownload: true,
+      ),
+    ];
+    await tester.pumpWidget(
+      buildWidget(
+        attachments: attachments,
+        saveDownloadedAttachment: (filename, bytes) async {
+          saveCalled = true;
+          expect(filename, 'lab-result.pdf');
+          expect(bytes, Uint8List.fromList([4, 5, 6]));
+          return true;
+        },
+      ),
+    );
+    await tester.tap(find.byKey(const Key('visit_attachment_download_att-1')));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(saveCalled, isTrue);
+    expect(find.byKey(const Key('visit_attachment_error')), findsNothing);
+  });
+
+  testWidgets('download byte fetch failure shows download error not upload', (tester) async {
+    final attachments = [
+      VisitAttachmentItem(
+        id: 'att-1',
+        fileType: VisitAttachmentFileType.pdf,
+        uploadedBy: 'staff-1',
+        sizeBytes: 2048,
+        createdAt: DateTime.utc(2026, 5, 31, 10),
+        canDownload: true,
+      ),
+    ];
+    await tester.pumpWidget(
+      buildWidget(
+        attachments: attachments,
+        fetchDownloadBytes: (_) async => throw StateError('Could not download the file (404)'),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('visit_attachment_download_att-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('visit_attachment_error')), findsOneWidget);
+    expect(find.textContaining('download'), findsOneWidget);
+    expect(find.textContaining('upload'), findsNothing);
   });
 
   testWidgets('hides download when canDownload is false', (tester) async {

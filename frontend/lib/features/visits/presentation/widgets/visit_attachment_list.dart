@@ -1,8 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -20,6 +21,8 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
     required this.canUpload,
     required this.onChanged,
     this.pickAttachment,
+    this.fetchDownloadBytes,
+    this.saveDownloadedAttachment,
     super.key,
   });
 
@@ -31,6 +34,12 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
 
   /// Test hook: bypasses platform file picker.
   final Future<VisitAttachmentPickInput?> Function()? pickAttachment;
+
+  /// Test hook: bypasses HTTP fetch of signed download URL.
+  final Future<Uint8List> Function(String signedUrl)? fetchDownloadBytes;
+
+  /// Test hook: bypasses platform save dialog. Return false when the user cancels.
+  final Future<bool> Function(String filename, Uint8List bytes)? saveDownloadedAttachment;
 
   @override
   ConsumerState<VisitAttachmentList> createState() => _VisitAttachmentListState();
@@ -168,21 +177,11 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
         return;
       }
       widget.onChanged();
-    } on VisitAttachmentValidationException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() => _errorMessage = error.message);
-    } on RpcFailure catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() => _errorMessage = visitMessageForRpc(error));
     } catch (error) {
       if (!mounted) {
         return;
       }
-      setState(() => _errorMessage = error.toString());
+      setState(() => _errorMessage = visitMessageForUploadError(error));
     } finally {
       if (mounted) {
         setState(() {
@@ -219,16 +218,16 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     });
 
     try {
-      final download = await ref
-          .read(visitAttachmentServiceProvider)
-          .getVisitAttachmentDownload(attachmentId: attachmentId);
-      final uri = Uri.tryParse(download.signedUrl);
-      if (uri == null) {
-        throw StateError('Download URL was invalid.');
-      }
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!launched && mounted) {
-        setState(() => _errorMessage = 'Could not open the download link.');
+      final service = ref.read(visitAttachmentServiceProvider);
+      final download = await service.getVisitAttachmentDownload(attachmentId: attachmentId);
+      final bytes = widget.fetchDownloadBytes != null
+          ? await widget.fetchDownloadBytes!(download.signedUrl)
+          : await service.downloadAttachmentBytes(download);
+      final saved = widget.saveDownloadedAttachment != null
+          ? await widget.saveDownloadedAttachment!(download.filename, bytes)
+          : await _promptSaveDownload(download.filename, bytes);
+      if (!saved && mounted) {
+        return;
       }
     } on RpcFailure catch (error) {
       if (!mounted) {
@@ -239,12 +238,17 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
       if (!mounted) {
         return;
       }
-      setState(() => _errorMessage = error.toString());
+      setState(() => _errorMessage = visitMessageForDownloadError(error));
     } finally {
       if (mounted) {
         setState(() => _downloadingAttachmentId = null);
       }
     }
+  }
+
+  Future<bool> _promptSaveDownload(String filename, Uint8List bytes) async {
+    final path = await FilePicker.platform.saveFile(dialogTitle: 'Save attachment', fileName: filename, bytes: bytes);
+    return path != null;
   }
 
   static String _formatSize(int bytes) {

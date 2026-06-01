@@ -22,6 +22,7 @@ psql_run() {
 sql_tests=(
   visit_medical_records_crud.sql
   visit_medical_records_rls.sql
+  visit_attachment_storage_rls.sql
 )
 
 for f in "${sql_tests[@]}"; do

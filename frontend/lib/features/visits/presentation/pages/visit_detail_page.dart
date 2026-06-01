@@ -8,12 +8,12 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/visits/domain/specialty_form_schema.dart';
 import 'package:ai_clinic/features/visits/domain/soap_note.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
-import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/specialty_form_schema_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_read_only_section.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 
 /// Read-only clinical visit detail from patient history (V1-5 US6).
 class VisitDetailPage extends ConsumerWidget {
@@ -113,12 +113,14 @@ class _VisitDetailBody extends StatelessWidget {
           const SizedBox(height: 8),
           ...visit.treatmentPlans.map((plan) => TreatmentPlanCardView(plan: plan)),
         ],
-        if (visit.attachments.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          Text('Attachments', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
-          ...visit.attachments.map((attachment) => _AttachmentRow(attachment: attachment)),
-        ],
+        const SizedBox(height: 24),
+        VisitAttachmentList(
+          visitId: visit.id,
+          branchId: visit.branchId,
+          attachments: visit.attachments,
+          canUpload: false,
+          onChanged: () {},
+        ),
       ],
     );
   }
@@ -174,23 +176,6 @@ class _SoapSection extends StatelessWidget {
           Text(display),
         ],
       ),
-    );
-  }
-}
-
-class _AttachmentRow extends StatelessWidget {
-  const _AttachmentRow({required this.attachment});
-
-  final VisitAttachmentItem attachment;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = attachment.label?.trim().isNotEmpty == true ? attachment.label! : attachment.fileType.label;
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.attach_file),
-      title: Text(label),
-      subtitle: Text('${attachment.fileType.label} · ${attachment.sizeBytes} bytes'),
     );
   }
 }

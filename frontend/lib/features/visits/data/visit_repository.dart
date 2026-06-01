@@ -365,12 +365,16 @@ class VisitAttachmentDownloadResult {
     required this.fileType,
     required this.filename,
     required this.expiresAt,
+    this.filePath,
   });
 
   final String signedUrl;
   final String fileType;
   final String filename;
   final DateTime? expiresAt;
+
+  /// Storage object key under `visit-attachments` (preferred download path).
+  final String? filePath;
 
   static VisitAttachmentDownloadResult? fromRpcData(Map<String, dynamic>? data) {
     if (data == null) {
@@ -383,11 +387,13 @@ class VisitAttachmentDownloadResult {
       return null;
     }
     final expiresAtRaw = data['expires_at']?.toString();
+    final filePath = data['file_path']?.toString();
     return VisitAttachmentDownloadResult(
       signedUrl: signedUrl,
       fileType: fileType,
       filename: filename,
       expiresAt: expiresAtRaw == null ? null : DateTime.tryParse(expiresAtRaw),
+      filePath: filePath != null && filePath.isNotEmpty ? filePath : null,
     );
   }
 }
