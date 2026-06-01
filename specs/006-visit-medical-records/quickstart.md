@@ -90,12 +90,19 @@ flutter test test/integration/visits/
 
 ## 7. Operator verification log
 
-| Step              | Command / action                               | Expected                                                     |
-| ----------------- | ---------------------------------------------- | ------------------------------------------------------------ |
-| Migrations        | `cd backend && supabase migration up`          | Visit migration + storage bucket applied                     |
-| Backend harness   | `./backend/tests/run_all_backend_tests.sh`     | All suites pass incl. visit + updated appointment completion |
-| Flutter suite     | `cd frontend && python3 tool/run_all_tests.py` | Visit unit/widget/integration green                          |
-| Manual (clinical) | quickstart §3 on Windows client                | Full workflow through visit submit completes appointment     |
-| Manual (lab)      | lab staff upload/download own attachment       | Own download OK; others denied                               |
+| Step                | Command / action                                                                                                                                           | Expected                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Migrations          | `cd backend && supabase migration up`                                                                                                                      | Visit migration + storage bucket applied                 |
+| Backend harness     | `./backend/tests/run_visit_medical_records_tests.sh`                                                                                                       | CRUD + RLS visit suites pass                             |
+| Flutter visit tests | `cd frontend && flutter test test/unit/visits/ test/widget/visits/ test/integration/visits/`                                                               | Phase 9 acceptance + guards green                        |
+| Flutter regression  | `flutter test test/integration/patients/patient_management_acceptance_test.dart test/integration/appointments/appointment_management_acceptance_test.dart` | Patient/appointment smoke groups pass                    |
+| Manual (clinical)   | quickstart §3 on Windows client                                                                                                                            | Full workflow through visit submit completes appointment |
+| Manual (lab)        | lab staff upload/download own attachment                                                                                                                   | Own download OK; others denied                           |
+
+**Phase 9 operator notes (2026-06-01)**:
+
+- Automated acceptance maps spec cases 1–18: UI flows in `test/integration/visits/visit_medical_records_acceptance_test.dart`; cases 3–4, 6b, 9b, 10, 15–16 asserted against `backend/tests/visit_medical_records_*.sql`.
+- Appointment queue no longer exposes **Complete** from `in_progress`; completion is visit submit only (`complete_visit` RPC).
+- Receptionist retains `patients.view` visit history metadata; SOAP and documentation routes require `visits.create` / `visits.edit_soap`.
 
 **Permission reminder**: Visit creation requires `visits.create`; SOAP/submit requires `visits.edit_soap`; lab upload requires `visits.upload_attachment`; visit history list requires `patients.view`.

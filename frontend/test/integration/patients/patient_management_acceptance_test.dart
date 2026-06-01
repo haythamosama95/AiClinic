@@ -409,6 +409,26 @@ void main() {
     });
   });
 
+  group('V1-5 regression smoke (phase 9 T069)', () {
+    test('visit history route helpers coexist with patient routes', () {
+      expect(AppRoutes.visitDetail('visit-1'), '/visits/visit-1/detail');
+      final ownerAuth = AuthSessionState(
+        status: AuthSessionStatus.authenticated,
+        context: sampleAuthSessionContext(permissions: RolePermissionSeed.owner),
+      );
+      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patients, auth: ownerAuth), isNull);
+    });
+
+    test('receptionist patient view unchanged: patients.view without visit clinical keys', () {
+      final auth = AuthSessionState(
+        status: AuthSessionStatus.authenticated,
+        context: sampleAuthSessionContext(role: StaffRole.receptionist, permissions: RolePermissionSeed.receptionist),
+      );
+      expect(AuthRouteGuard.visitRouteRedirect(location: AppRoutes.visitDetail('v'), auth: auth), AppRoutes.home);
+      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patients, auth: auth), isNull);
+    });
+  });
+
   group('V1-2 regression smoke (phase 8 T054)', () {
     testWidgets('settings page and branch switcher still reachable for owner', (tester) async {
       final session = _OwnerSession();

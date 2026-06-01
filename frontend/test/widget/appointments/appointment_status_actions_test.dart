@@ -110,6 +110,22 @@ void main() {
       expect(find.byKey(const Key('appointments_status_confirm')), findsNothing);
     });
 
+    testWidgets('V1-5: no appointment status shows manual complete button', (tester) async {
+      for (final status in AppointmentStatus.values) {
+        if (status == AppointmentStatus.cancelled || status == AppointmentStatus.noShow) {
+          continue;
+        }
+        await tester.pumpWidget(
+          _host(
+            item: _item(status: status, onAppointmentDay: true),
+            permissions: const {PermissionKeys.appointmentsCreate, PermissionKeys.visitsCreate},
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('appointments_status_complete')), findsNothing);
+      }
+    });
+
     testWidgets('in_progress shows create visit instead of complete', (tester) async {
       await tester.pumpWidget(
         _host(

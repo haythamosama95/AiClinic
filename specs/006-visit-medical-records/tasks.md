@@ -207,12 +207,12 @@
 
 **Purpose**: End-to-end acceptance, quickstart validation, regression, permission matrix alignment
 
-- [ ] T065 [P] Add integration acceptance covering spec test cases 1–16 in `frontend/test/integration/visits/visit_medical_records_acceptance_test.dart`
-- [ ] T066 [P] Add permission guard widget tests (no visit create/SOAP without grants) in `frontend/test/widget/visits/visit_permission_guards_test.dart`
-- [ ] T067 Update `AppointmentStatusActions` widget tests for removed Complete action in `frontend/test/widget/appointments/appointment_status_actions_test.dart`
-- [ ] T068 Run `specs/006-visit-medical-records/quickstart.md` verification and document operator notes
-- [ ] T069 [P] Regression smoke: patients and appointments flows unchanged (`frontend/test/integration/patients/patient_management_acceptance_test.dart` and `frontend/test/integration/appointments/appointment_management_acceptance_test.dart` targeted subsets)
-- [ ] T070 [P] Verify `docs/architecture/12-roadmap-phases.md` V1-5 scope wording aligns with visit-from-checked-in/in-progress (not completed appointment)
+- [X] T065 [P] Add integration acceptance covering spec test cases 1–16 in `frontend/test/integration/visits/visit_medical_records_acceptance_test.dart`
+- [X] T066 [P] Add permission guard widget tests (no visit create/SOAP without grants) in `frontend/test/widget/visits/visit_permission_guards_test.dart`
+- [X] T067 Update `AppointmentStatusActions` widget tests for removed Complete action in `frontend/test/widget/appointments/appointment_status_actions_test.dart`
+- [X] T068 Run `specs/006-visit-medical-records/quickstart.md` verification and document operator notes
+- [X] T069 [P] Regression smoke: patients and appointments flows unchanged (`frontend/test/integration/patients/patient_management_acceptance_test.dart` and `frontend/test/integration/appointments/appointment_management_acceptance_test.dart` targeted subsets)
+- [X] T070 [P] Verify `docs/architecture/12-roadmap-phases.md` V1-5 scope wording aligns with visit-from-checked-in/in-progress (not completed appointment)
 
 ---
 

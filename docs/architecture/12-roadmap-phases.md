@@ -25,7 +25,7 @@ V1 delivers a fully functional clinic management system with no AI. This is the 
 | V1-2: Organization and Branch Management | **Complete** |
 | V1-3: Patient Management                 | **Complete** |
 | V1-4: Appointments                       | **Complete** |
-| V1-5: Visits and Medical Records         | Pending      |
+| V1-5: Visits and Medical Records         | **Complete** |
 | V1-6: Billing                            | Pending      |
 | V1-7: Shifts                             | Pending      |
 | V1-8: Deployment and Installer           | Pending      |
@@ -182,14 +182,14 @@ Required specs:
 
 Backend deliverables:
 - Database migration: `visits`, `soap_notes`, `treatment_plans`, `visit_attachments` tables
-- RPC functions: `create_visit` (from a **completed** appointment; V1-4 leaves appointments at `completed` without creating visits), `save_soap_note`
+- RPC functions: `create_visit` (from **checked_in** or **in_progress** appointments; visit submit completes the linked appointment), `save_soap_note`, `complete_visit`, treatment plans, attachments
 - Supabase Storage bucket configuration for visit attachments
 - RLS policies (branch-scoped, doctor-specific for SOAP)
 - Indexes on visit lookups by patient and by branch/date
 - Backend test utilities to verify visit creation and attachment storage
 
 Frontend deliverables:
-- Visit creation from appointment (transition from appointment to visit)
+- Visit creation from checked-in or in-progress appointments (explicit action; not from completed-only appointments)
 - SOAP note editor (structured form with S/O/A/P sections)
 - Specialty form support (JSON-schema-driven dynamic forms)
 - Treatment plan CRUD within visit context

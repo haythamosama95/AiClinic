@@ -94,7 +94,9 @@ Widget _scope({
       appointmentQueueRealtimeClientProvider.overrideWithValue(_FakeRealtime(realtime)),
       patientRepositoryProvider.overrideWith((ref) => FakePatientRepository(patients: [samplePatientListItem()])),
       staffAdminRepositoryProvider.overrideWithValue(_SmokeStaffRepo()),
-      branchRepositoryProvider.overrideWithValue(_SmokeBranchRepo(activeBranchId: auth?.context?.activeBranchId ?? _branchAId)),
+      branchRepositoryProvider.overrideWithValue(
+        _SmokeBranchRepo(activeBranchId: auth?.context?.activeBranchId ?? _branchAId),
+      ),
     ],
     child: child,
   );
@@ -492,6 +494,24 @@ void main() {
     });
   });
 
+  group('V1-5 regression smoke (phase 9 T069)', () {
+    test('visit routes defined alongside appointment routes', () {
+      expect(AppRoutes.visitDocument('test-visit'), '/visits/test-visit/document');
+      expect(AppRoutes.visitDetail('test-visit'), '/visits/test-visit/detail');
+      expect(AuthRouteGuard.isVisitRoute(AppRoutes.visitDocument('x')), isTrue);
+    });
+
+    test('appointment completion guard: in_progress cannot manually complete', () {
+      final auth = AuthSessionState(
+        status: AuthSessionStatus.authenticated,
+        context: sampleAuthSessionContext(
+          permissions: {PermissionKeys.appointmentsCreate, PermissionKeys.visitsCreate},
+        ),
+      );
+      expect(AuthRouteGuard.visitRouteRedirect(location: AppRoutes.visitDocument('v'), auth: auth), isNull);
+    });
+  });
+
   group('V1-3/V1-2 regression smoke (phase 10 T065)', () {
     test('patient and settings routes remain defined alongside appointments', () {
       expect(AppRoutes.patients, '/patients');
@@ -600,9 +620,7 @@ class _SmokeBranchRepo implements BranchRepository {
         isActive: true,
         workingSchedule: BranchWorkingSchedule(
           BranchWeekday.values
-              .map(
-                (day) => BranchWorkingDayHours(day: day, isWorkingDay: true, openTime: '00:00', closeTime: '23:59'),
-              )
+              .map((day) => BranchWorkingDayHours(day: day, isWorkingDay: true, openTime: '00:00', closeTime: '23:59'))
               .toList(growable: false),
         ),
       ),
