@@ -6,9 +6,9 @@ CREATE POLICY visit_attachments_storage_insert ON storage.objects
   TO authenticated
   WITH CHECK (
     bucket_id = 'visit-attachments'
+    AND array_length(storage.foldername(name), 1) >= 3
     AND (storage.foldername(name))[1] = public.jwt_organization_id()::text
     AND auth_internal.staff_can_access_branch(((storage.foldername(name))[2])::uuid)
-    AND array_length(storage.foldername(name), 1) >= 3
     AND auth_internal.staff_has_visit_upload_access()
     AND auth_internal.visit_exists_for_attachment_storage(
       ((storage.foldername(name))[3])::uuid,

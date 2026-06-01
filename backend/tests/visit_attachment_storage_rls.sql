@@ -20,8 +20,8 @@ DECLARE
   v_doctor_user uuid := 'e2600000-0000-4000-8000-0000000000a2';
   v_doctor_staff uuid := 'f2600000-0000-4000-8000-0000000000a2';
   v_patient_id uuid := 'a2600000-0000-4000-8000-0000000000a1';
-  v_appt_id uuid := 'c2600000-0000-4000-8000-0000000000a1';
-  v_visit_id uuid := 'f2600000-0000-4000-8000-0000000000a1';
+  v_appt_id uuid := 'c2610000-0000-4000-8000-0000000000a1';
+  v_visit_id uuid := 'b2610000-0000-4004-8000-0000000000a1';
   v_file_path text;
   v_result public.rpc_result;
   v_inserted boolean;

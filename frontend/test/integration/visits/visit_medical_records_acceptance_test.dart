@@ -45,6 +45,12 @@ const _patientId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const _doctorA = '22222222-2222-4222-8222-222222222222';
 const _doctorB = '33333333-3333-4333-8333-333333333333';
 
+/// Past UTC instant so appointment day rules are stable (always "arrived").
+final _appointmentListStartUtc = DateTime.utc(2020, 6, 1, 10, 0);
+
+/// Future UTC instant for tests that need a not-yet-arrived appointment day.
+final _appointmentListStartFutureUtc = DateTime.utc(2099, 6, 1, 10, 0);
+
 Future<void> _pumpHost(WidgetTester tester, Widget host) async {
   await tester.binding.setSurfaceSize(const Size(1100, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -307,7 +313,15 @@ void main() {
     test('case 10: type/size rejection in visit_medical_records_crud.sql', () {
       final crud = File('$_repoRoot/backend/tests/visit_medical_records_crud.sql');
       final body = crud.readAsStringSync();
-      expect(body, anyOf(contains('INVALID_ATTACHMENT'), contains('attachment')));
+      expect(
+        body,
+        allOf(
+          contains('register_visit_attachment_invalid_file_type'),
+          contains('INVALID_FILE_TYPE'),
+          contains('register_visit_attachment_file_too_large'),
+          contains('FILE_TOO_LARGE'),
+        ),
+      );
     });
   });
 
@@ -558,9 +572,7 @@ AppointmentListItem _appointmentItem({
   bool onAppointmentDay = false,
   String? doctorId = _doctorB,
 }) {
-  final start = onAppointmentDay
-      ? DateTime.now().subtract(const Duration(hours: 1))
-      : DateTime.now().add(const Duration(days: 1));
+  final start = onAppointmentDay ? _appointmentListStartUtc : _appointmentListStartFutureUtc;
   return AppointmentListItem(
     id: _appointmentId,
     patientId: _patientId,

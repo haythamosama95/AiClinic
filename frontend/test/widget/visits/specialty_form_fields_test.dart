@@ -256,8 +256,10 @@ void main() {
 
       await _pumpFields(tester, client: client, permissions: {PermissionKeys.visitsEditSoap});
 
-      final checkbox = tester.widget<Checkbox>(find.byType(Checkbox));
-      expect(checkbox.value, isTrue);
+      final followUpCheckbox = tester.widget<Checkbox>(
+        find.descendant(of: find.byKey(const Key('specialty_field_follow_up')), matching: find.byType(Checkbox)),
+      );
+      expect(followUpCheckbox.value, isTrue);
     });
   });
 }
