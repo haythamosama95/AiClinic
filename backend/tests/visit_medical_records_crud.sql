@@ -568,6 +568,35 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Treatment plan duration field.
+  v_result := public.create_treatment_plan(
+    v_visit_id, 'Duration Med', NULL, NULL, NULL, NULL, NULL, '14 days'
+  );
+  v_plan_id := (v_result.data ->> 'treatment_plan_id')::uuid;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'create_treatment_plan_with_duration',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM public.treatment_plans tp
+        WHERE tp.id = v_plan_id AND tp.duration = '14 days'
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_treatment_plan(
+    v_visit_id, 'Too Long', NULL, NULL, NULL, NULL, NULL, repeat('x', 201)
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'create_treatment_plan_rejects_duration_too_long',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- get_visit includes treatment plans (non-archived).
   v_result := public.create_treatment_plan(
     v_visit_id, 'Ibuprofen', '200mg', 'as needed', NULL, NULL, 'For pain'
@@ -621,6 +650,62 @@ BEGIN
         WHERE va.id = v_attachment_id AND va.file_path = v_file_path
       ),
     COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- get_visit_attachment_download allowed for clinical staff on any visit attachment.
+  v_result := public.get_visit_attachment_download(v_attachment_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'get_visit_attachment_download_clinical',
+    v_result.success
+      AND (v_result.data ->> 'file_path') = v_file_path
+      AND COALESCE(v_result.data ->> 'filename', '') <> '',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- register_visit_attachment rejects disallowed file types.
+  v_result := public.register_visit_attachment(
+    v_visit_id,
+    v_org_id::text || '/' || v_branch_main::text || '/' || v_visit_id::text || '/bad.exe',
+    'exe',
+    512,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'register_visit_attachment_invalid_file_type',
+    NOT v_result.success AND v_result.error_code = 'INVALID_FILE_TYPE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- register_visit_attachment rejects oversize metadata.
+  v_result := public.register_visit_attachment(
+    v_visit_id,
+    v_file_path,
+    'pdf',
+    26214401,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'register_visit_attachment_file_too_large',
+    NOT v_result.success AND v_result.error_code = 'FILE_TOO_LARGE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- get_visit lists attachment metadata with can_download for clinical caller.
+  v_result := public.get_visit(v_visit_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'get_visit_includes_attachments',
+    v_result.success
+      AND jsonb_array_length(COALESCE(v_result.data -> 'attachments', '[]'::jsonb)) >= 1
+      AND COALESCE((v_result.data -> 'attachments' -> 0 ->> 'can_download')::boolean, false),
+    'count=' || COALESCE(jsonb_array_length(COALESCE(v_result.data -> 'attachments', '[]'::jsonb))::text, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 

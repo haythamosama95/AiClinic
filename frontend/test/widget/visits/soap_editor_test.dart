@@ -49,6 +49,33 @@ void main() {
       expect(find.textContaining('Patient reports pain.'), findsOneWidget);
     });
 
+    testWidgets('advanced: Edit restores editor and allows resave', (tester) async {
+      final client = VisitRpcTestClient();
+
+      await _pumpEditor(tester, client: client, permissions: {PermissionKeys.visitsEditSoap});
+
+      await tester.enterText(find.byKey(const Key('soap_subjective')), 'First draft.');
+      await tester.tap(find.byKey(const Key('soap_save_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('soap_edit_button')), findsOneWidget);
+      expect(find.byKey(const Key('soap_subjective')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('soap_edit_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('soap_subjective')), findsOneWidget);
+      expect(find.byKey(const Key('soap_save_button')), findsOneWidget);
+
+      await tester.enterText(find.byKey(const Key('soap_subjective')), 'Revised draft.');
+      await tester.tap(find.byKey(const Key('soap_save_button')));
+      await tester.pumpAndSettle();
+
+      expect(client.rpcLog.where((fn) => fn == 'save_soap_note').length, 2);
+      expect(find.byKey(const Key('soap_edit_button')), findsOneWidget);
+      expect(find.textContaining('Revised draft.'), findsOneWidget);
+    });
+
     testWidgets('invalid state: STALE_SOAP shows reload banner', (tester) async {
       final client = VisitRpcTestClient(
         rpcResults: {

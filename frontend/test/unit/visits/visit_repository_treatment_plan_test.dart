@@ -64,6 +64,12 @@ void main() {
       expect(params['p_medication_name'], 'Updated Med');
       expect(params['p_dosage'], '100mg');
     });
+
+    test('passes duration when provided', () async {
+      await repo.updateTreatmentPlan(treatmentPlanId: 'tp-1', duration: '10 days');
+      final params = testClient.paramsForFunction('update_treatment_plan')!;
+      expect(params['p_duration'], '10 days');
+    });
   });
 
   group('archiveTreatmentPlan', () {

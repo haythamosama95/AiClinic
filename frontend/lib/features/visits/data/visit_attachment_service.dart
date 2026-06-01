@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
+
+/// Client-side validation failure before storage upload (V1-5).
+class VisitAttachmentValidationException implements Exception {
+  const VisitAttachmentValidationException(this.message, {required this.errorCode});
+
+  final String message;
+  final String errorCode;
+
+  @override
+  String toString() => message;
+}
+
+/// Bytes picked for upload (tests inject this without platform file picker).
+class VisitAttachmentPickInput {
+  const VisitAttachmentPickInput({required this.filename, required this.bytes});
+
+  final String filename;
+  final Uint8List bytes;
+}
 
 /// Storage upload + register/download for visit attachments (V1-5).
 class VisitAttachmentService {
@@ -16,6 +36,7 @@ class VisitAttachmentService {
 
   final SupabaseClient _client;
   final VisitRepository _visitRepository;
+  final Random _random = Random.secure();
 
   /// `{organizationId}/{branchId}/{visitId}/{uuid}_{sanitizedName}`
   String buildStoragePath({
@@ -29,11 +50,94 @@ class VisitAttachmentService {
     return '${organizationId.trim()}/${branchId.trim()}/${visitId.trim()}/${uniqueId.trim()}_$sanitized';
   }
 
+  /// Resolves allowed file type from filename extension.
+  static VisitAttachmentFileType? inferFileTypeFromFilename(String filename) {
+    final dot = filename.lastIndexOf('.');
+    if (dot < 0 || dot >= filename.length - 1) {
+      return null;
+    }
+    final ext = filename.substring(dot + 1).trim().toLowerCase();
+    return switch (ext) {
+      'pdf' => VisitAttachmentFileType.pdf,
+      'docx' => VisitAttachmentFileType.docx,
+      'jpg' || 'jpeg' => VisitAttachmentFileType.jpeg,
+      'png' => VisitAttachmentFileType.png,
+      _ => null,
+    };
+  }
+
+  /// Validates pick before upload; throws [VisitAttachmentValidationException] on failure.
+  static void validatePick(VisitAttachmentPickInput pick) {
+    if (pick.bytes.isEmpty) {
+      throw const VisitAttachmentValidationException('The selected file is empty.', errorCode: 'INVALID_INPUT');
+    }
+    if (pick.bytes.length > maxBytes) {
+      throw const VisitAttachmentValidationException(
+        'Each attachment must be 25 MB or smaller.',
+        errorCode: 'FILE_TOO_LARGE',
+      );
+    }
+    if (inferFileTypeFromFilename(pick.filename) == null) {
+      throw const VisitAttachmentValidationException(
+        'Only PDF, Word (DOCX), JPEG, and PNG files are allowed.',
+        errorCode: 'INVALID_FILE_TYPE',
+      );
+    }
+  }
+
+  static String contentTypeFor(VisitAttachmentFileType fileType) {
+    return switch (fileType) {
+      VisitAttachmentFileType.pdf => 'application/pdf',
+      VisitAttachmentFileType.docx => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      VisitAttachmentFileType.jpeg => 'image/jpeg',
+      VisitAttachmentFileType.png => 'image/png',
+    };
+  }
+
   /// Upload bytes to storage (caller supplies [path] from [buildStoragePath]).
   Future<void> uploadToStorage({required String path, required Uint8List bytes, required String contentType}) async {
     await _client.storage
         .from(bucketName)
         .uploadBinary(path, bytes, fileOptions: FileOptions(contentType: contentType, upsert: false));
+  }
+
+  /// Uploads to storage then registers metadata via RPC.
+  Future<String> uploadAndRegister({
+    required String organizationId,
+    required String branchId,
+    required String visitId,
+    required VisitAttachmentPickInput pick,
+    String? label,
+  }) async {
+    validatePick(pick);
+    final fileType = inferFileTypeFromFilename(pick.filename)!;
+    final uniqueId = _newStorageUniqueId();
+    final path = buildStoragePath(
+      organizationId: organizationId,
+      branchId: branchId,
+      visitId: visitId,
+      originalFilename: pick.filename,
+      uniqueId: uniqueId,
+    );
+
+    await uploadToStorage(path: path, bytes: pick.bytes, contentType: contentTypeFor(fileType));
+
+    try {
+      return await registerVisitAttachment(
+        visitId: visitId,
+        filePath: path,
+        fileType: fileType,
+        sizeBytes: pick.bytes.length,
+        label: label,
+      );
+    } catch (error) {
+      try {
+        await _client.storage.from(bucketName).remove([path]);
+      } catch (_) {
+        // Best-effort cleanup when register fails after storage upload.
+      }
+      rethrow;
+    }
   }
 
   Future<String> registerVisitAttachment({
@@ -62,6 +166,11 @@ class VisitAttachmentService {
       return 'attachment';
     }
     return trimmed.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
+  }
+
+  String _newStorageUniqueId() {
+    String hex(int count) => List.generate(count, (_) => _random.nextInt(16).toRadixString(16)).join();
+    return '${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}';
   }
 }
 

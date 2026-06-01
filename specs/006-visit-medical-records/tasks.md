@@ -188,16 +188,16 @@
 
 ### Tests for User Story 5
 
-- [ ] T058 [P] [US5] Add attachment register, type/size rejection, and download authorization tests in `backend/tests/visit_medical_records_crud.sql`
-- [ ] T059 [P] [US5] Add lab staff cross-uploader download denial test in `backend/tests/visit_medical_records_rls.sql`
-- [ ] T060 [P] [US5] Add unit tests for `VisitAttachmentService` upload/register/download in `frontend/test/unit/visits/visit_attachment_service_test.dart`
-- [ ] T061 [P] [US5] Add widget tests for upload progress and error states in `frontend/test/widget/visits/visit_attachment_list_test.dart`
+- [X] T058 [P] [US5] Add attachment register, type/size rejection, and download authorization tests in `backend/tests/visit_medical_records_crud.sql`
+- [X] T059 [P] [US5] Add lab staff cross-uploader download denial test in `backend/tests/visit_medical_records_rls.sql`
+- [X] T060 [P] [US5] Add unit tests for `VisitAttachmentService` upload/register/download in `frontend/test/unit/visits/visit_attachment_service_test.dart`
+- [X] T061 [P] [US5] Add widget tests for upload progress and error states in `frontend/test/widget/visits/visit_attachment_list_test.dart`
 
 ### Implementation for User Story 5
 
-- [ ] T062 [US5] Implement storage upload, `registerVisitAttachment`, and `getVisitAttachmentDownload` in `frontend/lib/features/visits/data/visit_attachment_service.dart`
-- [ ] T063 [US5] Implement `VisitAttachmentList` widget (list, upload picker, progress, download, type/size errors) in `frontend/lib/features/visits/presentation/widgets/visit_attachment_list.dart`
-- [ ] T064 [US5] Integrate attachments into `VisitDocumentationPage` with upload permission gating in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T062 [US5] Implement storage upload, `registerVisitAttachment`, and `getVisitAttachmentDownload` in `frontend/lib/features/visits/data/visit_attachment_service.dart`
+- [X] T063 [US5] Implement `VisitAttachmentList` widget (list, upload picker, progress, download, type/size errors) in `frontend/lib/features/visits/presentation/widgets/visit_attachment_list.dart`
+- [X] T064 [US5] Integrate attachments into `VisitDocumentationPage` with upload permission gating in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
 
 **Checkpoint**: Spec test cases 9–10, 9b; acceptance criteria 5–6; SC-005
 

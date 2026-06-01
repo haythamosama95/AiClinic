@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/visits/presentation/providers/visit_documenta
 import 'package:ai_clinic/features/visits/presentation/widgets/soap_editor.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_fields.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submit_dialog.dart';
 
 /// Visit documentation — SOAP and related sections (V1-5).
@@ -152,6 +153,7 @@ class _VisitHeaderAndSoap extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final visit = state.visit;
     final dateLabel = DateFormat.yMMMd().format(visit.visitDate.toLocal());
+    final canUploadAttachments = ref.watch(permissionServiceProvider).canUploadVisitAttachments();
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -190,6 +192,15 @@ class _VisitHeaderAndSoap extends ConsumerWidget {
           visitId: visitId,
           treatmentPlans: state.visit.treatmentPlans,
           canEdit: state.canEdit,
+          onChanged: () =>
+              ref.read(visitDocumentationProvider(visitId).notifier).refreshTreatmentPlansPreservingDraft(),
+        ),
+        const SizedBox(height: 24),
+        VisitAttachmentList(
+          visitId: visitId,
+          branchId: visit.branchId,
+          attachments: state.visit.attachments,
+          canUpload: canUploadAttachments,
           onChanged: () =>
               ref.read(visitDocumentationProvider(visitId).notifier).refreshTreatmentPlansPreservingDraft(),
         ),

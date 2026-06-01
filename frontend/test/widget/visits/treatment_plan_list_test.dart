@@ -113,6 +113,45 @@ void main() {
     expect(find.textContaining('7 days'), findsOneWidget);
   });
 
+  testWidgets('edit form submits update RPC and calls onChanged', (tester) async {
+    var changedCalled = false;
+    final plans = [
+      const TreatmentPlanItem(id: 'tp-1', visitId: 'visit-1', patientId: 'patient-1', medicationName: 'Ibuprofen'),
+    ];
+    await tester.pumpWidget(buildWidget(plans: plans, onChanged: () => changedCalled = true));
+    await tester.tap(find.byKey(const Key('treatment_plan_edit_tp-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('treatment_plan_edit_form_tp-1')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('treatment_plan_medication_field')), 'Ibuprofen XR');
+    await tester.enterText(find.byKey(const Key('treatment_plan_duration_field')), '5 days');
+    await tester.tap(find.byKey(const Key('treatment_plan_save_button')));
+    await tester.pumpAndSettle();
+
+    expect(changedCalled, isTrue);
+    expect(testClient.rpcLog, contains('update_treatment_plan'));
+    final params = testClient.paramsForFunction('update_treatment_plan')!;
+    expect(params['p_medication_name'], 'Ibuprofen XR');
+    expect(params['p_duration'], '5 days');
+  });
+
+  testWidgets('archive confirms then calls archive RPC', (tester) async {
+    var changedCalled = false;
+    final plans = [
+      const TreatmentPlanItem(id: 'tp-1', visitId: 'visit-1', patientId: 'patient-1', medicationName: 'Ibuprofen'),
+    ];
+    await tester.pumpWidget(buildWidget(plans: plans, onChanged: () => changedCalled = true));
+    await tester.tap(find.byKey(const Key('treatment_plan_archive_tp-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Remove treatment plan?'), findsOneWidget);
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+
+    expect(changedCalled, isTrue);
+    expect(testClient.rpcLog, contains('archive_treatment_plan'));
+  });
+
   testWidgets('add form submits and calls onChanged', (tester) async {
     var changedCalled = false;
     await tester.pumpWidget(buildWidget(onChanged: () => changedCalled = true));

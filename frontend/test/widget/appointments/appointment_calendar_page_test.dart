@@ -70,6 +70,74 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('scheduled appointment sheet does not show Open Visit', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          initialLocation: AppRoutes.appointmentsCalendar,
+          appointmentStatus: 'scheduled',
+          visitPermissions: {PermissionKeys.visitsCreate},
+          visitByAppointment: {'visit_id': 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'status': 'in_progress'},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Test Patient'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_calendar_open_visit')), findsNothing);
+      expect(find.text('Open patient record'), findsOneWidget);
+    });
+
+    testWidgets('completed appointment without linked visit hides Open Visit', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          initialLocation: AppRoutes.appointmentsCalendar,
+          appointmentStatus: 'completed',
+          visitPermissions: {PermissionKeys.visitsCreate},
+          visitByAppointment: {'visit_id': null, 'status': null},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Test Patient'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_calendar_open_visit')), findsNothing);
+    });
+
+    testWidgets('completed appointment hides Open Visit when visit lookup fails', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          initialLocation: AppRoutes.appointmentsCalendar,
+          appointmentStatus: 'completed',
+          visitPermissions: {PermissionKeys.visitsCreate},
+          visitLookupFails: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Test Patient'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_calendar_open_visit')), findsNothing);
+    });
+
+    testWidgets('completed appointment hides Open Visit without clinical visit permission', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          initialLocation: AppRoutes.appointmentsCalendar,
+          appointmentStatus: 'completed',
+          visitByAppointment: {'visit_id': 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'status': 'completed'},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Test Patient'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_calendar_open_visit')), findsNothing);
+    });
+
     testWidgets('completed appointment sheet shows Open Visit when linked visit exists', (tester) async {
       const visitId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
@@ -103,6 +171,7 @@ Widget _host({
   String appointmentStatus = 'scheduled',
   Set<String> visitPermissions = const {},
   Map<String, dynamic>? visitByAppointment,
+  bool visitLookupFails = false,
 }) {
   final now = DateTime.now();
   final start = DateTime(now.year, now.month, now.day, 9);
@@ -146,13 +215,21 @@ Widget _host({
           ),
         ),
       ),
-      if (visitByAppointment != null)
+      if (visitByAppointment != null || visitLookupFails)
         visitRepositoryProvider.overrideWith(
           (ref) => VisitRepository(
             VisitRpcTestClient(
-              rpcResults: {
-                'get_visit_by_appointment': {'success': true, 'data': visitByAppointment},
-              },
+              rpcResults: visitLookupFails
+                  ? {
+                      'get_visit_by_appointment': {
+                        'success': false,
+                        'error_code': 'INTERNAL',
+                        'error_message': 'lookup failed',
+                      },
+                    }
+                  : {
+                      'get_visit_by_appointment': {'success': true, 'data': visitByAppointment},
+                    },
             ),
           ),
         ),

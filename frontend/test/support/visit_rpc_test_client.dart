@@ -136,6 +136,19 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
       },
       'update_treatment_plan' => {'success': true, 'data': {}},
       'archive_treatment_plan' => {'success': true, 'data': {}},
+      'register_visit_attachment' => {
+        'success': true,
+        'data': {'attachment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},
+      },
+      'get_visit_attachment_download' => {
+        'success': true,
+        'data': {
+          'signed_url': 'https://example.test/download',
+          'file_type': 'pdf',
+          'filename': 'lab-result.pdf',
+          'expires_at': '2026-05-31T12:00:00.000Z',
+        },
+      },
       _ => {'success': false, 'error_code': 'UNKNOWN', 'error_message': 'Unhandled RPC $fn'},
     };
   }

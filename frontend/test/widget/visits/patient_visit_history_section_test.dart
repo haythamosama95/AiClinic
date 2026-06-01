@@ -8,6 +8,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visit_history_section.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_documentation_page.dart';
 
 import '../../helpers/auth_test_support.dart';
 import '../../support/visit_rpc_test_client.dart';
@@ -24,6 +25,60 @@ void main() {
       expect(find.byKey(Key('patient_visit_history_row_$visitId')), findsOneWidget);
       expect(find.textContaining('Dr Test'), findsOneWidget);
       expect(find.textContaining('Main'), findsOneWidget);
+    });
+
+    testWidgets('advanced: edit button opens visit documentation when user has visits.edit_soap', (tester) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const Scaffold(body: PatientVisitHistorySection(patientId: patientId)),
+          ),
+          GoRoute(
+            path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
+            builder: (context, state) => VisitDocumentationPage(visitId: state.pathParameters['visitId']),
+          ),
+        ],
+      );
+
+      await _pumpSection(
+        tester,
+        permissions: {PermissionKeys.patientsView, PermissionKeys.visitsEditSoap},
+        router: router,
+      );
+
+      await tester.tap(find.byKey(Key('patient_visit_history_edit_$visitId')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VisitDocumentationPage), findsOneWidget);
+    });
+
+    testWidgets('advanced: clinical user without edit_soap sees detail tap but no edit button', (tester) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const Scaffold(body: PatientVisitHistorySection(patientId: patientId)),
+          ),
+          GoRoute(
+            path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
+            builder: (context, state) => Text('Detail ${state.pathParameters['visitId']}'),
+          ),
+        ],
+      );
+
+      await _pumpSection(
+        tester,
+        permissions: {PermissionKeys.patientsView, PermissionKeys.visitsCreate},
+        router: router,
+      );
+
+      expect(find.byKey(Key('patient_visit_history_edit_$visitId')), findsNothing);
+
+      await tester.tap(find.byKey(Key('patient_visit_history_row_$visitId')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Detail $visitId'), findsOneWidget);
     });
 
     testWidgets('advanced: clinical user can open visit detail', (tester) async {
