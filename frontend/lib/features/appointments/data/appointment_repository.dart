@@ -205,8 +205,6 @@ class AppointmentRepository with AppRpcInvoker {
     final rescheduled = CreateAppointmentResult.fromRpcData({
       ...?result.data,
       'appointment_id': result.data?['appointment_id'] ?? appointmentId,
-      'type': result.data?['type'] ?? AppointmentType.planned.wireValue,
-      'status': result.data?['status'] ?? AppointmentStatus.scheduled.wireValue,
     });
     if (rescheduled == null) {
       throw StateError('Reschedule appointment returned an unexpected shape.');

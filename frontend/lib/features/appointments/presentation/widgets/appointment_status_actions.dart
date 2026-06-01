@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/domain/create_appointment_result.dart';
@@ -50,7 +51,9 @@ class _AppointmentStatusActionsState extends ConsumerState<AppointmentStatusActi
   }
 
   Future<void> _advance() async {
-    final target = forwardStatusTargetFor(_item);
+    final timezone = effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
+    final referenceUtc = DateTime.now().toUtc();
+    final target = forwardStatusTargetFor(_item, organizationTimezone: timezone, referenceUtc: referenceUtc);
     if (target == null || _submitting) {
       return;
     }
@@ -127,13 +130,16 @@ class _AppointmentStatusActionsState extends ConsumerState<AppointmentStatusActi
   @override
   Widget build(BuildContext context) {
     final permissions = ref.watch(permissionServiceProvider);
+    final timezone = effectiveOrganizationTimezone(ref.watch(authSessionProvider).context?.organizationTimezone);
+    final referenceUtc = DateTime.now().toUtc();
     final canCreate = permissions.canCreateAppointments();
     final canCancel = permissions.canCancelAppointments();
-    final target = forwardStatusTargetFor(_item);
-    final label = forwardStatusActionLabelFor(_item);
+    final target = forwardStatusTargetFor(_item, organizationTimezone: timezone, referenceUtc: referenceUtc);
+    final label = forwardStatusActionLabelFor(_item, organizationTimezone: timezone, referenceUtc: referenceUtc);
     final showStatus = canCreate && target != null && label.isNotEmpty && !_item.status.isTerminal;
     final showReschedule = canCreate && canRescheduleAppointment(_item);
-    final showCancel = canCancel && canCancelOrNoShowAppointment(_item);
+    final showCancel =
+        canCancel && canCancelOrNoShowAppointment(_item, organizationTimezone: timezone, referenceUtc: referenceUtc);
 
     if (!showStatus && !showReschedule && !showCancel) {
       return const SizedBox.shrink();

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -13,6 +14,8 @@ import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
 
 void main() {
+  setUpAll(ensureAppointmentTimezonesInitialized);
+
   group('AppointmentQueueController', () {
     late AppointmentRpcTestClient client;
     late _RecordingRealtime realtime;
@@ -43,7 +46,7 @@ void main() {
     });
 
     test('trivial: loads today appointments sorted by start_time', () async {
-      final range = appointmentTodayRange(DateTime.now());
+      final range = appointmentTodayRangeInTimezone('UTC', DateTime.now().toUtc());
       final morning = range.from.add(const Duration(hours: 9));
       final afternoon = range.from.add(const Duration(hours: 14));
 
@@ -116,7 +119,7 @@ void main() {
     });
 
     test('edge case: filters out appointments outside today range', () async {
-      final range = appointmentTodayRange(DateTime.now());
+      final range = appointmentTodayRangeInTimezone('UTC', DateTime.now().toUtc());
       final today = range.from.add(const Duration(hours: 10));
       final tomorrow = range.to.add(const Duration(hours: 1));
 

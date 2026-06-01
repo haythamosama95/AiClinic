@@ -53,6 +53,14 @@ void main() {
       expect(AuthRouteGuard.appointmentRouteRedirect(location: AppRoutes.appointmentsBook, auth: auth), AppRoutes.home);
     });
 
+    test('view routes allow read-only grant', () {
+      final auth = _auth(permissions: {PermissionKeys.appointmentsRead});
+
+      expect(AuthRouteGuard.canAccessAppointmentHub(auth), isTrue);
+      expect(AuthRouteGuard.appointmentRouteRedirect(location: AppRoutes.appointmentsQueue, auth: auth), isNull);
+      expect(AuthRouteGuard.canAccessAppointmentBooking(auth), isFalse);
+    });
+
     test('setup required redirects to bootstrap', () {
       final auth = _auth(permissions: {PermissionKeys.appointmentsCreate}, setupRequired: true);
 

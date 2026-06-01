@@ -999,7 +999,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Lab staff without appointment permission cannot get settings.
+  -- Lab staff with appointments.read can view settings and list (read-only RBAC).
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(
@@ -1016,7 +1016,33 @@ BEGIN
   v_result := public.get_appointment_settings(v_branch_main);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'lab_staff_denied_settings',
+    'lab_staff_can_get_settings_with_read',
+    v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_start := date_trunc('hour', now() + interval '12 days');
+  v_result := public.list_appointments(
+    v_branch_main,
+    date_trunc('day', v_start),
+    date_trunc('day', v_start) + interval '1 day',
+    NULL,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'lab_staff_can_list_appointments_with_read',
+    v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Permission probe: invalid transition without permission returns FORBIDDEN, not INVALID_TRANSITION.
+  v_result := public.update_appointment_status(v_appt_planned, 'checked_in');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'lab_staff_status_probe_returns_forbidden',
     NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
     COALESCE(v_result.error_code, '<null>')
   );

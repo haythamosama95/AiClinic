@@ -33,8 +33,11 @@ void main() {
   });
 
   group('AppointmentStatus.wireValue', () {
-    test('round-trips with tryParse', () {
+    test('round-trips with tryParse for known wire values', () {
       for (final status in AppointmentStatus.values) {
+        if (status == AppointmentStatus.unknown) {
+          continue;
+        }
         expect(AppointmentStatus.tryParse(status.wireValue), status);
       }
     });

@@ -7,7 +7,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 
 void main() {
   group('appointment status transitions', () {
-    final reference = DateTime(2026, 6, 2);
+    final referenceUtc = DateTime.utc(2026, 6, 2);
 
     AppointmentListItem item({AppointmentStatus status = AppointmentStatus.scheduled, DateTime? startTime}) {
       final start = startTime ?? DateTime.utc(2026, 6, 1, 9);
@@ -24,25 +24,25 @@ void main() {
 
     test('scheduled offers confirm', () {
       final row = item();
-      expect(forwardStatusTargetFor(row, reference: reference), AppointmentStatus.confirmed);
-      expect(forwardStatusActionLabelFor(row, reference: reference), 'Confirm');
+      expect(forwardStatusTargetFor(row, referenceUtc: referenceUtc), AppointmentStatus.confirmed);
+      expect(forwardStatusActionLabelFor(row, referenceUtc: referenceUtc), 'Confirm');
     });
 
     test('confirmed offers check-in on appointment day', () {
       final row = item(status: AppointmentStatus.confirmed);
-      expect(forwardStatusTargetFor(row, reference: reference), AppointmentStatus.checkedIn);
-      expect(forwardStatusActionLabelFor(row, reference: reference), 'Check in');
+      expect(forwardStatusTargetFor(row, referenceUtc: referenceUtc), AppointmentStatus.checkedIn);
+      expect(forwardStatusActionLabelFor(row, referenceUtc: referenceUtc), 'Check in');
     });
 
     test('confirmed hides check-in before appointment day', () {
       final row = item(status: AppointmentStatus.confirmed);
-      expect(forwardStatusTargetFor(row, reference: DateTime(2026, 5, 31)), isNull);
+      expect(forwardStatusTargetFor(row, referenceUtc: DateTime.utc(2026, 5, 31)), isNull);
     });
 
     test('checked_in offers start', () {
       final row = item(status: AppointmentStatus.checkedIn);
-      expect(forwardStatusTargetFor(row, reference: reference), AppointmentStatus.inProgress);
-      expect(forwardStatusActionLabelFor(row, reference: reference), 'Start');
+      expect(forwardStatusTargetFor(row, referenceUtc: referenceUtc), AppointmentStatus.inProgress);
+      expect(forwardStatusActionLabelFor(row, referenceUtc: referenceUtc), 'Start');
     });
 
     test('terminal completed offers no forward action', () {
@@ -61,15 +61,15 @@ void main() {
     test('confirmed can cancel before appointment day', () {
       final row = item(status: AppointmentStatus.confirmed);
       expect(canCancelAppointment(row), isTrue);
-      expect(canMarkNoShowAppointment(row, reference: DateTime(2026, 5, 31)), isFalse);
-      expect(canCancelOrNoShowAppointment(row, reference: DateTime(2026, 5, 31)), isTrue);
+      expect(canMarkNoShowAppointment(row, referenceUtc: DateTime.utc(2026, 5, 31)), isFalse);
+      expect(canCancelOrNoShowAppointment(row, referenceUtc: DateTime.utc(2026, 5, 31)), isTrue);
     });
 
     test('no-show only on or after appointment day', () {
       final future = item();
-      expect(canMarkNoShowAppointment(future, reference: DateTime(2026, 5, 31)), isFalse);
-      expect(canMarkNoShowAppointment(future, reference: reference), isTrue);
-      expect(canCancelOrNoShowAppointment(future, reference: DateTime(2026, 5, 31)), isTrue);
+      expect(canMarkNoShowAppointment(future, referenceUtc: DateTime.utc(2026, 5, 31)), isFalse);
+      expect(canMarkNoShowAppointment(future, referenceUtc: referenceUtc), isTrue);
+      expect(canCancelOrNoShowAppointment(future, referenceUtc: DateTime.utc(2026, 5, 31)), isTrue);
     });
   });
 }

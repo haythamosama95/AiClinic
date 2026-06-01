@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/presentation/appointment_rpc_messages.dart';
@@ -109,7 +111,9 @@ class _AppointmentCancelDialogState extends ConsumerState<AppointmentCancelDialo
 
   @override
   Widget build(BuildContext context) {
-    final canMarkNoShow = canMarkNoShowAppointment(_item);
+    final timezone = effectiveOrganizationTimezone(ref.watch(authSessionProvider).context?.organizationTimezone);
+    final referenceUtc = DateTime.now().toUtc();
+    final canMarkNoShow = canMarkNoShowAppointment(_item, organizationTimezone: timezone, referenceUtc: referenceUtc);
 
     return AlertDialog(
       key: const Key('appointment_cancel_dialog'),

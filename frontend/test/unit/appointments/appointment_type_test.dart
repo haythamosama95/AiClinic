@@ -19,8 +19,11 @@ void main() {
   });
 
   group('AppointmentType.wireValue', () {
-    test('round-trips with tryParse', () {
+    test('round-trips with tryParse for known wire values', () {
       for (final type in AppointmentType.values) {
+        if (type == AppointmentType.unknown) {
+          continue;
+        }
         expect(AppointmentType.tryParse(type.wireValue), type);
       }
     });

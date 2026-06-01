@@ -10,6 +10,7 @@ abstract final class PermissionKeys {
   static const patientsDelete = 'patients.delete';
   static const appointmentsCreate = 'appointments.create';
   static const appointmentsCancel = 'appointments.cancel';
+  static const appointmentsRead = 'appointments.read';
   static const analyticsView = 'analytics.view';
   static const aiAccess = 'ai.access';
   static const invoicesCreate = 'invoices.create';
@@ -26,6 +27,7 @@ abstract final class RolePermissionSeed {
     PermissionKeys.patientsDelete,
     PermissionKeys.appointmentsCreate,
     PermissionKeys.appointmentsCancel,
+    PermissionKeys.appointmentsRead,
     PermissionKeys.analyticsView,
     PermissionKeys.aiAccess,
     PermissionKeys.invoicesCreate,
@@ -38,6 +40,7 @@ abstract final class RolePermissionSeed {
     PermissionKeys.patientsCreate,
     PermissionKeys.appointmentsCreate,
     PermissionKeys.appointmentsCancel,
+    PermissionKeys.appointmentsRead,
     PermissionKeys.aiAccess,
   };
 
@@ -45,10 +48,11 @@ abstract final class RolePermissionSeed {
     PermissionKeys.patientsView,
     PermissionKeys.appointmentsCreate,
     PermissionKeys.appointmentsCancel,
+    PermissionKeys.appointmentsRead,
     PermissionKeys.invoicesCreate,
   };
 
-  static const labStaff = {PermissionKeys.patientsView};
+  static const labStaff = {PermissionKeys.patientsView, PermissionKeys.appointmentsRead};
 
   static Set<String> forRole(StaffRole role) => switch (role) {
     StaffRole.owner => owner,

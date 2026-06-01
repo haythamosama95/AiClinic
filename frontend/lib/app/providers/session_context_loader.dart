@@ -63,6 +63,13 @@ class SessionContextLoader {
       }
     }
 
+    String? organizationTimezone;
+    final organizationId = claims['organization_id']?.toString();
+    if (organizationId != null && organizationId.isNotEmpty) {
+      final orgRow = await _client.from('organizations').select('timezone').eq('id', organizationId).maybeSingle();
+      organizationTimezone = orgRow?['timezone']?.toString();
+    }
+
     return AuthSessionContext(
       staffProfile: StaffProfile(
         staffMemberId: staffMemberId,
@@ -71,11 +78,12 @@ class SessionContextLoader {
         isBootstrapAdmin: staffRow['is_bootstrap_admin'] == true,
         isActive: staffRow['is_active'] == true,
       ),
-      organizationId: claims['organization_id']?.toString(),
+      organizationId: organizationId,
       branchIds: branchIds,
       activeBranchId: primaryBranchId,
       permissions: permissions,
       setupRequired: setupRequired,
+      organizationTimezone: organizationTimezone,
     );
   }
 

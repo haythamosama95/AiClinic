@@ -7,6 +7,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 
 @immutable
@@ -84,7 +85,8 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
   Future<void> refresh() async {
     final generation = ++_refreshGeneration;
     final branchId = _normalizedOrNull(ref.read(authSessionProvider).context?.activeBranchId);
-    final reference = DateTime.now();
+    final reference = DateTime.now().toUtc();
+    final timezone = effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
 
     if (branchId == null) {
       state = state.copyWith(
@@ -98,7 +100,7 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
 
     state = state.copyWith(loading: true, error: null, referenceTime: reference);
     try {
-      final range = appointmentTodayRange(reference);
+      final range = appointmentTodayRangeInTimezone(timezone, reference);
       final rawItems = await ref
           .read(appointmentRepositoryProvider)
           .listAppointments(branchId: branchId, from: range.from, to: range.to);
