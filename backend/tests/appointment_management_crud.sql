@@ -63,7 +63,7 @@ DECLARE
   v_i int;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.appointments;
+  TRUNCATE public.appointments CASCADE;
   DELETE FROM public.patients;
   DELETE FROM public.app_settings WHERE key = 'appointment.default_duration_minutes';
   DELETE FROM public.staff_branch_assignments;
@@ -565,6 +565,113 @@ BEGIN
   INSERT INTO appointment_crud_results VALUES (
     'reschedule_rejects_after_confirmed',
     NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Reschedule parity: outside branch working hours is rejected (regression #1).
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches b
+  SET working_schedule = jsonb_build_object(
+    'days',
+    jsonb_build_array(
+      jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00'),
+      jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '09:00', 'close_time', '17:00')
+    )
+  )
+  WHERE b.id = v_branch_main;
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_start := date_trunc('day', now() + interval '17 days') + interval '10 hours';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 30, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.reschedule_appointment(
+    v_appt_second,
+    date_trunc('day', now() + interval '17 days') + interval '2 hours',
+    30,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'reschedule_outside_working_hours_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches b
+  SET working_schedule = jsonb_build_object(
+    'days',
+    jsonb_build_array(
+      jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
+    )
+  )
+  WHERE b.id = v_branch_main;
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Reschedule parity: patient already booked same day is rejected (regression #2).
+  v_start := date_trunc('day', now() + interval '18 days') + interval '10 hours';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient2_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
+  v_start := date_trunc('day', now() + interval '19 days') + interval '10 hours';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient2_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.reschedule_appointment(
+    v_appt_second,
+    date_trunc('day', now() + interval '18 days') + interval '14 hours',
+    20,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'reschedule_same_day_patient_rejected',
+    NOT v_result.success AND v_result.error_code = 'PATIENT_ALREADY_BOOKED_SAME_DAY',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Reschedule parity: doctor-less appointment overlap is rejected (regression #3).
+  v_result := public.create_patient(
+    v_branch_main, 'Reschedule No Doctor', '201000000146', NULL, NULL, NULL, NULL, false
+  );
+  v_patient3_id := (v_result.data ->> 'patient_id')::uuid;
+  v_start := date_trunc('day', now() + interval '22 days') + interval '10 hours';
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 30, NULL, NULL
+  );
+  v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.create_appointment(
+    v_branch_main, v_patient3_id, NULL, 'planned', v_start + interval '4 hours', 30, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.reschedule_appointment(
+    v_appt_second,
+    v_start + interval '15 minutes',
+    30,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'reschedule_doctorless_overlap_rejected',
+    NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
