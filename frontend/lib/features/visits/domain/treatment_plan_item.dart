@@ -12,6 +12,7 @@ class TreatmentPlanItem {
     required this.medicationName,
     this.dosage,
     this.frequency,
+    this.duration,
     this.startDate,
     this.endDate,
     this.notes,
@@ -23,22 +24,23 @@ class TreatmentPlanItem {
   final String medicationName;
   final String? dosage;
   final String? frequency;
+  final String? duration;
   final DateTime? startDate;
   final DateTime? endDate;
   final String? notes;
 
-  static TreatmentPlanItem? fromRow(Map<String, dynamic> row) {
+  static TreatmentPlanItem? fromRow(Map<String, dynamic> row, {String? visitId, String? patientId}) {
     final id = row['id']?.toString();
-    final visitId = row['visit_id']?.toString();
-    final patientId = row['patient_id']?.toString();
+    final resolvedVisitId = row['visit_id']?.toString() ?? visitId;
+    final resolvedPatientId = row['patient_id']?.toString() ?? patientId;
     final medicationName = row['medication_name']?.toString().trim();
 
     if (id == null ||
         id.isEmpty ||
-        visitId == null ||
-        visitId.isEmpty ||
-        patientId == null ||
-        patientId.isEmpty ||
+        resolvedVisitId == null ||
+        resolvedVisitId.isEmpty ||
+        resolvedPatientId == null ||
+        resolvedPatientId.isEmpty ||
         medicationName == null ||
         medicationName.isEmpty) {
       return null;
@@ -46,11 +48,12 @@ class TreatmentPlanItem {
 
     return TreatmentPlanItem(
       id: id,
-      visitId: visitId,
-      patientId: patientId,
+      visitId: resolvedVisitId,
+      patientId: resolvedPatientId,
       medicationName: medicationName,
       dosage: optionalVisitString(row['dosage']),
       frequency: optionalVisitString(row['frequency']),
+      duration: optionalVisitString(row['duration']),
       startDate: parseVisitDate(row['start_date']),
       endDate: parseVisitDate(row['end_date']),
       notes: optionalVisitString(row['notes']),
@@ -64,6 +67,7 @@ class TreatmentPlanItem {
     String? medicationName,
     Object? dosage = copyWithSentinel,
     Object? frequency = copyWithSentinel,
+    Object? duration = copyWithSentinel,
     Object? startDate = copyWithSentinel,
     Object? endDate = copyWithSentinel,
     Object? notes = copyWithSentinel,
@@ -75,6 +79,7 @@ class TreatmentPlanItem {
       medicationName: medicationName ?? this.medicationName,
       dosage: identical(dosage, copyWithSentinel) ? this.dosage : dosage as String?,
       frequency: identical(frequency, copyWithSentinel) ? this.frequency : frequency as String?,
+      duration: identical(duration, copyWithSentinel) ? this.duration : duration as String?,
       startDate: identical(startDate, copyWithSentinel) ? this.startDate : startDate as DateTime?,
       endDate: identical(endDate, copyWithSentinel) ? this.endDate : endDate as DateTime?,
       notes: identical(notes, copyWithSentinel) ? this.notes : notes as String?,
@@ -92,11 +97,13 @@ class TreatmentPlanItem {
             medicationName == other.medicationName &&
             dosage == other.dosage &&
             frequency == other.frequency &&
+            duration == other.duration &&
             startDate == other.startDate &&
             endDate == other.endDate &&
             notes == other.notes;
   }
 
   @override
-  int get hashCode => Object.hash(id, visitId, patientId, medicationName, dosage, frequency, startDate, endDate, notes);
+  int get hashCode =>
+      Object.hash(id, visitId, patientId, medicationName, dosage, frequency, duration, startDate, endDate, notes);
 }

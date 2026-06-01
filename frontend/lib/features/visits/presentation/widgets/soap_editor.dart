@@ -15,10 +15,11 @@ class SoapEditor extends ConsumerWidget {
     if (!state.canEdit) {
       return _ReadOnlySoap(state: state);
     }
-    if (!state.isEditable) {
+    if (state.soapEditMode == SoapEditMode.readOnly) {
       return _ReadOnlySoap(
         state: state,
-        caption: 'This visit is ${state.visit.status.label.toLowerCase()}; SOAP cannot be edited.',
+        showEditButton: true,
+        onEdit: () => ref.read(visitDocumentationProvider(visitId).notifier).enterSoapEditMode(),
       );
     }
     return _EditableSoap(visitId: visitId, state: state);
@@ -142,11 +143,7 @@ class _EditableSoapState extends ConsumerState<_EditableSoap> {
             key: const Key('soap_save_button'),
             onPressed: isSaving ? null : () => notifier.save(),
             icon: isSaving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.save_outlined),
             label: Text(isSaving ? 'Saving…' : 'Save SOAP'),
           ),
@@ -157,24 +154,33 @@ class _EditableSoapState extends ConsumerState<_EditableSoap> {
 }
 
 class _ReadOnlySoap extends StatelessWidget {
-  const _ReadOnlySoap({required this.state, this.caption});
+  const _ReadOnlySoap({required this.state, this.showEditButton = false, this.onEdit});
 
   final VisitDocumentationState state;
-  final String? caption;
+  final bool showEditButton;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (caption != null) ...[
-          Text(caption!, style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 12),
-        ],
         _ReadOnlySection(label: 'Subjective', value: state.subjective),
         _ReadOnlySection(label: 'Objective', value: state.objective),
         _ReadOnlySection(label: 'Assessment', value: state.assessment),
         _ReadOnlySection(label: 'Plan', value: state.plan),
+        if (showEditButton && onEdit != null) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const Key('soap_edit_button'),
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Edit SOAP'),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -227,11 +233,7 @@ class _SoapField extends StatelessWidget {
         onChanged: onChanged,
         minLines: 2,
         maxLines: 6,
-        decoration: InputDecoration(
-          labelText: label,
-          alignLabelWithHint: true,
-          border: const OutlineInputBorder(),
-        ),
+        decoration: InputDecoration(labelText: label, alignLabelWithHint: true, border: const OutlineInputBorder()),
       ),
     );
   }

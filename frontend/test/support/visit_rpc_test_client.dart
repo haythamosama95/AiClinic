@@ -130,6 +130,12 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           'offset': lastParams?['p_offset'] ?? 0,
         },
       },
+      'create_treatment_plan' => {
+        'success': true,
+        'data': {'treatment_plan_id': 'tttttttt-tttt-4ttt-8ttt-tttttttttttt'},
+      },
+      'update_treatment_plan' => {'success': true, 'data': {}},
+      'archive_treatment_plan' => {'success': true, 'data': {}},
       _ => {'success': false, 'error_code': 'UNKNOWN', 'error_message': 'Unhandled RPC $fn'},
     };
   }

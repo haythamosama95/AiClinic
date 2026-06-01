@@ -7,7 +7,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/visits/domain/specialty_form_schema.dart';
 import 'package:ai_clinic/features/visits/domain/soap_note.dart';
-import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
@@ -41,13 +41,11 @@ class VisitDetailPage extends ConsumerWidget {
         actions: [
           detailAsync.maybeWhen(
             data: (visit) {
-              if (!canEdit || visit.status != VisitStatus.inProgress) {
-                return null;
-              }
+              if (!canEdit) return null;
               return TextButton(
                 key: const Key('visit_detail_edit_documentation'),
-                onPressed: () => context.go(AppRoutes.visitDocument(id)),
-                child: const Text('Edit documentation'),
+                onPressed: () => context.push(AppRoutes.visitDocument(id)),
+                child: Text(visit.status == VisitStatus.inProgress ? 'Edit documentation' : 'Edit visit'),
               );
             },
             orElse: () => null,
@@ -113,7 +111,7 @@ class _VisitDetailBody extends StatelessWidget {
           const SizedBox(height: 24),
           Text('Treatment plans', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          ...visit.treatmentPlans.map((plan) => _TreatmentPlanCard(plan: plan)),
+          ...visit.treatmentPlans.map((plan) => TreatmentPlanCardView(plan: plan)),
         ],
         if (visit.attachments.isNotEmpty) ...[
           const SizedBox(height: 24),
@@ -175,29 +173,6 @@ class _SoapSection extends StatelessWidget {
           const SizedBox(height: 4),
           Text(display),
         ],
-      ),
-    );
-  }
-}
-
-class _TreatmentPlanCard extends StatelessWidget {
-  const _TreatmentPlanCard({required this.plan});
-
-  final TreatmentPlanItem plan;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(plan.medicationName),
-        subtitle: Text(
-          [
-            if (plan.dosage != null && plan.dosage!.isNotEmpty) plan.dosage,
-            if (plan.frequency != null && plan.frequency!.isNotEmpty) plan.frequency,
-            if (plan.notes != null && plan.notes!.isNotEmpty) plan.notes,
-          ].whereType<String>().join(' · '),
-        ),
       ),
     );
   }

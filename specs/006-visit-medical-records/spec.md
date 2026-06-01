@@ -33,6 +33,7 @@ V1-4 (`specs/005-appointment-management`) advances appointments through check-in
 - Q: What happens when creating a visit from an appointment with no assigned doctor? → A: **Prompt doctor selection** at visit creation; the selected doctor is saved on **both the visit and the appointment**.
 - Q: How are concurrent SOAP saves from two sessions handled? → A: **Optimistic concurrency** — stale saves are rejected with an error and refresh prompt; no silent last-write-wins overwrites.
 - Q: Can lab staff download visit attachments? → A: Users with `visits.upload_attachment` may **download only attachments they uploaded**; clinical roles with `visits.create` or `visits.edit_soap` retain full attachment download access for the visit.
+- Q: When opening patient visit history or a visit screen, should cached/local state be trusted first? → A: No. The client MUST consult the backend first (`list_patient_visits` / `get_visit`) to load the latest persisted data before presenting patient or visit details.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -138,15 +139,15 @@ As clinical staff, I can submit a completed visit when documentation is finished
 
 **Why this priority**: Submitting the visit closes the clinical loop and correctly completes the appointment; visit history on the patient profile is the primary longitudinal view.
 
-**Independent Test**: Can be fully tested by submitting a visit, verifying the linked appointment becomes `completed`, opening the patient profile, and verifying the visit appears in history with date, doctor, status, and summary metadata; users with clinical permissions can open full detail.
+**Independent Test**: Can be fully tested by submitting a visit, verifying the linked appointment becomes `completed`, opening the patient profile, and verifying the visit appears in history with date, doctor, status, and summary metadata from a fresh backend fetch; users with clinical permissions can open full detail loaded from backend-first visit retrieval.
 
 **Acceptance Scenarios**:
 
 1. **Given** an `in_progress` visit linked to an `in_progress` appointment and a user with `visits.edit_soap`, **When** they submit the visit as complete with at least one non-empty SOAP section, **Then** the visit status becomes `completed`, the linked appointment status becomes `completed`, both changes are audited, and the visit appears in patient visit history.
 1b. **Given** an `in_progress` visit with all SOAP sections empty, **When** the user attempts to submit, **Then** submit is rejected with a clear message that at least one SOAP section is required; visit and appointment remain `in_progress`.
 2. **Given** a visit submitted as complete, **When** reception views the appointment, **Then** it shows `completed` and cannot be checked in or started again.
-3. **Given** a user with `patients.view`, **When** they open visit history on the patient profile, **Then** they see a chronological list of non-deleted visits with visit date, doctor name, status, and branch (metadata only; SOAP content hidden unless they have clinical visit permissions).
-4. **Given** a user with `visits.edit_soap` or `visits.create`, **When** they select a visit from history, **Then** they can open full visit detail including SOAP, specialty data, treatment plans, and attachments.
+3. **Given** a user with `patients.view`, **When** they open visit history on the patient profile, **Then** the UI first requests fresh history from backend and shows a chronological list of non-deleted visits with visit date, doctor name, status, and branch (metadata only; SOAP content hidden unless they have clinical visit permissions).
+4. **Given** a user with `visits.edit_soap` or `visits.create`, **When** they select a visit from history, **Then** the UI first loads visit detail from backend and they can open full visit detail including SOAP, specialty data, treatment plans, and attachments.
 5. **Given** a user without clinical visit permissions, **When** they view visit history, **Then** they see list metadata but cannot open SOAP or download attachments.
 6. **Given** visits at multiple branches within the organization, **When** a user with org-wide patient access views history, **Then** visits from all accessible branches for that patient are shown (subject to branch assignment rules).
 
@@ -214,6 +215,7 @@ As clinical staff, I can submit a completed visit when documentation is finished
 - **FR-027**: The system MUST NOT deliver billing, invoice generation, shift management, prescription printing, workflow automation, or AI-assisted documentation as part of this feature.
 - **FR-028**: The system MUST NOT auto-create visits when appointments are checked in or started; visit creation remains an explicit user action in V1-5.
 - **FR-029**: The system MUST integrate with appointment status: visit submission completes the appointment; visit creation from `checked_in` advances the appointment to `in_progress`. Other patient, organization, branch, appointment booking, or staff management behavior changes only where visit screens integrate with patient profile, appointment queue/context, and active branch from prior features.
+- **FR-030**: When opening patient visit history or any visit view (documentation/detail), the client MUST perform a backend-first fetch for latest persisted data before rendering actionable content; cached/local state MAY be shown only as a transient loading placeholder and MUST be reconciled with backend response.
 
 ### Non-Functional Requirements
 
@@ -354,6 +356,7 @@ This feature introduces no AI-assisted workflow. SOAP documentation remains full
 8. Visit submit transitions visit to `completed` and linked appointment to `completed` with audit entries; submit with all SOAP sections empty is rejected.
 9. Backend verification utilities demonstrate one-visit-per-appointment, eligible-status enforcement, branch isolation, and cross-organization denial.
 10. No billing, shift, prescription, workflow automation, or AI workflow is required to pass this feature.
+11. Patient profile visit history and visit documentation/detail screens always start from a backend-first fetch, so users see the latest persisted data before acting.
 
 ### Test Cases
 
@@ -377,6 +380,8 @@ This feature introduces no AI-assisted workflow. SOAP documentation remains full
 14. Attempt visit creation without permission; verify denial.
 15. Cross-branch visit access attempt; verify denial.
 16. Run backend verification utilities for creation rules, appointment integration, isolation, and attachment integration.
+17. Open patient profile visit history after an external update; verify the screen fetches backend data first and shows updated metadata.
+18. Open visit documentation/detail after an external SOAP or treatment-plan update; verify the screen fetches backend data first and reflects latest persisted content.
 
 ### Implementation Constraints
 

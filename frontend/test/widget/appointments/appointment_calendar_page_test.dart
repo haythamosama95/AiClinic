@@ -23,9 +23,12 @@ import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
 
 import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
+import '../../support/visit_rpc_test_client.dart';
 
 void main() {
   group('Appointment calendar and doctor schedule pages', () {
@@ -58,10 +61,49 @@ void main() {
       expect(nextButton.onPressed, isNotNull);
       expect(todayButton.onPressed, isNotNull);
     });
+
+    testWidgets('calendar handles duplicate branch ids in dropdown safely', (tester) async {
+      await tester.pumpWidget(_host(initialLocation: AppRoutes.appointmentsCalendar, includeDuplicateBranch: true));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_calendar_branch_filter')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('completed appointment sheet shows Open Visit when linked visit exists', (tester) async {
+      const visitId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+      await tester.pumpWidget(
+        _host(
+          initialLocation: AppRoutes.appointmentsCalendar,
+          appointmentStatus: 'completed',
+          visitPermissions: {PermissionKeys.visitsCreate},
+          visitByAppointment: {'visit_id': visitId, 'status': 'completed'},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Test Patient'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_calendar_open_visit')), findsOneWidget);
+      expect(find.text('Open patient record'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('appointments_calendar_open_visit')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VisitDetailPage), findsOneWidget);
+    });
   });
 }
 
-Widget _host({required String initialLocation}) {
+Widget _host({
+  required String initialLocation,
+  bool includeDuplicateBranch = false,
+  String appointmentStatus = 'scheduled',
+  Set<String> visitPermissions = const {},
+  Map<String, dynamic>? visitByAppointment,
+}) {
   final now = DateTime.now();
   final start = DateTime(now.year, now.month, now.day, 9);
   final end = start.add(const Duration(minutes: 30));
@@ -69,7 +111,7 @@ Widget _host({required String initialLocation}) {
   final authState = AuthSessionState(
     status: AuthSessionStatus.authenticated,
     context: sampleAuthSessionContext(
-      permissions: {PermissionKeys.appointmentsCreate},
+      permissions: {PermissionKeys.appointmentsCreate, ...visitPermissions},
       activeBranchId: branchId,
       branchIds: [branchId],
     ),
@@ -95,7 +137,7 @@ Widget _host({required String initialLocation}) {
                       'start_time': start.toUtc().toIso8601String(),
                       'end_time': end.toUtc().toIso8601String(),
                       'type': 'planned',
-                      'status': 'scheduled',
+                      'status': appointmentStatus,
                     },
                   ],
                 },
@@ -104,7 +146,19 @@ Widget _host({required String initialLocation}) {
           ),
         ),
       ),
-      branchRepositoryProvider.overrideWithValue(_FakeBranchRepository(branchId: branchId)),
+      if (visitByAppointment != null)
+        visitRepositoryProvider.overrideWith(
+          (ref) => VisitRepository(
+            VisitRpcTestClient(
+              rpcResults: {
+                'get_visit_by_appointment': {'success': true, 'data': visitByAppointment},
+              },
+            ),
+          ),
+        ),
+      branchRepositoryProvider.overrideWithValue(
+        _FakeBranchRepository(branchId: branchId, includeDuplicateBranch: includeDuplicateBranch),
+      ),
       staffAdminRepositoryProvider.overrideWithValue(_FakeStaffAdminRepository()),
     ],
     child: MaterialApp.router(
@@ -119,6 +173,10 @@ Widget _host({required String initialLocation}) {
           GoRoute(
             path: '${AppRoutes.patients}/:patientId',
             builder: (context, state) => const Scaffold(body: Text('Patient detail page')),
+          ),
+          GoRoute(
+            path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
+            builder: (context, state) => VisitDetailPage(visitId: state.pathParameters['visitId']),
           ),
         ],
       ),
@@ -159,16 +217,20 @@ class _FakeStaffAdminRepository implements StaffAdminRepository {
 }
 
 class _FakeBranchRepository implements BranchRepository {
-  _FakeBranchRepository({required this.branchId});
+  _FakeBranchRepository({required this.branchId, this.includeDuplicateBranch = false});
 
   final String branchId;
+  final bool includeDuplicateBranch;
 
   @override
   Future<List<BranchListItem>> listBranches({
     required String organizationId,
     BranchListFilter filter = BranchListFilter.all,
   }) async {
-    return [BranchListItem(id: branchId, name: 'Main Branch', isActive: true)];
+    return [
+      BranchListItem(id: branchId, name: 'Main Branch', isActive: true),
+      if (includeDuplicateBranch) BranchListItem(id: branchId, name: 'Main Branch Duplicate', isActive: true),
+    ];
   }
 
   @override

@@ -6,11 +6,13 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/specialty_form_schema.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
-import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/visit_rpc_messages.dart';
 
 /// SOAP save lifecycle on the visit documentation screen.
 enum SoapSaveStatus { idle, saving, saved, stale, error }
+
+/// Whether the SOAP section is in editing or read-only-after-save mode.
+enum SoapEditMode { editing, readOnly }
 
 @immutable
 class VisitDocumentationState {
@@ -25,6 +27,7 @@ class VisitDocumentationState {
     this.specialtyFieldErrors = const {},
     required this.expectedUpdatedAt,
     this.saveStatus = SoapSaveStatus.idle,
+    this.soapEditMode = SoapEditMode.editing,
     this.errorMessage,
     required this.canEdit,
   });
@@ -39,10 +42,24 @@ class VisitDocumentationState {
   final Map<String, String> specialtyFieldErrors;
   final DateTime expectedUpdatedAt;
   final SoapSaveStatus saveStatus;
+  final SoapEditMode soapEditMode;
   final String? errorMessage;
   final bool canEdit;
 
-  bool get isEditable => canEdit && visit.status == VisitStatus.inProgress;
+  /// Clinical content (SOAP, specialty fields, treatment plans) is editable whenever
+  /// the user has permission, including after visit submit (`completed`).
+  bool get isEditable => canEdit;
+
+  /// Whether documentation should be persisted before leaving the editor.
+  bool get needsSaveBeforeLeaving {
+    if (!canEdit || saveStatus == SoapSaveStatus.saving) {
+      return false;
+    }
+    if (saveStatus == SoapSaveStatus.stale) {
+      return true;
+    }
+    return soapEditMode == SoapEditMode.editing || saveStatus == SoapSaveStatus.idle;
+  }
 
   VisitDocumentationState copyWith({
     VisitDetail? visit,
@@ -55,6 +72,7 @@ class VisitDocumentationState {
     Map<String, String>? specialtyFieldErrors,
     DateTime? expectedUpdatedAt,
     SoapSaveStatus? saveStatus,
+    SoapEditMode? soapEditMode,
     String? errorMessage,
     bool? canEdit,
     bool clearError = false,
@@ -71,6 +89,7 @@ class VisitDocumentationState {
       specialtyFieldErrors: clearSpecialtyErrors ? const {} : (specialtyFieldErrors ?? this.specialtyFieldErrors),
       expectedUpdatedAt: expectedUpdatedAt ?? this.expectedUpdatedAt,
       saveStatus: saveStatus ?? this.saveStatus,
+      soapEditMode: soapEditMode ?? this.soapEditMode,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       canEdit: canEdit ?? this.canEdit,
     );
@@ -228,6 +247,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
             specialtyFormJson: specialtyPayload.isEmpty ? current.specialtyFormJson : specialtyPayload,
             expectedUpdatedAt: saved.updatedAt,
             saveStatus: SoapSaveStatus.saved,
+            soapEditMode: SoapEditMode.readOnly,
           );
       state = AsyncData(next);
     } on RpcFailure catch (error) {
@@ -245,6 +265,38 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       final currentAfter = state.value ?? current;
       state = AsyncData(currentAfter.copyWith(saveStatus: SoapSaveStatus.error, errorMessage: error.toString()));
     }
+  }
+
+  void enterSoapEditMode() {
+    final current = state.value;
+    if (current == null || !current.canEdit) return;
+    state = AsyncData(current.copyWith(soapEditMode: SoapEditMode.editing));
+  }
+
+  /// Refreshes visit metadata and treatment plans without discarding unsaved SOAP draft.
+  Future<void> refreshTreatmentPlansPreservingDraft() async {
+    final current = state.value;
+    if (current == null) {
+      return;
+    }
+
+    final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
+    state = AsyncData(
+      current.copyWith(
+        visit: current.visit.copyWith(
+          treatmentPlans: refreshed.treatmentPlans,
+          status: refreshed.status,
+          doctorName: refreshed.doctorName,
+          visitDate: refreshed.visitDate,
+          attachments: refreshed.attachments,
+        ),
+      ),
+    );
+  }
+
+  Future<void> reloadVisit() async {
+    state = const AsyncLoading();
+    state = AsyncData(await _load());
   }
 
   Future<void> reloadAfterStale() async {

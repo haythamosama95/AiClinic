@@ -200,7 +200,7 @@ void main() {
       expect(client.paramsForFunction('save_soap_note')?['p_specialty_form_json'], isNull);
     });
 
-    testWidgets('edge case: read-only when visit completed', (tester) async {
+    testWidgets('edge case: completed visit specialty fields remain editable', (tester) async {
       final client = VisitRpcTestClient(
         rpcResults: {
           'get_visit': {
@@ -226,12 +226,11 @@ void main() {
 
       await _pumpFields(tester, client: client, permissions: {PermissionKeys.visitsEditSoap});
 
-      expect(find.byType(TextField), findsNothing);
-      expect(find.text('2'), findsOneWidget);
-      expect(find.text('Yes'), findsNothing);
+      expect(find.byType(TextField), findsWidgets);
+      expect(find.byKey(const Key('soap_save_button')), findsOneWidget);
     });
 
-    testWidgets('edge case: completed visit shows boolean as Yes/No', (tester) async {
+    testWidgets('edge case: completed visit shows editable boolean checkbox', (tester) async {
       final client = VisitRpcTestClient(
         rpcResults: {
           'get_visit': {
@@ -257,7 +256,8 @@ void main() {
 
       await _pumpFields(tester, client: client, permissions: {PermissionKeys.visitsEditSoap});
 
-      expect(find.text('Yes'), findsOneWidget);
+      final checkbox = tester.widget<Checkbox>(find.byType(Checkbox));
+      expect(checkbox.value, isTrue);
     });
   });
 }

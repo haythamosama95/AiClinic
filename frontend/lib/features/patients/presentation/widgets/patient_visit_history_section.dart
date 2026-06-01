@@ -21,7 +21,9 @@ class PatientVisitHistorySection extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final canOpenDetail = ref.watch(permissionServiceProvider).canViewVisitClinicalDetail();
+    final permissions = ref.watch(permissionServiceProvider);
+    final canOpenDetail = permissions.canViewVisitClinicalDetail();
+    final canEditVisit = permissions.canEditVisitSoap();
     final historyAsync = ref.watch(patientVisitHistoryProvider(id));
 
     return Card(
@@ -48,7 +50,8 @@ class PatientVisitHistorySection extends ConsumerWidget {
                 message: error.toString(),
                 onRetry: () => ref.invalidate(patientVisitHistoryProvider(id)),
               ),
-              data: (page) => _HistoryBody(patientId: id, page: page, canOpenDetail: canOpenDetail),
+              data: (page) =>
+                  _HistoryBody(patientId: id, page: page, canOpenDetail: canOpenDetail, canEditVisit: canEditVisit),
             ),
           ],
         ),
@@ -77,11 +80,17 @@ class _HistoryError extends StatelessWidget {
 }
 
 class _HistoryBody extends ConsumerWidget {
-  const _HistoryBody({required this.patientId, required this.page, required this.canOpenDetail});
+  const _HistoryBody({
+    required this.patientId,
+    required this.page,
+    required this.canOpenDetail,
+    required this.canEditVisit,
+  });
 
   final String patientId;
   final PaginatedList<VisitListItem> page;
   final bool canOpenDetail;
+  final bool canEditVisit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -111,7 +120,9 @@ class _HistoryBody extends ConsumerWidget {
           (item) => _VisitHistoryRow(
             item: item,
             canOpenDetail: canOpenDetail,
+            canEditVisit: canEditVisit,
             onOpenDetail: canOpenDetail ? () => context.nav.pushVisitDetail(item.id) : null,
+            onOpenDocument: canEditVisit ? () => context.nav.pushVisitDocument(item.id) : null,
           ),
         ),
         if (page.loadMoreError != null)
@@ -147,11 +158,19 @@ class _HistoryBody extends ConsumerWidget {
 }
 
 class _VisitHistoryRow extends StatelessWidget {
-  const _VisitHistoryRow({required this.item, required this.canOpenDetail, this.onOpenDetail});
+  const _VisitHistoryRow({
+    required this.item,
+    required this.canOpenDetail,
+    required this.canEditVisit,
+    this.onOpenDetail,
+    this.onOpenDocument,
+  });
 
   final VisitListItem item;
   final bool canOpenDetail;
+  final bool canEditVisit;
   final VoidCallback? onOpenDetail;
+  final VoidCallback? onOpenDocument;
 
   @override
   Widget build(BuildContext context) {
@@ -164,7 +183,19 @@ class _VisitHistoryRow extends StatelessWidget {
         contentPadding: EdgeInsets.zero,
         title: Text(dateLabel),
         subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (canEditVisit && onOpenDocument != null)
+              IconButton(
+                key: Key('patient_visit_history_edit_${item.id}'),
+                icon: const Icon(Icons.edit_note_outlined),
+                tooltip: 'Edit visit',
+                onPressed: onOpenDocument,
+              ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
         onTap: onOpenDetail,
       );
     }

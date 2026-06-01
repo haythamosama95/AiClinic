@@ -71,6 +71,27 @@ void main() {
       );
     });
 
+    test('parses treatment plans from API payload without visit_id on each row', () {
+      final detail = VisitDetail.fromRow({
+        'id': 'visit-1',
+        'branch_id': 'branch-1',
+        'appointment_id': 'appt-1',
+        'patient_id': 'patient-1',
+        'doctor_id': 'doctor-1',
+        'doctor_name': 'Dr. Smith',
+        'visit_date': '2026-05-31',
+        'status': 'in_progress',
+        'treatment_plans': [
+          {'id': 'tp-1', 'medication_name': 'Metformin', 'duration': '30 days'},
+        ],
+      });
+
+      expect(detail!.treatmentPlans, hasLength(1));
+      expect(detail.treatmentPlans.first.visitId, 'visit-1');
+      expect(detail.treatmentPlans.first.patientId, 'patient-1');
+      expect(detail.treatmentPlans.first.duration, '30 days');
+    });
+
     test('skips invalid nested items without failing', () {
       final detail = VisitDetail.fromRow({
         'id': 'visit-1',

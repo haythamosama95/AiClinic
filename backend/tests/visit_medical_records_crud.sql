@@ -480,6 +480,34 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- SOAP save on completed visit (post-submit corrections).
+  SELECT sn.updated_at INTO v_soap_updated_at
+  FROM public.soap_notes sn
+  WHERE sn.visit_id = v_completed_visit_id AND sn.is_deleted = false;
+  v_result := public.save_soap_note(
+    v_completed_visit_id,
+    v_soap_updated_at,
+    'Chief complaint (corrected).',
+    'Exam findings.',
+    NULL,
+    NULL,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'save_soap_note_on_completed_visit',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM public.soap_notes sn
+        WHERE sn.visit_id = v_completed_visit_id
+          AND sn.is_deleted = false
+          AND sn.subjective = 'Chief complaint (corrected).'
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Treatment plan create / update / archive.
   v_start := pg_temp.test_appointment_same_day_slot(7);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 7;
@@ -536,6 +564,38 @@ BEGIN
         FROM public.treatment_plans tp
         WHERE tp.id = v_plan_id AND tp.is_deleted = true
       ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- get_visit includes treatment plans (non-archived).
+  v_result := public.create_treatment_plan(
+    v_visit_id, 'Ibuprofen', '200mg', 'as needed', NULL, NULL, 'For pain'
+  );
+  v_plan_id := (v_result.data ->> 'treatment_plan_id')::uuid;
+  v_result := public.get_visit(v_visit_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'get_visit_includes_treatment_plans',
+    v_result.success
+      AND jsonb_array_length(COALESCE(v_result.data -> 'treatment_plans', '[]'::jsonb)) >= 1,
+    'count=' || COALESCE(jsonb_array_length(COALESCE(v_result.data -> 'treatment_plans', '[]'::jsonb))::text, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Treatment plan on completed visit (corrections allowed).
+  SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
+  v_result := public.save_soap_note(v_visit_id, v_visit_updated_at, 'Chief complaint for tp.', NULL, NULL, NULL, NULL);
+  v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.complete_visit(v_visit_id, v_soap_updated_at);
+
+  v_result := public.create_treatment_plan(
+    v_visit_id, 'Post-visit Med', '100mg', 'once daily', NULL, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'create_treatment_plan_on_completed_visit',
+    v_result.success AND (v_result.data ->> 'treatment_plan_id') IS NOT NULL,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

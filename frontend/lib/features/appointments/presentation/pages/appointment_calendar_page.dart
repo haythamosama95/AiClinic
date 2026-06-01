@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_actions.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
@@ -123,17 +124,25 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                 SizedBox(
                   width: 240,
                   child: branchesAsync.when(
-                    data: (branches) => DropdownButtonFormField<String?>(
-                      key: const Key('appointments_calendar_branch_filter'),
-                      initialValue: state.selectedBranchId,
-                      decoration: const InputDecoration(labelText: 'Branch'),
-                      items: [
-                        if (branches.isEmpty) const DropdownMenuItem<String?>(value: null, child: Text('No branches')),
-                        for (final branch in branches)
-                          DropdownMenuItem<String?>(value: branch.id, child: Text(branch.name)),
-                      ],
-                      onChanged: branches.isEmpty ? null : controller.setBranchFilter,
-                    ),
+                    data: (branches) {
+                      final uniqueBranches = _dedupeById(branches, (branch) => branch.id);
+                      final selectedBranchId = _dropdownSafeValue(
+                        state.selectedBranchId,
+                        uniqueBranches.map((branch) => branch.id),
+                      );
+                      return DropdownButtonFormField<String?>(
+                        key: const Key('appointments_calendar_branch_filter'),
+                        initialValue: selectedBranchId,
+                        decoration: const InputDecoration(labelText: 'Branch'),
+                        items: [
+                          if (uniqueBranches.isEmpty)
+                            const DropdownMenuItem<String?>(value: null, child: Text('No branches')),
+                          for (final branch in uniqueBranches)
+                            DropdownMenuItem<String?>(value: branch.id, child: Text(branch.name)),
+                        ],
+                        onChanged: uniqueBranches.isEmpty ? null : controller.setBranchFilter,
+                      );
+                    },
                     loading: () => const InputDecorator(
                       decoration: InputDecoration(labelText: 'Branch'),
                       child: Text('Loading branches...'),
@@ -401,6 +410,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           Navigator.of(sheetContext).pop();
           context.nav.pushPatientDetail(item.patientId);
         },
+        onOpenVisit: (visitId) {
+          Navigator.of(sheetContext).pop();
+          context.nav.pushVisitDetail(visitId);
+        },
       ),
     );
   }
@@ -459,20 +472,97 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   }
 }
 
-class _AppointmentEventSheet extends StatelessWidget {
-  const _AppointmentEventSheet({required this.item, required this.onStatusChanged, required this.onOpenPatient});
+class _AppointmentEventSheet extends ConsumerStatefulWidget {
+  const _AppointmentEventSheet({
+    required this.item,
+    required this.onStatusChanged,
+    required this.onOpenPatient,
+    required this.onOpenVisit,
+  });
 
   final AppointmentListItem item;
   final VoidCallback onStatusChanged;
   final VoidCallback onOpenPatient;
+  final ValueChanged<String> onOpenVisit;
+
+  @override
+  ConsumerState<_AppointmentEventSheet> createState() => _AppointmentEventSheetState();
+}
+
+class _AppointmentEventSheetState extends ConsumerState<_AppointmentEventSheet> {
+  String? _linkedVisitId;
+  bool _visitLookupDone = false;
+
+  AppointmentListItem get _item => widget.item;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshVisitLink();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AppointmentEventSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.id != widget.item.id || oldWidget.item.status != widget.item.status) {
+      _refreshVisitLink();
+    }
+  }
+
+  Future<void> _refreshVisitLink() async {
+    if (_item.status != AppointmentStatus.completed) {
+      if (mounted) {
+        setState(() {
+          _linkedVisitId = null;
+          _visitLookupDone = true;
+        });
+      }
+      return;
+    }
+
+    final permissions = ref.read(permissionServiceProvider);
+    if (!permissions.canViewVisitClinicalDetail()) {
+      if (mounted) {
+        setState(() {
+          _linkedVisitId = null;
+          _visitLookupDone = true;
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _visitLookupDone = false);
+    }
+
+    try {
+      final link = await ref.read(visitRepositoryProvider).getVisitByAppointment(appointmentId: _item.id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _linkedVisitId = link.visitId?.trim().isNotEmpty == true ? link.visitId : null;
+        _visitLookupDone = true;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _linkedVisitId = null;
+        _visitLookupDone = true;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final localStart = item.startTime.toLocal();
-    final localEnd = item.endTime.toLocal();
+    final localStart = _item.startTime.toLocal();
+    final localEnd = _item.endTime.toLocal();
     final timeRange =
         '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(localStart))} – '
         '${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(localEnd))}';
+    final showOpenVisit = _visitLookupDone && _linkedVisitId != null;
 
     return SafeArea(
       child: Padding(
@@ -481,22 +571,31 @@ class _AppointmentEventSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(item.patientName, style: Theme.of(context).textTheme.titleLarge),
+            Text(_item.patientName, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
-            Text('${item.doctorDisplayName} · ${item.type.label} · ${item.status.label}'),
+            Text('${_item.doctorDisplayName} · ${_item.type.label} · ${_item.status.label}'),
             const SizedBox(height: 4),
             Text(timeRange),
             const SizedBox(height: 16),
             AppointmentStatusActions(
-              item: item,
-              onStatusChanged: (_) => onStatusChanged(),
-              onRescheduled: (_) => onStatusChanged(),
-              onVisitChanged: onStatusChanged,
+              item: _item,
+              onStatusChanged: (_) => widget.onStatusChanged(),
+              onRescheduled: (_) => widget.onStatusChanged(),
+              onVisitChanged: widget.onStatusChanged,
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(onPressed: onOpenPatient, child: const Text('Open patient record')),
+            Wrap(
+              alignment: WrapAlignment.start,
+              spacing: 8,
+              children: [
+                if (showOpenVisit)
+                  TextButton(
+                    key: const Key('appointments_calendar_open_visit'),
+                    onPressed: () => widget.onOpenVisit(_linkedVisitId!),
+                    child: const Text('Open Visit'),
+                  ),
+                TextButton(onPressed: widget.onOpenPatient, child: const Text('Open patient record')),
+              ],
             ),
           ],
         ),
@@ -541,17 +640,48 @@ class _DoctorFilterState extends ConsumerState<_DoctorFilter> {
           );
         }
         final doctors = snapshot.data ?? const <StaffListItem>[];
+        final uniqueDoctors = _dedupeById(doctors, (doctor) => doctor.id);
+        final selectedDoctorId = _dropdownSafeValue(widget.selectedDoctorId, uniqueDoctors.map((doctor) => doctor.id));
         return DropdownButtonFormField<String?>(
           key: const Key('appointments_calendar_doctor_filter'),
-          initialValue: widget.selectedDoctorId,
+          initialValue: selectedDoctorId,
           decoration: const InputDecoration(labelText: 'Doctor filter'),
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('All doctors')),
-            for (final doctor in doctors) DropdownMenuItem<String?>(value: doctor.id, child: Text(doctor.fullName)),
+            for (final doctor in uniqueDoctors)
+              DropdownMenuItem<String?>(value: doctor.id, child: Text(doctor.fullName)),
           ],
           onChanged: widget.onChanged,
         );
       },
     );
   }
+}
+
+List<T> _dedupeById<T>(List<T> items, String Function(T item) idOf) {
+  final ids = <String>{};
+  final result = <T>[];
+  for (final item in items) {
+    final id = idOf(item);
+    if (ids.add(id)) {
+      result.add(item);
+    }
+  }
+  return result;
+}
+
+String? _dropdownSafeValue(String? selectedValue, Iterable<String> itemValues) {
+  if (selectedValue == null) {
+    return null;
+  }
+  var hits = 0;
+  for (final itemValue in itemValues) {
+    if (itemValue == selectedValue) {
+      hits++;
+      if (hits > 1) {
+        return null;
+      }
+    }
+  }
+  return hits == 1 ? selectedValue : null;
 }

@@ -109,7 +109,7 @@
 
 **Goal**: Submit visit to complete linked appointment; paginated visit history on patient profile with permission-aware detail access
 
-**Independent Test**: Submit visit with one SOAP section → visit and appointment `completed`; empty SOAP submit rejected; patient profile shows history metadata; clinical roles open full detail
+**Independent Test**: Submit visit with one SOAP section → visit and appointment `completed`; empty SOAP submit rejected; patient profile shows history metadata loaded from a fresh backend fetch (not stale local state); clinical roles open full detail
 
 ### Tests for User Story 6
 
@@ -124,9 +124,9 @@
 - [X] T039 [US6] Implement `VisitRepository.completeVisit`, `listPatientVisits`, and `getVisit` in `frontend/lib/features/visits/data/visit_repository.dart`
 - [X] T040 [US6] Implement `VisitSubmitDialog` (confirm, submitting, success, SOAP-required error) in `frontend/lib/features/visits/presentation/widgets/visit_submit_dialog.dart`
 - [X] T041 [US6] Wire submit action on `VisitDocumentationPage` in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
-- [X] T042 [US6] Implement `PatientVisitHistorySection` with pagination in `frontend/lib/features/patients/presentation/widgets/patient_visit_history_section.dart`
+- [X] T042 [US6] Implement `PatientVisitHistorySection` with pagination and backend-first refresh on open/view in `frontend/lib/features/patients/presentation/widgets/patient_visit_history_section.dart`
 - [X] T043 [US6] Replace `PatientVisitsPlaceholder` with `PatientVisitHistorySection` in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`
-- [X] T044 [US6] Implement `VisitDetailPage` (read-only clinical view from history) in `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
+- [X] T044 [US6] Implement `VisitDetailPage` (read-only clinical view from history) with backend-first fetch before rendering in `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
 - [X] T045 [US6] Gate `/visits/:visitId/detail` route to clinical visit permissions in `frontend/lib/app/router.dart`
 
 **Checkpoint**: Spec test cases 11–13, 11b; acceptance criteria 7–8; SC-006, SC-008
@@ -157,21 +157,24 @@
 
 ## Phase 7: User Story 4 - Manage Treatment Plans Within a Visit (Priority: P2)
 
-**Goal**: Add, edit, and soft-remove treatment plan entries linked to visit and patient
+**Goal**: Allow full visit editing (not SOAP-only) including treatment plans after submit/completion, with SOAP read-only-on-save UX that can return to edit mode
 
-**Independent Test**: Add multiple plans → edit one → remove another → list reflects changes after save
+**Independent Test**: Save SOAP and verify it renders as read-only text with an explicit edit action; return to editor and resave; add/edit/remove treatment plans on an already submitted/completed visit opened from patient details; patient view and visit view both fetch latest data from backend first; changes persist after reload
 
 ### Tests for User Story 4
 
-- [ ] T052 [P] [US4] Add treatment plan create/update/archive tests in `backend/tests/visit_medical_records_crud.sql`
-- [ ] T053 [P] [US4] Add unit tests for treatment plan RPC wrappers in `frontend/test/unit/visits/visit_repository_treatment_plan_test.dart`
-- [ ] T054 [P] [US4] Add widget tests for add/edit/remove flows in `frontend/test/widget/visits/treatment_plan_list_test.dart`
+- [X] T052 [P] [US4] Add treatment plan create/update/archive tests in `backend/tests/visit_medical_records_crud.sql`
+- [X] T053 [P] [US4] Add unit tests for treatment plan RPC wrappers in `frontend/test/unit/visits/visit_repository_treatment_plan_test.dart`
+- [X] T054 [P] [US4] Add widget tests for add/edit/remove flows plus submitted/completed-visit edit enablement in `frontend/test/widget/visits/treatment_plan_list_test.dart`
 
 ### Implementation for User Story 4
 
-- [ ] T055 [US4] Implement `createTreatmentPlan`, `updateTreatmentPlan`, and `archiveTreatmentPlan` in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T056 [US4] Implement `TreatmentPlanList` widget (list, add form, edit, remove confirm) in `frontend/lib/features/visits/presentation/widgets/treatment_plan_list.dart`
-- [ ] T057 [US4] Integrate treatment plans into `VisitDocumentationPage` gated by `visits.edit_soap` in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T055 [US4] Implement `createTreatmentPlan`, `updateTreatmentPlan`, and `archiveTreatmentPlan` in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T056 [US4] Implement `TreatmentPlanList` widget (list, add form, edit, remove confirm) with support for editing submitted/completed visits in `frontend/lib/features/visits/presentation/widgets/treatment_plan_list.dart`
+- [X] T057 [US4] Integrate treatment plans and full visit editing into `VisitDocumentationPage` gated by `visits.edit_soap` in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T071 [US4] Update `SoapEditor` and `VisitDocumentationNotifier` so SOAP shows read-only text immediately after save, with an Edit action that restores the original editor widget in `frontend/lib/features/visits/presentation/widgets/soap_editor.dart` and `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
+- [X] T072 [US4] Enable opening submitted/completed visits from patient details in editable mode when user has `visits.edit_soap` in `frontend/lib/features/patients/presentation/widgets/patient_visit_history_section.dart` and `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T073 [US4] Ensure patient-detail visit history and visit documentation/detail pages trigger backend-first reload (`listPatientVisits`/`getVisit`) when opened so UI always starts from latest persisted data in `frontend/lib/features/patients/presentation/widgets/patient_visit_history_section.dart`, `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`, and `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
 
 **Checkpoint**: Spec test case 8; acceptance criteria 4
 

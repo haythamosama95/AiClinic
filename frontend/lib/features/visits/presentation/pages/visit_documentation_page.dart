@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/soap_editor.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_fields.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submit_dialog.dart';
 
 /// Visit documentation — SOAP and related sections (V1-5).
@@ -28,7 +29,7 @@ class VisitDocumentationPage extends ConsumerWidget {
     }
 
     final docAsync = ref.watch(visitDocumentationProvider(id));
-    final canSubmit = ref.watch(permissionServiceProvider).canEditVisitSoap();
+    final canEditSoap = ref.watch(permissionServiceProvider).canEditVisitSoap();
 
     return Scaffold(
       appBar: AppBar(
@@ -36,15 +37,29 @@ class VisitDocumentationPage extends ConsumerWidget {
         actions: [
           docAsync.maybeWhen(
             data: (state) {
-              if (!canSubmit || state.visit.status != VisitStatus.inProgress) {
+              if (!canEditSoap) {
                 return null;
               }
-              return TextButton.icon(
-                key: const Key('visit_submit_button'),
-                onPressed: () => _submitVisit(context, ref, id, state),
-                icon: const Icon(Icons.check_circle_outline),
-                label: const Text('Submit visit'),
-              );
+              if (state.visit.status == VisitStatus.inProgress) {
+                return TextButton.icon(
+                  key: const Key('visit_submit_button'),
+                  onPressed: () => _submitVisit(context, ref, id, state),
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: const Text('Submit visit'),
+                );
+              }
+              if (state.visit.status == VisitStatus.completed) {
+                final isSaving = state.saveStatus == SoapSaveStatus.saving;
+                return TextButton.icon(
+                  key: const Key('visit_save_close_button'),
+                  onPressed: isSaving ? null : () => _saveAndClose(context, ref, id),
+                  icon: isSaving
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.check),
+                  label: Text(isSaving ? 'Saving…' : 'Save & close'),
+                );
+              }
+              return null;
             },
             orElse: () => null,
           ),
@@ -85,6 +100,45 @@ class VisitDocumentationPage extends ConsumerWidget {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Visit submitted. The linked appointment is now completed.')));
+  }
+
+  Future<void> _saveAndClose(BuildContext context, WidgetRef ref, String visitId) async {
+    final current = ref.read(visitDocumentationProvider(visitId)).value;
+    if (current == null) {
+      return;
+    }
+
+    final notifier = ref.read(visitDocumentationProvider(visitId).notifier);
+    final messenger = ScaffoldMessenger.of(context);
+    var savedChanges = false;
+
+    if (current.needsSaveBeforeLeaving) {
+      await notifier.save();
+      if (!context.mounted) {
+        return;
+      }
+      final updated = ref.read(visitDocumentationProvider(visitId)).value;
+      if (updated == null || updated.saveStatus == SoapSaveStatus.error || updated.saveStatus == SoapSaveStatus.stale) {
+        return;
+      }
+      savedChanges = true;
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+    _leaveDocumentation(context, visitId);
+    if (savedChanges) {
+      messenger.showSnackBar(const SnackBar(content: Text('Changes saved.')));
+    }
+  }
+
+  void _leaveDocumentation(BuildContext context, String visitId) {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    context.go(AppRoutes.visitDetail(visitId));
   }
 }
 
@@ -131,6 +185,14 @@ class _VisitHeaderAndSoap extends ConsumerWidget {
         Text('SOAP note', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 12),
         SoapEditor(visitId: visitId, state: state),
+        const SizedBox(height: 24),
+        TreatmentPlanList(
+          visitId: visitId,
+          treatmentPlans: state.visit.treatmentPlans,
+          canEdit: state.canEdit,
+          onChanged: () =>
+              ref.read(visitDocumentationProvider(visitId).notifier).refreshTreatmentPlansPreservingDraft(),
+        ),
       ],
     );
   }

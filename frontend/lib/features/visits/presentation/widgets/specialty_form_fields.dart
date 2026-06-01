@@ -17,7 +17,7 @@ class SpecialtyFormFields extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    if (!state.canEdit || !state.isEditable) {
+    if (!state.canEdit) {
       return _ReadOnlySpecialty(state: state);
     }
 

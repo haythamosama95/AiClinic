@@ -104,8 +104,7 @@ class VisitRepository with AppRpcInvoker {
     required String medicationName,
     String? dosage,
     String? frequency,
-    DateTime? startDate,
-    DateTime? endDate,
+    String? duration,
     String? notes,
   }) async {
     _assertNonEmpty('visitId', visitId);
@@ -116,8 +115,7 @@ class VisitRepository with AppRpcInvoker {
       'p_medication_name': medicationName.trim(),
       if (dosage != null) 'p_dosage': dosage,
       if (frequency != null) 'p_frequency': frequency,
-      if (startDate != null) 'p_start_date': _formatDate(startDate),
-      if (endDate != null) 'p_end_date': _formatDate(endDate),
+      if (duration != null) 'p_duration': duration,
       if (notes != null) 'p_notes': notes,
     });
 
@@ -133,8 +131,7 @@ class VisitRepository with AppRpcInvoker {
     String? medicationName,
     String? dosage,
     String? frequency,
-    DateTime? startDate,
-    DateTime? endDate,
+    String? duration,
     String? notes,
   }) async {
     _assertNonEmpty('treatmentPlanId', treatmentPlanId);
@@ -144,8 +141,7 @@ class VisitRepository with AppRpcInvoker {
       if (medicationName != null) 'p_medication_name': medicationName,
       if (dosage != null) 'p_dosage': dosage,
       if (frequency != null) 'p_frequency': frequency,
-      if (startDate != null) 'p_start_date': _formatDate(startDate),
-      if (endDate != null) 'p_end_date': _formatDate(endDate),
+      if (duration != null) 'p_duration': duration,
       if (notes != null) 'p_notes': notes,
     });
   }

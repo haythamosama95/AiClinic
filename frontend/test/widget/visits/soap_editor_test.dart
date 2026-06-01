@@ -45,7 +45,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(client.rpcLog, contains('save_soap_note'));
-      expect(find.byKey(const Key('soap_saved_label')), findsOneWidget);
+      expect(find.byKey(const Key('soap_edit_button')), findsOneWidget);
+      expect(find.textContaining('Patient reports pain.'), findsOneWidget);
     });
 
     testWidgets('invalid state: STALE_SOAP shows reload banner', (tester) async {
@@ -66,7 +67,7 @@ void main() {
       expect(find.byKey(const Key('soap_reload_button')), findsOneWidget);
     });
 
-    testWidgets('edge case: completed visit shows read-only caption', (tester) async {
+    testWidgets('edge case: completed visit remains editable with permission', (tester) async {
       final client = VisitRpcTestClient(
         rpcResults: {
           'get_visit': {
@@ -95,8 +96,12 @@ void main() {
 
       await _pumpEditor(tester, client: client, permissions: {PermissionKeys.visitsEditSoap});
 
-      expect(find.byKey(const Key('soap_save_button')), findsNothing);
-      expect(find.textContaining('cannot be edited'), findsOneWidget);
+      expect(find.byKey(const Key('soap_save_button')), findsOneWidget);
+      await tester.enterText(find.byKey(const Key('soap_subjective')), 'Post-submit correction.');
+      await tester.tap(find.byKey(const Key('soap_save_button')));
+      await tester.pumpAndSettle();
+
+      expect(client.rpcLog, contains('save_soap_note'));
     });
 
     testWidgets('stupid usage: save with empty sections still calls RPC', (tester) async {
@@ -113,21 +118,13 @@ void main() {
     testWidgets('regression: reload after stale refetches visit', (tester) async {
       final client = VisitRpcTestClient(
         rpcResults: {
-          'save_soap_note': {
-            'success': false,
-            'error_code': 'STALE_SOAP',
-            'error_message': 'Stale',
-          },
+          'save_soap_note': {'success': false, 'error_code': 'STALE_SOAP', 'error_message': 'Stale'},
         },
       );
 
       await _pumpEditor(tester, client: client, permissions: {PermissionKeys.visitsEditSoap});
 
-      client.rpcResults['save_soap_note'] = {
-        'success': false,
-        'error_code': 'STALE_SOAP',
-        'error_message': 'Stale',
-      };
+      client.rpcResults['save_soap_note'] = {'success': false, 'error_code': 'STALE_SOAP', 'error_message': 'Stale'};
 
       await tester.enterText(find.byKey(const Key('soap_subjective')), 'Draft');
       await tester.tap(find.byKey(const Key('soap_save_button')));
@@ -165,6 +162,20 @@ void main() {
   });
 }
 
+VisitRpcTestClient _clientForSoapEditor(VisitRpcTestClient? client) {
+  final effective = client ?? VisitRpcTestClient();
+  effective.rpcResults.putIfAbsent(
+    'get_specialty_form_schema',
+    () => {
+      'success': true,
+      'data': {
+        'schema_json': {'type': 'object', 'properties': {}},
+      },
+    },
+  );
+  return effective;
+}
+
 Future<void> _pumpEditor(
   WidgetTester tester, {
   Set<String> permissions = const {PermissionKeys.visitsEditSoap},
@@ -182,7 +193,7 @@ Future<void> _pumpEditor(
     ProviderScope(
       overrides: [
         authSessionProvider.overrideWith(() => _PresetAuth(authState)),
-        visitRepositoryProvider.overrideWith((ref) => VisitRepository(client ?? VisitRpcTestClient())),
+        visitRepositoryProvider.overrideWith((ref) => VisitRepository(_clientForSoapEditor(client))),
       ],
       child: MaterialApp(
         home: Scaffold(

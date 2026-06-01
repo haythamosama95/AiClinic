@@ -70,7 +70,7 @@ class VisitDetail {
       soap = SoapNote.fromRow(Map<String, dynamic>.from(soapRaw));
     }
 
-    final treatmentPlans = _parseTreatmentPlans(row['treatment_plans']);
+    final treatmentPlans = _parseTreatmentPlans(row['treatment_plans'], visitId: id, patientId: patientId);
     final attachments = _parseAttachments(row['attachments']);
 
     return VisitDetail(
@@ -88,16 +88,20 @@ class VisitDetail {
     );
   }
 
-  static List<TreatmentPlanItem> _parseTreatmentPlans(Object? raw) {
+  static List<TreatmentPlanItem> _parseTreatmentPlans(
+    Object? raw, {
+    required String visitId,
+    required String patientId,
+  }) {
     if (raw is! List) {
       return const [];
     }
     return [
       for (final item in raw)
         if (item is Map<String, dynamic>)
-          ?TreatmentPlanItem.fromRow(item)
+          ?TreatmentPlanItem.fromRow(item, visitId: visitId, patientId: patientId)
         else if (item is Map)
-          ?TreatmentPlanItem.fromRow(Map<String, dynamic>.from(item)),
+          ?TreatmentPlanItem.fromRow(Map<String, dynamic>.from(item), visitId: visitId, patientId: patientId),
     ].whereType<TreatmentPlanItem>().toList(growable: false);
   }
 

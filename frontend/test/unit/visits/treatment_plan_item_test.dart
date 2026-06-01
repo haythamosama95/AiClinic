@@ -11,16 +11,14 @@ void main() {
         'medication_name': 'Ibuprofen',
         'dosage': '400mg',
         'frequency': 'BID',
-        'start_date': '2026-05-31',
-        'end_date': '2026-06-07',
+        'duration': '7 days',
         'notes': 'Take with food',
       });
 
       expect(item, isNotNull);
       expect(item!.medicationName, 'Ibuprofen');
       expect(item.dosage, '400mg');
-      expect(item.startDate, DateTime.utc(2026, 5, 31));
-      expect(item.endDate, DateTime.utc(2026, 6, 7));
+      expect(item.duration, '7 days');
     });
 
     test('parses minimal required fields', () {
@@ -33,6 +31,19 @@ void main() {
       expect(item, isNotNull);
       expect(item!.dosage, isNull);
       expect(item.startDate, isNull);
+    });
+
+    test('parses get_visit payload using parent visit and patient ids', () {
+      final item = TreatmentPlanItem.fromRow(
+        {'id': 'tp-1', 'medication_name': 'Aspirin', 'duration': '5 days'},
+        visitId: 'visit-1',
+        patientId: 'patient-1',
+      );
+
+      expect(item, isNotNull);
+      expect(item!.visitId, 'visit-1');
+      expect(item.patientId, 'patient-1');
+      expect(item.duration, '5 days');
     });
 
     test('returns null when medication_name empty', () {
