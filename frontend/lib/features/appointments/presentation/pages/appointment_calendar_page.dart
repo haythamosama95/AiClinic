@@ -441,6 +441,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       AppointmentStatus.completed => Colors.green,
       AppointmentStatus.cancelled => Colors.red,
       AppointmentStatus.noShow => Colors.deepPurple,
+      AppointmentStatus.unknown => Colors.grey,
     };
   }
 

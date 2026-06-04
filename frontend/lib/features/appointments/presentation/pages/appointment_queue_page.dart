@@ -179,6 +179,7 @@ class _QueueRow extends ConsumerWidget {
       AppointmentStatus.completed => Colors.green,
       AppointmentStatus.cancelled => Colors.red,
       AppointmentStatus.noShow => Colors.deepPurple,
+      AppointmentStatus.unknown => Colors.grey,
     };
   }
 }
