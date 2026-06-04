@@ -42,8 +42,11 @@ class PermissionService {
 
   bool canDeletePatients() => hasPermission(PermissionKeys.patientsDelete);
 
-  bool canAccessAppointments() =>
-      hasAnyPermission([PermissionKeys.appointmentsCreate, PermissionKeys.appointmentsCancel]);
+  bool canAccessAppointments() => hasAnyPermission([
+    PermissionKeys.appointmentsCreate,
+    PermissionKeys.appointmentsCancel,
+    PermissionKeys.appointmentsRead,
+  ]);
 
   bool canCreateAppointments() => hasPermission(PermissionKeys.appointmentsCreate);
 

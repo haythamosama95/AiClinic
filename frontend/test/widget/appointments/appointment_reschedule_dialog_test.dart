@@ -18,6 +18,7 @@ import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
 
+import '../../helpers/appointment_test_support.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
 
@@ -56,7 +57,7 @@ void main() {
       await tester.pumpWidget(_host(client: client, onClosed: (result) => popped = result));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Open'));
-      await tester.pumpAndSettle();
+      await pumpUntilRescheduleDialogReady(tester);
 
       await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
       await tester.pumpAndSettle();
@@ -77,7 +78,7 @@ void main() {
       await tester.pumpWidget(_host(client: client));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Open'));
-      await tester.pumpAndSettle();
+      await pumpUntilRescheduleDialogReady(tester);
 
       await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
       await tester.pumpAndSettle();
@@ -127,7 +128,7 @@ void main() {
       await tester.pumpWidget(_host(client: client));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Open'));
-      await tester.pumpAndSettle();
+      await pumpUntilRescheduleDialogReady(tester);
 
       await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
       await tester.pumpAndSettle();
@@ -139,13 +140,14 @@ void main() {
 }
 
 AppointmentListItem _item() {
+  final start = appointmentTestStartTime();
   return AppointmentListItem(
     id: 'appt-1',
     patientId: 'patient-1',
     patientName: 'Jane Doe',
     doctorName: 'Dr Smith',
-    startTime: DateTime.utc(2026, 6, 1, 10),
-    endTime: DateTime.utc(2026, 6, 1, 10, 30),
+    startTime: start,
+    endTime: start.add(const Duration(minutes: 30)),
     type: AppointmentType.planned,
     status: AppointmentStatus.scheduled,
   );

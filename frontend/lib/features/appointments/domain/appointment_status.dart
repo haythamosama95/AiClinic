@@ -6,7 +6,8 @@ enum AppointmentStatus {
   inProgress,
   completed,
   cancelled,
-  noShow;
+  noShow,
+  unknown;
 
   static AppointmentStatus? tryParse(String? value) {
     final normalized = value?.trim().toLowerCase();
@@ -34,6 +35,7 @@ enum AppointmentStatus {
     AppointmentStatus.completed => 'completed',
     AppointmentStatus.cancelled => 'cancelled',
     AppointmentStatus.noShow => 'no_show',
+    AppointmentStatus.unknown => 'unknown',
   };
 
   String get label => switch (this) {
@@ -44,6 +46,7 @@ enum AppointmentStatus {
     AppointmentStatus.completed => 'Completed',
     AppointmentStatus.cancelled => 'Cancelled',
     AppointmentStatus.noShow => 'No-show',
+    AppointmentStatus.unknown => 'Unknown',
   };
 
   /// Terminal statuses cannot transition further (V1-4 lifecycle).
@@ -51,6 +54,7 @@ enum AppointmentStatus {
     AppointmentStatus.completed => true,
     AppointmentStatus.cancelled => true,
     AppointmentStatus.noShow => true,
+    AppointmentStatus.unknown => true,
     _ => false,
   };
 

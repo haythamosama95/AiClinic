@@ -22,7 +22,15 @@ void main() {
       expect(service.canCancelAppointments(), isTrue);
     });
 
-    test('canAccessAppointments false without either grant', () {
+    test('canAccessAppointments true when read granted only', () {
+      final service = PermissionService(sampleAuthSessionContext(permissions: {PermissionKeys.appointmentsRead}));
+
+      expect(service.canAccessAppointments(), isTrue);
+      expect(service.canCreateAppointments(), isFalse);
+      expect(service.canCancelAppointments(), isFalse);
+    });
+
+    test('canAccessAppointments false without any appointment grant', () {
       final service = PermissionService(sampleAuthSessionContext(permissions: {PermissionKeys.patientsView}));
 
       expect(service.canAccessAppointments(), isFalse);

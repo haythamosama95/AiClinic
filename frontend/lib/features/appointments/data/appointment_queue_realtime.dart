@@ -1,21 +1,23 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
 
 /// Realtime connection state for today's queue (FR-016).
 enum AppointmentQueueRealtimeConnection { connecting, live, degraded }
 
 typedef AppointmentQueueRealtimeStatusCallback = void Function(AppointmentQueueRealtimeConnection connection);
 
+typedef AppointmentQueueRealtimeChangeCallback = void Function(AppointmentQueueRealtimeChange change);
+
 /// Subscribes to appointment postgres changes for queue refresh (V1-4 US4).
 abstract class AppointmentQueueRealtimeClient {
   void subscribe({
     required String branchId,
-    required VoidCallback onAppointmentChange,
+    required AppointmentQueueRealtimeChangeCallback onAppointmentChange,
     required AppointmentQueueRealtimeStatusCallback onConnectionChanged,
   });
 
@@ -31,7 +33,7 @@ class SupabaseAppointmentQueueRealtimeClient implements AppointmentQueueRealtime
   @override
   void subscribe({
     required String branchId,
-    required VoidCallback onAppointmentChange,
+    required AppointmentQueueRealtimeChangeCallback onAppointmentChange,
     required AppointmentQueueRealtimeStatusCallback onConnectionChanged,
   }) {
     unsubscribe();
@@ -44,7 +46,15 @@ class SupabaseAppointmentQueueRealtimeClient implements AppointmentQueueRealtime
           schema: 'public',
           table: 'appointments',
           filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'branch_id', value: branchId),
-          callback: (_) => onAppointmentChange(),
+          callback: (payload) {
+            onAppointmentChange(
+              AppointmentQueueRealtimeChange(
+                eventType: payload.eventType,
+                oldRecord: payload.oldRecord.isEmpty ? null : Map<String, dynamic>.from(payload.oldRecord),
+                newRecord: payload.newRecord.isEmpty ? null : Map<String, dynamic>.from(payload.newRecord),
+              ),
+            );
+          },
         )
         .subscribe((status, error) {
           switch (status) {

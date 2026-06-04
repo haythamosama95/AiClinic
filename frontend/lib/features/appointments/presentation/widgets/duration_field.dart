@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+
 /// Minutes duration input with optional end-time preview (V1-4 booking forms).
 class DurationField extends StatelessWidget {
   const DurationField({
@@ -8,6 +11,7 @@ class DurationField extends StatelessWidget {
     required this.startTime,
     required this.minMinutes,
     required this.maxMinutes,
+    this.workingSchedule,
     this.enabled = true,
     this.onChanged,
     super.key,
@@ -17,6 +21,7 @@ class DurationField extends StatelessWidget {
   final DateTime? startTime;
   final int minMinutes;
   final int maxMinutes;
+  final BranchWorkingSchedule? workingSchedule;
   final bool enabled;
   final ValueChanged<int?>? onChanged;
 
@@ -56,6 +61,18 @@ class DurationField extends StatelessWidget {
             }
             if (minutes < minMinutes || minutes > maxMinutes) {
               return 'Duration must be between $minMinutes and $maxMinutes minutes.';
+            }
+            final schedule = workingSchedule;
+            final start = startTime;
+            if (schedule != null && start != null) {
+              final hoursMessage = AppointmentBranchWorkingHours.validationMessage(
+                schedule: schedule,
+                startTime: start,
+                durationMinutes: minutes,
+              );
+              if (hoursMessage != null) {
+                return hoursMessage;
+              }
             }
             return null;
           },

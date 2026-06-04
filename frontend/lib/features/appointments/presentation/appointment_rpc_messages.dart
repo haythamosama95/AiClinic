@@ -18,6 +18,12 @@ String appointmentMessageForRpc(RpcFailure failure) {
     'RPC_NOT_APPLIED' =>
       'Appointment scheduling is not installed on this database. Ask your administrator to run Supabase migrations.',
     'FORBIDDEN' => 'You do not have permission to perform this action.',
+    'NOT_FOUND' => switch (failure.message.toLowerCase()) {
+      final message when message.contains('patient') => 'Patient was not found.',
+      final message when message.contains('appointment') => 'Appointment was not found.',
+      _ => 'The requested record was not found.',
+    },
+    'INVALID_BRANCH' => 'The selected branch is not valid for this session.',
     'INVALID_INPUT' => failure.message,
     _ => failure.message,
   };

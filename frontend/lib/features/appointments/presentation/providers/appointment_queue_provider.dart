@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
+import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 
 @immutable
@@ -52,6 +54,8 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
   AppointmentQueueRealtimeClient? _realtime;
   String? _subscribedBranchId;
   int _refreshGeneration = 0;
+  Timer? _debouncedRefreshTimer;
+  static const _debouncedRefreshDelay = Duration(milliseconds: 500);
 
   @override
   AppointmentQueueState build() {
@@ -84,7 +88,8 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
   Future<void> refresh() async {
     final generation = ++_refreshGeneration;
     final branchId = _normalizedOrNull(ref.read(authSessionProvider).context?.activeBranchId);
-    final reference = DateTime.now();
+    final reference = DateTime.now().toUtc();
+    final timezone = effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
 
     if (branchId == null) {
       state = state.copyWith(
@@ -98,7 +103,7 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
 
     state = state.copyWith(loading: true, error: null, referenceTime: reference);
     try {
-      final range = appointmentTodayRange(reference);
+      final range = appointmentTodayRangeInTimezone(timezone, reference);
       final rawItems = await ref
           .read(appointmentRepositoryProvider)
           .listAppointments(branchId: branchId, from: range.from, to: range.to);
@@ -135,7 +140,7 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
     _realtime = client;
     client.subscribe(
       branchId: normalized,
-      onAppointmentChange: () => unawaited(refresh()),
+      onAppointmentChange: _onRealtimeChange,
       onConnectionChanged: (connection) {
         if (_subscribedBranchId == normalized) {
           state = state.copyWith(realtimeConnection: connection);
@@ -144,7 +149,31 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
     );
   }
 
+  void _onRealtimeChange(AppointmentQueueRealtimeChange change) {
+    final timezone = effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
+    final reference = state.referenceTime ?? DateTime.now().toUtc();
+    final todayRange = appointmentTodayRangeInTimezone(timezone, reference);
+    final items = [...state.items];
+    final applied = applyAppointmentQueueRealtimeChange(items: items, change: change, todayRange: todayRange);
+
+    if (applied) {
+      state = state.copyWith(items: sortAppointmentsByStartTime(items));
+      return;
+    }
+
+    _scheduleDebouncedRefresh();
+  }
+
+  void _scheduleDebouncedRefresh() {
+    _debouncedRefreshTimer?.cancel();
+    _debouncedRefreshTimer = Timer(_debouncedRefreshDelay, () {
+      unawaited(refresh());
+    });
+  }
+
   void _disposeRealtime() {
+    _debouncedRefreshTimer?.cancel();
+    _debouncedRefreshTimer = null;
     _realtime?.unsubscribe();
     _realtime = null;
     _subscribedBranchId = null;

@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/core/widgets/app_form_field.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_working_hours.dart';
@@ -90,11 +91,17 @@ class _AppointmentBookingPageState extends ConsumerState<AppointmentBookingPage>
 
   Future<void> _pickStartTime() async {
     final now = clock.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final schedule = _settings?.workingSchedule;
+
     final date = await showDatePicker(
       context: context,
       initialDate: _startTime ?? now,
-      firstDate: now.subtract(const Duration(days: 1)),
+      firstDate: today,
       lastDate: now.add(const Duration(days: 365)),
+      selectableDayPredicate: schedule == null
+          ? null
+          : (day) => AppointmentBranchWorkingHours.isWorkingDay(schedule, day),
     );
     if (date == null || !mounted) {
       return;
@@ -108,9 +115,32 @@ class _AppointmentBookingPageState extends ConsumerState<AppointmentBookingPage>
       return;
     }
 
+    final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (picked.isBefore(now)) {
+      setState(() => _formError = 'Start time must be in the future.');
+      return;
+    }
+
+    final duration = int.tryParse(_durationController.text.trim());
+    if (schedule != null && duration != null) {
+      final hoursMessage = AppointmentBranchWorkingHours.validationMessage(
+        schedule: schedule,
+        startTime: picked,
+        durationMinutes: duration,
+      );
+      if (hoursMessage != null) {
+        setState(() {
+          _formError = hoursMessage;
+          _conflictMessage = null;
+        });
+        return;
+      }
+    }
+
     setState(() {
-      _startTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _startTime = picked;
       _conflictMessage = null;
+      _formError = null;
     });
   }
 
@@ -135,13 +165,31 @@ class _AppointmentBookingPageState extends ConsumerState<AppointmentBookingPage>
       return;
     }
 
-    final doctorId = _trimOrNull(_selectedDoctorId ?? '');
+    if (_startTime!.isBefore(clock.now())) {
+      setState(() => _formError = 'Start time must be in the future.');
+      return;
+    }
 
     final duration = int.tryParse(_durationController.text.trim());
     if (duration == null) {
       setState(() => _formError = 'Enter a valid duration in minutes.');
       return;
     }
+
+    final schedule = _settings?.workingSchedule;
+    if (schedule != null) {
+      final hoursMessage = AppointmentBranchWorkingHours.validationMessage(
+        schedule: schedule,
+        startTime: _startTime!,
+        durationMinutes: duration,
+      );
+      if (hoursMessage != null) {
+        setState(() => _formError = hoursMessage);
+        return;
+      }
+    }
+
+    final doctorId = _trimOrNull(_selectedDoctorId ?? '');
 
     setState(() {
       _isSaving = true;
@@ -318,7 +366,12 @@ class _AppointmentBookingPageState extends ConsumerState<AppointmentBookingPage>
                   children: [
                     Expanded(
                       child: InputDecorator(
-                        decoration: const InputDecoration(labelText: 'Start date and time'),
+                        decoration: InputDecoration(
+                          labelText: 'Start date and time',
+                          helperText: _startTime != null && settings.workingSchedule != null
+                              ? 'Branch hours: ${AppointmentBranchWorkingHours.hoursLabelForDate(settings.workingSchedule!, _startTime!) ?? 'Closed'}'
+                              : null,
+                        ),
                         child: Text(_startTimeLabel()),
                       ),
                     ),
@@ -336,6 +389,7 @@ class _AppointmentBookingPageState extends ConsumerState<AppointmentBookingPage>
                   startTime: _startTime,
                   minMinutes: settings.minDurationMinutes,
                   maxMinutes: settings.maxDurationMinutes,
+                  workingSchedule: settings.workingSchedule,
                   enabled: !_isSaving,
                   onChanged: (_) => setState(() {}),
                 ),

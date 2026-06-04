@@ -41,8 +41,17 @@ class AppointmentListItem {
     final doctorName = doctorNameRaw == null || doctorNameRaw.isEmpty ? null : doctorNameRaw;
     final startTime = parseAppointmentDateTime(row['start_time']);
     final endTime = parseAppointmentDateTime(row['end_time']);
-    final type = AppointmentType.tryParse(row['type']?.toString());
-    final status = AppointmentStatus.tryParse(row['status']?.toString());
+    final typeRaw = row['type']?.toString();
+    final statusRaw = row['status']?.toString();
+    final type = AppointmentType.tryParse(typeRaw) ?? AppointmentType.unknown;
+    final status = AppointmentStatus.tryParse(statusRaw) ?? AppointmentStatus.unknown;
+
+    if (type == AppointmentType.unknown) {
+      debugPrint('AppointmentListItem: unrecognized type "$typeRaw" for appointment $id');
+    }
+    if (status == AppointmentStatus.unknown) {
+      debugPrint('AppointmentListItem: unrecognized status "$statusRaw" for appointment $id');
+    }
 
     if (id == null ||
         id.isEmpty ||
@@ -51,9 +60,7 @@ class AppointmentListItem {
         patientName == null ||
         patientName.isEmpty ||
         startTime == null ||
-        endTime == null ||
-        type == null ||
-        status == null) {
+        endTime == null) {
       return null;
     }
 

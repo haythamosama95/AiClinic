@@ -26,6 +26,7 @@ import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repo
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 
+import '../../helpers/appointment_test_support.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/patient_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
@@ -98,10 +99,7 @@ void main() {
         await tester.tap(find.text('Dr Smith').last);
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-        await tester.pumpAndSettle();
-        await _confirmPicker(tester);
-        await _confirmPicker(tester);
+        await pickBookingStartTimeInForm(tester, startTime: DateTime(2026, 6, 1, 10));
 
         await tester.tap(find.byKey(const Key('appointment_booking_submit')));
         await tester.pumpAndSettle();
@@ -123,10 +121,7 @@ void main() {
         await tester.tap(find.byKey(const Key('patient_picker_result_0')));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-        await tester.pumpAndSettle();
-        await _confirmPicker(tester);
-        await _confirmPicker(tester);
+        await pickBookingStartTimeInForm(tester, startTime: DateTime(2026, 6, 1, 10));
 
         await tester.tap(find.byKey(const Key('appointment_booking_submit')));
         await tester.pumpAndSettle();
@@ -168,10 +163,7 @@ void main() {
         await tester.tap(find.text('Dr Smith').last);
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-        await tester.pumpAndSettle();
-        await _confirmPicker(tester);
-        await _confirmPicker(tester);
+        await pickBookingStartTimeInForm(tester, startTime: DateTime(2026, 6, 1, 10));
 
         await tester.enterText(find.byKey(const Key('appointment_duration_field')), '45');
         await tester.pump();
@@ -179,7 +171,8 @@ void main() {
         await tester.tap(find.byKey(const Key('appointment_booking_submit')));
         await tester.pumpAndSettle();
 
-        expect(client.lastParams?['p_duration_minutes'], 45);
+        expect(client.createAppointmentCalls, hasLength(1));
+        expect(client.createAppointmentCalls.first['p_duration_minutes'], 45);
       });
     });
 
@@ -308,31 +301,6 @@ void main() {
   });
 }
 
-Future<void> _confirmPicker(WidgetTester tester) async {
-  final dialog = find.byType(Dialog);
-  if (dialog.evaluate().isEmpty) {
-    throw TestFailure('No dialog found for picker confirmation.');
-  }
-
-  for (final label in ['OK', 'Confirm', 'Save']) {
-    final button = find.descendant(of: dialog, matching: find.text(label));
-    if (button.evaluate().isNotEmpty) {
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-      return;
-    }
-  }
-
-  final check = find.descendant(of: dialog, matching: find.byIcon(Icons.check));
-  if (check.evaluate().isNotEmpty) {
-    await tester.tap(check);
-    await tester.pumpAndSettle();
-    return;
-  }
-
-  throw TestFailure('No date/time picker confirm button found.');
-}
-
 Future<void> _fillMinimalBookingForm(WidgetTester tester) async {
   await tester.enterText(find.byKey(const Key('patient_search_field')), 'Test');
   await tester.pump(const Duration(milliseconds: 600));
@@ -345,10 +313,7 @@ Future<void> _fillMinimalBookingForm(WidgetTester tester) async {
   await tester.tap(find.text('Dr Smith').last);
   await tester.pumpAndSettle();
 
-  await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-  await tester.pumpAndSettle();
-  await _confirmPicker(tester);
-  await _confirmPicker(tester);
+  await pickBookingStartTimeInForm(tester, startTime: DateTime(2026, 6, 1, 10));
 }
 
 class _FakeStaffAdminRepository implements StaffAdminRepository {

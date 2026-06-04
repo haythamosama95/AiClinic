@@ -51,10 +51,10 @@ class AppointmentRepository with AppRpcInvoker {
 
     final result = await invokeRpc('set_appointment_default_duration', params);
     final savedMinutes = _parseDurationMinutes(result.data?['default_duration_minutes']);
-    if (result.data != null && savedMinutes == null) {
+    if (savedMinutes == null) {
       throw StateError('Set default duration returned an unexpected shape.');
     }
-    return savedMinutes ?? durationMinutes;
+    return savedMinutes;
   }
 
   Future<CreateAppointmentResult> createAppointment({
@@ -205,8 +205,6 @@ class AppointmentRepository with AppRpcInvoker {
     final rescheduled = CreateAppointmentResult.fromRpcData({
       ...?result.data,
       'appointment_id': result.data?['appointment_id'] ?? appointmentId,
-      'type': result.data?['type'] ?? AppointmentType.planned.wireValue,
-      'status': result.data?['status'] ?? AppointmentStatus.scheduled.wireValue,
     });
     if (rescheduled == null) {
       throw StateError('Reschedule appointment returned an unexpected shape.');

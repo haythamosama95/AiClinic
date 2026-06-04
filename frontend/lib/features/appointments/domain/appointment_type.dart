@@ -1,6 +1,7 @@
 /// Appointment type aligned with PostgreSQL `appointment_type` enum (V1-4).
 enum AppointmentType {
-  planned;
+  planned,
+  unknown;
 
   static AppointmentType? tryParse(String? value) {
     final normalized = value?.trim().toLowerCase();
@@ -16,9 +17,11 @@ enum AppointmentType {
 
   String get wireValue => switch (this) {
     AppointmentType.planned => 'planned',
+    AppointmentType.unknown => 'unknown',
   };
 
   String get label => switch (this) {
     AppointmentType.planned => 'Planned',
+    AppointmentType.unknown => 'Unknown',
   };
 }

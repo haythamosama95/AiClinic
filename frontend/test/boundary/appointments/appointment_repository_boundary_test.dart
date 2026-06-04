@@ -167,13 +167,16 @@ void main() {
       );
     });
 
-    test('appointments.getSettings.FORBIDDEN.lab_staff', () async {
-      const ManifestScenario('appointments.getSettings.FORBIDDEN.lab_staff');
-      final clinic = await ctx.ensureClinic(label: 'appt_lab_denied');
+    test('appointments.getSettings.success.lab_staff', () async {
+      const ManifestScenario('appointments.getSettings.success.lab_staff');
+      final clinic = await ctx.ensureClinic(label: 'appt_lab_read');
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.labStaff);
 
-      await expectRpcCode(() => ctx.appointments.getSettings(branchId: clinic.branchId), 'FORBIDDEN');
+      final settings = await ctx.appointments.getSettings(branchId: clinic.branchId);
+
+      expect(settings.defaultDurationMinutes, greaterThanOrEqualTo(5));
+      expect(settings.maxDurationMinutes, 240);
     });
 
     test('appointments.updateAppointmentStatus.lifecycle.success', () async {

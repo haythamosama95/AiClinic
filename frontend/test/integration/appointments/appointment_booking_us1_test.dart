@@ -27,6 +27,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../helpers/appointment_test_support.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/patient_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
@@ -37,23 +38,6 @@ Future<void> _pumpUs1Host(WidgetTester tester, Widget host) async {
   await tester.pumpWidget(host);
   await tester.pump();
   await tester.pumpAndSettle();
-}
-
-Future<void> _confirmPicker(WidgetTester tester) async {
-  final dialog = find.byType(Dialog);
-  for (final label in ['OK', 'Confirm', 'Save']) {
-    final button = find.descendant(of: dialog, matching: find.text(label));
-    if (button.evaluate().isNotEmpty) {
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-      return;
-    }
-  }
-  final check = find.descendant(of: dialog, matching: find.byIcon(Icons.check));
-  if (check.evaluate().isNotEmpty) {
-    await tester.tap(check);
-    await tester.pumpAndSettle();
-  }
 }
 
 void main() {
@@ -71,10 +55,7 @@ void main() {
         await tester.tap(find.byKey(const Key('patient_picker_result_0')));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-        await tester.pumpAndSettle();
-        await _confirmPicker(tester);
-        await _confirmPicker(tester);
+        await pickBookingStartTimeInForm(tester, startTime: DateTime(2026, 6, 1, 10));
 
         await tester.enterText(find.byKey(const Key('appointment_duration_field')), '30');
         await tester.pump();
@@ -112,11 +93,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Dr Smith').last);
         await tester.pumpAndSettle();
-
-        await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-        await tester.pumpAndSettle();
-        await _confirmPicker(tester);
-        await _confirmPicker(tester);
+        await pickBookingStartTimeInForm(tester, startTime: DateTime(2026, 6, 1, 10));
 
         final submit = find.byKey(const Key('appointment_booking_submit'));
         await tester.ensureVisible(submit);

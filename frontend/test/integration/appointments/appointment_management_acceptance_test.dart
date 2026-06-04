@@ -45,6 +45,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../helpers/appointment_test_support.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/patient_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
@@ -381,7 +382,7 @@ void main() {
       );
 
       await tester.tap(find.byKey(const Key('appointments_status_reschedule')));
-      await tester.pumpAndSettle();
+      await pumpUntilRescheduleDialogReady(tester);
       await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
       await tester.pumpAndSettle();
 
@@ -423,7 +424,7 @@ void main() {
       );
 
       await tester.tap(find.byKey(const Key('appointments_status_reschedule')));
-      await tester.pumpAndSettle();
+      await pumpUntilRescheduleDialogReady(tester);
       await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
       await tester.pumpAndSettle();
 
@@ -539,7 +540,7 @@ AppointmentListItem _item({
   String doctorId = _doctorB,
   bool onAppointmentDay = false,
 }) {
-  final start = onAppointmentDay ? DateTime.now().subtract(const Duration(hours: 1)) : DateTime.utc(2026, 6, 1, 10);
+  final start = onAppointmentDay ? DateTime.now().subtract(const Duration(hours: 1)) : appointmentTestStartTime();
   return AppointmentListItem(
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     patientId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
@@ -570,7 +571,7 @@ class _FakeRealtime implements AppointmentQueueRealtimeClient {
   @override
   void subscribe({
     required String branchId,
-    required VoidCallback onAppointmentChange,
+    required AppointmentQueueRealtimeChangeCallback onAppointmentChange,
     required AppointmentQueueRealtimeStatusCallback onConnectionChanged,
   }) {
     onConnectionChanged(connection);

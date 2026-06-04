@@ -48,6 +48,30 @@ void main() {
       );
     });
 
+    test('regression: setDefaultDuration throws when response omits saved minutes', () async {
+      client.rpcResults['set_appointment_default_duration'] = {
+        'success': true,
+        'data': <String, dynamic>{},
+      };
+
+      expect(
+        () => repository.setDefaultDuration(durationMinutes: 45),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('regression: setDefaultDuration throws when success has null duration field', () async {
+      client.rpcResults['set_appointment_default_duration'] = {
+        'success': true,
+        'data': {'default_duration_minutes': null},
+      };
+
+      expect(
+        () => repository.setDefaultDuration(durationMinutes: 45),
+        throwsA(isA<StateError>()),
+      );
+    });
+
     test('trivial: createAppointment planned sends type and start time', () async {
       final start = DateTime.utc(2026, 6, 1, 10);
       final result = await repository.createAppointment(

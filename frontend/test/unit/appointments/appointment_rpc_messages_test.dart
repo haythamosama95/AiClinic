@@ -53,5 +53,34 @@ void main() {
 
       expect(message.toLowerCase(), contains('archived'));
     });
+
+    test('NOT_FOUND explains missing appointment', () {
+      final message = appointmentMessageForRpc(
+        RpcFailure(
+          const RpcResult(success: false, errorCode: 'NOT_FOUND', errorMessage: 'Appointment was not found.'),
+        ),
+      );
+
+      expect(message.toLowerCase(), contains('appointment'));
+      expect(message.toLowerCase(), contains('not found'));
+    });
+
+    test('NOT_FOUND explains missing patient', () {
+      final message = appointmentMessageForRpc(
+        RpcFailure(const RpcResult(success: false, errorCode: 'NOT_FOUND', errorMessage: 'Patient was not found.')),
+      );
+
+      expect(message.toLowerCase(), contains('patient'));
+    });
+
+    test('INVALID_BRANCH explains branch mismatch', () {
+      final message = appointmentMessageForRpc(
+        RpcFailure(
+          const RpcResult(success: false, errorCode: 'INVALID_BRANCH', errorMessage: 'Branch is not valid for this session.'),
+        ),
+      );
+
+      expect(message.toLowerCase(), contains('branch'));
+    });
   });
 }

@@ -62,6 +62,7 @@ class AuthSessionContext {
     required this.activeBranchId,
     required this.permissions,
     required this.setupRequired,
+    this.organizationTimezone,
   });
 
   final StaffProfile staffProfile;
@@ -70,6 +71,9 @@ class AuthSessionContext {
   final String? activeBranchId;
   final Set<String> permissions;
   final bool setupRequired;
+
+  /// IANA timezone from the active organization (`organizations.timezone`).
+  final String? organizationTimezone;
 
   bool get hasBranchAssignment => branchIds.isNotEmpty;
 
@@ -80,6 +84,7 @@ class AuthSessionContext {
     Object? activeBranchId = copyWithSentinel,
     Set<String>? permissions,
     bool? setupRequired,
+    Object? organizationTimezone = copyWithSentinel,
   }) {
     return AuthSessionContext(
       staffProfile: staffProfile ?? this.staffProfile,
@@ -88,6 +93,9 @@ class AuthSessionContext {
       activeBranchId: identical(activeBranchId, copyWithSentinel) ? this.activeBranchId : activeBranchId as String?,
       permissions: permissions ?? this.permissions,
       setupRequired: setupRequired ?? this.setupRequired,
+      organizationTimezone: identical(organizationTimezone, copyWithSentinel)
+          ? this.organizationTimezone
+          : organizationTimezone as String?,
     );
   }
 }

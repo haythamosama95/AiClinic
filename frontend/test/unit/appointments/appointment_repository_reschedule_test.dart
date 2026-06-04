@@ -21,6 +21,17 @@ void main() {
       const appointmentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
       final start = DateTime.utc(2026, 6, 1, 12);
 
+      client.rpcResults['reschedule_appointment'] = {
+        'success': true,
+        'data': {
+          'appointment_id': appointmentId,
+          'start_time': start.toUtc().toIso8601String(),
+          'end_time': start.add(const Duration(minutes: 25)).toUtc().toIso8601String(),
+          'status': 'scheduled',
+          'type': 'planned',
+        },
+      };
+
       final result = await repository.rescheduleAppointment(
         appointmentId: appointmentId,
         startTime: start,
@@ -39,6 +50,16 @@ void main() {
 
     test('advanced: omits duration when not provided', () async {
       final start = DateTime.utc(2026, 6, 2, 9);
+      client.rpcResults['reschedule_appointment'] = {
+        'success': true,
+        'data': {
+          'appointment_id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          'start_time': start.toUtc().toIso8601String(),
+          'end_time': start.add(const Duration(minutes: 20)).toUtc().toIso8601String(),
+          'status': 'scheduled',
+          'type': 'planned',
+        },
+      };
 
       await repository.rescheduleAppointment(appointmentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', startTime: start);
 
@@ -117,6 +138,25 @@ void main() {
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
       );
       expect(client.lastFunction, isNull);
+    });
+
+    test('regression: missing status and type in RPC response throws StateError', () async {
+      client.rpcResults['reschedule_appointment'] = {
+        'success': true,
+        'data': {
+          'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          'start_time': '2026-06-01T12:00:00.000Z',
+          'end_time': '2026-06-01T12:25:00.000Z',
+        },
+      };
+
+      expect(
+        () => repository.rescheduleAppointment(
+          appointmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          startTime: DateTime.utc(2026, 6, 1, 12),
+        ),
+        throwsA(isA<StateError>()),
+      );
     });
 
     test('edge case: malformed success payload throws StateError', () async {

@@ -64,7 +64,7 @@ class _DevSeedAppointmentsButtonState extends ConsumerState<DevSeedAppointmentsB
       ),
     );
 
-    if (confirmed != true || !mounted) {
+    if (confirmed != true || !context.mounted) {
       return;
     }
 

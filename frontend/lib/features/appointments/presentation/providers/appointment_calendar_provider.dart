@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -55,6 +57,15 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   AppointmentCalendarState build() {
     final today = DateTime.now();
     final initialBranchId = _normalizedOrNull(ref.read(authSessionProvider).context?.activeBranchId);
+
+    ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+      final prevBranch = previous?.context?.activeBranchId;
+      final nextBranch = next.context?.activeBranchId;
+      if (prevBranch != nextBranch) {
+        unawaited(setBranchFilter(nextBranch));
+      }
+    });
+
     final initial = AppointmentCalendarState(
       mode: AppointmentCalendarMode.day,
       focusDate: DateTime(today.year, today.month, today.day),
@@ -62,7 +73,8 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
       selectedBranchId: initialBranchId,
       loading: true,
     );
-    Future<void>(refresh);
+
+    Future.microtask(refresh);
     return initial;
   }
 

@@ -65,7 +65,7 @@ class _DevSeedDoctorsButtonState extends ConsumerState<DevSeedDoctorsButton> {
       ),
     );
 
-    if (confirmed != true || !mounted) {
+    if (confirmed != true || !context.mounted) {
       return;
     }
 

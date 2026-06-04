@@ -35,7 +35,11 @@ void main() {
     });
 
     test('returns null for unknown appointment type', () {
-      expect(AppointmentListItem.fromRow(_listRow(type: 'unknown', status: 'checked_in')), isNull);
+      final item = AppointmentListItem.fromRow(_listRow(type: 'unknown', status: 'checked_in'));
+
+      expect(item, isNotNull);
+      expect(item!.type, AppointmentType.unknown);
+      expect(item.status, AppointmentStatus.checkedIn);
     });
 
     test('returns null when required fields missing or blank', () {
@@ -61,9 +65,19 @@ void main() {
       expect(item.doctorDisplayName, 'Unassigned');
     });
 
-    test('returns null for invalid type or status', () {
-      expect(AppointmentListItem.fromRow({..._listRow(), 'type': 'emergency'}), isNull);
-      expect(AppointmentListItem.fromRow({..._listRow(), 'status': 'waiting'}), isNull);
+    test('preserves row with unknown status instead of dropping it', () {
+      final item = AppointmentListItem.fromRow(_listRow(status: 'waiting'));
+
+      expect(item, isNotNull);
+      expect(item!.status, AppointmentStatus.unknown);
+    });
+
+    test('maps unknown enum values to placeholders instead of dropping rows', () {
+      final unknownType = AppointmentListItem.fromRow({..._listRow(), 'type': 'emergency'});
+      final unknownStatus = AppointmentListItem.fromRow({..._listRow(), 'status': 'waiting'});
+
+      expect(unknownType!.type, AppointmentType.unknown);
+      expect(unknownStatus!.status, AppointmentStatus.unknown);
     });
 
     test('edge case: end before start still parses (validation is server-side)', () {
