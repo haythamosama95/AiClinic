@@ -614,7 +614,7 @@ class _DoctorFilter extends ConsumerStatefulWidget {
 }
 
 class _DoctorFilterState extends ConsumerState<_DoctorFilter> {
-  late Future<List<StaffListItem>> _doctorsFuture = _loadDoctors();
+  late final Future<List<StaffListItem>> _doctorsFuture = _loadDoctors();
 
   Future<List<StaffListItem>> _loadDoctors() async {
     final staff = await ref.read(listStaffUseCaseProvider)(filter: StaffListFilter.active);

@@ -16,7 +16,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_actions.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/visit_create_dialog.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart' show AuthSessionState, AuthSessionStatus, StaffRole;
+import 'package:ai_clinic/features/auth/domain/auth_session.dart' show StaffRole;
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visit_history_section.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
@@ -42,7 +42,6 @@ const _branchId = '44444444-4444-4444-8444-444444444444';
 const _visitId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const _appointmentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const _patientId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-const _doctorA = '22222222-2222-4222-8222-222222222222';
 const _doctorB = '33333333-3333-4333-8333-333333333333';
 
 /// Past UTC instant so appointment day rules are stable (always "arrived").

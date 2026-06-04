@@ -2,7 +2,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/presentation/visit_rpc_messages.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:storage_client/storage_client.dart' show StorageException;
+import 'package:supabase_flutter/supabase_flutter.dart' show StorageException;
 
 void main() {
   group('visitMessageForRpc', () {

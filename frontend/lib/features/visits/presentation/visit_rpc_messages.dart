@@ -1,6 +1,6 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
-import 'package:storage_client/storage_client.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show StorageException;
 
 /// User-facing copy for visit attachment upload failures (V1-5).
 String visitMessageForUploadError(Object error) {

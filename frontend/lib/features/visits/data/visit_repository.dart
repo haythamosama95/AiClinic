@@ -113,10 +113,10 @@ class VisitRepository with AppRpcInvoker {
     final result = await invokeRpc('create_treatment_plan', {
       'p_visit_id': visitId.trim(),
       'p_medication_name': medicationName.trim(),
-      if (dosage != null) 'p_dosage': dosage,
-      if (frequency != null) 'p_frequency': frequency,
-      if (duration != null) 'p_duration': duration,
-      if (notes != null) 'p_notes': notes,
+      'p_dosage': ?dosage,
+      'p_frequency': ?frequency,
+      'p_duration': ?duration,
+      'p_notes': ?notes,
     });
 
     final id = result.data?['treatment_plan_id']?.toString();
@@ -138,11 +138,11 @@ class VisitRepository with AppRpcInvoker {
 
     await invokeRpc('update_treatment_plan', {
       'p_treatment_plan_id': treatmentPlanId.trim(),
-      if (medicationName != null) 'p_medication_name': medicationName,
-      if (dosage != null) 'p_dosage': dosage,
-      if (frequency != null) 'p_frequency': frequency,
-      if (duration != null) 'p_duration': duration,
-      if (notes != null) 'p_notes': notes,
+      'p_medication_name': ?medicationName,
+      'p_dosage': ?dosage,
+      'p_frequency': ?frequency,
+      'p_duration': ?duration,
+      'p_notes': ?notes,
     });
   }
 
@@ -230,13 +230,6 @@ class VisitRepository with AppRpcInvoker {
       throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
     }
   }
-
-  String _formatDate(DateTime date) {
-    final local = DateTime(date.year, date.month, date.day);
-    return '${local.year.toString().padLeft(4, '0')}-'
-        '${local.month.toString().padLeft(2, '0')}-'
-        '${local.day.toString().padLeft(2, '0')}';
-  }
 }
 
 final visitRepositoryProvider = Provider<VisitRepository>((ref) {
@@ -293,10 +286,7 @@ class VisitByAppointmentResult {
       return const VisitByAppointmentResult();
     }
     final visitId = data['visit_id'];
-    return VisitByAppointmentResult(
-      visitId: visitId == null ? null : visitId.toString(),
-      status: data['status']?.toString(),
-    );
+    return VisitByAppointmentResult(visitId: visitId?.toString(), status: data['status']?.toString());
   }
 }
 

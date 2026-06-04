@@ -88,6 +88,9 @@ class _DevSeedAppointmentsButtonState extends ConsumerState<DevSeedAppointmentsB
       return;
     }
 
+    if (!context.mounted) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Seeding demo appointments...')));
     setState(() => _isBusy = true);
     AppLog.info('appointments.dev_seed.ui_confirmed branch=$branchId');
