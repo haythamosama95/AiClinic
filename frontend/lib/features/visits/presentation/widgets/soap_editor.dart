@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/features/visits/domain/soap_note.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 /// S/O/A/P fields with save and stale-conflict handling (V1-5 US2).
@@ -233,6 +234,7 @@ class _SoapField extends StatelessWidget {
         onChanged: onChanged,
         minLines: 2,
         maxLines: 6,
+        maxLength: kMaxSoapSectionLength,
         decoration: InputDecoration(labelText: label, alignLabelWithHint: true, border: const OutlineInputBorder()),
       ),
     );

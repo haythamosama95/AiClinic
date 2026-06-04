@@ -25,6 +25,8 @@ class TreatmentPlanItem {
   final String? dosage;
   final String? frequency;
   final String? duration;
+
+  /// Legacy DB columns from pre-duration schema; shown in UI but not editable or sent on update.
   final DateTime? startDate;
   final DateTime? endDate;
   final String? notes;

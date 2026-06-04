@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/domain/soap_note.dart';
 import 'package:ai_clinic/features/visits/domain/specialty_form_schema.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/visit_rpc_messages.dart';
@@ -118,6 +119,7 @@ class VisitDocumentationState {
 final visitDocumentationProvider = AsyncNotifierProvider.autoDispose
     .family<VisitDocumentationNotifier, VisitDocumentationState, String>(VisitDocumentationNotifier.new);
 
+/// Family arg is injected by [visitDocumentationProvider] via `NotifierT Function(String)`.
 class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> {
   VisitDocumentationNotifier(this._visitId);
 
@@ -201,6 +203,17 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       return;
     }
 
+    final soapLengthError = soapSectionLengthError(
+      subjective: current.subjective,
+      objective: current.objective,
+      assessment: current.assessment,
+      plan: current.plan,
+    );
+    if (soapLengthError != null) {
+      state = AsyncData(current.copyWith(saveStatus: SoapSaveStatus.error, errorMessage: soapLengthError));
+      return;
+    }
+
     final specialtyErrors = current.specialtySchema.hasFields
         ? SpecialtyFormSchema.validateValues(current.specialtyFormJson, current.specialtySchema)
         : const <String, String>{};
@@ -273,8 +286,8 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     state = AsyncData(current.copyWith(soapEditMode: SoapEditMode.editing));
   }
 
-  /// Refreshes visit metadata and treatment plans without discarding unsaved SOAP draft.
-  Future<void> refreshTreatmentPlansPreservingDraft() async {
+  /// Refreshes visit metadata (treatment plans, attachments, status) without discarding unsaved SOAP draft.
+  Future<void> refreshVisitPreservingDraft() async {
     final current = state.value;
     if (current == null) {
       return;

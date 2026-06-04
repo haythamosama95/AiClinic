@@ -70,6 +70,13 @@ void main() {
       final params = testClient.paramsForFunction('update_treatment_plan')!;
       expect(params['p_duration'], '10 days');
     });
+
+    test('sends empty string for cleared optional field', () async {
+      await repo.updateTreatmentPlan(treatmentPlanId: 'tp-1', medicationName: 'Updated Med', dosage: '');
+      final params = testClient.paramsForFunction('update_treatment_plan')!;
+      expect(params['p_dosage'], '');
+      expect(params.containsKey('p_dosage'), isTrue);
+    });
   });
 
   group('archiveTreatmentPlan', () {

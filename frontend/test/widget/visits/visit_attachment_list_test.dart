@@ -9,7 +9,8 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
-import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart'
+    show VisitAttachmentDownloadResult, VisitRepository;
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
@@ -62,7 +63,7 @@ void main() {
     List<VisitAttachmentItem> attachments = const [],
     bool canUpload = true,
     Future<VisitAttachmentPickInput?> Function()? pickAttachment,
-    Future<Uint8List> Function(String signedUrl)? fetchDownloadBytes,
+    Future<Uint8List> Function(VisitAttachmentDownloadResult download)? fetchDownloadBytes,
     Future<bool> Function(String filename, Uint8List bytes)? saveDownloadedAttachment,
   }) {
     final authState = AuthSessionState(
@@ -197,6 +198,47 @@ void main() {
     expect(find.byKey(const Key('visit_attachment_row_att-1')), findsOneWidget);
     expect(find.text('Lab result'), findsOneWidget);
     expect(find.byKey(const Key('visit_attachment_download_att-1')), findsOneWidget);
+  });
+
+  testWidgets('download test hook receives filePath from authorized download metadata', (tester) async {
+    testClient.rpcResults['get_visit_attachment_download'] = {
+      'success': true,
+      'data': {
+        'signed_url': 'https://example.com/signed',
+        'file_type': 'pdf',
+        'filename': 'lab-result.pdf',
+        'expires_at': '2026-06-01T12:00:00.000Z',
+        'file_path': 'org/branch/visit/lab.pdf',
+      },
+    };
+
+    VisitAttachmentDownloadResult? captured;
+    final attachments = [
+      VisitAttachmentItem(
+        id: 'att-1',
+        fileType: VisitAttachmentFileType.pdf,
+        uploadedBy: 'staff-1',
+        sizeBytes: 2048,
+        createdAt: DateTime.utc(2026, 5, 31, 10),
+        canDownload: true,
+      ),
+    ];
+    await tester.pumpWidget(
+      buildWidget(
+        attachments: attachments,
+        fetchDownloadBytes: (download) async {
+          captured = download;
+          return Uint8List.fromList([4, 5, 6]);
+        },
+        saveDownloadedAttachment: (_, __) async => true,
+      ),
+    );
+    await tester.tap(find.byKey(const Key('visit_attachment_download_att-1')));
+    await tester.pumpAndSettle();
+
+    expect(captured, isNotNull);
+    expect(captured!.filePath, 'org/branch/visit/lab.pdf');
+    expect(captured!.signedUrl, 'https://example.com/signed');
   });
 
   testWidgets('download prompts to save file with attachment filename', (tester) async {

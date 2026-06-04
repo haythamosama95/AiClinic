@@ -1,6 +1,7 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/domain/soap_note.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,6 +90,34 @@ void main() {
 
       expect(after.soapEditMode, before.soapEditMode);
       expect(after.canEdit, isFalse);
+    });
+  });
+
+  group('save SOAP length validation', () {
+    test('rejects oversized section without calling save_soap_note RPC', () async {
+      final notifier = container.read(visitDocumentationProvider(visitId).notifier);
+      await container.read(visitDocumentationProvider(visitId).future);
+
+      notifier.updateSubjective('x' * (kMaxSoapSectionLength + 1));
+      await notifier.save();
+
+      final state = container.read(visitDocumentationProvider(visitId)).value!;
+      expect(state.saveStatus, SoapSaveStatus.error);
+      expect(state.errorMessage, 'Each SOAP section must be 10,000 characters or fewer.');
+      expect(client.rpcLog, isNot(contains('save_soap_note')));
+    });
+
+    test('allows save when every section is at the limit', () async {
+      final notifier = container.read(visitDocumentationProvider(visitId).notifier);
+      await container.read(visitDocumentationProvider(visitId).future);
+
+      final atLimit = 'x' * kMaxSoapSectionLength;
+      notifier.updateSubjective(atLimit);
+      await notifier.save();
+
+      final state = container.read(visitDocumentationProvider(visitId)).value!;
+      expect(state.saveStatus, SoapSaveStatus.saved);
+      expect(client.rpcLog, contains('save_soap_note'));
     });
   });
 }

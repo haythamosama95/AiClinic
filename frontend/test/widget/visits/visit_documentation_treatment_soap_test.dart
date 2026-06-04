@@ -181,9 +181,8 @@ Future<void> _pumpVisitDocSection(WidgetTester tester, {VisitRpcTestClient? clie
                         visitId: visitId,
                         treatmentPlans: state.visit.treatmentPlans,
                         canEdit: state.isEditable,
-                        onChanged: () => ref
-                            .read(visitDocumentationProvider(visitId).notifier)
-                            .refreshTreatmentPlansPreservingDraft(),
+                        onChanged: () =>
+                            ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
                       ),
                     ],
                   ),

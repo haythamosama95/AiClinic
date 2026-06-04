@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/domain/soap_note.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/soap_editor.dart';
 
@@ -139,6 +140,33 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(client.rpcLog, contains('save_soap_note'));
+    });
+
+    testWidgets('invalid state: oversized subjective shows error without RPC', (tester) async {
+      final client = VisitRpcTestClient();
+
+      await _pumpEditor(tester, client: client, permissions: {PermissionKeys.visitsEditSoap});
+
+      final container = ProviderScope.containerOf(tester.element(find.byType(SoapEditor)));
+      final notifier = container.read(visitDocumentationProvider(visitId).notifier);
+      notifier.updateSubjective('x' * (kMaxSoapSectionLength + 1));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('soap_save_button')));
+      await tester.pumpAndSettle();
+
+      expect(client.rpcLog, isNot(contains('save_soap_note')));
+      expect(find.byKey(const Key('soap_error_label')), findsOneWidget);
+      expect(find.text('Each SOAP section must be 10,000 characters or fewer.'), findsOneWidget);
+    });
+
+    testWidgets('trivial: SOAP fields enforce maxLength', (tester) async {
+      await _pumpEditor(tester, permissions: {PermissionKeys.visitsEditSoap});
+
+      final field = tester.widget<TextField>(
+        find.descendant(of: find.byKey(const Key('soap_subjective')), matching: find.byType(TextField)),
+      );
+      expect(field.maxLength, kMaxSoapSectionLength);
     });
 
     testWidgets('regression: reload after stale refetches visit', (tester) async {

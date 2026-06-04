@@ -2,6 +2,25 @@ import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
 import 'package:flutter/foundation.dart';
 
+/// Maximum characters per SOAP section (matches backend `save_soap_note` validation).
+const kMaxSoapSectionLength = 10000;
+
+/// User-facing error when any SOAP section exceeds [kMaxSoapSectionLength], or null if valid.
+String? soapSectionLengthError({
+  required String subjective,
+  required String objective,
+  required String assessment,
+  required String plan,
+}) {
+  if (subjective.length > kMaxSoapSectionLength ||
+      objective.length > kMaxSoapSectionLength ||
+      assessment.length > kMaxSoapSectionLength ||
+      plan.length > kMaxSoapSectionLength) {
+    return 'Each SOAP section must be 10,000 characters or fewer.';
+  }
+  return null;
+}
+
 /// SOAP note content for a visit (`soap_notes` table, V1-5).
 @immutable
 class SoapNote {

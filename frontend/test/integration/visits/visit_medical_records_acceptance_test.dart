@@ -100,7 +100,11 @@ Widget _visitScope({
 }
 
 Future<void> _ensureVisible(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
+  if (finder.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(finder, 120, scrollable: find.byType(Scrollable).first);
+  } else {
+    await tester.ensureVisible(finder);
+  }
   await tester.pumpAndSettle();
 }
 

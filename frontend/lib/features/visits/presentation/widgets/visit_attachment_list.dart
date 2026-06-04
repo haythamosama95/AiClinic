@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart' show VisitAttachmentDownloadResult;
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/presentation/visit_rpc_messages.dart';
@@ -35,8 +36,9 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
   /// Test hook: bypasses platform file picker.
   final Future<VisitAttachmentPickInput?> Function()? pickAttachment;
 
-  /// Test hook: bypasses HTTP fetch of signed download URL.
-  final Future<Uint8List> Function(String signedUrl)? fetchDownloadBytes;
+  /// Test hook: supplies bytes without storage/HTTP. Receives full [VisitAttachmentDownloadResult]
+  /// (including [VisitAttachmentDownloadResult.filePath]) so tests mirror production metadata.
+  final Future<Uint8List> Function(VisitAttachmentDownloadResult download)? fetchDownloadBytes;
 
   /// Test hook: bypasses platform save dialog. Return false when the user cancels.
   final Future<bool> Function(String filename, Uint8List bytes)? saveDownloadedAttachment;
@@ -221,7 +223,7 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
       final service = ref.read(visitAttachmentServiceProvider);
       final download = await service.getVisitAttachmentDownload(attachmentId: attachmentId);
       final bytes = widget.fetchDownloadBytes != null
-          ? await widget.fetchDownloadBytes!(download.signedUrl)
+          ? await widget.fetchDownloadBytes!(download)
           : await service.downloadAttachmentBytes(download);
       final saved = widget.saveDownloadedAttachment != null
           ? await widget.saveDownloadedAttachment!(download.filename, bytes)

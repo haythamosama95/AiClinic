@@ -81,7 +81,7 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
                   key: Key('treatment_plan_edit_form_${plan.id}'),
                   initialPlan: plan,
                   isSubmitting: _isSubmitting,
-                  onSubmit: (data) => _updatePlan(plan.id, data),
+                  onSubmit: (data) => _updatePlan(plan, data),
                   onCancel: () => setState(() => _editingPlanId = null),
                 )
               : TreatmentPlanCardView(
@@ -145,22 +145,31 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
     }
   }
 
-  Future<void> _updatePlan(String planId, TreatmentPlanFormData data) async {
+  Future<void> _updatePlan(TreatmentPlanItem existing, TreatmentPlanFormData data) async {
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
     });
     try {
-      await ref
-          .read(visitRepositoryProvider)
-          .updateTreatmentPlan(
-            treatmentPlanId: planId,
-            medicationName: data.medicationName,
-            dosage: data.dosage,
-            frequency: data.frequency,
-            duration: data.duration,
-            notes: data.notes,
-          );
+      final params = data.updateParamsFor(existing);
+      final hasChanges =
+          params.medicationName != null ||
+          params.dosage != null ||
+          params.frequency != null ||
+          params.duration != null ||
+          params.notes != null;
+      if (hasChanges) {
+        await ref
+            .read(visitRepositoryProvider)
+            .updateTreatmentPlan(
+              treatmentPlanId: existing.id,
+              medicationName: params.medicationName,
+              dosage: params.dosage,
+              frequency: params.frequency,
+              duration: params.duration,
+              notes: params.notes,
+            );
+      }
       if (mounted) {
         setState(() {
           _editingPlanId = null;

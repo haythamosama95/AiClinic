@@ -89,6 +89,40 @@ class TreatmentPlanFormData {
   final String? frequency;
   final String? duration;
   final String? notes;
+
+  /// RPC params for [VisitRepository.updateTreatmentPlan] — only fields changed from [existing].
+  ///
+  /// Optional text uses backend semantics: omitted = keep, `''` = clear. Legacy [TreatmentPlanItem.startDate]
+  /// / [TreatmentPlanItem.endDate] are never sent (no UI to edit or clear them).
+  ({String? medicationName, String? dosage, String? frequency, String? duration, String? notes}) updateParamsFor(
+    TreatmentPlanItem existing,
+  ) {
+    final trimmedName = medicationName.trim();
+    return (
+      medicationName: trimmedName != existing.medicationName ? trimmedName : null,
+      dosage: _optionalUpdateParam(existing.dosage, dosage),
+      frequency: _optionalUpdateParam(existing.frequency, frequency),
+      duration: _optionalUpdateParam(existing.duration, duration),
+      notes: _optionalUpdateParam(existing.notes, notes),
+    );
+  }
+
+  static String? _optionalUpdateParam(String? existing, String? submitted) {
+    if (submitted == null) {
+      return null;
+    }
+    if (_normalizeOptional(existing) == _normalizeOptional(submitted)) {
+      return null;
+    }
+    return submitted;
+  }
+
+  static String? _normalizeOptional(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    return value.trim();
+  }
 }
 
 /// Add/edit treatment plan form shared across visit documentation.
@@ -231,15 +265,24 @@ class _TreatmentPlanFormViewState extends State<TreatmentPlanFormView> {
     );
   }
 
+  /// On edit, empty optional fields send `''` so the backend can clear them (NULL = keep).
+  String? _optionalFieldForSubmit(String trimmed, {required bool isEdit}) {
+    if (trimmed.isEmpty) {
+      return isEdit ? '' : null;
+    }
+    return trimmed;
+  }
+
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    final isEdit = widget.initialPlan != null;
     widget.onSubmit(
       TreatmentPlanFormData(
         medicationName: _medication.text.trim(),
-        dosage: _dosage.text.trim().isEmpty ? null : _dosage.text.trim(),
-        frequency: _frequency.text.trim().isEmpty ? null : _frequency.text.trim(),
-        duration: _duration.text.trim().isEmpty ? null : _duration.text.trim(),
-        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        dosage: _optionalFieldForSubmit(_dosage.text.trim(), isEdit: isEdit),
+        frequency: _optionalFieldForSubmit(_frequency.text.trim(), isEdit: isEdit),
+        duration: _optionalFieldForSubmit(_duration.text.trim(), isEdit: isEdit),
+        notes: _optionalFieldForSubmit(_notes.text.trim(), isEdit: isEdit),
       ),
     );
   }

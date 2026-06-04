@@ -90,7 +90,21 @@ class VisitDocumentationPage extends ConsumerWidget {
   }
 
   Future<void> _submitVisit(BuildContext context, WidgetRef ref, String visitId, VisitDocumentationState state) async {
-    final result = await VisitSubmitDialog.show(context, visitId: visitId, expectedUpdatedAt: state.expectedUpdatedAt);
+    final notifier = ref.read(visitDocumentationProvider(visitId).notifier);
+
+    if (state.needsSaveBeforeLeaving) {
+      await notifier.save();
+      if (!context.mounted) {
+        return;
+      }
+      final updated = ref.read(visitDocumentationProvider(visitId)).value;
+      if (updated == null || updated.saveStatus == SoapSaveStatus.error || updated.saveStatus == SoapSaveStatus.stale) {
+        return;
+      }
+    }
+
+    final latest = ref.read(visitDocumentationProvider(visitId)).value ?? state;
+    final result = await VisitSubmitDialog.show(context, visitId: visitId, expectedUpdatedAt: latest.expectedUpdatedAt);
 
     if (result == null || !context.mounted) {
       return;
@@ -192,8 +206,7 @@ class _VisitHeaderAndSoap extends ConsumerWidget {
           visitId: visitId,
           treatmentPlans: state.visit.treatmentPlans,
           canEdit: state.canEdit,
-          onChanged: () =>
-              ref.read(visitDocumentationProvider(visitId).notifier).refreshTreatmentPlansPreservingDraft(),
+          onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
         ),
         const SizedBox(height: 24),
         VisitAttachmentList(
@@ -201,8 +214,7 @@ class _VisitHeaderAndSoap extends ConsumerWidget {
           branchId: visit.branchId,
           attachments: state.visit.attachments,
           canUpload: canUploadAttachments,
-          onChanged: () =>
-              ref.read(visitDocumentationProvider(visitId).notifier).refreshTreatmentPlansPreservingDraft(),
+          onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
         ),
       ],
     );

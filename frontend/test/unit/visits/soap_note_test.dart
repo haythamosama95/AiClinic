@@ -56,4 +56,23 @@ void main() {
       expect(cleared.subjective, isNull);
     });
   });
+
+  group('soapSectionLengthError', () {
+    test('returns null when all sections are within limit', () {
+      expect(soapSectionLengthError(subjective: 'ok', objective: '', assessment: '', plan: ''), isNull);
+    });
+
+    test('returns null when a section is exactly at the limit', () {
+      final atLimit = 'x' * kMaxSoapSectionLength;
+      expect(soapSectionLengthError(subjective: atLimit, objective: '', assessment: '', plan: ''), isNull);
+    });
+
+    test('returns error when any section exceeds the limit', () {
+      final overLimit = 'x' * (kMaxSoapSectionLength + 1);
+      expect(
+        soapSectionLengthError(subjective: '', objective: overLimit, assessment: '', plan: ''),
+        'Each SOAP section must be 10,000 characters or fewer.',
+      );
+    });
+  });
 }
