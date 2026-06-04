@@ -160,7 +160,7 @@ class _FakeRealtime implements AppointmentQueueRealtimeClient {
   @override
   void subscribe({
     required String branchId,
-    required VoidCallback onAppointmentChange,
+    required AppointmentQueueRealtimeChangeCallback onAppointmentChange,
     required AppointmentQueueRealtimeStatusCallback onConnectionChanged,
   }) {
     onConnectionChanged(connection);

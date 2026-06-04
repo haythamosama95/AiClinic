@@ -64,7 +64,7 @@ class _DevSeedAppointmentsButtonState extends ConsumerState<DevSeedAppointmentsB
       ),
     );
 
-    if (confirmed != true || !mounted) {
+    if (confirmed != true || !context.mounted) {
       return;
     }
 
@@ -85,6 +85,10 @@ class _DevSeedAppointmentsButtonState extends ConsumerState<DevSeedAppointmentsB
           context,
         ).showSnackBar(const SnackBar(content: Text('Organization context is missing. Sign in again.')));
       }
+      return;
+    }
+
+    if (!context.mounted) {
       return;
     }
 

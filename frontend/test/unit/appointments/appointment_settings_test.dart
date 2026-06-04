@@ -28,5 +28,21 @@ void main() {
 
       expect(settings?.defaultDurationMinutes, 45);
     });
+
+    test('parses working_schedule from settings payload', () {
+      final settings = AppointmentSettings.fromRpcData({
+        'default_duration_minutes': 20,
+        'min_duration_minutes': 5,
+        'max_duration_minutes': 240,
+        'working_schedule': {
+          'days': [
+            {'day': 'monday', 'is_working_day': true, 'open_time': '09:00', 'close_time': '17:00'},
+          ],
+        },
+      });
+
+      expect(settings?.workingSchedule, isNotNull);
+      expect(settings!.workingSchedule!.days.first.openTime, '09:00');
+    });
   });
 }

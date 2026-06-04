@@ -1,6 +1,7 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 
 /// Forward lifecycle target for [item] when the user taps the primary action (V1-4 US5).
 AppointmentStatus? forwardStatusTargetFor(
@@ -27,9 +28,12 @@ AppointmentStatus? forwardStatusTargetFor(
   return target;
 }
 
-/// Whether a planned appointment in `scheduled` status may be rescheduled (V1-4 US6).
+/// Whether a planned appointment may be rescheduled (V1-4 US6).
+///
+/// Per spec FR-010a, only `scheduled` appointments can be rescheduled. After phone
+/// confirmation (`confirmed`), staff must cancel and re-book to change the slot.
 bool canRescheduleAppointment(AppointmentListItem item) {
-  return item.status == AppointmentStatus.scheduled;
+  return item.type == AppointmentType.planned && item.status == AppointmentStatus.scheduled;
 }
 
 /// Whether cancel is allowed for [item] (V1-4 US7); may be done before the appointment day.

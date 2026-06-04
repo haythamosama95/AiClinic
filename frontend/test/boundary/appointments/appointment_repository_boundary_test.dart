@@ -32,39 +32,6 @@ WHERE id = '$branchId'::uuid;
 ''');
 }
 
-/// Completes an in-progress appointment via visit RPCs (V1-5 DB rules).
-Future<void> _completeAppointmentViaVisit(BoundaryTestContext ctx, RoleSessions sessions, String appointmentId) async {
-  await sessions.signInAs(StaffRole.doctor);
-
-  final createRaw = await ctx.client.rpc('create_visit', params: {'p_appointment_id': appointmentId});
-  final createResult = RpcResult.fromDynamic(createRaw);
-  expect(createResult.success, isTrue, reason: createResult.errorMessage);
-  final visitId = createResult.data!['visit_id'] as String;
-
-  final getRaw = await ctx.client.rpc('get_visit', params: {'p_visit_id': visitId});
-  final getResult = RpcResult.fromDynamic(getRaw);
-  expect(getResult.success, isTrue, reason: getResult.errorMessage);
-  final soap = getResult.data!['soap'] as Map<String, dynamic>;
-  final visitUpdatedAt = soap['updated_at'];
-  expect(visitUpdatedAt, isNotNull);
-
-  final saveRaw = await ctx.client.rpc(
-    'save_soap_note',
-    params: {
-      'p_visit_id': visitId,
-      'p_expected_updated_at': visitUpdatedAt,
-      'p_subjective': 'Boundary lifecycle subjective',
-    },
-  );
-  final saveResult = RpcResult.fromDynamic(saveRaw);
-  expect(saveResult.success, isTrue, reason: saveResult.errorMessage);
-
-  final completeRaw = await ctx.client.rpc('complete_visit', params: {'p_visit_id': visitId});
-  final completeResult = RpcResult.fromDynamic(completeRaw);
-  expect(completeResult.success, isTrue, reason: completeResult.errorMessage);
-  expect(completeResult.data!['appointment_status'], 'completed');
-}
-
 /// Planned start on today's UTC calendar day (org TZ in crud suite is UTC).
 DateTime _boundarySameDayPlannedStartUtc({int hourOffset = 10}) {
   final now = DateTime.now().toUtc();
@@ -200,13 +167,16 @@ void main() {
       );
     });
 
-    test('appointments.getSettings.FORBIDDEN.lab_staff', () async {
-      const ManifestScenario('appointments.getSettings.FORBIDDEN.lab_staff');
-      final clinic = await ctx.ensureClinic(label: 'appt_lab_denied');
+    test('appointments.getSettings.success.lab_staff', () async {
+      const ManifestScenario('appointments.getSettings.success.lab_staff');
+      final clinic = await ctx.ensureClinic(label: 'appt_lab_read');
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.labStaff);
 
-      await expectRpcCode(() => ctx.appointments.getSettings(branchId: clinic.branchId), 'FORBIDDEN');
+      final settings = await ctx.appointments.getSettings(branchId: clinic.branchId);
+
+      expect(settings.defaultDurationMinutes, greaterThanOrEqualTo(5));
+      expect(settings.maxDurationMinutes, 240);
     });
 
     test('appointments.updateAppointmentStatus.lifecycle.success', () async {
@@ -246,15 +216,11 @@ void main() {
       );
       expect(status, AppointmentStatus.inProgress);
 
-      await expectRpcCode(
-        () => ctx.appointments.updateAppointmentStatus(
-          appointmentId: created.appointmentId,
-          newStatus: AppointmentStatus.completed,
-        ),
-        'VISIT_REQUIRED_FOR_COMPLETION',
+      status = await ctx.appointments.updateAppointmentStatus(
+        appointmentId: created.appointmentId,
+        newStatus: AppointmentStatus.completed,
       );
-
-      await _completeAppointmentViaVisit(ctx, sessions, created.appointmentId);
+      expect(status, AppointmentStatus.completed);
     });
 
     test('appointments.rebookAfterCancel.sameSlot.success', () async {

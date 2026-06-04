@@ -5,6 +5,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/create_appointment_result.dart';
@@ -97,11 +98,17 @@ class _AppointmentRescheduleDialogState extends ConsumerState<AppointmentResched
 
   Future<void> _pickStartTime() async {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final schedule = _settings?.workingSchedule;
+
     final date = await showDatePicker(
       context: context,
       initialDate: _startTime,
-      firstDate: now.subtract(const Duration(days: 1)),
+      firstDate: today,
       lastDate: now.add(const Duration(days: 365)),
+      selectableDayPredicate: schedule == null
+          ? null
+          : (day) => AppointmentBranchWorkingHours.isWorkingDay(schedule, day),
     );
     if (date == null || !mounted) {
       return;
@@ -112,8 +119,30 @@ class _AppointmentRescheduleDialogState extends ConsumerState<AppointmentResched
       return;
     }
 
+    final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (picked.isBefore(now)) {
+      setState(() => _formError = 'Start time must be in the future.');
+      return;
+    }
+
+    final duration = int.tryParse(_durationController.text.trim());
+    if (schedule != null && duration != null) {
+      final hoursMessage = AppointmentBranchWorkingHours.validationMessage(
+        schedule: schedule,
+        startTime: picked,
+        durationMinutes: duration,
+      );
+      if (hoursMessage != null) {
+        setState(() {
+          _formError = hoursMessage;
+          _conflictMessage = null;
+        });
+        return;
+      }
+    }
+
     setState(() {
-      _startTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _startTime = picked;
       _conflictMessage = null;
       _formError = null;
     });
@@ -128,6 +157,24 @@ class _AppointmentRescheduleDialogState extends ConsumerState<AppointmentResched
     if (duration == null) {
       setState(() => _formError = 'Enter a valid duration in minutes.');
       return;
+    }
+
+    if (_startTime.isBefore(DateTime.now())) {
+      setState(() => _formError = 'Start time must be in the future.');
+      return;
+    }
+
+    final schedule = _settings?.workingSchedule;
+    if (schedule != null) {
+      final hoursMessage = AppointmentBranchWorkingHours.validationMessage(
+        schedule: schedule,
+        startTime: _startTime,
+        durationMinutes: duration,
+      );
+      if (hoursMessage != null) {
+        setState(() => _formError = hoursMessage);
+        return;
+      }
     }
 
     setState(() {
@@ -214,6 +261,7 @@ class _AppointmentRescheduleDialogState extends ConsumerState<AppointmentResched
                         startTime: _startTime,
                         minMinutes: minMinutes,
                         maxMinutes: maxMinutes,
+                        workingSchedule: settings?.workingSchedule,
                         enabled: !_isSaving,
                       ),
                       if (_conflictMessage != null) ...[

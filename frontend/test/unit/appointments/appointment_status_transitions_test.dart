@@ -1,9 +1,8 @@
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('appointment status transitions', () {
@@ -70,6 +69,11 @@ void main() {
       expect(canMarkNoShowAppointment(future, referenceUtc: DateTime.utc(2026, 5, 31)), isFalse);
       expect(canMarkNoShowAppointment(future, referenceUtc: referenceUtc), isTrue);
       expect(canCancelOrNoShowAppointment(future, referenceUtc: DateTime.utc(2026, 5, 31)), isTrue);
+    });
+
+    test('confirmed planned appointments cannot be rescheduled per spec', () {
+      expect(canRescheduleAppointment(item()), isTrue);
+      expect(canRescheduleAppointment(item(status: AppointmentStatus.confirmed)), isFalse);
     });
   });
 }

@@ -8,11 +8,13 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
 
   final Map<String, Map<String, dynamic>> rpcResults;
   final List<Map<String, dynamic>> createAppointmentCalls = [];
+  final Map<String, int> rpcCallCounts = {};
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
     lastFunction = fn;
     lastParams = params == null ? null : Map<String, dynamic>.from(params);
+    rpcCallCounts[fn] = (rpcCallCounts[fn] ?? 0) + 1;
     if (fn == 'create_appointment' && lastParams != null) {
       createAppointmentCalls.add(Map<String, dynamic>.from(lastParams!));
     }
@@ -25,7 +27,17 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
     return switch (fn) {
       'get_appointment_settings' => {
         'success': true,
-        'data': {'default_duration_minutes': 20, 'min_duration_minutes': 5, 'max_duration_minutes': 240},
+        'data': {
+          'default_duration_minutes': 20,
+          'min_duration_minutes': 5,
+          'max_duration_minutes': 240,
+          'working_schedule': {
+            'days': [
+              for (final day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
+                {'day': day, 'is_working_day': true, 'open_time': '06:00', 'close_time': '23:59'},
+            ],
+          },
+        },
       },
       'set_appointment_default_duration' => {
         'success': true,

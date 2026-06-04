@@ -51,10 +51,10 @@ class AppointmentRepository with AppRpcInvoker {
 
     final result = await invokeRpc('set_appointment_default_duration', params);
     final savedMinutes = _parseDurationMinutes(result.data?['default_duration_minutes']);
-    if (result.data != null && savedMinutes == null) {
+    if (savedMinutes == null) {
       throw StateError('Set default duration returned an unexpected shape.');
     }
-    return savedMinutes ?? durationMinutes;
+    return savedMinutes;
   }
 
   Future<CreateAppointmentResult> createAppointment({

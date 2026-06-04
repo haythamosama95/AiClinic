@@ -122,6 +122,13 @@ void main() {
       expect(find.byKey(const Key('appointments_status_reschedule')), findsNothing);
     });
 
+    testWidgets('confirmed planned hides reschedule per spec', (tester) async {
+      await tester.pumpWidget(_host(item: _item(status: AppointmentStatus.confirmed, onAppointmentDay: false)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('appointments_status_reschedule')), findsNothing);
+    });
+
     testWidgets('confirmed shows cancel when cancel grant present', (tester) async {
       await tester.pumpWidget(
         _host(

@@ -1144,6 +1144,69 @@ BEGIN
       WHERE (item ->> 'start_time')::timestamptz >= v_day_end
     ),
     'ok';
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Settings include branch working_schedule (regression #12).
+  v_result := public.get_appointment_settings(v_branch_main);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'settings_include_working_schedule',
+    COALESCE(
+      v_result.success
+        AND jsonb_typeof(v_result.data -> 'working_schedule') = 'object'
+        AND jsonb_typeof(v_result.data -> 'working_schedule' -> 'days') = 'array',
+      false
+    ),
+    COALESCE(v_result.error_code, 'ok')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Audit payloads include appointment context (regression #15).
+  v_start := date_trunc('hour', now() + interval '14 days');
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_planned := (v_result.data ->> 'appointment_id')::uuid;
+
+  v_result := public.update_appointment_status(v_appt_planned, 'confirmed');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results
+  SELECT
+    'status_audit_includes_appointment_context',
+    EXISTS (
+      SELECT 1
+      FROM public.audit_log al
+      WHERE al.record_id = v_appt_planned
+        AND al.action = 'appointment.status'
+        AND al.new_data_json ? 'appointment_id'
+        AND al.new_data_json ? 'branch_id'
+        AND al.new_data_json ? 'patient_id'
+        AND al.new_data_json ? 'old_status'
+        AND al.new_data_json ? 'new_status'
+    ),
+    'ok';
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.cancel_appointment(v_appt_planned, 'Audit shape test');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results
+  SELECT
+    'cancel_audit_includes_appointment_context',
+    EXISTS (
+      SELECT 1
+      FROM public.audit_log al
+      WHERE al.record_id = v_appt_planned
+        AND al.action = 'appointment.cancel'
+        AND al.new_data_json ? 'appointment_id'
+        AND al.new_data_json ? 'branch_id'
+        AND al.new_data_json ? 'patient_id'
+        AND al.new_data_json ? 'old_status'
+        AND al.new_data_json ? 'new_status'
+        AND al.new_data_json ? 'cancel_reason'
+    ),
+    'ok';
+  PERFORM set_config('role', 'authenticated', true);
+
   PERFORM set_config('role', 'postgres', true);
 END;
 $$;

@@ -1,11 +1,12 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
+import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -100,9 +101,9 @@ void main() {
               isActive: true,
             ),
             organizationId: 'org',
-            branchIds: const [],
+            branchIds: [],
             activeBranchId: null,
-            permissions: const {},
+            permissions: {},
             setupRequired: false,
           ),
         ),
@@ -155,7 +156,70 @@ void main() {
       expect(state.items, isEmpty);
     });
 
-    test('regression: realtime change triggers refresh', () async {
+    test('regression: realtime update patches queue without immediate refresh', () async {
+      final range = appointmentTodayRangeInTimezone('UTC', DateTime.now().toUtc());
+      final start = range.from.add(const Duration(hours: 10));
+
+      client.rpcResults['list_appointments'] = {
+        'success': true,
+        'data': {
+          'items': [_row('a1', start)],
+        },
+      };
+
+      final ref = container();
+      addTearDown(ref.dispose);
+
+      ref.read(appointmentQueueProvider.notifier);
+      await _pumpAsync();
+      expect(ref.read(appointmentQueueProvider).items.single.id, 'a1');
+      final listCallsAfterInit = client.rpcCallCounts['list_appointments'] ?? 0;
+
+      realtime.triggerChange(
+        AppointmentQueueRealtimeChange(
+          eventType: PostgresChangeEvent.update,
+          newRecord: {
+            'id': 'a1',
+            'start_time': start.add(const Duration(hours: 1)).toIso8601String(),
+            'end_time': start.add(const Duration(hours: 1, minutes: 30)).toIso8601String(),
+            'status': 'confirmed',
+            'type': 'planned',
+          },
+        ),
+      );
+
+      final updated = ref.read(appointmentQueueProvider).items.single;
+      expect(updated.status, AppointmentStatus.confirmed);
+      expect(client.rpcCallCounts['list_appointments'], listCallsAfterInit);
+    });
+
+    test('regression: realtime insert schedules debounced refresh', () async {
+      client.rpcResults['list_appointments'] = {
+        'success': true,
+        'data': {'items': []},
+      };
+
+      final ref = container();
+      addTearDown(ref.dispose);
+
+      ref.read(appointmentQueueProvider.notifier);
+      await _pumpAsync();
+      client.rpcResults['list_appointments'] = {
+        'success': true,
+        'data': {
+          'items': [_row('new', DateTime.now().toUtc())],
+        },
+      };
+
+      realtime.triggerChange(
+        const AppointmentQueueRealtimeChange(eventType: PostgresChangeEvent.insert, newRecord: {'id': 'new'}),
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(client.lastFunction, 'list_appointments');
+    });
+
+    test('regression: realtime change triggers refresh when payload insufficient', () async {
       client.rpcResults['list_appointments'] = {
         'success': true,
         'data': {'items': []},
@@ -168,9 +232,10 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(realtime.lastBranchId, branchId);
 
-      realtime.triggerChange();
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
+      realtime.triggerChange(
+        const AppointmentQueueRealtimeChange(eventType: PostgresChangeEvent.insert, newRecord: {'id': 'missing-names'}),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 600));
 
       expect(client.lastFunction, 'list_appointments');
     });
@@ -223,13 +288,13 @@ class _PresetAuth extends AuthSessionNotifier {
 
 class _RecordingRealtime implements AppointmentQueueRealtimeClient {
   String? lastBranchId;
-  VoidCallback? onChange;
+  AppointmentQueueRealtimeChangeCallback? onChange;
   AppointmentQueueRealtimeConnection initialConnection = AppointmentQueueRealtimeConnection.live;
 
   @override
   void subscribe({
     required String branchId,
-    required VoidCallback onAppointmentChange,
+    required AppointmentQueueRealtimeChangeCallback onAppointmentChange,
     required AppointmentQueueRealtimeStatusCallback onConnectionChanged,
   }) {
     lastBranchId = branchId;
@@ -237,7 +302,7 @@ class _RecordingRealtime implements AppointmentQueueRealtimeClient {
     onConnectionChanged(initialConnection);
   }
 
-  void triggerChange() => onChange?.call();
+  void triggerChange(AppointmentQueueRealtimeChange change) => onChange?.call(change);
 
   @override
   void unsubscribe() {

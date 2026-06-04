@@ -17,6 +17,7 @@ import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repo
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 
+import '../../helpers/appointment_test_support.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/patient_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
@@ -84,12 +85,7 @@ void main() {
       await tester.tap(find.text('Dr Smith').last);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+      await pickBookingStartTimeInForm(tester);
 
       await tester.tap(find.byKey(const Key('appointment_booking_submit')));
       await tester.pumpAndSettle();
@@ -109,12 +105,7 @@ void main() {
       await tester.tap(find.byKey(const Key('patient_picker_result_0')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+      await pickBookingStartTimeInForm(tester);
 
       await tester.tap(find.byKey(const Key('appointment_booking_submit')));
       await tester.pumpAndSettle();
@@ -139,7 +130,21 @@ void main() {
     });
 
     testWidgets('edge case: custom duration override is sent on book', (tester) async {
-      final client = AppointmentRpcTestClient();
+      final client = AppointmentRpcTestClient()
+        ..rpcResults['get_appointment_settings'] = {
+          'success': true,
+          'data': {
+            'default_duration_minutes': 20,
+            'min_duration_minutes': 5,
+            'max_duration_minutes': 240,
+            'working_schedule': {
+              'days': [
+                for (final day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
+                  {'day': day, 'is_working_day': true, 'open_time': '06:00', 'close_time': '23:00'},
+              ],
+            },
+          },
+        };
 
       await _pumpBookingPage(tester, _host(rpcClient: client));
 
@@ -154,12 +159,7 @@ void main() {
       await tester.tap(find.text('Dr Smith').last);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+      await pickBookingStartTimeInForm(tester);
 
       await tester.enterText(find.byKey(const Key('appointment_duration_field')), '45');
       await tester.pump();
@@ -167,7 +167,8 @@ void main() {
       await tester.tap(find.byKey(const Key('appointment_booking_submit')));
       await tester.pumpAndSettle();
 
-      expect(client.lastParams?['p_duration_minutes'], 45);
+      expect(client.createAppointmentCalls, hasLength(1));
+      expect(client.createAppointmentCalls.first['p_duration_minutes'], 45);
     });
 
     testWidgets('happy path: successful book shows confirmation', (tester) async {
@@ -280,12 +281,7 @@ Future<void> _fillMinimalBookingForm(WidgetTester tester) async {
   await tester.tap(find.text('Dr Smith').last);
   await tester.pumpAndSettle();
 
-  await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('OK'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('OK'));
-  await tester.pumpAndSettle();
+  await pickBookingStartTimeInForm(tester);
 }
 
 class _FakeStaffAdminRepository implements StaffAdminRepository {

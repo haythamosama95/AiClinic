@@ -65,12 +65,16 @@ class _DevSeedPatientsButtonState extends ConsumerState<DevSeedPatientsButton> {
       ),
     );
 
-    if (confirmed != true || !mounted) {
+    if (confirmed != true || !context.mounted) {
       return;
     }
 
     final auth = ref.read(authSessionProvider).context;
     if (auth == null) {
+      return;
+    }
+
+    if (!context.mounted) {
       return;
     }
 

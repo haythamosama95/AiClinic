@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../helpers/appointment_test_support.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/patient_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
@@ -44,12 +45,7 @@ void main() {
       await tester.tap(find.byKey(const Key('patient_picker_result_0')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+      await pickBookingStartTimeInForm(tester);
 
       await tester.enterText(find.byKey(const Key('appointment_duration_field')), '30');
       await tester.pump();
@@ -76,12 +72,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('patient_picker_result_0')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+      await pickBookingStartTimeInForm(tester);
 
       final submit = find.byKey(const Key('appointment_booking_submit'));
       await tester.ensureVisible(submit);
