@@ -47,6 +47,7 @@ dependencies:
   clock: ^1.1.1
   file_picker: ^10.1.9
   timezone: ^0.10.0
+  forui: ^0.22.3
 
 dev_dependencies:
   flutter_test:
