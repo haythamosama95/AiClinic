@@ -139,6 +139,32 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION pg_temp.set_doctor_jwt(
+  p_user uuid,
+  p_staff uuid,
+  p_org uuid,
+  p_branches text
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', p_user::text,
+      'role', 'authenticated',
+      'organization_id', p_org::text,
+      'branch_ids', p_branches,
+      'staff_member_id', p_staff::text,
+      'staff_role', 'doctor',
+      'setup_required', false
+    )::text,
+    true
+  );
+END;
+$$;
+
 DO $$
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
@@ -175,6 +201,7 @@ DECLARE
   v_status public.invoice_status;
   v_balance numeric(14, 2);
   v_audit_count int;
+  v_allow_partial boolean;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.payments;
@@ -215,6 +242,19 @@ BEGIN
 
   v_result := public.bootstrap_create_organization('Billing CRUD Clinic', '{}'::jsonb, NULL, 'USD', 'UTC');
   v_org_id := (v_result.data ->> 'organization_id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT obs.allow_partial_payments
+  INTO v_allow_partial
+  FROM public.organization_billing_settings obs
+  WHERE obs.organization_id = v_org_id;
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.billing_crud_record(
+    'billing_settings_default_false_on_org_create',
+    coalesce(v_allow_partial, true) = false,
+    coalesce(v_allow_partial::text, 'null')
+  );
+
   v_result := public.bootstrap_create_branch(v_org_id, 'Main', NULL, NULL, 'MAIN', NULL);
   v_branch_main := (v_result.data ->> 'branch_id')::uuid;
   v_result := public.bootstrap_create_branch(v_org_id, 'No Code Branch', NULL, NULL, NULL, NULL);
@@ -614,6 +654,79 @@ BEGIN
     'refund_status_transition_audited',
     v_audit_count >= 1,
     v_audit_count::text
+  );
+
+  -- US8: billing settings read/update permissions and audit
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  v_result := public.get_billing_settings();
+  PERFORM pg_temp.billing_crud_record(
+    'owner_can_read_billing_settings',
+    v_result.success
+      AND coalesce((v_result.data ->> 'allow_partial_payments')::boolean, true) = false,
+    COALESCE(v_result.error_code, v_result.data::text)
+  );
+
+  v_result := public.update_billing_settings(true);
+  PERFORM pg_temp.billing_crud_record(
+    'owner_can_update_billing_settings',
+    v_result.success
+      AND coalesce((v_result.data ->> 'allow_partial_payments')::boolean, false) = true,
+    COALESCE(v_result.error_code, v_result.data::text)
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'billing_settings.update'
+    AND al.organization_id = v_org_id
+    AND al.old_data_json ->> 'allow_partial_payments' = 'false'
+    AND al.new_data_json ->> 'allow_partial_payments' = 'true';
+  PERFORM pg_temp.billing_crud_record(
+    'billing_settings_update_audited',
+    v_audit_count >= 1,
+    v_audit_count::text
+  );
+
+  PERFORM pg_temp.set_reception_jwt(
+    v_reception_user,
+    v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  v_result := public.get_billing_settings();
+  PERFORM pg_temp.billing_crud_record(
+    'receptionist_can_read_billing_settings',
+    v_result.success
+      AND coalesce((v_result.data ->> 'allow_partial_payments')::boolean, false) = true,
+    COALESCE(v_result.error_code, v_result.data::text)
+  );
+
+  v_result := public.update_billing_settings(false);
+  PERFORM pg_temp.billing_crud_record(
+    'receptionist_billing_settings_update_denied',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  PERFORM pg_temp.set_doctor_jwt(
+    v_doctor_user,
+    v_doctor_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  v_result := public.get_billing_settings();
+  PERFORM pg_temp.billing_crud_record(
+    'doctor_billing_settings_read_denied',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
   );
 END;
 $$;

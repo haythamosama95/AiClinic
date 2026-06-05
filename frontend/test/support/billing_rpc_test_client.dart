@@ -25,6 +25,9 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     rpcLog.add(fn);
     lastFunction = fn;
     lastParams = params == null ? null : Map<String, dynamic>.from(params);
+    if (fn == 'update_billing_settings') {
+      allowPartialPayments = lastParams?['p_allow_partial_payments'] == true;
+    }
     final override = rpcResults[fn];
     final payload = override ?? _defaultPayload(fn);
     return FakePostgrestRpc(payload) as PostgrestFilterBuilder<T>;
@@ -95,6 +98,10 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'get_billing_settings' => {
         'success': true,
         'data': {'allow_partial_payments': allowPartialPayments},
+      },
+      'update_billing_settings' => {
+        'success': true,
+        'data': {'allow_partial_payments': lastParams?['p_allow_partial_payments'] == true},
       },
       'record_payment' => _recordPayment(),
       'record_refund' => _recordRefund(),

@@ -9,6 +9,7 @@ import 'package:ai_clinic/core/widgets/app_modifiable_searchable_dropdown_field.
 import 'package:ai_clinic/features/auth/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/organization_settings_notifier.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/billing_settings_section.dart';
 
 /// Organization profile settings for owner and administrator roles (US1).
 class OrganizationSettingsPage extends ConsumerStatefulWidget {
@@ -253,6 +254,8 @@ class _OrganizationSettingsPageState extends ConsumerState<OrganizationSettingsP
                       child: const Text('Clear specialty form'),
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  const BillingSettingsSection(),
                   const SizedBox(height: 24),
                   Text('Subscription', style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: 8),

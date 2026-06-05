@@ -126,15 +126,15 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ### Tests for User Story 8
 
-- [ ] T033 [P] [US8] Extend `backend/tests/billing_crud.sql` (or new file `backend/tests/billing_settings.sql` orchestrated by `run_billing_tests.sh`): owner/admin can read+update; receptionist can read but UPDATE raises `permission_denied`; doctor/lab_staff read raises `permission_denied`; setting change is audited; default value is `false` for newly-created orgs (via trigger)
-- [ ] T034 [P] [US8] Add `frontend/test/widget/billing/billing_settings_section_test.dart` verifying admin sees an editable toggle, receptionist sees read-only, doctor/lab_staff don't see the section
+- [X] T033 [P] [US8] Extend `backend/tests/billing_crud.sql` (or new file `backend/tests/billing_settings.sql` orchestrated by `run_billing_tests.sh`): owner/admin can read+update; receptionist can read but UPDATE raises `permission_denied`; doctor/lab_staff read raises `permission_denied`; setting change is audited; default value is `false` for newly-created orgs (via trigger)
+- [X] T034 [P] [US8] Add `frontend/test/widget/billing/billing_settings_section_test.dart` verifying admin sees an editable toggle, receptionist sees read-only, doctor/lab_staff don't see the section
 
 ### Implementation for User Story 8
 
-- [ ] T035 [P] [US8] Add `get_billing_settings` and `update_billing_settings` RPCs per `contracts/billing-mutations.md` and `contracts/billing-queries.md`; `update_billing_settings` checks both `settings.billing.manage` AND caller role ∈ {owner, administrator}
-- [ ] T036 [P] [US8] Implement `BillingSettingsRepository.get` and `update` in `frontend/lib/features/billing/data/billing_settings_repository.dart`
-- [ ] T037 [US8] Implement `billing_settings_notifier.dart` provider with backend-first refresh
-- [ ] T038 [US8] Implement `frontend/lib/features/organization_settings/presentation/widgets/billing_settings_section.dart` and mount inside the existing organization Settings page from V1-2; gate edit affordance with `canManageBillingSettings`
+- [X] T035 [P] [US8] Add `get_billing_settings` and `update_billing_settings` RPCs per `contracts/billing-mutations.md` and `contracts/billing-queries.md`; `update_billing_settings` checks both `settings.billing.manage` AND caller role ∈ {owner, administrator}
+- [X] T036 [P] [US8] Implement `BillingSettingsRepository.get` and `update` in `frontend/lib/features/billing/data/billing_settings_repository.dart`
+- [X] T037 [US8] Implement `billing_settings_notifier.dart` provider with backend-first refresh
+- [X] T038 [US8] Implement `frontend/lib/features/organization_settings/presentation/widgets/billing_settings_section.dart` and mount inside the existing organization Settings page from V1-2; gate edit affordance with `canManageBillingSettings`
 
 **Checkpoint**: The org-wide partial-payment policy is fully configurable; payment enforcement (US2) reflects toggle changes immediately on next payment attempt.
 

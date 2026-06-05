@@ -4,8 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/billing_access_denied_view.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/billing_settings_section.dart';
 
-/// Placeholder billing settings page (V1-6 foundation).
+/// Organization billing settings (V1-6 US8).
 class BillingSettingsPage extends ConsumerWidget {
   const BillingSettingsPage({super.key});
 
@@ -30,7 +31,7 @@ class BillingSettingsPage extends ConsumerWidget {
           onPressed: () => context.nav.goSettings(),
         ),
       ),
-      body: const Center(child: Text('Billing settings will appear here.')),
+      body: const SingleChildScrollView(padding: EdgeInsets.all(24), child: BillingSettingsSection()),
     );
   }
 }
