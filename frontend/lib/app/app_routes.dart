@@ -89,4 +89,15 @@ abstract final class AppRoutes {
 
   /// Visit clinical detail: `/visits/:visitId/detail`
   static String visitDetail(String visitId) => '$visits/$visitId/$visitDetailSegment';
+
+  // V1-6 billing
+  static const billingInvoices = '/billing/invoices';
+  static const billingInsuranceProviders = '/billing/insurance-providers';
+  static const settingsBilling = '/settings/billing';
+
+  /// Invoice detail: `/billing/invoices/:id`
+  static String billingInvoiceDetail(String invoiceId) => '$billingInvoices/$invoiceId';
+
+  /// Static billing hub paths.
+  static const billingStaticPaths = <String>[billingInvoices, billingInsuranceProviders, settingsBilling];
 }

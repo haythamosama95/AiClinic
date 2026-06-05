@@ -2,6 +2,29 @@
 -- Keeps bootstrap admin and global role permission seeds intact.
 \set ON_ERROR_STOP on
 
+-- Billing (V1-6): clear before visits/branches/organizations.
+DO $$
+BEGIN
+  IF to_regclass('public.payments') IS NOT NULL THEN
+    DELETE FROM public.payments WHERE true;
+  END IF;
+  IF to_regclass('public.invoice_items') IS NOT NULL THEN
+    DELETE FROM public.invoice_items WHERE true;
+  END IF;
+  IF to_regclass('public.invoices') IS NOT NULL THEN
+    DELETE FROM public.invoices WHERE true;
+  END IF;
+  IF to_regclass('public.invoice_number_sequences') IS NOT NULL THEN
+    DELETE FROM public.invoice_number_sequences WHERE true;
+  END IF;
+  IF to_regclass('public.insurance_providers') IS NOT NULL THEN
+    DELETE FROM public.insurance_providers WHERE true;
+  END IF;
+  IF to_regclass('public.organization_billing_settings') IS NOT NULL THEN
+    DELETE FROM public.organization_billing_settings WHERE true;
+  END IF;
+END $$;
+
 -- Visit module (when migrated): clear dependents before appointments.
 DO $$
 BEGIN

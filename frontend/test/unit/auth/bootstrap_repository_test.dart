@@ -44,7 +44,7 @@ void main() {
 
       expect(failure, isNotNull);
       expect(failure!.code, 'RESET_DEPENDENCY_BLOCKED');
-      expect(failure.message, contains('20260525120000'));
+      expect(failure.message, contains('20260605190000'));
     });
 
     test('returns null for unrelated PostgREST errors', () {

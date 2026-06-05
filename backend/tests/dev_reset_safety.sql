@@ -152,6 +152,7 @@ BEGIN
   DELETE FROM public.staff_branch_assignments WHERE true;
   DELETE FROM public.audit_log WHERE true;
   DELETE FROM public.branches WHERE true;
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations WHERE true;
 
   PERFORM set_config('role', 'authenticated', true);

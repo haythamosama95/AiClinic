@@ -30,9 +30,9 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 **Purpose**: Scaffolding for the new billing feature module.
 
-- [ ] T001 Create directory skeleton `frontend/lib/features/billing/{data,domain,presentation/{pages,providers,widgets}}` and `frontend/test/{unit,widget,integration}/billing/`
-- [ ] T002 [P] Add billing-specific dependencies if not already present (verify `printing`/`pdf` Dart packages in `frontend/pubspec.yaml`); run `flutter pub get`
-- [ ] T003 [P] Create empty test harness file `backend/tests/run_billing_tests.sh` (executable; orchestrates the three SQL test suites)
+- [X] T001 Create directory skeleton `frontend/lib/features/billing/{data,domain,presentation/{pages,providers,widgets}}` and `frontend/test/{unit,widget,integration}/billing/`
+- [X] T002 [P] Add billing-specific dependencies if not already present (verify `printing`/`pdf` Dart packages in `frontend/pubspec.yaml`); run `flutter pub get`
+- [X] T003 [P] Create empty test harness file `backend/tests/run_billing_tests.sh` (executable; orchestrates the three SQL test suites)
 
 ---
 
@@ -44,24 +44,24 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ### Backend foundation
 
-- [ ] T004 Create migration `backend/supabase/migrations/20260605180000_billing.sql` with: enums (`invoice_status`, `payment_method`, `discount_kind`), tables (`invoices`, `invoice_items`, `payments`, `insurance_providers`, `organization_billing_settings`, `invoice_number_sequences`), all CHECK constraints, partial unique indexes, and standard audit columns per `specs/007-billing/data-model.md`
-- [ ] T005 In the same migration, add RLS policies: branch-scoped SELECT on `invoices`/`invoice_items`/`payments`; org-scoped SELECT on `insurance_providers`/`organization_billing_settings`; deny all direct INSERT/UPDATE/DELETE except via SECURITY DEFINER RPCs; explicit `REVOKE UPDATE, DELETE ON public.payments FROM PUBLIC, authenticated, anon`
-- [ ] T006 In the same migration, add trigger `AFTER INSERT ON organizations` to auto-provision an `organization_billing_settings` row with `allow_partial_payments=false`, plus a backfill statement for existing organizations
-- [ ] T007 [P] In the same migration, add PL/pgSQL helper functions in `auth_internal`: `assert_invoice_branch_scope`, `assert_invoice_in_draft`, `assert_one_active_invoice_per_visit`, `assert_discount_scope_exclusive`, `compute_invoice_subtotal`, `compute_invoice_balance`, `assign_invoice_number`
-- [ ] T008 [P] In the same migration, seed permission keys (`invoices.view`, `invoices.create`, `invoices.apply_discount`, `invoices.void`, `payments.record`, `payments.refund`, `insurance.manage`, `settings.billing.manage`) and role mappings per FR-021; mark `settings.billing.manage` as non-delegable in the role-permission management RPC (server-side reject if granted to receptionist/doctor/lab_staff)
-- [ ] T009 In the same migration, add trigger on `invoices` and `invoice_items` to enforce mutual exclusion of line vs invoice discount (`AFTER INSERT OR UPDATE`, raise if both scopes non-zero) per D3
+- [X] T004 Create migration `backend/supabase/migrations/20260605180000_billing.sql` with: enums (`invoice_status`, `payment_method`, `discount_kind`), tables (`invoices`, `invoice_items`, `payments`, `insurance_providers`, `organization_billing_settings`, `invoice_number_sequences`), all CHECK constraints, partial unique indexes, and standard audit columns per `specs/007-billing/data-model.md`
+- [X] T005 In the same migration, add RLS policies: branch-scoped SELECT on `invoices`/`invoice_items`/`payments`; org-scoped SELECT on `insurance_providers`/`organization_billing_settings`; deny all direct INSERT/UPDATE/DELETE except via SECURITY DEFINER RPCs; explicit `REVOKE UPDATE, DELETE ON public.payments FROM PUBLIC, authenticated, anon`
+- [X] T006 In the same migration, add trigger `AFTER INSERT ON organizations` to auto-provision an `organization_billing_settings` row with `allow_partial_payments=false`, plus a backfill statement for existing organizations
+- [X] T007 [P] In the same migration, add PL/pgSQL helper functions in `auth_internal`: `assert_invoice_branch_scope`, `assert_invoice_in_draft`, `assert_one_active_invoice_per_visit`, `assert_discount_scope_exclusive`, `compute_invoice_subtotal`, `compute_invoice_balance`, `assign_invoice_number`
+- [X] T008 [P] In the same migration, seed permission keys (`invoices.view`, `invoices.create`, `invoices.apply_discount`, `invoices.void`, `payments.record`, `payments.refund`, `insurance.manage`, `settings.billing.manage`) and role mappings per FR-021; mark `settings.billing.manage` as non-delegable in the role-permission management RPC (server-side reject if granted to receptionist/doctor/lab_staff)
+- [X] T009 In the same migration, add trigger on `invoices` and `invoice_items` to enforce mutual exclusion of line vs invoice discount (`AFTER INSERT OR UPDATE`, raise if both scopes non-zero) per D3
 
 ### Frontend foundation
 
-- [ ] T010 [P] Extend `frontend/lib/features/auth/domain/permission_keys.dart` with the eight new billing permission keys
-- [ ] T011 [P] Extend `frontend/lib/core/auth/permission_service.dart` with `canViewInvoices`, `canCreateInvoices`, `canApplyDiscount`, `canVoidInvoice`, `canRecordPayment`, `canRefundPayment`, `canManageInsurance`, `canManageBillingSettings`
-- [ ] T012 [P] Add domain types under `frontend/lib/features/billing/domain/`: `invoice_status.dart`, `payment_method.dart`, `discount_kind.dart`, `discount_scope.dart`, `invoice_list_item.dart`, `invoice_detail.dart`, `invoice_item.dart`, `payment.dart`, `insurance_provider.dart`, `billing_settings.dart`
-- [ ] T013 [P] Add base repository skeletons under `frontend/lib/features/billing/data/`: `invoice_repository.dart`, `payment_repository.dart`, `insurance_provider_repository.dart`, `billing_settings_repository.dart` (RPC names and shapes per `contracts/billing-*.md`; backend-first reads per FR-030)
-- [ ] T014 Register routes in `frontend/lib/app/router.dart` and `frontend/lib/app/app_routes.dart`: `/billing/invoices`, `/billing/invoices/:id`, `/billing/insurance-providers`, `/settings/billing` (all permission-guarded; unauthorized → 403 view)
+- [X] T010 [P] Extend `frontend/lib/features/auth/domain/permission_keys.dart` with the eight new billing permission keys
+- [X] T011 [P] Extend `frontend/lib/core/auth/permission_service.dart` with `canViewInvoices`, `canCreateInvoices`, `canApplyDiscount`, `canVoidInvoice`, `canRecordPayment`, `canRefundPayment`, `canManageInsurance`, `canManageBillingSettings`
+- [X] T012 [P] Add domain types under `frontend/lib/features/billing/domain/`: `invoice_status.dart`, `payment_method.dart`, `discount_kind.dart`, `discount_scope.dart`, `invoice_list_item.dart`, `invoice_detail.dart`, `invoice_item.dart`, `payment.dart`, `insurance_provider.dart`, `billing_settings.dart`
+- [X] T013 [P] Add base repository skeletons under `frontend/lib/features/billing/data/`: `invoice_repository.dart`, `payment_repository.dart`, `insurance_provider_repository.dart`, `billing_settings_repository.dart` (RPC names and shapes per `contracts/billing-*.md`; backend-first reads per FR-030)
+- [X] T014 Register routes in `frontend/lib/app/router.dart` and `frontend/lib/app/app_routes.dart`: `/billing/invoices`, `/billing/invoices/:id`, `/billing/insurance-providers`, `/settings/billing` (all permission-guarded; unauthorized → 403 view)
 
 ### Foundational backend tests
 
-- [ ] T015 [P] Create `backend/tests/billing_rls.sql` covering: cross-branch read denial on invoices/items/payments; cross-org read denial on insurance providers and billing settings; receptionist mutation denial on settings; doctor/lab_staff full denial on invoices
+- [X] T015 [P] Create `backend/tests/billing_rls.sql` covering: cross-branch read denial on invoices/items/payments; cross-org read denial on insurance providers and billing settings; receptionist mutation denial on settings; doctor/lab_staff full denial on invoices
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel.
 

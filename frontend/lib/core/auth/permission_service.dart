@@ -64,6 +64,22 @@ class PermissionService {
 
   bool canViewVisitClinicalDetail() => hasAnyPermission([PermissionKeys.visitsCreate, PermissionKeys.visitsEditSoap]);
 
+  bool canViewInvoices() => hasPermission(PermissionKeys.invoicesView);
+
+  bool canCreateInvoices() => hasPermission(PermissionKeys.invoicesCreate);
+
+  bool canApplyDiscount() => hasPermission(PermissionKeys.invoicesApplyDiscount);
+
+  bool canVoidInvoice() => hasPermission(PermissionKeys.invoicesVoid);
+
+  bool canRecordPayment() => hasPermission(PermissionKeys.paymentsRecord);
+
+  bool canRefundPayment() => hasPermission(PermissionKeys.paymentsRefund);
+
+  bool canManageInsurance() => hasPermission(PermissionKeys.insuranceManage);
+
+  bool canManageBillingSettings() => hasPermission(PermissionKeys.settingsBillingManage);
+
   void requirePermission(String key) {
     if (!hasPermission(key)) {
       throw const PermissionDeniedException('You do not have permission to perform this action.');

@@ -57,6 +57,7 @@ BEGIN
   DELETE FROM auth.users WHERE email LIKE 'us7-%';
   DELETE FROM public.patients;
   DELETE FROM public.branches;
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations;
   PERFORM set_config('role', 'authenticated', true);
 

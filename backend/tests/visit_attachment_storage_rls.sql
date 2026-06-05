@@ -37,6 +37,7 @@ BEGIN
   WHERE staff_member_id IN (v_admin_staff, v_doctor_staff);
   DELETE FROM public.staff_members WHERE id IN (v_admin_staff, v_doctor_staff);
   DELETE FROM public.branches WHERE id IN (v_branch_primary, v_branch_other);
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations WHERE id = v_org_id;
   DELETE FROM auth.users WHERE id IN (v_admin_user, v_doctor_user);
 

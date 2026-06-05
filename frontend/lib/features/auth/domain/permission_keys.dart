@@ -16,7 +16,14 @@ abstract final class PermissionKeys {
   static const visitsUploadAttachment = 'visits.upload_attachment';
   static const analyticsView = 'analytics.view';
   static const aiAccess = 'ai.access';
+  static const invoicesView = 'invoices.view';
   static const invoicesCreate = 'invoices.create';
+  static const invoicesApplyDiscount = 'invoices.apply_discount';
+  static const invoicesVoid = 'invoices.void';
+  static const paymentsRecord = 'payments.record';
+  static const paymentsRefund = 'payments.refund';
+  static const insuranceManage = 'insurance.manage';
+  static const settingsBillingManage = 'settings.billing.manage';
 }
 
 /// Expected V1-1 seed grants per role (for tests and RBAC demo verification).
@@ -36,7 +43,14 @@ abstract final class RolePermissionSeed {
     PermissionKeys.visitsUploadAttachment,
     PermissionKeys.analyticsView,
     PermissionKeys.aiAccess,
+    PermissionKeys.invoicesView,
     PermissionKeys.invoicesCreate,
+    PermissionKeys.invoicesApplyDiscount,
+    PermissionKeys.invoicesVoid,
+    PermissionKeys.paymentsRecord,
+    PermissionKeys.paymentsRefund,
+    PermissionKeys.insuranceManage,
+    PermissionKeys.settingsBillingManage,
   };
 
   static const administrator = owner;
@@ -58,7 +72,9 @@ abstract final class RolePermissionSeed {
     PermissionKeys.appointmentsCreate,
     PermissionKeys.appointmentsCancel,
     PermissionKeys.appointmentsRead,
+    PermissionKeys.invoicesView,
     PermissionKeys.invoicesCreate,
+    PermissionKeys.paymentsRecord,
   };
 
   static const labStaff = {

@@ -72,6 +72,7 @@ BEGIN
   DELETE FROM public.staff_members WHERE id NOT IN (v_bootstrap_staff);
   DELETE FROM public.audit_log;
   DELETE FROM public.branches;
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations;
   DELETE FROM auth.users
   WHERE id IN (v_owner_user, v_doctor_user, v_lab_user);

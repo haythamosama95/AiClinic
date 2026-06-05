@@ -32,6 +32,10 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_h
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
 import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
 import 'package:ai_clinic/features/visits/presentation/pages/visit_documentation_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/billing_settings_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/insurance_providers_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -104,6 +108,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
             builder: (context, state) => VisitDetailPage(visitId: state.pathParameters['visitId']),
           ),
+
+          // Billing (V1-6)
+          GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => const InvoiceListPage()),
+          GoRoute(
+            path: '${AppRoutes.billingInvoices}/:invoiceId',
+            builder: (context, state) => InvoiceDetailPage(invoiceId: state.pathParameters['invoiceId']),
+          ),
+          GoRoute(
+            path: AppRoutes.billingInsuranceProviders,
+            builder: (context, state) => const InsuranceProvidersPage(),
+          ),
+          GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => const BillingSettingsPage()),
 
           // Settings
           GoRoute(path: AppRoutes.settings, builder: (context, state) => const SettingsPage()),
@@ -206,6 +222,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final visitRedirect = AuthRouteGuard.visitRouteRedirect(location: location, auth: auth);
         if (visitRedirect != null) {
           return visitRedirect;
+        }
+
+        final billingRedirect = AuthRouteGuard.billingRouteRedirect(location: location, auth: auth);
+        if (billingRedirect != null) {
+          return billingRedirect;
         }
 
         final provisioningRedirect = AuthRouteGuard.steadyStateProvisioningRedirect(location: location, auth: auth);

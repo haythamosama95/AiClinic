@@ -26,6 +26,7 @@ abstract final class AuthRouteGuard {
         isPatientRoute(location) ||
         isAppointmentRoute(location) ||
         isVisitRoute(location) ||
+        isBillingRoute(location) ||
         isStaffProvisioningRoute(location) ||
         location.startsWith('${AppRoutes.protectedPrefix}/');
   }
@@ -136,6 +137,68 @@ abstract final class AuthRouteGuard {
     return allowed ? null : AppRoutes.home;
   }
 
+  /// V1-6 billing routes under `/billing` and `/settings/billing`.
+  static bool isBillingRoute(String location) {
+    if (AppRoutes.billingStaticPaths.contains(location)) {
+      return true;
+    }
+    if (location.startsWith('${AppRoutes.billingInvoices}/')) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool canAccessInvoiceList(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canViewInvoices();
+  }
+
+  static bool canAccessInvoiceDetail(AuthSessionState auth) {
+    return canAccessInvoiceList(auth);
+  }
+
+  static bool canAccessInsuranceProviders(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canManageInsurance();
+  }
+
+  static bool canAccessBillingSettings(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    final permissions = PermissionService(auth.context);
+    return permissions.canViewInvoices() || permissions.canRecordPayment();
+  }
+
+  /// Returns redirect when [location] is a billing route the session cannot access.
+  static String? billingRouteRedirect({required String location, required AuthSessionState auth}) {
+    if (!isBillingRoute(location)) {
+      return null;
+    }
+
+    if (!auth.isAuthenticated) {
+      return AppRoutes.login;
+    }
+
+    if (auth.context!.setupRequired) {
+      return AppRoutes.bootstrap;
+    }
+
+    final allowed = switch (location) {
+      AppRoutes.billingInvoices => canAccessInvoiceList(auth),
+      AppRoutes.billingInsuranceProviders => canAccessInsuranceProviders(auth),
+      AppRoutes.settingsBilling => canAccessBillingSettings(auth),
+      _ when location.startsWith('${AppRoutes.billingInvoices}/') => canAccessInvoiceDetail(auth),
+      _ => false,
+    };
+
+    return allowed ? null : AppRoutes.home;
+  }
+
   /// Returns redirect when [location] is an appointment route the session cannot access.
   static String? appointmentRouteRedirect({required String location, required AuthSessionState auth}) {
     if (!isAppointmentRoute(location)) {
@@ -180,6 +243,7 @@ abstract final class AuthRouteGuard {
   static bool isSettingsRoute(String location) {
     return location == AppRoutes.settings ||
         location == AppRoutes.settingsIdleTimeout ||
+        location == AppRoutes.settingsBilling ||
         isAdminSettingsRoute(location);
   }
 

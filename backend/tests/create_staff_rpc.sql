@@ -70,6 +70,7 @@ BEGIN
      OR email IN ('owner-one', 'owner-two', 'reception');
   DELETE FROM public.patients;
   DELETE FROM public.branches;
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations;
 
   UPDATE public.staff_members

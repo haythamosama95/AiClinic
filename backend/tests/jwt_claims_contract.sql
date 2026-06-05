@@ -27,6 +27,7 @@ BEGIN
   DELETE FROM public.subscription_cache;
   DELETE FROM public.patients;
   DELETE FROM public.branches;
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations;
 
   v_claims := auth_internal.build_staff_claims(v_bootstrap_user_id);

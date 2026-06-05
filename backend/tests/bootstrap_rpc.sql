@@ -28,6 +28,7 @@ BEGIN
   DELETE FROM public.audit_log;
   DELETE FROM public.patients;
   DELETE FROM public.branches;
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations;
 
   -- Ensure a non-bootstrap administrator exists for denial tests.
@@ -122,6 +123,7 @@ PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.audit_log;
   DELETE FROM public.patients;
   DELETE FROM public.branches;
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations;
   DELETE FROM auth.users
   WHERE email LIKE 'owner-%'

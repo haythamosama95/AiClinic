@@ -24,6 +24,7 @@ BEGIN
   DELETE FROM public.subscription_cache WHERE true;
   DELETE FROM public.patients WHERE true;
   DELETE FROM public.branches WHERE true;
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations WHERE true;
 
   PERFORM set_config('role', 'authenticated', true);
@@ -96,6 +97,7 @@ BEGIN
   DELETE FROM public.subscription_cache WHERE true;
   DELETE FROM public.patients WHERE true;
   DELETE FROM public.branches WHERE true;
+  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations WHERE true;
 
   PERFORM set_config('role', 'authenticated', true);
