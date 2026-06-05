@@ -7,6 +7,7 @@ import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_editor_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/billing_access_denied_view.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/discount_scope_guard.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_items_editor.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_status_badge.dart';
 
@@ -84,7 +85,11 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
     final state = widget.state;
     final detail = state.detail;
     final notifier = ref.read(invoiceEditorProvider(widget.invoiceId).notifier);
+    final canApplyDiscount = ref.watch(permissionServiceProvider).canApplyDiscount();
     final theme = Theme.of(context);
+    final subtotal = double.tryParse(detail.subtotal) ?? 0;
+    final invoiceDiscount = double.tryParse(detail.discountAmount) ?? 0;
+    final netTotal = (subtotal - invoiceDiscount).toStringAsFixed(2);
 
     return ListView(
       key: const Key('invoice_editor_body'),
@@ -99,6 +104,8 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
         ),
         const SizedBox(height: 8),
         Text('Subtotal: ${detail.subtotal} ${detail.currency}'),
+        if (invoiceDiscount > 0) Text('Invoice discount: ${detail.discountAmount} ${detail.currency}'),
+        Text('Net total: $netTotal ${detail.currency}', style: theme.textTheme.titleMedium),
         if (state.errorMessage != null) ...[
           const SizedBox(height: 12),
           MaterialBanner(
@@ -115,6 +122,17 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
           onAdd: notifier.addItem,
           onUpdate: notifier.updateItem,
           onRemove: notifier.removeItem,
+        ),
+        const SizedBox(height: 24),
+        DiscountScopeGuard(
+          detail: detail,
+          canApplyDiscount: canApplyDiscount,
+          busy: state.isBusy,
+          onApplyLineDiscount: notifier.applyLineDiscount,
+          onClearLineDiscount: ({required itemId}) => notifier.clearLineDiscount(itemId: itemId),
+          onApplyInvoiceDiscount: notifier.applyInvoiceDiscount,
+          onClearInvoiceDiscount: notifier.clearInvoiceDiscount,
+          onClearAllLineDiscounts: notifier.clearAllLineDiscounts,
         ),
         const SizedBox(height: 24),
         if (state.issueErrorMessage != null) ...[

@@ -202,6 +202,10 @@ DECLARE
   v_balance numeric(14, 2);
   v_audit_count int;
   v_allow_partial boolean;
+  v_line_discount_amount numeric(14, 2);
+  v_invoice_discount_amount numeric(14, 2);
+  v_subtotal numeric(14, 2);
+  v_trigger_blocked boolean;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.payments;
@@ -407,6 +411,162 @@ BEGIN
     COALESCE(v_result.error_code, 'ok')
   );
 
+  -- US3: line discount valid (10% on 120.00 line)
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'percentage', 10.00);
+  SELECT line_discount_amount, line_total
+  INTO v_line_discount_amount, v_subtotal
+  FROM public.invoice_items
+  WHERE id = v_item_id;
+  SELECT subtotal INTO v_invoice_discount_amount FROM public.invoices WHERE id = v_invoice_id;
+  PERFORM pg_temp.billing_crud_record(
+    'line_discount_percentage_valid',
+    v_result.success
+      AND v_line_discount_amount = 12.00
+      AND v_subtotal = 108.00
+      AND v_invoice_discount_amount = 108.00,
+    format('discount=%s line_total=%s subtotal=%s', v_line_discount_amount, v_subtotal, v_invoice_discount_amount)
+  );
+
+  -- US3: line discount invalid bounds
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'percentage', 150.00);
+  PERFORM pg_temp.billing_crud_record(
+    'line_discount_percentage_out_of_bounds',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'fixed', 200.00);
+  PERFORM pg_temp.billing_crud_record(
+    'line_discount_fixed_exceeds_line_subtotal',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- US3: invoice discount rejected while line discount active
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_invoice_discount(v_invoice_id, v_updated_at, 'fixed', 5.00);
+  PERFORM pg_temp.billing_crud_record(
+    'invoice_discount_rejected_when_line_discount_active',
+    NOT v_result.success AND v_result.error_code = 'DISCOUNT_SCOPE_CONFLICT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- US3: trigger blocks direct SQL that would violate mutual exclusion
+  v_trigger_blocked := false;
+  BEGIN
+    PERFORM set_config('role', 'postgres', true);
+    UPDATE public.invoices
+    SET discount_amount = 5.00, discount_kind = 'fixed', discount_value = 5.00
+    WHERE id = v_invoice_id;
+    PERFORM set_config('role', 'authenticated', true);
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_trigger_blocked := SQLERRM = 'discount_scope_conflict';
+      PERFORM set_config('role', 'authenticated', true);
+  END;
+  PERFORM pg_temp.billing_crud_record(
+    'trigger_blocks_concurrent_discount_scope_violation',
+    v_trigger_blocked,
+    CASE WHEN v_trigger_blocked THEN 'blocked' ELSE 'not blocked' END
+  );
+
+  -- US3: clearing line discount re-enables invoice discount
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, NULL, NULL);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_invoice_discount(v_invoice_id, v_updated_at, 'fixed', 10.00);
+  SELECT discount_amount INTO v_invoice_discount_amount FROM public.invoices WHERE id = v_invoice_id;
+  PERFORM pg_temp.billing_crud_record(
+    'invoice_discount_valid_after_clearing_line_scope',
+    v_result.success AND v_invoice_discount_amount = 10.00,
+    COALESCE(v_invoice_discount_amount::text, v_result.error_code)
+  );
+
+  -- US3: invoice discount invalid bounds
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_invoice_discount(v_invoice_id, v_updated_at, 'percentage', 150.00);
+  PERFORM pg_temp.billing_crud_record(
+    'invoice_discount_percentage_out_of_bounds',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_invoice_discount(v_invoice_id, v_updated_at, 'fixed', 500.00);
+  PERFORM pg_temp.billing_crud_record(
+    'invoice_discount_fixed_exceeds_subtotal',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- US3: line discount rejected while invoice discount active
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'percentage', 5.00);
+  PERFORM pg_temp.billing_crud_record(
+    'line_discount_rejected_when_invoice_discount_active',
+    NOT v_result.success AND v_result.error_code = 'DISCOUNT_SCOPE_CONFLICT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- US3: clearing invoice discount re-enables line discount
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_invoice_discount(v_invoice_id, v_updated_at, NULL, NULL);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'fixed', 15.00);
+  SELECT line_discount_amount INTO v_line_discount_amount FROM public.invoice_items WHERE id = v_item_id;
+  PERFORM pg_temp.billing_crud_record(
+    'line_discount_valid_after_clearing_invoice_scope',
+    v_result.success AND v_line_discount_amount = 15.00,
+    COALESCE(v_line_discount_amount::text, v_result.error_code)
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'invoice.discount.apply'
+    AND al.new_data_json ->> 'scope' = 'line'
+    AND al.record_id = v_item_id;
+  PERFORM pg_temp.billing_crud_record(
+    'line_discount_apply_audited',
+    v_audit_count >= 1,
+    v_audit_count::text
+  );
+
+  -- US3: doctor without discount permission denied
+  PERFORM pg_temp.set_doctor_jwt(
+    v_doctor_user,
+    v_doctor_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'percentage', 5.00);
+  PERFORM pg_temp.billing_crud_record(
+    'discount_apply_permission_denied_without_key',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  -- restore draft totals before issue/payment scenarios
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, NULL, NULL);
+
   -- issue without items on a fresh draft
   PERFORM set_config('role', 'postgres', true);
   v_visit_completed := pg_temp.seed_completed_visit(
@@ -475,6 +635,29 @@ BEGIN
   v_result := public.add_invoice_item(v_invoice_id, v_updated_at, 'Late item', 1, 10.00);
   PERFORM pg_temp.billing_crud_record(
     'issued_invoice_rejects_item_add',
+    NOT v_result.success AND v_result.error_code = 'INVOICE_NOT_IN_DRAFT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- US3: issued invoice rejects discount mutation
+  SELECT ii.id, i.updated_at
+  INTO v_item_id, v_updated_at
+  FROM public.invoice_items ii
+  JOIN public.invoices i ON i.id = ii.invoice_id
+  WHERE i.id = v_invoice_id
+    AND ii.is_deleted = false
+  LIMIT 1;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'percentage', 5.00);
+  PERFORM pg_temp.billing_crud_record(
+    'issued_invoice_rejects_line_discount',
+    NOT v_result.success AND v_result.error_code = 'INVOICE_NOT_IN_DRAFT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_invoice_discount(v_invoice_id, v_updated_at, 'fixed', 5.00);
+  PERFORM pg_temp.billing_crud_record(
+    'issued_invoice_rejects_invoice_discount',
     NOT v_result.success AND v_result.error_code = 'INVOICE_NOT_IN_DRAFT',
     COALESCE(v_result.error_code, '<null>')
   );

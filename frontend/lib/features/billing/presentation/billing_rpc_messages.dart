@@ -15,6 +15,8 @@ String billingMessageForRpc(RpcFailure failure) {
     'INVOICE_VOIDED' => 'This invoice is voided and cannot accept payments.',
     'INVOICE_NOT_PAYABLE' => 'Payments cannot be recorded on this invoice in its current state.',
     'FORBIDDEN' => 'You do not have permission to perform this billing action.',
+    'DISCOUNT_SCOPE_CONFLICT' =>
+      'Discount scopes are mutually exclusive — clear the existing discount scope before switching.',
     _ => failure.message.isNotEmpty ? failure.message : 'Billing action failed.',
   };
 }

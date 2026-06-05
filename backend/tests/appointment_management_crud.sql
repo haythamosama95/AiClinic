@@ -535,14 +535,14 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Reschedule requires scheduled planned — use new appointment.
-  v_start := date_trunc('hour', now() + interval '3 days');
+  -- Day-truncated slot (not date_trunc('hour', now()+N days)) so late-evening UTC runs
+  -- do not roll into the next calendar day and collide with day+4 cancel/rebook tests.
+  v_start := date_trunc('day', now() + interval '3 days') + interval '10 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
 
-  -- +1 hour keeps the slot on the same calendar day when day+3 trunc lands near 22:00 UTC;
-  -- +2 hours would roll to the next day and collide with the day+4 cancel/rebook tests.
   v_result := public.reschedule_appointment(
     v_appt_second,
     v_start + interval '1 hour',
@@ -700,7 +700,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Cancel scheduled appointment (third).
-  v_start := date_trunc('hour', now() + interval '4 days');
+  v_start := date_trunc('day', now() + interval '4 days') + interval '10 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
@@ -759,7 +759,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Cancel confirmed appointment (patient did not confirm after phone call).
-  v_start := date_trunc('hour', now() + interval '5 days 1 hour');
+  v_start := date_trunc('day', now() + interval '5 days') + interval '11 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );

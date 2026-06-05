@@ -14,6 +14,9 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
   bool allowPartialPayments = false;
   String issuedBalance = '100.00';
   String issuedStatus = 'issued';
+  String? draftInvoiceDiscountKind;
+  String? draftInvoiceDiscountValue;
+  String draftInvoiceDiscountAmount = '0';
 
   static const draftInvoiceId = '11111111-1111-4111-8111-111111111111';
   static const issuedInvoiceId = '22222222-2222-4222-8222-222222222222';
@@ -105,6 +108,8 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       },
       'record_payment' => _recordPayment(),
       'record_refund' => _recordRefund(),
+      'apply_line_discount' => _applyLineDiscount(),
+      'apply_invoice_discount' => _applyInvoiceDiscount(),
       _ => {'success': true, 'data': {}},
     };
   }
@@ -194,8 +199,128 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     };
   }
 
+  bool _hasLineDiscountScope() {
+    return _draftItems.any(
+      (item) =>
+          item['line_discount_kind'] != null ||
+          (double.tryParse(item['line_discount_amount']?.toString() ?? '') ?? 0) > 0,
+    );
+  }
+
+  bool _hasInvoiceDiscountScope() {
+    return draftInvoiceDiscountKind != null || (double.tryParse(draftInvoiceDiscountAmount) ?? 0) > 0;
+  }
+
+  Map<String, dynamic> _applyLineDiscount() {
+    final targetItemId = lastParams?['p_item_id']?.toString() ?? BillingRpcTestClient.itemId;
+    final kind = lastParams?['p_kind'];
+    final value = lastParams?['p_value'];
+
+    if (_hasInvoiceDiscountScope()) {
+      return {
+        'success': false,
+        'error_code': 'DISCOUNT_SCOPE_CONFLICT',
+        'error_message': 'Discount scopes are mutually exclusive — clear the invoice-level discount first.',
+      };
+    }
+
+    final index = _draftItems.indexWhere((row) => row['id']?.toString() == targetItemId);
+    if (index < 0) {
+      return {'success': false, 'error_code': 'NOT_FOUND', 'error_message': 'Item not found.'};
+    }
+
+    final item = Map<String, dynamic>.from(_draftItems[index]);
+    final lineSubtotal = double.tryParse(item['line_subtotal']?.toString() ?? '') ?? 0;
+
+    if (kind == null && value == null) {
+      item
+        ..['line_discount_kind'] = null
+        ..['line_discount_value'] = null
+        ..['line_discount_amount'] = '0'
+        ..['line_total'] = item['line_subtotal'];
+    } else {
+      final parsedValue = double.tryParse(value?.toString() ?? '') ?? -1;
+      if (kind == 'percentage') {
+        if (parsedValue < 0 || parsedValue > 100) {
+          return {'success': false, 'error_code': 'INVALID_INPUT', 'error_message': 'Invalid percentage.'};
+        }
+        final amount = (lineSubtotal * parsedValue / 100).toStringAsFixed(2);
+        item
+          ..['line_discount_kind'] = kind
+          ..['line_discount_value'] = value?.toString()
+          ..['line_discount_amount'] = amount
+          ..['line_total'] = (lineSubtotal - double.parse(amount)).toStringAsFixed(2);
+      } else if (kind == 'fixed') {
+        if (parsedValue < 0 || parsedValue > lineSubtotal) {
+          return {'success': false, 'error_code': 'INVALID_INPUT', 'error_message': 'Invalid fixed discount.'};
+        }
+        item
+          ..['line_discount_kind'] = kind
+          ..['line_discount_value'] = value?.toString()
+          ..['line_discount_amount'] = parsedValue.toStringAsFixed(2)
+          ..['line_total'] = (lineSubtotal - parsedValue).toStringAsFixed(2);
+      }
+    }
+
+    _draftItems[index] = item;
+    return {
+      'success': true,
+      'data': {'item_id': targetItemId},
+    };
+  }
+
+  Map<String, dynamic> _applyInvoiceDiscount() {
+    final kind = lastParams?['p_kind'];
+    final value = lastParams?['p_value'];
+
+    if (_hasLineDiscountScope()) {
+      return {
+        'success': false,
+        'error_code': 'DISCOUNT_SCOPE_CONFLICT',
+        'error_message': 'Discount scopes are mutually exclusive — clear all line-level discounts first.',
+      };
+    }
+
+    final subtotal = _draftItems.fold<double>(0, (sum, row) {
+      return sum + (double.tryParse(row['line_total']?.toString() ?? '') ?? 0);
+    });
+
+    if (kind == null && value == null) {
+      draftInvoiceDiscountKind = null;
+      draftInvoiceDiscountValue = null;
+      draftInvoiceDiscountAmount = '0';
+    } else {
+      final parsedValue = double.tryParse(value?.toString() ?? '') ?? -1;
+      if (kind == 'percentage') {
+        if (parsedValue < 0 || parsedValue > 100) {
+          return {'success': false, 'error_code': 'INVALID_INPUT', 'error_message': 'Invalid percentage.'};
+        }
+        draftInvoiceDiscountKind = kind?.toString();
+        draftInvoiceDiscountValue = value?.toString();
+        draftInvoiceDiscountAmount = (subtotal * parsedValue / 100).toStringAsFixed(2);
+      } else if (kind == 'fixed') {
+        if (parsedValue < 0 || parsedValue > subtotal) {
+          return {'success': false, 'error_code': 'INVALID_INPUT', 'error_message': 'Invalid fixed discount.'};
+        }
+        draftInvoiceDiscountKind = kind?.toString();
+        draftInvoiceDiscountValue = value?.toString();
+        draftInvoiceDiscountAmount = parsedValue.toStringAsFixed(2);
+      }
+    }
+
+    return {
+      'success': true,
+      'data': {'invoice_id': draftInvoiceId, 'discount_amount': draftInvoiceDiscountAmount},
+    };
+  }
+
   Map<String, dynamic> _detailFor(String invoiceId) {
     final isIssued = invoiceId == issuedInvoiceId;
+    final draftSubtotal = _draftItems
+        .fold<double>(0, (sum, row) {
+          return sum + (double.tryParse(row['line_total']?.toString() ?? '') ?? 0);
+        })
+        .toStringAsFixed(2);
     return {
       'invoice': {
         'id': invoiceId,
@@ -204,18 +329,18 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
         'branch_id': '44444444-4444-4444-8444-444444444444',
         'patient_id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
         'visit_id': visitId,
-        'subtotal': isIssued ? '100.00' : '0',
-        'discount_kind': null,
-        'discount_value': null,
-        'discount_amount': '0',
+        'subtotal': isIssued ? '100.00' : draftSubtotal,
+        'discount_kind': isIssued ? null : draftInvoiceDiscountKind,
+        'discount_value': isIssued ? null : draftInvoiceDiscountValue,
+        'discount_amount': isIssued ? '0' : draftInvoiceDiscountAmount,
         'insurance_provider_id': null,
         'insurance_covered_amount': '0',
         'currency': 'USD',
         'issued_at': isIssued ? '2026-06-01T11:00:00.000Z' : null,
         'voided_at': null,
         'void_reason': null,
-        'balance': isIssued ? issuedBalance : '0',
-        'updated_at': '2026-06-01T10:00:00.000Z',
+        'balance': isIssued ? issuedBalance : draftSubtotal,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       'items': isIssued
           ? [

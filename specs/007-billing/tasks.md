@@ -148,15 +148,15 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ### Tests for User Story 3
 
-- [ ] T039 [P] [US3] In `backend/tests/billing_crud.sql`, add scenarios: line discount valid/invalid bounds; invoice discount valid/invalid bounds; mutual exclusion raises `discount_scope_conflict` from both directions; trigger blocks any concurrent path that would yield both scopes non-zero; clearing a scope (NULL/NULL) re-enables the other
-- [ ] T040 [P] [US3] Add `frontend/test/integration/billing/discount_scopes_test.dart` covering US3 acceptance scenarios 1, 2, 2a, 3, 4, 5, 6
+- [X] T039 [P] [US3] In `backend/tests/billing_crud.sql`, add scenarios: line discount valid/invalid bounds; invoice discount valid/invalid bounds; mutual exclusion raises `discount_scope_conflict` from both directions; trigger blocks any concurrent path that would yield both scopes non-zero; clearing a scope (NULL/NULL) re-enables the other
+- [X] T040 [P] [US3] Add `frontend/test/integration/billing/discount_scopes_test.dart` covering US3 acceptance scenarios 1, 2, 2a, 3, 4, 5, 6
 
 ### Implementation for User Story 3
 
-- [ ] T041 [P] [US3] Add `apply_line_discount` and `apply_invoice_discount` RPCs per `contracts/billing-mutations.md` (pre-check exclusivity; audit with scope tag)
-- [ ] T042 [P] [US3] Implement `line_discount_field.dart` (per-item input) and `invoice_discount_panel.dart` widgets
-- [ ] T043 [US3] Implement `discount_scope_guard.dart` widget that disables the inactive scope's inputs when the other is non-zero and offers a "Clear other scope" affordance
-- [ ] T044 [US3] Wire discount widgets into `invoice_editor_page.dart`; ensure totals re-render from server response
+- [X] T041 [P] [US3] Add `apply_line_discount` and `apply_invoice_discount` RPCs per `contracts/billing-mutations.md` (pre-check exclusivity; audit with scope tag)
+- [X] T042 [P] [US3] Implement `line_discount_field.dart` (per-item input) and `invoice_discount_panel.dart` widgets
+- [X] T043 [US3] Implement `discount_scope_guard.dart` widget that disables the inactive scope's inputs when the other is non-zero and offers a "Clear other scope" affordance
+- [X] T044 [US3] Wire discount widgets into `invoice_editor_page.dart`; ensure totals re-render from server response
 
 **Checkpoint**: Discounts work with the mutual-exclusion constraint enforced top-to-bottom.
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
+import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/presentation/billing_rpc_messages.dart';
@@ -115,6 +116,57 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
     return _mutate((detail, repo) async {
       await repo.removeItem(itemId: itemId, expectedUpdatedAt: detail.updatedAt);
     });
+  }
+
+  Future<bool> applyLineDiscount({required String itemId, required DiscountKind kind, required String value}) async {
+    return _mutate((detail, repo) async {
+      await repo.applyLineDiscount(itemId: itemId, expectedUpdatedAt: detail.updatedAt, kind: kind, value: value);
+    });
+  }
+
+  Future<bool> clearLineDiscount({required String itemId}) async {
+    return _mutate((detail, repo) async {
+      await repo.applyLineDiscount(itemId: itemId, expectedUpdatedAt: detail.updatedAt);
+    });
+  }
+
+  Future<bool> applyInvoiceDiscount({required DiscountKind kind, required String value}) async {
+    return _mutate((detail, repo) async {
+      await repo.applyInvoiceDiscount(
+        invoiceId: detail.id,
+        expectedUpdatedAt: detail.updatedAt,
+        kind: kind,
+        value: value,
+      );
+    });
+  }
+
+  Future<bool> clearInvoiceDiscount() async {
+    return _mutate((detail, repo) async {
+      await repo.applyInvoiceDiscount(invoiceId: detail.id, expectedUpdatedAt: detail.updatedAt);
+    });
+  }
+
+  Future<bool> clearAllLineDiscounts() async {
+    final current = state.value;
+    if (current == null) {
+      return false;
+    }
+
+    final discountedItems = current.detail.items.where(
+      (item) => item.lineDiscountKind != null || (double.tryParse(item.lineDiscountAmount) ?? 0) > 0,
+    );
+    if (discountedItems.isEmpty) {
+      return true;
+    }
+
+    for (final item in discountedItems) {
+      final cleared = await clearLineDiscount(itemId: item.id);
+      if (!cleared) {
+        return false;
+      }
+    }
+    return true;
   }
 
   void setIssueValidationError(String message) {

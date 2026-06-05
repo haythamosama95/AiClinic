@@ -32,16 +32,14 @@ WHERE id = '$branchId'::uuid;
 ''');
 }
 
-/// Planned start on today's UTC calendar day (org TZ in crud suite is UTC).
+/// Planned start on today's UTC calendar day (org TZ defaults to UTC in boundary fixtures).
+/// Mirrors pg_temp.test_appointment_same_day_slot in backend SQL crud suites — always
+/// same calendar day so day-gated status transitions (checked_in, in_progress, …) succeed.
 DateTime _boundarySameDayPlannedStartUtc({int hourOffset = 10}) {
+  assert(hourOffset >= 1 && hourOffset <= 23);
   final now = DateTime.now().toUtc();
   final dayStart = DateTime.utc(now.year, now.month, now.day);
-  var start = dayStart.add(Duration(hours: hourOffset));
-  if (!start.isAfter(now.add(const Duration(minutes: 30)))) {
-    start = now.add(const Duration(hours: 1));
-    start = DateTime.utc(start.year, start.month, start.day, start.hour);
-  }
-  return start;
+  return dayStart.add(Duration(hours: hourOffset));
 }
 
 void main() {
