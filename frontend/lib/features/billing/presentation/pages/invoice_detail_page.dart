@@ -5,15 +5,14 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/payment.dart';
+import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/billing_access_denied_view.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_status_badge.dart';
-
-final invoiceDetailProvider = FutureProvider.autoDispose.family<InvoiceDetail, String>((ref, invoiceId) async {
-  return ref.watch(invoiceRepositoryProvider).getDetail(invoiceId: invoiceId);
-});
+import 'package:ai_clinic/features/billing/presentation/widgets/payment_form.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/refund_form.dart';
 
 /// Issued invoice detail — header, items, balance (V1-6 US1).
 class InvoiceDetailPage extends ConsumerWidget {
@@ -74,14 +73,43 @@ class _InvoiceDetailOrEditorRedirect extends ConsumerWidget {
   }
 }
 
-class _InvoiceDetailScaffold extends ConsumerWidget {
+class _InvoiceDetailScaffold extends ConsumerStatefulWidget {
   const _InvoiceDetailScaffold({required this.invoiceId});
 
   final String invoiceId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final detailAsync = ref.watch(invoiceDetailProvider(invoiceId));
+  ConsumerState<_InvoiceDetailScaffold> createState() => _InvoiceDetailScaffoldState();
+}
+
+class _InvoiceDetailScaffoldState extends ConsumerState<_InvoiceDetailScaffold> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _refreshDetail();
+      }
+    });
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _refreshDetail();
+      }
+    });
+  }
+
+  void _refreshDetail() {
+    ref.invalidate(invoiceDetailProvider(widget.invoiceId));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final detailAsync = ref.watch(invoiceDetailProvider(widget.invoiceId));
 
     return Scaffold(
       appBar: AppBar(
@@ -91,6 +119,14 @@ class _InvoiceDetailScaffold extends ConsumerWidget {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.nav.goHome(),
         ),
+        actions: [
+          IconButton(
+            key: const Key('invoice_detail_refresh_button'),
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshDetail,
+          ),
+        ],
       ),
       body: detailAsync.when(
         loading: () => const Center(key: Key('invoice_detail_loading'), child: CircularProgressIndicator()),
@@ -102,23 +138,21 @@ class _InvoiceDetailScaffold extends ConsumerWidget {
               children: [
                 Text(error.toString(), textAlign: TextAlign.center),
                 const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => ref.invalidate(invoiceDetailProvider(invoiceId)),
-                  child: const Text('Retry'),
-                ),
+                FilledButton(onPressed: _refreshDetail, child: const Text('Retry')),
               ],
             ),
           ),
         ),
-        data: (detail) => _InvoiceDetailBody(detail: detail),
+        data: (detail) => _InvoiceDetailBody(invoiceId: widget.invoiceId, detail: detail),
       ),
     );
   }
 }
 
 class _InvoiceDetailBody extends StatelessWidget {
-  const _InvoiceDetailBody({required this.detail});
+  const _InvoiceDetailBody({required this.invoiceId, required this.detail});
 
+  final String invoiceId;
   final InvoiceDetail detail;
 
   @override
@@ -158,7 +192,41 @@ class _InvoiceDetailBody extends StatelessWidget {
         _TotalRow(label: 'Discount', value: detail.discountAmount),
         _TotalRow(label: 'Insurance covered', value: detail.insuranceCoveredAmount),
         _TotalRow(label: 'Balance due', value: detail.balance, emphasized: true),
+        const SizedBox(height: 24),
+        Text('Payments', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        if (detail.payments.isEmpty)
+          const Text('No payments recorded yet.', key: Key('invoice_payments_empty'))
+        else
+          ...detail.payments.map((payment) => _PaymentTile(payment: payment)),
+        const SizedBox(height: 16),
+        PaymentForm(
+          key: ValueKey('payment_form_${detail.balance}_${detail.status.wireValue}'),
+          invoiceId: invoiceId,
+          detail: detail,
+        ),
+        const SizedBox(height: 16),
+        RefundForm(key: ValueKey('refund_form_${detail.status.wireValue}'), invoiceId: invoiceId, detail: detail),
       ],
+    );
+  }
+}
+
+class _PaymentTile extends StatelessWidget {
+  const _PaymentTile({required this.payment});
+
+  final Payment payment;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final amountLabel = payment.isRefund ? 'Refund' : 'Payment';
+
+    return ListTile(
+      key: Key('invoice_payment_${payment.id}'),
+      title: Text('$amountLabel — ${payment.method.label}'),
+      subtitle: Text(payment.recordedAt.toLocal().toString()),
+      trailing: Text(payment.amount, style: payment.isRefund ? TextStyle(color: theme.colorScheme.error) : null),
     );
   }
 }

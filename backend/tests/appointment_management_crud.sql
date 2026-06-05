@@ -541,9 +541,11 @@ BEGIN
   );
   v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
 
+  -- +1 hour keeps the slot on the same calendar day when day+3 trunc lands near 22:00 UTC;
+  -- +2 hours would roll to the next day and collide with the day+4 cancel/rebook tests.
   v_result := public.reschedule_appointment(
     v_appt_second,
-    v_start + interval '2 hours',
+    v_start + interval '1 hour',
     25,
     NULL
   );

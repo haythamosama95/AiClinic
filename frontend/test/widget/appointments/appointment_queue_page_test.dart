@@ -7,6 +7,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 
@@ -14,11 +15,13 @@ import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
 
 void main() {
+  setUpAll(ensureAppointmentTimezonesInitialized);
+
   group('AppointmentQueuePage', () {
     testWidgets('trivial: shows sorted queue rows', (tester) async {
-      final day = DateTime.now();
-      final morning = DateTime(day.year, day.month, day.day, 9).toUtc();
-      final afternoon = DateTime(day.year, day.month, day.day, 15).toUtc();
+      final range = appointmentTodayRangeInTimezone('UTC', DateTime.now().toUtc());
+      final morning = range.from.add(const Duration(hours: 9));
+      final afternoon = range.from.add(const Duration(hours: 14));
 
       await tester.pumpWidget(
         _host(

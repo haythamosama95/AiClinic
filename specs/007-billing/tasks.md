@@ -100,17 +100,17 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ### Tests for User Story 2
 
-- [ ] T025 [P] [US2] In `backend/tests/billing_crud.sql`, add scenarios: full-balance payment marks `paid`; partial payment with setting ON moves to `partially_paid`; partial patient-tender payment with setting OFF is rejected (`partial_payments_disabled`); `insurance_settlement` partial is always allowed; overpayment rejected; refund moves status back; status transitions audited
-- [ ] T026 [P] [US2] Create `backend/tests/billing_concurrency.sql` simulating two near-simultaneous payments racing to zero balance — exactly one accepted, one rejected with `overpayment` (use `pg_background` or sequential txns with savepoints to emulate)
-- [ ] T027 [P] [US2] Add `frontend/test/integration/billing/record_payment_test.dart` covering acceptance scenarios 1, 1a, 2, 3, 6 (concurrent), and 7 (refund) of US2
+- [X] T025 [P] [US2] In `backend/tests/billing_crud.sql`, add scenarios: full-balance payment marks `paid`; partial payment with setting ON moves to `partially_paid`; partial patient-tender payment with setting OFF is rejected (`partial_payments_disabled`); `insurance_settlement` partial is always allowed; overpayment rejected; refund moves status back; status transitions audited
+- [X] T026 [P] [US2] Create `backend/tests/billing_concurrency.sql` simulating two near-simultaneous payments racing to zero balance — exactly one accepted, one rejected with `overpayment` (use `pg_background` or sequential txns with savepoints to emulate)
+- [X] T027 [P] [US2] Add `frontend/test/integration/billing/record_payment_test.dart` covering acceptance scenarios 1, 1a, 2, 3, 6 (concurrent), and 7 (refund) of US2
 
 ### Implementation for User Story 2
 
-- [ ] T028 [P] [US2] Add `record_payment` and `record_refund` RPCs per `contracts/billing-mutations.md` (row-locked balance recompute; reads `organization_billing_settings.allow_partial_payments`; patient-tender vs insurance-settlement branching; audit with prior/new balance)
-- [ ] T029 [P] [US2] Implement `PaymentRepository.recordPayment` and `recordRefund` in `frontend/lib/features/billing/data/payment_repository.dart`
-- [ ] T030 [US2] Implement `payment_notifier.dart` provider and `payment_form.dart` widget (method, amount, reference, note); when `allow_partial_payments=false` and method ∈ {cash, card, bank_transfer}, pre-fill amount = balance and disable editing with explanatory tooltip (UI-level guard; server enforces too)
-- [ ] T031 [US2] Implement `refund_form.dart` widget (gated by `canRefundPayment`; mandatory reason)
-- [ ] T032 [US2] Extend `invoice_detail_page.dart` to render the payments list and embed `payment_form.dart`/`refund_form.dart`; backend-first refresh on focus
+- [X] T028 [P] [US2] Add `record_payment` and `record_refund` RPCs per `contracts/billing-mutations.md` (row-locked balance recompute; reads `organization_billing_settings.allow_partial_payments`; patient-tender vs insurance-settlement branching; audit with prior/new balance)
+- [X] T029 [P] [US2] Implement `PaymentRepository.recordPayment` and `recordRefund` in `frontend/lib/features/billing/data/payment_repository.dart`
+- [X] T030 [US2] Implement `payment_notifier.dart` provider and `payment_form.dart` widget (method, amount, reference, note); when `allow_partial_payments=false` and method ∈ {cash, card, bank_transfer}, pre-fill amount = balance and disable editing with explanatory tooltip (UI-level guard; server enforces too)
+- [X] T031 [US2] Implement `refund_form.dart` widget (gated by `canRefundPayment`; mandatory reason)
+- [X] T032 [US2] Extend `invoice_detail_page.dart` to render the payments list and embed `payment_form.dart`/`refund_form.dart`; backend-first refresh on focus
 
 **Checkpoint**: Stories 1+2 together deliver the MVP billing loop (create → issue → collect → refund).
 

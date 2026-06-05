@@ -168,6 +168,13 @@ DECLARE
   v_start timestamptz;
   v_detail public.rpc_result;
   v_list public.rpc_result;
+  v_payment_id uuid;
+  v_invoice_pay uuid;
+  v_invoice_for_payment uuid;
+  v_visit_pay uuid;
+  v_status public.invoice_status;
+  v_balance numeric(14, 2);
+  v_audit_count int;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.payments;
@@ -421,6 +428,8 @@ BEGIN
     COALESCE(v_invoice_number, v_result.error_code)
   );
 
+  v_invoice_for_payment := v_invoice_id;
+
   -- issued invoice rejects item mutation
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
   v_result := public.add_invoice_item(v_invoice_id, v_updated_at, 'Late item', 1, 10.00);
@@ -464,6 +473,147 @@ BEGIN
     'get_invoice_detail_and_list_queries',
     v_detail.success AND v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
     COALESCE(v_detail.error_code, 'ok')
+  );
+
+  -- US2: partial patient-tender rejected when allow_partial_payments is off (default)
+  v_result := public.record_payment(v_invoice_for_payment, 'cash', 50.00, NULL, NULL);
+  PERFORM pg_temp.billing_crud_record(
+    'partial_patient_payment_rejected_when_setting_off',
+    NOT v_result.success AND v_result.error_code = 'PARTIAL_PAYMENTS_DISABLED',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- US2: full payment marks invoice paid
+  v_result := public.record_payment(v_invoice_for_payment, 'cash', 120.00, 'RCPT-1', 'Full payment');
+  v_payment_id := (v_result.data ->> 'payment_id')::uuid;
+  SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_for_payment;
+  v_detail := public.get_invoice_detail(v_invoice_for_payment);
+  v_balance := (v_detail.data -> 'invoice' ->> 'balance')::numeric;
+  PERFORM pg_temp.billing_crud_record(
+    'full_payment_marks_paid',
+    v_result.success
+      AND v_payment_id IS NOT NULL
+      AND v_status = 'paid'
+      AND v_balance = 0.00,
+    format('status=%s balance=%s', v_status, v_balance)
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'payment.record'
+    AND al.record_id = v_payment_id
+    AND al.new_data_json ->> 'prior_status' = 'issued'
+    AND al.new_data_json ->> 'new_status' = 'paid';
+  PERFORM pg_temp.billing_crud_record(
+    'payment_status_transition_audited',
+    v_audit_count = 1,
+    v_audit_count::text
+  );
+
+  -- US2: partial payments with setting ON
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.organization_billing_settings
+  SET allow_partial_payments = true
+  WHERE organization_id = v_org_id;
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_reception_jwt(
+    v_reception_user,
+    v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  v_visit_pay := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 15
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.create_invoice_from_visit(v_visit_pay);
+  v_invoice_pay := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_pay;
+  v_result := public.add_invoice_item(v_invoice_pay, v_updated_at, 'Partial test', 1, 100.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_pay;
+  v_result := public.issue_invoice(v_invoice_pay, v_updated_at);
+
+  v_result := public.record_payment(v_invoice_pay, 'card', 40.00, NULL, NULL);
+  SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_pay;
+  v_detail := public.get_invoice_detail(v_invoice_pay);
+  v_balance := (v_detail.data -> 'invoice' ->> 'balance')::numeric;
+  PERFORM pg_temp.billing_crud_record(
+    'partial_payment_moves_to_partially_paid_when_setting_on',
+    v_result.success AND v_status = 'partially_paid' AND v_balance = 60.00,
+    format('status=%s balance=%s', v_status, v_balance)
+  );
+
+  -- US2: insurance_settlement partial allowed even when setting OFF
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.organization_billing_settings
+  SET allow_partial_payments = false
+  WHERE organization_id = v_org_id;
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_reception_jwt(
+    v_reception_user,
+    v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  v_visit_pay := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 16
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.create_invoice_from_visit(v_visit_pay);
+  v_invoice_pay := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_pay;
+  v_result := public.add_invoice_item(v_invoice_pay, v_updated_at, 'Insurance split', 1, 100.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_pay;
+  v_result := public.issue_invoice(v_invoice_pay, v_updated_at);
+
+  v_result := public.record_payment(v_invoice_pay, 'insurance_settlement', 30.00, 'CLM-1', NULL);
+  SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_pay;
+  PERFORM pg_temp.billing_crud_record(
+    'insurance_settlement_partial_allowed_when_setting_off',
+    v_result.success AND v_status = 'partially_paid',
+    COALESCE(v_result.error_code, v_status::text)
+  );
+
+  -- US2: overpayment rejected
+  v_result := public.record_payment(v_invoice_pay, 'cash', 80.00, NULL, NULL);
+  PERFORM pg_temp.billing_crud_record(
+    'overpayment_rejected',
+    NOT v_result.success AND v_result.error_code = 'OVERPAYMENT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- US2: refund moves status back from paid
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.record_refund(v_invoice_for_payment, 'cash', 50.00, 'Patient overpaid');
+  SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_for_payment;
+  v_detail := public.get_invoice_detail(v_invoice_for_payment);
+  v_balance := (v_detail.data -> 'invoice' ->> 'balance')::numeric;
+  PERFORM pg_temp.billing_crud_record(
+    'refund_moves_status_back_from_paid',
+    v_result.success AND v_status = 'partially_paid' AND v_balance = 50.00,
+    format('status=%s balance=%s', v_status, v_balance)
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'payment.refund'
+    AND al.new_data_json ->> 'invoice_id' = v_invoice_for_payment::text
+    AND al.new_data_json ->> 'prior_status' = 'paid';
+  PERFORM pg_temp.billing_crud_record(
+    'refund_status_transition_audited',
+    v_audit_count >= 1,
+    v_audit_count::text
   );
 END;
 $$;

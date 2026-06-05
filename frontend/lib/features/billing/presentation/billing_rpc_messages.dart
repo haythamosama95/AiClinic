@@ -9,6 +9,11 @@ String billingMessageForRpc(RpcFailure failure) {
     'BRANCH_CODE_MISSING' => 'Assign a branch code in Settings before issuing invoices.',
     'NO_ITEMS' => 'Add at least one line item before issuing.',
     'INVOICE_NOT_IN_DRAFT' => 'This invoice can no longer be edited.',
+    'OVERPAYMENT' => 'Payment amount exceeds the current balance.',
+    'PARTIAL_PAYMENTS_DISABLED' =>
+      'Partial payments are not allowed for this organization; please collect the full balance.',
+    'INVOICE_VOIDED' => 'This invoice is voided and cannot accept payments.',
+    'INVOICE_NOT_PAYABLE' => 'Payments cannot be recorded on this invoice in its current state.',
     'FORBIDDEN' => 'You do not have permission to perform this billing action.',
     _ => failure.message.isNotEmpty ? failure.message : 'Billing action failed.',
   };
