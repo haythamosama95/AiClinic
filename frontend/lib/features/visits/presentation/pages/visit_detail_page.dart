@@ -14,6 +14,7 @@ import 'package:ai_clinic/features/visits/presentation/providers/specialty_form_
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_read_only_section.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 
 /// Read-only clinical visit detail from patient history (V1-5 US6).
 class VisitDetailPage extends ConsumerWidget {
@@ -39,6 +40,10 @@ class VisitDetailPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Visit detail'),
         actions: [
+          detailAsync.maybeWhen(
+            data: (visit) => VisitDetailActions(visitId: id, status: visit.status),
+            orElse: () => null,
+          ),
           detailAsync.maybeWhen(
             data: (visit) {
               if (!canEdit) return null;

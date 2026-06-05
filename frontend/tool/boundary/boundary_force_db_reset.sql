@@ -44,6 +44,7 @@ END $$;
 
 DELETE FROM public.appointments WHERE true;
 DELETE FROM public.audit_log WHERE true;
+DELETE FROM public.patients WHERE true;
 
 DELETE FROM public.staff_branch_assignments sba
 WHERE sba.staff_member_id IN (
@@ -58,7 +59,6 @@ WHERE NOT EXISTS (
 );
 
 DELETE FROM public.staff_branch_assignments WHERE true;
-DELETE FROM public.patients WHERE true;
 DELETE FROM public.app_settings WHERE true;
 DELETE FROM public.subscription_cache WHERE true;
 DELETE FROM public.branches WHERE true;

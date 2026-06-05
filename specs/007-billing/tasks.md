@@ -75,18 +75,18 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ### Tests for User Story 1
 
-- [ ] T016 [P] [US1] In `backend/tests/billing_crud.sql`, add scenarios: create invoice from `completed` visit; rejection on `in_progress` visit; rejection on duplicate active invoice; rejection on missing `visit_id`; add/update/remove items in draft only; issue requires ≥1 item and `branches.code IS NOT NULL`; invoice number monotonicity per branch
-- [ ] T017 [P] [US1] In `frontend/test/integration/billing/`, add `create_and_issue_invoice_test.dart` covering acceptance scenarios 1, 2, 3, 4, 7, 8 of US1
+- [X] T016 [P] [US1] In `backend/tests/billing_crud.sql`, add scenarios: create invoice from `completed` visit; rejection on `in_progress` visit; rejection on duplicate active invoice; rejection on missing `visit_id`; add/update/remove items in draft only; issue requires ≥1 item and `branches.code IS NOT NULL`; invoice number monotonicity per branch
+- [X] T017 [P] [US1] In `frontend/test/integration/billing/`, add `create_and_issue_invoice_test.dart` covering acceptance scenarios 1, 2, 3, 4, 7, 8 of US1
 
 ### Implementation for User Story 1
 
-- [ ] T018 [P] [US1] Add RPCs in `backend/supabase/migrations/20260605180000_billing.sql` (or follow-up migration): `create_invoice_from_visit`, `discard_draft_invoice`, `add_invoice_item`, `update_invoice_item`, `remove_invoice_item`, `issue_invoice` (signatures and behavior per `contracts/billing-mutations.md`); each writes `audit_log` per FR-023
-- [ ] T019 [P] [US1] Add query RPCs `get_invoice_detail` and `list_invoices` per `contracts/billing-queries.md`
-- [ ] T020 [P] [US1] Implement `InvoiceRepository` methods in `frontend/lib/features/billing/data/invoice_repository.dart`: `createFromVisit`, `discardDraft`, `addItem`, `updateItem`, `removeItem`, `issue`, `getDetail`
-- [ ] T021 [US1] Implement `InvoiceEditorNotifier` in `frontend/lib/features/billing/presentation/providers/invoice_editor_notifier.dart` with optimistic-concurrency conflict handling (stale `updated_at` → refresh prompt)
-- [ ] T022 [US1] Implement `frontend/lib/features/billing/presentation/pages/invoice_editor_page.dart` with `invoice_items_editor.dart` widget; surface `branch_code_missing` error inline on issue
-- [ ] T023 [US1] Add **Create invoice** / **Open invoice** action in `frontend/lib/features/visits/presentation/widgets/visit_detail_actions.dart` against `completed` visits, deep-linking to the editor or detail page
-- [ ] T024 [US1] Implement `invoice_status_badge.dart` widget and a minimal `invoice_detail_page.dart` (header + items + balance) for navigation continuity after issue
+- [X] T018 [P] [US1] Add RPCs in `backend/supabase/migrations/20260605180000_billing.sql` (or follow-up migration): `create_invoice_from_visit`, `discard_draft_invoice`, `add_invoice_item`, `update_invoice_item`, `remove_invoice_item`, `issue_invoice` (signatures and behavior per `contracts/billing-mutations.md`); each writes `audit_log` per FR-023
+- [X] T019 [P] [US1] Add query RPCs `get_invoice_detail` and `list_invoices` per `contracts/billing-queries.md`
+- [X] T020 [P] [US1] Implement `InvoiceRepository` methods in `frontend/lib/features/billing/data/invoice_repository.dart`: `createFromVisit`, `discardDraft`, `addItem`, `updateItem`, `removeItem`, `issue`, `getDetail`
+- [X] T021 [US1] Implement `InvoiceEditorNotifier` in `frontend/lib/features/billing/presentation/providers/invoice_editor_notifier.dart` with optimistic-concurrency conflict handling (stale `updated_at` → refresh prompt)
+- [X] T022 [US1] Implement `frontend/lib/features/billing/presentation/pages/invoice_editor_page.dart` with `invoice_items_editor.dart` widget; surface `branch_code_missing` error inline on issue
+- [X] T023 [US1] Add **Create invoice** / **Open invoice** action in `frontend/lib/features/visits/presentation/widgets/visit_detail_actions.dart` against `completed` visits, deep-linking to the editor or detail page
+- [X] T024 [US1] Implement `invoice_status_badge.dart` widget and a minimal `invoice_detail_page.dart` (header + items + balance) for navigation continuity after issue
 
 **Checkpoint**: User Story 1 is fully functional — staff can produce issued invoices end-to-end.
 

@@ -18,7 +18,7 @@ class InvoiceRepository with AppRpcInvoker {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260605180000_billing.sql';
+  String get migrationHint => '20260605180500_billing_us1_rpcs.sql';
 
   @override
   String get rpcLogDomain => 'billing.invoices';
@@ -52,6 +52,8 @@ class InvoiceRepository with AppRpcInvoker {
   }) async {
     _assertNonEmpty('invoiceId', invoiceId);
     _assertNonEmpty('description', description);
+    _assertPositiveDecimal('quantity', quantity);
+    _assertNonNegativeDecimal('unitPrice', unitPrice);
 
     final result = await invokeRpc('add_invoice_item', {
       'p_invoice_id': invoiceId.trim(),
@@ -77,6 +79,8 @@ class InvoiceRepository with AppRpcInvoker {
   }) async {
     _assertNonEmpty('itemId', itemId);
     _assertNonEmpty('description', description);
+    _assertPositiveDecimal('quantity', quantity);
+    _assertNonNegativeDecimal('unitPrice', unitPrice);
 
     await invokeRpc('update_invoice_item', {
       'p_item_id': itemId.trim(),
@@ -187,6 +191,14 @@ class InvoiceRepository with AppRpcInvoker {
     return _parseListRows(result.data);
   }
 
+  Future<InvoiceListItem?> findForVisit({required String visitId}) async {
+    final items = await listInvoices(filters: {'visit_id': visitId}, limit: 1);
+    if (items.isEmpty) {
+      return null;
+    }
+    return items.first;
+  }
+
   Future<List<InvoiceListItem>> listPatientInvoices({required String patientId, int limit = 50, int offset = 0}) async {
     _assertNonEmpty('patientId', patientId);
 
@@ -217,6 +229,32 @@ class InvoiceRepository with AppRpcInvoker {
   void _assertNonEmpty(String field, String value) {
     if (value.trim().isEmpty) {
       throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
+    }
+  }
+
+  void _assertPositiveDecimal(String field, String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
+    }
+    final parsed = double.tryParse(trimmed);
+    if (parsed == null || parsed <= 0) {
+      throw RpcFailure(
+        RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Quantity must be greater than zero.'),
+      );
+    }
+  }
+
+  void _assertNonNegativeDecimal(String field, String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
+    }
+    final parsed = double.tryParse(trimmed);
+    if (parsed == null || parsed < 0) {
+      throw RpcFailure(
+        RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Unit price cannot be negative.'),
+      );
     }
   }
 }

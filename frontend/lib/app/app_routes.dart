@@ -98,6 +98,11 @@ abstract final class AppRoutes {
   /// Invoice detail: `/billing/invoices/:id`
   static String billingInvoiceDetail(String invoiceId) => '$billingInvoices/$invoiceId';
 
+  static const billingInvoiceEditSegment = 'edit';
+
+  /// Draft invoice editor: `/billing/invoices/:id/edit`
+  static String billingInvoiceEdit(String invoiceId) => '$billingInvoices/$invoiceId/$billingInvoiceEditSegment';
+
   /// Static billing hub paths.
   static const billingStaticPaths = <String>[billingInvoices, billingInsuranceProviders, settingsBilling];
 }

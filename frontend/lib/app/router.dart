@@ -35,6 +35,7 @@ import 'package:ai_clinic/features/visits/presentation/pages/visit_documentation
 import 'package:ai_clinic/features/billing/presentation/pages/billing_settings_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/insurance_providers_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
@@ -111,6 +112,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
           // Billing (V1-6)
           GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => const InvoiceListPage()),
+          GoRoute(
+            path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceEditSegment}',
+            builder: (context, state) => InvoiceEditorPage(invoiceId: state.pathParameters['invoiceId']),
+          ),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId',
             builder: (context, state) => InvoiceDetailPage(invoiceId: state.pathParameters['invoiceId']),

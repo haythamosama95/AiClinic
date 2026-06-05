@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/visits/presentation/widgets/soap_editor.dart'
 import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_fields.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submit_dialog.dart';
 
 /// Visit documentation — SOAP and related sections (V1-5).
@@ -36,6 +37,10 @@ class VisitDocumentationPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Visit documentation'),
         actions: [
+          docAsync.maybeWhen(
+            data: (state) => VisitDetailActions(visitId: id, status: state.visit.status),
+            orElse: () => null,
+          ),
           docAsync.maybeWhen(
             data: (state) {
               if (!canEditSoap) {
