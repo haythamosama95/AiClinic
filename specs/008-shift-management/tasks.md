@@ -96,16 +96,16 @@ description: "Task list for Shift Management (V1-7) feature implementation"
 
 ### Tests for User Story 2
 
-- [ ] T021 [P] [US2] In `backend/tests/shift_management_crud.sql`, add scenarios: `list_shifts` date-range filtering; cancelled shifts excluded; incomplete shifts return `is_unassigned=true`; `get_shift_detail` returns `is_read_only` correctly for non-manager and past-date shifts
-- [ ] T022 [P] [US2] Add `frontend/test/integration/shifts/shift_calendar_test.dart` covering US2 acceptance scenarios 1, 2, 3, 4, 5, 6, 7
+- [X] T021 [P] [US2] In `backend/tests/shift_management_crud.sql`, add scenarios: `list_shifts` date-range filtering; cancelled shifts excluded; incomplete shifts return `is_unassigned=true`; `get_shift_detail` returns `is_read_only` correctly for non-manager and past-date shifts
+- [X] T022 [P] [US2] Add `frontend/test/integration/shifts/shift_calendar_test.dart` covering US2 acceptance scenarios 1, 2, 3, 4, 5, 6, 7
 
 ### Implementation for User Story 2
 
-- [ ] T023 [P] [US2] Implement `frontend/lib/features/shifts/presentation/providers/shift_calendar_provider.dart` (week/month bounds, backend-first fetch, active-branch reload on `authSessionProvider` change per edge case)
-- [ ] T024 [P] [US2] Implement `frontend/lib/features/shifts/presentation/widgets/shift_event_tile.dart` and `shift_status_badge.dart` (time range, assignee summary, Unassigned indicator)
-- [ ] T025 [US2] Implement `frontend/lib/features/shifts/presentation/pages/shift_calendar_page.dart` with `WeekView<ShiftListItem>` (period navigation, empty/error/permission-denied states, create button gated by `canManageShifts`)
-- [ ] T026 [US2] Extend `shift_calendar_page.dart` with `MonthView<ShiftListItem>` toggle and `frontend/lib/features/shifts/presentation/widgets/shift_month_day_sheet.dart` for day-detail popover when multiple shifts on a day
-- [ ] T027 [US2] Implement `frontend/lib/features/shifts/presentation/pages/shift_detail_page.dart` read-only baseline (loading, active, incomplete, permission-denied, past-date read-only banner; no mutation controls when `is_read_only`)
+- [X] T023 [P] [US2] Implement `frontend/lib/features/shifts/presentation/providers/shift_calendar_provider.dart` (week/month bounds, backend-first fetch, active-branch reload on `authSessionProvider` change per edge case)
+- [X] T024 [P] [US2] Implement `frontend/lib/features/shifts/presentation/widgets/shift_event_tile.dart` and `shift_status_badge.dart` (time range, assignee summary, Unassigned indicator)
+- [X] T025 [US2] Implement `frontend/lib/features/shifts/presentation/pages/shift_calendar_page.dart` with `WeekView<ShiftListItem>` (period navigation, empty/error/permission-denied states, create button gated by `canManageShifts`)
+- [X] T026 [US2] Extend `shift_calendar_page.dart` with `MonthView<ShiftListItem>` toggle and `frontend/lib/features/shifts/presentation/widgets/shift_month_day_sheet.dart` for day-detail popover when multiple shifts on a day
+- [X] T027 [US2] Implement `frontend/lib/features/shifts/presentation/pages/shift_detail_page.dart` read-only baseline (loading, active, incomplete, permission-denied, past-date read-only banner; no mutation controls when `is_read_only`)
 
 **Checkpoint**: User Stories 1+2 deliver the MVP — managers create shifts; all branch staff view the calendar.
 

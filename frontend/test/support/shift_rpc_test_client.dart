@@ -31,7 +31,7 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
 
   static const defaultShiftId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-  final Map<String, dynamic> rpcResults;
+  Map<String, dynamic> rpcResults;
   PostgrestException? rpcException;
   final String branchId;
   final String staffId;
@@ -39,6 +39,17 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
   final List<String> rpcLog = [];
   String? lastFunction;
   Map<String, dynamic>? lastParams;
+  final Map<String, Map<String, dynamic>> paramsByFunction = {};
+
+  /// Optional override payload for [get_shift_detail].
+  Map<String, dynamic>? getShiftDetailOverride;
+
+  /// Default calendar rows returned by [list_shifts] when no override is set.
+  List<Map<String, dynamic>> listShiftsPayload = const [];
+
+  /// When true, [list_shifts] throws [PostgrestException] with [listShiftsErrorMessage].
+  bool listShiftsDenied = false;
+  String listShiftsErrorMessage = 'permission_denied';
 
   late final SettingsTableTestClient _tableClient;
 
@@ -50,6 +61,9 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
     rpcLog.add(fn);
     lastFunction = fn;
     lastParams = params == null ? null : Map<String, dynamic>.from(params);
+    if (params != null) {
+      paramsByFunction[fn] = Map<String, dynamic>.from(params);
+    }
 
     if (rpcException != null) {
       return _ThrowingPostgrestRpc(rpcException!) as PostgrestFilterBuilder<T>;
@@ -60,12 +74,22 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
       return _ThrowingPostgrestRpc(override) as PostgrestFilterBuilder<T>;
     }
 
+    if (fn == 'list_shifts' && listShiftsDenied) {
+      return _ThrowingPostgrestRpc(PostgrestException(message: listShiftsErrorMessage, code: 'P0001'))
+          as PostgrestFilterBuilder<T>;
+    }
+
     return FakePostgrestRpc(_defaultPayload(fn, override)) as PostgrestFilterBuilder<T>;
   }
+
+  Map<String, dynamic>? paramsFor(String functionName) => paramsByFunction[functionName];
 
   dynamic _defaultPayload(String fn, dynamic override) {
     if (override != null) {
       return override;
+    }
+    if (fn == 'get_shift_detail' && getShiftDetailOverride != null) {
+      return getShiftDetailOverride;
     }
     return switch (fn) {
       'create_shift' => defaultShiftId,
@@ -88,7 +112,8 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
         ],
         'branch': {'id': branchId, 'name': 'Main Branch', 'code': 'MAIN'},
       },
-      'list_shifts' => [],
+      'list_shifts' =>
+        listShiftsPayload.where((row) => row['status']?.toString() != 'cancelled').toList(growable: false),
       _ => {'success': false, 'error_code': 'UNKNOWN', 'error_message': 'Unhandled RPC $fn'},
     };
   }

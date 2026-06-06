@@ -91,9 +91,9 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(client.rpcLog, contains('create_shift'));
-        expect(client.lastParams?['p_branch_id'], _branchId);
-        expect(client.lastParams?['p_staff_ids'], [_staffId]);
-        expect(find.textContaining('Shift detail for'), findsOneWidget);
+        expect(client.paramsFor('create_shift')?['p_branch_id'], _branchId);
+        expect(client.paramsFor('create_shift')?['p_staff_ids'], [_staffId]);
+        expect(find.text('Assigned staff'), findsOneWidget);
       });
     });
 
@@ -172,8 +172,8 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(client.rpcLog, contains('create_shift'));
-        expect(client.lastParams?['p_start_time'], '17:00');
-        expect(client.lastParams?['p_end_time'], '21:00');
+        expect(client.paramsFor('create_shift')?['p_start_time'], '17:00');
+        expect(client.paramsFor('create_shift')?['p_end_time'], '21:00');
       });
     });
 
@@ -202,8 +202,8 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(client.rpcLog, contains('create_shift'));
-        expect(client.lastParams?['p_start_time'], '19:00');
-        expect(client.lastParams?['p_end_time'], '22:00');
+        expect(client.paramsFor('create_shift')?['p_start_time'], '19:00');
+        expect(client.paramsFor('create_shift')?['p_end_time'], '22:00');
       });
     });
   });

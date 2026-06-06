@@ -34,6 +34,8 @@ DECLARE
   v_shift_incomplete uuid;
   v_shift_active uuid;
   v_shift_adjacent uuid;
+  v_shift_past uuid;
+  v_shift_out_of_range uuid;
   v_org_today date;
   v_future date;
   v_past date;
@@ -42,6 +44,12 @@ DECLARE
   v_err text;
   v_overlap_detail text;
   v_audit_count int;
+  v_list_result jsonb;
+  v_detail_result jsonb;
+  v_list_count int;
+  v_is_unassigned boolean;
+  v_is_read_only boolean;
+  v_is_past boolean;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
@@ -345,6 +353,121 @@ BEGIN
     'audit_shift_create',
     v_audit_count >= 4,
     'count=' || v_audit_count::text
+  );
+
+  -- US2: list_shifts date-range filtering (only shifts within inclusive bounds).
+  v_list_result := public.list_shifts(v_branch_id, v_future, v_future + 1);
+  v_list_count := jsonb_array_length(v_list_result);
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'list_shifts_date_range_filter',
+    v_list_count = 2,
+    'count=' || v_list_count::text
+  );
+
+  -- US2: incomplete shifts return is_unassigned=true in list payload.
+  SELECT (elem->>'is_unassigned')::boolean
+  INTO v_is_unassigned
+  FROM jsonb_array_elements(v_list_result) elem
+  WHERE elem->>'id' = v_shift_incomplete::text;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'list_shifts_incomplete_is_unassigned',
+    v_is_unassigned IS TRUE,
+    COALESCE(v_is_unassigned::text, '<null>')
+  );
+
+  -- US2: cancelled shifts excluded from list_shifts (soft-delete).
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.shifts SET deleted_at = now(), updated_at = now() WHERE id = v_shift_active;
+
+  v_shift_out_of_range := public.create_shift(
+    v_branch_id,
+    v_future + 10,
+    time '10:00',
+    time '14:00',
+    NULL,
+    '{}'::uuid[]
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+  v_list_result := public.list_shifts(v_branch_id, v_future, v_future + 30);
+  v_list_count := (
+    SELECT count(*)::int
+    FROM jsonb_array_elements(v_list_result) elem
+    WHERE elem->>'id' = v_shift_active::text
+  );
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'list_shifts_excludes_cancelled',
+    v_list_count = 0,
+    'cancelled_visible=' || v_list_count::text
+  );
+
+  -- US2: get_shift_detail is_read_only for non-manager (doctor without shifts.manage).
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_doctor::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text,
+      'staff_member_id', v_staff_doctor::text,
+      'staff_role', 'doctor',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_detail_result := public.get_shift_detail(v_shift_incomplete);
+  v_is_read_only := (v_detail_result->'shift'->>'is_read_only')::boolean;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'get_shift_detail_read_only_non_manager',
+    v_is_read_only IS TRUE,
+    COALESCE(v_is_read_only::text, '<null>')
+  );
+
+  -- US2: get_shift_detail is_read_only for past-date shift (manager context).
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_owner::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text,
+      'staff_member_id', v_staff_owner::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.shifts (
+    id, organization_id, branch_id, shift_date, start_time, end_time, created_by, updated_by
+  )
+  VALUES (
+    'a2800000-0000-4000-8000-0000000000a1',
+    v_org_id,
+    v_branch_id,
+    v_past,
+    time '09:00',
+    time '17:00',
+    v_user_owner,
+    v_user_owner
+  )
+  RETURNING id INTO v_shift_past;
+
+  PERFORM set_config('role', 'authenticated', true);
+  v_detail_result := public.get_shift_detail(v_shift_past);
+  v_is_read_only := (v_detail_result->'shift'->>'is_read_only')::boolean;
+  v_is_past := (v_detail_result->'shift'->>'is_past')::boolean;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'get_shift_detail_read_only_past_date',
+    v_is_read_only IS TRUE AND v_is_past IS TRUE,
+    'read_only=' || COALESCE(v_is_read_only::text, '<null>') || ' past=' || COALESCE(v_is_past::text, '<null>')
   );
 END;
 $$;
