@@ -249,7 +249,7 @@ DECLARE
   v_org_id uuid;
   v_prior_balance numeric(14, 2);
   v_new_balance numeric(14, 2);
-  v_net_positive numeric(14, 2);
+  v_net numeric(14, 2);
   v_prior_status public.invoice_status;
   v_new_status public.invoice_status;
   v_payment_id uuid;
@@ -290,12 +290,11 @@ BEGIN
   END IF;
 
   SELECT COALESCE(sum(p.amount), 0)
-  INTO v_net_positive
+  INTO v_net
   FROM public.payments p
-  WHERE p.invoice_id = p_invoice_id
-    AND p.amount > 0;
+  WHERE p.invoice_id = p_invoice_id;
 
-  IF p_amount > v_net_positive THEN
+  IF p_amount > v_net THEN
     RETURN public.rpc_error(
       'INVALID_INPUT',
       'Refund amount exceeds net payments on this invoice.'

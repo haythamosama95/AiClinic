@@ -12,8 +12,8 @@ class InsuranceProvider {
 
   static InsuranceProvider? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
-    final name = row['name']?.toString().trim();
-    if (id == null || id.isEmpty || name == null || name.isEmpty) {
+    final name = (row['name']?.toString() ?? '').trim();
+    if (id == null || id.isEmpty || name.isEmpty) {
       return null;
     }
 

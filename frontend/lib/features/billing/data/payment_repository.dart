@@ -29,12 +29,12 @@ class PaymentRepository with AppRpcInvoker {
     String? note,
   }) async {
     _assertNonEmpty('invoiceId', invoiceId);
-    _assertNonEmpty('amount', amount);
+    final trimmedAmount = _assertPositiveDecimal('amount', amount);
 
     final result = await invokeRpc('record_payment', {
       'p_invoice_id': invoiceId.trim(),
       'p_method': method.wireValue,
-      'p_amount': amount,
+      'p_amount': trimmedAmount,
       'p_reference': reference,
       'p_note': note,
     });
@@ -53,13 +53,13 @@ class PaymentRepository with AppRpcInvoker {
     required String note,
   }) async {
     _assertNonEmpty('invoiceId', invoiceId);
-    _assertNonEmpty('amount', amount);
+    final trimmedAmount = _assertPositiveDecimal('amount', amount);
     _assertNonEmpty('note', note);
 
     final result = await invokeRpc('record_refund', {
       'p_invoice_id': invoiceId.trim(),
       'p_method': method.wireValue,
-      'p_amount': amount,
+      'p_amount': trimmedAmount,
       'p_note': note.trim(),
     });
 
@@ -74,6 +74,20 @@ class PaymentRepository with AppRpcInvoker {
     if (value.trim().isEmpty) {
       throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
     }
+  }
+
+  String _assertPositiveDecimal(String field, String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
+    }
+    final parsed = double.tryParse(trimmed);
+    if (parsed == null || parsed <= 0) {
+      throw RpcFailure(
+        RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Amount must be greater than zero.'),
+      );
+    }
+    return trimmed;
   }
 }
 

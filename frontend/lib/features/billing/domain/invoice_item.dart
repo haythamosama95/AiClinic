@@ -28,8 +28,8 @@ class InvoiceItem {
 
   static InvoiceItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
-    final description = row['description']?.toString().trim();
-    if (id == null || id.isEmpty || description == null || description.isEmpty) {
+    final description = (row['description']?.toString() ?? '').trim();
+    if (id == null || id.isEmpty || description.isEmpty) {
       return null;
     }
 

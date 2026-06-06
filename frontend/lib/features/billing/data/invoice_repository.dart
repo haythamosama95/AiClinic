@@ -154,12 +154,13 @@ class InvoiceRepository with AppRpcInvoker {
     required String coveredAmount,
   }) async {
     _assertNonEmpty('invoiceId', invoiceId);
+    _assertNonNegativeDecimal('coveredAmount', coveredAmount);
 
     await invokeRpc('set_insurance_coverage', {
       'p_invoice_id': invoiceId.trim(),
       'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
       'p_provider_id': providerId,
-      'p_covered_amount': coveredAmount,
+      'p_covered_amount': coveredAmount.trim(),
     });
   }
 

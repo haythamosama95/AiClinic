@@ -729,12 +729,12 @@ STABLE
 SET search_path = public
 AS $$
 BEGIN
-  IF p_invoice.status <> 'draft' THEN
-    RAISE EXCEPTION 'invoice_not_in_draft';
-  END IF;
-
   IF p_invoice.status = 'voided' THEN
     RAISE EXCEPTION 'invoice_voided';
+  END IF;
+
+  IF p_invoice.status <> 'draft' THEN
+    RAISE EXCEPTION 'invoice_not_in_draft';
   END IF;
 END;
 $$;
