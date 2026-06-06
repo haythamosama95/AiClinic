@@ -80,6 +80,17 @@ class PermissionService {
 
   bool canManageBillingSettings() => hasPermission(PermissionKeys.settingsBillingManage);
 
+  bool canManageShifts() => hasPermission(PermissionKeys.shiftsManage);
+
+  /// Branch assignment is sufficient for read-only shift calendar/detail access.
+  bool canViewShifts() {
+    final context = _context;
+    if (context == null) {
+      return false;
+    }
+    return context.hasBranchAssignment;
+  }
+
   void requirePermission(String key) {
     if (!hasPermission(key)) {
       throw const PermissionDeniedException('You do not have permission to perform this action.');

@@ -30,9 +30,9 @@ description: "Task list for Shift Management (V1-7) feature implementation"
 
 **Purpose**: Scaffolding for the new shifts feature module.
 
-- [ ] T001 Create directory skeleton `frontend/lib/features/shifts/{data,domain,presentation/{pages,providers,widgets}}` and `frontend/test/{unit,widget,integration}/shifts/`
-- [ ] T002 [P] Create empty test harness file `backend/tests/run_shift_management_tests.sh` (executable; orchestrates `shift_management_crud.sql`, `shift_management_rls.sql`, `shift_management_concurrency.sql`)
-- [ ] T003 [P] Verify `calendar_view: 2.0.0` is present in `frontend/pubspec.yaml` (already used by appointments); run `flutter pub get` if lockfile stale
+- [X] T001 Create directory skeleton `frontend/lib/features/shifts/{data,domain,presentation/{pages,providers,widgets}}` and `frontend/test/{unit,widget,integration}/shifts/`
+- [X] T002 [P] Create empty test harness file `backend/tests/run_shift_management_tests.sh` (executable; orchestrates `shift_management_crud.sql`, `shift_management_rls.sql`, `shift_management_concurrency.sql`)
+- [X] T003 [P] Verify `calendar_view: 2.0.0` is present in `frontend/pubspec.yaml` (already used by appointments); run `flutter pub get` if lockfile stale
 
 ---
 
@@ -44,21 +44,21 @@ description: "Task list for Shift Management (V1-7) feature implementation"
 
 ### Backend foundation
 
-- [ ] T004 Create migration `backend/supabase/migrations/20260606180000_shift_management.sql` with tables `shifts` and `shift_assignments`, all CHECK constraints (`end_time > start_time`, notes length ≤ 500), indexes, and standard audit columns per `specs/008-shift-management/data-model.md`
-- [ ] T005 In the same migration, add RLS policies: branch-scoped SELECT on `shifts`/`shift_assignments`; deny all direct INSERT/UPDATE/DELETE; explicit `REVOKE INSERT, UPDATE, DELETE ON public.shifts, public.shift_assignments FROM PUBLIC, authenticated, anon`
-- [ ] T006 [P] In the same migration, add PL/pgSQL helpers in `auth_internal`: `get_org_today`, `assert_shift_branch_scope`, `assert_shifts_manage`, `assert_shift_mutable`, `assert_shift_staff_eligible`, `assert_no_staff_shift_overlap` per `specs/008-shift-management/research.md` D3–D4
-- [ ] T007 [P] In the same migration, add read-path RPCs `list_shifts` and `get_shift_detail` per `specs/008-shift-management/contracts/shift-queries.md` (branch assignment scope; no `shifts.manage` required; derived status; `is_read_only` flag)
+- [X] T004 Create migration `backend/supabase/migrations/20260606180000_shift_management.sql` with tables `shifts` and `shift_assignments`, all CHECK constraints (`end_time > start_time`, notes length ≤ 500), indexes, and standard audit columns per `specs/008-shift-management/data-model.md`
+- [X] T005 In the same migration, add RLS policies: branch-scoped SELECT on `shifts`/`shift_assignments`; deny all direct INSERT/UPDATE/DELETE; explicit `REVOKE INSERT, UPDATE, DELETE ON public.shifts, public.shift_assignments FROM PUBLIC, authenticated, anon`
+- [X] T006 [P] In the same migration, add PL/pgSQL helpers in `auth_internal`: `get_org_today`, `assert_shift_branch_scope`, `assert_shifts_manage`, `assert_shift_mutable`, `assert_shift_staff_eligible`, `assert_no_staff_shift_overlap` per `specs/008-shift-management/research.md` D3–D4
+- [X] T007 [P] In the same migration, add read-path RPCs `list_shifts` and `get_shift_detail` per `specs/008-shift-management/contracts/shift-queries.md` (branch assignment scope; no `shifts.manage` required; derived status; `is_read_only` flag)
 
 ### Frontend foundation
 
-- [ ] T008 [P] Extend `frontend/lib/core/auth/permission_service.dart` with `canManageShifts()` (checks `shifts.manage`) and `canViewShifts()` (branch assignment sufficient)
-- [ ] T009 [P] Add domain types under `frontend/lib/features/shifts/domain/`: `shift_status.dart`, `shift_calendar_mode.dart`, `shift_list_item.dart`, `shift_detail.dart`, `shift_assignment.dart`, `shift_overlap_conflict.dart`
-- [ ] T010 [P] Add `frontend/lib/features/shifts/data/shift_repository.dart` skeleton with `listShifts` and `getShiftDetail` RPC wrappers (backend-first reads per FR-022)
-- [ ] T011 [P] Register routes in `frontend/lib/app/router.dart` and `frontend/lib/app/app_routes.dart`: `/shifts/calendar`, `/shifts/new`, `/shifts/:id`; add **Shift** nav item to app shell (view gated by branch assignment; create/edit gated by `canManageShifts`)
+- [X] T008 [P] Extend `frontend/lib/core/auth/permission_service.dart` with `canManageShifts()` (checks `shifts.manage`) and `canViewShifts()` (branch assignment sufficient)
+- [X] T009 [P] Add domain types under `frontend/lib/features/shifts/domain/`: `shift_status.dart`, `shift_calendar_mode.dart`, `shift_list_item.dart`, `shift_detail.dart`, `shift_assignment.dart`, `shift_overlap_conflict.dart`
+- [X] T010 [P] Add `frontend/lib/features/shifts/data/shift_repository.dart` skeleton with `listShifts` and `getShiftDetail` RPC wrappers (backend-first reads per FR-022)
+- [X] T011 [P] Register routes in `frontend/lib/app/router.dart` and `frontend/lib/app/app_routes.dart`: `/shifts/calendar`, `/shifts/new`, `/shifts/:id`; add **Shift** nav item to app shell (view gated by branch assignment; create/edit gated by `canManageShifts`)
 
 ### Foundational backend tests
 
-- [ ] T012 [P] Create `backend/tests/shift_management_rls.sql` covering: cross-branch read denial on shifts/assignments; cross-org denial; receptionist can `list_shifts`/`get_shift_detail` without `shifts.manage`; receptionist mutation RPC denial; administrator mutation allowed
+- [X] T012 [P] Create `backend/tests/shift_management_rls.sql` covering: cross-branch read denial on shifts/assignments; cross-org denial; receptionist can `list_shifts`/`get_shift_detail` without `shifts.manage`; receptionist mutation RPC denial; administrator mutation allowed
 
 **Checkpoint**: Foundation ready — user story implementation can now begin in parallel.
 

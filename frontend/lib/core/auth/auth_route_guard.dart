@@ -27,6 +27,7 @@ abstract final class AuthRouteGuard {
         isAppointmentRoute(location) ||
         isVisitRoute(location) ||
         isBillingRoute(location) ||
+        isShiftRoute(location) ||
         isStaffProvisioningRoute(location) ||
         location.startsWith('${AppRoutes.protectedPrefix}/');
   }
@@ -172,6 +173,56 @@ abstract final class AuthRouteGuard {
     }
     final permissions = PermissionService(auth.context);
     return permissions.canViewInvoices() || permissions.canRecordPayment();
+  }
+
+  /// V1-7 shift routes under `/shifts`.
+  static bool isShiftRoute(String location) {
+    if (AppRoutes.shiftStaticPaths.contains(location)) {
+      return true;
+    }
+    return location.startsWith('${AppRoutes.shifts}/');
+  }
+
+  static bool canAccessShiftCalendar(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canViewShifts();
+  }
+
+  static bool canAccessShiftCreate(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canManageShifts();
+  }
+
+  static bool canAccessShiftDetail(AuthSessionState auth) {
+    return canAccessShiftCalendar(auth);
+  }
+
+  /// Returns redirect when [location] is a shift route the session cannot access.
+  static String? shiftRouteRedirect({required String location, required AuthSessionState auth}) {
+    if (!isShiftRoute(location)) {
+      return null;
+    }
+
+    if (!auth.isAuthenticated) {
+      return AppRoutes.login;
+    }
+
+    if (auth.context!.setupRequired) {
+      return AppRoutes.bootstrap;
+    }
+
+    final allowed = switch (location) {
+      AppRoutes.shiftsNew => canAccessShiftCreate(auth),
+      AppRoutes.shiftsCalendar => canAccessShiftCalendar(auth),
+      _ when location.startsWith('${AppRoutes.shifts}/') => canAccessShiftDetail(auth),
+      _ => false,
+    };
+
+    return allowed ? null : AppRoutes.home;
   }
 
   /// Returns redirect when [location] is a billing route the session cannot access.

@@ -37,6 +37,9 @@ import 'package:ai_clinic/features/billing/presentation/pages/insurance_provider
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
+import 'package:ai_clinic/features/shifts/presentation/pages/shift_calendar_page.dart';
+import 'package:ai_clinic/features/shifts/presentation/pages/shift_create_page.dart';
+import 'package:ai_clinic/features/shifts/presentation/pages/shift_detail_page.dart';
 import 'package:ai_clinic/features/startup/presentation/pages/startup_entry_page.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -125,6 +128,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const InsuranceProvidersPage(),
           ),
           GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => const BillingSettingsPage()),
+
+          // Shifts (V1-7)
+          GoRoute(path: AppRoutes.shiftsCalendar, builder: (context, state) => const ShiftCalendarPage()),
+          GoRoute(path: AppRoutes.shiftsNew, builder: (context, state) => const ShiftCreatePage()),
+          GoRoute(
+            path: '${AppRoutes.shifts}/:shiftId',
+            builder: (context, state) => ShiftDetailPage(shiftId: state.pathParameters['shiftId']),
+          ),
 
           // Settings
           GoRoute(path: AppRoutes.settings, builder: (context, state) => const SettingsPage()),
@@ -232,6 +243,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final billingRedirect = AuthRouteGuard.billingRouteRedirect(location: location, auth: auth);
         if (billingRedirect != null) {
           return billingRedirect;
+        }
+
+        final shiftRedirect = AuthRouteGuard.shiftRouteRedirect(location: location, auth: auth);
+        if (shiftRedirect != null) {
+          return shiftRedirect;
         }
 
         final provisioningRedirect = AuthRouteGuard.steadyStateProvisioningRedirect(location: location, auth: auth);

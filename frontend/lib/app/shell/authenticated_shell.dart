@@ -33,6 +33,12 @@ class AuthenticatedShell extends ConsumerWidget {
       anyPermissionKeys: [PermissionKeys.appointmentsCreate, PermissionKeys.appointmentsCancel],
     ),
     _NavDestination(
+      route: AppRoutes.shiftsCalendar,
+      icon: Icons.calendar_month_outlined,
+      selectedIcon: Icons.calendar_month,
+      label: 'Shifts',
+    ),
+    _NavDestination(
       route: AppRoutes.billingInvoices,
       icon: Icons.receipt_long_outlined,
       selectedIcon: Icons.receipt_long,
@@ -57,6 +63,9 @@ class AuthenticatedShell extends ConsumerWidget {
     }
 
     final visibleDestinations = _destinations.where((d) {
+      if (d.route == AppRoutes.shiftsCalendar) {
+        return auth.hasBranchAssignment;
+      }
       if (d.anyPermissionKeys != null) {
         return d.anyPermissionKeys!.any(auth.permissions.contains);
       }

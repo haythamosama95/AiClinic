@@ -105,4 +105,15 @@ abstract final class AppRoutes {
 
   /// Static billing hub paths.
   static const billingStaticPaths = <String>[billingInvoices, billingInsuranceProviders, settingsBilling];
+
+  // V1-7 shift management
+  static const shiftsCalendar = '/shifts/calendar';
+  static const shiftsNew = '/shifts/new';
+
+  /// Shift detail: `/shifts/:id`
+  static String shiftDetail(String shiftId) => '$shifts/$shiftId';
+
+  static const shifts = '/shifts';
+
+  static const shiftStaticPaths = <String>[shiftsCalendar, shiftsNew];
 }
