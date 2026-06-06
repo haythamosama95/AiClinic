@@ -264,6 +264,17 @@ DECLARE
   v_invoice_discount_amount numeric(14, 2);
   v_subtotal numeric(14, 2);
   v_trigger_blocked boolean;
+  v_provider_id uuid;
+  v_provider_other_org uuid;
+  v_org_other uuid;
+  v_list_providers public.rpc_result;
+  v_provider_count int;
+  v_detail_data jsonb;
+  v_list_item_count int;
+  v_first_list_id uuid;
+  v_second_list_id uuid;
+  v_side_visit uuid;
+  v_side_invoice uuid;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   DELETE FROM public.payments;
@@ -640,7 +651,95 @@ BEGIN
     format('%s,%s', v_branch_main, v_branch_no_code)
   );
 
+  -- US4: insurance provider upsert and set coverage
+  v_result := public.insurance_provider_upsert(NULL, 'Acme Insurance', 'claims@acme.test', true);
+  v_provider_id := (v_result.data ->> 'provider_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.set_insurance_coverage(v_invoice_id, v_updated_at, v_provider_id, 50.00);
+  v_detail := public.get_invoice_detail(v_invoice_id);
+  v_balance := (v_detail.data -> 'invoice' ->> 'balance')::numeric(14, 2);
+  PERFORM pg_temp.billing_crud_record(
+    'insurance_coverage_valid_updates_balance',
+    v_result.success AND v_balance = 55.00,
+    format('balance=%s', v_balance)
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.set_insurance_coverage(v_invoice_id, v_updated_at, v_provider_id, -1.00);
+  PERFORM pg_temp.billing_crud_record(
+    'insurance_coverage_rejects_negative_amount',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.set_insurance_coverage(v_invoice_id, v_updated_at, v_provider_id, 200.00);
+  PERFORM pg_temp.billing_crud_record(
+    'insurance_coverage_rejects_amount_above_net_total',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  v_result := public.insurance_provider_deactivate(v_provider_id);
+  v_list_providers := public.list_insurance_providers(true);
+  SELECT jsonb_array_length(COALESCE(v_list_providers.data -> 'providers', '[]'::jsonb))
+  INTO v_provider_count;
+  PERFORM pg_temp.billing_crud_record(
+    'deactivated_provider_hidden_from_active_selector',
+    v_result.success AND v_provider_count = 0,
+    v_provider_count::text
+  );
+
+  v_list_providers := public.list_insurance_providers(false);
+  SELECT jsonb_array_length(COALESCE(v_list_providers.data -> 'providers', '[]'::jsonb))
+  INTO v_provider_count;
+  v_detail := public.get_invoice_detail(v_invoice_id);
+  v_detail_data := v_detail.data;
+  PERFORM pg_temp.billing_crud_record(
+    'deactivated_provider_preserved_in_history_and_detail',
+    v_provider_count >= 1
+      AND v_detail.success
+      AND (v_detail_data -> 'insurance_provider' ->> 'name') = 'Acme Insurance'
+      AND (v_detail_data -> 'invoice' ->> 'insurance_covered_amount')::numeric = 50.00,
+    COALESCE(v_detail_data -> 'insurance_provider' ->> 'name', '<null>')
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  v_org_other := gen_random_uuid();
+  v_provider_other_org := gen_random_uuid();
+  INSERT INTO public.organizations (id, name, created_by, updated_by)
+  VALUES (v_org_other, 'Other Billing Org', v_bootstrap_user, v_bootstrap_user);
+  INSERT INTO public.insurance_providers (id, organization_id, name, created_by, updated_by)
+  VALUES (v_provider_other_org, v_org_other, 'Foreign Insurer', v_bootstrap_user, v_bootstrap_user);
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.set_insurance_coverage(v_invoice_id, v_updated_at, v_provider_other_org, 10.00);
+  PERFORM pg_temp.billing_crud_record(
+    'insurance_coverage_rejects_cross_org_provider',
+    NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'invoice.insurance.set'
+    AND al.record_id = v_invoice_id;
+  PERFORM pg_temp.billing_crud_record(
+    'insurance_coverage_set_audited',
+    v_audit_count >= 1,
+    v_audit_count::text
+  );
+
   -- restore draft totals before issue/payment scenarios
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.set_insurance_coverage(v_invoice_id, v_updated_at, NULL, 0);
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
   v_result := public.apply_line_discount(v_item_id, v_updated_at, NULL, NULL);
 
@@ -1159,6 +1258,148 @@ BEGIN
     'line_discount_fixed_at_line_subtotal_valid',
     v_result.success AND v_line_discount_amount = 50.00,
     COALESCE(v_line_discount_amount::text, v_result.error_code)
+  );
+
+  -- US5: list_invoices query scenarios
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches SET code = 'SIDE' WHERE id = v_branch_no_code;
+  v_side_visit := pg_temp.seed_completed_visit(
+    v_branch_no_code, v_patient_id, v_doctor_staff, v_owner_user, 20
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_reception_jwt(
+    v_reception_user,
+    v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.create_invoice_from_visit(v_side_visit);
+  v_side_invoice := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_side_invoice;
+  v_result := public.add_invoice_item(v_side_invoice, v_updated_at, 'Side branch visit', 1, 60.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_side_invoice;
+  v_result := public.issue_invoice(v_side_invoice, v_updated_at);
+
+  v_detail := public.get_invoice_detail(v_invoice_pay);
+  v_balance := (v_detail.data -> 'invoice' ->> 'balance')::numeric;
+  v_result := public.record_payment(v_invoice_pay, 'cash', v_balance, NULL, 'List test full pay');
+
+  v_list := public.list_invoices('{}'::jsonb, 50, 0);
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_returns_rows_with_required_fields',
+    v_list.success
+      AND jsonb_array_length(v_list.data -> 'items') >= 1
+      AND (v_list.data -> 'items' -> 0 ->> 'patient_display_name') IS NOT NULL
+      AND (v_list.data -> 'items' -> 0 ->> 'balance') IS NOT NULL
+      AND (v_list.data -> 'items' -> 0 ->> 'paid_amount') IS NOT NULL,
+    jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  v_list := public.list_invoices(jsonb_build_object('statuses', jsonb_build_array('paid')), 50, 0);
+  SELECT count(*)::int
+  INTO v_list_item_count
+  FROM jsonb_array_elements(v_list.data -> 'items') elem
+  WHERE elem ->> 'status' <> 'paid';
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_status_filter_paid',
+    v_list.success AND v_list_item_count = 0 AND jsonb_array_length(v_list.data -> 'items') >= 1,
+    v_list_item_count::text
+  );
+
+  v_list := public.list_invoices(jsonb_build_object('patient_search', 'Billing'), 50, 0);
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_patient_search',
+    v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
+    jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  v_list := public.list_invoices(
+    jsonb_build_object(
+      'date_from', (now() - interval '1 day')::text,
+      'date_to', (now() + interval '1 day')::text
+    ),
+    50,
+    0
+  );
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_date_range_includes_recent',
+    v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
+    jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  v_list := public.list_invoices(
+    jsonb_build_object('date_to', (now() - interval '2 days')::text),
+    50,
+    0
+  );
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_date_range_excludes_recent',
+    v_list.success AND jsonb_array_length(v_list.data -> 'items') = 0,
+    jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  v_list := public.list_invoices(
+    jsonb_build_object('branch_ids', jsonb_build_array(v_branch_main::text)),
+    50,
+    0
+  );
+  SELECT count(*)::int
+  INTO v_list_item_count
+  FROM jsonb_array_elements(v_list.data -> 'items') elem
+  WHERE elem ->> 'branch_code' = 'SIDE';
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_branch_intersection',
+    v_list.success AND v_list_item_count = 0,
+    v_list_item_count::text
+  );
+
+  v_list := public.list_invoices('{}'::jsonb, 1, 0);
+  v_list_item_count := jsonb_array_length(v_list.data -> 'items');
+  v_list := public.list_invoices('{}'::jsonb, 2, 0);
+  SELECT count(DISTINCT elem ->> 'id')::int
+  INTO v_audit_count
+  FROM jsonb_array_elements(v_list.data -> 'items') elem;
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_pagination_boundary',
+    v_list.success
+      AND v_list_item_count = 1
+      AND jsonb_array_length(v_list.data -> 'items') = 2
+      AND v_audit_count = 2,
+    format('limit1=%s limit2=%s distinct=%s', v_list_item_count, jsonb_array_length(v_list.data -> 'items'), v_audit_count)
+  );
+
+  v_list := public.list_invoices('{}'::jsonb, 1, 1);
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_offset_skips_first_row',
+    v_list.success AND jsonb_array_length(v_list.data -> 'items') <= 1,
+    jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  v_list := public.list_patient_invoices(v_patient_id, 50, 0);
+  PERFORM pg_temp.billing_crud_record(
+    'list_patient_invoices_for_profile',
+    v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
+    jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  PERFORM pg_temp.set_doctor_jwt(
+    v_doctor_user,
+    v_doctor_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_list := public.list_invoices('{}'::jsonb, 10, 0);
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_permission_denied_for_doctor',
+    NOT v_list.success AND v_list.error_code = 'FORBIDDEN',
+    COALESCE(v_list.error_code, '<null>')
+  );
+
+  PERFORM pg_temp.set_reception_jwt(
+    v_reception_user,
+    v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
   );
 
   -- payment/refund permission and edge inputs

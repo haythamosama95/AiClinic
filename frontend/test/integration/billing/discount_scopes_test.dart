@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
+import 'package:ai_clinic/features/billing/data/insurance_provider_repository.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +34,7 @@ Future<void> _pumpEditor(WidgetTester tester, {BillingRpcTestClient? client, Aut
       overrides: [
         authSessionProvider.overrideWith(() => _PresetAuth(auth ?? _ownerAuth())),
         invoiceRepositoryProvider.overrideWith((ref) => InvoiceRepository(rpcClient)),
+        insuranceProviderRepositoryProvider.overrideWith((ref) => InsuranceProviderRepository(rpcClient)),
       ],
       child: MaterialApp.router(
         routerConfig: GoRouter(
@@ -207,6 +209,7 @@ void main() {
 
       expect(find.byKey(const Key('discount_line_scope_active')), findsOneWidget);
 
+      await _scrollTo(tester, const Key('discount_clear_other_scope_line'));
       await tester.tap(find.byKey(const Key('discount_clear_other_scope_line')));
       await tester.pumpAndSettle();
 

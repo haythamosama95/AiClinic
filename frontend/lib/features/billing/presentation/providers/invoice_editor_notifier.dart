@@ -147,6 +147,28 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
     });
   }
 
+  Future<bool> setInsuranceCoverage({required String providerId, required String coveredAmount}) async {
+    return _mutate((detail, repo) async {
+      await repo.setInsuranceCoverage(
+        invoiceId: detail.id,
+        expectedUpdatedAt: detail.updatedAt,
+        providerId: providerId,
+        coveredAmount: coveredAmount,
+      );
+    });
+  }
+
+  Future<bool> clearInsuranceCoverage() async {
+    return _mutate((detail, repo) async {
+      await repo.setInsuranceCoverage(
+        invoiceId: detail.id,
+        expectedUpdatedAt: detail.updatedAt,
+        providerId: null,
+        coveredAmount: '0',
+      );
+    });
+  }
+
   Future<bool> clearAllLineDiscounts() async {
     final current = state.value;
     if (current == null) {

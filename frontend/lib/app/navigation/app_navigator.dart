@@ -38,6 +38,11 @@ class AppNavigator {
   void goAppointmentsCalendar() => _context.push(AppRoutes.appointmentsCalendar);
   void goAppointmentsSchedule(String doctorId) => _context.push(AppRoutes.appointmentsSchedule(doctorId));
 
+  // Billing (V1-6)
+  void goBillingInvoices() => _context.go(AppRoutes.billingInvoices);
+  void pushBillingInvoiceDetail(String invoiceId) => _context.push(AppRoutes.billingInvoiceDetail(invoiceId));
+  void pushBillingInvoiceEdit(String invoiceId) => _context.push(AppRoutes.billingInvoiceEdit(invoiceId));
+
   // Visits (V1-5)
   void goVisitDocument(String visitId) => _context.go(AppRoutes.visitDocument(visitId));
   void pushVisitDocument(String visitId) => _context.push(AppRoutes.visitDocument(visitId));

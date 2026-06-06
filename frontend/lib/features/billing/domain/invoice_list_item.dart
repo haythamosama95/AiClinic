@@ -32,6 +32,13 @@ class InvoiceListItem {
   final DateTime createdAt;
   final DateTime? issuedAt;
 
+  /// Subtotal minus invoice-level discount (line discounts are reflected in subtotal server-side).
+  String get displayTotal {
+    final sub = double.tryParse(subtotal) ?? 0;
+    final discount = double.tryParse(discountAmount) ?? 0;
+    return (sub - discount).toStringAsFixed(2);
+  }
+
   static InvoiceListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
     final status = InvoiceStatus.tryParse(row['status']?.toString());

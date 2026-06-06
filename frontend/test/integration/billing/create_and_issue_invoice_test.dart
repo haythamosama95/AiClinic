@@ -5,6 +5,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
+import 'package:ai_clinic/features/billing/data/insurance_provider_repository.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
@@ -38,6 +39,17 @@ Future<void> _pumpHost(WidgetTester tester, Widget host) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _scrollTo(WidgetTester tester, Key key) async {
+  await tester.scrollUntilVisible(find.byKey(key), 48, scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tapIssueButton(WidgetTester tester) async {
+  await _scrollTo(tester, const Key('invoice_issue_button'));
+  await tester.tap(find.byKey(const Key('invoice_issue_button')));
+  await tester.pumpAndSettle();
+}
+
 AuthSessionState _auth({Set<String>? permissions}) {
   return AuthSessionState(
     status: AuthSessionStatus.authenticated,
@@ -55,6 +67,7 @@ Widget _scope({required Widget child, BillingRpcTestClient? client, AuthSessionS
     overrides: [
       authSessionProvider.overrideWith(() => _PresetAuth(auth ?? _auth())),
       invoiceRepositoryProvider.overrideWith((ref) => InvoiceRepository(rpcClient)),
+      insuranceProviderRepositoryProvider.overrideWith((ref) => InsuranceProviderRepository(rpcClient)),
     ],
     child: MaterialApp.router(routerConfig: _router(child: child)),
   );
@@ -122,8 +135,7 @@ void main() {
 
       expect(client.rpcLog, contains('add_invoice_item'));
 
-      await tester.tap(find.byKey(const Key('invoice_issue_button')));
-      await tester.pumpAndSettle();
+      await _tapIssueButton(tester);
 
       expect(client.rpcLog, contains('issue_invoice'));
     });
@@ -190,8 +202,7 @@ void main() {
       await _pumpHost(tester, _scope(child: const InvoiceEditorPage(invoiceId: BillingRpcTestClient.draftInvoiceId)));
 
       await tester.enterText(find.byKey(const Key('invoice_item_description')), 'Consultation');
-      await tester.tap(find.byKey(const Key('invoice_issue_button')));
-      await tester.pumpAndSettle();
+      await _tapIssueButton(tester);
 
       expect(find.text('Unit price is required.'), findsOneWidget);
       expect(find.byKey(const Key('invoice_issue_error_banner')), findsOneWidget);
@@ -214,8 +225,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byKey(const Key('invoice_issue_button')));
-      await tester.pumpAndSettle();
+      await _tapIssueButton(tester);
 
       expect(find.byKey(const Key('invoice_issue_error_banner')), findsOneWidget);
       expect(find.text('Add at least one line item before issuing.'), findsOneWidget);
@@ -254,8 +264,7 @@ void main() {
       await tester.tap(find.byKey(const Key('invoice_item_add_button')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('invoice_issue_button')));
-      await tester.pumpAndSettle();
+      await _tapIssueButton(tester);
 
       expect(find.byKey(const Key('invoice_issue_error_banner')), findsOneWidget);
       expect(find.textContaining('branch code'), findsOneWidget);
@@ -279,8 +288,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final detailCallsBefore = client.rpcLog.where((name) => name == 'get_invoice_detail').length;
-      await tester.tap(find.byKey(const Key('invoice_issue_button')));
-      await tester.pumpAndSettle();
+      await _tapIssueButton(tester);
 
       expect(client.rpcLog, contains('issue_invoice'));
       expect(client.rpcLog.where((name) => name == 'get_invoice_detail').length, greaterThan(detailCallsBefore));

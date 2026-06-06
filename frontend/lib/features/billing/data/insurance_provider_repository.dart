@@ -21,8 +21,8 @@ class InsuranceProviderRepository with AppRpcInvoker {
   @override
   String get rpcLogDomain => 'billing.insurance';
 
-  Future<List<InsuranceProvider>> listProviders() async {
-    final result = await invokeRpc('list_insurance_providers', null);
+  Future<List<InsuranceProvider>> listProviders({bool onlyActive = true}) async {
+    final result = await invokeRpc('list_insurance_providers', {'p_only_active': onlyActive});
     final rawItems = result.data?['providers'] ?? result.data?['items'];
     if (rawItems is! List) {
       return const [];
@@ -57,7 +57,7 @@ class InsuranceProviderRepository with AppRpcInvoker {
   Future<void> deactivateProvider({required String providerId}) async {
     _assertNonEmpty('providerId', providerId);
 
-    await invokeRpc('insurance_provider_deactivate', {'p_provider_id': providerId.trim()});
+    await invokeRpc('insurance_provider_deactivate', {'p_id': providerId.trim()});
   }
 
   void _assertNonEmpty(String field, String value) {

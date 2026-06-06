@@ -9,7 +9,7 @@ import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 /// Shared navigation shell for authenticated routes.
 ///
 /// Provides a [NavigationRail] for lateral navigation between top-level
-/// feature areas (Home, Patients, Settings). Each child route keeps its own
+/// feature areas (Home, Patients, Appointments, Billing, Settings). Each child route keeps its own
 /// [Scaffold] and [AppBar] for page-specific actions.
 class AuthenticatedShell extends ConsumerWidget {
   const AuthenticatedShell({required this.child, super.key});
@@ -31,6 +31,13 @@ class AuthenticatedShell extends ConsumerWidget {
       selectedIcon: Icons.event_note,
       label: 'Appointments',
       anyPermissionKeys: [PermissionKeys.appointmentsCreate, PermissionKeys.appointmentsCancel],
+    ),
+    _NavDestination(
+      route: AppRoutes.billingInvoices,
+      icon: Icons.receipt_long_outlined,
+      selectedIcon: Icons.receipt_long,
+      label: 'Billing',
+      permissionKey: PermissionKeys.invoicesView,
     ),
     _NavDestination(
       route: AppRoutes.settings,

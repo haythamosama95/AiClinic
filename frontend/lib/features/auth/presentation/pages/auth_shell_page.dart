@@ -133,6 +133,15 @@ class _ShellHomeBody extends ConsumerWidget {
                   label: const Text('Book appointment'),
                 ),
               ],
+              if (!auth.setupRequired && permissions.canViewInvoices()) ...[
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  key: const Key('shell_home_invoices'),
+                  onPressed: () => context.go(AppRoutes.billingInvoices),
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: const Text('Invoices'),
+                ),
+              ],
               if (!auth.setupRequired) ...[const SizedBox(height: 20), const _LandingDevToolsPanel()],
               const SizedBox(height: 24),
               if (kDebugMode) const PermissionDemoPanel(),

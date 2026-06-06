@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/patients/domain/patient_exceptions.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_archive_dialog.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_billing_section.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visit_history_section.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
@@ -240,6 +241,8 @@ class _PatientDetailBody extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         PatientVisitHistorySection(patientId: patientId),
+        const SizedBox(height: 24),
+        PatientBillingSection(patientId: patientId),
         const SizedBox(height: 24),
         Text('Record history', style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),

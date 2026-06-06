@@ -170,16 +170,16 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ### Tests for User Story 4
 
-- [ ] T045 [P] [US4] In `backend/tests/billing_crud.sql`, add: insurance set bounds (`0 ≤ amount ≤ subtotal - discount`); provider deactivation hides from selector but preserves history; cross-org provider access denied
-- [ ] T046 [P] [US4] Add `frontend/test/widget/billing/insurance_panel_test.dart` and `insurance_providers_page_test.dart`
+- [X] T045 [P] [US4] In `backend/tests/billing_crud.sql`, add: insurance set bounds (`0 ≤ amount ≤ subtotal - discount`); provider deactivation hides from selector but preserves history; cross-org provider access denied
+- [X] T046 [P] [US4] Add `frontend/test/widget/billing/insurance_panel_test.dart` and `insurance_providers_page_test.dart`
 
 ### Implementation for User Story 4
 
-- [ ] T047 [P] [US4] Add `set_insurance_coverage`, `insurance_provider_upsert`, `insurance_provider_deactivate`, `list_insurance_providers` RPCs per contracts
-- [ ] T048 [P] [US4] Implement `InsuranceProviderRepository` methods
-- [ ] T049 [P] [US4] Implement `insurance_panel.dart` (provider selector + covered amount input + empty-state)
-- [ ] T050 [US4] Implement `frontend/lib/features/billing/presentation/pages/insurance_providers_page.dart` (list/create/edit/deactivate, gated by `canManageInsurance`)
-- [ ] T051 [US4] Wire `insurance_panel.dart` into `invoice_editor_page.dart`
+- [X] T047 [P] [US4] Add `set_insurance_coverage`, `insurance_provider_upsert`, `insurance_provider_deactivate`, `list_insurance_providers` RPCs per contracts
+- [X] T048 [P] [US4] Implement `InsuranceProviderRepository` methods
+- [X] T049 [P] [US4] Implement `insurance_panel.dart` (provider selector + covered amount input + empty-state)
+- [X] T050 [US4] Implement `frontend/lib/features/billing/presentation/pages/insurance_providers_page.dart` (list/create/edit/deactivate, gated by `canManageInsurance`)
+- [X] T051 [US4] Wire `insurance_panel.dart` into `invoice_editor_page.dart`
 
 **Checkpoint**: Insurance split is captured and displayed; provider catalog is manageable by authorized users.
 
@@ -193,15 +193,15 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ### Tests for User Story 5
 
-- [ ] T052 [P] [US5] Extend `backend/tests/billing_crud.sql` with `list_invoices` query scenarios: status filter, patient search, date range, branch intersection, pagination boundary
-- [ ] T053 [P] [US5] Add `frontend/test/integration/billing/invoice_list_test.dart` covering US5 acceptance scenarios 1–6
+- [X] T052 [P] [US5] Extend `backend/tests/billing_crud.sql` with `list_invoices` query scenarios: status filter, patient search, date range, branch intersection, pagination boundary
+- [X] T053 [P] [US5] Add `frontend/test/integration/billing/invoice_list_test.dart` covering US5 acceptance scenarios 1–6
 
 ### Implementation for User Story 5
 
-- [ ] T054 [P] [US5] Implement `InvoiceRepository.listInvoices` and `listPatientInvoices`
-- [ ] T055 [P] [US5] Implement `invoice_list_notifier.dart` (debounced filter state, pagination)
-- [ ] T056 [US5] Implement `frontend/lib/features/billing/presentation/pages/invoice_list_page.dart` with filter bar (status, branch, patient, date range, invoice number) and pagination controls
-- [ ] T057 [US5] Add **Billing** tab to patient profile via `frontend/lib/features/patients/presentation/widgets/patient_billing_section.dart` consuming `listPatientInvoices`
+- [X] T054 [P] [US5] Implement `InvoiceRepository.listInvoices` and `listPatientInvoices`
+- [X] T055 [P] [US5] Implement `invoice_list_notifier.dart` (debounced filter state, pagination)
+- [X] T056 [US5] Implement `frontend/lib/features/billing/presentation/pages/invoice_list_page.dart` with filter bar (status, branch, patient, date range, invoice number) and pagination controls
+- [X] T057 [US5] Add **Billing** tab to patient profile via `frontend/lib/features/patients/presentation/widgets/patient_billing_section.dart` consuming `listPatientInvoices`
 
 **Checkpoint**: Invoice list and patient billing history surface are usable for daily reconciliation.
 
