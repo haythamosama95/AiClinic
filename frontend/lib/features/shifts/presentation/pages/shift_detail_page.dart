@@ -4,148 +4,103 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_detail.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
+import 'package:ai_clinic/features/shifts/presentation/providers/shift_detail_notifier.dart';
+import 'package:ai_clinic/features/shifts/presentation/widgets/shift_conflict_banner.dart';
+import 'package:ai_clinic/features/shifts/presentation/widgets/shift_staff_multi_select.dart';
 import 'package:ai_clinic/features/shifts/presentation/widgets/shift_status_badge.dart';
 
-/// Read-only shift detail baseline (V1-7 US2); mutation controls arrive in US3/US4.
-class ShiftDetailPage extends ConsumerStatefulWidget {
+/// Shift detail with read-only baseline (US2) and assignment management (US3).
+class ShiftDetailPage extends ConsumerWidget {
   const ShiftDetailPage({required this.shiftId, super.key});
 
   final String? shiftId;
 
   @override
-  ConsumerState<ShiftDetailPage> createState() => _ShiftDetailPageState();
-}
-
-class _ShiftDetailPageState extends ConsumerState<ShiftDetailPage> {
-  ShiftDetail? _detail;
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadDetail();
-  }
-
-  @override
-  void didUpdateWidget(covariant ShiftDetailPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.shiftId != widget.shiftId) {
-      _loadDetail();
-    }
-  }
-
-  Future<void> _loadDetail() async {
-    final id = widget.shiftId?.trim() ?? '';
+  Widget build(BuildContext context, WidgetRef ref) {
+    final id = shiftId?.trim() ?? '';
     if (id.isEmpty) {
-      setState(() {
-        _loading = false;
-        _detail = null;
-        _error = 'A valid shift id is required.';
-      });
-      return;
-    }
-
-    if (!ref.read(permissionServiceProvider).canViewShifts()) {
-      setState(() {
-        _loading = false;
-        _detail = null;
-        _error = 'permission_denied';
-      });
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final detail = await ref.read(shiftRepositoryProvider).getShiftDetail(shiftId: id);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _detail = detail;
-        _loading = false;
-        _error = null;
-      });
-    } on RpcFailure catch (failure) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _detail = null;
-        _loading = false;
-        _error = failure.code;
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _detail = null;
-        _loading = false;
-        _error = 'load_failed';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final canManage = ref.watch(permissionServiceProvider).canManageShifts();
-
-    if (_loading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Shift Detail')),
-        body: const Center(key: Key('shift_detail_loading'), child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_error == 'permission_denied') {
       return Scaffold(
         appBar: AppBar(title: const Text('Shift Detail')),
         body: const Center(
-          key: Key('shift_detail_permission_denied'),
           child: Padding(
             padding: EdgeInsets.all(24),
-            child: Text('You must be assigned to a branch to view shift details.', textAlign: TextAlign.center),
+            child: Text('A valid shift id is required.', textAlign: TextAlign.center),
           ),
         ),
       );
     }
 
-    if (_error != null || _detail == null) {
-      final message = switch (_error) {
-        'shift_not_found' => 'This shift was not found or you do not have access.',
-        'permission_denied' => 'You do not have permission to view this shift.',
-        _ => 'Could not load shift details. Please retry.',
-      };
+    final detailAsync = ref.watch(shiftDetailProvider(id));
+    final canManage = ref.watch(permissionServiceProvider).canManageShifts();
 
-      return Scaffold(
+    return detailAsync.when(
+      loading: () => Scaffold(
         appBar: AppBar(title: const Text('Shift Detail')),
-        body: Center(
-          key: const Key('shift_detail_error'),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(message, textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton(onPressed: _loadDetail, child: const Text('Retry')),
-              ],
-            ),
-          ),
+        body: const Center(key: Key('shift_detail_loading'), child: CircularProgressIndicator()),
+      ),
+      error: (error, _) => Scaffold(
+        appBar: AppBar(title: const Text('Shift Detail')),
+        body: _ShiftDetailErrorBody(error: error, onRetry: () => ref.invalidate(shiftDetailProvider(id))),
+      ),
+      data: (state) => _ShiftDetailBody(state: state, canManage: canManage),
+    );
+  }
+}
+
+class _ShiftDetailErrorBody extends StatelessWidget {
+  const _ShiftDetailErrorBody({required this.error, required this.onRetry});
+
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (error is RpcFailure && (error as RpcFailure).code == 'permission_denied') {
+      return const Center(
+        key: Key('shift_detail_permission_denied'),
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('You must be assigned to a branch to view shift details.', textAlign: TextAlign.center),
         ),
       );
     }
 
-    final detail = _detail!;
+    final message = switch (error) {
+      RpcFailure(:final code) when code == 'shift_not_found' => 'This shift was not found or you do not have access.',
+      RpcFailure(:final code) when code == 'permission_denied' => 'You do not have permission to view this shift.',
+      _ => 'Could not load shift details. Please retry.',
+    };
+
+    return Center(
+      key: const Key('shift_detail_error'),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShiftDetailBody extends ConsumerWidget {
+  const _ShiftDetailBody({required this.state, required this.canManage});
+
+  final ShiftDetailState state;
+  final bool canManage;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final detail = state.detail;
     final isReadOnly = detail.isReadOnly || !canManage;
+    final canEditAssignments = canManage && state.canMutateAssignments;
 
     return Scaffold(
       appBar: AppBar(
@@ -156,6 +111,29 @@ class _ShiftDetailPageState extends ConsumerState<ShiftDetailPage> {
         padding: const EdgeInsets.all(16),
         children: [
           if (isReadOnly) _ReadOnlyBanner(detail: detail, canManage: canManage),
+          if (state.mutationStatus == ShiftAssignmentMutationStatus.stale)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: MaterialBanner(
+                key: const Key('shift_detail_stale_banner'),
+                content: Text(state.mutationError ?? 'This shift was updated elsewhere. Reload and try again.'),
+                leading: const Icon(Icons.refresh),
+                actions: [
+                  TextButton(
+                    onPressed: () => ref.read(shiftDetailProvider(detail.id).notifier).reload(),
+                    child: const Text('Reload'),
+                  ),
+                ],
+              ),
+            ),
+          if (state.overlapConflicts.isNotEmpty) ...[
+            ShiftConflictBanner(conflicts: state.overlapConflicts),
+            const SizedBox(height: 16),
+          ],
+          if (state.mutationError != null && state.mutationStatus == ShiftAssignmentMutationStatus.error) ...[
+            Text(state.mutationError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            const SizedBox(height: 16),
+          ],
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -203,9 +181,97 @@ class _ShiftDetailPageState extends ConsumerState<ShiftDetailPage> {
                 key: Key('shift_detail_assignee_${assignment.staffMemberId}'),
                 leading: const Icon(Icons.person_outline),
                 title: Text(assignment.displayName),
+                trailing: canEditAssignments
+                    ? IconButton(
+                        key: Key('shift_detail_remove_assignee_${assignment.staffMemberId}'),
+                        icon: const Icon(Icons.person_remove_outlined),
+                        tooltip: 'Remove assignment',
+                        onPressed: state.isSaving
+                            ? null
+                            : () => _confirmRemoveAssignment(
+                                context,
+                                ref,
+                                assignment.staffMemberId,
+                                assignment.displayName,
+                              ),
+                      )
+                    : null,
               ),
             ),
+          if (canEditAssignments) ...[const SizedBox(height: 16), _AssignmentPanel(state: state)],
         ],
+      ),
+    );
+  }
+
+  Future<void> _confirmRemoveAssignment(
+    BuildContext context,
+    WidgetRef ref,
+    String staffMemberId,
+    String displayName,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove assignment?'),
+        content: Text('Remove $displayName from this shift?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+          FilledButton(
+            key: const Key('shift_detail_confirm_remove'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    await ref.read(shiftDetailProvider(state.detail.id).notifier).removeAssignment(staffMemberId: staffMemberId);
+  }
+}
+
+class _AssignmentPanel extends ConsumerWidget {
+  const _AssignmentPanel({required this.state});
+
+  final ShiftDetailState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final assignedIds = {for (final assignment in state.detail.assignments) assignment.staffMemberId};
+    final notifier = ref.read(shiftDetailProvider(state.detail.id).notifier);
+
+    return Card(
+      key: const Key('shift_detail_assignment_panel'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Add staff', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            ShiftStaffMultiSelect(
+              selectedStaffIds: state.pendingAddStaffIds,
+              excludeStaffIds: assignedIds,
+              enabled: !state.isSaving,
+              onChanged: notifier.setPendingAddStaffIds,
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                key: const Key('shift_detail_add_staff_submit'),
+                onPressed: state.isSaving || state.pendingAddStaffIds.isEmpty ? null : () => notifier.addPendingStaff(),
+                child: state.isSaving
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Add selected staff'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

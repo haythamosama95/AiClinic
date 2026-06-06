@@ -119,15 +119,15 @@ description: "Task list for Shift Management (V1-7) feature implementation"
 
 ### Tests for User Story 3
 
-- [ ] T028 [P] [US3] In `backend/tests/shift_management_crud.sql`, add scenarios: add eligible staff; reject duplicate assignment; reject overlap on add; remove one of many; remove last assignee → incomplete (not blocked); reject assignment on cancelled shift; reject assignment on past-date shift; audit `shift.assignment.add`/`shift.assignment.remove`
-- [ ] T029 [P] [US3] Add `frontend/test/integration/shifts/shift_assignment_test.dart` covering US3 acceptance scenarios 1, 2, 3, 4, 5
+- [X] T028 [P] [US3] In `backend/tests/shift_management_crud.sql`, add scenarios: add eligible staff; reject duplicate assignment; reject overlap on add; remove one of many; remove last assignee → incomplete (not blocked); reject assignment on cancelled shift; reject assignment on past-date shift; audit `shift.assignment.add`/`shift.assignment.remove`
+- [X] T029 [P] [US3] Add `frontend/test/integration/shifts/shift_assignment_test.dart` covering US3 acceptance scenarios 1, 2, 3, 4, 5
 
 ### Implementation for User Story 3
 
-- [ ] T030 [P] [US3] Add `modify_shift_assignments` RPC in `backend/supabase/migrations/20260606180000_shift_management.sql` per `specs/008-shift-management/contracts/shift-mutations.md` (atomic add/remove arrays; stale check; overlap on add only)
-- [ ] T031 [P] [US3] Implement `ShiftRepository.modifyAssignments` in `frontend/lib/features/shifts/data/shift_repository.dart`
-- [ ] T032 [US3] Implement `frontend/lib/features/shifts/presentation/providers/shift_detail_notifier.dart` with optimistic-concurrency handling (`stale_shift` → refresh prompt)
-- [ ] T033 [US3] Extend `frontend/lib/features/shifts/presentation/pages/shift_detail_page.dart` with assignment panel: add via `shift_staff_multi_select`, per-assignee remove with confirm, conflict banner on overlap, incomplete/Unassigned state after last removal
+- [X] T030 [P] [US3] Add `modify_shift_assignments` RPC in `backend/supabase/migrations/20260606180000_shift_management.sql` per `specs/008-shift-management/contracts/shift-mutations.md` (atomic add/remove arrays; stale check; overlap on add only)
+- [X] T031 [P] [US3] Implement `ShiftRepository.modifyAssignments` in `frontend/lib/features/shifts/data/shift_repository.dart`
+- [X] T032 [US3] Implement `frontend/lib/features/shifts/presentation/providers/shift_detail_notifier.dart` with optimistic-concurrency handling (`stale_shift` → refresh prompt)
+- [X] T033 [US3] Extend `frontend/lib/features/shifts/presentation/pages/shift_detail_page.dart` with assignment panel: add via `shift_staff_multi_select`, per-assignee remove with confirm, conflict banner on overlap, incomplete/Unassigned state after last removal
 
 **Checkpoint**: User Story 3 is independently functional — assignment changes without recreating shifts.
 

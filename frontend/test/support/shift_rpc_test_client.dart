@@ -25,11 +25,21 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
           'is_deleted': false,
           'staff_members': {'id': this.staffId, 'full_name': 'Dr Shift', 'role': 'doctor', 'is_active': true},
         },
+        {
+          'staff_member_id': secondStaffId,
+          'branch_id': this.branchId,
+          'is_deleted': false,
+          'staff_members': {'id': secondStaffId, 'full_name': 'Nurse Shift', 'role': 'receptionist', 'is_active': true},
+        },
       ],
     });
+    detailAssignments = [
+      {'id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'staff_member_id': this.staffId, 'display_name': 'Dr Shift'},
+    ];
   }
 
   static const defaultShiftId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  static const secondStaffId = '33333333-3333-4333-8333-333333333333';
 
   Map<String, dynamic> rpcResults;
   PostgrestException? rpcException;
@@ -51,6 +61,14 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
   bool listShiftsDenied = false;
   String listShiftsErrorMessage = 'permission_denied';
 
+  /// Mutable assignment rows for [get_shift_detail] / [modify_shift_assignments] simulations.
+  late List<Map<String, dynamic>> detailAssignments;
+
+  DateTime detailUpdatedAt = DateTime.utc(2026, 6, 1, 10);
+
+  /// When set, [modify_shift_assignments] throws this exception.
+  PostgrestException? modifyAssignmentsException;
+
   late final SettingsTableTestClient _tableClient;
 
   @override
@@ -65,8 +83,12 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
       paramsByFunction[fn] = Map<String, dynamic>.from(params);
     }
 
-    if (rpcException != null) {
+    if (rpcException != null && fn != 'modify_shift_assignments') {
       return _ThrowingPostgrestRpc(rpcException!) as PostgrestFilterBuilder<T>;
+    }
+
+    if (fn == 'modify_shift_assignments' && modifyAssignmentsException != null) {
+      return _ThrowingPostgrestRpc(modifyAssignmentsException!) as PostgrestFilterBuilder<T>;
     }
 
     final override = rpcResults[fn];
@@ -93,28 +115,72 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
     }
     return switch (fn) {
       'create_shift' => defaultShiftId,
-      'get_shift_detail' => {
-        'shift': {
-          'id': defaultShiftId,
-          'branch_id': branchId,
-          'shift_date': lastParams?['p_shift_date'] ?? '2026-06-10',
-          'start_time': lastParams?['p_start_time'] ?? '09:00',
-          'end_time': lastParams?['p_end_time'] ?? '17:00',
-          'notes': null,
-          'status': 'active',
-          'is_unassigned': false,
-          'is_past': false,
-          'is_read_only': false,
-          'updated_at': '2026-06-01T10:00:00.000Z',
-        },
-        'assignments': [
-          {'id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'staff_member_id': staffId, 'display_name': 'Dr Shift'},
-        ],
-        'branch': {'id': branchId, 'name': 'Main Branch', 'code': 'MAIN'},
-      },
+      'modify_shift_assignments' => _applyModifyAssignments(lastParams),
+      'get_shift_detail' => _buildShiftDetail(),
       'list_shifts' =>
         listShiftsPayload.where((row) => row['status']?.toString() != 'cancelled').toList(growable: false),
       _ => {'success': false, 'error_code': 'UNKNOWN', 'error_message': 'Unhandled RPC $fn'},
+    };
+  }
+
+  Map<String, dynamic> _buildShiftDetail() {
+    if (getShiftDetailOverride != null) {
+      return getShiftDetailOverride!;
+    }
+
+    final assigneeCount = detailAssignments.length;
+    final status = assigneeCount == 0 ? 'incomplete' : 'active';
+
+    return {
+      'shift': {
+        'id': defaultShiftId,
+        'branch_id': branchId,
+        'shift_date': lastParams?['p_shift_date'] ?? '2026-06-10',
+        'start_time': lastParams?['p_start_time'] ?? '09:00',
+        'end_time': lastParams?['p_end_time'] ?? '17:00',
+        'notes': null,
+        'status': status,
+        'is_unassigned': assigneeCount == 0,
+        'is_past': false,
+        'is_read_only': false,
+        'updated_at': detailUpdatedAt.toUtc().toIso8601String(),
+      },
+      'assignments': List<Map<String, dynamic>>.from(detailAssignments),
+      'branch': {'id': branchId, 'name': 'Main Branch', 'code': 'MAIN'},
+    };
+  }
+
+  Map<String, dynamic> _applyModifyAssignments(Map<String, dynamic>? params) {
+    final removeIds = (params?['p_remove_staff_ids'] as List?)?.map((id) => id.toString()).toSet() ?? <String>{};
+    final addIds = (params?['p_add_staff_ids'] as List?)?.map((id) => id.toString()).toList() ?? <String>[];
+
+    detailAssignments = detailAssignments
+        .where((row) => !removeIds.contains(row['staff_member_id']?.toString()))
+        .toList();
+
+    for (final staffIdToAdd in addIds) {
+      if (detailAssignments.any((row) => row['staff_member_id']?.toString() == staffIdToAdd)) {
+        continue;
+      }
+      final displayName = staffIdToAdd == secondStaffId ? 'Nurse Shift' : 'Dr Shift';
+      detailAssignments = [
+        ...detailAssignments,
+        {
+          'id': 'cccccccc-cccc-4ccc-8ccc-cccccccccc${detailAssignments.length}',
+          'staff_member_id': staffIdToAdd,
+          'display_name': displayName,
+        },
+      ];
+    }
+
+    detailUpdatedAt = detailUpdatedAt.add(const Duration(minutes: 1));
+    final assigneeCount = detailAssignments.length;
+
+    return {
+      'shift_id': defaultShiftId,
+      'status': assigneeCount == 0 ? 'incomplete' : 'active',
+      'assignee_count': assigneeCount,
+      'updated_at': detailUpdatedAt.toUtc().toIso8601String(),
     };
   }
 }

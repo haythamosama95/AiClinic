@@ -11,12 +11,14 @@ class ShiftStaffMultiSelect extends ConsumerStatefulWidget {
     required this.selectedStaffIds,
     required this.onChanged,
     this.enabled = true,
+    this.excludeStaffIds = const {},
     super.key,
   });
 
   final Set<String> selectedStaffIds;
   final ValueChanged<Set<String>> onChanged;
   final bool enabled;
+  final Set<String> excludeStaffIds;
 
   @override
   ConsumerState<ShiftStaffMultiSelect> createState() => _ShiftStaffMultiSelectState();
@@ -84,12 +86,13 @@ class _ShiftStaffMultiSelectState extends ConsumerState<ShiftStaffMultiSelect> {
       }
 
       options.sort((a, b) => a.fullName.compareTo(b.fullName));
+      final filtered = options.where((option) => !widget.excludeStaffIds.contains(option.id)).toList(growable: false);
 
       if (!mounted) {
         return;
       }
       setState(() {
-        _options = options;
+        _options = filtered;
         _loading = false;
       });
     } catch (_) {

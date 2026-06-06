@@ -738,6 +738,146 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
+-- auth_internal.modify_shift_assignments
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.modify_shift_assignments(
+  p_shift_id uuid,
+  p_expected_updated_at timestamptz,
+  p_add_staff_ids uuid[] DEFAULT '{}',
+  p_remove_staff_ids uuid[] DEFAULT '{}'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_shift public.shifts%ROWTYPE;
+  v_staff_id uuid;
+  v_assignee_count int;
+  v_status text;
+  v_new_updated_at timestamptz;
+  v_add_ids uuid[];
+  v_remove_ids uuid[];
+BEGIN
+  PERFORM auth_internal.assert_shifts_manage();
+
+  IF p_shift_id IS NULL THEN
+    RAISE EXCEPTION 'shift_not_found' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT *
+  INTO v_shift
+  FROM public.shifts s
+  WHERE s.id = p_shift_id
+    AND s.organization_id = public.jwt_organization_id()
+    AND s.branch_id = ANY (public.jwt_branch_ids())
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'shift_not_found' USING ERRCODE = 'P0001';
+  END IF;
+
+  IF v_shift.deleted_at IS NOT NULL THEN
+    RAISE EXCEPTION 'shift_cancelled' USING ERRCODE = 'P0001';
+  END IF;
+
+  PERFORM auth_internal.assert_shift_mutable(v_shift.shift_date);
+
+  IF p_expected_updated_at IS NULL OR v_shift.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RAISE EXCEPTION 'stale_shift' USING ERRCODE = 'P0001';
+  END IF;
+
+  v_add_ids := COALESCE(p_add_staff_ids, '{}'::uuid[]);
+  v_remove_ids := COALESCE(p_remove_staff_ids, '{}'::uuid[]);
+
+  IF cardinality(v_add_ids) = 0 AND cardinality(v_remove_ids) = 0 THEN
+    RAISE EXCEPTION 'invalid_input' USING ERRCODE = 'P0001';
+  END IF;
+
+  FOREACH v_staff_id IN ARRAY v_remove_ids
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1
+      FROM public.shift_assignments sa
+      WHERE sa.shift_id = p_shift_id
+        AND sa.staff_member_id = v_staff_id
+    ) THEN
+      RAISE EXCEPTION 'staff_not_eligible' USING ERRCODE = 'P0001';
+    END IF;
+
+    DELETE FROM public.shift_assignments sa
+    WHERE sa.shift_id = p_shift_id
+      AND sa.staff_member_id = v_staff_id;
+
+    INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
+    VALUES (
+      auth.uid(),
+      v_shift.organization_id,
+      'shift.assignment.remove',
+      'shift_assignments',
+      p_shift_id,
+      jsonb_build_object('shift_id', p_shift_id, 'staff_member_id', v_staff_id)
+    );
+  END LOOP;
+
+  FOREACH v_staff_id IN ARRAY v_add_ids
+  LOOP
+    PERFORM auth_internal.assert_shift_staff_eligible(v_staff_id, v_shift.branch_id);
+
+    IF EXISTS (
+      SELECT 1
+      FROM public.shift_assignments sa
+      WHERE sa.shift_id = p_shift_id
+        AND sa.staff_member_id = v_staff_id
+    ) THEN
+      RAISE EXCEPTION 'staff_already_assigned' USING ERRCODE = 'P0001';
+    END IF;
+
+    PERFORM auth_internal.assert_no_staff_shift_overlap(
+      v_shift.branch_id,
+      v_shift.shift_date,
+      v_shift.start_time,
+      v_shift.end_time,
+      ARRAY[v_staff_id]::uuid[],
+      p_shift_id
+    );
+
+    INSERT INTO public.shift_assignments (shift_id, staff_member_id, created_by, updated_by)
+    VALUES (p_shift_id, v_staff_id, auth.uid(), auth.uid());
+
+    INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
+    VALUES (
+      auth.uid(),
+      v_shift.organization_id,
+      'shift.assignment.add',
+      'shift_assignments',
+      p_shift_id,
+      jsonb_build_object('shift_id', p_shift_id, 'staff_member_id', v_staff_id)
+    );
+  END LOOP;
+
+  v_new_updated_at := now();
+
+  UPDATE public.shifts
+  SET updated_at = v_new_updated_at,
+      updated_by = auth.uid()
+  WHERE id = p_shift_id;
+
+  v_assignee_count := auth_internal.shift_assignee_count(p_shift_id);
+  v_status := auth_internal.derive_shift_status(NULL, v_assignee_count);
+
+  RETURN jsonb_build_object(
+    'shift_id', p_shift_id,
+    'status', v_status,
+    'assignee_count', v_assignee_count,
+    'updated_at', v_new_updated_at
+  );
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
 -- Public RPC wrappers
 -- -----------------------------------------------------------------------------
 
@@ -786,9 +926,29 @@ AS $$
   SELECT auth_internal.get_shift_detail(p_shift_id);
 $$;
 
+CREATE OR REPLACE FUNCTION public.modify_shift_assignments(
+  p_shift_id uuid,
+  p_expected_updated_at timestamptz,
+  p_add_staff_ids uuid[] DEFAULT '{}',
+  p_remove_staff_ids uuid[] DEFAULT '{}'
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.modify_shift_assignments(
+    p_shift_id,
+    p_expected_updated_at,
+    p_add_staff_ids,
+    p_remove_staff_ids
+  );
+$$;
+
 GRANT EXECUTE ON FUNCTION public.create_shift(uuid, date, time, time, text, uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.list_shifts(uuid, date, date) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_shift_detail(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.modify_shift_assignments(uuid, timestamptz, uuid[], uuid[]) TO authenticated;
 
 REVOKE ALL ON FUNCTION auth_internal.staff_has_shifts_manage() FROM PUBLIC, authenticated, anon;
 GRANT EXECUTE ON FUNCTION auth_internal.staff_has_shifts_manage() TO authenticated;

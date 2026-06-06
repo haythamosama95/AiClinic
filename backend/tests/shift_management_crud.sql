@@ -50,6 +50,13 @@ DECLARE
   v_is_unassigned boolean;
   v_is_read_only boolean;
   v_is_past boolean;
+  v_modify_result jsonb;
+  v_shift_updated_at timestamptz;
+  v_shift_assignment_test uuid;
+  v_shift_overlap_target uuid;
+  v_shift_cancelled uuid;
+  v_add_audit_count int;
+  v_remove_audit_count int;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
@@ -353,6 +360,245 @@ BEGIN
     'audit_shift_create',
     v_audit_count >= 4,
     'count=' || v_audit_count::text
+  );
+
+  -- US3: assignment management on existing shifts.
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_active;
+  DELETE FROM public.audit_log WHERE action IN ('shift.assignment.add', 'shift.assignment.remove');
+
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    v_modify_result := public.modify_shift_assignments(
+      v_shift_active,
+      v_shift_updated_at,
+      ARRAY[v_staff_owner]::uuid[],
+      '{}'::uuid[]
+    );
+    v_err := NULL;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_modify_result := NULL;
+      v_err := SQLERRM;
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT count(*)::int INTO v_assignee_count
+  FROM public.shift_assignments sa
+  WHERE sa.shift_id = v_shift_active;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'assignment_add_eligible_staff',
+    v_modify_result IS NOT NULL
+      AND (v_modify_result->>'status') = 'active'
+      AND (v_modify_result->>'assignee_count')::int = 2
+      AND v_assignee_count = 2,
+    COALESCE(v_modify_result::text, COALESCE(v_err, '<null>'))
+  );
+
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_active;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.modify_shift_assignments(
+      v_shift_active,
+      v_shift_updated_at,
+      ARRAY[v_staff_doctor]::uuid[],
+      '{}'::uuid[]
+    );
+    PERFORM pg_temp.record_shift_crud_result('assignment_reject_duplicate', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'assignment_reject_duplicate',
+        SQLERRM = 'staff_already_assigned',
+        SQLERRM
+      );
+  END;
+
+  v_shift_overlap_target := public.create_shift(
+    v_branch_id,
+    v_future + 5,
+    time '16:00',
+    time '20:00',
+    NULL,
+    '{}'::uuid[]
+  );
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_overlap_target;
+
+  BEGIN
+    PERFORM public.modify_shift_assignments(
+      v_shift_overlap_target,
+      v_shift_updated_at,
+      ARRAY[v_staff_doctor]::uuid[],
+      '{}'::uuid[]
+    );
+    PERFORM pg_temp.record_shift_crud_result('assignment_reject_overlap_on_add', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_overlap_detail := SQLERRM;
+      PERFORM pg_temp.record_shift_crud_result(
+        'assignment_reject_overlap_on_add',
+        SQLERRM LIKE 'shift_overlap:%' AND SQLERRM LIKE '%Dr CRUD%',
+        v_overlap_detail
+      );
+  END;
+
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_active;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    v_modify_result := public.modify_shift_assignments(
+      v_shift_active,
+      v_shift_updated_at,
+      '{}'::uuid[],
+      ARRAY[v_staff_owner]::uuid[]
+    );
+    v_err := NULL;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_modify_result := NULL;
+      v_err := SQLERRM;
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT count(*)::int INTO v_assignee_count
+  FROM public.shift_assignments sa
+  WHERE sa.shift_id = v_shift_active;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'assignment_remove_one_of_many',
+    v_modify_result IS NOT NULL
+      AND (v_modify_result->>'assignee_count')::int = 1
+      AND v_assignee_count = 1,
+    COALESCE(v_modify_result::text, COALESCE(v_err, '<null>'))
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+  v_shift_assignment_test := public.create_shift(
+    v_branch_id,
+    v_future + 8,
+    time '10:00',
+    time '14:00',
+    NULL,
+    ARRAY[v_staff_owner]::uuid[]
+  );
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_assignment_test;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    v_modify_result := public.modify_shift_assignments(
+      v_shift_assignment_test,
+      v_shift_updated_at,
+      '{}'::uuid[],
+      ARRAY[v_staff_owner]::uuid[]
+    );
+    v_err := NULL;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_modify_result := NULL;
+      v_err := SQLERRM;
+  END;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'assignment_remove_last_becomes_incomplete',
+    v_modify_result IS NOT NULL
+      AND (v_modify_result->>'status') = 'incomplete'
+      AND (v_modify_result->>'assignee_count')::int = 0,
+    COALESCE(v_modify_result::text, COALESCE(v_err, '<null>'))
+  );
+
+  v_shift_cancelled := public.create_shift(
+    v_branch_id,
+    v_future + 9,
+    time '09:00',
+    time '12:00',
+    NULL,
+    ARRAY[v_staff_doctor]::uuid[]
+  );
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.shifts
+  SET deleted_at = now(), updated_by = v_user_owner
+  WHERE id = v_shift_cancelled;
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_cancelled;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.modify_shift_assignments(
+      v_shift_cancelled,
+      v_shift_updated_at,
+      ARRAY[v_staff_owner]::uuid[],
+      '{}'::uuid[]
+    );
+    PERFORM pg_temp.record_shift_crud_result('assignment_reject_cancelled_shift', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'assignment_reject_cancelled_shift',
+        SQLERRM = 'shift_cancelled',
+        SQLERRM
+      );
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.shifts (
+    id, organization_id, branch_id, shift_date, start_time, end_time, created_by, updated_by
+  )
+  VALUES (
+    'b2800000-0000-4000-8000-0000000000a1',
+    v_org_id,
+    v_branch_id,
+    v_past,
+    time '13:00',
+    time '17:00',
+    v_user_owner,
+    v_user_owner
+  )
+  RETURNING id INTO v_shift_past;
+
+  INSERT INTO public.shift_assignments (shift_id, staff_member_id, created_by, updated_by)
+  VALUES (v_shift_past, v_staff_doctor, v_user_owner, v_user_owner);
+
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_past;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.modify_shift_assignments(
+      v_shift_past,
+      v_shift_updated_at,
+      ARRAY[v_staff_owner]::uuid[],
+      '{}'::uuid[]
+    );
+    PERFORM pg_temp.record_shift_crud_result('assignment_reject_past_date_shift', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'assignment_reject_past_date_shift',
+        SQLERRM = 'shift_read_only_past_date',
+        SQLERRM
+      );
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT count(*)::int INTO v_add_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'shift.assignment.add'
+    AND al.organization_id = v_org_id;
+  SELECT count(*)::int INTO v_remove_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'shift.assignment.remove'
+    AND al.organization_id = v_org_id;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'audit_shift_assignment_add',
+    v_add_audit_count >= 1,
+    'count=' || v_add_audit_count::text
+  );
+  PERFORM pg_temp.record_shift_crud_result(
+    'audit_shift_assignment_remove',
+    v_remove_audit_count >= 1,
+    'count=' || v_remove_audit_count::text
   );
 
   -- US2: list_shifts date-range filtering (only shifts within inclusive bounds).

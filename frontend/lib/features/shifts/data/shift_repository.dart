@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/shifts/domain/shift_assignment_result.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_detail.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_overlap_conflict.dart';
@@ -89,6 +90,35 @@ class ShiftRepository {
 
   static List<ShiftOverlapConflict> parseOverlapConflicts(String message) {
     return ShiftOverlapConflict.parseFromRpcMessage(message);
+  }
+
+  Future<ShiftAssignmentResult> modifyAssignments({
+    required String shiftId,
+    required DateTime expectedUpdatedAt,
+    List<String> addStaffIds = const [],
+    List<String> removeStaffIds = const [],
+  }) async {
+    final id = shiftId.trim();
+    if (id.isEmpty) {
+      throw _clientInputFailure('Shift id is required.');
+    }
+
+    if (addStaffIds.isEmpty && removeStaffIds.isEmpty) {
+      throw _clientInputFailure('At least one staff add or remove is required.');
+    }
+
+    final raw = await _invokeJsonRpc('modify_shift_assignments', {
+      'p_shift_id': id,
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+      'p_add_staff_ids': addStaffIds,
+      'p_remove_staff_ids': removeStaffIds,
+    });
+
+    final result = ShiftAssignmentResult.fromRpcData(raw);
+    if (result == null) {
+      throw StateError('Assignment change succeeded but the response was unexpected.');
+    }
+    return result;
   }
 
   Future<ShiftDetail> getShiftDetail({required String shiftId}) async {
