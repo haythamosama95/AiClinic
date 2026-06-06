@@ -283,6 +283,10 @@ DECLARE
   v_visit_paid_void uuid;
   v_invoice_paid_void uuid;
   v_void_reason text;
+  v_clamp_visit uuid;
+  v_clamp_invoice uuid;
+  v_clamp_item uuid;
+  v_insurance_covered numeric(14, 2);
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -648,6 +652,118 @@ BEGIN
   -- US4: insurance provider upsert and set coverage
   v_result := public.insurance_provider_upsert(NULL, 'Acme Insurance', 'claims@acme.test', true);
   v_provider_id := (v_result.data ->> 'provider_id')::uuid;
+
+  -- Critical #1: lowering unit price below existing line discount must not abort
+  PERFORM set_config('role', 'postgres', true);
+  v_clamp_visit := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 21
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.create_invoice_from_visit(v_clamp_visit);
+  v_clamp_invoice := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.add_invoice_item(v_clamp_invoice, v_updated_at, 'Discounted service', 1, 100.00);
+  v_clamp_item := (v_result.data ->> 'item_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.apply_line_discount(v_clamp_item, v_updated_at, 'fixed', 50.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.update_invoice_item(v_clamp_item, v_updated_at, 'Discounted service reduced', 1, 10.00);
+  SELECT line_discount_amount, line_total
+  INTO v_line_discount_amount, v_subtotal
+  FROM public.invoice_items
+  WHERE id = v_clamp_item;
+  PERFORM pg_temp.billing_crud_record(
+    'update_item_clamps_line_discount_when_subtotal_drops',
+    v_result.success
+      AND v_line_discount_amount = 10.00
+      AND v_subtotal = 0.00,
+    format('discount=%s line_total=%s', v_line_discount_amount, v_subtotal)
+  );
+
+  -- Critical #2: item removal clamps discount and insurance when subtotal drops to zero
+  PERFORM set_config('role', 'postgres', true);
+  v_clamp_visit := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 22
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.create_invoice_from_visit(v_clamp_visit);
+  v_clamp_invoice := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.add_invoice_item(v_clamp_invoice, v_updated_at, 'Single service', 1, 200.00);
+  v_clamp_item := (v_result.data ->> 'item_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.apply_invoice_discount(v_clamp_invoice, v_updated_at, 'fixed', 50.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.set_insurance_coverage(v_clamp_invoice, v_updated_at, v_provider_id, 100.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.remove_invoice_item(v_clamp_item, v_updated_at);
+  SELECT discount_amount, insurance_covered_amount, subtotal
+  INTO v_invoice_discount_amount, v_insurance_covered, v_subtotal
+  FROM public.invoices
+  WHERE id = v_clamp_invoice;
+  PERFORM pg_temp.billing_crud_record(
+    'remove_item_clamps_discount_and_insurance_when_subtotal_drops',
+    v_result.success
+      AND v_subtotal = 0.00
+      AND v_invoice_discount_amount = 0.00
+      AND v_insurance_covered = 0.00,
+    format('subtotal=%s discount=%s insurance=%s', v_subtotal, v_invoice_discount_amount, v_insurance_covered)
+  );
+
+  -- Critical #3: apply_invoice_discount clamps insurance when net total shrinks
+  PERFORM set_config('role', 'postgres', true);
+  v_clamp_visit := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 23
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.create_invoice_from_visit(v_clamp_visit);
+  v_clamp_invoice := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.add_invoice_item(v_clamp_invoice, v_updated_at, 'Coverage test', 1, 200.00);
+  v_clamp_item := (v_result.data ->> 'item_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.set_insurance_coverage(v_clamp_invoice, v_updated_at, v_provider_id, 150.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.apply_invoice_discount(v_clamp_invoice, v_updated_at, 'percentage', 50.00);
+  SELECT discount_amount, insurance_covered_amount
+  INTO v_invoice_discount_amount, v_insurance_covered
+  FROM public.invoices
+  WHERE id = v_clamp_invoice;
+  PERFORM pg_temp.billing_crud_record(
+    'apply_invoice_discount_clamps_insurance_covered_amount',
+    v_result.success
+      AND v_invoice_discount_amount = 100.00
+      AND v_insurance_covered = 100.00,
+    format('discount=%s insurance=%s', v_invoice_discount_amount, v_insurance_covered)
+  );
+
+  -- Critical #3: apply_line_discount clamps insurance when subtotal shrinks
+  PERFORM set_config('role', 'postgres', true);
+  v_clamp_visit := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 20
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.create_invoice_from_visit(v_clamp_visit);
+  v_clamp_invoice := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.add_invoice_item(v_clamp_invoice, v_updated_at, 'Line discount test', 1, 200.00);
+  v_clamp_item := (v_result.data ->> 'item_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.set_insurance_coverage(v_clamp_invoice, v_updated_at, v_provider_id, 150.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_clamp_invoice;
+  v_result := public.apply_line_discount(v_clamp_item, v_updated_at, 'percentage', 50.00);
+  SELECT insurance_covered_amount, subtotal
+  INTO v_insurance_covered, v_subtotal
+  FROM public.invoices
+  WHERE id = v_clamp_invoice;
+  PERFORM pg_temp.billing_crud_record(
+    'apply_line_discount_clamps_insurance_covered_amount',
+    v_result.success
+      AND v_subtotal = 100.00
+      AND v_insurance_covered = 100.00,
+    format('subtotal=%s insurance=%s', v_subtotal, v_insurance_covered)
+  );
+
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
   v_result := public.set_insurance_coverage(v_invoice_id, v_updated_at, v_provider_id, 50.00);
   v_detail := public.get_invoice_detail(v_invoice_id);
