@@ -165,6 +165,58 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION pg_temp.set_administrator_jwt(
+  p_user uuid,
+  p_staff uuid,
+  p_org uuid,
+  p_branches text
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', p_user::text,
+      'role', 'authenticated',
+      'organization_id', p_org::text,
+      'branch_ids', p_branches,
+      'staff_member_id', p_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION pg_temp.set_lab_staff_jwt(
+  p_user uuid,
+  p_staff uuid,
+  p_org uuid,
+  p_branches text
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', p_user::text,
+      'role', 'authenticated',
+      'organization_id', p_org::text,
+      'branch_ids', p_branches,
+      'staff_member_id', p_staff::text,
+      'staff_role', 'lab_staff',
+      'setup_required', false
+    )::text,
+    true
+  );
+END;
+$$;
+
 DO $$
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
@@ -175,6 +227,12 @@ DECLARE
   v_doctor_staff uuid := 'b1600000-0000-4000-8000-000000000103';
   v_reception_user uuid := 'a1600000-0000-4000-8000-000000000102';
   v_reception_staff uuid := 'b1600000-0000-4000-8000-000000000102';
+  v_admin_user uuid := 'a1600000-0000-4000-8000-000000000104';
+  v_admin_staff uuid := 'b1600000-0000-4000-8000-000000000104';
+  v_lab_user uuid := 'a1600000-0000-4000-8000-000000000105';
+  v_lab_staff uuid := 'b1600000-0000-4000-8000-000000000105';
+  v_draft_discard uuid;
+  v_stale_updated_at timestamptz;
   v_result public.rpc_result;
   v_org_id uuid;
   v_branch_main uuid;
@@ -225,7 +283,7 @@ BEGIN
   PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations;
   DELETE FROM auth.users
-  WHERE id IN (v_owner_user, v_reception_user, v_doctor_user);
+  WHERE id IN (v_owner_user, v_reception_user, v_doctor_user, v_admin_user, v_lab_user);
 
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
   VALUES
@@ -234,6 +292,10 @@ BEGIN
     (v_reception_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'bill-crud-recep',
      extensions.crypt('test-password', extensions.gen_salt('bf')), now(), now(), now()),
     (v_doctor_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'bill-crud-doctor',
+     extensions.crypt('test-password', extensions.gen_salt('bf')), now(), now(), now()),
+    (v_admin_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'bill-crud-admin',
+     extensions.crypt('test-password', extensions.gen_salt('bf')), now(), now(), now()),
+    (v_lab_user, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'bill-crud-lab',
      extensions.crypt('test-password', extensions.gen_salt('bf')), now(), now(), now())
   ON CONFLICT (id) DO NOTHING;
 
@@ -284,7 +346,9 @@ BEGIN
   VALUES
     (v_owner_staff, v_owner_user, 'Owner', 'owner', false, v_bootstrap_user, v_bootstrap_user),
     (v_doctor_staff, v_doctor_user, 'Doctor', 'doctor', false, v_bootstrap_user, v_bootstrap_user),
-    (v_reception_staff, v_reception_user, 'Reception', 'receptionist', false, v_bootstrap_user, v_bootstrap_user)
+    (v_reception_staff, v_reception_user, 'Reception', 'receptionist', false, v_bootstrap_user, v_bootstrap_user),
+    (v_admin_staff, v_admin_user, 'Administrator', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
+    (v_lab_staff, v_lab_user, 'Lab', 'lab_staff', false, v_bootstrap_user, v_bootstrap_user)
   ON CONFLICT (id) DO NOTHING;
 
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
@@ -294,7 +358,9 @@ BEGIN
     (v_doctor_staff, v_branch_main, true, v_bootstrap_user, v_bootstrap_user),
     (v_doctor_staff, v_branch_no_code, false, v_bootstrap_user, v_bootstrap_user),
     (v_reception_staff, v_branch_main, true, v_bootstrap_user, v_bootstrap_user),
-    (v_reception_staff, v_branch_no_code, false, v_bootstrap_user, v_bootstrap_user);
+    (v_reception_staff, v_branch_no_code, false, v_bootstrap_user, v_bootstrap_user),
+    (v_admin_staff, v_branch_main, true, v_bootstrap_user, v_bootstrap_user),
+    (v_lab_staff, v_branch_main, true, v_bootstrap_user, v_bootstrap_user);
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
@@ -378,6 +444,17 @@ BEGIN
     'create_invoice_from_completed_visit',
     v_result.success AND v_invoice_id IS NOT NULL,
     COALESCE(v_result.error_code, 'ok')
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'invoice.create_from_visit'
+    AND al.record_id = v_invoice_id;
+  PERFORM pg_temp.billing_crud_record(
+    'invoice_create_from_visit_audited',
+    v_audit_count = 1,
+    v_audit_count::text
   );
 
   -- duplicate active invoice rejected
@@ -626,6 +703,17 @@ BEGIN
         WHERE i.id = v_invoice_id AND i.status = 'issued' AND i.invoice_number = v_invoice_number
       ),
     COALESCE(v_invoice_number, v_result.error_code)
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'invoice.issue'
+    AND al.record_id = v_invoice_id;
+  PERFORM pg_temp.billing_crud_record(
+    'invoice_issue_audited',
+    v_audit_count >= 1,
+    v_audit_count::text
   );
 
   v_invoice_for_payment := v_invoice_id;
@@ -909,6 +997,221 @@ BEGIN
   PERFORM pg_temp.billing_crud_record(
     'doctor_billing_settings_read_denied',
     NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  PERFORM pg_temp.set_lab_staff_jwt(
+    v_lab_user,
+    v_lab_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  v_result := public.get_billing_settings();
+  PERFORM pg_temp.billing_crud_record(
+    'lab_staff_billing_settings_read_denied',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  PERFORM pg_temp.set_administrator_jwt(
+    v_admin_user,
+    v_admin_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  v_result := public.update_billing_settings(false);
+  PERFORM pg_temp.billing_crud_record(
+    'administrator_can_update_billing_settings',
+    v_result.success
+      AND coalesce((v_result.data ->> 'allow_partial_payments')::boolean, true) = false,
+    COALESCE(v_result.error_code, v_result.data::text)
+  );
+
+  -- discard_draft_invoice on fresh draft
+  PERFORM set_config('role', 'postgres', true);
+  v_visit_completed := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 17
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_reception_jwt(
+    v_reception_user,
+    v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.create_invoice_from_visit(v_visit_completed);
+  v_draft_discard := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_draft_discard;
+  v_result := public.discard_draft_invoice(v_draft_discard, v_updated_at);
+  PERFORM pg_temp.billing_crud_record(
+    'discard_draft_invoice_success',
+    v_result.success
+      AND NOT EXISTS (
+        SELECT 1 FROM public.invoices i
+        WHERE i.id = v_draft_discard AND i.is_deleted = false
+      ),
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'invoice.discard_draft'
+    AND al.record_id = v_draft_discard;
+  PERFORM pg_temp.billing_crud_record(
+    'discard_draft_invoice_audited',
+    v_audit_count >= 1,
+    v_audit_count::text
+  );
+
+  v_result := public.discard_draft_invoice(v_invoice_for_payment, now());
+  PERFORM pg_temp.billing_crud_record(
+    'discard_draft_rejects_issued_invoice',
+    NOT v_result.success AND v_result.error_code = 'INVOICE_NOT_IN_DRAFT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- STALE_INVOICE optimistic concurrency
+  PERFORM set_config('role', 'postgres', true);
+  v_visit_completed := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 18
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_reception_jwt(
+    v_reception_user,
+    v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.create_invoice_from_visit(v_visit_completed);
+  v_draft_discard := (v_result.data ->> 'invoice_id')::uuid;
+  v_stale_updated_at := '2000-01-01 00:00:00+00'::timestamptz;
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.invoices
+  SET updated_at = '2099-01-01 00:00:00+00'::timestamptz
+  WHERE id = v_draft_discard;
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.add_invoice_item(v_draft_discard, v_stale_updated_at, 'Stale test', 1, 10.00);
+  PERFORM pg_temp.billing_crud_record(
+    'stale_invoice_rejects_item_add',
+    NOT v_result.success AND v_result.error_code = 'STALE_INVOICE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_draft_discard;
+  v_result := public.add_invoice_item(v_draft_discard, v_updated_at, 'Item', 1, 10.00);
+  v_stale_updated_at := '2000-01-02 00:00:00+00'::timestamptz;
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.invoices
+  SET updated_at = '2099-01-02 00:00:00+00'::timestamptz
+  WHERE id = v_draft_discard;
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.issue_invoice(v_draft_discard, v_stale_updated_at);
+  PERFORM pg_temp.billing_crud_record(
+    'stale_invoice_rejects_issue',
+    NOT v_result.success AND v_result.error_code = 'STALE_INVOICE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_draft_discard;
+  v_result := public.add_invoice_item(v_draft_discard, v_updated_at, 'Discount line', 1, 50.00);
+  v_item_id := (v_result.data ->> 'item_id')::uuid;
+  v_stale_updated_at := '2000-01-03 00:00:00+00'::timestamptz;
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.invoices
+  SET updated_at = '2099-01-03 00:00:00+00'::timestamptz
+  WHERE id = v_draft_discard;
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.apply_line_discount(v_item_id, v_stale_updated_at, 'percentage', 5.00);
+  PERFORM pg_temp.billing_crud_record(
+    'stale_invoice_rejects_line_discount',
+    NOT v_result.success AND v_result.error_code = 'STALE_INVOICE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- discount boundary: 100% line discount and fixed at exact subtotal
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_draft_discard;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'percentage', 100.00);
+  SELECT line_discount_amount, line_total
+  INTO v_line_discount_amount, v_subtotal
+  FROM public.invoice_items
+  WHERE id = v_item_id;
+  PERFORM pg_temp.billing_crud_record(
+    'line_discount_percentage_100_valid',
+    v_result.success AND v_line_discount_amount = 50.00 AND v_subtotal = 0.00,
+    format('discount=%s line_total=%s', v_line_discount_amount, v_subtotal)
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_draft_discard;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, NULL, NULL);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_draft_discard;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'fixed', 50.00);
+  SELECT line_discount_amount INTO v_line_discount_amount FROM public.invoice_items WHERE id = v_item_id;
+  PERFORM pg_temp.billing_crud_record(
+    'line_discount_fixed_at_line_subtotal_valid',
+    v_result.success AND v_line_discount_amount = 50.00,
+    COALESCE(v_line_discount_amount::text, v_result.error_code)
+  );
+
+  -- payment/refund permission and edge inputs
+  PERFORM pg_temp.set_doctor_jwt(
+    v_doctor_user,
+    v_doctor_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.record_payment(v_invoice_for_payment, 'cash', 10.00, NULL, NULL);
+  PERFORM pg_temp.billing_crud_record(
+    'record_payment_permission_denied_for_doctor',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  v_result := public.record_refund(v_invoice_for_payment, 'cash', 10.00, 'Unauthorized refund');
+  PERFORM pg_temp.billing_crud_record(
+    'record_refund_permission_denied_for_doctor',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  PERFORM pg_temp.set_reception_jwt(
+    v_reception_user,
+    v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.record_payment(v_invoice_for_payment, 'cash', 0.00, NULL, NULL);
+  PERFORM pg_temp.billing_crud_record(
+    'record_payment_rejects_zero_amount',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  v_result := public.record_payment(v_draft_discard, 'cash', 10.00, NULL, NULL);
+  PERFORM pg_temp.billing_crud_record(
+    'record_payment_rejects_draft_invoice',
+    NOT v_result.success AND v_result.error_code = 'INVOICE_NOT_PAYABLE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.record_refund(v_invoice_for_payment, 'cash', 500.00, 'Excessive refund');
+  PERFORM pg_temp.billing_crud_record(
+    'record_refund_rejects_amount_exceeding_net_payments',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
     COALESCE(v_result.error_code, '<null>')
   );
 END;

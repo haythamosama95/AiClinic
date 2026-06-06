@@ -172,6 +172,66 @@ void main() {
       expect(find.text('Discounts'), findsNothing);
     });
 
+    testWidgets('scenario 7: fixed line discount applies successfully', (tester) async {
+      final client = BillingRpcTestClient();
+      await _pumpEditor(tester, client: client);
+      await _addSampleItem(tester);
+
+      await _scrollTo(tester, Key('line_discount_kind_${BillingRpcTestClient.itemId}'));
+      await tester.tap(find.byKey(Key('line_discount_kind_${BillingRpcTestClient.itemId}')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Fixed amount').last);
+      await tester.pumpAndSettle();
+
+      await _scrollTo(tester, Key('line_discount_apply_${BillingRpcTestClient.itemId}'));
+      await tester.enterText(find.byKey(Key('line_discount_value_${BillingRpcTestClient.itemId}')), '25');
+      await tester.tap(find.byKey(Key('line_discount_apply_${BillingRpcTestClient.itemId}')));
+      await tester.pumpAndSettle();
+
+      expect(client.rpcLog, contains('apply_line_discount'));
+      expect(
+        client.rpcLog.lastIndexOf('get_invoice_detail'),
+        greaterThan(client.rpcLog.lastIndexOf('apply_line_discount')),
+      );
+    });
+
+    testWidgets('scenario 8: clear other scope enables invoice discount', (tester) async {
+      final client = BillingRpcTestClient();
+      await _pumpEditor(tester, client: client);
+      await _addSampleItem(tester);
+
+      await _scrollTo(tester, Key('line_discount_apply_${BillingRpcTestClient.itemId}'));
+      await tester.enterText(find.byKey(Key('line_discount_value_${BillingRpcTestClient.itemId}')), '10');
+      await tester.tap(find.byKey(Key('line_discount_apply_${BillingRpcTestClient.itemId}')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('discount_line_scope_active')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('discount_clear_other_scope_line')));
+      await tester.pumpAndSettle();
+
+      await _scrollTo(tester, const Key('invoice_discount_apply'));
+      await tester.enterText(find.byKey(const Key('invoice_discount_value')), '5');
+      await tester.tap(find.byKey(const Key('invoice_discount_apply')));
+      await tester.pumpAndSettle();
+
+      expect(client.rpcLog, contains('apply_invoice_discount'));
+    });
+
+    testWidgets('scenario 9: invalid invoice discount shows validation message', (tester) async {
+      final client = BillingRpcTestClient();
+      await _pumpEditor(tester, client: client);
+      await _addSampleItem(tester);
+
+      await _scrollTo(tester, const Key('invoice_discount_apply'));
+      await tester.enterText(find.byKey(const Key('invoice_discount_value')), '150');
+      await tester.tap(find.byKey(const Key('invoice_discount_apply')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Percentage cannot exceed 100.'), findsOneWidget);
+      expect(client.rpcLog.where((name) => name == 'apply_invoice_discount'), isEmpty);
+    });
+
     testWidgets('scenario 6: discount apply records audit via RPC', (tester) async {
       final client = BillingRpcTestClient();
       await _pumpEditor(tester, client: client);

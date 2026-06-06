@@ -203,6 +203,30 @@ void main() {
       expect(text, contains('PARTIAL_PAYMENTS_DISABLED'));
       expect(text, contains('OVERPAYMENT'));
       expect(text, contains('payment.refund'));
+      expect(text, contains('record_payment_permission_denied_for_doctor'));
+      expect(text, contains('record_payment_rejects_zero_amount'));
+      expect(text, contains('record_refund_rejects_amount_exceeding_net_payments'));
+    });
+
+    testWidgets('scenario 4: insurance settlement partial allowed when setting disabled', (tester) async {
+      final client = BillingRpcTestClient()..allowPartialPayments = false;
+
+      await _pumpHost(tester, _scope(child: const SizedBox.shrink(), client: client));
+
+      await _scrollTo(tester, const Key('payment_method_field'));
+      await tester.tap(find.byKey(const Key('payment_method_field')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(PaymentMethod.insuranceSettlement.label).last);
+      await tester.pumpAndSettle();
+
+      await _scrollTo(tester, const Key('payment_amount_field'));
+      await tester.enterText(find.byKey(const Key('payment_amount_field')), '30');
+      await _scrollTo(tester, const Key('payment_submit_button'));
+      await tester.tap(find.byKey(const Key('payment_submit_button')));
+      await tester.pumpAndSettle();
+
+      expect(client.rpcLog, contains('record_payment'));
+      expect(find.byKey(const Key('payment_success_message')), findsOneWidget);
     });
 
     test('backend billing_concurrency.sql covers concurrent overpayment guard', () {

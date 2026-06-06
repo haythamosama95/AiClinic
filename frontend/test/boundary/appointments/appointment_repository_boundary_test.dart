@@ -32,15 +32,20 @@ WHERE id = '$branchId'::uuid;
 ''');
 }
 
-/// Planned start on today's UTC calendar day (org TZ defaults to UTC in boundary fixtures).
-/// Mirrors pg_temp.test_appointment_same_day_slot in backend SQL crud suites — always
-/// same calendar day so day-gated status transitions (checked_in, in_progress, …) succeed.
-DateTime _boundarySameDayPlannedStartUtc({int hourOffset = 10}) {
+/// Planned start on a UTC calendar day at a fixed hour (org TZ defaults to UTC in boundary fixtures).
+/// Mirrors pg_temp.test_appointment_same_day_slot in backend SQL crud suites — avoids
+/// `now + N days` preserving the current clock time (outside 09:00–17:00 or crossing midnight).
+DateTime _boundaryPlannedStartUtc({required int dayOffset, int hourOffset = 10}) {
+  assert(dayOffset >= 0);
   assert(hourOffset >= 1 && hourOffset <= 23);
   final now = DateTime.now().toUtc();
   final dayStart = DateTime.utc(now.year, now.month, now.day);
-  return dayStart.add(Duration(hours: hourOffset));
+  return dayStart.add(Duration(days: dayOffset, hours: hourOffset));
 }
+
+/// Same calendar day — required for day-gated status transitions (checked_in, in_progress, …).
+DateTime _boundarySameDayPlannedStartUtc({int hourOffset = 10}) =>
+    _boundaryPlannedStartUtc(dayOffset: 0, hourOffset: hourOffset);
 
 void main() {
   late BoundaryTestContext ctx;
@@ -74,7 +79,7 @@ void main() {
       await sessions.signInAs(StaffRole.receptionist);
       await _openBranchHours24x7(ctx, clinic.branchId);
 
-      final start = DateTime.now().toUtc().add(const Duration(days: 2));
+      final start = _boundaryPlannedStartUtc(dayOffset: 2);
       final created = await ctx.appointments.createAppointment(
         branchId: clinic.branchId,
         patientId: patientId,
@@ -98,7 +103,7 @@ void main() {
       await sessions.signInAs(StaffRole.receptionist);
       await _openBranchHours24x7(ctx, clinic.branchId);
 
-      final start = DateTime.now().toUtc().add(const Duration(days: 3));
+      final start = _boundaryPlannedStartUtc(dayOffset: 3);
       await ctx.appointments.createAppointment(
         branchId: clinic.branchId,
         patientId: patientId,
@@ -129,7 +134,7 @@ void main() {
       await sessions.signInAs(StaffRole.receptionist);
       await _openBranchHours24x7(ctx, clinic.branchId);
 
-      final start = DateTime.now().toUtc().add(const Duration(days: 4));
+      final start = _boundaryPlannedStartUtc(dayOffset: 4);
       final created = await ctx.appointments.createAppointment(
         branchId: clinic.branchId,
         patientId: patientId,
@@ -151,7 +156,7 @@ void main() {
       final sessions = RoleSessions(ctx, clinic);
       await sessions.signInAs(StaffRole.labStaff);
 
-      final start = DateTime.now().toUtc().add(const Duration(days: 5));
+      final start = _boundaryPlannedStartUtc(dayOffset: 5);
       await expectRpcCode(
         () => ctx.appointments.createAppointment(
           branchId: clinic.branchId,
@@ -238,7 +243,7 @@ void main() {
       await sessions.signInAs(StaffRole.receptionist);
       await _openBranchHours24x7(ctx, clinic.branchId);
 
-      final start = DateTime.now().toUtc().add(const Duration(days: 10));
+      final start = _boundaryPlannedStartUtc(dayOffset: 10);
       final first = await ctx.appointments.createAppointment(
         branchId: clinic.branchId,
         patientId: patientId,
@@ -277,7 +282,7 @@ void main() {
       await sessions.signInAs(StaffRole.receptionist);
       await _openBranchHours24x7(ctx, clinic.branchId);
 
-      final start = DateTime.now().toUtc().add(const Duration(days: 7));
+      final start = _boundaryPlannedStartUtc(dayOffset: 7);
       final created = await ctx.appointments.createAppointment(
         branchId: clinic.branchId,
         patientId: patientId,

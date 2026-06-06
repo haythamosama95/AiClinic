@@ -12,6 +12,22 @@ import '../../support/billing_rpc_test_client.dart';
 
 void main() {
   group('BillingSettingsSection', () {
+    testWidgets('owner sees an editable partial-payments toggle', (tester) async {
+      final client = BillingRpcTestClient();
+      await tester.pumpWidget(_host(role: StaffRole.owner, client: client));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Billing'), findsOneWidget);
+      final toggle = tester.widget<SwitchListTile>(find.byType(SwitchListTile));
+      expect(toggle.onChanged, isNotNull);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      expect(client.rpcLog.where((name) => name == 'update_billing_settings').length, 1);
+      expect(client.allowPartialPayments, isTrue);
+    });
+
     testWidgets('admin sees an editable partial-payments toggle', (tester) async {
       final client = BillingRpcTestClient();
       await tester.pumpWidget(_host(role: StaffRole.administrator, client: client));

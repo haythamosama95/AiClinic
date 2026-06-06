@@ -121,6 +121,48 @@ void main() {
       expect(viewOnly.canDeletePatients(), isFalse);
     });
 
+    test('V1-6 billing helpers reflect grants', () {
+      final billing = PermissionService(
+        sampleAuthSessionContext(
+          permissions: {
+            PermissionKeys.invoicesView,
+            PermissionKeys.invoicesCreate,
+            PermissionKeys.invoicesApplyDiscount,
+            PermissionKeys.paymentsRecord,
+            PermissionKeys.paymentsRefund,
+            PermissionKeys.insuranceManage,
+            PermissionKeys.settingsBillingManage,
+          },
+        ),
+      );
+      final viewOnly = PermissionService(sampleAuthSessionContext(permissions: {PermissionKeys.invoicesView}));
+
+      expect(billing.canViewInvoices(), isTrue);
+      expect(billing.canCreateInvoices(), isTrue);
+      expect(billing.canApplyDiscount(), isTrue);
+      expect(billing.canRecordPayment(), isTrue);
+      expect(billing.canRefundPayment(), isTrue);
+      expect(billing.canManageInsurance(), isTrue);
+      expect(billing.canManageBillingSettings(), isTrue);
+
+      expect(viewOnly.canViewInvoices(), isTrue);
+      expect(viewOnly.canCreateInvoices(), isFalse);
+      expect(viewOnly.canRecordPayment(), isFalse);
+      expect(viewOnly.canManageBillingSettings(), isFalse);
+    });
+
+    test('receptionist seed includes invoice create and payment record but not refund', () {
+      final receptionist = PermissionService(
+        sampleAuthSessionContext(role: StaffRole.receptionist, permissions: RolePermissionSeed.receptionist),
+      );
+
+      expect(receptionist.canViewInvoices(), isTrue);
+      expect(receptionist.canCreateInvoices(), isTrue);
+      expect(receptionist.canRecordPayment(), isTrue);
+      expect(receptionist.canRefundPayment(), isFalse);
+      expect(receptionist.canApplyDiscount(), isFalse);
+    });
+
     test('owner and administrator share staff settings grant; doctor does not', () {
       final owner = PermissionService(
         sampleAuthSessionContext(role: StaffRole.owner, permissions: RolePermissionSeed.owner),

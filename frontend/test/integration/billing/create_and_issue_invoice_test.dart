@@ -221,6 +221,73 @@ void main() {
       expect(find.text('Add at least one line item before issuing.'), findsOneWidget);
     });
 
+    testWidgets('scenario 5: in-progress visit hides billing actions', (tester) async {
+      await _pumpHost(
+        tester,
+        _scope(
+          child: VisitDetailActions(visitId: _visitId, status: VisitStatus.inProgress),
+        ),
+      );
+
+      expect(find.byKey(const Key('visit_create_invoice_button')), findsNothing);
+      expect(find.byKey(const Key('visit_open_invoice_button')), findsNothing);
+    });
+
+    testWidgets('scenario 6: branch code missing shows inline issue error', (tester) async {
+      final client = BillingRpcTestClient()
+        ..rpcResults['issue_invoice'] = {
+          'success': false,
+          'error_code': 'BRANCH_CODE_MISSING',
+          'error_message': 'Assign a branch code before issuing.',
+        };
+
+      await _pumpHost(
+        tester,
+        _scope(
+          client: client,
+          child: const InvoiceEditorPage(invoiceId: BillingRpcTestClient.draftInvoiceId),
+        ),
+      );
+
+      await tester.enterText(find.byKey(const Key('invoice_item_description')), 'Consultation');
+      await tester.enterText(find.byKey(const Key('invoice_item_unit_price')), '100');
+      await tester.tap(find.byKey(const Key('invoice_item_add_button')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('invoice_issue_button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('invoice_issue_error_banner')), findsOneWidget);
+      expect(find.textContaining('branch code'), findsOneWidget);
+    });
+
+    testWidgets('scenario 9: STALE_INVOICE on issue reloads detail without navigating away', (tester) async {
+      final client = BillingRpcTestClient()
+        ..rpcResults['issue_invoice'] = {'success': false, 'error_code': 'STALE_INVOICE', 'error_message': 'Stale'};
+
+      await _pumpHost(
+        tester,
+        _scope(
+          client: client,
+          child: const InvoiceEditorPage(invoiceId: BillingRpcTestClient.draftInvoiceId),
+        ),
+      );
+
+      await tester.enterText(find.byKey(const Key('invoice_item_description')), 'Consultation');
+      await tester.enterText(find.byKey(const Key('invoice_item_unit_price')), '100');
+      await tester.tap(find.byKey(const Key('invoice_item_add_button')));
+      await tester.pumpAndSettle();
+
+      final detailCallsBefore = client.rpcLog.where((name) => name == 'get_invoice_detail').length;
+      await tester.tap(find.byKey(const Key('invoice_issue_button')));
+      await tester.pumpAndSettle();
+
+      expect(client.rpcLog, contains('issue_invoice'));
+      expect(client.rpcLog.where((name) => name == 'get_invoice_detail').length, greaterThan(detailCallsBefore));
+      expect(find.byKey(const Key('invoice_editor_body')), findsOneWidget);
+      expect(find.textContaining('Invoice issued as'), findsNothing);
+    });
+
     testWidgets('scenario 8: user without create permission hides billing action', (tester) async {
       await _pumpHost(
         tester,
@@ -241,6 +308,9 @@ void main() {
       expect(text, contains('VISIT_NOT_COMPLETED'));
       expect(text, contains('ACTIVE_INVOICE_EXISTS'));
       expect(text, contains('NO_ITEMS'));
+      expect(text, contains('STALE_INVOICE'));
+      expect(text, contains('discard_draft_invoice_success'));
+      expect(text, contains('BRANCH_CODE_MISSING'));
     });
   });
 }

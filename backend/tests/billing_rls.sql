@@ -301,6 +301,67 @@ BEGIN
     NOT v_role_perm_result.success AND v_role_perm_result.error_code = 'PERMISSION_NOT_DELEGABLE',
     COALESCE(v_role_perm_result.error_code, '<null>')
   );
+
+  -- Payments table must not allow UPDATE/DELETE for authenticated (T071 security).
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_owner::text,
+      'role', 'authenticated',
+      'organization_id', v_org_a::text,
+      'branch_ids', v_branch_a::text,
+      'staff_member_id', v_staff_owner::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_dml_failed := false;
+  BEGIN
+    UPDATE public.payments SET amount = 999.00 WHERE id = v_payment_a;
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      v_dml_failed := true;
+  END;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO billing_rls_results VALUES (
+    'payments_update_denied_for_authenticated',
+    v_dml_failed OR NOT EXISTS (
+      SELECT 1 FROM public.payments p WHERE p.id = v_payment_a AND p.amount = 999.00
+    ),
+    'dml_failed=' || v_dml_failed::text
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_owner::text,
+      'role', 'authenticated',
+      'organization_id', v_org_a::text,
+      'branch_ids', v_branch_a::text,
+      'staff_member_id', v_staff_owner::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_dml_failed := false;
+  BEGIN
+    DELETE FROM public.payments WHERE id = v_payment_a;
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      v_dml_failed := true;
+  END;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO billing_rls_results VALUES (
+    'payments_delete_denied_for_authenticated',
+    v_dml_failed OR EXISTS (SELECT 1 FROM public.payments p WHERE p.id = v_payment_a),
+    'dml_failed=' || v_dml_failed::text
+  );
 END;
 $$;
 
