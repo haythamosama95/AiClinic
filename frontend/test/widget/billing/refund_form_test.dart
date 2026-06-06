@@ -52,7 +52,7 @@ void main() {
         amount: '100.00',
         reference: null,
         note: null,
-        recordedBy: 'staff-1',
+        recordedById: 'staff-1',
         recordedAt: DateTime.utc(2026, 6, 2, 12),
       ),
       Payment(
@@ -61,7 +61,7 @@ void main() {
         amount: '-30.00',
         reference: null,
         note: 'Partial refund',
-        recordedBy: 'staff-1',
+        recordedById: 'staff-1',
         recordedAt: DateTime.utc(2026, 6, 2, 13),
       ),
     ]);
@@ -102,5 +102,118 @@ void main() {
 
     expect(find.text('Refund cannot exceed net payments on this invoice.'), findsOneWidget);
     expect(client.rpcLog, isNot(contains('record_refund')));
+  });
+
+  testWidgets('refund form renders for issued invoices with net positive payments', (tester) async {
+    final client = BillingRpcTestClient();
+    final detail = InvoiceDetail(
+      id: BillingRpcTestClient.issuedInvoiceId,
+      visitId: BillingRpcTestClient.visitId,
+      patientId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      branchId: '44444444-4444-4444-8444-444444444444',
+      status: InvoiceStatus.issued,
+      currency: 'USD',
+      subtotal: '100.00',
+      discountAmount: '0.00',
+      insuranceCoveredAmount: '0.00',
+      balance: '40.00',
+      updatedAt: DateTime.utc(2026, 6, 2),
+      items: const [],
+      payments: [
+        Payment(
+          id: 'pay-1',
+          method: PaymentMethod.cash,
+          amount: '60.00',
+          recordedById: 'staff-1',
+          recordedAt: DateTime.utc(2026, 6, 2, 12),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authSessionProvider.overrideWith(
+            () => _PresetAuth(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(
+                  permissions: {PermissionKeys.invoicesView, PermissionKeys.paymentsRefund},
+                  activeBranchId: '44444444-4444-4444-8444-444444444444',
+                  branchIds: ['44444444-4444-4444-8444-444444444444'],
+                ),
+              ),
+            ),
+          ),
+          invoiceRepositoryProvider.overrideWith((ref) => InvoiceRepository(client)),
+          billingSettingsRepositoryProvider.overrideWith((ref) => BillingSettingsRepository(client)),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: RefundForm(invoiceId: BillingRpcTestClient.issuedInvoiceId, detail: detail),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('refund_form_card')), findsOneWidget);
+    expect(find.textContaining('Maximum refundable: 60.00'), findsOneWidget);
+  });
+
+  testWidgets('refund form hidden for voided invoices with payments', (tester) async {
+    final client = BillingRpcTestClient();
+    final detail = InvoiceDetail(
+      id: BillingRpcTestClient.issuedInvoiceId,
+      visitId: BillingRpcTestClient.visitId,
+      patientId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      branchId: '44444444-4444-4444-8444-444444444444',
+      status: InvoiceStatus.voided,
+      currency: 'USD',
+      subtotal: '100.00',
+      discountAmount: '0.00',
+      insuranceCoveredAmount: '0.00',
+      balance: '0.00',
+      updatedAt: DateTime.utc(2026, 6, 2),
+      items: const [],
+      payments: [
+        Payment(
+          id: 'pay-1',
+          method: PaymentMethod.cash,
+          amount: '100.00',
+          recordedById: 'staff-1',
+          recordedAt: DateTime.utc(2026, 6, 2, 12),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authSessionProvider.overrideWith(
+            () => _PresetAuth(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(
+                  permissions: {PermissionKeys.invoicesView, PermissionKeys.paymentsRefund},
+                  activeBranchId: '44444444-4444-4444-8444-444444444444',
+                  branchIds: ['44444444-4444-4444-8444-444444444444'],
+                ),
+              ),
+            ),
+          ),
+          invoiceRepositoryProvider.overrideWith((ref) => InvoiceRepository(client)),
+          billingSettingsRepositoryProvider.overrideWith((ref) => BillingSettingsRepository(client)),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: RefundForm(invoiceId: BillingRpcTestClient.issuedInvoiceId, detail: detail),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('refund_form_card')), findsNothing);
   });
 }

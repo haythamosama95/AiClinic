@@ -335,7 +335,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'amount': amount.toStringAsFixed(2),
       'reference': lastParams?['p_reference'],
       'note': lastParams?['p_note'],
-      'recorded_by': 'staff-1',
+      'recorded_by': {'id': 'staff-1', 'display_name': 'Test Staff'},
       'recorded_at': DateTime.now().toUtc().toIso8601String(),
     });
 
@@ -372,7 +372,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'amount': (-amount).toStringAsFixed(2),
       'reference': null,
       'note': note,
-      'recorded_by': 'staff-1',
+      'recorded_by': {'id': 'staff-1', 'display_name': 'Test Staff'},
       'recorded_at': DateTime.now().toUtc().toIso8601String(),
     });
 

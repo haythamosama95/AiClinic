@@ -161,10 +161,10 @@ class RefundFormState extends ConsumerState<RefundForm> {
     }
   }
 
-  bool _canRefund(InvoiceStatus status, double netPositivePayments) {
-    if (netPositivePayments <= 0) {
+  bool _canRefund(InvoiceStatus status, double netRefundablePayments) {
+    if (netRefundablePayments <= 0 || status == InvoiceStatus.voided) {
       return false;
     }
-    return status == InvoiceStatus.paid || status == InvoiceStatus.partiallyPaid;
+    return true;
   }
 }

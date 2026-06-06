@@ -1053,6 +1053,29 @@ BEGIN
     v_audit_count::text
   );
 
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'payment.record'
+    AND al.record_id = v_payment_id
+    AND al.new_data_json ->> 'reference' = 'RCPT-1'
+    AND al.new_data_json ->> 'note' = 'Full payment';
+  PERFORM pg_temp.billing_crud_record(
+    'record_payment_audit_includes_reference_and_note',
+    v_audit_count = 1,
+    v_audit_count::text
+  );
+
+  v_detail := public.get_invoice_detail(v_invoice_for_payment);
+  PERFORM pg_temp.billing_crud_record(
+    'get_invoice_detail_payment_recorded_by_includes_display_name',
+    v_detail.success
+      AND jsonb_typeof(v_detail.data -> 'payments' -> 0 -> 'recorded_by') = 'object'
+      AND (v_detail.data -> 'payments' -> 0 -> 'recorded_by' ->> 'id') = v_reception_staff::text
+      AND (v_detail.data -> 'payments' -> 0 -> 'recorded_by' ->> 'display_name') = 'Reception',
+    COALESCE(v_detail.data -> 'payments' -> 0 -> 'recorded_by' ->> 'display_name', '<null>')
+  );
+
   -- US2: partial payments with setting ON
   PERFORM set_config('role', 'postgres', true);
   UPDATE public.organization_billing_settings
@@ -1443,6 +1466,20 @@ BEGIN
     'list_invoices_patient_search',
     v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
     jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  v_list := public.list_invoices(jsonb_build_object('visit_id', v_side_visit::text), 50, 0);
+  SELECT count(*)::int
+  INTO v_list_item_count
+  FROM jsonb_array_elements(v_list.data -> 'items') elem
+  WHERE (elem ->> 'id')::uuid <> v_side_invoice;
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_visit_id_filter',
+    v_list.success
+      AND jsonb_array_length(v_list.data -> 'items') = 1
+      AND v_list_item_count = 0
+      AND (v_list.data -> 'items' -> 0 ->> 'id')::uuid = v_side_invoice,
+    format('count=%s', jsonb_array_length(v_list.data -> 'items'))
   );
 
   v_list := public.list_invoices(jsonb_build_object('invoice_number', '%'), 50, 0);

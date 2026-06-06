@@ -36,7 +36,8 @@ Returns a single JSON envelope containing:
   "payments": [
     { "id": "...", "method": "cash", "amount": "70.00",
       "reference": null, "note": null,
-      "recorded_by": "...", "recorded_at": "..." }
+      "recorded_by": { "id": "...", "display_name": "Reception" },
+      "recorded_at": "..." }
   ],
   "patient": { "id": "...", "display_name": "..." },
   "branch":  { "id": "...", "code": "MAIN", "name": "..." },
@@ -55,6 +56,7 @@ Filters supported in `p_filters`:
 - `branch_ids` (array; intersected with JWT scope)
 - `statuses` (array of `invoice_status`)
 - `patient_id` (uuid)
+- `visit_id` (uuid; exact match on `invoices.visit_id`)
 - `patient_search` (text, ILIKE on patient name)
 - `invoice_number` (text exact or prefix)
 - `date_from`, `date_to` (timestamptz; applied to `created_at`)

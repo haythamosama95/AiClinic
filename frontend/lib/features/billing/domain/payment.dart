@@ -8,10 +8,11 @@ class Payment {
     required this.id,
     required this.method,
     required this.amount,
-    required this.recordedBy,
+    required this.recordedById,
     required this.recordedAt,
     this.reference,
     this.note,
+    this.recordedByDisplayName,
   });
 
   final String id;
@@ -19,7 +20,8 @@ class Payment {
   final String amount;
   final String? reference;
   final String? note;
-  final String recordedBy;
+  final String recordedById;
+  final String? recordedByDisplayName;
   final DateTime recordedAt;
 
   bool get isRefund {
@@ -31,15 +33,9 @@ class Payment {
     final id = row['id']?.toString();
     final method = PaymentMethod.tryParse(row['method']?.toString());
     final amount = row['amount']?.toString();
-    final recordedBy = row['recorded_by']?.toString();
+    final recordedBy = _parseRecordedBy(row['recorded_by']);
     final recordedAtRaw = row['recorded_at']?.toString();
-    if (id == null ||
-        id.isEmpty ||
-        method == null ||
-        amount == null ||
-        recordedBy == null ||
-        recordedBy.isEmpty ||
-        recordedAtRaw == null) {
+    if (id == null || id.isEmpty || method == null || amount == null || recordedBy == null || recordedAtRaw == null) {
       return null;
     }
 
@@ -54,8 +50,25 @@ class Payment {
       amount: amount,
       reference: row['reference']?.toString(),
       note: row['note']?.toString(),
-      recordedBy: recordedBy,
+      recordedById: recordedBy.id,
+      recordedByDisplayName: recordedBy.displayName,
       recordedAt: recordedAt,
     );
+  }
+
+  static ({String id, String? displayName})? _parseRecordedBy(Object? raw) {
+    if (raw is Map) {
+      final id = raw['id']?.toString();
+      if (id == null || id.isEmpty) {
+        return null;
+      }
+      return (id: id, displayName: raw['display_name']?.toString());
+    }
+
+    final id = raw?.toString();
+    if (id == null || id.isEmpty) {
+      return null;
+    }
+    return (id: id, displayName: null);
   }
 }

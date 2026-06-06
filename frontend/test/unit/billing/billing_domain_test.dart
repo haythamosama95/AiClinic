@@ -1,5 +1,6 @@
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -51,6 +52,37 @@ void main() {
       expect(DiscountKind.tryParse('percentage'), DiscountKind.percentage);
       expect(DiscountKind.tryParse('fixed'), DiscountKind.fixed);
       expect(DiscountKind.tryParse('percent'), isNull);
+    });
+  });
+
+  group('Payment', () {
+    test('fromRow parses recorded_by object with display_name', () {
+      final payment = Payment.fromRow({
+        'id': 'pay-1',
+        'method': 'cash',
+        'amount': '50.00',
+        'reference': 'RCPT-1',
+        'note': 'Full payment',
+        'recorded_by': {'id': 'staff-uuid', 'display_name': 'Reception'},
+        'recorded_at': '2026-06-01T12:00:00.000Z',
+      });
+
+      expect(payment, isNotNull);
+      expect(payment!.recordedById, 'staff-uuid');
+      expect(payment.recordedByDisplayName, 'Reception');
+    });
+
+    test('fromRow rejects recorded_by without id', () {
+      expect(
+        Payment.fromRow({
+          'id': 'pay-1',
+          'method': 'cash',
+          'amount': '50.00',
+          'recorded_by': {'display_name': 'Reception'},
+          'recorded_at': '2026-06-01T12:00:00.000Z',
+        }),
+        isNull,
+      );
     });
   });
 }

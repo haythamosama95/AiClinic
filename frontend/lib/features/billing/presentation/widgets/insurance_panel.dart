@@ -55,7 +55,8 @@ class _InsurancePanelState extends ConsumerState<InsurancePanel> {
 
   void _syncFromDetail() {
     _selectedProviderId = widget.detail.insuranceProviderId;
-    _amountController.text = widget.detail.insuranceCoveredAmount == '0' ? '' : widget.detail.insuranceCoveredAmount;
+    final parsed = double.tryParse(widget.detail.insuranceCoveredAmount) ?? 0;
+    _amountController.text = parsed == 0 ? '' : widget.detail.insuranceCoveredAmount;
   }
 
   @override

@@ -3,7 +3,10 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/data/insurance_provider_repository.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/insurance_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -50,6 +53,49 @@ void main() {
       expect(client.draftInsuranceProviderId, BillingRpcTestClient.insuranceProviderId);
       expect(client.draftInsuranceCoveredAmount, '40.00');
       expect(find.textContaining('Patient due: 60.00 USD'), findsWidgets);
+    });
+
+    testWidgets('blanks covered amount field when server returns zero as 0.00', (tester) async {
+      final detail = InvoiceDetail(
+        id: BillingRpcTestClient.draftInvoiceId,
+        status: InvoiceStatus.draft,
+        branchId: '44444444-4444-4444-8444-444444444444',
+        patientId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        visitId: BillingRpcTestClient.visitId,
+        subtotal: '100.00',
+        discountAmount: '0.00',
+        insuranceCoveredAmount: '0.00',
+        currency: 'USD',
+        balance: '100.00',
+        updatedAt: DateTime.utc(2026, 6, 1),
+        items: const [],
+        payments: const [],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            insuranceProviderRepositoryProvider.overrideWith(
+              (ref) => InsuranceProviderRepository(BillingRpcTestClient()),
+            ),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: InsurancePanel(
+                detail: detail,
+                enabled: true,
+                busy: false,
+                onApply: ({required providerId, required coveredAmount}) async => true,
+                onClear: () async => true,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextFormField>(find.byKey(const Key('insurance_covered_amount')));
+      expect(field.controller?.text, isEmpty);
     });
 
     testWidgets('clears saved insurance coverage', (tester) async {

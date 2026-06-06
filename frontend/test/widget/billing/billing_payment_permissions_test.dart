@@ -36,7 +36,7 @@ void main() {
           'amount': '100.00',
           'reference': null,
           'note': null,
-          'recorded_by': 'staff-1',
+          'recorded_by': {'id': 'staff-1', 'display_name': 'Test Staff'},
           'recorded_at': '2026-06-01T12:00:00.000Z',
         });
 
