@@ -3,7 +3,7 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_editor_notifier.dart'
-    show invoiceEditorProvider;
+    show InvoiceEditorStatus, invoiceEditorProvider;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -63,6 +63,14 @@ void main() {
     expect(invoiceNumber, isNull);
     expect(client.rpcLog, contains('issue_invoice'));
     expect(client.rpcLog.where((name) => name == 'get_invoice_detail').length, greaterThan(callsBefore));
+  });
+
+  test('loads issued invoice in read-only state without throwing', () async {
+    final state = await container.read(invoiceEditorProvider(BillingRpcTestClient.issuedInvoiceId).future);
+
+    expect(state.detail.status.name, 'issued');
+    expect(state.isDraft, isFalse);
+    expect(state.editorStatus, InvoiceEditorStatus.idle);
   });
 
   test('addItem with STALE_INVOICE reloads detail and returns false', () async {

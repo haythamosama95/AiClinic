@@ -33,26 +33,21 @@ class RefundFormState extends ConsumerState<RefundForm> {
     super.dispose();
   }
 
-  double get _netPositivePayments {
-    var total = 0.0;
-    for (final payment in widget.detail.payments) {
-      final amount = double.tryParse(payment.amount) ?? 0;
-      if (amount > 0) {
-        total += amount;
-      }
-    }
-    return total;
+  double get _netRefundablePayments {
+    return widget.detail.payments.fold<double>(0, (total, payment) {
+      return total + (double.tryParse(payment.amount) ?? 0);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final canRefund = ref.watch(permissionServiceProvider).canRefundPayment();
-    if (!canRefund || !_canRefund(widget.detail.status, _netPositivePayments)) {
+    if (!canRefund || !_canRefund(widget.detail.status, _netRefundablePayments)) {
       return const SizedBox.shrink();
     }
 
     final panelAsync = ref.watch(paymentPanelProvider(widget.invoiceId));
-    final maxRefund = _netPositivePayments;
+    final maxRefund = _netRefundablePayments;
 
     return panelAsync.when(
       loading: () => const SizedBox.shrink(),

@@ -165,26 +165,43 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     final filters = lastParams?['p_filters'];
     final visitFilter = filters is Map ? filters['visit_id']?.toString() : null;
     if (visitFilter == visitId) {
+      final visitRows = [
+        {
+          'id': 'voided-visit-invoice',
+          'invoice_number': 'INV-MAIN-VOIDED',
+          'status': 'voided',
+          'patient_display_name': 'Test Patient',
+          'branch_code': 'MAIN',
+          'subtotal': '0',
+          'discount_amount': '0',
+          'insurance_covered_amount': '0',
+          'paid_amount': '0',
+          'balance': '0',
+          'created_at': '2026-06-02T10:00:00.000Z',
+          'issued_at': '2026-06-02T11:00:00.000Z',
+        },
+        {
+          'id': draftInvoiceId,
+          'invoice_number': null,
+          'status': 'draft',
+          'patient_display_name': 'Test Patient',
+          'branch_code': 'MAIN',
+          'subtotal': '0',
+          'discount_amount': '0',
+          'insurance_covered_amount': '0',
+          'paid_amount': '0',
+          'balance': '0',
+          'created_at': '2026-06-01T10:00:00.000Z',
+          'issued_at': null,
+        },
+      ];
+      final statuses = filters is Map ? filters['statuses'] : null;
+      final filtered = statuses is List && statuses.isNotEmpty
+          ? visitRows.where((row) => statuses.map((s) => s.toString()).contains(row['status'])).toList(growable: false)
+          : visitRows;
       return {
         'success': true,
-        'data': {
-          'items': [
-            {
-              'id': draftInvoiceId,
-              'invoice_number': null,
-              'status': 'draft',
-              'patient_display_name': 'Test Patient',
-              'branch_code': 'MAIN',
-              'subtotal': '0',
-              'discount_amount': '0',
-              'insurance_covered_amount': '0',
-              'paid_amount': '0',
-              'balance': '0',
-              'created_at': '2026-06-01T10:00:00.000Z',
-              'issued_at': null,
-            },
-          ],
-        },
+        'data': {'items': filtered.take(1).toList(growable: false)},
       };
     }
 
@@ -386,14 +403,6 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     final kind = lastParams?['p_kind'];
     final value = lastParams?['p_value'];
 
-    if (_hasInvoiceDiscountScope()) {
-      return {
-        'success': false,
-        'error_code': 'DISCOUNT_SCOPE_CONFLICT',
-        'error_message': 'Discount scopes are mutually exclusive — clear the invoice-level discount first.',
-      };
-    }
-
     final index = _draftItems.indexWhere((row) => row['id']?.toString() == targetItemId);
     if (index < 0) {
       return {'success': false, 'error_code': 'NOT_FOUND', 'error_message': 'Item not found.'};
@@ -401,6 +410,24 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
 
     final item = Map<String, dynamic>.from(_draftItems[index]);
     final lineSubtotal = double.tryParse(item['line_subtotal']?.toString() ?? '') ?? 0;
+    final hasLineDiscount =
+        item['line_discount_kind'] != null ||
+        (double.tryParse(item['line_discount_amount']?.toString() ?? '') ?? 0) > 0;
+
+    if (kind == null && value == null && !hasLineDiscount) {
+      return {
+        'success': true,
+        'data': {'item_id': targetItemId},
+      };
+    }
+
+    if (_hasInvoiceDiscountScope()) {
+      return {
+        'success': false,
+        'error_code': 'DISCOUNT_SCOPE_CONFLICT',
+        'error_message': 'Discount scopes are mutually exclusive — clear the invoice-level discount first.',
+      };
+    }
 
     if (kind == null && value == null) {
       item

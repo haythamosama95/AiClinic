@@ -71,10 +71,6 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
     }
 
     final detail = await ref.read(invoiceRepositoryProvider).getDetail(invoiceId: invoiceId);
-    if (!detail.status.isDraft) {
-      throw StateError('Only draft invoices can be edited.');
-    }
-
     return InvoiceEditorState(detail: detail);
   }
 

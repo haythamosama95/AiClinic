@@ -156,7 +156,7 @@ void main() {
       expect(client.rpcLog.where((name) => name == 'apply_line_discount'), isEmpty);
     });
 
-    testWidgets('scenario 5: issued invoice editor is not reachable for discount edits', (tester) async {
+    testWidgets('scenario 5: issued invoice editor loads read-only without discount edits', (tester) async {
       final client = BillingRpcTestClient();
 
       await tester.pumpWidget(
@@ -170,8 +170,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Only draft invoices'), findsOneWidget);
+      expect(find.byKey(const Key('invoice_editor_body')), findsOneWidget);
+      expect(find.byKey(const Key('invoice_editor_read_only_banner')), findsOneWidget);
       expect(find.text('Discounts'), findsNothing);
+      expect(find.byKey(const Key('invoice_issue_button')), findsNothing);
     });
 
     testWidgets('scenario 7: fixed line discount applies successfully', (tester) async {

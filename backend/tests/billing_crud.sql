@@ -485,8 +485,22 @@ BEGIN
   v_item2_id := (v_result.data ->> 'item_id')::uuid;
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
 
+  v_result := public.add_invoice_item(v_invoice_id, v_updated_at, repeat('x', 501), 1, 10.00);
+  PERFORM pg_temp.billing_crud_record(
+    'add_invoice_item_rejects_long_description',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_message, v_result.error_code)
+  );
+
   v_result := public.update_invoice_item(v_item_id, v_updated_at, 'Consultation extended', 1, 120.00);
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+
+  v_result := public.update_invoice_item(v_item_id, v_updated_at, repeat('y', 501), 1, 120.00);
+  PERFORM pg_temp.billing_crud_record(
+    'update_invoice_item_rejects_long_description',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_message, v_result.error_code)
+  );
 
   v_result := public.remove_invoice_item(v_item2_id, v_updated_at);
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
@@ -601,6 +615,14 @@ BEGIN
     'line_discount_rejected_when_invoice_discount_active',
     NOT v_result.success AND v_result.error_code = 'DISCOUNT_SCOPE_CONFLICT',
     COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, NULL, NULL);
+  PERFORM pg_temp.billing_crud_record(
+    'apply_line_discount_clear_noop_without_line_discount',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
   );
 
   -- US3: clearing invoice discount re-enables line discount
@@ -1419,6 +1441,20 @@ BEGIN
   v_list := public.list_invoices(jsonb_build_object('patient_search', 'Billing'), 50, 0);
   PERFORM pg_temp.billing_crud_record(
     'list_invoices_patient_search',
+    v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
+    jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  v_list := public.list_invoices(jsonb_build_object('invoice_number', '%'), 50, 0);
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_invoice_number_escapes_percent_wildcard',
+    v_list.success AND jsonb_array_length(v_list.data -> 'items') = 0,
+    jsonb_array_length(v_list.data -> 'items')::text
+  );
+
+  v_list := public.list_invoices(jsonb_build_object('invoice_number', 'INV-MAIN'), 50, 0);
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_invoice_number_prefix_still_works',
     v_list.success AND jsonb_array_length(v_list.data -> 'items') >= 1,
     jsonb_array_length(v_list.data -> 'items')::text
   );

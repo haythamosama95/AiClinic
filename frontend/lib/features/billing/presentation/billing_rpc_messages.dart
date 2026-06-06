@@ -18,6 +18,12 @@ String billingMessageForRpc(RpcFailure failure) {
     'FORBIDDEN' => 'You do not have permission to perform this billing action.',
     'DISCOUNT_SCOPE_CONFLICT' =>
       'Discount scopes are mutually exclusive — clear the existing discount scope before switching.',
-    _ => failure.message.isNotEmpty ? failure.message : 'Billing action failed.',
+    'INVALID_INPUT' =>
+      failure.message.isNotEmpty ? failure.message : 'The billing input was invalid. Check the form and try again.',
+    'NOT_FOUND' => 'The requested billing record was not found.',
+    'RPC_NOT_APPLIED' => 'The billing action could not be applied. Please try again.',
+    'RPC_NOT_CONFIGURED' => 'Billing is not configured correctly. Contact your administrator.',
+    'AUTH_ERROR' => 'Your session has expired or is invalid. Sign in again and retry.',
+    _ => failure.message.isNotEmpty ? failure.message : 'Something went wrong. Please try again.',
   };
 }

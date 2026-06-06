@@ -52,6 +52,7 @@ class InvoiceRepository with AppRpcInvoker {
   }) async {
     _assertNonEmpty('invoiceId', invoiceId);
     _assertNonEmpty('description', description);
+    _assertDescriptionLength(description);
     _assertPositiveDecimal('quantity', quantity);
     _assertNonNegativeDecimal('unitPrice', unitPrice);
 
@@ -79,6 +80,7 @@ class InvoiceRepository with AppRpcInvoker {
   }) async {
     _assertNonEmpty('itemId', itemId);
     _assertNonEmpty('description', description);
+    _assertDescriptionLength(description);
     _assertPositiveDecimal('quantity', quantity);
     _assertNonNegativeDecimal('unitPrice', unitPrice);
 
@@ -193,7 +195,13 @@ class InvoiceRepository with AppRpcInvoker {
   }
 
   Future<InvoiceListItem?> findForVisit({required String visitId}) async {
-    final items = await listInvoices(filters: {'visit_id': visitId}, limit: 1);
+    final items = await listInvoices(
+      filters: {
+        'visit_id': visitId,
+        'statuses': ['draft', 'issued', 'partially_paid', 'paid'],
+      },
+      limit: 1,
+    );
     if (items.isEmpty) {
       return null;
     }
@@ -254,7 +262,19 @@ class InvoiceRepository with AppRpcInvoker {
     final parsed = double.tryParse(trimmed);
     if (parsed == null || parsed < 0) {
       throw RpcFailure(
-        RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Unit price cannot be negative.'),
+        RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field cannot be negative.'),
+      );
+    }
+  }
+
+  void _assertDescriptionLength(String description) {
+    if (description.trim().length > 500) {
+      throw RpcFailure(
+        RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Description must be 500 characters or fewer.',
+        ),
       );
     }
   }

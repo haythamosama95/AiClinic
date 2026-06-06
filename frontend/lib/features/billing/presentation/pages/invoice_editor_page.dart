@@ -41,7 +41,10 @@ class InvoiceEditorPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Draft invoice'),
+        title: Text(switch (editorAsync) {
+          AsyncData(:final value) when !value.isDraft => 'Invoice',
+          _ => 'Draft invoice',
+        }),
         leading: IconButton(
           tooltip: 'Go back',
           icon: const Icon(Icons.arrow_back),
@@ -86,8 +89,9 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
   Widget build(BuildContext context) {
     final state = widget.state;
     final detail = state.detail;
+    final isDraft = state.isDraft;
     final notifier = ref.read(invoiceEditorProvider(widget.invoiceId).notifier);
-    final canApplyDiscount = ref.watch(permissionServiceProvider).canApplyDiscount();
+    final canApplyDiscount = ref.watch(permissionServiceProvider).canApplyDiscount() && isDraft;
     final theme = Theme.of(context);
     final subtotal = double.tryParse(detail.subtotal) ?? 0;
     final invoiceDiscount = double.tryParse(detail.discountAmount) ?? 0;
@@ -111,6 +115,14 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
         if (invoiceDiscount > 0) Text('Invoice discount: ${detail.discountAmount} ${detail.currency}'),
         Text('Net total: $netTotal ${detail.currency}', style: theme.textTheme.titleMedium),
         if (insuranceCovered > 0) Text('Patient due: $patientDue ${detail.currency}'),
+        if (!isDraft) ...[
+          const SizedBox(height: 12),
+          MaterialBanner(
+            key: const Key('invoice_editor_read_only_banner'),
+            content: const Text('This invoice is read-only. Only draft invoices can be edited.'),
+            actions: const [SizedBox.shrink()],
+          ),
+        ],
         if (state.errorMessage != null) ...[
           const SizedBox(height: 12),
           MaterialBanner(
@@ -124,6 +136,7 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
           key: _itemsEditorKey,
           items: detail.items,
           busy: state.isBusy,
+          editable: isDraft,
           onAdd: notifier.addItem,
           onUpdate: notifier.updateItem,
           onRemove: notifier.removeItem,
@@ -142,7 +155,7 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
         const SizedBox(height: 24),
         InsurancePanel(
           detail: detail,
-          enabled: true,
+          enabled: isDraft,
           busy: state.isBusy,
           onApply: notifier.setInsuranceCoverage,
           onClear: notifier.clearInsuranceCoverage,
@@ -166,31 +179,32 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
           ),
           const SizedBox(height: 12),
         ],
-        FilledButton.icon(
-          key: const Key('invoice_issue_button'),
-          onPressed: state.isBusy
-              ? null
-              : () async {
-                  final validationError = _itemsEditorKey.currentState?.validateBeforeIssue();
-                  if (validationError != null) {
-                    notifier.setIssueValidationError(validationError);
-                    return;
-                  }
+        if (isDraft)
+          FilledButton.icon(
+            key: const Key('invoice_issue_button'),
+            onPressed: state.isBusy
+                ? null
+                : () async {
+                    final validationError = _itemsEditorKey.currentState?.validateBeforeIssue();
+                    if (validationError != null) {
+                      notifier.setIssueValidationError(validationError);
+                      return;
+                    }
 
-                  final invoiceNumber = await notifier.issue();
-                  if (!context.mounted || invoiceNumber == null) {
-                    return;
-                  }
-                  context.go(AppRoutes.billingInvoiceDetail(widget.invoiceId));
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('Invoice issued as $invoiceNumber')));
-                },
-          icon: state.isBusy
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.receipt_long_outlined),
-          label: Text(state.isBusy ? 'Issuing…' : 'Issue invoice'),
-        ),
+                    final invoiceNumber = await notifier.issue();
+                    if (!context.mounted || invoiceNumber == null) {
+                      return;
+                    }
+                    context.go(AppRoutes.billingInvoiceDetail(widget.invoiceId));
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Invoice issued as $invoiceNumber')));
+                  },
+            icon: state.isBusy
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.receipt_long_outlined),
+            label: Text(state.isBusy ? 'Issuing…' : 'Issue invoice'),
+          ),
       ],
     );
   }

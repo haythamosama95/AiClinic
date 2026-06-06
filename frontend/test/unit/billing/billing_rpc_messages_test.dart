@@ -59,7 +59,25 @@ void main() {
     });
 
     test('unknown code with empty message uses generic fallback', () {
-      expect(billingMessageForRpc(_failure(code: 'CUSTOM', message: '')), 'Billing action failed.');
+      expect(billingMessageForRpc(_failure(code: 'CUSTOM', message: '')), 'Something went wrong. Please try again.');
+    });
+
+    test('INVALID_INPUT uses backend message when present', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'INVALID_INPUT', message: 'Description must be 500 characters or fewer.')),
+        'Description must be 500 characters or fewer.',
+      );
+    });
+
+    test('NOT_FOUND returns friendly message', () {
+      expect(billingMessageForRpc(_failure(code: 'NOT_FOUND')), 'The requested billing record was not found.');
+    });
+
+    test('AUTH_ERROR returns session message', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'AUTH_ERROR')),
+        'Your session has expired or is invalid. Sign in again and retry.',
+      );
     });
   });
 }
