@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_detail.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
+import 'package:ai_clinic/features/shifts/domain/shift_overlap_conflict.dart';
 
 /// Shift scheduling read-path RPC wrappers (V1-7).
 class ShiftRepository {
@@ -49,6 +50,45 @@ class ShiftRepository {
         else if (item is Map)
           ShiftListItem.fromRow(Map<String, dynamic>.from(item)),
     ].whereType<ShiftListItem>().toList(growable: false);
+  }
+
+  Future<String> createShift({
+    required String branchId,
+    required DateTime shiftDate,
+    required String startTime,
+    required String endTime,
+    String? notes,
+    List<String> staffIds = const [],
+  }) async {
+    final id = branchId.trim();
+    if (id.isEmpty) {
+      throw _clientInputFailure('Branch id is required.');
+    }
+
+    final start = startTime.trim();
+    final end = endTime.trim();
+    if (start.isEmpty || end.isEmpty) {
+      throw _clientInputFailure('Start and end times are required.');
+    }
+
+    final raw = await _invokeJsonRpc('create_shift', {
+      'p_branch_id': id,
+      'p_shift_date': _formatDate(shiftDate),
+      'p_start_time': start,
+      'p_end_time': end,
+      if (notes != null && notes.trim().isNotEmpty) 'p_notes': notes.trim(),
+      'p_staff_ids': staffIds,
+    });
+
+    final shiftId = raw?.toString().trim();
+    if (shiftId == null || shiftId.isEmpty) {
+      throw StateError('Shift was created but no shift id was returned.');
+    }
+    return shiftId;
+  }
+
+  static List<ShiftOverlapConflict> parseOverlapConflicts(String message) {
+    return ShiftOverlapConflict.parseFromRpcMessage(message);
   }
 
   Future<ShiftDetail> getShiftDetail({required String shiftId}) async {

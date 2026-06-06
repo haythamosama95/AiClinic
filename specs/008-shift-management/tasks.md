@@ -72,17 +72,17 @@ description: "Task list for Shift Management (V1-7) feature implementation"
 
 ### Tests for User Story 1
 
-- [ ] T013 [P] [US1] In `backend/tests/shift_management_crud.sql`, add scenarios: create incomplete shift (zero staff); create active shift with staff; reject `end_time <= start_time`; reject ineligible staff; reject overlap with conflict payload; allow adjacent touching shifts; reject past `shift_date`; allow times outside branch working hours; audit `shift.create`
-- [ ] T014 [P] [US1] Add `frontend/test/integration/shifts/create_shift_test.dart` covering US1 acceptance scenarios 1, 2, 3, 4, 5, 7, 8, 9
+- [X] T013 [P] [US1] In `backend/tests/shift_management_crud.sql`, add scenarios: create incomplete shift (zero staff); create active shift with staff; reject `end_time <= start_time`; reject ineligible staff; reject overlap with conflict payload; allow adjacent touching shifts; reject past `shift_date`; allow times outside branch working hours; audit `shift.create`
+- [X] T014 [P] [US1] Add `frontend/test/integration/shifts/create_shift_test.dart` covering US1 acceptance scenarios 1, 2, 3, 4, 5, 7, 8, 9
 
 ### Implementation for User Story 1
 
-- [ ] T015 [P] [US1] Add `create_shift` RPC in `backend/supabase/migrations/20260606180000_shift_management.sql` per `specs/008-shift-management/contracts/shift-mutations.md` (atomic shift + optional assignments; overlap only when staff provided; audit log)
-- [ ] T016 [P] [US1] Implement `ShiftRepository.createShift` in `frontend/lib/features/shifts/data/shift_repository.dart`
-- [ ] T017 [P] [US1] Implement `frontend/lib/features/shifts/presentation/widgets/shift_form_fields.dart` (date picker min=today org TZ, start/end time, notes with 500-char guard)
-- [ ] T018 [P] [US1] Implement `frontend/lib/features/shifts/presentation/widgets/shift_staff_multi_select.dart` reusing V1-2 staff list filtered to active branch-assigned staff
-- [ ] T019 [US1] Implement `frontend/lib/features/shifts/presentation/widgets/shift_conflict_banner.dart` parsing `shift_overlap` payload (staff name + conflicting time range)
-- [ ] T020 [US1] Implement `frontend/lib/features/shifts/presentation/pages/shift_create_page.dart` wiring form, staff multi-select, conflict banner, and success navigation to shift detail or calendar
+- [X] T015 [P] [US1] Add `create_shift` RPC in `backend/supabase/migrations/20260606180000_shift_management.sql` per `specs/008-shift-management/contracts/shift-mutations.md` (atomic shift + optional assignments; overlap only when staff provided; audit log)
+- [X] T016 [P] [US1] Implement `ShiftRepository.createShift` in `frontend/lib/features/shifts/data/shift_repository.dart`
+- [X] T017 [P] [US1] Implement `frontend/lib/features/shifts/presentation/widgets/shift_form_fields.dart` (date picker min=today org TZ, start/end time, notes with 500-char guard)
+- [X] T018 [P] [US1] Implement `frontend/lib/features/shifts/presentation/widgets/shift_staff_multi_select.dart` reusing V1-2 staff list filtered to active branch-assigned staff
+- [X] T019 [US1] Implement `frontend/lib/features/shifts/presentation/widgets/shift_conflict_banner.dart` parsing `shift_overlap` payload (staff name + conflicting time range)
+- [X] T020 [US1] Implement `frontend/lib/features/shifts/presentation/pages/shift_create_page.dart` wiring form, staff multi-select, conflict banner, and success navigation to shift detail or calendar
 
 **Checkpoint**: User Story 1 is fully functional — managers can create shifts with validation feedback.
 

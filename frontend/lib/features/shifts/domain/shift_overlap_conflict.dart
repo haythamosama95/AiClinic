@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 /// Overlap conflict payload from `shift_overlap` RPC errors (V1-7).
@@ -44,6 +46,22 @@ class ShiftOverlapConflict {
       startTime: startTime,
       endTime: endTime,
     );
+  }
+
+  static List<ShiftOverlapConflict> parseFromRpcMessage(String message) {
+    const prefix = 'shift_overlap:';
+    final start = message.indexOf(prefix);
+    if (start < 0) {
+      return const [];
+    }
+
+    final jsonPart = message.substring(start + prefix.length).trim();
+    try {
+      final decoded = jsonDecode(jsonPart);
+      return parseList(decoded);
+    } catch (_) {
+      return const [];
+    }
   }
 
   static List<ShiftOverlapConflict> parseList(dynamic raw) {

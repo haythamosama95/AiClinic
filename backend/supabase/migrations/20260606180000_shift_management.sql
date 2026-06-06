@@ -623,8 +623,146 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
+-- auth_internal.create_shift
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.create_shift(
+  p_branch_id uuid,
+  p_shift_date date,
+  p_start_time time,
+  p_end_time time,
+  p_notes text DEFAULT NULL,
+  p_staff_ids uuid[] DEFAULT '{}'
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_caller public.staff_members%ROWTYPE;
+  v_branch public.branches%ROWTYPE;
+  v_shift_id uuid;
+  v_staff_id uuid;
+  v_notes text;
+  v_org_today date;
+BEGIN
+  v_caller := auth_internal.assert_shifts_manage();
+  v_branch := auth_internal.assert_shift_branch(p_branch_id);
+
+  IF p_shift_date IS NULL THEN
+    RAISE EXCEPTION 'invalid_shift_date' USING ERRCODE = 'P0001';
+  END IF;
+
+  v_org_today := auth_internal.get_org_today(v_branch.organization_id);
+
+  IF p_shift_date < v_org_today THEN
+    RAISE EXCEPTION 'shift_read_only_past_date' USING ERRCODE = 'P0001';
+  END IF;
+
+  IF p_end_time IS NULL OR p_start_time IS NULL OR p_end_time <= p_start_time THEN
+    RAISE EXCEPTION 'shift_invalid_time_range' USING ERRCODE = 'P0001';
+  END IF;
+
+  v_notes := NULLIF(trim(COALESCE(p_notes, '')), '');
+
+  IF v_notes IS NOT NULL AND length(v_notes) > 500 THEN
+    RAISE EXCEPTION 'notes_too_long' USING ERRCODE = 'P0001';
+  END IF;
+
+  IF p_staff_ids IS NOT NULL THEN
+    FOREACH v_staff_id IN ARRAY p_staff_ids
+    LOOP
+      PERFORM auth_internal.assert_shift_staff_eligible(v_staff_id, p_branch_id);
+    END LOOP;
+  END IF;
+
+  PERFORM auth_internal.assert_no_staff_shift_overlap(
+    p_branch_id,
+    p_shift_date,
+    p_start_time,
+    p_end_time,
+    COALESCE(p_staff_ids, '{}'::uuid[]),
+    NULL
+  );
+
+  INSERT INTO public.shifts (
+    organization_id,
+    branch_id,
+    shift_date,
+    start_time,
+    end_time,
+    notes,
+    created_by,
+    updated_by
+  )
+  VALUES (
+    v_branch.organization_id,
+    p_branch_id,
+    p_shift_date,
+    p_start_time,
+    p_end_time,
+    v_notes,
+    auth.uid(),
+    auth.uid()
+  )
+  RETURNING id INTO v_shift_id;
+
+  IF p_staff_ids IS NOT NULL THEN
+    FOREACH v_staff_id IN ARRAY p_staff_ids
+    LOOP
+      INSERT INTO public.shift_assignments (shift_id, staff_member_id, created_by, updated_by)
+      VALUES (v_shift_id, v_staff_id, auth.uid(), auth.uid());
+    END LOOP;
+  END IF;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
+  VALUES (
+    auth.uid(),
+    v_branch.organization_id,
+    'shift.create',
+    'shifts',
+    v_shift_id,
+    jsonb_build_object(
+      'branch_id', p_branch_id,
+      'shift_date', p_shift_date,
+      'start_time', to_char(p_start_time, 'HH24:MI'),
+      'end_time', to_char(p_end_time, 'HH24:MI'),
+      'staff_ids', COALESCE(to_jsonb(p_staff_ids), '[]'::jsonb),
+      'notes', v_notes
+    )
+  );
+
+  RETURN v_shift_id;
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
 -- Public RPC wrappers
 -- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.create_shift(
+  p_branch_id uuid,
+  p_shift_date date,
+  p_start_time time,
+  p_end_time time,
+  p_notes text DEFAULT NULL,
+  p_staff_ids uuid[] DEFAULT '{}'
+)
+RETURNS uuid
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.create_shift(
+    p_branch_id,
+    p_shift_date,
+    p_start_time,
+    p_end_time,
+    p_notes,
+    p_staff_ids
+  );
+$$;
 
 CREATE OR REPLACE FUNCTION public.list_shifts(
   p_branch_id uuid,
@@ -648,6 +786,7 @@ AS $$
   SELECT auth_internal.get_shift_detail(p_shift_id);
 $$;
 
+GRANT EXECUTE ON FUNCTION public.create_shift(uuid, date, time, time, text, uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.list_shifts(uuid, date, date) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_shift_detail(uuid) TO authenticated;
 
