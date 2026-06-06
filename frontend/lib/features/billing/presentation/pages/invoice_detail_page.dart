@@ -12,7 +12,9 @@ import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail
 import 'package:ai_clinic/features/billing/presentation/widgets/billing_access_denied_view.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_status_badge.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/payment_form.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/receipt_print_preview.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/refund_form.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/void_invoice_dialog.dart';
 
 /// Issued invoice detail — header, items, balance (V1-6 US1).
 class InvoiceDetailPage extends ConsumerWidget {
@@ -143,21 +145,24 @@ class _InvoiceDetailScaffoldState extends ConsumerState<_InvoiceDetailScaffold> 
             ),
           ),
         ),
-        data: (detail) => _InvoiceDetailBody(invoiceId: widget.invoiceId, detail: detail),
+        data: (detail) => _InvoiceDetailBody(invoiceId: widget.invoiceId, detail: detail, onRefresh: _refreshDetail),
       ),
     );
   }
 }
 
-class _InvoiceDetailBody extends StatelessWidget {
-  const _InvoiceDetailBody({required this.invoiceId, required this.detail});
+class _InvoiceDetailBody extends ConsumerWidget {
+  const _InvoiceDetailBody({required this.invoiceId, required this.detail, required this.onRefresh});
 
   final String invoiceId;
   final InvoiceDetail detail;
+  final VoidCallback onRefresh;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final permissions = ref.watch(permissionServiceProvider);
+    final canVoid = permissions.canVoidInvoice() && detail.status.isVoidable;
 
     return ListView(
       key: const Key('invoice_detail_body'),
@@ -173,6 +178,40 @@ class _InvoiceDetailBody extends StatelessWidget {
         const SizedBox(height: 8),
         Text('Patient: ${detail.patientDisplayName ?? detail.patientId}'),
         if (detail.branchName != null) Text('Branch: ${detail.branchName}'),
+        if (detail.status.isVoided && detail.voidReason != null) ...[
+          const SizedBox(height: 8),
+          Card(
+            key: const Key('invoice_void_reason_banner'),
+            color: theme.colorScheme.errorContainer,
+            child: ListTile(
+              title: Text('Voided', style: TextStyle(color: theme.colorScheme.onErrorContainer)),
+              subtitle: Text(detail.voidReason!),
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            ReceiptPrintButton(detail: detail),
+            if (canVoid) ...[
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                key: const Key('invoice_void_button'),
+                onPressed: () async {
+                  final voided = await showVoidInvoiceDialog(context: context, ref: ref, invoiceId: invoiceId);
+                  if (voided) {
+                    onRefresh();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invoice voided.')));
+                    }
+                  }
+                },
+                icon: const Icon(Icons.block),
+                label: const Text('Void invoice'),
+              ),
+            ],
+          ],
+        ),
         const SizedBox(height: 16),
         Text('Items', style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),

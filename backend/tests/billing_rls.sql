@@ -48,6 +48,8 @@ DECLARE
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
+  PERFORM auth_internal.delete_clinic_operational_dependents();
+
   DELETE FROM public.payments WHERE id = v_payment_a;
   DELETE FROM public.invoice_items WHERE id = v_item_a;
   DELETE FROM public.invoices WHERE id IN (v_invoice_a, v_invoice_a2, v_invoice_b);

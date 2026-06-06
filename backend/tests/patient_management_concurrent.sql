@@ -26,12 +26,8 @@ BEGIN
   -- Setup: ensure org and branch exist
   PERFORM set_config('role', 'postgres', true);
 
-  DELETE FROM public.patients WHERE true;
-  DELETE FROM public.staff_branch_assignments WHERE true;
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
   DELETE FROM public.audit_log WHERE true;
-  DELETE FROM public.branches WHERE true;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations WHERE true;
 
   -- Create org and branch directly for test isolation
   INSERT INTO public.organizations (id, name, currency_code, timezone, created_by, updated_by)

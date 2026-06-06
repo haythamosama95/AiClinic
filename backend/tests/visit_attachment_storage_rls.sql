@@ -29,15 +29,11 @@ DECLARE
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
-  DELETE FROM public.visit_attachments WHERE visit_id = v_visit_id;
-  DELETE FROM public.visits WHERE id = v_visit_id;
-  DELETE FROM public.appointments WHERE id = v_appt_id;
-  DELETE FROM public.patients WHERE id = v_patient_id;
+  PERFORM auth_internal.delete_clinic_operational_dependents();
   DELETE FROM public.staff_branch_assignments
   WHERE staff_member_id IN (v_admin_staff, v_doctor_staff);
   DELETE FROM public.staff_members WHERE id IN (v_admin_staff, v_doctor_staff);
   DELETE FROM public.branches WHERE id IN (v_branch_primary, v_branch_other);
-  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations WHERE id = v_org_id;
   DELETE FROM auth.users WHERE id IN (v_admin_user, v_doctor_user);
 

@@ -29,4 +29,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION auth_internal.delete_billing_dependents() IS
-  'Delete billing rows in FK-safe order before visits/branches/organizations. Used by backend SQL tests.';
+  'Delete billing rows in FK-safe order before visits/branches/organizations. Prefer auth_internal.delete_clinic_test_fixtures() for full suite teardown.';

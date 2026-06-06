@@ -42,5 +42,7 @@ enum InvoiceStatus {
 
   bool get isVoided => this == InvoiceStatus.voided;
 
+  bool get isVoidable => this == InvoiceStatus.issued || this == InvoiceStatus.partiallyPaid;
+
   bool get isTerminal => this == InvoiceStatus.paid || this == InvoiceStatus.voided;
 }

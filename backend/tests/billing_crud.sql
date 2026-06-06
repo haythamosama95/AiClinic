@@ -275,24 +275,18 @@ DECLARE
   v_second_list_id uuid;
   v_side_visit uuid;
   v_side_invoice uuid;
+  v_visit_void uuid;
+  v_invoice_void_issued uuid;
+  v_invoice_void_partial uuid;
+  v_visit_void_perm uuid;
+  v_invoice_void_perm uuid;
+  v_visit_paid_void uuid;
+  v_invoice_paid_void uuid;
+  v_void_reason text;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.payments;
-  DELETE FROM public.invoice_items;
-  DELETE FROM public.invoices;
-  DELETE FROM public.invoice_number_sequences;
-  DELETE FROM public.visit_attachments;
-  DELETE FROM public.soap_notes;
-  DELETE FROM public.treatment_plans;
-  DELETE FROM public.visits;
-  DELETE FROM public.appointments;
-  DELETE FROM public.patients;
-  DELETE FROM public.staff_branch_assignments;
-  DELETE FROM public.staff_members WHERE id NOT IN (v_bootstrap_staff);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
   DELETE FROM public.audit_log;
-  DELETE FROM public.branches;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations;
   DELETE FROM auth.users
   WHERE id IN (v_owner_user, v_reception_user, v_doctor_user, v_admin_user, v_lab_user);
 
@@ -1398,6 +1392,217 @@ BEGIN
   PERFORM pg_temp.set_reception_jwt(
     v_reception_user,
     v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  -- US6: void invoice scenarios
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  v_visit_void := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 21
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.create_invoice_from_visit(v_visit_void);
+  v_invoice_void_issued := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_issued;
+  v_result := public.add_invoice_item(v_invoice_void_issued, v_updated_at, 'Void test item', 1, 50.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_issued;
+  v_result := public.issue_invoice(v_invoice_void_issued, v_updated_at);
+  v_result := public.void_invoice(v_invoice_void_issued, 'Created in error');
+  SELECT status, void_reason
+  INTO v_status, v_void_reason
+  FROM public.invoices
+  WHERE id = v_invoice_void_issued;
+  PERFORM pg_temp.billing_crud_record(
+    'void_issued_invoice_succeeds',
+    v_result.success AND v_status = 'voided' AND v_void_reason = 'Created in error',
+    format('status=%s reason=%s', v_status, v_void_reason)
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'invoice.void'
+    AND al.record_id = v_invoice_void_issued
+    AND al.new_data_json ->> 'prior_status' = 'issued'
+    AND al.new_data_json ->> 'new_status' = 'voided';
+  PERFORM pg_temp.billing_crud_record(
+    'void_invoice_audited',
+    v_audit_count >= 1,
+    v_audit_count::text
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.organization_billing_settings
+  SET allow_partial_payments = true
+  WHERE organization_id = v_org_id;
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  v_visit_pay := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 22
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.create_invoice_from_visit(v_visit_pay);
+  v_invoice_void_partial := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_partial;
+  v_result := public.add_invoice_item(v_invoice_void_partial, v_updated_at, 'Partial void test', 1, 100.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_partial;
+  v_result := public.issue_invoice(v_invoice_void_partial, v_updated_at);
+  v_result := public.record_payment(v_invoice_void_partial, 'cash', 40.00, NULL, 'Partial before void');
+  SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_void_partial;
+  v_result := public.void_invoice(v_invoice_void_partial, 'Patient cancelled');
+  SELECT status, void_reason
+  INTO v_status, v_void_reason
+  FROM public.invoices
+  WHERE id = v_invoice_void_partial;
+  PERFORM pg_temp.billing_crud_record(
+    'void_partially_paid_invoice_succeeds',
+    v_result.success AND v_status = 'voided' AND v_void_reason = 'Patient cancelled',
+    format('status=%s reason=%s', v_status, v_void_reason)
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  v_visit_paid_void := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 19
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.create_invoice_from_visit(v_visit_paid_void);
+  v_invoice_paid_void := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_paid_void;
+  v_result := public.add_invoice_item(v_invoice_paid_void, v_updated_at, 'Paid void guard', 1, 75.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_paid_void;
+  v_result := public.issue_invoice(v_invoice_paid_void, v_updated_at);
+  v_result := public.record_payment(v_invoice_paid_void, 'cash', 75.00, NULL, 'Paid in full');
+  SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_paid_void;
+  v_result := public.void_invoice(v_invoice_paid_void, 'Should fail on paid');
+  PERFORM pg_temp.billing_crud_record(
+    'void_paid_invoice_rejected',
+    v_status = 'paid'
+      AND NOT v_result.success
+      AND v_result.error_code = 'INVOICE_NOT_VOIDABLE',
+    format('status=%s code=%s', v_status, COALESCE(v_result.error_code, '<null>'))
+  );
+
+  v_result := public.record_payment(v_invoice_void_issued, 'cash', 10.00, NULL, NULL);
+  PERFORM pg_temp.billing_crud_record(
+    'voided_invoice_rejects_payment',
+    NOT v_result.success AND v_result.error_code = 'INVOICE_VOIDED',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_issued;
+  v_result := public.add_invoice_item(v_invoice_void_issued, v_updated_at, 'Late item', 1, 10.00);
+  PERFORM pg_temp.billing_crud_record(
+    'voided_invoice_rejects_item_add',
+    NOT v_result.success
+      AND v_result.error_code IN ('INVOICE_VOIDED', 'INVOICE_NOT_IN_DRAFT'),
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT ii.id, i.updated_at
+  INTO v_item_id, v_updated_at
+  FROM public.invoice_items ii
+  JOIN public.invoices i ON i.id = ii.invoice_id
+  WHERE i.id = v_invoice_void_issued
+    AND ii.is_deleted = false
+  LIMIT 1;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'percentage', 5.00);
+  PERFORM pg_temp.billing_crud_record(
+    'voided_invoice_rejects_line_discount',
+    NOT v_result.success
+      AND v_result.error_code IN ('INVOICE_VOIDED', 'INVOICE_NOT_IN_DRAFT'),
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  v_detail := public.get_invoice_detail(v_invoice_void_issued);
+  PERFORM pg_temp.billing_crud_record(
+    'voided_invoice_visible_in_detail',
+    v_detail.success
+      AND v_detail.data -> 'invoice' ->> 'status' = 'voided'
+      AND v_detail.data -> 'invoice' ->> 'void_reason' = 'Created in error',
+    COALESCE(v_detail.data -> 'invoice' ->> 'void_reason', '<null>')
+  );
+
+  v_balance := (v_detail.data -> 'invoice' ->> 'balance')::numeric;
+  PERFORM pg_temp.billing_crud_record(
+    'voided_invoice_balance_zero_for_reporting',
+    v_balance = 0.00,
+    v_balance::text
+  );
+
+  v_result := public.create_invoice_from_visit(v_visit_void);
+  PERFORM pg_temp.billing_crud_record(
+    'new_invoice_allowed_after_void',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  v_visit_void_perm := pg_temp.seed_completed_visit(
+    v_branch_main, v_patient_id, v_doctor_staff, v_owner_user, 23
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.create_invoice_from_visit(v_visit_void_perm);
+  v_invoice_void_perm := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_perm;
+  v_result := public.add_invoice_item(v_invoice_void_perm, v_updated_at, 'Permission test', 1, 25.00);
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_perm;
+  v_result := public.issue_invoice(v_invoice_void_perm, v_updated_at);
+
+  PERFORM pg_temp.set_reception_jwt(
+    v_reception_user,
+    v_reception_staff,
+    v_org_id,
+    format('%s,%s', v_branch_main, v_branch_no_code)
+  );
+  v_result := public.void_invoice(v_invoice_void_perm, 'Unauthorized void');
+  PERFORM pg_temp.billing_crud_record(
+    'void_permission_denied_for_receptionist',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  PERFORM pg_temp.set_owner_jwt(
+    v_owner_user,
+    v_owner_staff,
     v_org_id,
     format('%s,%s', v_branch_main, v_branch_no_code)
   );

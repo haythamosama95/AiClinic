@@ -61,17 +61,13 @@ BEGIN
   ON CONFLICT (id) DO NOTHING;
 
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.staff_branch_assignments;
-  DELETE FROM public.staff_members
-  WHERE id NOT IN (v_bootstrap_staff, v_admin_staff, v_doctor_staff);
+  PERFORM auth_internal.delete_clinic_test_fixtures(
+    ARRAY[v_bootstrap_staff, v_admin_staff, v_doctor_staff]::uuid[]
+  );
   DELETE FROM public.audit_log;
   DELETE FROM auth.users
   WHERE email LIKE 'us6-%'
      OR email IN ('owner-one', 'owner-two', 'reception');
-  DELETE FROM public.patients;
-  DELETE FROM public.branches;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations;
 
   UPDATE public.staff_members
   SET role = 'administrator', is_bootstrap_admin = true, is_active = true, is_deleted = false

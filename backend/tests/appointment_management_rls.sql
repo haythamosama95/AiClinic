@@ -34,12 +34,10 @@ DECLARE
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
-  DELETE FROM public.appointments;
-  DELETE FROM public.patients;
+  PERFORM auth_internal.delete_clinic_operational_dependents();
   DELETE FROM public.staff_branch_assignments;
   DELETE FROM public.staff_members WHERE id IN (v_staff_a, v_staff_b, v_doctor_a);
   DELETE FROM public.branches WHERE id IN (v_branch_a, v_branch_b, v_branch_a2);
-  PERFORM auth_internal.delete_billing_dependents();
   DELETE FROM public.organizations WHERE id IN (v_org_a, v_org_b);
   DELETE FROM auth.users WHERE id IN (v_user_a, v_user_b, v_doctor_user_a);
 

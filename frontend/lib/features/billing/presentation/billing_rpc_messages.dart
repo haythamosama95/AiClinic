@@ -13,6 +13,7 @@ String billingMessageForRpc(RpcFailure failure) {
     'PARTIAL_PAYMENTS_DISABLED' =>
       'Partial payments are not allowed for this organization; please collect the full balance.',
     'INVOICE_VOIDED' => 'This invoice is voided and cannot accept payments.',
+    'INVOICE_NOT_VOIDABLE' => 'Only issued or partially paid invoices can be voided. Refund paid invoices first.',
     'INVOICE_NOT_PAYABLE' => 'Payments cannot be recorded on this invoice in its current state.',
     'FORBIDDEN' => 'You do not have permission to perform this billing action.',
     'DISCOUNT_SCOPE_CONFLICT' =>

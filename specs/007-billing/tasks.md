@@ -215,14 +215,14 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ### Tests for User Story 6
 
-- [ ] T058 [P] [US6] Extend `backend/tests/billing_crud.sql` with: void of `issued`/`partially_paid` succeeds; void of `paid` rejected (`invoice_not_voidable`); mutations on voided invoice all rejected; voided history remains visible; new invoice allowed after void
-- [ ] T059 [P] [US6] Add `frontend/test/integration/billing/void_invoice_test.dart` covering US6 acceptance scenarios 1–5
+- [X] T058 [P] [US6] Extend `backend/tests/billing_crud.sql` with: void of `issued`/`partially_paid` succeeds; void of `paid` rejected (`invoice_not_voidable`); mutations on voided invoice all rejected; voided history remains visible; new invoice allowed after void
+- [X] T059 [P] [US6] Add `frontend/test/integration/billing/void_invoice_test.dart` covering US6 acceptance scenarios 1–5
 
 ### Implementation for User Story 6
 
-- [ ] T060 [P] [US6] Add `void_invoice` RPC per `contracts/billing-mutations.md` (locks invoice, mandatory reason, audited)
-- [ ] T061 [P] [US6] Implement `void_invoice_dialog.dart` widget with reason field
-- [ ] T062 [US6] Wire void action into `invoice_detail_page.dart` (visible only when `canVoidInvoice` and status is voidable)
+- [X] T060 [P] [US6] Add `void_invoice` RPC per `contracts/billing-mutations.md` (locks invoice, mandatory reason, audited)
+- [X] T061 [P] [US6] Implement `void_invoice_dialog.dart` widget with reason field
+- [X] T062 [US6] Wire void action into `invoice_detail_page.dart` (visible only when `canVoidInvoice` and status is voidable)
 
 **Checkpoint**: Void path operational.
 
@@ -236,13 +236,13 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ### Tests for User Story 7
 
-- [ ] T063 [P] [US7] Add `frontend/test/widget/billing/receipt_print_preview_test.dart` covering watermark rendering (draft/voided) and required field presence; smoke-test that the receipt renders within NFR-004 budget for ≤100 items
-- [ ] T064 [P] [US7] Add `frontend/test/integration/billing/print_receipt_test.dart` invoking the preview from `invoice_detail_page.dart`
+- [X] T063 [P] [US7] Add `frontend/test/widget/billing/receipt_print_preview_test.dart` covering watermark rendering (draft/voided) and required field presence; smoke-test that the receipt renders within NFR-004 budget for ≤100 items
+- [X] T064 [P] [US7] Add `frontend/test/integration/billing/print_receipt_test.dart` invoking the preview from `invoice_detail_page.dart`
 
 ### Implementation for User Story 7
 
-- [ ] T065 [P] [US7] Implement `receipt_print_preview.dart` widget producing a PDF via the `printing`/`pdf` packages, including line-discount columns when present, invoice-level discount row when present (never both, by US3 invariant), insurance line, payments list, balance
-- [ ] T066 [US7] Add print action to `invoice_detail_page.dart` (and a draft-preview affordance in `invoice_editor_page.dart`) using `Printing.layoutPdf` to invoke the OS-native dialog
+- [X] T065 [P] [US7] Implement `receipt_print_preview.dart` widget producing a PDF via the `printing`/`pdf` packages, including line-discount columns when present, invoice-level discount row when present (never both, by US3 invariant), insurance line, payments list, balance
+- [X] T066 [US7] Add print action to `invoice_detail_page.dart` (and a draft-preview affordance in `invoice_editor_page.dart`) using `Printing.layoutPdf` to invoke the OS-native dialog
 
 **Checkpoint**: All eight user stories independently complete.
 

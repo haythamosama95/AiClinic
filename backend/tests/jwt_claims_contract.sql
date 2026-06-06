@@ -18,17 +18,12 @@ DECLARE
   v_setup_required text;
   v_bootstrap_result public.rpc_result;
 BEGIN
-  DELETE FROM public.staff_branch_assignments;
-  DELETE FROM public.staff_members WHERE id <> v_bootstrap_staff_id;
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff_id]::uuid[]);
   DELETE FROM public.audit_log;
   DELETE FROM auth.users
   WHERE email IN ('owner-one', 'owner-two', 'reception')
      OR email LIKE 'us6-%';
   DELETE FROM public.subscription_cache;
-  DELETE FROM public.patients;
-  DELETE FROM public.branches;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations;
 
   v_claims := auth_internal.build_staff_claims(v_bootstrap_user_id);
   v_staff_role := v_claims ->> 'staff_role';

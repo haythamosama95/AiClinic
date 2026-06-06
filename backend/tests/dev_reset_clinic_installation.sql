@@ -18,14 +18,10 @@ DECLARE
   v_detail text;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.staff_branch_assignments WHERE true;
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
   DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
   DELETE FROM public.app_settings WHERE true;
   DELETE FROM public.subscription_cache WHERE true;
-  DELETE FROM public.patients WHERE true;
-  DELETE FROM public.branches WHERE true;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations WHERE true;
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
@@ -91,14 +87,10 @@ DECLARE
   v_detail text;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.staff_branch_assignments WHERE true;
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
   DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
   DELETE FROM public.app_settings WHERE true;
   DELETE FROM public.subscription_cache WHERE true;
-  DELETE FROM public.patients WHERE true;
-  DELETE FROM public.branches WHERE true;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations WHERE true;
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(

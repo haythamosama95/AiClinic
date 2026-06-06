@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/billing/presentation/widgets/discount_scope_g
 import 'package:ai_clinic/features/billing/presentation/widgets/insurance_panel.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_items_editor.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_status_badge.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/receipt_print_preview.dart';
 
 /// Draft invoice editor — items and issue (V1-6 US1).
 class InvoiceEditorPage extends ConsumerWidget {
@@ -145,6 +146,16 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
           busy: state.isBusy,
           onApply: notifier.setInsuranceCoverage,
           onClear: notifier.clearInsuranceCoverage,
+        ),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            key: const Key('invoice_draft_print_button'),
+            onPressed: state.isBusy ? null : () => ReceiptPrintPreview.printInvoice(detail),
+            icon: const Icon(Icons.print_outlined),
+            label: const Text('Preview receipt'),
+          ),
         ),
         const SizedBox(height: 24),
         if (state.issueErrorMessage != null) ...[

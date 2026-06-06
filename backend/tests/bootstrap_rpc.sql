@@ -24,12 +24,8 @@ DECLARE
 BEGIN
   -- Isolate from prior suite scripts (e.g. jwt_claims_contract) that may create an org.
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.staff_branch_assignments;
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff, v_non_bootstrap_staff]::uuid[]);
   DELETE FROM public.audit_log;
-  DELETE FROM public.patients;
-  DELETE FROM public.branches;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations;
 
   -- Ensure a non-bootstrap administrator exists for denial tests.
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
@@ -118,13 +114,8 @@ PERFORM set_config('role', 'postgres', true);
 
   -- Happy path: reset installation org/branch rows, then bootstrap org + branch.
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.staff_branch_assignments;
-  DELETE FROM public.staff_members WHERE id NOT IN (v_bootstrap_staff, v_non_bootstrap_staff);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff, v_non_bootstrap_staff]::uuid[]);
   DELETE FROM public.audit_log;
-  DELETE FROM public.patients;
-  DELETE FROM public.branches;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations;
   DELETE FROM auth.users
   WHERE email LIKE 'owner-%'
      OR email IN ('reception', 'owner-one', 'owner-two');

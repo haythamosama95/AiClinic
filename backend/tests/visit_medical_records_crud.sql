@@ -61,19 +61,9 @@ DECLARE
   v_i int;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.visit_attachments;
-  DELETE FROM public.soap_notes;
-  DELETE FROM public.treatment_plans;
-  DELETE FROM public.visits;
-  DELETE FROM public.appointments;
-  DELETE FROM public.patients;
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
   DELETE FROM public.app_settings WHERE key IN ('appointment.default_duration_minutes', 'specialty.form_schema_json');
-  DELETE FROM public.staff_branch_assignments;
-  DELETE FROM public.staff_members WHERE id NOT IN (v_bootstrap_staff);
   DELETE FROM public.audit_log;
-  DELETE FROM public.branches;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations;
   DELETE FROM auth.users
   WHERE id IN (v_owner_user, v_doctor_user, v_lab_user);
 

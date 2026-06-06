@@ -14,6 +14,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
   bool allowPartialPayments = false;
   String issuedBalance = '100.00';
   String issuedStatus = 'issued';
+  String? issuedVoidReason;
   String? draftInvoiceDiscountKind;
   String? draftInvoiceDiscountValue;
   String draftInvoiceDiscountAmount = '0';
@@ -155,6 +156,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'set_insurance_coverage' => _setInsuranceCoverage(),
       'insurance_provider_upsert' => _insuranceProviderUpsert(),
       'insurance_provider_deactivate' => _insuranceProviderDeactivate(),
+      'void_invoice' => _voidInvoice(),
       _ => {'success': true, 'data': {}},
     };
   }
@@ -245,10 +247,47 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     return sorted;
   }
 
+  Map<String, dynamic> _voidInvoice() {
+    final invoiceId = lastParams?['p_invoice_id']?.toString() ?? issuedInvoiceId;
+    final reason = lastParams?['p_reason']?.toString() ?? '';
+
+    if (invoiceId != issuedInvoiceId) {
+      return {'success': false, 'error_code': 'NOT_FOUND', 'error_message': 'Invoice not found.'};
+    }
+
+    if (reason.trim().isEmpty) {
+      return {'success': false, 'error_code': 'INVALID_INPUT', 'error_message': 'Reason required.'};
+    }
+
+    if (issuedStatus == 'voided') {
+      return {'success': false, 'error_code': 'INVOICE_VOIDED', 'error_message': 'Already voided.'};
+    }
+
+    if (issuedStatus == 'paid') {
+      return {'success': false, 'error_code': 'INVOICE_NOT_VOIDABLE', 'error_message': 'Refund paid invoices first.'};
+    }
+
+    if (issuedStatus != 'issued' && issuedStatus != 'partially_paid') {
+      return {'success': false, 'error_code': 'INVOICE_NOT_VOIDABLE', 'error_message': 'Invoice cannot be voided.'};
+    }
+
+    issuedStatus = 'voided';
+    issuedVoidReason = reason.trim();
+    issuedBalance = '0.00';
+    return {
+      'success': true,
+      'data': {'invoice_id': invoiceId},
+    };
+  }
+
   Map<String, dynamic> _recordPayment() {
     final invoiceId = lastParams?['p_invoice_id']?.toString() ?? issuedInvoiceId;
     if (invoiceId != issuedInvoiceId) {
       return {'success': false, 'error_code': 'NOT_FOUND', 'error_message': 'Invoice not found.'};
+    }
+
+    if (issuedStatus == 'voided') {
+      return {'success': false, 'error_code': 'INVOICE_VOIDED', 'error_message': 'Invoice is voided.'};
     }
 
     final method = lastParams?['p_method']?.toString() ?? 'cash';
@@ -561,8 +600,8 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
         'insurance_covered_amount': isIssued ? '0' : draftInsuranceCoveredAmount,
         'currency': 'USD',
         'issued_at': isIssued ? '2026-06-01T11:00:00.000Z' : null,
-        'voided_at': null,
-        'void_reason': null,
+        'voided_at': isIssued && issuedStatus == 'voided' ? DateTime.now().toUtc().toIso8601String() : null,
+        'void_reason': isIssued ? issuedVoidReason : null,
         'balance': isIssued
             ? issuedBalance
             : (double.parse(draftSubtotal) - (double.tryParse(draftInsuranceCoveredAmount) ?? 0)).toStringAsFixed(2),

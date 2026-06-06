@@ -42,13 +42,8 @@ DECLARE
   }'::jsonb;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
-  DELETE FROM public.staff_branch_assignments;
-  DELETE FROM public.staff_members WHERE id NOT IN (v_bootstrap_staff);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
   DELETE FROM public.audit_log;
-  DELETE FROM public.patients;
-  DELETE FROM public.branches;
-  PERFORM auth_internal.delete_billing_dependents();
-  DELETE FROM public.organizations;
   DELETE FROM auth.users
   WHERE id IN (v_owner_user, v_admin_user, v_doctor_user);
 
