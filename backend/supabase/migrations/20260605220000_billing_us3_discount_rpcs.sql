@@ -62,6 +62,7 @@ AS $$
 DECLARE
   v_item public.invoice_items%ROWTYPE;
   v_invoice public.invoices%ROWTYPE;
+  v_invoice_status public.invoice_status;
   v_org_id uuid;
   v_prior_kind public.discount_kind;
   v_prior_value numeric(14, 2);
@@ -81,12 +82,24 @@ BEGIN
     RETURN public.rpc_error('NOT_FOUND', 'Invoice item was not found.');
   END IF;
 
+  SELECT i.status
+  INTO v_invoice_status
+  FROM public.invoices i
+  WHERE i.id = v_item.invoice_id
+    AND i.is_deleted = false;
+
+  IF v_invoice_status = 'voided' THEN
+    RETURN public.rpc_error('INVOICE_VOIDED', 'Discounts cannot be changed on voided invoices.');
+  END IF;
+
   BEGIN
     v_invoice := auth_internal.lock_draft_invoice(v_item.invoice_id, p_expected_updated_at);
   EXCEPTION
     WHEN OTHERS THEN
       IF SQLERRM = 'NOT_FOUND' THEN
         RETURN public.rpc_error('NOT_FOUND', 'Invoice was not found.');
+      ELSIF SQLERRM = 'invoice_voided' THEN
+        RETURN public.rpc_error('INVOICE_VOIDED', 'Discounts cannot be changed on voided invoices.');
       ELSIF SQLERRM = 'invoice_not_in_draft' THEN
         RETURN public.rpc_error('INVOICE_NOT_IN_DRAFT', 'Discounts can only be changed on draft invoices.');
       ELSIF SQLERRM = 'STALE_INVOICE' THEN

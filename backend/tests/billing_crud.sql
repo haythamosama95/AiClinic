@@ -1526,8 +1526,7 @@ BEGIN
   v_result := public.add_invoice_item(v_invoice_void_issued, v_updated_at, 'Late item', 1, 10.00);
   PERFORM pg_temp.billing_crud_record(
     'voided_invoice_rejects_item_add',
-    NOT v_result.success
-      AND v_result.error_code IN ('INVOICE_VOIDED', 'INVOICE_NOT_IN_DRAFT'),
+    NOT v_result.success AND v_result.error_code = 'INVOICE_VOIDED',
     COALESCE(v_result.error_code, '<null>')
   );
 
@@ -1538,11 +1537,11 @@ BEGIN
   WHERE i.id = v_invoice_void_issued
     AND ii.is_deleted = false
   LIMIT 1;
+  -- Voided invoices must return INVOICE_VOIDED (spec US6: distinct from issued/paid INVOICE_NOT_IN_DRAFT).
   v_result := public.apply_line_discount(v_item_id, v_updated_at, 'percentage', 5.00);
   PERFORM pg_temp.billing_crud_record(
     'voided_invoice_rejects_line_discount',
-    NOT v_result.success
-      AND v_result.error_code IN ('INVOICE_VOIDED', 'INVOICE_NOT_IN_DRAFT'),
+    NOT v_result.success AND v_result.error_code = 'INVOICE_VOIDED',
     COALESCE(v_result.error_code, '<null>')
   );
 
