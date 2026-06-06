@@ -2,6 +2,7 @@ import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/receipt_print_preview.dart';
@@ -17,46 +18,46 @@ InvoiceDetail _sampleDetail({required InvoiceStatus status, List<InvoiceItem>? i
     branchId: 'branch-1',
     patientId: 'patient-1',
     visitId: 'visit-1',
-    subtotal: '150.00',
+    subtotal: Money.parse('150.00'),
     discountKind: DiscountKind.fixed,
     discountValue: '10',
-    discountAmount: '10.00',
-    insuranceCoveredAmount: '20.00',
+    discountAmount: Money.parse('10.00'),
+    insuranceCoveredAmount: Money.parse('20.00'),
     currency: 'USD',
     issuedAt: status == InvoiceStatus.draft ? null : now,
     voidedAt: status == InvoiceStatus.voided ? now : null,
     voidReason: voidReason,
-    balance: status == InvoiceStatus.voided ? '0.00' : '120.00',
+    balance: Money.parse(status == InvoiceStatus.voided ? '0.00' : '120.00'),
     updatedAt: now,
     items:
         items ??
-        const [
+        [
           InvoiceItem(
             id: 'item-1',
             description: 'Consultation',
             quantity: '1',
-            unitPrice: '100.00',
-            lineSubtotal: '100.00',
-            lineDiscountAmount: '0',
-            lineTotal: '100.00',
+            unitPrice: Money.parse('100.00'),
+            lineSubtotal: Money.parse('100.00'),
+            lineDiscountAmount: Money.parse('0'),
+            lineTotal: Money.parse('100.00'),
           ),
           InvoiceItem(
             id: 'item-2',
             description: 'Lab work',
             quantity: '1',
-            unitPrice: '50.00',
-            lineSubtotal: '50.00',
+            unitPrice: Money.parse('50.00'),
+            lineSubtotal: Money.parse('50.00'),
             lineDiscountKind: DiscountKind.percentage,
             lineDiscountValue: '10',
-            lineDiscountAmount: '5.00',
-            lineTotal: '45.00',
+            lineDiscountAmount: Money.parse('5.00'),
+            lineTotal: Money.parse('45.00'),
           ),
         ],
     payments: [
       Payment(
         id: 'pay-1',
         method: PaymentMethod.cash,
-        amount: '30.00',
+        amount: Money.parse('30.00'),
         recordedById: 'staff-1',
         recordedByDisplayName: 'Test Staff',
         recordedAt: DateTime.utc(2026, 6, 2, 12),
@@ -110,10 +111,10 @@ void main() {
           id: 'item-$index',
           description: 'Service $index',
           quantity: '1',
-          unitPrice: '10.00',
-          lineSubtotal: '10.00',
-          lineDiscountAmount: '0',
-          lineTotal: '10.00',
+          unitPrice: Money.parse('10.00'),
+          lineSubtotal: Money.parse('10.00'),
+          lineDiscountAmount: Money.parse('0'),
+          lineTotal: Money.parse('10.00'),
         ),
         growable: false,
       );

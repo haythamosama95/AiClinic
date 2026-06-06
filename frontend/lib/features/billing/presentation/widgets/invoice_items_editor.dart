@@ -246,7 +246,7 @@ class _ItemRowState extends State<_ItemRow> {
     super.initState();
     _descriptionController = TextEditingController(text: widget.item.description);
     _quantityController = TextEditingController(text: widget.item.quantity);
-    _unitPriceController = TextEditingController(text: widget.item.unitPrice);
+    _unitPriceController = TextEditingController(text: widget.item.unitPrice.wireValue);
   }
 
   @override
@@ -255,7 +255,7 @@ class _ItemRowState extends State<_ItemRow> {
     if (oldWidget.item.id != widget.item.id) {
       _descriptionController.text = widget.item.description;
       _quantityController.text = widget.item.quantity;
-      _unitPriceController.text = widget.item.unitPrice;
+      _unitPriceController.text = widget.item.unitPrice.wireValue;
     }
   }
 

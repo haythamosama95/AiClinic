@@ -158,18 +158,12 @@ class InvoiceListNotifier extends Notifier<InvoiceListUiState> {
     state = state.copyWith(loading: true, filters: nextFilters, clearError: true, clearLoadMoreError: true);
 
     try {
-      final items = await _fetch(offset: 0);
+      final page = await _fetch(offset: 0);
       if (generation != _reloadGeneration) {
         return;
       }
 
-      state = state.copyWith(
-        items: items,
-        loading: false,
-        offset: 0,
-        hasMore: items.length >= state.pageSize,
-        clearError: true,
-      );
+      state = state.copyWith(items: page.items, loading: false, offset: 0, hasMore: page.hasMore, clearError: true);
     } catch (error) {
       if (generation != _reloadGeneration) {
         return;
@@ -219,12 +213,12 @@ class InvoiceListNotifier extends Notifier<InvoiceListUiState> {
     final nextOffset = state.offset + state.pageSize;
 
     try {
-      final items = await _fetch(offset: nextOffset);
+      final page = await _fetch(offset: nextOffset);
       state = state.copyWith(
-        items: [...state.items, ...items],
+        items: [...state.items, ...page.items],
         offset: nextOffset,
         isLoadingMore: false,
-        hasMore: items.length >= state.pageSize,
+        hasMore: page.hasMore,
       );
     } catch (error) {
       state = state.copyWith(isLoadingMore: false, loadMoreError: error.toString());
@@ -239,7 +233,7 @@ class InvoiceListNotifier extends Notifier<InvoiceListUiState> {
     });
   }
 
-  Future<List<InvoiceListItem>> _fetch({required int offset}) async {
+  Future<InvoiceListPageResult> _fetch({required int offset}) async {
     try {
       return await ref
           .read(invoiceRepositoryProvider)

@@ -262,6 +262,8 @@ DECLARE
   v_allow_partial boolean;
   v_line_discount_amount numeric(14, 2);
   v_invoice_discount_amount numeric(14, 2);
+  v_prior_kind public.discount_kind;
+  v_prior_value numeric(14, 2);
   v_subtotal numeric(14, 2);
   v_trigger_blocked boolean;
   v_provider_id uuid;
@@ -615,6 +617,23 @@ BEGIN
     'line_discount_rejected_when_invoice_discount_active',
     NOT v_result.success AND v_result.error_code = 'DISCOUNT_SCOPE_CONFLICT',
     COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_invoice_discount(v_invoice_id, v_updated_at, 'percentage', 0.00);
+  SELECT discount_kind, discount_value, discount_amount
+  INTO v_prior_kind, v_prior_value, v_invoice_discount_amount
+  FROM public.invoices
+  WHERE id = v_invoice_id;
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
+  v_result := public.apply_line_discount(v_item_id, v_updated_at, 'fixed', 5.00);
+  PERFORM pg_temp.billing_crud_record(
+    'invoice_discount_zero_percentage_clears_and_allows_line_discount',
+    v_result.success
+      AND v_prior_kind IS NULL
+      AND v_prior_value IS NULL
+      AND v_invoice_discount_amount = 0.00,
+    format('kind=%s amount=%s line_ok=%s', v_prior_kind, v_invoice_discount_amount, v_result.success)
   );
 
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_id;
@@ -1551,6 +1570,29 @@ BEGIN
     format('limit1=%s limit2=%s distinct=%s', v_list_item_count, jsonb_array_length(v_list.data -> 'items'), v_audit_count)
   );
 
+  v_list := public.list_invoices('{}'::jsonb, 1, 0);
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_has_more_when_extra_row_exists',
+    v_list.success
+      AND jsonb_array_length(v_list.data -> 'items') = 1
+      AND COALESCE((v_list.data ->> 'has_more')::boolean, false) = true,
+    format('items=%s has_more=%s', jsonb_array_length(v_list.data -> 'items'), v_list.data ->> 'has_more')
+  );
+
+  SELECT count(*)::int
+  INTO v_audit_count
+  FROM public.invoices i
+  WHERE i.is_deleted = false
+    AND i.branch_id = ANY (ARRAY[v_branch_main, v_branch_no_code]::uuid[]);
+  v_list := public.list_invoices('{}'::jsonb, v_audit_count, 0);
+  PERFORM pg_temp.billing_crud_record(
+    'list_invoices_has_more_false_on_last_page',
+    v_list.success
+      AND jsonb_array_length(v_list.data -> 'items') <= v_audit_count
+      AND COALESCE((v_list.data ->> 'has_more')::boolean, false) = false,
+    format('items=%s has_more=%s', jsonb_array_length(v_list.data -> 'items'), v_list.data ->> 'has_more')
+  );
+
   v_list := public.list_invoices('{}'::jsonb, 1, 1);
   PERFORM pg_temp.billing_crud_record(
     'list_invoices_offset_skips_first_row',
@@ -1610,7 +1652,8 @@ BEGIN
   v_result := public.add_invoice_item(v_invoice_void_issued, v_updated_at, 'Void test item', 1, 50.00);
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_issued;
   v_result := public.issue_invoice(v_invoice_void_issued, v_updated_at);
-  v_result := public.void_invoice(v_invoice_void_issued, 'Created in error');
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_issued;
+  v_result := public.void_invoice(v_invoice_void_issued, v_updated_at, 'Created in error');
   SELECT status, void_reason
   INTO v_status, v_void_reason
   FROM public.invoices
@@ -1665,7 +1708,8 @@ BEGIN
   v_result := public.issue_invoice(v_invoice_void_partial, v_updated_at);
   v_result := public.record_payment(v_invoice_void_partial, 'cash', 40.00, NULL, 'Partial before void');
   SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_void_partial;
-  v_result := public.void_invoice(v_invoice_void_partial, 'Patient cancelled');
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_partial;
+  v_result := public.void_invoice(v_invoice_void_partial, v_updated_at, 'Patient cancelled');
   SELECT status, void_reason
   INTO v_status, v_void_reason
   FROM public.invoices
@@ -1695,7 +1739,8 @@ BEGIN
   v_result := public.issue_invoice(v_invoice_paid_void, v_updated_at);
   v_result := public.record_payment(v_invoice_paid_void, 'cash', 75.00, NULL, 'Paid in full');
   SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_paid_void;
-  v_result := public.void_invoice(v_invoice_paid_void, 'Should fail on paid');
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_paid_void;
+  v_result := public.void_invoice(v_invoice_paid_void, v_updated_at, 'Should fail on paid');
   PERFORM pg_temp.billing_crud_record(
     'void_paid_invoice_rejected',
     v_status = 'paid'
@@ -1775,13 +1820,22 @@ BEGIN
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_perm;
   v_result := public.issue_invoice(v_invoice_void_perm, v_updated_at);
 
+  v_stale_updated_at := '2000-01-01 00:00:00+00'::timestamptz;
+  v_result := public.void_invoice(v_invoice_void_perm, v_stale_updated_at, 'Stale void attempt');
+  PERFORM pg_temp.billing_crud_record(
+    'stale_invoice_rejects_void',
+    NOT v_result.success AND v_result.error_code = 'STALE_INVOICE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
   PERFORM pg_temp.set_reception_jwt(
     v_reception_user,
     v_reception_staff,
     v_org_id,
     format('%s,%s', v_branch_main, v_branch_no_code)
   );
-  v_result := public.void_invoice(v_invoice_void_perm, 'Unauthorized void');
+  SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_perm;
+  v_result := public.void_invoice(v_invoice_void_perm, v_updated_at, 'Unauthorized void');
   PERFORM pg_temp.billing_crud_record(
     'void_permission_denied_for_receptionist',
     NOT v_result.success AND v_result.error_code = 'FORBIDDEN',

@@ -120,7 +120,7 @@ class _BillingBody extends StatelessWidget {
             key: Key('patient_billing_row_${item.id}'),
             contentPadding: EdgeInsets.zero,
             title: Text(item.invoiceNumber ?? 'Draft invoice'),
-            subtitle: Text('${formatDate(item.issuedAt ?? item.createdAt)} · Balance ${item.balance}'),
+            subtitle: Text('${formatDate(item.issuedAt ?? item.createdAt)} · Balance ${item.balance.wireValue}'),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

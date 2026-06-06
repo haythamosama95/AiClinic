@@ -51,6 +51,17 @@ void main() {
     container.dispose();
   });
 
+  test('addItem mutation invalidates shared invoice detail cache', () async {
+    final notifier = container.read(invoiceEditorProvider(invoiceId).notifier);
+    await container.read(invoiceEditorProvider(invoiceId).future);
+
+    final detailCallsBefore = client.rpcLog.where((name) => name == 'get_invoice_detail').length;
+    await notifier.addItem(description: 'Extra line', quantity: '1', unitPrice: '15');
+
+    expect(client.rpcLog, contains('add_invoice_item'));
+    expect(client.rpcLog.where((name) => name == 'get_invoice_detail').length, detailCallsBefore + 1);
+  });
+
   test('issue with STALE_INVOICE sets stale status and reloads detail', () async {
     client.rpcResults['issue_invoice'] = {'success': false, 'error_code': 'STALE_INVOICE', 'error_message': 'Stale'};
 

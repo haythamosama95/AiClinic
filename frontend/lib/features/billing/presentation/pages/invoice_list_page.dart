@@ -284,8 +284,8 @@ class _InvoiceListBody extends StatelessWidget {
           item.status.label,
           if (showBranchColumn) item.branchCode ?? '—',
           item.displayTotal,
-          item.paidAmount,
-          item.balance,
+          item.paidAmount.wireValue,
+          item.balance.wireValue,
         ],
     ];
 

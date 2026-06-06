@@ -8,6 +8,14 @@ import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_list_item.dart';
 
+/// Paginated invoice list envelope from `list_invoices` (V1-6).
+class InvoiceListPageResult {
+  const InvoiceListPageResult({required this.items, required this.hasMore});
+
+  final List<InvoiceListItem> items;
+  final bool hasMore;
+}
+
 /// Invoice billing RPC wrappers (V1-6).
 class InvoiceRepository with AppRpcInvoker {
   InvoiceRepository(this._client);
@@ -166,11 +174,19 @@ class InvoiceRepository with AppRpcInvoker {
     });
   }
 
-  Future<void> voidInvoice({required String invoiceId, required String reason}) async {
+  Future<void> voidInvoice({
+    required String invoiceId,
+    required DateTime expectedUpdatedAt,
+    required String reason,
+  }) async {
     _assertNonEmpty('invoiceId', invoiceId);
     _assertNonEmpty('reason', reason);
 
-    await invokeRpc('void_invoice', {'p_invoice_id': invoiceId.trim(), 'p_reason': reason.trim()});
+    await invokeRpc('void_invoice', {
+      'p_invoice_id': invoiceId.trim(),
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+      'p_reason': reason.trim(),
+    });
   }
 
   Future<InvoiceDetail> getDetail({required String invoiceId}) async {
@@ -184,31 +200,17 @@ class InvoiceRepository with AppRpcInvoker {
     return detail;
   }
 
-  Future<List<InvoiceListItem>> listInvoices({Map<String, dynamic>? filters, int limit = 50, int offset = 0}) async {
+  Future<InvoiceListPageResult> listInvoices({Map<String, dynamic>? filters, int limit = 50, int offset = 0}) async {
     final result = await invokeRpc('list_invoices', {
       'p_filters': filters ?? const {},
       'p_limit': limit,
       'p_offset': offset,
     });
 
-    return _parseListRows(result.data);
+    return _parseListPage(result.data);
   }
 
-  Future<InvoiceListItem?> findForVisit({required String visitId}) async {
-    final items = await listInvoices(
-      filters: {
-        'visit_id': visitId,
-        'statuses': ['draft', 'issued', 'partially_paid', 'paid'],
-      },
-      limit: 1,
-    );
-    if (items.isEmpty) {
-      return null;
-    }
-    return items.first;
-  }
-
-  Future<List<InvoiceListItem>> listPatientInvoices({required String patientId, int limit = 50, int offset = 0}) async {
+  Future<InvoiceListPageResult> listPatientInvoices({required String patientId, int limit = 50, int offset = 0}) async {
     _assertNonEmpty('patientId', patientId);
 
     final result = await invokeRpc('list_patient_invoices', {
@@ -217,7 +219,27 @@ class InvoiceRepository with AppRpcInvoker {
       'p_offset': offset,
     });
 
-    return _parseListRows(result.data);
+    return _parseListPage(result.data);
+  }
+
+  InvoiceListPageResult _parseListPage(Map<String, dynamic>? data) {
+    final items = _parseListRows(data);
+    final hasMore = data?['has_more'] == true;
+    return InvoiceListPageResult(items: items, hasMore: hasMore);
+  }
+
+  Future<InvoiceListItem?> findForVisit({required String visitId}) async {
+    final page = await listInvoices(
+      filters: {
+        'visit_id': visitId,
+        'statuses': ['draft', 'issued', 'partially_paid', 'paid'],
+      },
+      limit: 1,
+    );
+    if (page.items.isEmpty) {
+      return null;
+    }
+    return page.items.first;
   }
 
   List<InvoiceListItem> _parseListRows(Map<String, dynamic>? data) {

@@ -35,7 +35,7 @@ class RefundFormState extends ConsumerState<RefundForm> {
 
   double get _netRefundablePayments {
     return widget.detail.payments.fold<double>(0, (total, payment) {
-      return total + (double.tryParse(payment.amount) ?? 0);
+      return total + payment.amount.asDouble;
     });
   }
 

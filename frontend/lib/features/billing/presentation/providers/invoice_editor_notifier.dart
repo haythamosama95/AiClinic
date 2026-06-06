@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/billing_rpc_messages.dart';
 
 enum InvoiceEditorStatus { idle, loading, saving, stale, error }
@@ -65,7 +66,7 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
       throw StateError('Invoice id is required.');
     }
 
-    final canCreate = ref.read(permissionServiceProvider).canCreateInvoices();
+    final canCreate = ref.watch(permissionServiceProvider).canCreateInvoices();
     if (!canCreate) {
       throw StateError('You do not have permission to edit invoices.');
     }
@@ -172,7 +173,7 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
     }
 
     final discountedItems = current.detail.items.where(
-      (item) => item.lineDiscountKind != null || (double.tryParse(item.lineDiscountAmount) ?? 0) > 0,
+      (item) => item.lineDiscountKind != null || item.lineDiscountAmount.isPositive,
     );
     if (discountedItems.isEmpty) {
       return true;
@@ -207,6 +208,7 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
       final invoiceNumber = await ref
           .read(invoiceRepositoryProvider)
           .issue(invoiceId: current.detail.id, expectedUpdatedAt: current.detail.updatedAt);
+      ref.invalidate(invoiceDetailProvider(current.detail.id));
       return invoiceNumber;
     } on RpcFailure catch (error) {
       final message = billingMessageForRpc(error);
@@ -240,6 +242,7 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
       final repo = ref.read(invoiceRepositoryProvider);
       await action(current.detail, repo);
       final detail = await repo.getDetail(invoiceId: current.detail.id);
+      ref.invalidate(invoiceDetailProvider(current.detail.id));
       state = AsyncData(InvoiceEditorState(detail: detail, editorStatus: InvoiceEditorStatus.idle));
       return true;
     } on RpcFailure catch (error) {

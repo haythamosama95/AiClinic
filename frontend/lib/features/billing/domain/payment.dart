@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:flutter/foundation.dart';
 
 /// Payment or refund row on an invoice (`get_invoice_detail`, V1-6).
@@ -17,22 +18,19 @@ class Payment {
 
   final String id;
   final PaymentMethod method;
-  final String amount;
+  final Money amount;
   final String? reference;
   final String? note;
   final String recordedById;
   final String? recordedByDisplayName;
   final DateTime recordedAt;
 
-  bool get isRefund {
-    final parsed = double.tryParse(amount);
-    return parsed != null && parsed < 0;
-  }
+  bool get isRefund => amount.isNegative;
 
   static Payment? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
     final method = PaymentMethod.tryParse(row['method']?.toString());
-    final amount = row['amount']?.toString();
+    final amount = Money.tryParse(row['amount']?.toString());
     final recordedBy = _parseRecordedBy(row['recorded_by']);
     final recordedAtRaw = row['recorded_at']?.toString();
     if (id == null || id.isEmpty || method == null || amount == null || recordedBy == null || recordedAtRaw == null) {

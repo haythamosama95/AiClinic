@@ -198,7 +198,12 @@ class _InvoiceDetailBody extends ConsumerWidget {
               OutlinedButton.icon(
                 key: const Key('invoice_void_button'),
                 onPressed: () async {
-                  final voided = await showVoidInvoiceDialog(context: context, ref: ref, invoiceId: invoiceId);
+                  final voided = await showVoidInvoiceDialog(
+                    context: context,
+                    ref: ref,
+                    invoiceId: invoiceId,
+                    expectedUpdatedAt: detail.updatedAt,
+                  );
                   if (voided) {
                     onRefresh();
                     if (context.mounted) {
@@ -223,14 +228,14 @@ class _InvoiceDetailBody extends ConsumerWidget {
               key: Key('invoice_detail_item_${item.id}'),
               title: Text(item.description),
               subtitle: Text('${item.quantity} × ${item.unitPrice}'),
-              trailing: Text(item.lineTotal),
+              trailing: Text(item.lineTotal.wireValue),
             ),
           ),
         const Divider(height: 32),
-        _TotalRow(label: 'Subtotal', value: detail.subtotal),
-        _TotalRow(label: 'Discount', value: detail.discountAmount),
-        _TotalRow(label: 'Insurance covered', value: detail.insuranceCoveredAmount),
-        _TotalRow(label: 'Balance due', value: detail.balance, emphasized: true),
+        _TotalRow(label: 'Subtotal', value: detail.subtotal.wireValue),
+        _TotalRow(label: 'Discount', value: detail.discountAmount.wireValue),
+        _TotalRow(label: 'Insurance covered', value: detail.insuranceCoveredAmount.wireValue),
+        _TotalRow(label: 'Balance due', value: detail.balance.wireValue, emphasized: true),
         const SizedBox(height: 24),
         Text('Payments', style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
@@ -265,7 +270,10 @@ class _PaymentTile extends StatelessWidget {
       key: Key('invoice_payment_${payment.id}'),
       title: Text('$amountLabel — ${payment.method.label}'),
       subtitle: Text(payment.recordedAt.toLocal().toString()),
-      trailing: Text(payment.amount, style: payment.isRefund ? TextStyle(color: theme.colorScheme.error) : null),
+      trailing: Text(
+        payment.amount.wireValue,
+        style: payment.isRefund ? TextStyle(color: theme.colorScheme.error) : null,
+      ),
     );
   }
 }

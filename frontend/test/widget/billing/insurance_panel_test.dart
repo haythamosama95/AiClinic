@@ -5,6 +5,7 @@ import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/data/insurance_provider_repository.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/insurance_panel.dart';
 import 'package:flutter/material.dart';
@@ -62,11 +63,11 @@ void main() {
         branchId: '44444444-4444-4444-8444-444444444444',
         patientId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
         visitId: BillingRpcTestClient.visitId,
-        subtotal: '100.00',
-        discountAmount: '0.00',
-        insuranceCoveredAmount: '0.00',
+        subtotal: Money.parse('100.00'),
+        discountAmount: Money.parse('0.00'),
+        insuranceCoveredAmount: Money.parse('0.00'),
         currency: 'USD',
-        balance: '100.00',
+        balance: Money.parse('100.00'),
         updatedAt: DateTime.utc(2026, 6, 1),
         items: const [],
         payments: const [],

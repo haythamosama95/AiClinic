@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
 
 typedef ReceiptPrintHandler = Future<void> Function(Future<Uint8List> Function(PdfPageFormat format) layout);
@@ -30,8 +31,8 @@ class ReceiptPrintPreview {
   /// Required receipt sections for acceptance checks (test hook).
   static List<String> requiredFieldLabels(InvoiceDetail detail) {
     final hasLineDiscounts = detail.items.any(_itemHasLineDiscount);
-    final invoiceDiscount = _parseAmount(detail.discountAmount);
-    final insuranceCovered = _parseAmount(detail.insuranceCoveredAmount);
+    final invoiceDiscount = detail.discountAmount.asDouble;
+    final insuranceCovered = detail.insuranceCoveredAmount.asDouble;
 
     return [
       'Patient',
@@ -59,9 +60,9 @@ class ReceiptPrintPreview {
   }) async {
     final doc = pw.Document();
     final hasLineDiscounts = detail.items.any(_itemHasLineDiscount);
-    final invoiceDiscount = _parseAmount(detail.discountAmount);
-    final insuranceCovered = _parseAmount(detail.insuranceCoveredAmount);
-    final totalDue = _parseAmount(detail.subtotal) - invoiceDiscount - insuranceCovered;
+    final invoiceDiscount = detail.discountAmount.asDouble;
+    final insuranceCovered = detail.insuranceCoveredAmount.asDouble;
+    final totalDue = detail.subtotal.asDouble - invoiceDiscount - insuranceCovered;
     final headerName = organizationName?.trim().isNotEmpty == true
         ? organizationName!.trim()
         : (detail.branchName ?? 'Clinic');
@@ -86,12 +87,13 @@ class ReceiptPrintPreview {
                   pw.SizedBox(height: 8),
                   _itemsTable(detail.items, hasLineDiscounts: hasLineDiscounts),
                   pw.SizedBox(height: 12),
-                  _totalRow('Subtotal', detail.subtotal, detail.currency),
+                  _totalRow('Subtotal', detail.subtotal.wireValue, detail.currency),
                   if (hasLineDiscounts)
                     pw.Text('Line discounts are included in subtotal above.', style: const pw.TextStyle(fontSize: 9)),
-                  if (invoiceDiscount > 0) _totalRow('Invoice discount', '-${detail.discountAmount}', detail.currency),
+                  if (invoiceDiscount > 0)
+                    _totalRow('Invoice discount', '-${detail.discountAmount.wireValue}', detail.currency),
                   if (insuranceCovered > 0)
-                    _totalRow('Insurance covered', detail.insuranceCoveredAmount, detail.currency),
+                    _totalRow('Insurance covered', detail.insuranceCoveredAmount.wireValue, detail.currency),
                   _totalRow('Total due', totalDue.toStringAsFixed(2), detail.currency, emphasized: true),
                   pw.SizedBox(height: 12),
                   pw.Text('Payments', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
@@ -101,7 +103,7 @@ class ReceiptPrintPreview {
                   else
                     ...detail.payments.map(_paymentRow),
                   pw.SizedBox(height: 8),
-                  _totalRow('Balance', detail.balance, detail.currency, emphasized: true),
+                  _totalRow('Balance', detail.balance.wireValue, detail.currency, emphasized: true),
                   if (detail.status == InvoiceStatus.voided && detail.voidReason != null) ...[
                     pw.SizedBox(height: 12),
                     pw.Text('Void reason: ${detail.voidReason}'),
@@ -152,12 +154,12 @@ class ReceiptPrintPreview {
               ? [
                   item.description,
                   item.quantity,
-                  item.unitPrice,
-                  item.lineSubtotal,
-                  item.lineDiscountAmount,
-                  item.lineTotal,
+                  item.unitPrice.wireValue,
+                  item.lineSubtotal.wireValue,
+                  item.lineDiscountAmount.wireValue,
+                  item.lineTotal.wireValue,
                 ]
-              : [item.description, item.quantity, item.unitPrice, item.lineTotal];
+              : [item.description, item.quantity, item.unitPrice.wireValue, item.lineTotal.wireValue];
           return pw.TableRow(
             children: cells
                 .map((value) => pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(value)))
@@ -186,7 +188,9 @@ class ReceiptPrintPreview {
     final label = payment.isRefund ? 'Refund' : 'Payment';
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 4),
-      child: pw.Text('${_formatDate(payment.recordedAt)} — ${payment.method.label} — $label ${payment.amount}'),
+      child: pw.Text(
+        '${_formatDate(payment.recordedAt)} — ${payment.method.label} — $label ${payment.amount.wireValue}',
+      ),
     );
   }
 
@@ -209,11 +213,7 @@ class ReceiptPrintPreview {
   }
 
   static bool _itemHasLineDiscount(InvoiceItem item) {
-    return _parseAmount(item.lineDiscountAmount) > 0;
-  }
-
-  static double _parseAmount(String value) {
-    return double.tryParse(value) ?? 0;
+    return item.lineDiscountAmount.isPositive;
   }
 
   static String _formatDate(DateTime value) {

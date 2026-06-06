@@ -5,6 +5,7 @@ import 'package:ai_clinic/features/billing/data/billing_settings_repository.dart
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/refund_form.dart';
@@ -32,10 +33,10 @@ InvoiceDetail _detailWithPayments(List<Payment> payments) {
     branchId: '44444444-4444-4444-8444-444444444444',
     status: InvoiceStatus.partiallyPaid,
     currency: 'USD',
-    subtotal: '100.00',
-    discountAmount: '0.00',
-    insuranceCoveredAmount: '0.00',
-    balance: '20.00',
+    subtotal: Money.parse('100.00'),
+    discountAmount: Money.parse('0.00'),
+    insuranceCoveredAmount: Money.parse('0.00'),
+    balance: Money.parse('20.00'),
     updatedAt: DateTime.utc(2026, 6, 2),
     items: const [],
     payments: payments,
@@ -49,7 +50,7 @@ void main() {
       Payment(
         id: 'pay-1',
         method: PaymentMethod.cash,
-        amount: '100.00',
+        amount: Money.parse('100.00'),
         reference: null,
         note: null,
         recordedById: 'staff-1',
@@ -58,7 +59,7 @@ void main() {
       Payment(
         id: 'ref-1',
         method: PaymentMethod.cash,
-        amount: '-30.00',
+        amount: Money.parse('-30.00'),
         reference: null,
         note: 'Partial refund',
         recordedById: 'staff-1',
@@ -113,17 +114,17 @@ void main() {
       branchId: '44444444-4444-4444-8444-444444444444',
       status: InvoiceStatus.issued,
       currency: 'USD',
-      subtotal: '100.00',
-      discountAmount: '0.00',
-      insuranceCoveredAmount: '0.00',
-      balance: '40.00',
+      subtotal: Money.parse('100.00'),
+      discountAmount: Money.parse('0.00'),
+      insuranceCoveredAmount: Money.parse('0.00'),
+      balance: Money.parse('40.00'),
       updatedAt: DateTime.utc(2026, 6, 2),
       items: const [],
       payments: [
         Payment(
           id: 'pay-1',
           method: PaymentMethod.cash,
-          amount: '60.00',
+          amount: Money.parse('60.00'),
           recordedById: 'staff-1',
           recordedAt: DateTime.utc(2026, 6, 2, 12),
         ),
@@ -170,17 +171,17 @@ void main() {
       branchId: '44444444-4444-4444-8444-444444444444',
       status: InvoiceStatus.voided,
       currency: 'USD',
-      subtotal: '100.00',
-      discountAmount: '0.00',
-      insuranceCoveredAmount: '0.00',
-      balance: '0.00',
+      subtotal: Money.parse('100.00'),
+      discountAmount: Money.parse('0.00'),
+      insuranceCoveredAmount: Money.parse('0.00'),
+      balance: Money.parse('0.00'),
       updatedAt: DateTime.utc(2026, 6, 2),
       items: const [],
       payments: [
         Payment(
           id: 'pay-1',
           method: PaymentMethod.cash,
-          amount: '100.00',
+          amount: Money.parse('100.00'),
           recordedById: 'staff-1',
           recordedAt: DateTime.utc(2026, 6, 2, 12),
         ),

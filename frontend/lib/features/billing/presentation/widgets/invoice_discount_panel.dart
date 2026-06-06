@@ -69,7 +69,7 @@ class _InvoiceDiscountPanelState extends State<InvoiceDiscountPanel> {
     if (parsed == null || parsed < 0) {
       return 'Enter a valid non-negative amount.';
     }
-    final subtotal = double.tryParse(widget.detail.subtotal) ?? 0;
+    final subtotal = widget.detail.subtotal.asDouble;
     if (_kind == DiscountKind.percentage && parsed > 100) {
       return 'Percentage cannot exceed 100.';
     }
@@ -90,7 +90,11 @@ class _InvoiceDiscountPanelState extends State<InvoiceDiscountPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final hasDiscount = widget.detail.discountKind != null || (double.tryParse(widget.detail.discountAmount) ?? 0) > 0;
+    final hasDiscount =
+        widget.detail.discountAmount.isPositive ||
+        (widget.detail.discountKind != null &&
+            widget.detail.discountValue != null &&
+            (double.tryParse(widget.detail.discountValue!) ?? 0) > 0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

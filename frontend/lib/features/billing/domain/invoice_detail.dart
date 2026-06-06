@@ -1,6 +1,7 @@
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:flutter/foundation.dart';
 
@@ -40,17 +41,17 @@ class InvoiceDetail {
   final String branchId;
   final String patientId;
   final String visitId;
-  final String subtotal;
+  final Money subtotal;
   final DiscountKind? discountKind;
   final String? discountValue;
-  final String discountAmount;
+  final Money discountAmount;
   final String? insuranceProviderId;
-  final String insuranceCoveredAmount;
+  final Money insuranceCoveredAmount;
   final String currency;
   final DateTime? issuedAt;
   final DateTime? voidedAt;
   final String? voidReason;
-  final String balance;
+  final Money balance;
   final DateTime updatedAt;
   final List<InvoiceItem> items;
   final List<Payment> payments;
@@ -94,6 +95,14 @@ class InvoiceDetail {
       return null;
     }
 
+    final subtotal = Money.tryParse(invoice['subtotal']?.toString());
+    final discountAmount = Money.tryParse(invoice['discount_amount']?.toString());
+    final insuranceCoveredAmount = Money.tryParse(invoice['insurance_covered_amount']?.toString());
+    final balance = Money.tryParse(invoice['balance']?.toString());
+    if (subtotal == null || discountAmount == null || insuranceCoveredAmount == null || balance == null) {
+      return null;
+    }
+
     final items = _parseItems(data['items']);
     final payments = _parsePayments(data['payments']);
 
@@ -108,17 +117,17 @@ class InvoiceDetail {
       branchId: branchId,
       patientId: patientId,
       visitId: visitId,
-      subtotal: invoice['subtotal']?.toString() ?? '0',
+      subtotal: subtotal,
       discountKind: DiscountKind.tryParse(invoice['discount_kind']?.toString()),
       discountValue: invoice['discount_value']?.toString(),
-      discountAmount: invoice['discount_amount']?.toString() ?? '0',
+      discountAmount: discountAmount,
       insuranceProviderId: invoice['insurance_provider_id']?.toString(),
-      insuranceCoveredAmount: invoice['insurance_covered_amount']?.toString() ?? '0',
+      insuranceCoveredAmount: insuranceCoveredAmount,
       currency: invoice['currency']?.toString() ?? 'USD',
       issuedAt: _parseOptionalDate(invoice['issued_at']?.toString()),
       voidedAt: _parseOptionalDate(invoice['voided_at']?.toString()),
       voidReason: invoice['void_reason']?.toString(),
-      balance: invoice['balance']?.toString() ?? '0',
+      balance: balance,
       updatedAt: updatedAt,
       items: items,
       payments: payments,

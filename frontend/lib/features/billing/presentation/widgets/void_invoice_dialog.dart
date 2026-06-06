@@ -12,19 +12,21 @@ Future<bool> showVoidInvoiceDialog({
   required BuildContext context,
   required WidgetRef ref,
   required String invoiceId,
+  required DateTime expectedUpdatedAt,
 }) async {
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => VoidInvoiceDialog(invoiceId: invoiceId),
+    builder: (context) => VoidInvoiceDialog(invoiceId: invoiceId, expectedUpdatedAt: expectedUpdatedAt),
   );
   return result == true;
 }
 
 class VoidInvoiceDialog extends ConsumerStatefulWidget {
-  const VoidInvoiceDialog({super.key, required this.invoiceId});
+  const VoidInvoiceDialog({super.key, required this.invoiceId, required this.expectedUpdatedAt});
 
   final String invoiceId;
+  final DateTime expectedUpdatedAt;
 
   @override
   ConsumerState<VoidInvoiceDialog> createState() => _VoidInvoiceDialogState();
@@ -60,7 +62,11 @@ class _VoidInvoiceDialogState extends ConsumerState<VoidInvoiceDialog> {
     try {
       await ref
           .read(invoiceRepositoryProvider)
-          .voidInvoice(invoiceId: widget.invoiceId, reason: _reasonController.text.trim());
+          .voidInvoice(
+            invoiceId: widget.invoiceId,
+            expectedUpdatedAt: widget.expectedUpdatedAt,
+            reason: _reasonController.text.trim(),
+          );
       ref.invalidate(invoiceDetailProvider(widget.invoiceId));
       if (!mounted) {
         return;

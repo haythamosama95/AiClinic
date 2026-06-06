@@ -24,6 +24,7 @@ String billingMessageForRpc(RpcFailure failure) {
     'RPC_NOT_APPLIED' => 'The billing action could not be applied. Please try again.',
     'RPC_NOT_CONFIGURED' => 'Billing is not configured correctly. Contact your administrator.',
     'AUTH_ERROR' => 'Your session has expired or is invalid. Sign in again and retry.',
+    'UNEXPECTED_RESPONSE' => 'Billing data from the server was incomplete. Please refresh and try again.',
     _ => failure.message.isNotEmpty ? failure.message : 'Something went wrong. Please try again.',
   };
 }

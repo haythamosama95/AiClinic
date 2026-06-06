@@ -74,8 +74,8 @@ class PatientInvoiceHistoryNotifier extends Notifier<PatientInvoiceHistoryState>
     state = state.copyWith(loading: true, clearError: true, clearLoadMoreError: true);
 
     try {
-      final items = await _fetch(offset: 0);
-      state = state.copyWith(items: items, loading: false, offset: 0, hasMore: items.length >= state.pageSize);
+      final page = await _fetch(offset: 0);
+      state = state.copyWith(items: page.items, loading: false, offset: 0, hasMore: page.hasMore);
     } catch (error) {
       state = state.copyWith(loading: false, items: const [], error: error.toString());
     }
@@ -90,19 +90,19 @@ class PatientInvoiceHistoryNotifier extends Notifier<PatientInvoiceHistoryState>
     final nextOffset = state.offset + state.pageSize;
 
     try {
-      final items = await _fetch(offset: nextOffset);
+      final page = await _fetch(offset: nextOffset);
       state = state.copyWith(
-        items: [...state.items, ...items],
+        items: [...state.items, ...page.items],
         offset: nextOffset,
         isLoadingMore: false,
-        hasMore: items.length >= state.pageSize,
+        hasMore: page.hasMore,
       );
     } catch (error) {
       state = state.copyWith(isLoadingMore: false, loadMoreError: error.toString());
     }
   }
 
-  Future<List<InvoiceListItem>> _fetch({required int offset}) async {
+  Future<InvoiceListPageResult> _fetch({required int offset}) async {
     try {
       return await ref
           .read(invoiceRepositoryProvider)

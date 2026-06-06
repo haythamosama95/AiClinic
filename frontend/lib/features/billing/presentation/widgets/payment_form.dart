@@ -51,7 +51,7 @@ class PaymentFormState extends ConsumerState<PaymentForm> {
     final panel = ref.read(paymentPanelProvider(widget.invoiceId)).value;
     final lockAmount = panel != null && _shouldLockAmount(panel.allowPartialPayments, _method);
     if (lockAmount) {
-      _amountController.text = widget.detail.balance;
+      _amountController.text = widget.detail.balance.wireValue;
     }
   }
 
@@ -80,8 +80,8 @@ class PaymentFormState extends ConsumerState<PaymentForm> {
       error: (error, _) => Text(error.toString()),
       data: (panel) {
         final lockAmount = _shouldLockAmount(panel.allowPartialPayments, _method);
-        if (lockAmount && _amountController.text != widget.detail.balance) {
-          _amountController.text = widget.detail.balance;
+        if (lockAmount && _amountController.text != widget.detail.balance.wireValue) {
+          _amountController.text = widget.detail.balance.wireValue;
         }
 
         return Card(
@@ -111,7 +111,7 @@ class PaymentFormState extends ConsumerState<PaymentForm> {
                             setState(() {
                               _method = value;
                               if (_shouldLockAmount(panel.allowPartialPayments, value)) {
-                                _amountController.text = widget.detail.balance;
+                                _amountController.text = widget.detail.balance.wireValue;
                               }
                             });
                           },
@@ -141,7 +141,7 @@ class PaymentFormState extends ConsumerState<PaymentForm> {
                         if (parsed == null || parsed <= 0) {
                           return 'Enter a valid amount greater than zero.';
                         }
-                        final balance = double.tryParse(widget.detail.balance) ?? 0;
+                        final balance = widget.detail.balance.asDouble;
                         if (parsed > balance) {
                           return 'Amount cannot exceed the current balance.';
                         }
@@ -203,7 +203,7 @@ class PaymentFormState extends ConsumerState<PaymentForm> {
     }
 
     final amount = _amountController.text.trim();
-    if (!allowPartialPayments && _method.isPatientTender && amount != widget.detail.balance) {
+    if (!allowPartialPayments && _method.isPatientTender && amount != widget.detail.balance.wireValue) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Partial payments are not allowed for this organization; please collect the full balance.'),

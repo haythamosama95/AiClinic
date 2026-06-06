@@ -67,7 +67,7 @@ class _LineDiscountFieldState extends State<LineDiscountField> {
     if (parsed == null || parsed < 0) {
       return 'Enter a valid non-negative amount.';
     }
-    final lineSubtotal = double.tryParse(widget.item.lineSubtotal) ?? 0;
+    final lineSubtotal = widget.item.lineSubtotal.asDouble;
     if (_kind == DiscountKind.percentage && parsed > 100) {
       return 'Percentage cannot exceed 100.';
     }
@@ -88,8 +88,7 @@ class _LineDiscountFieldState extends State<LineDiscountField> {
 
   @override
   Widget build(BuildContext context) {
-    final hasDiscount =
-        widget.item.lineDiscountKind != null || (double.tryParse(widget.item.lineDiscountAmount) ?? 0) > 0;
+    final hasDiscount = widget.item.lineDiscountKind != null || widget.item.lineDiscountAmount.isPositive;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

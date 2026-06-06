@@ -54,6 +54,7 @@ class PaymentPanelNotifier extends AsyncNotifier<PaymentPanelState> {
 
   @override
   Future<PaymentPanelState> build() async {
+    ref.watch(permissionServiceProvider);
     final settings = await ref.read(billingSettingsRepositoryProvider).get();
     return PaymentPanelState(allowPartialPayments: settings.allowPartialPayments);
   }
@@ -64,7 +65,7 @@ class PaymentPanelNotifier extends AsyncNotifier<PaymentPanelState> {
     String? reference,
     String? note,
   }) async {
-    if (!ref.read(permissionServiceProvider).canRecordPayment()) {
+    if (!ref.watch(permissionServiceProvider).canRecordPayment()) {
       _setError('You do not have permission to record payments.');
       return false;
     }
@@ -95,7 +96,7 @@ class PaymentPanelNotifier extends AsyncNotifier<PaymentPanelState> {
   }
 
   Future<bool> recordRefund({required PaymentMethod method, required String amount, required String note}) async {
-    if (!ref.read(permissionServiceProvider).canRefundPayment()) {
+    if (!ref.watch(permissionServiceProvider).canRefundPayment()) {
       _setError('You do not have permission to record refunds.');
       return false;
     }

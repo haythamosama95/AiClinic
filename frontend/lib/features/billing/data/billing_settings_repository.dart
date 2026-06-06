@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/features/billing/domain/billing_settings.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 
 /// Organization billing settings RPC wrappers (V1-6).
 class BillingSettingsRepository with AppRpcInvoker {
@@ -24,7 +25,13 @@ class BillingSettingsRepository with AppRpcInvoker {
     final result = await invokeRpc('get_billing_settings', null);
     final settings = BillingSettings.fromRow(result.data ?? const {});
     if (settings == null) {
-      throw StateError('Get billing settings returned an unexpected shape.');
+      throw RpcFailure(
+        RpcResult(
+          success: false,
+          errorCode: 'UNEXPECTED_RESPONSE',
+          errorMessage: 'Get billing settings returned an unexpected shape.',
+        ),
+      );
     }
     return settings;
   }

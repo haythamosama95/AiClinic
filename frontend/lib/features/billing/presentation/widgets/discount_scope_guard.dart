@@ -16,13 +16,12 @@ typedef InvoiceDiscountApply = Future<bool> Function({required DiscountKind kind
 typedef InvoiceDiscountClear = Future<bool> Function();
 
 bool invoiceHasLineDiscountScope(InvoiceDetail detail) {
-  return detail.items.any(
-    (item) => item.lineDiscountKind != null || (double.tryParse(item.lineDiscountAmount) ?? 0) > 0,
-  );
+  return detail.items.any((item) => item.lineDiscountKind != null || item.lineDiscountAmount.isPositive);
 }
 
 bool invoiceHasInvoiceDiscountScope(InvoiceDetail detail) {
-  return detail.discountKind != null || (double.tryParse(detail.discountAmount) ?? 0) > 0;
+  final hasValue = detail.discountValue != null && (double.tryParse(detail.discountValue!) ?? 0) > 0;
+  return detail.discountAmount.isPositive || (detail.discountKind != null && hasValue);
 }
 
 /// Enforces mutually-exclusive line vs invoice discount UX (V1-6 US3).

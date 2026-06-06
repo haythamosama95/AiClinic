@@ -93,9 +93,9 @@ class _InvoiceEditorBodyState extends ConsumerState<_InvoiceEditorBody> {
     final notifier = ref.read(invoiceEditorProvider(widget.invoiceId).notifier);
     final canApplyDiscount = ref.watch(permissionServiceProvider).canApplyDiscount() && isDraft;
     final theme = Theme.of(context);
-    final subtotal = double.tryParse(detail.subtotal) ?? 0;
-    final invoiceDiscount = double.tryParse(detail.discountAmount) ?? 0;
-    final insuranceCovered = double.tryParse(detail.insuranceCoveredAmount) ?? 0;
+    final subtotal = detail.subtotal.asDouble;
+    final invoiceDiscount = detail.discountAmount.asDouble;
+    final insuranceCovered = detail.insuranceCoveredAmount.asDouble;
     final netTotal = (subtotal - invoiceDiscount).toStringAsFixed(2);
     final patientDue = (subtotal - invoiceDiscount - insuranceCovered).toStringAsFixed(2);
 

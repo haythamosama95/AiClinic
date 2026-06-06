@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:flutter/foundation.dart';
 
 /// Summary row from `list_invoices` / `list_patient_invoices` (V1-6).
@@ -24,20 +25,16 @@ class InvoiceListItem {
   final InvoiceStatus status;
   final String? patientDisplayName;
   final String? branchCode;
-  final String subtotal;
-  final String discountAmount;
-  final String insuranceCoveredAmount;
-  final String paidAmount;
-  final String balance;
+  final Money subtotal;
+  final Money discountAmount;
+  final Money insuranceCoveredAmount;
+  final Money paidAmount;
+  final Money balance;
   final DateTime createdAt;
   final DateTime? issuedAt;
 
   /// Subtotal minus invoice-level discount (line discounts are reflected in subtotal server-side).
-  String get displayTotal {
-    final sub = double.tryParse(subtotal) ?? 0;
-    final discount = double.tryParse(discountAmount) ?? 0;
-    return (sub - discount).toStringAsFixed(2);
-  }
+  String get displayTotal => (subtotal - discountAmount).wireValue;
 
   static InvoiceListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
@@ -52,6 +49,19 @@ class InvoiceListItem {
       return null;
     }
 
+    final subtotal = Money.tryParse(row['subtotal']?.toString());
+    final discountAmount = Money.tryParse(row['discount_amount']?.toString());
+    final insuranceCoveredAmount = Money.tryParse(row['insurance_covered_amount']?.toString());
+    final paidAmount = Money.tryParse(row['paid_amount']?.toString());
+    final balance = Money.tryParse(row['balance']?.toString());
+    if (subtotal == null ||
+        discountAmount == null ||
+        insuranceCoveredAmount == null ||
+        paidAmount == null ||
+        balance == null) {
+      return null;
+    }
+
     final issuedAtRaw = row['issued_at']?.toString();
     final issuedAt = issuedAtRaw == null ? null : DateTime.tryParse(issuedAtRaw);
 
@@ -61,11 +71,11 @@ class InvoiceListItem {
       status: status,
       patientDisplayName: row['patient_display_name']?.toString(),
       branchCode: row['branch_code']?.toString(),
-      subtotal: row['subtotal']?.toString() ?? '0',
-      discountAmount: row['discount_amount']?.toString() ?? '0',
-      insuranceCoveredAmount: row['insurance_covered_amount']?.toString() ?? '0',
-      paidAmount: row['paid_amount']?.toString() ?? '0',
-      balance: row['balance']?.toString() ?? '0',
+      subtotal: subtotal,
+      discountAmount: discountAmount,
+      insuranceCoveredAmount: insuranceCoveredAmount,
+      paidAmount: paidAmount,
+      balance: balance,
       createdAt: createdAt,
       issuedAt: issuedAt,
     );

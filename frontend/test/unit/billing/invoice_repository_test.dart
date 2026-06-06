@@ -13,6 +13,15 @@ void main() {
     repo = InvoiceRepository(client);
   });
 
+  group('InvoiceRepository list pagination', () {
+    test('listInvoices exposes backend has_more flag', () async {
+      final page = await repo.listInvoices(limit: 1, offset: 0);
+
+      expect(page.items, hasLength(1));
+      expect(page.hasMore, isTrue);
+    });
+  });
+
   group('InvoiceRepository validation', () {
     test('addItem rejects description longer than 500 characters', () {
       final longDescription = 'x' * 501;

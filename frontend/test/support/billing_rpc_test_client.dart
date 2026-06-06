@@ -15,6 +15,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
   String issuedBalance = '100.00';
   String issuedStatus = 'issued';
   String? issuedVoidReason;
+  DateTime issuedUpdatedAt = DateTime.utc(2026, 6, 2, 11, 0);
   String? draftInvoiceDiscountKind;
   String? draftInvoiceDiscountValue;
   String draftInvoiceDiscountAmount = '0';
@@ -208,10 +209,12 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     final limit = (lastParams?['p_limit'] as int?) ?? 50;
     final offset = (lastParams?['p_offset'] as int?) ?? 0;
     final filtered = _filterCatalogInvoices(filters);
-    final page = filtered.skip(offset).take(limit).toList(growable: false);
+    final slice = filtered.skip(offset).take(limit + 1).toList(growable: false);
+    final hasMore = slice.length > limit;
+    final page = hasMore ? slice.sublist(0, limit) : slice;
     return {
       'success': true,
-      'data': {'items': page},
+      'data': {'items': page, 'has_more': hasMore},
     };
   }
 
@@ -220,10 +223,12 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     final limit = (lastParams?['p_limit'] as int?) ?? 50;
     final offset = (lastParams?['p_offset'] as int?) ?? 0;
     final filtered = catalogInvoices.where((row) => row['patient_id']?.toString() == patientId).toList(growable: false);
-    final page = filtered.skip(offset).take(limit).toList(growable: false);
+    final page = filtered.skip(offset).take(limit + 1).toList(growable: false);
+    final hasMore = page.length > limit;
+    final items = hasMore ? page.sublist(0, limit) : page;
     return {
       'success': true,
-      'data': {'items': page},
+      'data': {'items': items, 'has_more': hasMore},
     };
   }
 
@@ -267,9 +272,23 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
   Map<String, dynamic> _voidInvoice() {
     final invoiceId = lastParams?['p_invoice_id']?.toString() ?? issuedInvoiceId;
     final reason = lastParams?['p_reason']?.toString() ?? '';
+    final expectedRaw = lastParams?['p_expected_updated_at']?.toString();
 
     if (invoiceId != issuedInvoiceId) {
       return {'success': false, 'error_code': 'NOT_FOUND', 'error_message': 'Invoice not found.'};
+    }
+
+    if (expectedRaw == null || expectedRaw.isEmpty) {
+      return {
+        'success': false,
+        'error_code': 'INVALID_INPUT',
+        'error_message': 'Expected updated timestamp is required.',
+      };
+    }
+
+    final expected = DateTime.tryParse(expectedRaw);
+    if (expected == null || expected.toUtc() != issuedUpdatedAt.toUtc()) {
+      return {'success': false, 'error_code': 'STALE_INVOICE', 'error_message': 'Stale invoice.'};
     }
 
     if (reason.trim().isEmpty) {
@@ -291,6 +310,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
     issuedStatus = 'voided';
     issuedVoidReason = reason.trim();
     issuedBalance = '0.00';
+    issuedUpdatedAt = issuedUpdatedAt.add(const Duration(seconds: 1));
     return {
       'success': true,
       'data': {'invoice_id': invoiceId},
@@ -395,7 +415,9 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
   }
 
   bool _hasInvoiceDiscountScope() {
-    return draftInvoiceDiscountKind != null || (double.tryParse(draftInvoiceDiscountAmount) ?? 0) > 0;
+    final amount = double.tryParse(draftInvoiceDiscountAmount) ?? 0;
+    final value = double.tryParse(draftInvoiceDiscountValue ?? '') ?? 0;
+    return amount > 0 || (draftInvoiceDiscountKind != null && value > 0);
   }
 
   Map<String, dynamic> _applyLineDiscount() {
@@ -488,7 +510,11 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       draftInvoiceDiscountAmount = '0';
     } else {
       final parsedValue = double.tryParse(value?.toString() ?? '') ?? -1;
-      if (kind == 'percentage') {
+      if (parsedValue == 0) {
+        draftInvoiceDiscountKind = null;
+        draftInvoiceDiscountValue = null;
+        draftInvoiceDiscountAmount = '0';
+      } else if (kind == 'percentage') {
         if (parsedValue < 0 || parsedValue > 100) {
           return {'success': false, 'error_code': 'INVALID_INPUT', 'error_message': 'Invalid percentage.'};
         }
@@ -632,7 +658,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
         'balance': isIssued
             ? issuedBalance
             : (double.parse(draftSubtotal) - (double.tryParse(draftInsuranceCoveredAmount) ?? 0)).toStringAsFixed(2),
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_at': isIssued ? issuedUpdatedAt.toUtc().toIso8601String() : DateTime.now().toUtc().toIso8601String(),
       },
       'items': isIssued
           ? [

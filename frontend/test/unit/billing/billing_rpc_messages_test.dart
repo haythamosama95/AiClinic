@@ -79,5 +79,11 @@ void main() {
         'Your session has expired or is invalid. Sign in again and retry.',
       );
     });
+    test('UNEXPECTED_RESPONSE returns refresh guidance', () {
+      expect(
+        billingMessageForRpc(_failure(code: 'UNEXPECTED_RESPONSE')),
+        'Billing data from the server was incomplete. Please refresh and try again.',
+      );
+    });
   });
 }

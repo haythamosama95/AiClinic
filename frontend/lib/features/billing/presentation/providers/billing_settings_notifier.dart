@@ -61,7 +61,7 @@ class BillingSettingsNotifier extends AsyncNotifier<BillingSettingsUiState> {
   }
 
   Future<bool> updateAllowPartialPayments(bool value) async {
-    final permissions = ref.read(permissionServiceProvider);
+    final permissions = ref.watch(permissionServiceProvider);
     if (!permissions.canManageBillingSettings()) {
       _setError('You do not have permission to change billing settings.');
       return false;
@@ -95,7 +95,7 @@ class BillingSettingsNotifier extends AsyncNotifier<BillingSettingsUiState> {
   }
 
   Future<BillingSettingsUiState> _load() async {
-    final permissions = ref.read(permissionServiceProvider);
+    final permissions = ref.watch(permissionServiceProvider);
     final canView = permissions.canViewInvoices() || permissions.canRecordPayment();
     if (!canView) {
       throw StateError('Missing permission to view billing settings.');

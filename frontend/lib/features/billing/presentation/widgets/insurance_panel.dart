@@ -55,8 +55,8 @@ class _InsurancePanelState extends ConsumerState<InsurancePanel> {
 
   void _syncFromDetail() {
     _selectedProviderId = widget.detail.insuranceProviderId;
-    final parsed = double.tryParse(widget.detail.insuranceCoveredAmount) ?? 0;
-    _amountController.text = parsed == 0 ? '' : widget.detail.insuranceCoveredAmount;
+    final parsed = widget.detail.insuranceCoveredAmount;
+    _amountController.text = parsed.isZero ? '' : parsed.wireValue;
   }
 
   @override
@@ -65,11 +65,7 @@ class _InsurancePanelState extends ConsumerState<InsurancePanel> {
     super.dispose();
   }
 
-  double get _netTotal {
-    final subtotal = double.tryParse(widget.detail.subtotal) ?? 0;
-    final discount = double.tryParse(widget.detail.discountAmount) ?? 0;
-    return subtotal - discount;
-  }
+  double get _netTotal => widget.detail.subtotal.asDouble - widget.detail.discountAmount.asDouble;
 
   String? _validateAmount(String? raw) {
     final trimmed = raw?.trim() ?? '';
@@ -105,9 +101,8 @@ class _InsurancePanelState extends ConsumerState<InsurancePanel> {
   @override
   Widget build(BuildContext context) {
     final providersAsync = ref.watch(activeInsuranceProvidersProvider);
-    final hasCoverage =
-        widget.detail.insuranceProviderId != null || (double.tryParse(widget.detail.insuranceCoveredAmount) ?? 0) > 0;
-    final patientDue = (_netTotal - (double.tryParse(widget.detail.insuranceCoveredAmount) ?? 0)).toStringAsFixed(2);
+    final hasCoverage = widget.detail.insuranceProviderId != null || widget.detail.insuranceCoveredAmount.isPositive;
+    final patientDue = (_netTotal - widget.detail.insuranceCoveredAmount.asDouble).toStringAsFixed(2);
 
     return Column(
       key: const Key('insurance_panel'),
@@ -183,8 +178,7 @@ class _InsurancePanelState extends ConsumerState<InsurancePanel> {
               onPressed: widget.enabled && !widget.busy ? _submit : null,
               child: const Text('Save insurance coverage'),
             ),
-            if (widget.detail.insuranceProviderId != null ||
-                (double.tryParse(widget.detail.insuranceCoveredAmount) ?? 0) > 0) ...[
+            if (widget.detail.insuranceProviderId != null || widget.detail.insuranceCoveredAmount.isPositive) ...[
               const SizedBox(width: 8),
               TextButton(
                 key: const Key('insurance_clear_button'),
