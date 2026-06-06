@@ -26,7 +26,7 @@ V1 delivers a fully functional clinic management system with no AI. This is the 
 | V1-3: Patient Management                 | **Complete** |
 | V1-4: Appointments                       | **Complete** |
 | V1-5: Visits and Medical Records         | **Complete** |
-| V1-6: Billing                            | Pending      |
+| V1-6: Billing                            | **Complete** |
 | V1-7: Shifts                             | Pending      |
 | V1-8: Deployment and Installer           | Pending      |
 
@@ -206,23 +206,28 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/operations/billing.spec.md`
+- `specs/007-billing/spec.md` (authoritative for V1-6)
+- `specs/operations/billing.spec.md` (placeholder — not yet authored; see FR-026)
 
 Backend deliverables:
-- Database migration: `invoices`, `invoice_items`, `payments`, `insurance_providers` tables
-- RPC functions: `create_invoice`, `apply_payment`, `apply_discount` (with permission check), `get_invoice_balance`
-- RLS policies (branch-scoped, discount permission check)
-- Indexes on invoice lookups
-- Backend test utilities to verify invoice creation and payment flow
+- Migrations under `backend/supabase/migrations/20260605180000_billing.sql` and follow-ups (US1–US8 RPCs, void, list/patient queries)
+- Tables: `invoices`, `invoice_items`, `payments`, `insurance_providers`, `organization_billing_settings`, `invoice_number_sequences`
+- RPCs: create/issue/discard invoice, item CRUD, line/invoice discounts, insurance coverage, record payment/refund, void, billing settings, insurance provider CRUD, `get_invoice_detail`, `list_invoices`, `list_patient_invoices`
+- RLS: branch-scoped SELECT on invoices/items/payments; org-scoped insurance/settings; mutations via SECURITY DEFINER RPCs only; `REVOKE UPDATE, DELETE ON payments`
+- Indexes: `invoices_branch_created_idx`, `invoices_status_branch_idx`, `invoices_patient_created_idx`, partial unique on active visit
+- Tests: `backend/tests/billing_crud.sql`, `billing_rls.sql`, `billing_concurrency.sql` via `run_billing_tests.sh`
 
 Frontend deliverables:
-- Invoice creation form (link to visit, multi-line items, auto-calculation)
-- Invoice list/search page
-- Payment recording form (partial payment support)
-- Discount application (with permission gate)
-- Insurance provider selection and coverage split display
-- Invoice print preview
-- Invoice status tracking (visual indicators)
+- `frontend/lib/features/billing/` module (editor, detail, list, insurance providers, receipt print)
+- Visit detail **Create invoice** / **Open invoice** action; patient profile billing tab; org settings partial-payments toggle
+- Permission-gated discount, payment, refund, void, and settings surfaces
+
+Operator notes (Billing):
+- Set `branches.code` before issuing invoices (e.g. `MAIN` → `INV-MAIN-000001`). Missing code surfaces `branch_code_missing` on issue.
+- **Allow partial payments** defaults **off**; only owner/administrator can toggle it under Settings → Billing. Receptionist can record full patient-tender payments or insurance settlements; partial patient payments require the toggle.
+- Line-level and invoice-level discounts are mutually exclusive on draft invoices; clear one scope before applying the other.
+- Payments are append-only — corrections use refunds, not edits. Void `paid` invoices only after net payments are refunded.
+- Operator verification walkthrough: `specs/007-billing/quickstart.md`
 
 ### V1-7: Shifts
 

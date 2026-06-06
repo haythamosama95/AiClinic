@@ -250,13 +250,13 @@ description: "Task list for Billing (V1-6) feature implementation"
 
 ## Phase 11: Polish & Cross-Cutting Concerns
 
-- [ ] T067 [P] Run `bash backend/tests/run_billing_tests.sh` and ensure all three SQL suites pass; capture output for the PR description
-- [ ] T068 [P] Run `flutter test` against `frontend/test/{unit,widget,integration}/billing/` and ensure all green
-- [ ] T069 [P] Documentation: append a short "Billing" section to any operator-facing notes in `docs/architecture/` if such conventions exist; reference `specs/operations/billing.spec.md` placeholder per FR-026
-- [ ] T070 Performance pass: verify invoice list pagination remains snappy at 5,000 rows per branch (NFR-003) and receipt preview renders ≤2s for 100 items (NFR-004); add any missing indexes
-- [ ] T071 Security pass: confirm `\dp public.payments` shows no UPDATE/DELETE grants; confirm `settings.billing.manage` cannot be granted to non-admin/owner via role-permission RPC
-- [ ] T072 Walk through `specs/007-billing/quickstart.md` against a fresh local Supabase + Flutter build; record any deviations and file follow-up issues
-- [ ] T073 Constitution compliance review: Principle I (no scope creep beyond V1-6), II (no new service tier), III (RPCs hold authority, RLS enforces isolation), IV (defense in depth + audit), V (AI absent, subscription-state-tolerant)
+- [X] T067 [P] Run `bash backend/tests/run_billing_tests.sh` and ensure all three SQL suites pass; capture output for the PR description
+- [X] T068 [P] Run `flutter test` against `frontend/test/{unit,widget,integration}/billing/` and ensure all green
+- [X] T069 [P] Documentation: append a short "Billing" section to any operator-facing notes in `docs/architecture/` if such conventions exist; reference `specs/operations/billing.spec.md` placeholder per FR-026
+- [X] T070 Performance pass: verify invoice list pagination remains snappy at 5,000 rows per branch (NFR-003) and receipt preview renders ≤2s for 100 items (NFR-004); add any missing indexes
+- [X] T071 Security pass: confirm `\dp public.payments` shows no UPDATE/DELETE grants; confirm `settings.billing.manage` cannot be granted to non-admin/owner via role-permission RPC
+- [X] T072 Walk through `specs/007-billing/quickstart.md` against a fresh local Supabase + Flutter build; record any deviations and file follow-up issues
+- [X] T073 Constitution compliance review: Principle I (no scope creep beyond V1-6), II (no new service tier), III (RPCs hold authority, RLS enforces isolation), IV (defense in depth + audit), V (AI absent, subscription-state-tolerant)
 
 ---
 

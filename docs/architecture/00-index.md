@@ -2,7 +2,7 @@
 
 This directory replaces the legacy monolithic `docs/architecture_overview.md` with focused architecture references that can be loaded selectively during planning and implementation.
 
-> **Last updated:** Reflects implementation through V1-4 (Appointment Management). Includes divergences from original design (username auth, `auth_internal` schema pattern, patient schema changes, branch `working_schedule`, planned-only appointments with `confirmed` status).
+> **Last updated:** Reflects implementation through V1-6 (Billing). Includes divergences from original design (username auth, `auth_internal` schema pattern, patient schema changes, branch `working_schedule`, planned-only appointments with `confirmed` status).
 
 ## How To Use This Architecture Set
 

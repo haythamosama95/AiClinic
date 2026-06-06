@@ -96,3 +96,30 @@ This walkthrough verifies the end-to-end billing flow against a local Supabase +
 ## Success criteria
 
 All ten steps pass with the expected outcomes. Any deviation indicates a regression against `spec.md` acceptance criteria.
+
+## Phase 11 acceptance notes (2026-06-06)
+
+Automated verification for polish/cross-cutting tasks:
+
+| Check                                   | Command / artifact                                                                           | Expected                                                             |
+| --------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Backend billing suite                   | `bash backend/tests/run_billing_tests.sh`                                                    | Exit 0; 12 RLS + 85 CRUD + 3 concurrency checks                      |
+| Flutter billing tests                   | `cd frontend && flutter test test/unit/billing test/widget/billing test/integration/billing` | 80 tests green                                                       |
+| Payments append-only                    | `information_schema.role_table_grants` on `public.payments` for `authenticated`              | No `UPDATE` or `DELETE`; `billing_rls.sql` confirms DML denial       |
+| `settings.billing.manage` non-delegable | `billing_rls.sql` → `settings_billing_manage_non_delegable`                                  | `PERMISSION_NOT_DELEGABLE` for receptionist                          |
+| List pagination indexes                 | `invoices_branch_created_idx`, `invoices_status_branch_idx` on `public.invoices`             | Present; supports branch-scoped `ORDER BY created_at DESC` (NFR-003) |
+| Receipt render budget                   | `receipt_print_preview_test.dart` NFR-004 case                                               | 100 line items render in < 2s                                        |
+
+Quickstart step mapping (automated vs manual):
+
+| Step                                 | Automated coverage                                                                    | Manual gap                                                               |
+| ------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1 Settings                           | `billing_settings_section_test.dart`, `billing_crud.sql` settings scenarios           | —                                                                        |
+| 2–4 Create/issue/discounts/insurance | `create_and_issue_invoice_test.dart`, `discount_scopes_test.dart`, `billing_crud.sql` | —                                                                        |
+| 5–6 Payments/refunds                 | `record_payment_test.dart`, `billing_crud.sql`, `billing_concurrency.sql`             | —                                                                        |
+| 7 Void                               | `void_invoice_test.dart`, `billing_crud.sql` void scenarios                           | —                                                                        |
+| 8 Receipt print                      | `receipt_print_preview_test.dart`, `print_receipt_test.dart`                          | OS print dialog + save-to-PDF requires interactive desktop run           |
+| 9 Cross-branch/org                   | `billing_rls.sql`                                                                     | —                                                                        |
+| 10 Concurrent race                   | `billing_concurrency.sql`, `record_payment_test.dart` scenario 6                      | Two-station simultaneous UI submit still worth spot-check before rollout |
+
+**Deviations / follow-ups:** None blocking. `specs/operations/billing.spec.md` remains unauthored (FR-026 placeholder). Manual steps 8 (OS print dialog) and 10 (two-station UI race) should be recorded in a release checklist when cutting a clinic build.
