@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/logging/app_log.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_calendar_mode.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
+import 'package:ai_clinic/features/shifts/presentation/shift_rpc_messages.dart';
 
 @immutable
 class ShiftCalendarState {
@@ -91,7 +94,11 @@ class ShiftCalendarController extends Notifier<ShiftCalendarState> {
           .read(shiftRepositoryProvider)
           .listShifts(branchId: branchId, dateFrom: bounds.$1, dateTo: bounds.$2);
       state = state.copyWith(loading: false, items: items, error: null);
-    } catch (_) {
+    } on RpcFailure catch (error) {
+      AppLog.warning('shifts.calendar.refresh failed code=${error.code}', name: 'shifts');
+      state = state.copyWith(loading: false, items: const [], error: shiftMessageForRpc(error));
+    } catch (error) {
+      AppLog.warning('shifts.calendar.refresh failed: $error', name: 'shifts');
       state = state.copyWith(loading: false, items: const [], error: 'Could not load shifts. Please retry.');
     }
   }

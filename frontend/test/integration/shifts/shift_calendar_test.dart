@@ -308,7 +308,7 @@ void main() {
         await _pumpHost(tester, _host(client: client));
 
         expect(find.byKey(const Key('shift_calendar_error')), findsOneWidget);
-        expect(find.text('Could not load shifts. Please retry.'), findsOneWidget);
+        expect(find.text('You do not have permission to manage shifts.'), findsOneWidget);
       });
     });
 

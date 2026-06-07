@@ -72,13 +72,15 @@ class ShiftRepository {
       throw _clientInputFailure('Start and end times are required.');
     }
 
+    final dedupedStaffIds = _dedupeStaffIds(staffIds);
+
     final raw = await _invokeJsonRpc('create_shift', {
       'p_branch_id': id,
       'p_shift_date': _formatDate(shiftDate),
       'p_start_time': start,
       'p_end_time': end,
       if (notes != null && notes.trim().isNotEmpty) 'p_notes': notes.trim(),
-      'p_staff_ids': staffIds,
+      'p_staff_ids': dedupedStaffIds,
     });
 
     final shiftId = raw?.toString().trim();
@@ -107,11 +109,14 @@ class ShiftRepository {
       throw _clientInputFailure('At least one staff add or remove is required.');
     }
 
+    final dedupedAddIds = _dedupeStaffIds(addStaffIds);
+    final dedupedRemoveIds = _dedupeStaffIds(removeStaffIds);
+
     final raw = await _invokeJsonRpc('modify_shift_assignments', {
       'p_shift_id': id,
       'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
-      'p_add_staff_ids': addStaffIds,
-      'p_remove_staff_ids': removeStaffIds,
+      'p_add_staff_ids': dedupedAddIds,
+      'p_remove_staff_ids': dedupedRemoveIds,
     });
 
     final result = ShiftAssignmentResult.fromRpcData(raw);
@@ -235,6 +240,19 @@ class ShiftRepository {
       }
     }
     return 'POSTGREST_ERROR';
+  }
+
+  static List<String> _dedupeStaffIds(List<String> staffIds) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final raw in staffIds) {
+      final id = raw.trim();
+      if (id.isEmpty || !seen.add(id)) {
+        continue;
+      }
+      result.add(id);
+    }
+    return result;
   }
 
   static String _formatDate(DateTime date) {

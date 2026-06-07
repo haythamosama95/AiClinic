@@ -56,10 +56,13 @@ final shiftDetailProvider = AsyncNotifierProvider.autoDispose.family<ShiftDetail
   ShiftDetailNotifier.new,
 );
 
+/// Family arg is injected by [shiftDetailProvider] via `NotifierT Function(String)`.
 class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
-  ShiftDetailNotifier(this.shiftId);
+  ShiftDetailNotifier(this._shiftId);
 
-  final String shiftId;
+  final String _shiftId;
+
+  String get shiftId => _shiftId;
 
   @override
   Future<ShiftDetailState> build() async {
@@ -150,7 +153,6 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
     return _runMutation(
       mutate: (repo, expectedUpdatedAt) =>
           repo.cancelShift(shiftId: current.detail.id, expectedUpdatedAt: expectedUpdatedAt),
-      reloadAfterSuccess: false,
       onSuccess: (detail) => current.copyWith(detail: detail),
     );
   }

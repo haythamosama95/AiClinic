@@ -54,6 +54,9 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
   /// Optional override payload for [get_shift_detail].
   Map<String, dynamic>? getShiftDetailOverride;
 
+  /// Per-shift detail payloads keyed by shift id (family provider tests).
+  Map<String, Map<String, dynamic>> detailByShiftId = {};
+
   /// Default calendar rows returned by [list_shifts] when no override is set.
   List<Map<String, dynamic>> listShiftsPayload = const [];
 
@@ -81,6 +84,8 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
   PostgrestException? cancelShiftException;
 
   bool shiftCancelled = false;
+
+  final Set<String> cancelledShiftIds = {};
 
   late final SettingsTableTestClient _tableClient;
 
@@ -147,6 +152,11 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
   }
 
   Map<String, dynamic> _buildShiftDetail() {
+    final requestedShiftId = lastParams?['p_shift_id']?.toString();
+    if (requestedShiftId != null && detailByShiftId.containsKey(requestedShiftId)) {
+      return _applyCancelledState(detailByShiftId[requestedShiftId]!, requestedShiftId);
+    }
+
     if (getShiftDetailOverride != null) {
       return getShiftDetailOverride!;
     }
@@ -154,23 +164,44 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
     final assigneeCount = detailAssignments.length;
     final status = assigneeCount == 0 ? 'incomplete' : 'active';
 
-    return {
+    final shiftId = requestedShiftId ?? defaultShiftId;
+
+    return _applyCancelledState({
       'shift': {
-        'id': defaultShiftId,
+        'id': shiftId,
         'branch_id': branchId,
         'shift_date': detailShiftDate,
         'start_time': detailStartTime,
         'end_time': detailEndTime,
         'notes': detailNotes,
-        'status': shiftCancelled ? 'cancelled' : status,
+        'status': status,
         'is_unassigned': assigneeCount == 0,
         'is_past': false,
-        'is_read_only': shiftCancelled,
+        'is_read_only': false,
         'updated_at': detailUpdatedAt.toUtc().toIso8601String(),
       },
       'assignments': List<Map<String, dynamic>>.from(detailAssignments),
       'branch': {'id': branchId, 'name': 'Main Branch', 'code': 'MAIN'},
-    };
+    }, shiftId);
+  }
+
+  Map<String, dynamic> _applyCancelledState(Map<String, dynamic> payload, String shiftId) {
+    if (!cancelledShiftIds.contains(shiftId)) {
+      return payload;
+    }
+
+    final detail = Map<String, dynamic>.from(payload);
+    final shiftRaw = detail['shift'];
+    if (shiftRaw is! Map) {
+      return payload;
+    }
+
+    final shift = Map<String, dynamic>.from(shiftRaw);
+    shift['status'] = 'cancelled';
+    shift['is_read_only'] = true;
+    shift['updated_at'] = detailUpdatedAt.toUtc().toIso8601String();
+    detail['shift'] = shift;
+    return detail;
   }
 
   Map<String, dynamic> _applyModifyAssignments(Map<String, dynamic>? params) {
@@ -231,6 +262,8 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
   }
 
   dynamic _applyCancelShift() {
+    final shiftId = lastParams?['p_shift_id']?.toString() ?? defaultShiftId;
+    cancelledShiftIds.add(shiftId);
     shiftCancelled = true;
     detailUpdatedAt = detailUpdatedAt.add(const Duration(minutes: 1));
     return null;

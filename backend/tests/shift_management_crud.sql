@@ -265,6 +265,70 @@ BEGIN
       );
   END;
 
+  -- Reject staff whose branch assignment was soft-deleted.
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.staff_branch_assignments
+  SET is_deleted = true, updated_at = now()
+  WHERE staff_member_id = v_staff_doctor AND branch_id = v_branch_id;
+
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.create_shift(
+      v_branch_id,
+      v_future + 2,
+      time '09:00',
+      time '17:00',
+      NULL,
+      ARRAY[v_staff_doctor]::uuid[]
+    );
+    PERFORM pg_temp.record_shift_crud_result('reject_soft_deleted_branch_assignment', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'reject_soft_deleted_branch_assignment',
+        SQLERRM = 'staff_not_eligible',
+        SQLERRM
+      );
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.staff_branch_assignments
+  SET is_deleted = false, updated_at = now()
+  WHERE staff_member_id = v_staff_doctor AND branch_id = v_branch_id;
+
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Dedupe duplicate staff ids on create (single assignment).
+  BEGIN
+    v_shift_assignment_test := public.create_shift(
+      v_branch_id,
+      v_future + 2,
+      time '13:00',
+      time '15:00',
+      NULL,
+      ARRAY[v_staff_doctor, v_staff_doctor]::uuid[]
+    );
+    v_err := NULL;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_shift_assignment_test := NULL;
+      v_err := SQLERRM;
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT count(*)::int INTO v_assignee_count
+  FROM public.shift_assignments sa
+  WHERE sa.shift_id = v_shift_assignment_test;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'create_shift_dedupes_duplicate_staff_ids',
+    v_shift_assignment_test IS NOT NULL AND v_assignee_count = 1,
+    COALESCE(v_shift_assignment_test::text, COALESCE(v_err, '<null>'))
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Seed overlapping shift for doctor on v_future + 5.
   PERFORM public.create_shift(
     v_branch_id,
@@ -416,6 +480,45 @@ BEGIN
         SQLERRM
       );
   END;
+
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_active;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    v_modify_result := public.modify_shift_assignments(
+      v_shift_active,
+      v_shift_updated_at,
+      '{}'::uuid[],
+      ARRAY[v_staff_doctor, v_staff_doctor]::uuid[]
+    );
+    v_err := NULL;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_modify_result := NULL;
+      v_err := SQLERRM;
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT count(*)::int INTO v_assignee_count
+  FROM public.shift_assignments sa
+  WHERE sa.shift_id = v_shift_active;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'modify_assignments_dedupes_duplicate_remove_ids',
+    v_modify_result IS NOT NULL AND v_assignee_count = 1,
+    COALESCE(v_modify_result::text, COALESCE(v_err, '<null>'))
+  );
+
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_active;
+  PERFORM set_config('role', 'authenticated', true);
+  v_modify_result := public.modify_shift_assignments(
+    v_shift_active,
+    v_shift_updated_at,
+    ARRAY[v_staff_doctor]::uuid[],
+    '{}'::uuid[]
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
 
   v_shift_overlap_target := public.create_shift(
     v_branch_id,

@@ -91,6 +91,35 @@ void main() {
       );
     });
 
+    test('createShift dedupes duplicate staff ids before RPC', () async {
+      const staffId = ShiftRpcTestClient.secondStaffId;
+
+      await repository.createShift(
+        branchId: client.branchId,
+        shiftDate: DateTime(2026, 6, 10),
+        startTime: '09:00',
+        endTime: '17:00',
+        staffIds: [staffId, staffId, '  $staffId  '],
+      );
+
+      expect(client.paramsFor('create_shift')?['p_staff_ids'], [staffId]);
+    });
+
+    test('modifyAssignments dedupes duplicate staff ids before RPC', () async {
+      const staffId = ShiftRpcTestClient.secondStaffId;
+      final expectedAt = DateTime.utc(2026, 6, 1, 12);
+
+      await repository.modifyAssignments(
+        shiftId: ShiftRpcTestClient.defaultShiftId,
+        expectedUpdatedAt: expectedAt,
+        addStaffIds: [staffId, staffId],
+        removeStaffIds: [client.staffId, client.staffId],
+      );
+
+      expect(client.paramsFor('modify_shift_assignments')?['p_add_staff_ids'], [staffId]);
+      expect(client.paramsFor('modify_shift_assignments')?['p_remove_staff_ids'], [client.staffId]);
+    });
+
     test('getShiftDetail read-only flag surfaces from RPC payload', () async {
       client.getShiftDetailOverride = {
         'shift': {

@@ -345,6 +345,7 @@ BEGIN
     FROM public.staff_branch_assignments sba
     WHERE sba.staff_member_id = p_staff_member_id
       AND sba.branch_id = p_branch_id
+      AND sba.is_deleted = false
   ) THEN
     RAISE EXCEPTION 'staff_not_eligible' USING ERRCODE = 'P0001';
   END IF;
@@ -671,6 +672,10 @@ BEGIN
   END IF;
 
   IF p_staff_ids IS NOT NULL THEN
+    p_staff_ids := ARRAY(SELECT DISTINCT unnest(p_staff_ids));
+  END IF;
+
+  IF p_staff_ids IS NOT NULL THEN
     FOREACH v_staff_id IN ARRAY p_staff_ids
     LOOP
       PERFORM auth_internal.assert_shift_staff_eligible(v_staff_id, p_branch_id);
@@ -789,8 +794,8 @@ BEGIN
     RAISE EXCEPTION 'stale_shift' USING ERRCODE = 'P0001';
   END IF;
 
-  v_add_ids := COALESCE(p_add_staff_ids, '{}'::uuid[]);
-  v_remove_ids := COALESCE(p_remove_staff_ids, '{}'::uuid[]);
+  v_add_ids := ARRAY(SELECT DISTINCT unnest(COALESCE(p_add_staff_ids, '{}'::uuid[])));
+  v_remove_ids := ARRAY(SELECT DISTINCT unnest(COALESCE(p_remove_staff_ids, '{}'::uuid[])));
 
   IF cardinality(v_add_ids) = 0 AND cardinality(v_remove_ids) = 0 THEN
     RAISE EXCEPTION 'invalid_input' USING ERRCODE = 'P0001';
