@@ -355,7 +355,8 @@ BEGIN
       GET STACKED DIAGNOSTICS v_overlap_detail = PG_EXCEPTION_DETAIL;
       PERFORM pg_temp.record_shift_crud_result(
         'reject_overlap_with_payload',
-        SQLERRM LIKE 'shift_overlap%' AND SQLERRM LIKE '%Dr CRUD%',
+        SQLERRM LIKE 'shift_overlap%'
+          AND COALESCE(v_overlap_detail, '') LIKE '%Dr CRUD%',
         'msg=' || SQLERRM || ' detail=' || COALESCE(v_overlap_detail, '<null>')
       );
   END;
@@ -543,7 +544,8 @@ BEGIN
       GET STACKED DIAGNOSTICS v_overlap_detail = PG_EXCEPTION_DETAIL;
       PERFORM pg_temp.record_shift_crud_result(
         'assignment_reject_overlap_on_add',
-        SQLERRM LIKE 'shift_overlap%' AND SQLERRM LIKE '%Dr CRUD%',
+        SQLERRM LIKE 'shift_overlap%'
+          AND COALESCE(v_overlap_detail, '') LIKE '%Dr CRUD%',
         'msg=' || SQLERRM || ' detail=' || COALESCE(v_overlap_detail, '<null>')
       );
   END;
