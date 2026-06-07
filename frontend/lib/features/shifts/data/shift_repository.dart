@@ -121,6 +121,47 @@ class ShiftRepository {
     return result;
   }
 
+  Future<void> updateShift({
+    required String shiftId,
+    required DateTime expectedUpdatedAt,
+    required DateTime shiftDate,
+    required String startTime,
+    required String endTime,
+    String? notes,
+  }) async {
+    final id = shiftId.trim();
+    if (id.isEmpty) {
+      throw _clientInputFailure('Shift id is required.');
+    }
+
+    final start = startTime.trim();
+    final end = endTime.trim();
+    if (start.isEmpty || end.isEmpty) {
+      throw _clientInputFailure('Start and end times are required.');
+    }
+
+    await _invokeJsonRpc('update_shift', {
+      'p_shift_id': id,
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+      'p_shift_date': _formatDate(shiftDate),
+      'p_start_time': start,
+      'p_end_time': end,
+      if (notes != null && notes.trim().isNotEmpty) 'p_notes': notes.trim(),
+    });
+  }
+
+  Future<void> cancelShift({required String shiftId, required DateTime expectedUpdatedAt}) async {
+    final id = shiftId.trim();
+    if (id.isEmpty) {
+      throw _clientInputFailure('Shift id is required.');
+    }
+
+    await _invokeJsonRpc('cancel_shift', {
+      'p_shift_id': id,
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+    });
+  }
+
   Future<ShiftDetail> getShiftDetail({required String shiftId}) async {
     final id = shiftId.trim();
     if (id.isEmpty) {

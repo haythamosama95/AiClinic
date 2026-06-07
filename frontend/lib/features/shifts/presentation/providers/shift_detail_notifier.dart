@@ -7,32 +7,34 @@ import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_detail.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_overlap_conflict.dart';
 
-/// Assignment mutation lifecycle on shift detail (V1-7 US3).
-enum ShiftAssignmentMutationStatus { idle, saving, stale, error }
+/// Mutation lifecycle on shift detail (V1-7 US3–US4).
+enum ShiftDetailMutationStatus { idle, saving, stale, error }
 
 @immutable
 class ShiftDetailState {
   const ShiftDetailState({
     required this.detail,
-    this.mutationStatus = ShiftAssignmentMutationStatus.idle,
+    this.mutationStatus = ShiftDetailMutationStatus.idle,
     this.mutationError,
     this.overlapConflicts = const [],
     this.pendingAddStaffIds = const {},
   });
 
   final ShiftDetail detail;
-  final ShiftAssignmentMutationStatus mutationStatus;
+  final ShiftDetailMutationStatus mutationStatus;
   final String? mutationError;
   final List<ShiftOverlapConflict> overlapConflicts;
   final Set<String> pendingAddStaffIds;
 
   bool get canMutateAssignments => !detail.isReadOnly;
 
-  bool get isSaving => mutationStatus == ShiftAssignmentMutationStatus.saving;
+  bool get canEditShift => !detail.isReadOnly;
+
+  bool get isSaving => mutationStatus == ShiftDetailMutationStatus.saving;
 
   ShiftDetailState copyWith({
     ShiftDetail? detail,
-    ShiftAssignmentMutationStatus? mutationStatus,
+    ShiftDetailMutationStatus? mutationStatus,
     String? mutationError,
     List<ShiftOverlapConflict>? overlapConflicts,
     Set<String>? pendingAddStaffIds,
@@ -92,8 +94,9 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
       return true;
     }
 
-    return _mutate(
-      addStaffIds: toAdd,
+    return _runMutation(
+      mutate: (repo, expectedUpdatedAt) =>
+          repo.modifyAssignments(shiftId: current.detail.id, expectedUpdatedAt: expectedUpdatedAt, addStaffIds: toAdd),
       onSuccess: (detail) => current.copyWith(detail: detail, clearPendingAddStaffIds: true),
     );
   }
@@ -104,16 +107,58 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
       return false;
     }
 
-    return _mutate(
-      removeStaffIds: [staffMemberId.trim()],
+    return _runMutation(
+      mutate: (repo, expectedUpdatedAt) => repo.modifyAssignments(
+        shiftId: current.detail.id,
+        expectedUpdatedAt: expectedUpdatedAt,
+        removeStaffIds: [staffMemberId.trim()],
+      ),
       onSuccess: (detail) => current.copyWith(detail: detail),
     );
   }
 
-  Future<bool> _mutate({
-    List<String> addStaffIds = const [],
-    List<String> removeStaffIds = const [],
+  Future<bool> updateShift({
+    required DateTime shiftDate,
+    required String startTime,
+    required String endTime,
+    String? notes,
+  }) async {
+    final current = state.value;
+    if (current == null) {
+      return false;
+    }
+
+    return _runMutation(
+      mutate: (repo, expectedUpdatedAt) => repo.updateShift(
+        shiftId: current.detail.id,
+        expectedUpdatedAt: expectedUpdatedAt,
+        shiftDate: shiftDate,
+        startTime: startTime,
+        endTime: endTime,
+        notes: notes,
+      ),
+      onSuccess: (detail) => current.copyWith(detail: detail),
+    );
+  }
+
+  Future<bool> cancelShift() async {
+    final current = state.value;
+    if (current == null) {
+      return false;
+    }
+
+    return _runMutation(
+      mutate: (repo, expectedUpdatedAt) =>
+          repo.cancelShift(shiftId: current.detail.id, expectedUpdatedAt: expectedUpdatedAt),
+      reloadAfterSuccess: false,
+      onSuccess: (detail) => current.copyWith(detail: detail),
+    );
+  }
+
+  Future<bool> _runMutation({
+    required Future<void> Function(ShiftRepository repo, DateTime expectedUpdatedAt) mutate,
     required ShiftDetailState Function(ShiftDetail detail) onSuccess,
+    bool reloadAfterSuccess = true,
   }) async {
     final current = state.value;
     if (current == null) {
@@ -124,7 +169,7 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
     if (expectedUpdatedAt == null) {
       state = AsyncData(
         current.copyWith(
-          mutationStatus: ShiftAssignmentMutationStatus.error,
+          mutationStatus: ShiftDetailMutationStatus.error,
           mutationError: 'Shift metadata is missing an updated timestamp. Reload and try again.',
         ),
       );
@@ -133,7 +178,7 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
 
     state = AsyncData(
       current.copyWith(
-        mutationStatus: ShiftAssignmentMutationStatus.saving,
+        mutationStatus: ShiftDetailMutationStatus.saving,
         clearMutationError: true,
         clearOverlapConflicts: true,
       ),
@@ -141,23 +186,20 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
 
     try {
       final repo = ref.read(shiftRepositoryProvider);
-      await repo.modifyAssignments(
-        shiftId: current.detail.id,
-        expectedUpdatedAt: expectedUpdatedAt,
-        addStaffIds: addStaffIds,
-        removeStaffIds: removeStaffIds,
-      );
+      await mutate(repo, expectedUpdatedAt);
+      if (!reloadAfterSuccess) {
+        state = AsyncData(onSuccess(current.detail).copyWith(mutationStatus: ShiftDetailMutationStatus.idle));
+        return true;
+      }
+
       final detail = await repo.getShiftDetail(shiftId: current.detail.id);
-      state = AsyncData(onSuccess(detail).copyWith(mutationStatus: ShiftAssignmentMutationStatus.idle));
+      state = AsyncData(onSuccess(detail).copyWith(mutationStatus: ShiftDetailMutationStatus.idle));
       return true;
     } on RpcFailure catch (error) {
       final currentAfter = state.value ?? current;
       if (error.code == 'stale_shift') {
         state = AsyncData(
-          currentAfter.copyWith(
-            mutationStatus: ShiftAssignmentMutationStatus.stale,
-            mutationError: _messageForRpc(error),
-          ),
+          currentAfter.copyWith(mutationStatus: ShiftDetailMutationStatus.stale, mutationError: _messageForRpc(error)),
         );
         return false;
       }
@@ -165,7 +207,7 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
       if (error.code == 'shift_overlap') {
         state = AsyncData(
           currentAfter.copyWith(
-            mutationStatus: ShiftAssignmentMutationStatus.error,
+            mutationStatus: ShiftDetailMutationStatus.error,
             overlapConflicts: ShiftRepository.parseOverlapConflicts(error.message),
           ),
         );
@@ -173,16 +215,13 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
       }
 
       state = AsyncData(
-        currentAfter.copyWith(
-          mutationStatus: ShiftAssignmentMutationStatus.error,
-          mutationError: _messageForRpc(error),
-        ),
+        currentAfter.copyWith(mutationStatus: ShiftDetailMutationStatus.error, mutationError: _messageForRpc(error)),
       );
       return false;
     } catch (error) {
       final currentAfter = state.value ?? current;
       state = AsyncData(
-        currentAfter.copyWith(mutationStatus: ShiftAssignmentMutationStatus.error, mutationError: error.toString()),
+        currentAfter.copyWith(mutationStatus: ShiftDetailMutationStatus.error, mutationError: error.toString()),
       );
       return false;
     }
@@ -205,7 +244,7 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
       'staff_already_assigned' => 'That staff member is already assigned to this shift.',
       'shift_cancelled' => 'This shift was cancelled and can no longer be changed.',
       'shift_read_only_past_date' => 'Past shifts are read-only and cannot be edited.',
-      'permission_denied' => 'You do not have permission to change shift assignments.',
+      'permission_denied' => 'You do not have permission to change this shift.',
       _ => error.message,
     };
   }

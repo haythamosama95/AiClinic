@@ -601,6 +601,287 @@ BEGIN
     'count=' || v_remove_audit_count::text
   );
 
+  -- US4: update date/time/notes on an existing future shift.
+  v_shift_assignment_test := public.create_shift(
+    v_branch_id,
+    v_future + 6,
+    time '09:00',
+    time '17:00',
+    'Before edit',
+    ARRAY[v_staff_doctor]::uuid[]
+  );
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_assignment_test;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.update_shift(
+      v_shift_assignment_test,
+      v_shift_updated_at,
+      v_future + 7,
+      time '10:00',
+      time '18:00',
+      'After edit'
+    );
+    v_err := NULL;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_err := SQLERRM;
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT
+    s.shift_date = v_future + 7
+    AND s.start_time = time '10:00'
+    AND s.end_time = time '18:00'
+    AND s.notes = 'After edit'
+  INTO v_is_unassigned
+  FROM public.shifts s
+  WHERE s.id = v_shift_assignment_test;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'update_shift_date_time_notes',
+    v_err IS NULL AND v_is_unassigned IS TRUE,
+    COALESCE(v_err, 'updated=' || COALESCE(v_is_unassigned::text, '<null>'))
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US4: reject update causing overlap (prior values preserved).
+  PERFORM public.create_shift(
+    v_branch_id,
+    v_future + 8,
+    time '09:00',
+    time '17:00',
+    NULL,
+    ARRAY[v_staff_doctor]::uuid[]
+  );
+  v_shift_overlap_target := public.create_shift(
+    v_branch_id,
+    v_future + 8,
+    time '17:00',
+    time '20:00',
+    NULL,
+    ARRAY[v_staff_doctor]::uuid[]
+  );
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_overlap_target;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.update_shift(
+      v_shift_overlap_target,
+      v_shift_updated_at,
+      v_future + 8,
+      time '16:00',
+      time '20:00',
+      NULL
+    );
+    PERFORM pg_temp.record_shift_crud_result('reject_update_overlap', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_overlap_detail := SQLERRM;
+      PERFORM pg_temp.record_shift_crud_result(
+        'reject_update_overlap',
+        SQLERRM LIKE 'shift_overlap:%',
+        v_overlap_detail
+      );
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.start_time = time '17:00' AND s.end_time = time '20:00'
+  INTO v_is_unassigned
+  FROM public.shifts s
+  WHERE s.id = v_shift_overlap_target;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'reject_update_overlap_preserves_prior_values',
+    v_is_unassigned IS TRUE,
+    'preserved=' || COALESCE(v_is_unassigned::text, '<null>')
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US4: reject update moving shift_date to past.
+  v_shift_assignment_test := public.create_shift(
+    v_branch_id,
+    v_future + 9,
+    time '09:00',
+    time '12:00',
+    NULL,
+    '{}'::uuid[]
+  );
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_assignment_test;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.update_shift(
+      v_shift_assignment_test,
+      v_shift_updated_at,
+      v_past,
+      time '09:00',
+      time '12:00',
+      NULL
+    );
+    PERFORM pg_temp.record_shift_crud_result('reject_update_move_to_past', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'reject_update_move_to_past',
+        SQLERRM = 'shift_read_only_past_date',
+        SQLERRM
+      );
+  END;
+
+  -- US4: cancel future shift (soft-delete).
+  v_shift_assignment_test := public.create_shift(
+    v_branch_id,
+    v_future + 11,
+    time '13:00',
+    time '17:00',
+    NULL,
+    ARRAY[v_staff_doctor]::uuid[]
+  );
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_assignment_test;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.cancel_shift(v_shift_assignment_test, v_shift_updated_at);
+    v_err := NULL;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_err := SQLERRM;
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.deleted_at IS NOT NULL INTO v_is_unassigned FROM public.shifts s WHERE s.id = v_shift_assignment_test;
+  v_list_result := public.list_shifts(v_branch_id, v_future + 11, v_future + 11);
+  v_list_count := (
+    SELECT count(*)::int
+    FROM jsonb_array_elements(v_list_result) elem
+    WHERE elem->>'id' = v_shift_assignment_test::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'cancel_future_shift_soft_delete',
+    v_err IS NULL AND v_is_unassigned IS TRUE AND v_list_count = 0,
+    COALESCE(v_err, 'listed=' || v_list_count::text)
+  );
+
+  -- US4: reject edit/cancel on cancelled shift.
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_assignment_test;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.update_shift(
+      v_shift_assignment_test,
+      v_shift_updated_at,
+      v_future + 11,
+      time '13:00',
+      time '18:00',
+      NULL
+    );
+    PERFORM pg_temp.record_shift_crud_result('reject_update_cancelled_shift', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'reject_update_cancelled_shift',
+        SQLERRM = 'shift_cancelled',
+        SQLERRM
+      );
+  END;
+
+  BEGIN
+    PERFORM public.cancel_shift(v_shift_assignment_test, v_shift_updated_at);
+    PERFORM pg_temp.record_shift_crud_result('reject_cancel_already_cancelled', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'reject_cancel_already_cancelled',
+        SQLERRM = 'shift_cancelled',
+        SQLERRM
+      );
+  END;
+
+  -- US4: reject edit/cancel on past-date shift.
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.shifts (
+    id, organization_id, branch_id, shift_date, start_time, end_time, created_by, updated_by
+  )
+  VALUES (
+    'c2800000-0000-4000-8000-0000000000a1',
+    v_org_id,
+    v_branch_id,
+    v_past,
+    time '08:00',
+    time '12:00',
+    v_user_owner,
+    v_user_owner
+  )
+  RETURNING id INTO v_shift_past;
+
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_past;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.update_shift(
+      v_shift_past,
+      v_shift_updated_at,
+      v_future,
+      time '08:00',
+      time '12:00',
+      NULL
+    );
+    PERFORM pg_temp.record_shift_crud_result('reject_update_past_date_shift', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'reject_update_past_date_shift',
+        SQLERRM = 'shift_read_only_past_date',
+        SQLERRM
+      );
+  END;
+
+  BEGIN
+    PERFORM public.cancel_shift(v_shift_past, v_shift_updated_at);
+    PERFORM pg_temp.record_shift_crud_result('reject_cancel_past_date_shift', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'reject_cancel_past_date_shift',
+        SQLERRM = 'shift_read_only_past_date',
+        SQLERRM
+      );
+  END;
+
+  -- US4: audit shift.update and shift.cancel.
+  PERFORM set_config('role', 'postgres', true);
+  SELECT count(*)::int INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'shift.update' AND al.organization_id = v_org_id;
+  SELECT count(*)::int INTO v_add_audit_count
+  FROM public.audit_log al
+  WHERE al.action = 'shift.cancel' AND al.organization_id = v_org_id;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'audit_shift_update',
+    v_audit_count >= 1,
+    'count=' || v_audit_count::text
+  );
+  PERFORM pg_temp.record_shift_crud_result(
+    'audit_shift_cancel',
+    v_add_audit_count >= 1,
+    'count=' || v_add_audit_count::text
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+
   -- US2: list_shifts date-range filtering (only shifts within inclusive bounds).
   v_list_result := public.list_shifts(v_branch_id, v_future, v_future + 1);
   v_list_count := jsonb_array_length(v_list_result);

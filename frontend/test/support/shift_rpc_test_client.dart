@@ -66,8 +66,21 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
 
   DateTime detailUpdatedAt = DateTime.utc(2026, 6, 1, 10);
 
+  String detailShiftDate = '2026-06-10';
+  String detailStartTime = '09:00';
+  String detailEndTime = '17:00';
+  String? detailNotes;
+
   /// When set, [modify_shift_assignments] throws this exception.
   PostgrestException? modifyAssignmentsException;
+
+  /// When set, [update_shift] throws this exception.
+  PostgrestException? updateShiftException;
+
+  /// When set, [cancel_shift] throws this exception.
+  PostgrestException? cancelShiftException;
+
+  bool shiftCancelled = false;
 
   late final SettingsTableTestClient _tableClient;
 
@@ -83,12 +96,20 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
       paramsByFunction[fn] = Map<String, dynamic>.from(params);
     }
 
-    if (rpcException != null && fn != 'modify_shift_assignments') {
+    if (rpcException != null && fn != 'modify_shift_assignments' && fn != 'update_shift' && fn != 'cancel_shift') {
       return _ThrowingPostgrestRpc(rpcException!) as PostgrestFilterBuilder<T>;
     }
 
     if (fn == 'modify_shift_assignments' && modifyAssignmentsException != null) {
       return _ThrowingPostgrestRpc(modifyAssignmentsException!) as PostgrestFilterBuilder<T>;
+    }
+
+    if (fn == 'update_shift' && updateShiftException != null) {
+      return _ThrowingPostgrestRpc(updateShiftException!) as PostgrestFilterBuilder<T>;
+    }
+
+    if (fn == 'cancel_shift' && cancelShiftException != null) {
+      return _ThrowingPostgrestRpc(cancelShiftException!) as PostgrestFilterBuilder<T>;
     }
 
     final override = rpcResults[fn];
@@ -116,6 +137,8 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
     return switch (fn) {
       'create_shift' => defaultShiftId,
       'modify_shift_assignments' => _applyModifyAssignments(lastParams),
+      'update_shift' => _applyUpdateShift(lastParams),
+      'cancel_shift' => _applyCancelShift(),
       'get_shift_detail' => _buildShiftDetail(),
       'list_shifts' =>
         listShiftsPayload.where((row) => row['status']?.toString() != 'cancelled').toList(growable: false),
@@ -135,14 +158,14 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
       'shift': {
         'id': defaultShiftId,
         'branch_id': branchId,
-        'shift_date': lastParams?['p_shift_date'] ?? '2026-06-10',
-        'start_time': lastParams?['p_start_time'] ?? '09:00',
-        'end_time': lastParams?['p_end_time'] ?? '17:00',
-        'notes': null,
-        'status': status,
+        'shift_date': detailShiftDate,
+        'start_time': detailStartTime,
+        'end_time': detailEndTime,
+        'notes': detailNotes,
+        'status': shiftCancelled ? 'cancelled' : status,
         'is_unassigned': assigneeCount == 0,
         'is_past': false,
-        'is_read_only': false,
+        'is_read_only': shiftCancelled,
         'updated_at': detailUpdatedAt.toUtc().toIso8601String(),
       },
       'assignments': List<Map<String, dynamic>>.from(detailAssignments),
@@ -182,6 +205,35 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
       'assignee_count': assigneeCount,
       'updated_at': detailUpdatedAt.toUtc().toIso8601String(),
     };
+  }
+
+  dynamic _applyUpdateShift(Map<String, dynamic>? params) {
+    if (params != null) {
+      final date = params['p_shift_date']?.toString();
+      final start = params['p_start_time']?.toString();
+      final end = params['p_end_time']?.toString();
+      if (date != null && date.isNotEmpty) {
+        detailShiftDate = date;
+      }
+      if (start != null && start.isNotEmpty) {
+        detailStartTime = start;
+      }
+      if (end != null && end.isNotEmpty) {
+        detailEndTime = end;
+      }
+      if (params.containsKey('p_notes')) {
+        final notes = params['p_notes']?.toString().trim();
+        detailNotes = notes == null || notes.isEmpty ? null : notes;
+      }
+    }
+    detailUpdatedAt = detailUpdatedAt.add(const Duration(minutes: 1));
+    return null;
+  }
+
+  dynamic _applyCancelShift() {
+    shiftCancelled = true;
+    detailUpdatedAt = detailUpdatedAt.add(const Duration(minutes: 1));
+    return null;
   }
 }
 

@@ -141,17 +141,17 @@ description: "Task list for Shift Management (V1-7) feature implementation"
 
 ### Tests for User Story 4
 
-- [ ] T034 [P] [US4] In `backend/tests/shift_management_crud.sql`, add scenarios: update date/time/notes; reject update causing overlap; reject update moving `shift_date` to past; cancel future shift (soft-delete); reject edit/cancel on cancelled shift; reject edit/cancel on past-date shift; audit `shift.update`/`shift.cancel`
-- [ ] T035 [P] [US4] Create `backend/tests/shift_management_concurrency.sql` simulating concurrent `update_shift` with mismatched `p_expected_updated_at` — second txn rejected with `stale_shift`
-- [ ] T036 [P] [US4] Add `frontend/test/integration/shifts/shift_edit_cancel_test.dart` covering US4 acceptance scenarios 1, 2, 3, 4, 5, 6
+- [X] T034 [P] [US4] In `backend/tests/shift_management_crud.sql`, add scenarios: update date/time/notes; reject update causing overlap; reject update moving `shift_date` to past; cancel future shift (soft-delete); reject edit/cancel on cancelled shift; reject edit/cancel on past-date shift; audit `shift.update`/`shift.cancel`
+- [X] T035 [P] [US4] Create `backend/tests/shift_management_concurrency.sql` simulating concurrent `update_shift` with mismatched `p_expected_updated_at` — second txn rejected with `stale_shift`
+- [X] T036 [P] [US4] Add `frontend/test/integration/shifts/shift_edit_cancel_test.dart` covering US4 acceptance scenarios 1, 2, 3, 4, 5, 6
 
 ### Implementation for User Story 4
 
-- [ ] T037 [P] [US4] Add `update_shift` and `cancel_shift` RPCs in `backend/supabase/migrations/20260606180000_shift_management.sql` per `specs/008-shift-management/contracts/shift-mutations.md`
-- [ ] T038 [P] [US4] Implement `ShiftRepository.updateShift` and `cancelShift` in `frontend/lib/features/shifts/data/shift_repository.dart`
-- [ ] T039 [US4] Extend `shift_detail_page.dart` with edit mode reusing `shift_form_fields.dart` (date/time/notes update; overlap and past-date error display)
-- [ ] T040 [US4] Implement `frontend/lib/features/shifts/presentation/widgets/cancel_shift_dialog.dart` with confirmation; on success navigate back to calendar excluding cancelled shift
-- [ ] T041 [US4] Wire `stale_shift` refresh UX across edit, assignment, and cancel flows in `shift_detail_notifier.dart`
+- [X] T037 [P] [US4] Add `update_shift` and `cancel_shift` RPCs in `backend/supabase/migrations/20260606180000_shift_management.sql` per `specs/008-shift-management/contracts/shift-mutations.md`
+- [X] T038 [P] [US4] Implement `ShiftRepository.updateShift` and `cancelShift` in `frontend/lib/features/shifts/data/shift_repository.dart`
+- [X] T039 [US4] Extend `shift_detail_page.dart` with edit mode reusing `shift_form_fields.dart` (date/time/notes update; overlap and past-date error display)
+- [X] T040 [US4] Implement `frontend/lib/features/shifts/presentation/widgets/cancel_shift_dialog.dart` with confirmation; on success navigate back to calendar excluding cancelled shift
+- [X] T041 [US4] Wire `stale_shift` refresh UX across edit, assignment, and cancel flows in `shift_detail_notifier.dart`
 
 **Checkpoint**: All four user stories are independently functional.
 
@@ -161,12 +161,12 @@ description: "Task list for Shift Management (V1-7) feature implementation"
 
 **Purpose**: Cross-story hardening, performance, and operator verification.
 
-- [ ] T042 [P] Ensure `shift_calendar_provider.dart` clears cached items and refetches on active-branch switch (no cross-branch data bleed)
-- [ ] T043 [P] Add connection-error and validation-failure states across `shift_create_page.dart` and `shift_detail_page.dart` without optimistic persistence (NFR-005)
-- [ ] T044 [P] Add unit tests in `frontend/test/unit/shifts/shift_repository_test.dart` and `frontend/test/widget/shifts/shift_conflict_banner_test.dart` for overlap payload parsing and read-only gating
-- [ ] T045 Run `backend/tests/run_shift_management_tests.sh` and fix any failures
-- [ ] T046 Execute `specs/008-shift-management/quickstart.md` operator walkthrough end-to-end and record pass/fail per step
-- [ ] T047 Review constitution compliance: overlap/past-date/permission rules enforced only in PostgreSQL; no direct table writes; audit log on all mutations; no AI dependency
+- [X] T042 [P] Ensure `shift_calendar_provider.dart` clears cached items and refetches on active-branch switch (no cross-branch data bleed)
+- [X] T043 [P] Add connection-error and validation-failure states across `shift_create_page.dart` and `shift_detail_page.dart` without optimistic persistence (NFR-005)
+- [X] T044 [P] Add unit tests in `frontend/test/unit/shifts/shift_repository_test.dart` and `frontend/test/widget/shifts/shift_conflict_banner_test.dart` for overlap payload parsing and read-only gating
+- [X] T045 Run `backend/tests/run_shift_management_tests.sh` and fix any failures
+- [X] T046 Execute `specs/008-shift-management/quickstart.md` operator walkthrough end-to-end and record pass/fail per step
+- [X] T047 Review constitution compliance: overlap/past-date/permission rules enforced only in PostgreSQL; no direct table writes; audit log on all mutations; no AI dependency
 
 ---
 

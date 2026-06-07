@@ -42,6 +42,17 @@ BEGIN
   END IF;
 END $$;
 
+-- Shift management (V1-7): clear assignments before shifts, before branches.
+DO $$
+BEGIN
+  IF to_regclass('public.shift_assignments') IS NOT NULL THEN
+    DELETE FROM public.shift_assignments WHERE true;
+  END IF;
+  IF to_regclass('public.shifts') IS NOT NULL THEN
+    DELETE FROM public.shifts WHERE true;
+  END IF;
+END $$;
+
 DELETE FROM public.appointments WHERE true;
 DELETE FROM public.audit_log WHERE true;
 DELETE FROM public.patients WHERE true;

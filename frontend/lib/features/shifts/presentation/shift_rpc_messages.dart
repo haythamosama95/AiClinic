@@ -9,6 +9,8 @@ String shiftMessageForRpc(RpcFailure failure) {
     'shift_read_only_past_date' => 'Only today and future dates may be scheduled.',
     'notes_too_long' => 'Notes must be 500 characters or fewer.',
     'permission_denied' => 'You do not have permission to manage shifts.',
+    'shift_cancelled' => 'This shift was cancelled and can no longer be changed.',
+    'stale_shift' => 'This shift was updated elsewhere. Reload and try again.',
     'RPC_NOT_CONFIGURED' =>
       'Shift database permissions are incomplete. Ask your administrator to run the latest Supabase migrations.',
     'RPC_NOT_APPLIED' =>

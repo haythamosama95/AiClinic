@@ -131,7 +131,7 @@ class ShiftCalendarController extends Notifier<ShiftCalendarState> {
 
   Future<void> setBranchFilter(String? branchId) async {
     final normalized = _normalizedOrNull(branchId);
-    state = state.copyWith(selectedBranchId: normalized, items: const []);
+    state = state.copyWith(selectedBranchId: normalized, items: const [], loading: true, error: null);
     await refresh();
   }
 
