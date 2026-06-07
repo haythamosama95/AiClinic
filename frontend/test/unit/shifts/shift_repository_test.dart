@@ -32,6 +32,67 @@ void main() {
       expect(ShiftRepository.parseOverlapConflicts('permission_denied'), isEmpty);
     });
 
+    test('parseOverlapConflicts prefers PostgREST details over message body (#8)', () {
+      const details =
+          '[{"staff_member_id":"11111111-1111-4111-8111-111111111111","display_name":"From Detail","conflicting_shift_id":"22222222-2222-4222-8222-222222222222","start_time":"10:00","end_time":"12:00"}]';
+
+      final conflicts = ShiftRepository.parseOverlapConflicts('shift_overlap', details: details);
+
+      expect(conflicts, hasLength(1));
+      expect(conflicts.first.displayName, 'From Detail');
+      expect(conflicts.first.startTime, '10:00');
+    });
+
+    test('createShift maps unique violation to duplicate_staff_assignment (#7)', () async {
+      client.rpcException = PostgrestException(
+        message: 'duplicate key value violates unique constraint',
+        code: '23505',
+      );
+
+      expect(
+        () => repository.createShift(
+          branchId: client.branchId,
+          shiftDate: DateTime(2026, 6, 10),
+          startTime: '09:00',
+          endTime: '17:00',
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'duplicate_staff_assignment')),
+      );
+    });
+
+    test('createShift does not misclassify shift_overlap_unresolved as shift_overlap (#7)', () async {
+      client.rpcException = PostgrestException(message: 'shift_overlap_unresolved for staff', code: 'P0001');
+
+      expect(
+        () => repository.createShift(
+          branchId: client.branchId,
+          shiftDate: DateTime(2026, 6, 10),
+          startTime: '09:00',
+          endTime: '17:00',
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'POSTGREST_ERROR')),
+      );
+    });
+
+    test('listShifts rejects ranges wider than 366 days (#15)', () {
+      expect(
+        () => repository.listShifts(
+          branchId: client.branchId,
+          dateFrom: DateTime(2026, 1, 1),
+          dateTo: DateTime(2027, 1, 10),
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+      );
+      expect(client.lastFunction, isNull);
+    });
+
+    test('listActiveStaffForBranch returns active branch staff (#10)', () async {
+      final staff = await repository.listActiveStaffForBranch(client.branchId);
+
+      expect(staff, hasLength(2));
+      expect(staff.map((member) => member.fullName), containsAll(['Dr Shift', 'Nurse Shift']));
+    });
+
     test('updateShift sends expected_updated_at and field params', () async {
       final expectedAt = DateTime.utc(2026, 6, 1, 12);
 

@@ -6,11 +6,11 @@ import 'package:flutter/foundation.dart';
 /// Branch summary bundled with shift detail (V1-7).
 @immutable
 class ShiftBranchSummary {
-  const ShiftBranchSummary({required this.id, required this.name, required this.code});
+  const ShiftBranchSummary({required this.id, required this.name, this.code});
 
   final String id;
   final String name;
-  final String code;
+  final String? code;
 
   static ShiftBranchSummary? fromRow(Map<String, dynamic>? row) {
     if (row == null) {
@@ -18,10 +18,11 @@ class ShiftBranchSummary {
     }
     final id = row['id']?.toString();
     final name = row['name']?.toString().trim();
-    final code = row['code']?.toString().trim();
-    if (id == null || id.isEmpty || name == null || name.isEmpty || code == null || code.isEmpty) {
+    if (id == null || id.isEmpty || name == null || name.isEmpty) {
       return null;
     }
+    final codeRaw = row['code']?.toString().trim();
+    final code = codeRaw == null || codeRaw.isEmpty ? null : codeRaw;
     return ShiftBranchSummary(id: id, name: name, code: code);
   }
 }

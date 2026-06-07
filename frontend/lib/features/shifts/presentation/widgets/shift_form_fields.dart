@@ -134,6 +134,8 @@ class ShiftFormFields extends StatelessWidget {
           controller: notesController,
           enabled: enabled,
           keyboardType: TextInputType.multiline,
+          maxLength: maxNotesLength,
+          maxLines: 4,
           validator: (value) {
             final length = (value ?? '').trim().length;
             if (length > maxNotesLength) {

@@ -15,6 +15,8 @@ class AppFormField extends StatelessWidget {
     this.obscureText = false,
     this.enabled = true,
     this.keyboardType,
+    this.maxLength,
+    this.maxLines,
     this.onChanged,
   });
 
@@ -26,6 +28,8 @@ class AppFormField extends StatelessWidget {
   final bool obscureText;
   final bool enabled;
   final TextInputType? keyboardType;
+  final int? maxLength;
+  final int? maxLines;
   final ValueChanged<String>? onChanged;
 
   @override
@@ -41,6 +45,8 @@ class AppFormField extends StatelessWidget {
           obscureText: obscureText,
           enabled: enabled,
           keyboardType: keyboardType,
+          maxLength: maxLength,
+          maxLines: maxLines,
           onChanged: onChanged,
           decoration: InputDecoration(hintText: hint),
         ),

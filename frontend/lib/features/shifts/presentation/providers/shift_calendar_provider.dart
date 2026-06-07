@@ -18,6 +18,7 @@ class ShiftCalendarState {
     required this.focusDate,
     required this.items,
     this.selectedBranchId,
+    this.firstDayOfWeekIndex = DateTime.monday % 7,
     this.loading = false,
     this.error,
   });
@@ -26,6 +27,7 @@ class ShiftCalendarState {
   final DateTime focusDate;
   final List<ShiftListItem> items;
   final String? selectedBranchId;
+  final int firstDayOfWeekIndex;
   final bool loading;
   final String? error;
 
@@ -34,6 +36,7 @@ class ShiftCalendarState {
     DateTime? focusDate,
     List<ShiftListItem>? items,
     Object? selectedBranchId = _sentinel,
+    int? firstDayOfWeekIndex,
     bool? loading,
     Object? error = _sentinel,
   }) {
@@ -42,6 +45,7 @@ class ShiftCalendarState {
       focusDate: focusDate ?? this.focusDate,
       items: items ?? this.items,
       selectedBranchId: identical(selectedBranchId, _sentinel) ? this.selectedBranchId : selectedBranchId as String?,
+      firstDayOfWeekIndex: firstDayOfWeekIndex ?? this.firstDayOfWeekIndex,
       loading: loading ?? this.loading,
       error: identical(error, _sentinel) ? this.error : error as String?,
     );
@@ -51,6 +55,8 @@ class ShiftCalendarState {
 const _sentinel = Object();
 
 class ShiftCalendarController extends Notifier<ShiftCalendarState> {
+  int _refreshGeneration = 0;
+
   @override
   ShiftCalendarState build() {
     final today = DateTime.now();
@@ -76,9 +82,23 @@ class ShiftCalendarController extends Notifier<ShiftCalendarState> {
     return initial;
   }
 
+  void setFirstDayOfWeekIndex(int index) {
+    if (index == state.firstDayOfWeekIndex) {
+      return;
+    }
+    state = state.copyWith(firstDayOfWeekIndex: index);
+    if (state.mode == ShiftCalendarMode.week) {
+      unawaited(refresh());
+    }
+  }
+
   Future<void> refresh() async {
+    final generation = ++_refreshGeneration;
     final branchId = _normalizedOrNull(state.selectedBranchId);
     if (branchId == null) {
+      if (generation != _refreshGeneration) {
+        return;
+      }
       state = state.copyWith(
         loading: false,
         items: const [],
@@ -89,15 +109,24 @@ class ShiftCalendarController extends Notifier<ShiftCalendarState> {
 
     state = state.copyWith(loading: true, error: null);
     try {
-      final bounds = boundsFor(state.focusDate, state.mode);
+      final bounds = boundsFor(state.focusDate, state.mode, firstDayOfWeekIndex: state.firstDayOfWeekIndex);
       final items = await ref
           .read(shiftRepositoryProvider)
           .listShifts(branchId: branchId, dateFrom: bounds.$1, dateTo: bounds.$2);
+      if (generation != _refreshGeneration) {
+        return;
+      }
       state = state.copyWith(loading: false, items: items, error: null);
     } on RpcFailure catch (error) {
+      if (generation != _refreshGeneration) {
+        return;
+      }
       AppLog.warning('shifts.calendar.refresh failed code=${error.code}', name: 'shifts');
       state = state.copyWith(loading: false, items: const [], error: shiftMessageForRpc(error));
     } catch (error) {
+      if (generation != _refreshGeneration) {
+        return;
+      }
       AppLog.warning('shifts.calendar.refresh failed: $error', name: 'shifts');
       state = state.copyWith(loading: false, items: const [], error: 'Could not load shifts. Please retry.');
     }
@@ -138,14 +167,23 @@ class ShiftCalendarController extends Notifier<ShiftCalendarState> {
 
   Future<void> setBranchFilter(String? branchId) async {
     final normalized = _normalizedOrNull(branchId);
+    if (normalized == state.selectedBranchId) {
+      return;
+    }
     state = state.copyWith(selectedBranchId: normalized, items: const [], loading: true, error: null);
     await refresh();
   }
 
-  static (DateTime, DateTime) boundsFor(DateTime focusDate, ShiftCalendarMode mode) {
+  static (DateTime, DateTime) boundsFor(
+    DateTime focusDate,
+    ShiftCalendarMode mode, {
+    int firstDayOfWeekIndex = DateTime.monday % 7,
+  }) {
     final dayStart = DateTime(focusDate.year, focusDate.month, focusDate.day);
     if (mode == ShiftCalendarMode.week) {
-      final start = dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
+      final dayIndex = dayStart.weekday % 7;
+      final daysFromWeekStart = (dayIndex - firstDayOfWeekIndex + 7) % 7;
+      final start = dayStart.subtract(Duration(days: daysFromWeekStart));
       final end = start.add(const Duration(days: 6));
       return (start, end);
     }

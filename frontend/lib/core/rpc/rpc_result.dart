@@ -79,9 +79,10 @@ class RpcResult {
 
 /// Thrown when an RPC returns `success = false`.
 class RpcFailure implements Exception {
-  RpcFailure(this.result);
+  RpcFailure(this.result, {this.details});
 
   final RpcResult result;
+  final Object? details;
 
   String get code => result.errorCode ?? 'RPC_ERROR';
 

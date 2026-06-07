@@ -48,6 +48,23 @@ class ShiftOverlapConflict {
     );
   }
 
+  static List<ShiftOverlapConflict> parseFromRpcDetails(Object? details) {
+    if (details == null) {
+      return const [];
+    }
+    if (details is List) {
+      return parseList(details);
+    }
+    if (details is String) {
+      try {
+        return parseList(jsonDecode(details.trim()));
+      } catch (_) {
+        return const [];
+      }
+    }
+    return const [];
+  }
+
   static List<ShiftOverlapConflict> parseFromRpcMessage(String message) {
     const prefix = 'shift_overlap:';
     final start = message.indexOf(prefix);
@@ -62,6 +79,14 @@ class ShiftOverlapConflict {
     } catch (_) {
       return const [];
     }
+  }
+
+  static List<ShiftOverlapConflict> parseFromRpc({required String message, Object? details}) {
+    final fromDetails = parseFromRpcDetails(details);
+    if (fromDetails.isNotEmpty) {
+      return fromDetails;
+    }
+    return parseFromRpcMessage(message);
   }
 
   static List<ShiftOverlapConflict> parseList(dynamic raw) {

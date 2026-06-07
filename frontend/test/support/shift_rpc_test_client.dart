@@ -64,6 +64,9 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
   bool listShiftsDenied = false;
   String listShiftsErrorMessage = 'permission_denied';
 
+  /// When non-empty, each [list_shifts] call consumes the next delayed future (for stale-response tests).
+  List<Future<dynamic>> listShiftsDelayedResponses = [];
+
   /// Mutable assignment rows for [get_shift_detail] / [modify_shift_assignments] simulations.
   late List<Map<String, dynamic>> detailAssignments;
 
@@ -125,6 +128,10 @@ class ShiftRpcTestClient extends Fake implements SupabaseClient {
     if (fn == 'list_shifts' && listShiftsDenied) {
       return _ThrowingPostgrestRpc(PostgrestException(message: listShiftsErrorMessage, code: 'P0001'))
           as PostgrestFilterBuilder<T>;
+    }
+
+    if (fn == 'list_shifts' && listShiftsDelayedResponses.isNotEmpty) {
+      return _DelayedPostgrestRpc(listShiftsDelayedResponses.removeAt(0)) as PostgrestFilterBuilder<T>;
     }
 
     return FakePostgrestRpc(_defaultPayload(fn, override)) as PostgrestFilterBuilder<T>;
@@ -278,5 +285,16 @@ class _ThrowingPostgrestRpc extends Fake implements PostgrestFilterBuilder<dynam
   @override
   Future<R> then<R>(FutureOr<R> Function(dynamic value) onValue, {Function? onError}) {
     return Future<dynamic>.error(exception).then(onValue, onError: onError);
+  }
+}
+
+class _DelayedPostgrestRpc extends Fake implements PostgrestFilterBuilder<dynamic> {
+  _DelayedPostgrestRpc(this.response);
+
+  final Future<dynamic> response;
+
+  @override
+  Future<R> then<R>(FutureOr<R> Function(dynamic value) onValue, {Function? onError}) {
+    return response.then(onValue, onError: onError);
   }
 }

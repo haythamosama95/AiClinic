@@ -44,6 +44,18 @@ class _ShiftCalendarPageState extends ConsumerState<ShiftCalendarPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final firstDayOfWeekIndex = MaterialLocalizations.of(context).firstDayOfWeekIndex;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      ref.read(shiftCalendarProvider.notifier).setFirstDayOfWeekIndex(firstDayOfWeekIndex);
+    });
+  }
+
+  @override
   void dispose() {
     _eventController.dispose();
     super.dispose();
@@ -374,7 +386,11 @@ class _ShiftCalendarPageState extends ConsumerState<ShiftCalendarPage> {
 
   String _rangeLabel(BuildContext context, ShiftCalendarState state) {
     final localizations = MaterialLocalizations.of(context);
-    final (start, end) = ShiftCalendarController.boundsFor(state.focusDate, state.mode);
+    final (start, end) = ShiftCalendarController.boundsFor(
+      state.focusDate,
+      state.mode,
+      firstDayOfWeekIndex: state.firstDayOfWeekIndex,
+    );
 
     if (state.mode == ShiftCalendarMode.month) {
       return localizations.formatMonthYear(DateTime(state.focusDate.year, state.focusDate.month));

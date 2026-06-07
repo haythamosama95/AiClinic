@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientP
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_assignment_result.dart';
+import 'package:ai_clinic/features/shifts/domain/shift_branch_staff.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_detail.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_overlap_conflict.dart';
@@ -22,6 +23,7 @@ class ShiftRepository {
     required String branchId,
     required DateTime dateFrom,
     required DateTime dateTo,
+    bool includeCancelled = false,
   }) async {
     final id = branchId.trim();
     if (id.isEmpty) {
@@ -33,11 +35,15 @@ class ShiftRepository {
     if (to.isBefore(from)) {
       throw _clientInputFailure('End date must be on or after the start date.');
     }
+    if (to.difference(from).inDays > 366) {
+      throw _clientInputFailure('Date range cannot exceed 366 days.');
+    }
 
     final raw = await _invokeJsonRpc('list_shifts', {
       'p_branch_id': id,
       'p_date_from': _formatDate(from),
       'p_date_to': _formatDate(to),
+      'p_include_cancelled': includeCancelled,
     });
 
     if (raw is! List) {
@@ -90,8 +96,32 @@ class ShiftRepository {
     return shiftId;
   }
 
-  static List<ShiftOverlapConflict> parseOverlapConflicts(String message) {
-    return ShiftOverlapConflict.parseFromRpcMessage(message);
+  static List<ShiftOverlapConflict> parseOverlapConflicts(String message, {Object? details}) {
+    return ShiftOverlapConflict.parseFromRpc(message: message, details: details);
+  }
+
+  Future<List<ShiftBranchStaffMember>> listActiveStaffForBranch(String branchId) async {
+    final id = branchId.trim();
+    if (id.isEmpty) {
+      return const [];
+    }
+
+    final rows = await _client
+        .from('staff_branch_assignments')
+        .select('staff_member_id, staff_members(id, full_name, role, is_active)')
+        .eq('branch_id', id)
+        .eq('is_deleted', false);
+
+    final members = <ShiftBranchStaffMember>[];
+    for (final row in rows) {
+      final member = ShiftBranchStaffMember.fromAssignmentRow(Map<String, dynamic>.from(row));
+      if (member != null) {
+        members.add(member);
+      }
+    }
+
+    members.sort((a, b) => a.fullName.compareTo(b.fullName));
+    return members;
   }
 
   Future<ShiftAssignmentResult> modifyAssignments({
@@ -213,12 +243,20 @@ class ShiftRepository {
         );
       }
 
-      final code = _extractShiftErrorCode(message);
-      throw RpcFailure(RpcResult(success: false, errorCode: code, errorMessage: message));
+      final code = _extractShiftErrorCode(error);
+      throw RpcFailure(
+        RpcResult(success: false, errorCode: code, errorMessage: message),
+        details: error.details,
+      );
     }
   }
 
-  static String _extractShiftErrorCode(String message) {
+  static String _extractShiftErrorCode(PostgrestException error) {
+    final message = error.message;
+    if (error.code == '23505' || message.contains('23505')) {
+      return 'duplicate_staff_assignment';
+    }
+
     const knownCodes = <String>[
       'permission_denied',
       'shift_not_found',
@@ -232,14 +270,23 @@ class ShiftRepository {
       'notes_too_long',
       'invalid_shift_date',
       'invalid_date_range',
+      'duplicate_staff_assignment',
     ];
 
     for (final code in knownCodes) {
-      if (message.startsWith(code) || message.contains(code)) {
+      if (_messageContainsErrorCode(message, code)) {
         return code;
       }
     }
     return 'POSTGREST_ERROR';
+  }
+
+  static bool _messageContainsErrorCode(String message, String code) {
+    if (message == code) {
+      return true;
+    }
+    final pattern = RegExp('(?:^|ERROR:\\s*)${RegExp.escape(code)}(?::|\\s|\$)');
+    return pattern.hasMatch(message);
   }
 
   static List<String> _dedupeStaffIds(List<String> staffIds) {

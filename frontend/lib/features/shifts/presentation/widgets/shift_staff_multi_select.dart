@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/config/supabase_config.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/shifts/domain/shift_branch_staff.dart';
+import 'package:ai_clinic/features/shifts/presentation/providers/shift_branch_staff_provider.dart';
 
 /// Multi-select of active staff assigned to the active branch (V1-7 US1).
-class ShiftStaffMultiSelect extends ConsumerStatefulWidget {
+class ShiftStaffMultiSelect extends ConsumerWidget {
   const ShiftStaffMultiSelect({
     required this.selectedStaffIds,
     required this.onChanged,
@@ -21,105 +21,31 @@ class ShiftStaffMultiSelect extends ConsumerStatefulWidget {
   final Set<String> excludeStaffIds;
 
   @override
-  ConsumerState<ShiftStaffMultiSelect> createState() => _ShiftStaffMultiSelectState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final branchId = ref.watch(authSessionProvider.select((session) => session.context?.activeBranchId));
 
-class _BranchStaffOption {
-  const _BranchStaffOption({required this.id, required this.fullName, required this.role});
-
-  final String id;
-  final String fullName;
-  final StaffRole role;
-}
-
-class _ShiftStaffMultiSelectState extends ConsumerState<ShiftStaffMultiSelect> {
-  List<_BranchStaffOption> _options = const [];
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadStaff();
-  }
-
-  Future<void> _loadStaff() async {
-    final branchId = ref.read(authSessionProvider).context?.activeBranchId;
-    if (branchId == null || branchId.isEmpty) {
-      setState(() {
-        _loading = false;
-        _error = 'Select an active branch before assigning staff.';
-      });
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _error = null;
+    ref.listen<String?>(authSessionProvider.select((session) => session.context?.activeBranchId), (previous, next) {
+      if (previous != next && selectedStaffIds.isNotEmpty) {
+        onChanged({});
+      }
     });
 
-    try {
-      final rows = await ref
-          .read(supabaseClientProvider)
-          .from('staff_branch_assignments')
-          .select('staff_member_id, staff_members(id, full_name, role, is_active)')
-          .eq('branch_id', branchId)
-          .eq('is_deleted', false);
-
-      final options = <_BranchStaffOption>[];
-      for (final row in rows) {
-        final staffRaw = row['staff_members'];
-        if (staffRaw is! Map) {
-          continue;
-        }
-        final staff = Map<String, dynamic>.from(staffRaw);
-        if (staff['is_active'] != true) {
-          continue;
-        }
-        final id = staff['id']?.toString();
-        final fullName = staff['full_name']?.toString().trim();
-        final role = StaffRole.tryParse(staff['role']?.toString());
-        if (id == null || id.isEmpty || fullName == null || fullName.isEmpty || role == null) {
-          continue;
-        }
-        options.add(_BranchStaffOption(id: id, fullName: fullName, role: role));
-      }
-
-      options.sort((a, b) => a.fullName.compareTo(b.fullName));
-      final filtered = options.where((option) => !widget.excludeStaffIds.contains(option.id)).toList(growable: false);
-
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _options = filtered;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _loading = false;
-        _error = 'Could not load staff for this branch.';
-      });
+    if (branchId == null || branchId.trim().isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Select an active branch before assigning staff.',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ],
+      );
     }
-  }
 
-  void _toggleStaff(String staffId, bool selected) {
-    final next = Set<String>.from(widget.selectedStaffIds);
-    if (selected) {
-      next.add(staffId);
-    } else {
-      next.remove(staffId);
-    }
-    widget.onChanged(next);
-  }
+    final staffAsync = ref.watch(shiftBranchStaffProvider(branchId));
 
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const InputDecorator(
+    return staffAsync.when(
+      loading: () => const InputDecorator(
         decoration: InputDecoration(labelText: 'Staff (optional)'),
         child: Row(
           children: [
@@ -128,20 +54,50 @@ class _ShiftStaffMultiSelectState extends ConsumerState<ShiftStaffMultiSelect> {
             Text('Loading staff…'),
           ],
         ),
-      );
-    }
-
-    if (_error != null) {
-      return Column(
+      ),
+      error: (_, __) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          TextButton(onPressed: _loadStaff, child: const Text('Retry')),
+          Text('Could not load staff for this branch.', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          TextButton(onPressed: () => ref.invalidate(shiftBranchStaffProvider(branchId)), child: const Text('Retry')),
         ],
-      );
-    }
+      ),
+      data: (options) => _StaffOptionsList(
+        options: options.where((option) => !excludeStaffIds.contains(option.id)).toList(growable: false),
+        selectedStaffIds: selectedStaffIds,
+        enabled: enabled,
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
 
-    if (_options.isEmpty) {
+class _StaffOptionsList extends StatelessWidget {
+  const _StaffOptionsList({
+    required this.options,
+    required this.selectedStaffIds,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final List<ShiftBranchStaffMember> options;
+  final Set<String> selectedStaffIds;
+  final bool enabled;
+  final ValueChanged<Set<String>> onChanged;
+
+  void _toggleStaff(String staffId, bool selected) {
+    final next = Set<String>.from(selectedStaffIds);
+    if (selected) {
+      next.add(staffId);
+    } else {
+      next.remove(staffId);
+    }
+    onChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (options.isEmpty) {
       return const InputDecorator(
         decoration: InputDecoration(labelText: 'Staff (optional)'),
         child: Text('No active staff are assigned to this branch. You can save an unassigned shift.'),
@@ -154,15 +110,15 @@ class _ShiftStaffMultiSelectState extends ConsumerState<ShiftStaffMultiSelect> {
       children: [
         Text('Staff (optional)', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 8),
-        for (final option in _options)
+        for (final option in options)
           CheckboxListTile(
             key: Key('shift_staff_option_${option.id}'),
-            value: widget.selectedStaffIds.contains(option.id),
-            enabled: widget.enabled,
+            value: selectedStaffIds.contains(option.id),
+            enabled: enabled,
             title: Text(option.fullName),
             subtitle: Text(option.role.wireValue.replaceAll('_', ' ')),
             controlAffinity: ListTileControlAffinity.leading,
-            onChanged: widget.enabled ? (checked) => _toggleStaff(option.id, checked ?? false) : null,
+            onChanged: enabled ? (checked) => _toggleStaff(option.id, checked ?? false) : null,
           ),
       ],
     );

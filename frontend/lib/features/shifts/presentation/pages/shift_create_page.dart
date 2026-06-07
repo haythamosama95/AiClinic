@@ -109,7 +109,7 @@ class _ShiftCreatePageState extends ConsumerState<ShiftCreatePage> {
       if (error.code == 'shift_overlap') {
         setState(() {
           _isSaving = false;
-          _conflicts = ShiftRepository.parseOverlapConflicts(error.message);
+          _conflicts = ShiftRepository.parseOverlapConflicts(error.message, details: error.details);
         });
         return;
       }

@@ -210,7 +210,7 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
         state = AsyncData(
           currentAfter.copyWith(
             mutationStatus: ShiftDetailMutationStatus.error,
-            overlapConflicts: ShiftRepository.parseOverlapConflicts(error.message),
+            overlapConflicts: ShiftRepository.parseOverlapConflicts(error.message, details: error.details),
           ),
         );
         return false;

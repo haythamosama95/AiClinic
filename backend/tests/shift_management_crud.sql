@@ -352,11 +352,11 @@ BEGIN
     PERFORM pg_temp.record_shift_crud_result('reject_overlap_with_payload', false, 'no exception');
   EXCEPTION
     WHEN OTHERS THEN
-      v_overlap_detail := SQLERRM;
+      GET STACKED DIAGNOSTICS v_overlap_detail = PG_EXCEPTION_DETAIL;
       PERFORM pg_temp.record_shift_crud_result(
         'reject_overlap_with_payload',
-        SQLERRM LIKE 'shift_overlap:%' AND SQLERRM LIKE '%Dr CRUD%',
-        v_overlap_detail
+        SQLERRM = 'shift_overlap' AND v_overlap_detail LIKE '%Dr CRUD%',
+        'msg=' || SQLERRM || ' detail=' || COALESCE(v_overlap_detail, '<null>')
       );
   END;
 
@@ -540,11 +540,11 @@ BEGIN
     PERFORM pg_temp.record_shift_crud_result('assignment_reject_overlap_on_add', false, 'no exception');
   EXCEPTION
     WHEN OTHERS THEN
-      v_overlap_detail := SQLERRM;
+      GET STACKED DIAGNOSTICS v_overlap_detail = PG_EXCEPTION_DETAIL;
       PERFORM pg_temp.record_shift_crud_result(
         'assignment_reject_overlap_on_add',
-        SQLERRM LIKE 'shift_overlap:%' AND SQLERRM LIKE '%Dr CRUD%',
-        v_overlap_detail
+        SQLERRM = 'shift_overlap' AND v_overlap_detail LIKE '%Dr CRUD%',
+        'msg=' || SQLERRM || ' detail=' || COALESCE(v_overlap_detail, '<null>')
       );
   END;
 
@@ -783,11 +783,11 @@ BEGIN
     PERFORM pg_temp.record_shift_crud_result('reject_update_overlap', false, 'no exception');
   EXCEPTION
     WHEN OTHERS THEN
-      v_overlap_detail := SQLERRM;
+      GET STACKED DIAGNOSTICS v_overlap_detail = PG_EXCEPTION_DETAIL;
       PERFORM pg_temp.record_shift_crud_result(
         'reject_update_overlap',
-        SQLERRM LIKE 'shift_overlap:%',
-        v_overlap_detail
+        SQLERRM = 'shift_overlap',
+        'msg=' || SQLERRM || ' detail=' || COALESCE(v_overlap_detail, '<null>')
       );
   END;
 
@@ -1098,6 +1098,36 @@ BEGIN
     'get_shift_detail_read_only_past_date',
     v_is_read_only IS TRUE AND v_is_past IS TRUE,
     'read_only=' || COALESCE(v_is_read_only::text, '<null>') || ' past=' || COALESCE(v_is_past::text, '<null>')
+  );
+
+  -- Medium #14: cancelled shifts visible when p_include_cancelled = true.
+  v_list_result := public.list_shifts(v_branch_id, v_future, v_future + 30, true);
+  v_list_count := (
+    SELECT count(*)::int
+    FROM jsonb_array_elements(v_list_result) elem
+    WHERE elem->>'id' = v_shift_active::text
+      AND elem->>'status' = 'cancelled'
+  );
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'list_shifts_include_cancelled',
+    v_list_count = 1,
+    'cancelled_visible=' || v_list_count::text
+  );
+
+  -- Medium #15: date range wider than 366 days rejected.
+  v_err := NULL;
+  BEGIN
+    PERFORM public.list_shifts(v_branch_id, v_future, v_future + 400);
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_err := SQLERRM;
+  END;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'list_shifts_rejects_wide_date_range',
+    v_err = 'invalid_date_range',
+    COALESCE(v_err, '<null>')
   );
 END;
 $$;
