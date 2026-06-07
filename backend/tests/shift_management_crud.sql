@@ -355,7 +355,7 @@ BEGIN
       GET STACKED DIAGNOSTICS v_overlap_detail = PG_EXCEPTION_DETAIL;
       PERFORM pg_temp.record_shift_crud_result(
         'reject_overlap_with_payload',
-        SQLERRM = 'shift_overlap' AND v_overlap_detail LIKE '%Dr CRUD%',
+        SQLERRM LIKE 'shift_overlap%' AND SQLERRM LIKE '%Dr CRUD%',
         'msg=' || SQLERRM || ' detail=' || COALESCE(v_overlap_detail, '<null>')
       );
   END;
@@ -543,7 +543,7 @@ BEGIN
       GET STACKED DIAGNOSTICS v_overlap_detail = PG_EXCEPTION_DETAIL;
       PERFORM pg_temp.record_shift_crud_result(
         'assignment_reject_overlap_on_add',
-        SQLERRM = 'shift_overlap' AND v_overlap_detail LIKE '%Dr CRUD%',
+        SQLERRM LIKE 'shift_overlap%' AND SQLERRM LIKE '%Dr CRUD%',
         'msg=' || SQLERRM || ' detail=' || COALESCE(v_overlap_detail, '<null>')
       );
   END;
@@ -786,7 +786,7 @@ BEGIN
       GET STACKED DIAGNOSTICS v_overlap_detail = PG_EXCEPTION_DETAIL;
       PERFORM pg_temp.record_shift_crud_result(
         'reject_update_overlap',
-        SQLERRM = 'shift_overlap',
+        SQLERRM LIKE 'shift_overlap%',
         'msg=' || SQLERRM || ' detail=' || COALESCE(v_overlap_detail, '<null>')
       );
   END;
@@ -1128,6 +1128,104 @@ BEGIN
     'list_shifts_rejects_wide_date_range',
     v_err = 'invalid_date_range',
     COALESCE(v_err, '<null>')
+  );
+
+  -- Low #16: overlap helper does not validate time range (callers own input validation).
+  BEGIN
+    PERFORM auth_internal.assert_no_staff_shift_overlap(
+      v_branch_id,
+      v_future,
+      time '18:00',
+      time '09:00',
+      '{}'::uuid[],
+      NULL
+    );
+    PERFORM pg_temp.record_shift_crud_result('overlap_helper_no_time_range_check', true, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result('overlap_helper_no_time_range_check', false, SQLERRM);
+  END;
+
+  -- Low #17: omitted p_notes leaves existing notes unchanged on update.
+  v_shift_assignment_test := public.create_shift(
+    v_branch_id,
+    v_future + 9,
+    time '09:00',
+    time '17:00',
+    'Keep these notes',
+    ARRAY[v_staff_doctor]::uuid[]
+  );
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.updated_at INTO v_shift_updated_at FROM public.shifts s WHERE s.id = v_shift_assignment_test;
+  PERFORM set_config('role', 'authenticated', true);
+
+  BEGIN
+    PERFORM public.update_shift(
+      v_shift_assignment_test,
+      v_shift_updated_at,
+      v_future + 10,
+      time '10:00',
+      time '18:00',
+      NULL
+    );
+    v_err := NULL;
+  EXCEPTION
+    WHEN OTHERS THEN
+      v_err := SQLERRM;
+  END;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT s.notes = 'Keep these notes'
+  INTO v_is_unassigned
+  FROM public.shifts s
+  WHERE s.id = v_shift_assignment_test;
+
+  PERFORM pg_temp.record_shift_crud_result(
+    'update_shift_preserves_notes_when_omitted',
+    v_err IS NULL AND v_is_unassigned IS TRUE,
+    COALESCE(v_err, 'notes_preserved=' || COALESCE(v_is_unassigned::text, '<null>'))
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Low #21: mutations reject callers without auth.uid().
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('role', 'authenticated')::text,
+    true
+  );
+
+  BEGIN
+    PERFORM public.create_shift(
+      v_branch_id,
+      v_future + 11,
+      time '09:00',
+      time '17:00',
+      NULL,
+      '{}'::uuid[]
+    );
+    PERFORM pg_temp.record_shift_crud_result('reject_null_auth_uid', false, 'no exception');
+  EXCEPTION
+    WHEN OTHERS THEN
+      PERFORM pg_temp.record_shift_crud_result(
+        'reject_null_auth_uid',
+        SQLERRM = 'permission_denied',
+        SQLERRM
+      );
+  END;
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_owner::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text,
+      'staff_member_id', v_staff_owner::text,
+      'staff_role', 'owner',
+      'setup_required', false
+    )::text,
+    true
   );
 END;
 $$;

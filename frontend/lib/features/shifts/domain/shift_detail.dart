@@ -60,6 +60,14 @@ class ShiftDetail {
   final List<ShiftAssignment> assignments;
   final ShiftBranchSummary branch;
 
+  static String? _notesPreview(String? notes) {
+    final trimmed = notes?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed.length <= 80 ? trimmed : trimmed.substring(0, 80);
+  }
+
   ShiftListItem toListItem() {
     return ShiftListItem(
       id: id,
@@ -71,7 +79,7 @@ class ShiftDetail {
       isUnassigned: isUnassigned,
       assigneeNames: [for (final a in assignments) a.displayName],
       assigneeCount: assignments.length,
-      notesPreview: notes == null ? null : (notes!.length <= 80 ? notes : notes!.substring(0, 80)),
+      notesPreview: _notesPreview(notes),
     );
   }
 

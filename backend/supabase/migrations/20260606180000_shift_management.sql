@@ -265,6 +265,10 @@ AS $$
 DECLARE
   v_staff public.staff_members%ROWTYPE;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'permission_denied' USING ERRCODE = 'P0001';
+  END IF;
+
   BEGIN
     v_staff := auth_internal.assert_permission('shifts.manage');
   EXCEPTION
@@ -394,10 +398,6 @@ DECLARE
 BEGIN
   IF p_staff_ids IS NULL OR cardinality(p_staff_ids) = 0 THEN
     RETURN;
-  END IF;
-
-  IF p_end_time <= p_start_time THEN
-    RAISE EXCEPTION 'shift_invalid_time_range' USING ERRCODE = 'P0001';
   END IF;
 
   FOREACH v_staff_id IN ARRAY p_staff_ids
@@ -945,10 +945,14 @@ BEGIN
     RAISE EXCEPTION 'shift_invalid_time_range' USING ERRCODE = 'P0001';
   END IF;
 
-  v_notes := NULLIF(trim(COALESCE(p_notes, '')), '');
+  IF p_notes IS NULL THEN
+    v_notes := v_shift.notes;
+  ELSE
+    v_notes := NULLIF(trim(p_notes), '');
 
-  IF v_notes IS NOT NULL AND length(v_notes) > 500 THEN
-    RAISE EXCEPTION 'notes_too_long' USING ERRCODE = 'P0001';
+    IF v_notes IS NOT NULL AND length(v_notes) > 500 THEN
+      RAISE EXCEPTION 'notes_too_long' USING ERRCODE = 'P0001';
+    END IF;
   END IF;
 
   SELECT COALESCE(array_agg(sa.staff_member_id), '{}'::uuid[])

@@ -195,7 +195,7 @@ class _ShiftDetailBodyState extends ConsumerState<_ShiftDetailBody> {
           shiftDate: _editShiftDate!,
           startTime: _formatTime(_editStartTime!),
           endTime: _formatTime(_editEndTime!),
-          notes: _trimOrNull(_notesController.text),
+          notes: _notesController.text.trim(),
         );
 
     if (!mounted) {

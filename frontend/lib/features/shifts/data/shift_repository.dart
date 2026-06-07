@@ -181,7 +181,7 @@ class ShiftRepository {
       'p_shift_date': _formatDate(shiftDate),
       'p_start_time': start,
       'p_end_time': end,
-      if (notes != null && notes.trim().isNotEmpty) 'p_notes': notes.trim(),
+      if (notes != null) 'p_notes': notes.trim(),
     });
   }
 

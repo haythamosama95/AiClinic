@@ -8,13 +8,13 @@ class ShiftAssignmentResult {
     required this.shiftId,
     required this.status,
     required this.assigneeCount,
-    required this.updatedAt,
+    this.updatedAt,
   });
 
   final String shiftId;
   final ShiftStatus status;
   final int assigneeCount;
-  final DateTime updatedAt;
+  final DateTime? updatedAt;
 
   static ShiftAssignmentResult? fromRpcData(dynamic raw) {
     if (raw is! Map) {
@@ -31,9 +31,6 @@ class ShiftAssignmentResult {
     }
 
     final updatedAt = updatedAtRaw == null || updatedAtRaw.isEmpty ? null : DateTime.tryParse(updatedAtRaw)?.toUtc();
-    if (updatedAt == null) {
-      return null;
-    }
 
     return ShiftAssignmentResult(
       shiftId: shiftId,

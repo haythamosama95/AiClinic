@@ -93,6 +93,35 @@ void main() {
       expect(staff.map((member) => member.fullName), containsAll(['Dr Shift', 'Nurse Shift']));
     });
 
+    test('updateShift omits p_notes when notes is null (#17)', () async {
+      final expectedAt = DateTime.utc(2026, 6, 1, 12);
+
+      await repository.updateShift(
+        shiftId: ShiftRpcTestClient.defaultShiftId,
+        expectedUpdatedAt: expectedAt,
+        shiftDate: DateTime(2026, 6, 10),
+        startTime: '10:00',
+        endTime: '18:00',
+      );
+
+      expect(client.paramsFor('update_shift'), isNot(contains('p_notes')));
+    });
+
+    test('updateShift sends empty p_notes to clear notes (#17)', () async {
+      final expectedAt = DateTime.utc(2026, 6, 1, 12);
+
+      await repository.updateShift(
+        shiftId: ShiftRpcTestClient.defaultShiftId,
+        expectedUpdatedAt: expectedAt,
+        shiftDate: DateTime(2026, 6, 10),
+        startTime: '10:00',
+        endTime: '18:00',
+        notes: '   ',
+      );
+
+      expect(client.paramsFor('update_shift')?['p_notes'], '');
+    });
+
     test('updateShift sends expected_updated_at and field params', () async {
       final expectedAt = DateTime.utc(2026, 6, 1, 12);
 

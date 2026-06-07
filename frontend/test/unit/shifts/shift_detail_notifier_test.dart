@@ -1,4 +1,5 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
@@ -13,6 +14,25 @@ class _PresetAuth extends AuthSessionNotifier {
   _PresetAuth(this._state);
 
   final AuthSessionState _state;
+
+  @override
+  AuthSessionState build() => _state;
+}
+
+class _RevocableAuth extends AuthSessionNotifier {
+  AuthSessionState _state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
+
+  void preset(AuthSessionState state) {
+    _state = state;
+  }
+
+  void revokeBranchAccess() {
+    _state = AuthSessionState(
+      status: AuthSessionStatus.authenticated,
+      context: sampleAuthSessionContext(branchIds: const [], activeBranchId: null),
+    );
+    state = _state;
+  }
 
   @override
   AuthSessionState build() => _state;
@@ -56,6 +76,7 @@ Map<String, dynamic> _detailPayload({
 void main() {
   late ShiftRpcTestClient client;
   late ProviderContainer container;
+  late _RevocableAuth revocableAuth;
 
   setUp(() {
     client = ShiftRpcTestClient(branchId: _branchId)
@@ -64,16 +85,17 @@ void main() {
         _shiftBId: _detailPayload(shiftId: _shiftBId, notes: 'Shift B notes'),
       };
 
+    revocableAuth = _RevocableAuth()
+      ..preset(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(activeBranchId: _branchId, branchIds: [_branchId]),
+        ),
+      );
+
     container = ProviderContainer(
       overrides: [
-        authSessionProvider.overrideWith(
-          () => _PresetAuth(
-            AuthSessionState(
-              status: AuthSessionStatus.authenticated,
-              context: sampleAuthSessionContext(activeBranchId: _branchId, branchIds: [_branchId]),
-            ),
-          ),
-        ),
+        authSessionProvider.overrideWith(() => revocableAuth),
         shiftRepositoryProvider.overrideWith((ref) => ShiftRepository(client)),
       ],
     );
@@ -94,6 +116,23 @@ void main() {
 
     expect(client.rpcLog.where((name) => name == 'get_shift_detail').length, greaterThanOrEqualTo(2));
     expect(client.paramsFor('get_shift_detail')?['p_shift_id'], isNotNull);
+  });
+
+  test('revoking branch assignment surfaces permission_denied (#19)', () async {
+    final subscription = container.listen(shiftDetailProvider(_shiftAId), (_, _) {});
+    addTearDown(subscription.close);
+
+    await container.read(shiftDetailProvider(_shiftAId).future);
+    expect(container.read(authSessionProvider).context?.hasBranchAssignment, isTrue);
+
+    revocableAuth.revokeBranchAccess();
+    expect(container.read(authSessionProvider).context?.hasBranchAssignment, isFalse);
+
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final asyncState = container.read(shiftDetailProvider(_shiftAId));
+    expect(asyncState.hasError, isTrue);
+    expect(asyncState.error, isA<RpcFailure>().having((e) => e.code, 'code', 'permission_denied'));
   });
 
   test('cancelShift reloads detail with cancelled status in local state', () async {

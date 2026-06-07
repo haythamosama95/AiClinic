@@ -66,6 +66,13 @@ class ShiftDetailNotifier extends AsyncNotifier<ShiftDetailState> {
 
   @override
   Future<ShiftDetailState> build() async {
+    final canView = ref.watch(authSessionProvider.select((session) => session.context?.hasBranchAssignment ?? false));
+    if (!canView) {
+      throw RpcFailure(
+        const RpcResult(success: false, errorCode: 'permission_denied', errorMessage: 'permission_denied'),
+      );
+    }
+
     return ShiftDetailState(detail: await _loadDetail());
   }
 
