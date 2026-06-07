@@ -38,17 +38,33 @@ Future<void> fillMinimalShiftCreateForm(WidgetTester tester) async {
 
 Future<void> _selectCalendarDay(WidgetTester tester, DateTime target) async {
   const maxMonthSteps = 24;
+  final pickerFinder = find.byType(CalendarDatePicker);
+
   for (var step = 0; step < maxMonthSteps; step++) {
-    final dayFinder = find.descendant(of: find.byType(CalendarDatePicker), matching: find.text('${target.day}'));
-    if (dayFinder.evaluate().isNotEmpty) {
-      await tester.tap(dayFinder.last);
-      await tester.pumpAndSettle();
-      return;
+    if (_calendarDisplaysMonth(tester, pickerFinder, target)) {
+      final dayFinder = _dayInDisplayedMonth(tester, pickerFinder, target);
+      if (dayFinder.evaluate().isNotEmpty) {
+        await tester.tap(dayFinder.last);
+        await tester.pumpAndSettle();
+        return;
+      }
     }
     await tester.tap(find.byIcon(Icons.chevron_right).first);
     await tester.pumpAndSettle();
   }
   fail('Could not select ${target.year}-${target.month}-${target.day} in date picker.');
+}
+
+bool _calendarDisplaysMonth(WidgetTester tester, Finder pickerFinder, DateTime target) {
+  final localizations = MaterialLocalizations.of(tester.element(pickerFinder));
+  final monthLabel = localizations.formatMonthYear(DateTime(target.year, target.month));
+  return find.descendant(of: pickerFinder, matching: find.text(monthLabel)).evaluate().isNotEmpty;
+}
+
+Finder _dayInDisplayedMonth(WidgetTester tester, Finder pickerFinder, DateTime target) {
+  final localizations = MaterialLocalizations.of(tester.element(pickerFinder));
+  final dayLabel = '${localizations.formatDecimal(target.day)}, ${localizations.formatFullDate(target)}';
+  return find.descendant(of: pickerFinder, matching: find.bySemanticsLabel(dayLabel));
 }
 
 Future<void> _selectTimeInPicker(WidgetTester tester, TimeOfDay target) async {
