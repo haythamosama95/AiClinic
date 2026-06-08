@@ -1,5 +1,5 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/billing/presentation/billing_rpc_messages.dart';
+import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 RpcFailure _failure({required String code, String message = 'backend message'}) {

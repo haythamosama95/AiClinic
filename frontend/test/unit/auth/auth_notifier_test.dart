@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
+import 'package:ai_clinic/app/providers/auth_notifier.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

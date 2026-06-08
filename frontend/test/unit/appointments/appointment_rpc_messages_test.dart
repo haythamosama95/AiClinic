@@ -1,5 +1,5 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/appointments/presentation/appointment_rpc_messages.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

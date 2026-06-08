@@ -7,27 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/startup_test_support.dart';
 
 void main() {
-  testWidgets('redirects protected navigation back to the safe startup experience', (tester) async {
-    await pumpStartupApp(tester);
-    await completeStartupBootstrap(tester);
-
-    expect(find.text('AiClinic clinic-local startup'), findsOneWidget);
-
-    await tester.scrollUntilVisible(find.text('Try a protected route'), 120);
-    await tester.tap(find.text('Try a protected route'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Sign in with your clinic staff account'), findsOneWidget);
-    expect(find.text('Protected route blocked'), findsNothing);
-
-    await tester.tap(find.text('Back to startup'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('AiClinic clinic-local startup'), findsOneWidget);
-    expect(find.text('Sign in with your clinic staff account'), findsNothing);
-  });
-
-  testWidgets('blocks direct protected route entry without rendering the placeholder', (tester) async {
+  testWidgets('redirects protected navigation to login placeholder when startup is valid', (tester) async {
     await pumpStartupApp(tester);
     await completeStartupBootstrap(tester);
 
@@ -35,7 +15,20 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.protectedPlaceholder);
     await tester.pumpAndSettle();
 
-    expect(find.text('Sign in with your clinic staff account'), findsOneWidget);
+    expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.login);
+    expect(find.text('UI Pending Migration'), findsOneWidget);
+    expect(find.text(AppRoutes.login), findsOneWidget);
+  });
+
+  testWidgets('blocks direct protected route entry without rendering protected placeholder content', (tester) async {
+    await pumpStartupApp(tester);
+    await completeStartupBootstrap(tester);
+
+    final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+    container.read(appRouterProvider).go(AppRoutes.protectedPlaceholder);
+    await tester.pumpAndSettle();
+
     expect(find.text('This route should never render before authentication.'), findsNothing);
+    expect(find.text('UI Pending Migration'), findsOneWidget);
   });
 }

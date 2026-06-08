@@ -27,7 +27,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.settings);
-      expect(find.text('Branches'), findsNothing);
+      expect(find.text('UI Pending Migration'), findsOneWidget);
     });
 
     testWidgets('owner can open organization admin route', (tester) async {
@@ -60,7 +60,8 @@ void main() {
         container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path,
         AppRoutes.settingsOrganization,
       );
-      expect(find.text('Organization name'), findsOneWidget);
+      expect(find.text('UI Pending Migration'), findsOneWidget);
+      expect(find.text(AppRoutes.settingsOrganization), findsOneWidget);
     });
 
     testWidgets('setup_required user is redirected to bootstrap from staff admin route', (tester) async {
@@ -93,7 +94,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.settings);
-      expect(find.text('Role permissions'), findsNothing);
+      expect(find.text('UI Pending Migration'), findsOneWidget);
     });
 
     testWidgets('setup_complete legacy staff create redirects to settings staff form', (tester) async {

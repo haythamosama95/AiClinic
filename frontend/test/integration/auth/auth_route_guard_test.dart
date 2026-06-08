@@ -65,8 +65,8 @@ void main() {
       container.read(appRouterProvider).go(AppRoutes.protectedPlaceholder);
       await tester.pumpAndSettle();
 
-      expect(find.text('Sign in with your clinic staff account'), findsOneWidget);
-      expect(find.text('Protected route blocked'), findsNothing);
+      expect(find.text('UI Pending Migration'), findsOneWidget);
+      expect(find.text(AppRoutes.login), findsOneWidget);
     });
 
     testWidgets('authenticated setup-complete user reaches home from login', (tester) async {
@@ -79,7 +79,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
-      expect(find.textContaining('Welcome, Test Staff'), findsOneWidget);
+      expect(find.text('UI Pending Migration'), findsOneWidget);
+      expect(find.text(AppRoutes.home), findsOneWidget);
     });
 
     testWidgets('authenticated user navigating to login bounces to home', (tester) async {
