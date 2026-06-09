@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 
 import 'package:ai_clinic/core/ui/widgets/buttons/app_button.dart';
+import 'package:ai_clinic/core/ui/widgets/input/app_field_size.dart';
 
 /// Application dialog helpers wrapping [FDialog] and [showFDialog].
 abstract final class AppDialog {
+  static const _actionSize = AppFieldSize.sm;
+
   /// Shows a dialog with custom title, body, and actions.
   static Future<T?> show<T>({
     required BuildContext context,
@@ -14,19 +17,20 @@ abstract final class AppDialog {
     Axis direction = Axis.horizontal,
     bool barrierDismissible = true,
   }) {
+    final fTheme = context.theme;
+    final materialTheme = Theme.of(context);
+
     return showFDialog<T>(
       context: context,
       barrierDismissible: barrierDismissible,
       builder: (dialogContext, style, animation) {
-        final theme = Theme.of(dialogContext);
-
         return FTheme(
-          data: dialogContext.theme,
+          data: fTheme,
           child: FDialog(
             style: style,
             animation: animation,
             direction: direction,
-            title: title == null ? null : Text(title, style: theme.textTheme.titleLarge),
+            title: title == null ? null : Text(title, style: materialTheme.textTheme.titleLarge),
             body: body,
             actions: actions ?? const [],
           ),
@@ -36,6 +40,9 @@ abstract final class AppDialog {
   }
 
   /// Shows a horizontal confirmation dialog with confirm and cancel actions.
+  ///
+  /// When [destructive] is true, the confirm action uses destructive styling and the
+  /// cancel action uses primary styling so the safe choice is visually prominent.
   static Future<void> showConfirmation({
     required BuildContext context,
     required String title,
@@ -43,23 +50,26 @@ abstract final class AppDialog {
     required VoidCallback onConfirm,
     String? confirmLabel,
     String? cancelLabel,
-    AppButtonVariant confirmVariant = AppButtonVariant.primary,
+    bool destructive = false,
   }) {
+    final fTheme = context.theme;
+    final materialTheme = Theme.of(context);
+    final confirmVariant = destructive ? AppButtonVariant.destructive : AppButtonVariant.primary;
+    final cancelVariant = destructive ? AppButtonVariant.primary : AppButtonVariant.secondary;
+
     return showFDialog<void>(
       context: context,
       builder: (dialogContext, style, animation) {
-        final theme = Theme.of(dialogContext);
-
         return FTheme(
-          data: dialogContext.theme,
+          data: fTheme,
           child: FDialog(
             style: style,
             animation: animation,
             direction: Axis.horizontal,
-            title: Text(title, style: theme.textTheme.titleLarge),
-            body: Text(message, style: theme.textTheme.bodyMedium),
+            title: Text(title, style: materialTheme.textTheme.titleLarge),
+            body: Text(message, style: materialTheme.textTheme.bodyMedium),
             actions: [
-              AppButton(
+              _action(
                 label: confirmLabel ?? 'Confirm',
                 variant: confirmVariant,
                 onPressed: () {
@@ -67,9 +77,9 @@ abstract final class AppDialog {
                   onConfirm();
                 },
               ),
-              AppButton(
+              _action(
                 label: cancelLabel ?? 'Cancel',
-                variant: AppButtonVariant.secondary,
+                variant: cancelVariant,
                 onPressed: () => Navigator.of(dialogContext).pop(),
               ),
             ],
@@ -77,5 +87,9 @@ abstract final class AppDialog {
         );
       },
     );
+  }
+
+  static Widget _action({required String label, required AppButtonVariant variant, required VoidCallback onPressed}) {
+    return AppButton(label: label, variant: variant, size: _actionSize, onPressed: onPressed);
   }
 }

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 
 /// Pre-auth landing screen with quick access to the theme demo.
 class StartupEntryPage extends ConsumerWidget {
@@ -14,6 +15,7 @@ class StartupEntryPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final themeMode = ref.watch(themeModeProvider);
+    final themeVariant = ref.watch(themeVariantProvider);
 
     return Scaffold(
       body: Center(
@@ -41,17 +43,31 @@ class StartupEntryPage extends ConsumerWidget {
                 const SizedBox(height: SpacingTokens.md),
                 OutlinedButton(onPressed: () => context.go(AppRoutes.login), child: const Text('Sign in')),
                 const SizedBox(height: SpacingTokens.xl),
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: SpacingTokens.sm,
-                  runSpacing: SpacingTokens.sm,
-                  children: ThemeMode.values.map((mode) {
-                    return ChoiceChip(
-                      label: Text(themeModeLabel(mode)),
-                      selected: themeMode == mode,
-                      onSelected: (_) => setAppThemeMode(ref, mode),
-                    );
-                  }).toList(),
+                Text('Theme variant', style: theme.textTheme.titleMedium),
+                const SizedBox(height: SpacingTokens.md),
+                AppSelectTileGroup<AppThemeVariant>(
+                  mode: AppSelectGroupMode.radio,
+                  options: [
+                    for (final variant in AppThemeVariant.values)
+                      AppSelectOption(value: variant, label: appThemeVariantLabel(variant)),
+                  ],
+                  values: {themeVariant},
+                  onChanged: (values) {
+                    if (values.isNotEmpty) setAppThemeVariant(ref, values.first);
+                  },
+                ),
+                const SizedBox(height: SpacingTokens.lg),
+                Text('Appearance', style: theme.textTheme.titleMedium),
+                const SizedBox(height: SpacingTokens.md),
+                AppSelectTileGroup<ThemeMode>(
+                  mode: AppSelectGroupMode.radio,
+                  options: [
+                    for (final mode in ThemeMode.values) AppSelectOption(value: mode, label: themeModeLabel(mode)),
+                  ],
+                  values: {themeMode},
+                  onChanged: (values) {
+                    if (values.isNotEmpty) setAppThemeMode(ref, values.first);
+                  },
                 ),
               ],
             ),

@@ -19,7 +19,7 @@ abstract final class ParchmentColorTokens {
     mutedForeground: Color(0xFF6E6D68),
     accent: Color(0xFFE9E6DC),
     accentForeground: Color(0xFF28261B),
-    destructive: Color(0xFF141413),
+    destructive: Color(0xFFEF4444),
     destructiveForeground: Color(0xFFFFFFFF),
     border: Color(0xFFDAD9D4),
     input: Color(0xFFB4B2A7),

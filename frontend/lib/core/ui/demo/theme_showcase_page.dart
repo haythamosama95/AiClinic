@@ -59,31 +59,31 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
         children: [
           _Section(
             title: 'Theme variant',
-            child: Wrap(
-              spacing: SpacingTokens.sm,
-              runSpacing: SpacingTokens.sm,
-              children: AppThemeVariant.values.map((variant) {
-                return ChoiceChip(
-                  label: Text(appThemeVariantLabel(variant)),
-                  selected: themeVariant == variant,
-                  onSelected: (_) => setAppThemeVariant(ref, variant),
-                );
-              }).toList(),
+            child: AppSelectTileGroup<AppThemeVariant>(
+              mode: AppSelectGroupMode.radio,
+              options: [
+                for (final variant in AppThemeVariant.values)
+                  AppSelectOption(value: variant, label: appThemeVariantLabel(variant)),
+              ],
+              values: {themeVariant},
+              onChanged: (values) {
+                if (values.isNotEmpty) setAppThemeVariant(ref, values.first);
+              },
             ),
           ),
           const SizedBox(height: SpacingTokens.lg),
           _Section(
             title: 'Appearance',
-            child: Wrap(
-              spacing: SpacingTokens.sm,
-              runSpacing: SpacingTokens.sm,
-              children: ThemeMode.values.map((mode) {
-                return ChoiceChip(
-                  label: Text(themeModeLabel(mode)),
-                  selected: themeMode == mode,
-                  onSelected: (_) => setAppThemeMode(ref, mode),
-                );
-              }).toList(),
+            child: AppSelectTileGroup<ThemeMode>(
+              mode: AppSelectGroupMode.radio,
+              options: [
+                for (final mode in ThemeMode.values)
+                  AppSelectOption(value: mode, label: themeModeLabel(mode)),
+              ],
+              values: {themeMode},
+              onChanged: (values) {
+                if (values.isNotEmpty) setAppThemeMode(ref, values.first);
+              },
             ),
           ),
           const SizedBox(height: SpacingTokens.lg),
@@ -350,7 +350,7 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
                       message: 'You have unsaved changes. This action cannot be undone.',
                       confirmLabel: 'Discard',
                       cancelLabel: 'Keep editing',
-                      confirmVariant: AppButtonVariant.destructive,
+                      destructive: true,
                       onConfirm: () {},
                     );
                   },
