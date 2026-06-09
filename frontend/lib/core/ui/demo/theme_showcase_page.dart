@@ -4,8 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 
-/// Interactive gallery of design tokens, typography, and Material components.
+/// Interactive gallery of design tokens, typography, and forui wrapper components.
 class ThemeShowcasePage extends ConsumerStatefulWidget {
   const ThemeShowcasePage({super.key});
 
@@ -14,9 +15,28 @@ class ThemeShowcasePage extends ConsumerStatefulWidget {
 }
 
 class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
-  var _switchValue = true;
+  final _formKey = GlobalKey<FormState>();
+  final _usernameController = TextEditingController();
+  var _buttonLoading = false;
   var _checkboxValue = true;
-  var _radioValue = 0;
+  var _switchValue = false;
+  var _progressValue = 0.65;
+  String? _selectedRole;
+  final _selectedTags = <String>{'billing'};
+  var _selectedPlan = <String>{'standard'};
+  String? _autocompleteValue;
+  DateTime? _shiftDate;
+  Set<String> _notificationPrefs = {'email'};
+
+  static const _roles = {'Owner': 'owner', 'Administrator': 'admin', 'Staff': 'staff'};
+  static const _tags = {'Front desk': 'front_desk', 'Billing': 'billing', 'Clinical': 'clinical'};
+  static const _doctors = {'Dr. Ahmed': 'ahmed', 'Dr. Sara': 'sara', 'Dr. Omar': 'omar'};
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -79,13 +99,6 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
           ),
           const SizedBox(height: SpacingTokens.lg),
           _Section(
-            title: 'Chart palette',
-            child: Row(
-              children: [for (final color in colors.chartPalette) Expanded(child: Container(height: 48, color: color))],
-            ),
-          ),
-          const SizedBox(height: SpacingTokens.lg),
-          _Section(
             title: 'Typography',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,11 +109,6 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
                 Text('Body Large', style: theme.textTheme.bodyLarge),
                 Text('Body Small (muted)', style: theme.textTheme.bodySmall),
                 Text('Label Small', style: theme.textTheme.labelSmall),
-                const SizedBox(height: SpacingTokens.sm),
-                Text(
-                  'Serif sample',
-                  style: TypographyTokens.serif(fontSize: 18, fontWeight: FontWeight.w600, color: colors.foreground),
-                ),
               ],
             ),
           ),
@@ -112,123 +120,287 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
               runSpacing: SpacingTokens.sm,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                FilledButton(onPressed: () {}, child: const Text('Filled')),
-                ElevatedButton(onPressed: () {}, child: const Text('Elevated')),
-                OutlinedButton(onPressed: () {}, child: const Text('Outlined')),
-                TextButton(onPressed: () {}, child: const Text('Text')),
-                FilledButton(onPressed: null, child: const Text('Disabled')),
-              ],
-            ),
-          ),
-          const SizedBox(height: SpacingTokens.lg),
-          _Section(
-            title: 'Form controls',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const TextField(
-                  decoration: InputDecoration(labelText: 'Text field', hintText: 'Placeholder'),
-                ),
-                const SizedBox(height: SpacingTokens.md),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Switch'),
-                  value: _switchValue,
-                  onChanged: (value) => setState(() => _switchValue = value),
-                ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Checkbox'),
-                  value: _checkboxValue,
-                  onChanged: (value) => setState(() => _checkboxValue = value ?? false),
-                ),
-                const SizedBox(height: SpacingTokens.md),
-                SegmentedButton<int>(
-                  segments: const [
-                    ButtonSegment(value: 0, label: Text('Option A')),
-                    ButtonSegment(value: 1, label: Text('Option B')),
-                  ],
-                  selected: {_radioValue},
-                  onSelectionChanged: (selection) => setState(() => _radioValue = selection.first),
+                AppButton(label: 'Primary', onPressed: () {}),
+                AppButton(label: 'Secondary', variant: AppButtonVariant.secondary, onPressed: () {}),
+                AppButton(label: 'Outline', variant: AppButtonVariant.outline, onPressed: () {}),
+                AppButton(label: 'Ghost', variant: AppButtonVariant.ghost, onPressed: () {}),
+                AppButton(label: 'Destructive', variant: AppButtonVariant.destructive, onPressed: () {}),
+                AppButton(label: 'With icon', icon: const Icon(Icons.mail_outline, size: 18), onPressed: () {}),
+                AppButton(
+                  label: 'Loading',
+                  isLoading: _buttonLoading,
+                  onPressed: () {
+                    setState(() => _buttonLoading = true);
+                    Future<void>.delayed(const Duration(seconds: 2), () {
+                      if (mounted) setState(() => _buttonLoading = false);
+                    });
+                  },
                 ),
               ],
             ),
           ),
           const SizedBox(height: SpacingTokens.lg),
           _Section(
-            title: 'Cards & feedback',
+            title: 'Form inputs',
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AppTextField(
+                    label: 'Username',
+                    hintText: 'Enter a username',
+                    controller: _usernameController,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) return 'Username is required.';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: SpacingTokens.md),
+                  AppAutocomplete<String>(
+                    label: 'Assignee',
+                    items: _doctors,
+                    value: _autocompleteValue,
+                    hintText: 'Search staff…',
+                    onChanged: (value) => setState(() => _autocompleteValue = value),
+                  ),
+                  const SizedBox(height: SpacingTokens.md),
+                  AppDateField(
+                    label: 'Shift date',
+                    value: _shiftDate,
+                    onChanged: (value) => setState(() => _shiftDate = value),
+                    firstDate: DateTime.now().subtract(const Duration(days: 7)),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  ),
+                  const SizedBox(height: SpacingTokens.md),
+                  AppSelect<String>(
+                    label: 'Role',
+                    items: _roles,
+                    value: _selectedRole,
+                    hintText: 'Select a role',
+                    onChanged: (value) => setState(() => _selectedRole = value),
+                  ),
+                  const SizedBox(height: SpacingTokens.md),
+                  AppMultiSelect<String>(
+                    label: 'Tags',
+                    items: _tags,
+                    values: _selectedTags,
+                    onChanged: (values) => setState(() {
+                      _selectedTags
+                        ..clear()
+                        ..addAll(values);
+                    }),
+                  ),
+                  const SizedBox(height: SpacingTokens.md),
+                  AppLabel(
+                    label: 'Notes',
+                    description: 'Optional context shown below the label.',
+                    child: AppTextInput(hintText: 'Add a note…'),
+                  ),
+                  const SizedBox(height: SpacingTokens.sm),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: AppButton(label: 'Validate form', onPressed: () => _formKey.currentState?.validate()),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: SpacingTokens.lg),
+          _Section(
+            title: 'Selectors',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(SpacingTokens.md),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Card title', style: theme.textTheme.titleMedium),
-                        const SizedBox(height: SpacingTokens.xs),
-                        Text(
-                          'Cards use tokenized radius, border, and surface colors.',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  ),
+                AppCheckbox(
+                  label: 'Accept terms',
+                  value: _checkboxValue,
+                  onChanged: (value) => setState(() => _checkboxValue = value),
+                ),
+                const SizedBox(height: SpacingTokens.sm),
+                AppSwitch(
+                  label: 'Enable notifications',
+                  value: _switchValue,
+                  onChanged: (value) => setState(() => _switchValue = value),
                 ),
                 const SizedBox(height: SpacingTokens.md),
-                Wrap(
-                  spacing: SpacingTokens.sm,
-                  runSpacing: SpacingTokens.sm,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () {
-                        showDialog<void>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Dialog'),
-                            content: const Text('Themed dialog surface and actions.'),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
-                            ],
-                          ),
-                        );
-                      },
-                      child: const Text('Show dialog'),
-                    ),
-                    OutlinedButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Themed snackbar')));
-                      },
-                      child: const Text('Show snackbar'),
-                    ),
+                AppSelectGroup<String>(
+                  label: 'Notification channels',
+                  mode: AppSelectGroupMode.checkbox,
+                  options: const [
+                    AppSelectOption(value: 'email', label: 'Email'),
+                    AppSelectOption(value: 'sms', label: 'SMS'),
+                    AppSelectOption(value: 'push', label: 'Push'),
                   ],
+                  values: _notificationPrefs,
+                  onChanged: (values) => setState(() => _notificationPrefs = values),
                 ),
                 const SizedBox(height: SpacingTokens.md),
-                const LinearProgressIndicator(),
+                AppSelectTileGroup<String>(
+                  label: 'Plan',
+                  mode: AppSelectGroupMode.radio,
+                  options: const [
+                    AppSelectOption(value: 'basic', label: 'Basic', description: 'Single branch'),
+                    AppSelectOption(value: 'standard', label: 'Standard', description: 'Up to 5 branches'),
+                    AppSelectOption(value: 'enterprise', label: 'Enterprise', description: 'Unlimited branches'),
+                  ],
+                  values: _selectedPlan,
+                  onChanged: (values) => setState(() => _selectedPlan = values),
+                ),
               ],
             ),
           ),
           const SizedBox(height: SpacingTokens.lg),
           _Section(
-            title: 'Spacing & radius',
+            title: 'Tiles & items',
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Spacing scale: xs=${SpacingTokens.xs}, sm=${SpacingTokens.sm}, md=${SpacingTokens.md}, lg=${SpacingTokens.lg}',
+                AppTileGroup(
+                  label: 'Quick actions',
+                  tiles: [
+                    AppTileSpec(
+                      title: 'View schedule',
+                      subtitle: 'Weekly calendar',
+                      prefix: const Icon(Icons.calendar_month_outlined, size: 20),
+                      suffix: const Icon(Icons.chevron_right, size: 20),
+                      onPressed: () {},
+                    ),
+                    AppTileSpec(
+                      title: 'Manage staff',
+                      subtitle: 'Roles and permissions',
+                      prefix: const Icon(Icons.people_outline, size: 20),
+                      onPressed: () {},
+                    ),
+                  ],
                 ),
-                const SizedBox(height: SpacingTokens.sm),
-                Wrap(
-                  spacing: SpacingTokens.sm,
-                  children: [
-                    _RadiusSample(label: 'sm', radius: RadiusTokens.sm),
-                    _RadiusSample(label: 'md', radius: RadiusTokens.md),
-                    _RadiusSample(label: 'lg', radius: RadiusTokens.lg),
-                    _RadiusSample(label: 'xl', radius: RadiusTokens.xl),
+                const SizedBox(height: SpacingTokens.md),
+                AppItemGroup(
+                  items: [
+                    AppItemSpec(
+                      title: 'Export report',
+                      details: 'CSV',
+                      prefix: const Icon(Icons.download_outlined, size: 18),
+                      onPressed: () {},
+                    ),
+                    AppItemSpec(title: 'Delete draft', variant: AppTileVariant.destructive, onPressed: () {}),
                   ],
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: SpacingTokens.lg),
+          _Section(
+            title: 'Feedback',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const AppAlert(title: 'Shift saved', subtitle: 'The calendar will refresh automatically.'),
+                const SizedBox(height: SpacingTokens.sm),
+                const AppAlert(
+                  title: 'Conflict detected',
+                  subtitle: 'This staff member is already assigned to an overlapping shift.',
+                  variant: AppAlertVariant.destructive,
+                ),
+                const SizedBox(height: SpacingTokens.md),
+                const AppLinearProgress(),
+                const SizedBox(height: SpacingTokens.sm),
+                Row(
+                  children: [
+                    const AppCircularProgress(),
+                    const SizedBox(width: SpacingTokens.md),
+                    Expanded(child: AppDeterminateProgress(value: _progressValue)),
+                  ],
+                ),
+                const SizedBox(height: SpacingTokens.sm),
+                Slider(value: _progressValue, onChanged: (value) => setState(() => _progressValue = value)),
+              ],
+            ),
+          ),
+          const SizedBox(height: SpacingTokens.lg),
+          _Section(
+            title: 'Overlays',
+            child: Wrap(
+              spacing: SpacingTokens.sm,
+              runSpacing: SpacingTokens.sm,
+              children: [
+                AppButton(
+                  label: 'Dialog',
+                  variant: AppButtonVariant.secondary,
+                  onPressed: () {
+                    AppDialog.showConfirmation(
+                      context: context,
+                      title: 'Discard changes?',
+                      message: 'You have unsaved changes. This action cannot be undone.',
+                      confirmLabel: 'Discard',
+                      cancelLabel: 'Keep editing',
+                      confirmVariant: AppButtonVariant.destructive,
+                      onConfirm: () {},
+                    );
+                  },
+                ),
+                AppButton(
+                  label: 'Success toast',
+                  variant: AppButtonVariant.secondary,
+                  onPressed: () => AppToast.success(context, message: 'Shift created successfully.'),
+                ),
+                AppButton(
+                  label: 'Error toast',
+                  variant: AppButtonVariant.secondary,
+                  onPressed: () => AppToast.error(context, message: 'Unable to save shift.'),
+                ),
+                AppButton(
+                  label: 'Bottom sheet',
+                  variant: AppButtonVariant.secondary,
+                  onPressed: () {
+                    AppSheets.showModal(
+                      context: context,
+                      builder: (context) => Padding(
+                        padding: const EdgeInsets.all(SpacingTokens.lg),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text('Filter shifts', style: theme.textTheme.titleMedium),
+                            const SizedBox(height: SpacingTokens.md),
+                            AppSelect<String>(
+                              label: 'Branch',
+                              items: const {'Main': 'main', 'North': 'north'},
+                              onChanged: (_) {},
+                            ),
+                            const SizedBox(height: SpacingTokens.md),
+                            AppButton(label: 'Apply', onPressed: () => Navigator.of(context).pop()),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                AppPopoverMenu(
+                  items: const [
+                    AppPopoverMenuItem(label: 'Edit', icon: Icon(Icons.edit_outlined, size: 18)),
+                    AppPopoverMenuItem(label: 'Duplicate', icon: Icon(Icons.copy_outlined, size: 18)),
+                    AppPopoverMenuItem(label: 'Delete', icon: Icon(Icons.delete_outline, size: 18), destructive: true),
+                  ],
+                  child: AppButton(label: 'Popover menu', variant: AppButtonVariant.outline, onPressed: () {}),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: SpacingTokens.lg),
+          _Section(
+            title: 'Card',
+            child: AppCard(
+              title: Text('Panel title', style: theme.textTheme.titleMedium),
+              description: Text(
+                'Dense dashboard card using tokenized background and border.',
+                style: theme.textTheme.bodyMedium,
+              ),
+              actions: [
+                AppButton(label: 'Action', variant: AppButtonVariant.secondary, onPressed: () {}),
+                AppButton(label: 'Save', onPressed: () {}),
+              ],
+              child: Text('Card body content for metrics, lists, or forms.', style: theme.textTheme.bodyMedium),
             ),
           ),
         ],
@@ -292,34 +464,6 @@ class _ColorSwatch extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _RadiusSample extends StatelessWidget {
-  const _RadiusSample({required this.label, required this.radius});
-
-  final String label;
-  final double radius;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return Column(
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: colors.accent,
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: colors.border),
-          ),
-        ),
-        const SizedBox(height: SpacingTokens.xs),
-        Text(label, style: Theme.of(context).textTheme.labelSmall),
-      ],
     );
   }
 }

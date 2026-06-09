@@ -66,6 +66,7 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
         themeMode: themeMode,
+        builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
         routerConfig: router,
       ),
     );
