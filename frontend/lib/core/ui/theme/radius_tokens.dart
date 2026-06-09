@@ -1,4 +1,4 @@
-/// Border radius tokens derived from `--radius: 0.5rem`.
+/// Clinic-variant border radii. Prefer [ShapeTokens] from [BuildContext.shapeTokens].
 abstract final class RadiusTokens {
   /// Base radius (`--radius-lg` / `--radius`).
   static const double lg = 8;

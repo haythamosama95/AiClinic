@@ -58,13 +58,14 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final themeVariant = ref.watch(themeVariantProvider);
 
     return SessionActivityScope(
       child: MaterialApp.router(
         title: 'AiClinic',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
+        theme: AppTheme.light(themeVariant),
+        darkTheme: AppTheme.dark(themeVariant),
         themeMode: themeMode,
         builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
         routerConfig: router,

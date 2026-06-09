@@ -1,26 +1,29 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme_meta.dart';
 import 'color_tokens.dart';
-import 'radius_tokens.dart';
 import 'semantic_colors.dart';
 import 'shadow_tokens.dart';
 import 'spacing_tokens.dart';
-import 'typography_tokens.dart';
+import 'variants/app_theme_variant.dart';
+import 'variants/theme_palette_resolver.dart';
 
-/// Builds [ThemeData] from the shared design tokens.
+/// Builds [ThemeData] from a named design-system variant.
 class AppTheme {
   const AppTheme._();
 
-  static ThemeData light() => _build(Brightness.light);
+  static ThemeData light([AppThemeVariant variant = AppThemeVariant.clinic]) => _build(variant, Brightness.light);
 
-  static ThemeData dark() => _build(Brightness.dark);
+  static ThemeData dark([AppThemeVariant variant = AppThemeVariant.clinic]) => _build(variant, Brightness.dark);
 
-  static ThemeData _build(Brightness brightness) {
-    final tokens = ColorTokens.forBrightness(brightness);
+  static ThemeData _build(AppThemeVariant variant, Brightness brightness) {
+    final tokens = ThemePaletteResolver.colors(variant, brightness);
+    final shapes = ThemePaletteResolver.shapes(variant);
     final semantic = SemanticColors.fromTokens(tokens);
     final colorScheme = _colorScheme(tokens, brightness);
-    final borderRadius = BorderRadius.circular(RadiusTokens.lg);
-    final textTheme = TypographyTokens.textTheme(
+    final borderRadius = BorderRadius.circular(shapes.lg);
+    final textTheme = ThemePaletteResolver.typography(
+      variant,
       foreground: tokens.foreground,
       mutedForeground: tokens.mutedForeground,
     );
@@ -31,7 +34,11 @@ class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: tokens.background,
       textTheme: textTheme,
-      extensions: [semantic],
+      extensions: [
+        semantic,
+        shapes,
+        AppThemeMeta(variant: variant),
+      ],
       dividerColor: tokens.border,
       splashColor: tokens.primary.withValues(alpha: 0.08),
       highlightColor: tokens.primary.withValues(alpha: 0.04),
@@ -60,26 +67,26 @@ class AppTheme {
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: tokens.popover,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl))),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(shapes.xl))),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: tokens.input,
         contentPadding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.md),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(RadiusTokens.md),
+          borderRadius: BorderRadius.circular(shapes.md),
           borderSide: BorderSide(color: tokens.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(RadiusTokens.md),
+          borderRadius: BorderRadius.circular(shapes.md),
           borderSide: BorderSide(color: tokens.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(RadiusTokens.md),
+          borderRadius: BorderRadius.circular(shapes.md),
           borderSide: BorderSide(color: tokens.ring, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(RadiusTokens.md),
+          borderRadius: BorderRadius.circular(shapes.md),
           borderSide: BorderSide(color: tokens.destructive),
         ),
         hintStyle: TextStyle(color: tokens.mutedForeground),
@@ -124,13 +131,13 @@ class AppTheme {
         backgroundColor: tokens.muted,
         labelStyle: TextStyle(color: tokens.foreground),
         side: BorderSide(color: tokens.border),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(RadiusTokens.md)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(shapes.md)),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: tokens.foreground,
         contentTextStyle: TextStyle(color: tokens.background),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(RadiusTokens.md)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(shapes.md)),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(color: tokens.primary),
       dividerTheme: DividerThemeData(color: tokens.border, space: SpacingTokens.lg),
@@ -182,7 +189,7 @@ class AppTheme {
         decoration: BoxDecoration(
           color: tokens.popover,
           border: Border.all(color: tokens.border),
-          borderRadius: BorderRadius.circular(RadiusTokens.sm),
+          borderRadius: BorderRadius.circular(shapes.sm),
           boxShadow: ShadowTokens.shadowSm,
         ),
         textStyle: TextStyle(color: tokens.popoverForeground),

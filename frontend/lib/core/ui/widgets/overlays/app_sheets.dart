@@ -20,7 +20,7 @@ abstract final class AppSheets {
       context: context,
       builder: (context) {
         final colors = context.semanticColors;
-        final borderRadius = BorderRadius.vertical(top: Radius.circular(RadiusTokens.xl));
+        final borderRadius = BorderRadius.vertical(top: Radius.circular(context.shapeTokens.xl));
 
         return DecoratedBox(
           decoration: BoxDecoration(

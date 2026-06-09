@@ -1,0 +1,78 @@
+import 'package:flutter/material.dart';
+
+import '../../color_tokens.dart';
+
+/// Parchment variant color palettes (`:root` / `.dark`).
+abstract final class ParchmentColorTokens {
+  static const light = ColorTokens(
+    background: Color(0xFFFAF9F5),
+    foreground: Color(0xFF3D3929),
+    card: Color(0xFFF5F4EF),
+    cardForeground: Color(0xFF141413),
+    popover: Color(0xFFFFFFFF),
+    popoverForeground: Color(0xFF28261B),
+    primary: Color(0xFFC96442),
+    primaryForeground: Color(0xFFFFFFFF),
+    secondary: Color(0xFFE9E6DC),
+    secondaryForeground: Color(0xFF535146),
+    muted: Color(0xFFEDE9DE),
+    mutedForeground: Color(0xFF6E6D68),
+    accent: Color(0xFFE9E6DC),
+    accentForeground: Color(0xFF28261B),
+    destructive: Color(0xFF141413),
+    destructiveForeground: Color(0xFFFFFFFF),
+    border: Color(0xFFDAD9D4),
+    input: Color(0xFFB4B2A7),
+    ring: Color(0xFFC96442),
+    chart1: Color(0xFFB05730),
+    chart2: Color(0xFF9C87F5),
+    chart3: Color(0xFFDED8C4),
+    chart4: Color(0xFFDBD3F0),
+    chart5: Color(0xFFB4552D),
+    sidebar: Color(0xFFF5F4EE),
+    sidebarForeground: Color(0xFF3D3D3A),
+    sidebarPrimary: Color(0xFFC96442),
+    sidebarPrimaryForeground: Color(0xFFFBFBFB),
+    sidebarAccent: Color(0xFFE9E6DC),
+    sidebarAccentForeground: Color(0xFF343434),
+    sidebarBorder: Color(0xFFEBEBEB),
+    sidebarRing: Color(0xFFB5B5B5),
+  );
+
+  static const dark = ColorTokens(
+    background: Color(0xFF262624),
+    foreground: Color(0xFFF1F1EF),
+    card: Color(0xFF2C2C2B),
+    cardForeground: Color(0xFFFAF9F5),
+    popover: Color(0xFF30302E),
+    popoverForeground: Color(0xFFE5E5E2),
+    primary: Color(0xFFD97757),
+    primaryForeground: Color(0xFF141413),
+    secondary: Color(0xFFFAF9F5),
+    secondaryForeground: Color(0xFF30302E),
+    muted: Color(0xFF1B1B19),
+    mutedForeground: Color(0xFFB7B5A9),
+    accent: Color(0xFF1A1915),
+    accentForeground: Color(0xFFF5F4EE),
+    destructive: Color(0xFFEF4444),
+    destructiveForeground: Color(0xFFFFFFFF),
+    border: Color(0xFF3E3E38),
+    input: Color(0xFF52514A),
+    ring: Color(0xFFD97757),
+    chart1: Color(0xFFB05730),
+    chart2: Color(0xFF9C87F5),
+    chart3: Color(0xFF1A1915),
+    chart4: Color(0xFF2F2B48),
+    chart5: Color(0xFFB4552D),
+    sidebar: Color(0xFF1F1E1D),
+    sidebarForeground: Color(0xFFC3C0B6),
+    sidebarPrimary: Color(0xFF343434),
+    sidebarPrimaryForeground: Color(0xFFFBFBFB),
+    sidebarAccent: Color(0xFF0F0F0E),
+    sidebarAccentForeground: Color(0xFFC3C0B6),
+    sidebarBorder: Color(0xFFEBEBEB),
+    sidebarRing: Color(0xFFB5B5B5),
+  );
+
+  static ColorTokens forBrightness(Brightness brightness) => brightness == Brightness.dark ? dark : light;
+}

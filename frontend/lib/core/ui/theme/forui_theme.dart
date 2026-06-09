@@ -4,11 +4,13 @@ import 'package:forui/forui.dart';
 import 'color_tokens.dart';
 import 'forui_accent_colors.dart';
 import 'forui_style_overrides.dart';
+import 'variants/app_theme_variant.dart';
+import 'variants/theme_palette_resolver.dart';
 
-/// Builds [FThemeData] from shared [ColorTokens] for the desktop clinic client.
+/// Builds [FThemeData] from a named design-system variant for the desktop client.
 abstract final class ForuiTheme {
-  static FThemeData dataFor(Brightness brightness) {
-    final tokens = ColorTokens.forBrightness(brightness);
+  static FThemeData dataFor(Brightness brightness, {AppThemeVariant variant = AppThemeVariant.clinic}) {
+    final tokens = ThemePaletteResolver.colors(variant, brightness);
     final colors = _colorsFromTokens(tokens, brightness);
     final typography = FTypography.inherit(colors: colors, touch: false);
     final icons = FIcons.lucide();
@@ -16,7 +18,7 @@ abstract final class ForuiTheme {
 
     return FThemeData(
       touch: false,
-      debugLabel: brightness == Brightness.dark ? 'AiClinic Dark Desktop' : 'AiClinic Light Desktop',
+      debugLabel: '${variant.name} ${brightness == Brightness.dark ? 'dark' : 'light'} desktop',
       colors: colors,
       typography: typography,
       icons: icons,

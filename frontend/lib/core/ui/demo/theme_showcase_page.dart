@@ -43,6 +43,7 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
     final themeMode = ref.watch(themeModeProvider);
+    final themeVariant = ref.watch(themeVariantProvider);
     final brightness = theme.brightness;
 
     return Scaffold(
@@ -56,6 +57,21 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
       body: ListView(
         padding: const EdgeInsets.all(SpacingTokens.lg),
         children: [
+          _Section(
+            title: 'Theme variant',
+            child: Wrap(
+              spacing: SpacingTokens.sm,
+              runSpacing: SpacingTokens.sm,
+              children: AppThemeVariant.values.map((variant) {
+                return ChoiceChip(
+                  label: Text(appThemeVariantLabel(variant)),
+                  selected: themeVariant == variant,
+                  onSelected: (_) => setAppThemeVariant(ref, variant),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: SpacingTokens.lg),
           _Section(
             title: 'Appearance',
             child: Wrap(

@@ -23,7 +23,7 @@ class AppCard extends StatelessWidget {
         decoration: DecorationDelta.boxDelta(
           color: colors.card,
           border: Border.all(color: colors.border),
-          borderRadius: BorderRadius.circular(RadiusTokens.lg),
+          borderRadius: BorderRadius.circular(context.shapeTokens.lg),
         ),
       ),
       child: Column(

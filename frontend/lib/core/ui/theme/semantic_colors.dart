@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'color_tokens.dart';
+import 'variants/clinic/clinic_color_tokens.dart';
 
 /// Runtime semantic color tokens exposed through [ThemeExtension].
 ///
@@ -113,8 +114,7 @@ class SemanticColors extends ThemeExtension<SemanticColors> {
     );
   }
 
-  static final light = SemanticColors.fromTokens(ColorTokens.light);
-  static final dark = SemanticColors.fromTokens(ColorTokens.dark);
+  static final clinicLight = SemanticColors.fromTokens(ClinicColorTokens.light);
 
   /// Ordered chart palette for data visualization widgets.
   List<Color> get chartPalette => [chart1, chart2, chart3, chart4, chart5];
@@ -235,5 +235,5 @@ class SemanticColors extends ThemeExtension<SemanticColors> {
 
 /// Convenience accessor for [SemanticColors] from a [BuildContext].
 extension SemanticColorsContext on BuildContext {
-  SemanticColors get semanticColors => Theme.of(this).extension<SemanticColors>() ?? SemanticColors.light;
+  SemanticColors get semanticColors => Theme.of(this).extension<SemanticColors>() ?? SemanticColors.clinicLight;
 }
