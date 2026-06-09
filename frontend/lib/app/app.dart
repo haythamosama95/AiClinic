@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/app/session_activity_scope.dart';
-import 'package:ai_clinic/app/theme/app_theme.dart';
 import 'package:ai_clinic/app/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/settings/application/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -63,8 +62,8 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
       child: MaterialApp.router(
         title: 'AiClinic',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme(),
-        darkTheme: AppTheme.darkTheme(),
+        theme: ThemeData(useMaterial3: true),
+        darkTheme: ThemeData(useMaterial3: true, brightness: Brightness.dark),
         themeMode: themeMode,
         routerConfig: router,
       ),
