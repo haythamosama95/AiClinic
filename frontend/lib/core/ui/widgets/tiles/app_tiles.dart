@@ -234,6 +234,10 @@ class AppSelectMenuTile<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (mode == AppSelectGroupMode.radio) {
+      assert(values.length <= 1, 'AppSelectMenuTile radio mode expects at most one value, got ${values.length}.');
+    }
+
     final control = switch (mode) {
       AppSelectGroupMode.radio => FMultiValueControl<T>.managedRadio(
         initial: values.isEmpty ? null : values.first,
@@ -277,6 +281,10 @@ class AppSelectTileGroup<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (mode == AppSelectGroupMode.radio) {
+      assert(values.length <= 1, 'AppSelectTileGroup radio mode expects at most one value, got ${values.length}.');
+    }
+
     final control = switch (mode) {
       AppSelectGroupMode.radio => FMultiValueControl<T>.managedRadio(
         initial: values.isEmpty ? null : values.first,

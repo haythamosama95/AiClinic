@@ -38,8 +38,11 @@ class AppTextField extends StatelessWidget {
 
     return FTextFormField(
       control: controller != null
-          ? FTextFieldControl.managed(controller: controller)
-          : const FTextFieldControl.managed(),
+          ? FTextFieldControl.managed(
+              controller: controller,
+              onChange: onChanged == null ? null : (value) => onChanged!(value.text),
+            )
+          : FTextFieldControl.managed(onChange: onChanged == null ? null : (value) => onChanged!(value.text)),
       size: size.forui,
       label: Text(label, style: theme.textTheme.labelMedium),
       description: description == null ? null : Text(description!, style: theme.textTheme.bodySmall),
@@ -49,7 +52,6 @@ class AppTextField extends StatelessWidget {
       maxLines: maxLines,
       enabled: enabled,
       validator: validator,
-      onSubmit: onChanged,
       autovalidateMode: validator != null ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled,
     );
   }
@@ -88,8 +90,11 @@ class AppTextInput extends StatelessWidget {
 
     return FTextField(
       control: controller != null
-          ? FTextFieldControl.managed(controller: controller)
-          : const FTextFieldControl.managed(),
+          ? FTextFieldControl.managed(
+              controller: controller,
+              onChange: onChanged == null ? null : (value) => onChanged!(value.text),
+            )
+          : FTextFieldControl.managed(onChange: onChanged == null ? null : (value) => onChanged!(value.text)),
       size: size.forui,
       label: label == null ? null : Text(label!, style: theme.textTheme.labelMedium),
       description: description == null ? null : Text(description!, style: theme.textTheme.bodySmall),
@@ -98,7 +103,6 @@ class AppTextInput extends StatelessWidget {
       keyboardType: keyboardType,
       maxLines: maxLines,
       enabled: enabled,
-      onSubmit: onChanged,
     );
   }
 }

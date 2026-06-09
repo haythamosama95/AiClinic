@@ -20,14 +20,19 @@ abstract final class AppSheets {
       context: context,
       builder: (context) {
         final colors = context.semanticColors;
-        final borderRadius = BorderRadius.vertical(top: Radius.circular(context.shapeTokens.xl));
+        final radius = Radius.circular(context.shapeTokens.xl);
+        final (borderRadius, border) = switch (side) {
+          AppSheetSide.bottom => (BorderRadius.vertical(top: radius), Border(top: BorderSide(color: colors.border))),
+          AppSheetSide.top => (BorderRadius.vertical(bottom: radius), Border(bottom: BorderSide(color: colors.border))),
+          AppSheetSide.left => (
+            BorderRadius.horizontal(right: radius),
+            Border(right: BorderSide(color: colors.border)),
+          ),
+          AppSheetSide.right => (BorderRadius.horizontal(left: radius), Border(left: BorderSide(color: colors.border))),
+        };
 
         return DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.popover,
-            borderRadius: borderRadius,
-            border: Border(top: BorderSide(color: colors.border)),
-          ),
+          decoration: BoxDecoration(color: colors.popover, borderRadius: borderRadius, border: border),
           child: ClipRRect(borderRadius: borderRadius, child: builder(context)),
         );
       },

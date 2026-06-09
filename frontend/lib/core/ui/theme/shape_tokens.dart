@@ -33,6 +33,12 @@ class ShapeTokens extends ThemeExtension<ShapeTokens> {
 }
 
 /// Convenience accessor for [ShapeTokens] from a [BuildContext].
+///
+/// [ShapeTokens] must be registered on [ThemeData.extensions] — see [AppTheme].
 extension ShapeTokensContext on BuildContext {
-  ShapeTokens get shapeTokens => Theme.of(this).extension<ShapeTokens>()!;
+  ShapeTokens get shapeTokens {
+    final tokens = Theme.of(this).extension<ShapeTokens>();
+    assert(tokens != null, 'ShapeTokens is missing from ThemeData.extensions. Register it in AppTheme._build.');
+    return tokens ?? const ShapeTokens(sm: 4, md: 6, lg: 8, xl: 12);
+  }
 }

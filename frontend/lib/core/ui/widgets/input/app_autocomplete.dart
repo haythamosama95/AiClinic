@@ -34,7 +34,9 @@ class AppAutocomplete<T> extends StatelessWidget {
     if (format != null) {
       return format!(item);
     }
-    return items.entries.firstWhere((entry) => entry.value == item).key;
+    return items.entries
+        .firstWhere((entry) => entry.value == item, orElse: () => throw StateError('No label for value: $item'))
+        .key;
   }
 
   @override
@@ -48,7 +50,9 @@ class AppAutocomplete<T> extends StatelessWidget {
         initial: initialText,
         onChange: (textValue) {
           final parsed = items[textValue.text];
-          onChanged?.call(parsed);
+          if (parsed != null) {
+            onChanged?.call(parsed);
+          }
         },
       ),
       size: size.forui,

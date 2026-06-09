@@ -76,10 +76,7 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
             title: 'Appearance',
             child: AppSelectTileGroup<ThemeMode>(
               mode: AppSelectGroupMode.radio,
-              options: [
-                for (final mode in ThemeMode.values)
-                  AppSelectOption(value: mode, label: themeModeLabel(mode)),
-              ],
+              options: [for (final mode in ThemeMode.values) AppSelectOption(value: mode, label: themeModeLabel(mode))],
               values: {themeMode},
               onChanged: (values) {
                 if (values.isNotEmpty) setAppThemeMode(ref, values.first);
@@ -455,7 +452,7 @@ class _ColorSwatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hex = '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+    final hex = '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
 
     return SizedBox(
       width: 140,

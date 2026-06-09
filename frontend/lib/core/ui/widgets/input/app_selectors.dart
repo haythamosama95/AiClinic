@@ -145,7 +145,7 @@ class AppSelect<T> extends StatelessWidget {
       description: description == null ? null : Text(description!, style: theme.textTheme.bodySmall),
       hint: hintText,
       enabled: enabled,
-      validator: validator == null ? FFormFieldProperties.defaultValidator : (v) => validator!(v),
+      validator: validator == null ? (_) => null : (v) => validator!(v),
       autovalidateMode: validator != null ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled,
     );
   }
