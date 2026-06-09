@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/presentation/startup_entry_page.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
+import 'package:ai_clinic/core/ui/demo/theme_showcase_page.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -28,17 +30,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       // Unauthenticated / startup routes
       GoRoute(path: AppRoutes.startupCheck, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
-      GoRoute(path: AppRoutes.startupEntry, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
+      GoRoute(path: AppRoutes.startupEntry, builder: (context, state) => const StartupEntryPage()),
       GoRoute(path: AppRoutes.setupGuidance, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
       GoRoute(path: AppRoutes.protectedBlocked, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
       GoRoute(
         path: AppRoutes.protectedPlaceholder,
         builder: (context, state) => uiPendingPlaceholder('Startup', state),
       ),
-      GoRoute(
-        path: AppRoutes.foundationDemo,
-        builder: (context, state) => uiPendingPlaceholder('Foundation Demo', state),
-      ),
+      GoRoute(path: AppRoutes.foundationDemo, builder: (context, state) => const ThemeShowcasePage()),
       GoRoute(path: AppRoutes.login, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
       GoRoute(path: AppRoutes.forgotPassword, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
       GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
