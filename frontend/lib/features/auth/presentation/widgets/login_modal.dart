@@ -283,9 +283,12 @@ class _IllustrationPlaceholder extends StatelessWidget {
 }
 
 class _FadeInOutPanel extends StatefulWidget {
-  const _FadeInOutPanel({required this.visible, required this.child});
+  const _FadeInOutPanel({required this.visible, required this.layoutChild, required this.child, super.key});
 
   final bool visible;
+
+  /// Sized invisibly so the parent layout stays stable when [child] is hidden.
+  final Widget layoutChild;
   final Widget child;
 
   @override
@@ -298,7 +301,7 @@ class _FadeInOutPanelState extends State<_FadeInOutPanel> with SingleTickerProvi
   late final AnimationController _controller;
   late final Animation<double> _opacity;
 
-  var _onStage = false;
+  var _showContent = false;
 
   @override
   void initState() {
@@ -306,7 +309,7 @@ class _FadeInOutPanelState extends State<_FadeInOutPanel> with SingleTickerProvi
     _controller = AnimationController(vsync: this, duration: _duration);
     _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
     if (widget.visible) {
-      _onStage = true;
+      _showContent = true;
       _controller.value = 1;
     }
   }
@@ -315,12 +318,12 @@ class _FadeInOutPanelState extends State<_FadeInOutPanel> with SingleTickerProvi
   void didUpdateWidget(covariant _FadeInOutPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.visible && !oldWidget.visible) {
-      setState(() => _onStage = true);
+      setState(() => _showContent = true);
       _controller.forward(from: 0);
     } else if (!widget.visible && oldWidget.visible) {
       _controller.reverse().then((_) {
         if (mounted && !widget.visible) {
-          setState(() => _onStage = false);
+          setState(() => _showContent = false);
         }
       });
     }
@@ -334,9 +337,64 @@ class _FadeInOutPanelState extends State<_FadeInOutPanel> with SingleTickerProvi
 
   @override
   Widget build(BuildContext context) {
-    if (!_onStage) return const SizedBox.shrink();
+    return Stack(
+      alignment: Alignment.topCenter,
+      fit: StackFit.passthrough,
+      children: [
+        ColorFiltered(
+          colorFilter: const ColorFilter.mode(Colors.transparent, BlendMode.src),
+          child: IgnorePointer(child: Semantics(hidden: true, child: widget.layoutChild)),
+        ),
+        if (_showContent)
+          FadeTransition(
+            opacity: _opacity,
+            child: IgnorePointer(
+              ignoring: !widget.visible,
+              child: Semantics(hidden: !widget.visible, child: widget.child),
+            ),
+          ),
+      ],
+    );
+  }
+}
 
-    return FadeTransition(opacity: _opacity, child: widget.child);
+/// Shared panel below the login button for sign-in errors and forgot-password info.
+class _LoginStatusPanel extends StatelessWidget {
+  const _LoginStatusPanel({required this.theme, required this.showForgotPasswordInfo, this.errorMessage});
+
+  final ThemeData theme;
+  final bool showForgotPasswordInfo;
+  final String? errorMessage;
+
+  bool get _visible => showForgotPasswordInfo || errorMessage != null;
+
+  static const _panelPadding = EdgeInsets.only(top: SpacingTokens.md);
+
+  Widget _forgotPasswordAlert() {
+    return AppAlert(
+      icon: Icon(Icons.info_outline, color: theme.colorScheme.primary),
+      title: LoginForgotPasswordInfo.title,
+      subtitle: LoginForgotPasswordInfo.subtitle,
+    );
+  }
+
+  Widget _visibleContent() {
+    if (showForgotPasswordInfo) return _forgotPasswordAlert();
+
+    return AppAlert(variant: AppAlertVariant.destructive, title: errorMessage!);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Reserve the tallest possible panel up front so toggling error/forgot does not resize the modal.
+    final layoutChild = Padding(padding: _panelPadding, child: _forgotPasswordAlert());
+
+    return _FadeInOutPanel(
+      key: const ValueKey('login-status-panel'),
+      visible: _visible,
+      layoutChild: layoutChild,
+      child: _visible ? Padding(padding: _panelPadding, child: _visibleContent()) : const SizedBox.shrink(),
+    );
   }
 }
 
@@ -436,24 +494,7 @@ class _LoginFormSection extends StatelessWidget {
           ),
           const SizedBox(height: SpacingTokens.lg),
           AppButton(label: 'Login', expand: true, isLoading: isSubmitting, onPressed: isSubmitting ? null : onSubmit),
-          _FadeInOutPanel(
-            visible: errorMessage != null,
-            child: Padding(
-              padding: const EdgeInsets.only(top: SpacingTokens.md),
-              child: AppAlert(variant: AppAlertVariant.destructive, title: errorMessage ?? ''),
-            ),
-          ),
-          _FadeInOutPanel(
-            visible: showForgotPasswordInfo,
-            child: Padding(
-              padding: const EdgeInsets.only(top: SpacingTokens.md),
-              child: AppAlert(
-                icon: Icon(Icons.info_outline, color: theme.colorScheme.primary),
-                title: LoginForgotPasswordInfo.title,
-                subtitle: LoginForgotPasswordInfo.subtitle,
-              ),
-            ),
-          ),
+          _LoginStatusPanel(theme: theme, showForgotPasswordInfo: showForgotPasswordInfo, errorMessage: errorMessage),
         ],
       ),
     );
