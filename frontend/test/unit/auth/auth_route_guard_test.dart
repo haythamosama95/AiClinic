@@ -10,7 +10,7 @@ void main() {
       expect(AuthRouteGuard.resolveRedirect(location: AppRoutes.home, auth: AuthSessionState.initial()), isNull);
     });
 
-    test('authenticated setup_required on login redirects to bootstrap', () {
+    test('authenticated setup_required on login redirects to home shell', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.login,
@@ -19,7 +19,20 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.home,
+      );
+    });
+
+    test('authenticated setup_required on home stays on home shell', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(
+          location: AppRoutes.home,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: true),
+          ),
+        ),
+        isNull,
       );
     });
 

@@ -46,6 +46,10 @@ GoRouter _loginTestRouter({String initialLocation = AppRoutes.login}) {
       ),
       GoRoute(path: AppRoutes.login, builder: (_, _) => const LoginPage()),
       GoRoute(
+        path: AppRoutes.home,
+        builder: (_, _) => const Scaffold(body: Text('Home')),
+      ),
+      GoRoute(
         path: AppRoutes.bootstrap,
         builder: (_, _) => const Scaffold(body: Text('Bootstrap')),
       ),
@@ -185,7 +189,7 @@ void main() {
       expect(find.byType(LoginModal), findsNothing);
     });
 
-    testWidgets('successful sign-in navigates to bootstrap', (tester) async {
+    testWidgets('successful sign-in navigates to home', (tester) async {
       final fakeAuth = await pumpLoginPage(tester);
 
       fakeAuth.setSubmitting(true);
@@ -194,7 +198,7 @@ void main() {
       fakeAuth.completeSignInSuccess();
       await tester.pumpAndSettle();
 
-      expect(find.text('Bootstrap'), findsOneWidget);
+      expect(find.text('Home'), findsOneWidget);
     });
 
     testWidgets('close clears displayed sign-in error', (tester) async {

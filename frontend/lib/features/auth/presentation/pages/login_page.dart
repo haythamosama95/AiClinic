@@ -5,8 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/shell/authenticated_shell.dart';
+import 'package:ai_clinic/app/shell/widgets/shell_content_placeholder.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/features/auth/presentation/dev/auth_dev_widgets.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
@@ -43,7 +44,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     ref.listen<AuthUiState>(authNotifierProvider, (previous, next) {
       if (previous?.isSubmitting == true && next.isSubmitting == false && next.errorMessage == null) {
-        if (mounted) context.go(AppRoutes.bootstrap);
+        if (mounted) context.go(AppRoutes.home);
       }
     });
 
@@ -52,9 +53,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const IgnorePointer(
-            child: UiPendingPlaceholderPage(featureName: 'Setup', routeName: AppRoutes.bootstrap),
-          ),
+          const IgnorePointer(child: AuthenticatedShell(child: ShellContentPlaceholder())),
           ClipRect(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),

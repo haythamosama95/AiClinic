@@ -417,19 +417,18 @@ abstract final class AuthRouteGuard {
     if (auth.isAuthenticated) {
       final context = auth.context!;
       if (context.setupRequired) {
-        if (location == AppRoutes.bootstrap) {
+        if (location == AppRoutes.home || location == AppRoutes.bootstrap) {
           return null;
         }
 
-        if (location == AppRoutes.home ||
-            requiresProtectedSetupComplete(location) ||
+        if (requiresProtectedSetupComplete(location) ||
             isStaffProvisioningRoute(location) ||
             isSettingsRoute(location)) {
           return AppRoutes.bootstrap;
         }
 
         if (location == AppRoutes.login || location == AppRoutes.forgotPassword) {
-          return AppRoutes.bootstrap;
+          return AppRoutes.home;
         }
 
         return null;
