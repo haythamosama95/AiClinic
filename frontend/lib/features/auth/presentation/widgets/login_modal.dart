@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 
 /// Branding accents used by the login modal illustration panel.
 abstract final class _LoginModalPalette {
@@ -13,30 +14,40 @@ abstract final class _LoginModalPalette {
   static const compactBreakpoint = 720.0;
 }
 
+/// Administrator-mediated recovery copy (US7) — shown inline on the login form.
+abstract final class LoginForgotPasswordInfo {
+  static const title = 'Password recovery is administrator-mediated';
+  static const subtitle =
+      'AiClinic does not offer self-service password reset. Contact your clinic owner or '
+      'administrator to set a new password for your staff account.\n\n'
+      'If you are the clinic administrator, sign in with an owner or administrator account, open '
+      'Settings → Staff, select the staff member, and use Reset password.';
+}
+
 /// Centered floating login card with branding panel and credential form.
 class LoginModal extends StatefulWidget {
   const LoginModal({
     this.onClose,
-    this.onForgotPassword,
     this.onSubmit,
     this.isSubmitting = false,
     this.errorMessage,
+    this.initialShowForgotPasswordInfo = false,
     super.key,
   });
 
   final VoidCallback? onClose;
-  final VoidCallback? onForgotPassword;
   final void Function(String username, String password)? onSubmit;
   final bool isSubmitting;
   final String? errorMessage;
+  final bool initialShowForgotPasswordInfo;
 
   /// Presents [LoginModal] as a centered dialog over a dimmed scrim.
   static Future<void> show(
     BuildContext context, {
-    VoidCallback? onForgotPassword,
     void Function(String username, String password)? onSubmit,
     bool isSubmitting = false,
     String? errorMessage,
+    bool initialShowForgotPasswordInfo = false,
   }) {
     return showDialog<void>(
       context: context,
@@ -49,10 +60,10 @@ class LoginModal extends StatefulWidget {
           insetPadding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
           child: LoginModal(
             onClose: () => Navigator.of(dialogContext).pop(),
-            onForgotPassword: onForgotPassword,
             onSubmit: onSubmit,
             isSubmitting: isSubmitting,
             errorMessage: errorMessage,
+            initialShowForgotPasswordInfo: initialShowForgotPasswordInfo,
           ),
         );
       },
@@ -68,6 +79,15 @@ class _LoginModalState extends State<LoginModal> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   var _obscurePassword = true;
+  late var _showForgotPasswordInfo = widget.initialShowForgotPasswordInfo;
+
+  @override
+  void didUpdateWidget(covariant LoginModal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialShowForgotPasswordInfo && !oldWidget.initialShowForgotPasswordInfo) {
+      _showForgotPasswordInfo = true;
+    }
+  }
 
   @override
   void dispose() {
@@ -78,7 +98,12 @@ class _LoginModalState extends State<LoginModal> {
 
   void _handleSubmit() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    setState(() => _showForgotPasswordInfo = false);
     widget.onSubmit?.call(_usernameController.text.trim(), _passwordController.text);
+  }
+
+  void _toggleForgotPasswordInfo() {
+    setState(() => _showForgotPasswordInfo = !_showForgotPasswordInfo);
   }
 
   @override
@@ -101,24 +126,27 @@ class _LoginModalState extends State<LoginModal> {
                   final isCompact = constraints.maxWidth < _LoginModalPalette.compactBreakpoint;
 
                   if (isCompact) {
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const _BrandingPanel(),
-                        const SizedBox(height: SpacingTokens.xl),
-                        _LoginFormSection(
-                          formKey: _formKey,
-                          usernameController: _usernameController,
-                          passwordController: _passwordController,
-                          obscurePassword: _obscurePassword,
-                          isSubmitting: widget.isSubmitting,
-                          errorMessage: widget.errorMessage,
-                          onTogglePasswordVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
-                          onForgotPassword: widget.onForgotPassword,
-                          onSubmit: _handleSubmit,
-                        ),
-                      ],
+                    return SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const _BrandingPanel(),
+                          const SizedBox(height: SpacingTokens.xl),
+                          _LoginFormSection(
+                            formKey: _formKey,
+                            usernameController: _usernameController,
+                            passwordController: _passwordController,
+                            obscurePassword: _obscurePassword,
+                            isSubmitting: widget.isSubmitting,
+                            errorMessage: widget.errorMessage,
+                            showForgotPasswordInfo: _showForgotPasswordInfo,
+                            onTogglePasswordVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
+                            onForgotPassword: _toggleForgotPasswordInfo,
+                            onSubmit: _handleSubmit,
+                          ),
+                        ],
+                      ),
                     );
                   }
 
@@ -130,16 +158,19 @@ class _LoginModalState extends State<LoginModal> {
                         const SizedBox(width: SpacingTokens.xl),
                         Expanded(
                           flex: 55,
-                          child: _LoginFormSection(
-                            formKey: _formKey,
-                            usernameController: _usernameController,
-                            passwordController: _passwordController,
-                            obscurePassword: _obscurePassword,
-                            isSubmitting: widget.isSubmitting,
-                            errorMessage: widget.errorMessage,
-                            onTogglePasswordVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
-                            onForgotPassword: widget.onForgotPassword,
-                            onSubmit: _handleSubmit,
+                          child: SingleChildScrollView(
+                            child: _LoginFormSection(
+                              formKey: _formKey,
+                              usernameController: _usernameController,
+                              passwordController: _passwordController,
+                              obscurePassword: _obscurePassword,
+                              isSubmitting: widget.isSubmitting,
+                              errorMessage: widget.errorMessage,
+                              showForgotPasswordInfo: _showForgotPasswordInfo,
+                              onTogglePasswordVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
+                              onForgotPassword: _toggleForgotPasswordInfo,
+                              onSubmit: _handleSubmit,
+                            ),
                           ),
                         ),
                       ],
@@ -230,16 +261,17 @@ class _IllustrationPlaceholder extends StatelessWidget {
           padding: const EdgeInsets.all(SpacingTokens.xl),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.sentiment_satisfied_alt_outlined,
-                size: 72,
+                size: 48,
                 color: _LoginModalPalette.brandCoral.withValues(alpha: 0.85),
               ),
-              const SizedBox(height: SpacingTokens.md),
+              const SizedBox(height: SpacingTokens.sm),
               Text(
                 'Character illustration',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF6B5B52)),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF6B5B52)),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -259,6 +291,7 @@ class _LoginFormSection extends StatelessWidget {
     required this.isSubmitting,
     required this.onTogglePasswordVisibility,
     required this.onSubmit,
+    required this.showForgotPasswordInfo,
     this.errorMessage,
     this.onForgotPassword,
   });
@@ -268,6 +301,7 @@ class _LoginFormSection extends StatelessWidget {
   final TextEditingController passwordController;
   final bool obscurePassword;
   final bool isSubmitting;
+  final bool showForgotPasswordInfo;
   final String? errorMessage;
   final VoidCallback onTogglePasswordVisibility;
   final VoidCallback? onForgotPassword;
@@ -298,10 +332,7 @@ class _LoginFormSection extends StatelessWidget {
             controller: usernameController,
             hintText: 'Username',
             prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) return 'This field is required';
-              return null;
-            },
+            validator: (value) => validateStaffUsername(value ?? ''),
           ),
           const SizedBox(height: SpacingTokens.lg),
           AppTextField(
@@ -345,12 +376,20 @@ class _LoginFormSection extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: SpacingTokens.lg),
+          AppButton(label: 'Login', expand: true, isLoading: isSubmitting, onPressed: isSubmitting ? null : onSubmit),
           if (errorMessage != null) ...[
             const SizedBox(height: SpacingTokens.md),
             AppAlert(variant: AppAlertVariant.destructive, title: errorMessage!),
           ],
-          const SizedBox(height: SpacingTokens.lg),
-          AppButton(label: 'Login', expand: true, isLoading: isSubmitting, onPressed: isSubmitting ? null : onSubmit),
+          if (showForgotPasswordInfo) ...[
+            const SizedBox(height: SpacingTokens.md),
+            AppAlert(
+              icon: Icon(Icons.info_outline, color: theme.colorScheme.primary),
+              title: LoginForgotPasswordInfo.title,
+              subtitle: LoginForgotPasswordInfo.subtitle,
+            ),
+          ],
         ],
       ),
     );

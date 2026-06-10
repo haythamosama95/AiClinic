@@ -46,8 +46,9 @@ class AuthNotifier extends Notifier<AuthUiState> {
   }
 
   Future<void> signIn({required String username, required String password}) async {
-    if (!validateCredentials(username: username, password: password)) {
-      state = state.copyWith(errorMessage: 'Enter a valid username and password.');
+    final usernameError = validateStaffUsername(username);
+    if (usernameError != null || password.isEmpty) {
+      state = state.copyWith(errorMessage: usernameError ?? 'Password is required.');
       return;
     }
 
@@ -139,29 +140,8 @@ class AuthNotifier extends Notifier<AuthUiState> {
     );
   }
 
-  void clearError() {
-    if (state.errorMessage != null) {
-      state = state.copyWith(clearError: true);
-    }
-  }
-
-  /// Surfaces session-ended or idle-timeout messages on the login screen.
-  void showExternalMessage(String message) {
-    state = state.copyWith(errorMessage: message);
-  }
-
   /// Explicit sign-out (US4): clears Supabase session and in-memory permission cache.
   Future<void> signOut() async {
     await ref.read(authSessionProvider.notifier).signOut();
-  }
-
-  /// Reloads staff profile and permission grants without signing out (V1-2 matrix / resume).
-  Future<void> reloadContext() async {
-    await ref.read(authSessionProvider.notifier).reloadContext();
-  }
-
-  /// Updates active branch for branch-scoped UI without re-login (V1-2 shell switcher).
-  void setActiveBranch(String branchId) {
-    ref.read(authSessionProvider.notifier).setActiveBranch(branchId);
   }
 }

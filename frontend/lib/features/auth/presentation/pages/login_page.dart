@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/login_modal.dart';
@@ -19,6 +20,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
+    final sessionFailure = ref.watch(authSessionProvider.select((session) => session.failureMessage));
+    final errorMessage = authState.errorMessage ?? (authState.isSubmitting ? null : sessionFailure);
     final colors = context.semanticColors;
 
     ref.listen<AuthUiState>(authNotifierProvider, (previous, next) {
@@ -35,9 +38,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
             child: LoginModal(
               isSubmitting: authState.isSubmitting,
-              errorMessage: authState.errorMessage,
+              errorMessage: errorMessage,
+              initialShowForgotPasswordInfo: GoRouterState.of(context).uri.queryParameters.containsKey('forgot'),
               onClose: () => context.canPop() ? context.pop() : context.go(AppRoutes.startupEntry),
-              onForgotPassword: () => context.go(AppRoutes.forgotPassword),
               onSubmit: (username, password) {
                 ref.read(authNotifierProvider.notifier).signIn(username: username, password: password);
               },

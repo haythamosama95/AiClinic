@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/app/session_activity_scope.dart';
-import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/settings/application/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
@@ -51,7 +50,7 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
       return;
     }
 
-    unawaited(ref.read(authNotifierProvider.notifier).reloadContext());
+    unawaited(ref.read(authSessionProvider.notifier).reloadContext());
   }
 
   @override
