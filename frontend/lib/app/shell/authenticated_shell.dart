@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
+import 'package:ai_clinic/app/shell/shell_tokens.dart';
+import 'package:ai_clinic/app/shell/widgets/shell_content_panel.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_header.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
+import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 
 /// Authenticated route shell: header, left nav, and feature content regions.
 ///
@@ -30,13 +35,20 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
   }
 
   void _onItemSelected(String itemId) {
-    setState(() {
-      _selectedItemId = itemId;
-      final groupId = ShellNavConfig.groupIdFor(itemId);
-      if (groupId != null) {
+    final groupId = ShellNavConfig.groupIdFor(itemId);
+    if (groupId != null) {
+      setState(() {
         _expandedGroupIds = {..._expandedGroupIds, groupId};
-      }
-    });
+      });
+    }
+
+    final route = ShellNavConfig.routeFor(itemId);
+    if (route != null) {
+      context.go(route);
+      return;
+    }
+
+    setState(() => _selectedItemId = itemId);
   }
 
   void _onGroupToggled(String groupId) {
@@ -52,7 +64,9 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final title = ShellNavConfig.labelFor(_selectedItemId) ?? 'Dashboard';
+    final location = GoRouterState.of(context).matchedLocation;
+    final selectedItemId = ShellNavConfig.itemIdForLocation(location) ?? _selectedItemId;
+    final title = ShellNavConfig.labelFor(selectedItemId) ?? 'Dashboard';
 
     return ColoredBox(
       color: colors.background,
@@ -60,7 +74,7 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ShellNav(
-            selectedItemId: _selectedItemId,
+            selectedItemId: selectedItemId,
             expandedGroupIds: _expandedGroupIds,
             onItemSelected: _onItemSelected,
             onGroupToggled: _onGroupToggled,
@@ -70,7 +84,20 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ShellHeader(title: title),
-                Expanded(child: widget.child),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      ShellTokens.contentPanelInset,
+                      SpacingTokens.sm,
+                      ShellTokens.contentPanelInset,
+                      ShellTokens.contentPanelInset,
+                    ),
+                    child: ShellContentPanel(
+                      backgroundColor: location == AppRoutes.foundationDemo ? Colors.white : null,
+                      child: widget.child,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

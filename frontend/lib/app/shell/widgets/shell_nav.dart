@@ -116,6 +116,19 @@ class _ShellNavState extends State<ShellNav> with SingleTickerProviderStateMixin
                           SpacingTokens.md,
                           SpacingTokens.sm,
                           SpacingTokens.md,
+                          SpacingTokens.xs,
+                        ),
+                        child: ShellNavSingleItem(
+                          item: ShellNavConfig.themeShowcaseFooter,
+                          isSelected: widget.selectedItemId == ShellNavConfig.themeShowcaseId,
+                          onSelected: widget.onItemSelected,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          SpacingTokens.md,
+                          SpacingTokens.sm,
+                          SpacingTokens.md,
                           SpacingTokens.lg,
                         ),
                         child: ShellNavItemRow(

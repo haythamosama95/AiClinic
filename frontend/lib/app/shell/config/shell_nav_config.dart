@@ -1,9 +1,35 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 
-/// Static clinic navigation tree for shell chrome (visual-only, no routing).
+/// Static clinic navigation tree and route bindings for the authenticated shell.
 abstract final class ShellNavConfig {
+  static const themeShowcaseId = 'theme-showcase';
+
+  static const Map<String, String> _routesByItemId = {
+    'dashboard': AppRoutes.home,
+    'patients-list': AppRoutes.patients,
+    'patients-register': AppRoutes.patientsNew,
+    'appointments-calendar': AppRoutes.appointmentsCalendar,
+    'appointments-book': AppRoutes.appointmentsBook,
+    'appointments-queue': AppRoutes.appointmentsQueue,
+    'billing-invoices': AppRoutes.billingInvoices,
+    'billing-insurance': AppRoutes.billingInsuranceProviders,
+    'shifts': AppRoutes.shiftsCalendar,
+    'settings-organization': AppRoutes.settingsOrganization,
+    'settings-branches': AppRoutes.settingsBranches,
+    'settings-staff': AppRoutes.settingsStaff,
+    'settings-permissions': AppRoutes.settingsPermissions,
+    themeShowcaseId: AppRoutes.foundationDemo,
+  };
+
+  static const ShellNavSingle themeShowcaseFooter = ShellNavSingle(
+    id: themeShowcaseId,
+    label: 'Theme showcase',
+    icon: Icons.palette_outlined,
+  );
+
   static const List<ShellNavEntry> entries = [
     ShellNavSingle(id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard_outlined),
     ShellNavSingle(id: 'reception', label: 'Reception desk', icon: Icons.desk_outlined),
@@ -67,8 +93,62 @@ abstract final class ShellNavConfig {
     ),
   ];
 
+  /// Returns the route path for [itemId], or null when the item is not wired yet.
+  static String? routeFor(String itemId) => _routesByItemId[itemId];
+
+  /// Resolves the nav item id for [location], including parameterized feature routes.
+  static String? itemIdForLocation(String location) {
+    for (final entry in _routesByItemId.entries) {
+      if (entry.value == location) {
+        return entry.key;
+      }
+    }
+
+    if (location == AppRoutes.patientsNew) {
+      return 'patients-register';
+    }
+    if (location == AppRoutes.patients || location.startsWith('${AppRoutes.patients}/')) {
+      return 'patients-list';
+    }
+
+    if (location == AppRoutes.appointmentsCalendar) {
+      return 'appointments-calendar';
+    }
+    if (location == AppRoutes.appointmentsBook) {
+      return 'appointments-book';
+    }
+    if (location == AppRoutes.appointmentsQueue) {
+      return 'appointments-queue';
+    }
+
+    if (location == AppRoutes.billingInsuranceProviders ||
+        location.startsWith('${AppRoutes.billingInsuranceProviders}/')) {
+      return 'billing-insurance';
+    }
+    if (location == AppRoutes.billingInvoices || location.startsWith('${AppRoutes.billingInvoices}/')) {
+      return 'billing-invoices';
+    }
+
+    if (location == AppRoutes.shiftsNew || location.startsWith('${AppRoutes.shifts}/')) {
+      return 'shifts';
+    }
+
+    if (location == AppRoutes.settingsBranchesNew || location.startsWith('${AppRoutes.settingsBranches}/')) {
+      return 'settings-branches';
+    }
+    if (location == AppRoutes.settingsStaffNew || location.startsWith('${AppRoutes.settingsStaff}/')) {
+      return 'settings-staff';
+    }
+
+    return null;
+  }
+
   /// Returns the label for [itemId], or null if not found.
   static String? labelFor(String itemId) {
+    if (itemId == themeShowcaseFooter.id) {
+      return themeShowcaseFooter.label;
+    }
+
     for (final entry in entries) {
       switch (entry) {
         case ShellNavSingle(:final id, :final label):

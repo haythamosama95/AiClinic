@@ -13,7 +13,6 @@ abstract final class AuthRouteGuard {
         location == AppRoutes.startupCheck ||
         location == AppRoutes.setupGuidance ||
         location == AppRoutes.protectedBlocked ||
-        location == AppRoutes.foundationDemo ||
         location == AppRoutes.login ||
         location == AppRoutes.forgotPassword;
   }
@@ -22,6 +21,7 @@ abstract final class AuthRouteGuard {
   static bool requiresAuthentication(String location) {
     return location == AppRoutes.home ||
         location == AppRoutes.bootstrap ||
+        location == AppRoutes.foundationDemo ||
         isSettingsRoute(location) ||
         isPatientRoute(location) ||
         isAppointmentRoute(location) ||

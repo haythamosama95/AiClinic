@@ -13,6 +13,9 @@ abstract final class ShellTokens {
   static const double iconInsetFromNavEdge = 28;
 
   static const double headerHeight = 64;
+
+  /// Inset between the nav edge and the floating content panel.
+  static const double contentPanelInset = 16;
   static const double itemHeight = 40;
   static const double itemRadius = 12;
   static const double itemIconSize = 20;

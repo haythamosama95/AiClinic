@@ -38,7 +38,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.protectedPlaceholder,
         builder: (context, state) => uiPendingPlaceholder('Startup', state),
       ),
-      GoRoute(path: AppRoutes.foundationDemo, builder: (context, state) => const ThemeShowcasePage()),
       GoRoute(path: AppRoutes.login, builder: (context, state) => const LoginPage()),
       GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
       GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
@@ -48,6 +47,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
         routes: [
+          GoRoute(
+            path: AppRoutes.foundationDemo,
+            builder: (context, state) => const ThemeShowcasePage(embeddedInShell: true),
+          ),
           GoRoute(path: AppRoutes.home, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
           GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
 

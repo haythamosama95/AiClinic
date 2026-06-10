@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 
 /// Content-area page title aligned with the top of the sidebar.
 class ShellHeader extends StatelessWidget {
@@ -18,7 +17,7 @@ class ShellHeader extends StatelessWidget {
       child: Align(
         alignment: Alignment.centerLeft,
         child: Padding(
-          padding: const EdgeInsets.only(right: SpacingTokens.lg),
+          padding: const EdgeInsets.symmetric(horizontal: ShellTokens.contentPanelInset),
           child: Text(
             title,
             maxLines: 1,
