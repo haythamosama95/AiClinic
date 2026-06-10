@@ -66,7 +66,6 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
     final colors = context.semanticColors;
     final location = GoRouterState.of(context).matchedLocation;
     final selectedItemId = ShellNavConfig.itemIdForLocation(location) ?? _selectedItemId;
-    final title = ShellNavConfig.labelFor(selectedItemId) ?? 'Dashboard';
 
     return ColoredBox(
       color: colors.background,
@@ -83,7 +82,7 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ShellHeader(title: title),
+                const ShellHeader(),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(

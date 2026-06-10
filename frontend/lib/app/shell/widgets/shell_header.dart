@@ -1,29 +1,42 @@
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
+import 'package:ai_clinic/app/shell/widgets/shell_header_icon_button.dart';
+import 'package:ai_clinic/app/shell/widgets/shell_header_profile.dart';
+import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/ui/widgets/input/app_field_size.dart';
+import 'package:ai_clinic/core/ui/widgets/input/app_text_field.dart';
 
-/// Content-area page title aligned with the top of the sidebar.
+/// Top chrome for the authenticated shell: global search and account actions.
 class ShellHeader extends StatelessWidget {
-  const ShellHeader({required this.title, super.key});
-
-  final String title;
+  const ShellHeader({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return SizedBox(
       height: ShellTokens.headerHeight,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: ShellTokens.contentPanelInset),
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
-          ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: ShellTokens.contentPanelInset),
+        child: Row(
+          children: [
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: ShellTokens.headerSearchMaxWidth),
+                  child: AppTextInput(
+                    hintText: 'Search patients, appointments, visits…',
+                    size: AppFieldSize.sm,
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                  ),
+                ),
+              ),
+            ),
+            const ShellHeaderProfile(),
+            const SizedBox(width: ShellTokens.headerActionsGap),
+            const ShellHeaderIconButton(icon: Icons.notifications_outlined, tooltip: 'Notifications'),
+            const SizedBox(width: SpacingTokens.sm),
+            const ShellHeaderIconButton(icon: Icons.settings_outlined, tooltip: 'Settings'),
+          ],
         ),
       ),
     );
