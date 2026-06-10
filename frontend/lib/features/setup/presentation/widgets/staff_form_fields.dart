@@ -304,6 +304,7 @@ class _StaffFormFieldsState extends State<StaffFormFields> {
         enabled: widget.enabled,
         validator: validator,
         keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
       );
     }
     return AppTextField(
@@ -327,6 +328,7 @@ class _ModifiableTextField extends StatefulWidget {
     required this.enabled,
     this.validator,
     this.keyboardType,
+    this.inputFormatters,
   });
 
   final String label;
@@ -336,6 +338,7 @@ class _ModifiableTextField extends StatefulWidget {
   final bool enabled;
   final String? Function(String?)? validator;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   State<_ModifiableTextField> createState() => _ModifiableTextFieldState();
@@ -354,6 +357,7 @@ class _ModifiableTextFieldState extends State<_ModifiableTextField> {
         enabled: widget.enabled,
         validator: widget.validator,
         keyboardType: widget.keyboardType,
+        inputFormatters: widget.inputFormatters,
       );
     }
 

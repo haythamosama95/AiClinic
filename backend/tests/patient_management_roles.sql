@@ -110,7 +110,7 @@ BEGIN
   -- Ensure default permission grants are in place.
   UPDATE public.roles_permissions SET is_granted = true, updated_at = now()
   WHERE permission_key IN ('patients.view', 'patients.create', 'patients.edit', 'patients.delete')
-    AND role IN ('administrator', 'administrator', 'doctor', 'receptionist')
+    AND role IN ('administrator', 'doctor', 'receptionist')
     AND is_deleted = false;
   UPDATE public.roles_permissions SET is_granted = true, updated_at = now()
   WHERE permission_key = 'patients.view'

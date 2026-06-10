@@ -39,7 +39,7 @@ BEGIN
   INSERT INTO jwt_claims_results (test_name, passed, detail)
   VALUES (
     'build_staff_claims_no_job_title_as_role_key',
-    NOT (v_claims ? 'role' AND (v_claims ->> 'role') IN ('administrator', 'administrator', 'doctor', 'receptionist', 'lab_staff')),
+    NOT (v_claims ? 'role' AND (v_claims ->> 'role') IN ('administrator', 'doctor', 'receptionist', 'lab_staff')),
     'keys=' || (SELECT string_agg(key, ',') FROM jsonb_object_keys(v_claims) AS key)
   );
 
