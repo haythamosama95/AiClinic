@@ -31,6 +31,7 @@ Widget tests for the auth presentation layer (`LoginPage`, `LoginModal`, and rel
 | `invalid short username shows validation error`            | Username shorter than 3 characters with a password entered | `Enter a valid username.` is shown                                              | Invalid username is accepted or wrong message appears         |
 | `username containing @ shows validation error`             | Username contains `@` (email-style input)                  | `Enter a valid username.` is shown                                              | Email-style username is accepted                              |
 | `invalid username characters show pattern error`           | Username contains spaces or other disallowed characters    | `Username may use letters, numbers, underscore, and hyphen.` is shown           | Invalid pattern is accepted or wrong message appears          |
+| `enter in password field submits login`                    | Valid credentials entered; user presses Enter in password  | `onSubmit` receives username and password (same as tapping Login)               | Enter does nothing or credentials not submitted               |
 | `valid credentials invoke onSubmit with trimmed username`  | Valid username and password submitted                      | `onSubmit` receives trimmed username (`Staff_One`) and raw password             | Callback not fired, username not trimmed, or password altered |
 
 ## LoginModal password visibility

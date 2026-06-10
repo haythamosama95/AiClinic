@@ -4,6 +4,7 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/login_modal.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forui/forui.dart';
 
@@ -80,6 +81,29 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Username may use letters, numbers, underscore, and hyphen.'), findsOneWidget);
+    });
+
+    testWidgets('enter in password field submits login', (tester) async {
+      String? submittedUsername;
+      String? submittedPassword;
+
+      await pumpLoginModalWidget(
+        tester,
+        onSubmit: (username, password) {
+          submittedUsername = username;
+          submittedPassword = password;
+        },
+      );
+
+      await tester.enterText(find.byType(AppTextField).at(0), 'staff1');
+      await tester.enterText(find.byType(AppTextField).at(1), 'secret');
+      await tester.tap(find.byType(AppTextField).at(1));
+      await tester.pump();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(submittedUsername, 'staff1');
+      expect(submittedPassword, 'secret');
     });
 
     testWidgets('valid credentials invoke onSubmit with trimmed username', (tester) async {

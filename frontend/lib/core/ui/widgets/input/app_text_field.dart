@@ -40,6 +40,8 @@ class AppTextField extends StatelessWidget {
     this.description,
     this.maxLines = 1,
     this.onChanged,
+    this.onSubmit,
+    this.textInputAction,
     this.prefixIcon,
     this.suffixIcon,
     super.key,
@@ -56,6 +58,8 @@ class AppTextField extends StatelessWidget {
   final AppFieldSize size;
   final int maxLines;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmit;
+  final TextInputAction? textInputAction;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
 
@@ -76,8 +80,10 @@ class AppTextField extends StatelessWidget {
       hint: hintText,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      textInputAction: textInputAction,
       maxLines: maxLines,
       enabled: enabled,
+      onSubmit: onSubmit,
       validator: validator,
       prefixBuilder: _prefixBuilder(prefixIcon),
       suffixBuilder: _suffixBuilder(suffixIcon),

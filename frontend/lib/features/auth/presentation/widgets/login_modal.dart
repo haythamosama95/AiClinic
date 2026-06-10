@@ -472,6 +472,7 @@ class _LoginFormSection extends StatelessWidget {
             label: 'Username',
             controller: usernameController,
             hintText: 'Username',
+            textInputAction: TextInputAction.next,
             prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant),
             validator: (value) => validateStaffUsername(value ?? ''),
           ),
@@ -481,6 +482,8 @@ class _LoginFormSection extends StatelessWidget {
             controller: passwordController,
             hintText: '••••••••',
             obscureText: obscurePassword,
+            textInputAction: TextInputAction.done,
+            onSubmit: isSubmitting ? null : (_) => onSubmit(),
             prefixIcon: Icon(Icons.lock_outline, color: theme.colorScheme.onSurfaceVariant),
             suffixIcon: IconButton(
               onPressed: onTogglePasswordVisibility,
