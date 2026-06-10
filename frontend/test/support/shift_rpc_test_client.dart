@@ -8,15 +8,10 @@ import 'settings_table_test_client.dart';
 
 /// [SupabaseClient] fake for V1-7 shift repository and create-page tests.
 class ShiftRpcTestClient extends Fake implements SupabaseClient {
-  ShiftRpcTestClient({
-    Map<String, dynamic>? rpcResults,
-    PostgrestException? rpcException,
-    String? branchId,
-    String? staffId,
-  }) : rpcResults = rpcResults ?? {},
-       rpcException = rpcException,
-       branchId = branchId ?? '44444444-4444-4444-8444-444444444444',
-       staffId = staffId ?? '22222222-2222-4222-8222-222222222222' {
+  ShiftRpcTestClient({Map<String, dynamic>? rpcResults, this.rpcException, String? branchId, String? staffId})
+    : rpcResults = rpcResults ?? {},
+      branchId = branchId ?? '44444444-4444-4444-8444-444444444444',
+      staffId = staffId ?? '22222222-2222-4222-8222-222222222222' {
     _tableClient = SettingsTableTestClient({
       'staff_branch_assignments': [
         {

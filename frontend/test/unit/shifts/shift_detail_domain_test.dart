@@ -36,7 +36,7 @@ void main() {
     });
 
     test('truncates trimmed notes to 80 characters', () {
-      final longNote = '${'x' * 90}';
+      final longNote = 'x' * 90;
       final listItem = _sampleDetail(notes: '  $longNote  ').toListItem();
 
       expect(listItem.notesPreview, 'x' * 80);
