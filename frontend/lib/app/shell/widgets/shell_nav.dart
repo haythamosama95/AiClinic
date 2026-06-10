@@ -7,7 +7,6 @@ import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_group.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_item_row.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_nav_logo.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_metrics.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_single_item.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -78,10 +77,7 @@ class _ShellNavState extends State<ShellNav> with SingleTickerProviderStateMixin
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: SpacingTokens.lg),
-                        child: ShellNavLogo(),
-                      ),
+                      const SizedBox(height: ShellTokens.headerHeight),
                       Expanded(
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(
