@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/app/providers/auth_notifier.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
-import 'package:ai_clinic/features/auth/presentation/login_modal.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/login_modal.dart';
 
 /// Full-screen host for the login modal on the `/login` route.
 class LoginPage extends ConsumerStatefulWidget {

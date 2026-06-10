@@ -1,7 +1,7 @@
 import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
-import 'package:ai_clinic/app/providers/staff_assignable_branches_provider.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import '../../helpers/auth_test_support.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

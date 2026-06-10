@@ -3,7 +3,7 @@ import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_dummy_data.dart';
 import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
-import 'package:ai_clinic/features/auth/application/bootstrap_notifier.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/bootstrap_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import '../../helpers/auth_test_support.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
