@@ -61,7 +61,7 @@ void main() {
       await ctx.signInAdmin();
       await expectRpcCode(
         () => ctx.rolePermissions.updateRolePermission(
-          role: StaffRole.owner,
+          role: StaffRole.administrator,
           permissionKey: 'not.a.real.permission',
           isGranted: true,
         ),
@@ -88,7 +88,7 @@ void main() {
       const ManifestScenario('rolePermissions.INVALID_INPUT.emptyKey');
       await ctx.signInAdmin();
       expect(
-        () => ctx.rolePermissions.updateRolePermission(role: StaffRole.owner, permissionKey: '   ', isGranted: true),
+        () => ctx.rolePermissions.updateRolePermission(role: StaffRole.administrator, permissionKey: '   ', isGranted: true),
         throwsA(isA<StateError>()),
       );
     });

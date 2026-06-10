@@ -83,7 +83,6 @@ class StaffFormFields extends StatefulWidget {
   final bool showBranchAssignments;
 
   static String roleLabel(StaffRole role) => switch (role) {
-    StaffRole.owner => 'Owner',
     StaffRole.administrator => 'Administrator',
     StaffRole.doctor => 'Doctor',
     StaffRole.receptionist => 'Receptionist',

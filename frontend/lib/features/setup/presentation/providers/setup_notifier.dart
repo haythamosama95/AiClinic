@@ -108,8 +108,6 @@ class SetupUiState {
   /// Wizard still in progress on `/bootstrap` until Finish submits all setup data.
   bool get isBootstrapWizardInProgress => step != SetupWizardStep.complete;
 
-  bool get draftOwnerAlreadyExists => staffDrafts.any((draft) => draft.role == StaffRole.owner);
-
   SetupUiState copyWith({
     SetupWizardStep? step,
     bool? isSubmitting,
@@ -318,9 +316,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
       return false;
     }
 
-    final ownerAlreadyExists =
-        ref.read(provisioningNotifierProvider).ownerAlreadyExists || state.draftOwnerAlreadyExists;
-    final roleError = ProvisioningRules.validateRoleChoice(caller, role, ownerAlreadyExists: ownerAlreadyExists);
+    final roleError = ProvisioningRules.validateRoleChoice(caller, role);
     if (roleError != null) {
       state = state.copyWith(errorMessage: roleError);
       return false;
@@ -389,7 +385,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
     }
   }
 
-  /// Persists organization, branch, and a dummy owner with preset dev values (debug UI only).
+  /// Persists organization, branch, and a dummy administrator with preset dev values (debug UI only).
   Future<bool> finishSetupWithDummyData() async {
     AppLog.info('setup.dev_dummy_fill.start');
     state = state.copyWith(
@@ -408,9 +404,9 @@ class SetupNotifier extends Notifier<SetupUiState> {
       ),
       staffDrafts: const [
         SetupStaffDraft(
-          username: 'owner',
-          fullName: 'Demo Owner',
-          role: StaffRole.owner,
+          username: 'admin',
+          fullName: 'Demo Administrator',
+          role: StaffRole.administrator,
           password: 'DemoPass1',
           branchIds: [SetupWizardDraftIds.branch],
           primaryBranchId: SetupWizardDraftIds.branch,
@@ -508,7 +504,6 @@ class SetupNotifier extends Notifier<SetupUiState> {
   static String _finishSetupMessageForRpc(RpcFailure failure) {
     return switch (failure.code) {
       'ORG_SETUP_INCOMPLETE' ||
-      'FORBIDDEN_OWNER_CREATE' ||
       'FORBIDDEN' ||
       'USERNAME_EXISTS' ||
       'INVALID_BRANCH' ||

@@ -8,7 +8,6 @@ import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dar
 abstract class StaffAdminRepository {
   Future<List<StaffListItem>> listStaff({StaffListFilter filter = StaffListFilter.all});
   Future<StaffMemberDetail?> fetchStaffMember(String staffMemberId);
-  Future<bool> organizationHasOwner();
   Future<String> updateStaffMember(UpdateStaffMemberInput input);
   Future<RpcResult> setStaffActive({required String staffMemberId, required bool isActive});
 }

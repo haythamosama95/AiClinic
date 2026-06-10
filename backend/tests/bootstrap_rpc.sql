@@ -283,7 +283,7 @@ PERFORM set_config('role', 'postgres', true);
         'username', 'finish-owner',
         'password', 'finish-pass-1',
         'full_name', 'Finish Owner',
-        'role', 'owner'
+        'role', 'administrator'
       )
     ),
     '{}'::jsonb,
@@ -313,7 +313,7 @@ PERFORM set_config('role', 'postgres', true);
         'username', 'finish-owner',
         'password', 'finish-pass-1',
         'full_name', 'Finish Owner',
-        'role', 'owner'
+        'role', 'administrator'
       )
     ),
     '{}'::jsonb,
@@ -332,6 +332,48 @@ PERFORM set_config('role', 'postgres', true);
     'finish_setup_happy_path',
     v_result.success AND v_org_id IS NOT NULL AND v_branch_id IS NOT NULL,
     'org_id=' || COALESCE(v_org_id::text, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Bootstrap administrator satisfies the administrator requirement; drafts may be operational roles only.
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff, v_non_bootstrap_staff]::uuid[]);
+  DELETE FROM public.audit_log;
+  DELETE FROM auth.users
+  WHERE email IN ('finish-receptionist');
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.bootstrap_finish_setup(
+    'Operational Staff Clinic',
+    'Operational Branch',
+    jsonb_build_array(
+      jsonb_build_object(
+        'username', 'finish-receptionist',
+        'password', 'finish-pass-1',
+        'full_name', 'Front Desk',
+        'role', 'receptionist'
+      )
+    ),
+    '{}'::jsonb,
+    NULL,
+    'USD',
+    'UTC',
+    'OPST',
+    '1 Operational Way',
+    '+1-555-0200',
+    'https://maps.example/operational'
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO bootstrap_rpc_results VALUES (
+    'finish_setup_operational_roles_only',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
   );
   PERFORM set_config('role', 'authenticated', true);
 END;

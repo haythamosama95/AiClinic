@@ -132,7 +132,7 @@ void main() {
       final ok = notifier.addStaffDraft(
         username: 'owner1',
         fullName: 'Owner One',
-        role: StaffRole.owner,
+        role: StaffRole.administrator,
         branchIds: const ['branch-local'],
         password: 'Secret12',
       );
@@ -166,7 +166,7 @@ void main() {
       expect(bootstrapRepo.finishSetupInput?.branch.name, BootstrapDummyData.branchName);
       expect(bootstrapRepo.finishSetupInput?.branch.code, BootstrapDummyData.branchCode);
       expect(bootstrapRepo.finishSetupInput?.staffAccounts, hasLength(1));
-      expect(bootstrapRepo.finishSetupInput?.staffAccounts.first.username, 'owner');
+      expect(bootstrapRepo.finishSetupInput?.staffAccounts.first.username, 'admin');
     });
 
     test('resetInstallationForDevelopment clears wizard after successful RPC', () async {

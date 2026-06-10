@@ -21,7 +21,7 @@ void main() {
       expect(loginStatusFadeTransition, findsOneWidget);
       expect(tester.widget<FadeTransition>(loginStatusFadeTransition).opacity.value, 1);
       expect(visiblePanelText('does not offer self-service'), findsOneWidget);
-      expect(visiblePanelText('Contact your clinic owner or administrator'), findsOneWidget);
+      expect(visiblePanelText('Contact your clinic administrator'), findsOneWidget);
       expect(find.byType(AppTextField), findsNWidgets(2));
       expect(find.text('Send reset link'), findsNothing);
     });
@@ -79,7 +79,7 @@ void main() {
       expect(visiblePanelText('Settings'), findsOneWidget);
       expect(visiblePanelText('Staff'), findsOneWidget);
       expect(visiblePanelText('Reset password'), findsOneWidget);
-      expect(visiblePanelText('owner or administrator'), findsOneWidget);
+      expect(visiblePanelText('administrator account'), findsOneWidget);
     });
 
     testWidgets('initialShowForgotPasswordInfo opens panel without tapping link', (tester) async {

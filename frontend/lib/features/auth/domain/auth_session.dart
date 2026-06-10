@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 
 /// Staff roles aligned with PostgreSQL `staff_role` enum.
 enum StaffRole {
-  owner,
   administrator,
   doctor,
   receptionist,
@@ -16,7 +15,6 @@ enum StaffRole {
     }
 
     return switch (normalized) {
-      'owner' => StaffRole.owner,
       'administrator' => StaffRole.administrator,
       'doctor' => StaffRole.doctor,
       'receptionist' => StaffRole.receptionist,
@@ -26,7 +24,6 @@ enum StaffRole {
   }
 
   String get wireValue => switch (this) {
-    StaffRole.owner => 'owner',
     StaffRole.administrator => 'administrator',
     StaffRole.doctor => 'doctor',
     StaffRole.receptionist => 'receptionist',

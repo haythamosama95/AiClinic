@@ -1,19 +1,9 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
-import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
 import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
-import 'package:ai_clinic/app/shell/shell_tokens.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_header.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_header_icon_button.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_header_profile.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_nav_badge.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_nav_group.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_item_row.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_metrics.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_nav_single_item.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_nav_tree_connector.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_content_panel.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:flutter/material.dart';
@@ -166,7 +156,6 @@ Finder shellNavExpandControl() => find.widgetWithText(ShellNavItemRow, 'Expand')
 
 AnimatedOpacity? findNavRowHighlightOpacity(WidgetTester tester) {
   final row = tester.widget<ShellNavItemRow>(find.byType(ShellNavItemRow).first);
-  final element = find.byWidget(row).evaluate().first;
   return find
       .descendant(of: find.byWidget(row), matching: find.byType(AnimatedOpacity))
       .evaluate()

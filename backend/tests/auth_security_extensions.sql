@@ -29,7 +29,7 @@ BEGIN
 
   SELECT count(*) INTO v_owner_grants
   FROM public.roles_permissions
-  WHERE role = 'owner' AND is_granted = true AND is_deleted = false;
+  WHERE role = 'administrator' AND is_granted = true AND is_deleted = false;
 
   INSERT INTO auth_security_results VALUES
     ('doctor_denied_manage_staff', COALESCE(NOT v_doctor_manage_staff, true), 'doctor settings.manage_staff'),

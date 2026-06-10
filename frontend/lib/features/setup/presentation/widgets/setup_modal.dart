@@ -415,7 +415,6 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                     isBusy: isBusy,
                     onCreate: _addStaffDraft,
                     wizardBranches: _wizardBranches(setup.branchDraft),
-                    ownerAlreadyExists: setup.draftOwnerAlreadyExists,
                   ),
                   completeStep: SetupCompleteStep(onGoHome: widget.onFinished),
                 ),

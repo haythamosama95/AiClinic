@@ -70,7 +70,7 @@ void main() {
         await ctx.fixtures.createPatientAsAdmin(clinic: clinic, phone: clinic.phone('2$i'));
       }
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       final page1 = await ctx.patients.searchPatients(
         scope: PatientListScope.thisBranch,
         branchId: clinic.branchId,
@@ -112,7 +112,7 @@ void main() {
       const ManifestScenario('patients.getPatient.NOT_FOUND');
       final clinic = await ctx.ensureClinic(label: 'pat_not_found');
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       await expectRpcCode(() => ctx.patients.getPatient('00000000-0000-4000-8000-000000000099'), 'NOT_FOUND');
     });
 
@@ -121,7 +121,7 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'pat_archived_get');
       final id = await ctx.fixtures.createPatientAsAdmin(clinic: clinic, phone: clinic.phone('93'));
       final ownerSessions = RoleSessions(ctx, clinic);
-      await ownerSessions.signInAs(StaffRole.owner);
+      await ownerSessions.signInAs(StaffRole.administrator);
       await ctx.patients.archivePatient(id);
       await ctx.signOut();
 
@@ -134,7 +134,7 @@ void main() {
       const ManifestScenario('patients.getPatient.INVALID_INPUT.client');
       final clinic = await ctx.ensureClinic(label: 'pat_get_invalid');
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       await expectRpcCode(() => ctx.patients.getPatient('  '), 'INVALID_INPUT');
       clinic;
     });
@@ -209,7 +209,7 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'pat_stale');
       final id = await ctx.fixtures.createPatientAsAdmin(clinic: clinic, phone: clinic.phone('81'));
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       final detail = await ctx.patients.getPatient(id);
       await expectRpcCode(
         () => ctx.patients.updatePatient(
@@ -228,7 +228,7 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'pat_archive');
       final id = await ctx.fixtures.createPatientAsAdmin(clinic: clinic, phone: clinic.phone('91'));
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       await ctx.patients.archivePatient(id);
     });
 

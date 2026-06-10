@@ -317,7 +317,7 @@ abstract final class AuthRouteGuard {
       return false;
     }
     final role = auth.context!.staffProfile.role;
-    return role == StaffRole.owner || role == StaffRole.administrator;
+    return role == StaffRole.administrator;
   }
 
   static bool canAccessBranchManagement(AuthSessionState auth) {
@@ -339,7 +339,7 @@ abstract final class AuthRouteGuard {
       return false;
     }
     final role = auth.context!.staffProfile.role;
-    return role == StaffRole.owner || role == StaffRole.administrator;
+    return role == StaffRole.administrator;
   }
 
   /// Returns redirect target when [location] is an admin settings route the session cannot access.

@@ -83,7 +83,7 @@ void main() {
     test('no branch assignment denies all patient permissions', () {
       final service = PermissionService(
         sampleAuthSessionContext(
-          permissions: RolePermissionSeed.owner,
+          permissions: RolePermissionSeed.administrator,
           branchIds: const [],
         ),
       );
@@ -107,7 +107,7 @@ void main() {
 
     test('owner role has all patient permissions by seed', () {
       final service = PermissionService(
-        sampleAuthSessionContext(permissions: RolePermissionSeed.owner),
+        sampleAuthSessionContext(permissions: RolePermissionSeed.administrator),
       );
 
       expect(service.canViewPatients(), isTrue);
@@ -166,7 +166,7 @@ void main() {
 
     test('hasAnyPermission with empty keys returns false', () {
       final service = PermissionService(
-        sampleAuthSessionContext(permissions: RolePermissionSeed.owner),
+        sampleAuthSessionContext(permissions: RolePermissionSeed.administrator),
       );
 
       expect(service.hasAnyPermission([]), isFalse);

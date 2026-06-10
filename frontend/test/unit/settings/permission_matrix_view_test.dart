@@ -8,7 +8,7 @@ void main() {
     test('fromRows groups grants by permission key sorted alphabetically', () {
       final view = PermissionMatrixView.fromRows([
         const PermissionMatrixRow(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: true),
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'settings.manage_staff', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'settings.manage_staff', isGranted: true),
         const PermissionMatrixRow(
           role: StaffRole.administrator,
           permissionKey: 'settings.manage_staff',
@@ -24,7 +24,7 @@ void main() {
 
     test('edge case: missing role cell defaults to not granted', () {
       final view = PermissionMatrixView.fromRows([
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'ai.access', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'ai.access', isGranted: true),
       ]);
 
       expect(view.isGranted(StaffRole.labStaff, 'ai.access'), isFalse);
@@ -32,10 +32,10 @@ void main() {
 
     test('categoryGroups clusters keys by prefix before dot', () {
       final view = PermissionMatrixView.fromRows([
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'settings.manage_staff', isGranted: true),
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'patients.view', isGranted: true),
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'patients.create', isGranted: true),
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'ai.access', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'settings.manage_staff', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'patients.view', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'patients.create', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'ai.access', isGranted: true),
       ]);
 
       expect(view.categoryGroups.map((g) => g.category), ['ai', 'patients', 'settings']);
@@ -58,19 +58,19 @@ void main() {
     test('changesFrom reports multiple dirty cells', () {
       final saved = PermissionMatrixView.fromRows([
         const PermissionMatrixRow(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: true),
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'settings.manage_staff', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'settings.manage_staff', isGranted: true),
       ]);
       var working = saved.withGrant(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: false);
-      working = working.withGrant(role: StaffRole.owner, permissionKey: 'settings.manage_staff', isGranted: false);
+      working = working.withGrant(role: StaffRole.administrator, permissionKey: 'settings.manage_staff', isGranted: false);
 
       expect(working.changesFrom(saved), hasLength(2));
     });
 
     test('equality compares grant values not map identity', () {
       final left = PermissionMatrixView.fromRows([
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'ai.access', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'ai.access', isGranted: true),
       ]);
-      final right = left.withGrant(role: StaffRole.owner, permissionKey: 'ai.access', isGranted: true);
+      final right = left.withGrant(role: StaffRole.administrator, permissionKey: 'ai.access', isGranted: true);
 
       expect(left, right);
     });
@@ -102,16 +102,16 @@ void main() {
 
     test('hasDefinedCell is true only for persisted role rows', () {
       final view = PermissionMatrixView.fromRows([
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'ai.access', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'ai.access', isGranted: true),
       ]);
 
-      expect(view.hasDefinedCell(StaffRole.owner, 'ai.access'), isTrue);
+      expect(view.hasDefinedCell(StaffRole.administrator, 'ai.access'), isTrue);
       expect(view.hasDefinedCell(StaffRole.doctor, 'ai.access'), isFalse);
     });
 
     test('changesFrom ignores undefined role cells', () {
       final saved = PermissionMatrixView.fromRows([
-        const PermissionMatrixRow(role: StaffRole.owner, permissionKey: 'ai.access', isGranted: true),
+        const PermissionMatrixRow(role: StaffRole.administrator, permissionKey: 'ai.access', isGranted: true),
       ]);
       final working = saved.withGrant(role: StaffRole.doctor, permissionKey: 'ai.access', isGranted: true);
 

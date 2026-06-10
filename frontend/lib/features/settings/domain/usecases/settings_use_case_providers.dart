@@ -14,7 +14,6 @@ import 'package:ai_clinic/features/settings/domain/usecases/fetch_permission_mat
 import 'package:ai_clinic/features/settings/domain/usecases/update_role_permission.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/list_staff.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/fetch_staff_member.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/organization_has_owner.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/update_staff_member.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/set_staff_active.dart';
 
@@ -22,12 +21,19 @@ final listBranchesUseCaseProvider = Provider((ref) => ListBranches(ref.watch(bra
 final createBranchUseCaseProvider = Provider((ref) => CreateBranch(ref.watch(branchRepositoryProvider)));
 final updateBranchUseCaseProvider = Provider((ref) => UpdateBranch(ref.watch(branchRepositoryProvider)));
 final setBranchActiveUseCaseProvider = Provider((ref) => SetBranchActive(ref.watch(branchRepositoryProvider)));
-final fetchOrganizationProfileUseCaseProvider = Provider((ref) => FetchOrganizationProfile(ref.watch(organizationRepositoryProvider)));
-final updateOrganizationUseCaseProvider = Provider((ref) => UpdateOrganization(ref.watch(organizationRepositoryProvider)));
-final fetchPermissionMatrixUseCaseProvider = Provider((ref) => FetchPermissionMatrix(ref.watch(rolePermissionsRepositoryProvider)));
-final updateRolePermissionUseCaseProvider = Provider((ref) => UpdateRolePermission(ref.watch(rolePermissionsRepositoryProvider)));
+final fetchOrganizationProfileUseCaseProvider = Provider(
+  (ref) => FetchOrganizationProfile(ref.watch(organizationRepositoryProvider)),
+);
+final updateOrganizationUseCaseProvider = Provider(
+  (ref) => UpdateOrganization(ref.watch(organizationRepositoryProvider)),
+);
+final fetchPermissionMatrixUseCaseProvider = Provider(
+  (ref) => FetchPermissionMatrix(ref.watch(rolePermissionsRepositoryProvider)),
+);
+final updateRolePermissionUseCaseProvider = Provider(
+  (ref) => UpdateRolePermission(ref.watch(rolePermissionsRepositoryProvider)),
+);
 final listStaffUseCaseProvider = Provider((ref) => ListStaff(ref.watch(staffAdminRepositoryProvider)));
 final fetchStaffMemberUseCaseProvider = Provider((ref) => FetchStaffMember(ref.watch(staffAdminRepositoryProvider)));
-final organizationHasOwnerUseCaseProvider = Provider((ref) => OrganizationHasOwner(ref.watch(staffAdminRepositoryProvider)));
 final updateStaffMemberUseCaseProvider = Provider((ref) => UpdateStaffMember(ref.watch(staffAdminRepositoryProvider)));
 final setStaffActiveUseCaseProvider = Provider((ref) => SetStaffActive(ref.watch(staffAdminRepositoryProvider)));

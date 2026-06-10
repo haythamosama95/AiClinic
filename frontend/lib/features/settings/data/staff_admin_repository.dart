@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/settings_rpc_repository.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
@@ -63,18 +62,6 @@ class StaffAdminRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements
       return null;
     }
     return StaffMemberDetail.fromRow(Map<String, dynamic>.from(row));
-  }
-
-  /// Whether the organization already has at least one owner account.
-  @override
-  Future<bool> organizationHasOwner() async {
-    final rows = await _client
-        .from('staff_members')
-        .select('id')
-        .eq('role', StaffRole.owner.wireValue)
-        .eq('is_deleted', false)
-        .eq('is_active', true);
-    return rows.isNotEmpty;
   }
 
   Future<Map<String, List<String>>> _loadBranchNamesByStaffId(List<String> staffIds) async {

@@ -72,7 +72,7 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
   VALUES
-    (v_owner_staff, v_owner_user, 'Clinic Owner', 'owner', false, v_bootstrap_user, v_bootstrap_user),
+    (v_owner_staff, v_owner_user, 'Clinic Owner', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
     (v_admin_staff, v_admin_user, 'Clinic Admin', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
     (v_doctor_staff, v_doctor_user, 'Clinic Doctor', 'doctor', false, v_bootstrap_user, v_bootstrap_user)
   ON CONFLICT (id) DO NOTHING;
@@ -92,7 +92,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_main::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -188,7 +188,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_main::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -342,7 +342,7 @@ BEGIN
   UPDATE public.branches SET is_active = true WHERE id = v_branch_second;
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Administrator may promote staff to owner when owner exists.
+  -- Administrator may promote staff to administrator.
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(
@@ -359,7 +359,7 @@ BEGIN
   v_result := public.update_staff_member(
     v_receptionist_id,
     'Front Desk',
-    'owner',
+    'administrator',
     ARRAY[v_branch_second],
     NULL,
     v_branch_second,
@@ -367,7 +367,7 @@ BEGIN
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_branch_crud_results VALUES (
-    'staff_update_admin_assigns_owner_role',
+    'staff_update_admin_assigns_administrator_role',
     v_result.success,
     COALESCE(v_result.error_code, 'ok')
   );
@@ -432,30 +432,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Administrator cannot deactivate the sole active owner.
-  PERFORM set_config(
-    'request.jwt.claims',
-    json_build_object(
-      'sub', v_admin_user::text,
-      'role', 'authenticated',
-      'organization_id', v_org_id::text,
-      'branch_ids', v_branch_main::text,
-      'staff_member_id', v_admin_staff::text,
-      'staff_role', 'administrator',
-      'setup_required', false
-    )::text,
-    true
-  );
-  v_result := public.set_staff_active(v_owner_staff, false);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO org_branch_crud_results VALUES (
-    'staff_deactivate_last_owner_rejected',
-    NOT v_result.success AND v_result.error_code = 'LAST_OWNER',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Owner and administrator may toggle permission matrix; other roles denied.
+  -- Administrator may toggle permission matrix; other roles denied.
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(
@@ -464,7 +441,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_main::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -475,7 +452,7 @@ BEGIN
   FROM public.roles_permissions rp
   WHERE rp.role = 'administrator' AND rp.permission_key = 'settings.manage_branches' AND rp.is_deleted = false;
   INSERT INTO org_branch_crud_results VALUES (
-    'permission_matrix_owner_write',
+    'permission_matrix_primary_admin_write',
     v_result.success AND v_grant = false,
     COALESCE(v_result.error_code, v_grant::text)
   );

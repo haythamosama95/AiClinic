@@ -27,7 +27,7 @@ String branchMessageForRpc(RpcFailure failure) {
 /// User-facing messages for role permission matrix RPC error codes.
 String permissionMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {
-    'FORBIDDEN' => 'Only clinic owners and administrators can change role permissions.',
+    'FORBIDDEN' => 'Only clinic administrators can change role permissions.',
     'INVALID_PERMISSION' => failure.message,
     'PERMISSION_NOT_FOUND' => 'That permission row could not be found. Refresh the page and try again.',
     'INVALID_INPUT' => failure.message,
@@ -39,7 +39,6 @@ String permissionMessageForRpc(RpcFailure failure) {
 /// User-facing messages for staff management RPC error codes.
 String staffMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {
-    'FORBIDDEN_OWNER_CREATE' => failure.message,
     'FORBIDDEN' => 'You do not have permission to manage staff.',
     'STAFF_NOT_FOUND' => 'That staff member was not found. Refresh the list and try again.',
     'CROSS_ORG_DENIED' => 'That staff member is outside your clinic organization.',

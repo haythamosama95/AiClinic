@@ -13,7 +13,7 @@ void main() {
     });
 
     test('hasPermission is false when branchIds is empty even with grants', () {
-      final context = sampleAuthSessionContext(branchIds: [], permissions: RolePermissionSeed.owner);
+      final context = sampleAuthSessionContext(branchIds: [], permissions: RolePermissionSeed.administrator);
       final service = PermissionService(context);
 
       expect(service.hasPermission(PermissionKeys.manageStaff), isFalse);
@@ -21,7 +21,7 @@ void main() {
     });
 
     test('hasPermission is false for empty or nonsense permission keys', () {
-      final context = sampleAuthSessionContext(permissions: RolePermissionSeed.owner);
+      final context = sampleAuthSessionContext(permissions: RolePermissionSeed.administrator);
       final service = PermissionService(context);
 
       expect(service.hasPermission(''), isFalse);
@@ -48,7 +48,7 @@ void main() {
     });
 
     test('hasAnyPermission returns false for empty key list', () {
-      final context = sampleAuthSessionContext(permissions: RolePermissionSeed.owner);
+      final context = sampleAuthSessionContext(permissions: RolePermissionSeed.administrator);
       final service = PermissionService(context);
 
       expect(service.hasAnyPermission(const []), isFalse);
@@ -165,7 +165,7 @@ void main() {
 
     test('owner and administrator share staff settings grant; doctor does not', () {
       final owner = PermissionService(
-        sampleAuthSessionContext(role: StaffRole.owner, permissions: RolePermissionSeed.owner),
+        sampleAuthSessionContext(role: StaffRole.administrator, permissions: RolePermissionSeed.administrator),
       );
       final admin = PermissionService(
         sampleAuthSessionContext(role: StaffRole.administrator, permissions: RolePermissionSeed.administrator),

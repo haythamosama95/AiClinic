@@ -1,11 +1,12 @@
+import 'package:flutter_test/flutter_test.dart';
+
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
-import 'package:flutter_test/flutter_test.dart';
 
 StaffProfile _profile({StaffRole role = StaffRole.administrator, bool isBootstrapAdmin = false}) {
   return StaffProfile(
     staffMemberId: 'staff-1',
-    fullName: 'Test',
+    fullName: 'Test User',
     role: role,
     isBootstrapAdmin: isBootstrapAdmin,
     isActive: true,
@@ -14,12 +15,11 @@ StaffProfile _profile({StaffRole role = StaffRole.administrator, bool isBootstra
 
 void main() {
   group('ProvisioningRules', () {
-    test('doctor cannot provision staff', () {
+    test('doctor cannot provision', () {
       expect(ProvisioningRules.canProvisionStaff(_profile(role: StaffRole.doctor)), isFalse);
     });
 
-    test('owner and administrator can provision', () {
-      expect(ProvisioningRules.canProvisionStaff(_profile(role: StaffRole.owner)), isTrue);
+    test('administrator can provision', () {
       expect(ProvisioningRules.canProvisionStaff(_profile(role: StaffRole.administrator)), isTrue);
     });
 
@@ -30,31 +30,25 @@ void main() {
       );
     });
 
-    test('bootstrap admin may assign owner when no owner exists', () {
-      final caller = _profile(role: StaffRole.administrator, isBootstrapAdmin: true);
-      expect(ProvisioningRules.mayAssignOwnerRole(caller, ownerAlreadyExists: false), isTrue);
-      expect(ProvisioningRules.selectableRoles(caller, ownerAlreadyExists: false), contains(StaffRole.owner));
-    });
-
-    test('administrator may assign owner when owner exists', () {
+    test('administrator selectable roles include all operational roles', () {
       final caller = _profile(role: StaffRole.administrator);
-      expect(ProvisioningRules.mayAssignOwnerRole(caller, ownerAlreadyExists: true), isTrue);
-      expect(ProvisioningRules.validateRoleChoice(caller, StaffRole.owner, ownerAlreadyExists: true), isNull);
+      expect(ProvisioningRules.selectableRoles(caller), contains(StaffRole.administrator));
+      expect(ProvisioningRules.selectableRoles(caller), contains(StaffRole.doctor));
+      expect(ProvisioningRules.validateRoleChoice(caller, StaffRole.administrator), isNull);
     });
 
-    test('owner may assign owner when owner exists', () {
-      final caller = _profile(role: StaffRole.owner);
-      expect(ProvisioningRules.mayAssignOwnerRole(caller, ownerAlreadyExists: true), isTrue);
-      expect(ProvisioningRules.validateRoleChoice(caller, StaffRole.owner, ownerAlreadyExists: true), isNull);
-    });
-
-    test('bootstrap admin may assign owner when owner exists', () {
+    test('bootstrap admin may assign administrator during setup', () {
       final caller = _profile(role: StaffRole.administrator, isBootstrapAdmin: true);
-      expect(ProvisioningRules.mayAssignOwnerRole(caller, ownerAlreadyExists: true), isTrue);
+      expect(ProvisioningRules.selectableRoles(caller), contains(StaffRole.administrator));
+      expect(ProvisioningRules.validateRoleChoice(caller, StaffRole.administrator), isNull);
     });
 
-    test('inferOwnerAlreadyExists for non-bootstrap administrator', () {
-      expect(ProvisioningRules.inferOwnerAlreadyExists(_profile(role: StaffRole.administrator)), isTrue);
+    test('doctor cannot reset passwords', () {
+      expect(ProvisioningRules.canResetStaffPassword(_profile(role: StaffRole.doctor)), isFalse);
+    });
+
+    test('administrator can reset passwords', () {
+      expect(ProvisioningRules.canResetStaffPassword(_profile(role: StaffRole.administrator)), isTrue);
     });
   });
 }

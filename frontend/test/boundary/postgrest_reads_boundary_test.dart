@@ -61,7 +61,7 @@ void main() {
       final rows = await ctx.client
           .from('roles_permissions')
           .select('permission_key')
-          .eq('role', 'owner')
+          .eq('role', 'administrator')
           .eq('is_granted', true)
           .limit(5);
       expect(rows, isNotEmpty);

@@ -96,7 +96,7 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
   VALUES
-    (v_owner_staff, v_owner_user, 'Owner', 'owner', false, v_bootstrap_user, v_bootstrap_user),
+    (v_owner_staff, v_owner_user, 'Owner', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
     (v_admin_staff, v_admin_user, 'Admin', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
     (v_doctor_staff, v_doctor_user, 'Doctor', 'doctor', false, v_bootstrap_user, v_bootstrap_user),
     (v_receptionist_staff, v_receptionist_user, 'Receptionist', 'receptionist', false, v_bootstrap_user, v_bootstrap_user),
@@ -110,7 +110,7 @@ BEGIN
   -- Ensure default permission grants are in place.
   UPDATE public.roles_permissions SET is_granted = true, updated_at = now()
   WHERE permission_key IN ('patients.view', 'patients.create', 'patients.edit', 'patients.delete')
-    AND role IN ('owner', 'administrator', 'doctor', 'receptionist')
+    AND role IN ('administrator', 'administrator', 'doctor', 'receptionist')
     AND is_deleted = false;
   UPDATE public.roles_permissions SET is_granted = true, updated_at = now()
   WHERE permission_key = 'patients.view'
@@ -124,40 +124,40 @@ BEGIN
   -- ===========================================================================
   -- OWNER: full access
   -- ===========================================================================
-  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'owner', v_org_id, v_branch_id);
+  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'administrator', v_org_id, v_branch_id);
 
   v_result := public.search_patients(NULL, 'branch', v_branch_id, 25, 0);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_role_results VALUES ('owner_search', v_result.success, COALESCE(v_result.error_code, 'ok'));
   PERFORM set_config('role', 'authenticated', true);
 
-  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'owner', v_org_id, v_branch_id);
+  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'administrator', v_org_id, v_branch_id);
   v_result := public.create_patient(v_branch_id, 'Owner Patient', '201000000101', NULL, NULL, NULL, NULL, false);
   v_patient_id := (v_result.data ->> 'patient_id')::uuid;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_role_results VALUES ('owner_create', v_result.success, COALESCE(v_result.error_code, 'ok'));
   PERFORM set_config('role', 'authenticated', true);
 
-  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'owner', v_org_id, v_branch_id);
+  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'administrator', v_org_id, v_branch_id);
   v_result := public.get_patient(v_patient_id);
   v_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_role_results VALUES ('owner_get', v_result.success, COALESCE(v_result.error_code, 'ok'));
   PERFORM set_config('role', 'authenticated', true);
 
-  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'owner', v_org_id, v_branch_id);
+  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'administrator', v_org_id, v_branch_id);
   v_result := public.update_patient(v_patient_id, 'Owner Patient Ed', v_updated_at, NULL, NULL, NULL, NULL, NULL, false);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_role_results VALUES ('owner_update', v_result.success, COALESCE(v_result.error_code, 'ok'));
   PERFORM set_config('role', 'authenticated', true);
 
-  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'owner', v_org_id, v_branch_id);
+  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'administrator', v_org_id, v_branch_id);
   v_result := public.check_patient_duplicates('Owner Patient Ed', '201000000101', NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_role_results VALUES ('owner_check_dup', v_result.success, COALESCE(v_result.error_code, 'ok'));
   PERFORM set_config('role', 'authenticated', true);
 
-  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'owner', v_org_id, v_branch_id);
+  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'administrator', v_org_id, v_branch_id);
   v_result := public.archive_patient(v_patient_id);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_role_results VALUES ('owner_archive', v_result.success, COALESCE(v_result.error_code, 'ok'));
@@ -294,7 +294,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Create a patient as owner for lab to view.
-  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'owner', v_org_id, v_branch_id);
+  PERFORM pg_temp.set_jwt(v_owner_user, v_owner_staff, 'administrator', v_org_id, v_branch_id);
   v_result := public.create_patient(v_branch_id, 'Lab View Target', '201000000105', NULL, NULL, NULL, NULL, false);
   v_patient_id := (v_result.data ->> 'patient_id')::uuid;
   v_result := public.get_patient(v_patient_id);

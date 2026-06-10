@@ -54,7 +54,7 @@ BEGIN
 
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
-  VALUES (v_owner_staff, v_owner_user, 'Search Owner', 'owner', false, v_bootstrap_user, v_bootstrap_user)
+  VALUES (v_owner_staff, v_owner_user, 'Search Owner', 'administrator', false, v_bootstrap_user, v_bootstrap_user)
   ON CONFLICT (id) DO NOTHING;
 
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
@@ -71,7 +71,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_main::text || ',' || v_branch_second::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -385,7 +385,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_main::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -408,7 +408,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_main::text || ',' || v_branch_second::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true

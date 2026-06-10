@@ -28,7 +28,7 @@ class _SessionWithTwoClaimedBranches extends TestAuthSessionNotifier {
     context: sampleAuthSessionContext(
       branchIds: const [_activeBranchId, _inactiveBranchId],
       activeBranchId: _activeBranchId,
-      permissions: RolePermissionSeed.owner,
+      permissions: RolePermissionSeed.administrator,
     ),
   );
 }

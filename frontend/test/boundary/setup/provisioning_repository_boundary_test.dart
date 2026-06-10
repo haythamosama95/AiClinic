@@ -158,8 +158,8 @@ void main() {
       );
     });
 
-    test('provisioning.FORBIDDEN_OWNER_CREATE', () async {
-      const ManifestScenario('provisioning.FORBIDDEN_OWNER_CREATE');
+    test('provisioning.FORBIDDEN.nonAdministratorCreate', () async {
+      const ManifestScenario('provisioning.FORBIDDEN.nonAdministratorCreate');
       final clinic = await ctx.ensureClinic(label: 'prov_no_owner');
       final doctor = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.doctor);
       await ctx.signInStaff(doctor.username, doctor.password);
@@ -168,8 +168,8 @@ void main() {
           CreateStaffAccountInput(
             username: 'own_${clinic.suffix.hashCode.abs().toRadixString(36)}',
             password: 'TestPass1',
-            fullName: 'Owner Attempt',
-            role: StaffRole.owner,
+            fullName: 'Administrator Attempt',
+            role: StaffRole.administrator,
             branchIds: [clinic.branchId],
           ),
         ),
@@ -196,12 +196,12 @@ void main() {
         ManifestScenario('provisioning.createStaffAccount.perRole.${role.wireValue}');
         final clinic = await ctx.ensureClinic(label: 'prov_role_${role.wireValue}');
         await ctx.signInAdmin();
-        if (role == StaffRole.owner) {
+        if (role == StaffRole.administrator) {
           final result = await ctx.provisioning.createStaffAccount(
             CreateStaffAccountInput(
               username: clinic.usernameFor(role),
               password: 'TestPass1',
-              fullName: 'Owner ${clinic.suffix}',
+              fullName: 'Administrator ${clinic.suffix}',
               role: role,
               branchIds: [clinic.branchId],
               primaryBranchId: clinic.branchId,

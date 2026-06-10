@@ -55,7 +55,7 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
   VALUES
-    (v_owner_staff, v_owner_user, 'Auth Owner', 'owner', false, v_bootstrap_user, v_bootstrap_user),
+    (v_owner_staff, v_owner_user, 'Auth Owner', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
     (v_doctor_staff, v_doctor_user, 'Auth Doctor', 'doctor', false, v_bootstrap_user, v_bootstrap_user)
   ON CONFLICT (id) DO NOTHING;
 
@@ -123,7 +123,7 @@ BEGIN
       'sub', v_owner_user::text,
       'role', 'authenticated',
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -144,7 +144,7 @@ BEGIN
       'sub', v_owner_user::text,
       'role', 'authenticated',
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -170,7 +170,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', '',
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -193,7 +193,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', '',
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -221,7 +221,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -253,7 +253,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -279,7 +279,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -300,7 +300,7 @@ BEGIN
 
   INSERT INTO auth_ext_results VALUES (
     'jwt_staff_role_returns_correct_value',
-    public.jwt_staff_role() = 'owner',
+    public.jwt_staff_role() = 'administrator',
     'role=' || COALESCE(public.jwt_staff_role()::text, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -367,7 +367,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -393,7 +393,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -419,7 +419,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true

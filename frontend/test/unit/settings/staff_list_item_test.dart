@@ -33,7 +33,7 @@ void main() {
     });
 
     test('fromRow always yields empty branchNames (loaded separately via copyWith)', () {
-      final item = StaffListItem.fromRow({'id': '1', 'full_name': 'X', 'role': 'owner', 'is_active': false});
+      final item = StaffListItem.fromRow({'id': '1', 'full_name': 'X', 'role': 'administrator', 'is_active': false});
       expect(item!.branchNames, isEmpty);
       expect(item.branchNamesLabel, 'No branches assigned');
     });

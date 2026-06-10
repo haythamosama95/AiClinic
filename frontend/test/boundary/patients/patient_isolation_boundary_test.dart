@@ -27,7 +27,7 @@ void main() {
       final clinicA = await ctx.ensureClinic(label: 'iso_a_get');
       final patientB = await _patientInOtherOrg(ctx, clinicA, 'iso_b_get');
       final sessions = RoleSessions(ctx, clinicA);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       await expectRpcCode(() => ctx.patients.getPatient(patientB), 'NOT_FOUND');
     });
 
@@ -36,7 +36,7 @@ void main() {
       final clinicA = await ctx.ensureClinic(label: 'iso_a_arch');
       final patientB = await _patientInOtherOrg(ctx, clinicA, 'iso_b_arch');
       final sessions = RoleSessions(ctx, clinicA);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       await expectRpcCode(() => ctx.patients.archivePatient(patientB), 'NOT_FOUND');
     });
 
@@ -45,7 +45,7 @@ void main() {
       final clinicA = await ctx.ensureClinic(label: 'iso_a_pg');
       final patientB = await _patientInOtherOrg(ctx, clinicA, 'iso_b_pg');
       final sessions = RoleSessions(ctx, clinicA);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       await expectRpcCode(() => ctx.patients.getPatient(patientB), 'NOT_FOUND');
       final page = await ctx.patients.searchPatients(scope: PatientListScope.allBranches);
       expect(page.items.any((p) => p.id == patientB), isFalse);

@@ -80,7 +80,7 @@ BEGIN
 
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_active, created_by, updated_by)
   VALUES
-    (v_staff_owner, v_user_owner, 'Owner Conc', 'owner', true, v_user_owner, v_user_owner),
+    (v_staff_owner, v_user_owner, 'Owner Conc', 'administrator', true, v_user_owner, v_user_owner),
     (v_staff_doctor, v_user_doctor, 'Dr Conc', 'doctor', true, v_user_owner, v_user_owner);
 
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
@@ -99,7 +99,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_staff_owner::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true

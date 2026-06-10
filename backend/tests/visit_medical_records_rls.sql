@@ -75,8 +75,8 @@ BEGIN
 
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, created_by, updated_by)
   VALUES
-    (v_staff_a, v_user_a, 'Owner A', 'owner', v_user_a, v_user_a),
-    (v_staff_b, v_user_b, 'Owner B', 'owner', v_user_b, v_user_b),
+    (v_staff_a, v_user_a, 'Owner A', 'administrator', v_user_a, v_user_a),
+    (v_staff_b, v_user_b, 'Owner B', 'administrator', v_user_b, v_user_b),
     (v_doctor_a, v_doctor_user_a, 'Doctor A', 'doctor', v_user_a, v_user_a),
     (v_lab_staff_a, v_lab_user_a, 'Lab A', 'lab_staff', v_user_a, v_user_a);
 
@@ -218,7 +218,7 @@ BEGIN
       'organization_id', v_org_a::text,
       'branch_ids', v_branch_a::text,
       'staff_member_id', v_staff_a::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true

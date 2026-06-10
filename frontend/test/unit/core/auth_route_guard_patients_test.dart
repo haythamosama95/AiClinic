@@ -46,7 +46,7 @@ void main() {
     test('setup_required user sent to bootstrap', () {
       final auth = AuthSessionState(
         status: AuthSessionStatus.authenticated,
-        context: sampleAuthSessionContext(setupRequired: true, permissions: RolePermissionSeed.owner),
+        context: sampleAuthSessionContext(setupRequired: true, permissions: RolePermissionSeed.administrator),
       );
 
       expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patients, auth: auth), AppRoutes.bootstrap);

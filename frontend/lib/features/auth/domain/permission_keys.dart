@@ -29,7 +29,7 @@ abstract final class PermissionKeys {
 
 /// Expected V1-1 seed grants per role (for tests and RBAC demo verification).
 abstract final class RolePermissionSeed {
-  static const owner = {
+  static const administrator = {
     PermissionKeys.manageStaff,
     PermissionKeys.manageBranches,
     PermissionKeys.patientsView,
@@ -53,8 +53,6 @@ abstract final class RolePermissionSeed {
     PermissionKeys.insuranceManage,
     PermissionKeys.settingsBillingManage,
   };
-
-  static const administrator = owner;
 
   static const doctor = {
     PermissionKeys.patientsView,
@@ -85,7 +83,6 @@ abstract final class RolePermissionSeed {
   };
 
   static Set<String> forRole(StaffRole role) => switch (role) {
-    StaffRole.owner => owner,
     StaffRole.administrator => administrator,
     StaffRole.doctor => doctor,
     StaffRole.receptionist => receptionist,

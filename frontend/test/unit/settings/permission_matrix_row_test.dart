@@ -6,13 +6,13 @@ void main() {
   group('PermissionMatrixRow.fromRow', () {
     test('parses granted permission for owner role', () {
       final row = PermissionMatrixRow.fromRow({
-        'role': 'owner',
+        'role': 'administrator',
         'permission_key': 'settings.manage_staff',
         'is_granted': true,
       });
 
       expect(row, isNotNull);
-      expect(row!.role, StaffRole.owner);
+      expect(row!.role, StaffRole.administrator);
       expect(row.permissionKey, 'settings.manage_staff');
       expect(row.isGranted, isTrue);
     });
@@ -22,8 +22,8 @@ void main() {
         PermissionMatrixRow.fromRow({'role': 'nope', 'permission_key': 'settings.manage_staff', 'is_granted': true}),
         isNull,
       );
-      expect(PermissionMatrixRow.fromRow({'role': 'owner', 'permission_key': '', 'is_granted': true}), isNull);
-      expect(PermissionMatrixRow.fromRow({'role': 'owner', 'permission_key': '   ', 'is_granted': true}), isNull);
+      expect(PermissionMatrixRow.fromRow({'role': 'administrator', 'permission_key': '', 'is_granted': true}), isNull);
+      expect(PermissionMatrixRow.fromRow({'role': 'administrator', 'permission_key': '   ', 'is_granted': true}), isNull);
       expect(PermissionMatrixRow.fromRow({}), isNull);
     });
 
@@ -68,14 +68,14 @@ void main() {
   group('PermissionMatrixRow.copyWith and equality', () {
     test('toggle grant via copyWith', () {
       const row = PermissionMatrixRow(
-        role: StaffRole.owner,
+        role: StaffRole.administrator,
         permissionKey: 'settings.manage_branches',
         isGranted: false,
       );
       final granted = row.copyWith(isGranted: true);
 
       expect(granted.isGranted, isTrue);
-      expect(granted.role, StaffRole.owner);
+      expect(granted.role, StaffRole.administrator);
       expect(row == granted, isFalse);
     });
 

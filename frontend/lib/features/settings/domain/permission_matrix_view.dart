@@ -17,7 +17,6 @@ class PermissionMatrixView {
   const PermissionMatrixView({required this.permissionKeys, required this.grantsByRoleAndKey});
 
   static const displayRoles = <StaffRole>[
-    StaffRole.owner,
     StaffRole.administrator,
     StaffRole.doctor,
     StaffRole.receptionist,
@@ -118,7 +117,6 @@ class PermissionMatrixView {
   }
 
   static String roleLabel(StaffRole role) => switch (role) {
-    StaffRole.owner => 'Owner',
     StaffRole.administrator => 'Administrator',
     StaffRole.doctor => 'Doctor',
     StaffRole.receptionist => 'Receptionist',

@@ -29,12 +29,12 @@ void main() {
       const ManifestScenario('sessionContext.load.afterSignIn');
       final clinic = await ctx.ensureClinic(label: 'session_load');
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       final session = ctx.auth.currentSession!;
       final context = await ctx.sessionLoader.load(session);
       expect(context.staffProfile.staffMemberId, isNotEmpty);
       expect(context.organizationId, isNotEmpty);
-      expect(context.staffProfile.role, StaffRole.owner);
+      expect(context.staffProfile.role, StaffRole.administrator);
     });
 
     test('sessionContext.refreshSession.reloadClaims', () async {
@@ -118,10 +118,10 @@ void main() {
       const ManifestScenario('sessionContext.aggressive.refreshThenLoad');
       final clinic = await ctx.ensureClinic(label: 'session_refresh_load');
       final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.owner);
+      await sessions.signInAs(StaffRole.administrator);
       await ctx.auth.refreshSession();
       final context = await ctx.sessionLoader.load(ctx.auth.currentSession!);
-      expect(context.staffProfile.role, StaffRole.owner);
+      expect(context.staffProfile.role, StaffRole.administrator);
       expect(context.organizationId, isNotEmpty);
     });
   });

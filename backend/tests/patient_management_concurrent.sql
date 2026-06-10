@@ -130,7 +130,7 @@ BEGIN
       'role', 'authenticated',
       'organization_id', v_org_id::text,
       'staff_member_id', v_bootstrap_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'branch_ids', v_branch_id::text
     )::text,
     true

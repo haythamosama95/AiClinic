@@ -3,7 +3,6 @@ import 'package:ai_clinic/app/shell/widgets/shell_content_panel.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_header.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_item_row.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'shell_test_support.dart';

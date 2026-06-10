@@ -54,7 +54,7 @@ BEGIN
       'organization_id', p_org::text,
       'branch_ids', p_branches,
       'staff_member_id', p_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -355,7 +355,7 @@ BEGIN
 
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
   VALUES
-    (v_owner_staff, v_owner_user, 'Owner', 'owner', false, v_bootstrap_user, v_bootstrap_user),
+    (v_owner_staff, v_owner_user, 'Owner', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
     (v_doctor_staff, v_doctor_user, 'Doctor', 'doctor', false, v_bootstrap_user, v_bootstrap_user),
     (v_reception_staff, v_reception_user, 'Reception', 'receptionist', false, v_bootstrap_user, v_bootstrap_user),
     (v_admin_staff, v_admin_user, 'Administrator', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
@@ -382,7 +382,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', format('%s,%s', v_branch_main, v_branch_no_code),
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true

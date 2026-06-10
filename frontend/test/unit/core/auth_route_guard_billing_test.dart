@@ -59,7 +59,7 @@ void main() {
     test('owner with insurance.manage can open insurance providers', () {
       final auth = AuthSessionState(
         status: AuthSessionStatus.authenticated,
-        context: sampleAuthSessionContext(role: StaffRole.owner, permissions: RolePermissionSeed.owner),
+        context: sampleAuthSessionContext(role: StaffRole.administrator, permissions: RolePermissionSeed.administrator),
       );
 
       expect(AuthRouteGuard.billingRouteRedirect(location: AppRoutes.billingInsuranceProviders, auth: auth), isNull);
@@ -93,7 +93,7 @@ void main() {
     test('setup_required billing URL redirects to bootstrap', () {
       final auth = AuthSessionState(
         status: AuthSessionStatus.authenticated,
-        context: sampleAuthSessionContext(setupRequired: true, permissions: RolePermissionSeed.owner),
+        context: sampleAuthSessionContext(setupRequired: true, permissions: RolePermissionSeed.administrator),
       );
 
       expect(AuthRouteGuard.billingRouteRedirect(location: AppRoutes.billingInvoices, auth: auth), AppRoutes.bootstrap);

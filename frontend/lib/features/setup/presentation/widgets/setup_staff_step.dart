@@ -24,7 +24,6 @@ class SetupStaffStep extends ConsumerStatefulWidget {
     required this.isBusy,
     required this.onCreate,
     this.wizardBranches = const [],
-    this.ownerAlreadyExists = false,
     super.key,
   });
 
@@ -37,7 +36,6 @@ class SetupStaffStep extends ConsumerStatefulWidget {
   final Future<bool> Function({required StaffRole role, required List<String> branchIds, String? primaryBranchId})
   onCreate;
   final List<BranchSummary> wizardBranches;
-  final bool ownerAlreadyExists;
 
   @override
   ConsumerState<SetupStaffStep> createState() => _SetupStaffStepState();
@@ -160,20 +158,20 @@ class _SetupStaffStepState extends ConsumerState<SetupStaffStep> {
     }
   }
 
-  void _ensureDefaultRole(List<StaffRole> selectableRoles, StaffProfile? caller, bool ownerAlreadyExists) {
+  void _ensureDefaultRole(List<StaffRole> selectableRoles, StaffProfile? caller) {
     if (_selectedRole != null || selectableRoles.isEmpty) {
       return;
     }
 
-    if (caller != null && caller.isBootstrapAdmin && !ownerAlreadyExists && selectableRoles.contains(StaffRole.owner)) {
-      _selectedRole = StaffRole.owner;
+    if (caller != null && caller.isBootstrapAdmin && selectableRoles.contains(StaffRole.administrator)) {
+      _selectedRole = StaffRole.administrator;
       return;
     }
 
     _selectedRole = selectableRoles.first;
   }
 
-  void _scheduleDefaultRole(List<StaffRole> selectableRoles, StaffProfile? caller, bool ownerAlreadyExists) {
+  void _scheduleDefaultRole(List<StaffRole> selectableRoles, StaffProfile? caller) {
     if (_selectedRole != null || selectableRoles.isEmpty || _defaultRoleScheduled) {
       return;
     }
@@ -181,7 +179,7 @@ class _SetupStaffStepState extends ConsumerState<SetupStaffStep> {
     _defaultRoleScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setState(() => _ensureDefaultRole(selectableRoles, caller, ownerAlreadyExists));
+      setState(() => _ensureDefaultRole(selectableRoles, caller));
     });
   }
 
@@ -190,19 +188,16 @@ class _SetupStaffStepState extends ConsumerState<SetupStaffStep> {
     final auth = ref.watch(authSessionProvider).context;
     final provisioning = ref.watch(provisioningNotifierProvider);
     final isBusy = widget.isBusy || provisioning.isSubmitting;
-    final ownerAlreadyExists = widget.ownerAlreadyExists || provisioning.ownerAlreadyExists;
 
     final caller = auth?.staffProfile;
-    final selectableRoles = caller == null
-        ? const <StaffRole>[]
-        : ProvisioningRules.selectableRoles(caller, ownerAlreadyExists: ownerAlreadyExists);
+    final selectableRoles = caller == null ? const <StaffRole>[] : ProvisioningRules.selectableRoles(caller);
 
     if (_selectedRole != null && !selectableRoles.contains(_selectedRole)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _selectedRole = null);
       });
     } else {
-      _scheduleDefaultRole(selectableRoles, caller, ownerAlreadyExists);
+      _scheduleDefaultRole(selectableRoles, caller);
     }
 
     if (_usesWizardBranches) {

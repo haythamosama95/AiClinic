@@ -31,7 +31,7 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
   DateTime? _shiftDate;
   Set<String> _notificationPrefs = {'email'};
 
-  static const _roles = {'Owner': 'owner', 'Administrator': 'admin', 'Staff': 'staff'};
+  static const _roles = {'Administrator': 'admin', 'Staff': 'staff'};
   static const _tags = {'Front desk': 'front_desk', 'Billing': 'billing', 'Clinical': 'clinical'};
   static const _doctors = {'Dr. Ahmed': 'ahmed', 'Dr. Sara': 'sara', 'Dr. Omar': 'omar'};
 

@@ -18,7 +18,6 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 String provisioningMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {
     'ORG_SETUP_INCOMPLETE' => 'Create your clinic organization and first branch before adding staff accounts.',
-    'FORBIDDEN_OWNER_CREATE' => failure.message,
     'FORBIDDEN' => 'You do not have permission to create staff accounts.',
     'USERNAME_EXISTS' => 'A staff account with this username already exists.',
     'INVALID_BRANCH' => 'One or more selected branches are invalid.',
@@ -47,7 +46,6 @@ class ProvisioningUiState {
   const ProvisioningUiState({
     this.isSubmitting = false,
     this.errorMessage,
-    this.ownerAlreadyExists = false,
     this.staffAccountsCreatedCount = 0,
     this.lastCreated,
     this.lastPasswordReset,
@@ -55,7 +53,6 @@ class ProvisioningUiState {
 
   final bool isSubmitting;
   final String? errorMessage;
-  final bool ownerAlreadyExists;
   final int staffAccountsCreatedCount;
   final CreateStaffAccountResult? lastCreated;
   final AdminResetStaffPasswordResult? lastPasswordReset;
@@ -64,7 +61,6 @@ class ProvisioningUiState {
     bool? isSubmitting,
     String? errorMessage,
     bool clearError = false,
-    bool? ownerAlreadyExists,
     int? staffAccountsCreatedCount,
     CreateStaffAccountResult? lastCreated,
     bool clearLastCreated = false,
@@ -74,7 +70,6 @@ class ProvisioningUiState {
     return ProvisioningUiState(
       isSubmitting: isSubmitting ?? this.isSubmitting,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-      ownerAlreadyExists: ownerAlreadyExists ?? this.ownerAlreadyExists,
       staffAccountsCreatedCount: staffAccountsCreatedCount ?? this.staffAccountsCreatedCount,
       lastCreated: clearLastCreated ? null : (lastCreated ?? this.lastCreated),
       lastPasswordReset: clearLastPasswordReset ? null : (lastPasswordReset ?? this.lastPasswordReset),
@@ -88,11 +83,7 @@ final provisioningNotifierProvider = NotifierProvider<ProvisioningNotifier, Prov
 
 class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
   @override
-  ProvisioningUiState build() {
-    final caller = ref.read(authSessionProvider).context?.staffProfile;
-    final ownerAlreadyExists = caller == null ? false : ProvisioningRules.inferOwnerAlreadyExists(caller);
-    return ProvisioningUiState(ownerAlreadyExists: ownerAlreadyExists);
-  }
+  ProvisioningUiState build() => const ProvisioningUiState();
 
   void clearError() {
     if (state.errorMessage != null) {
@@ -116,13 +107,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
     }
   }
 
-  void markOwnerExists() {
-    if (!state.ownerAlreadyExists) {
-      state = state.copyWith(ownerAlreadyExists: true);
-    }
-  }
-
-  /// Validates form fields and FR-022c before invoking the RPC.
+  /// Validates form fields before invoking the RPC.
   Future<CreateStaffAccountResult?> createStaffAccount({
     required String username,
     required String fullName,
@@ -164,7 +149,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
 
-    final roleError = ProvisioningRules.validateRoleChoice(caller, role, ownerAlreadyExists: state.ownerAlreadyExists);
+    final roleError = ProvisioningRules.validateRoleChoice(caller, role);
     if (roleError != null) {
       state = state.copyWith(errorMessage: roleError);
       return null;
@@ -190,10 +175,6 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
           primaryBranchId: primary,
         ),
       );
-
-      if (role == StaffRole.owner) {
-        markOwnerExists();
-      }
 
       state = state.copyWith(
         isSubmitting: false,
@@ -234,7 +215,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
     }
 
     if (!ProvisioningRules.canResetStaffPassword(session.staffProfile)) {
-      state = state.copyWith(errorMessage: 'Only clinic owners and administrators can reset staff passwords.');
+      state = state.copyWith(errorMessage: 'Only clinic administrators can reset staff passwords.');
       return null;
     }
 

@@ -157,7 +157,7 @@ class _OwnerSessionNotifier extends TestAuthSessionNotifier {
       AuthSessionState(
         status: AuthSessionStatus.authenticated,
         context: sampleAuthSessionContext(
-          role: StaffRole.owner,
+          role: StaffRole.administrator,
           permissions: {'settings.manage_branches', 'settings.manage_staff'},
         ),
       ),

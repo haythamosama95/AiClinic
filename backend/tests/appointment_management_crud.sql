@@ -116,7 +116,7 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_bootstrap_admin, created_by, updated_by)
   VALUES
-    (v_owner_staff, v_owner_user, 'Clinic Owner', 'owner', false, v_bootstrap_user, v_bootstrap_user),
+    (v_owner_staff, v_owner_user, 'Clinic Owner', 'administrator', false, v_bootstrap_user, v_bootstrap_user),
     (c_doctor_staff_id, v_doctor_user, 'Dr Smith', 'doctor', false, v_bootstrap_user, v_bootstrap_user),
     (v_lab_staff, v_lab_user, 'Lab Tech', 'lab_staff', false, v_bootstrap_user, v_bootstrap_user),
     (v_doctor2_staff, v_doctor2_user, 'Dr Jones', 'doctor', false, v_bootstrap_user, v_bootstrap_user)
@@ -135,7 +135,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_main_branch_id::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -896,7 +896,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_main_branch_id::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -1140,7 +1140,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_main_branch_id::text,
       'staff_member_id', v_owner_staff::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true

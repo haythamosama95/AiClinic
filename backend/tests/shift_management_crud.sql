@@ -111,7 +111,7 @@ BEGIN
 
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_active, created_by, updated_by)
   VALUES
-    (v_staff_owner, v_user_owner, 'Owner CRUD', 'owner', true, v_user_owner, v_user_owner),
+    (v_staff_owner, v_user_owner, 'Owner CRUD', 'administrator', true, v_user_owner, v_user_owner),
     (v_staff_doctor, v_user_doctor, 'Dr CRUD', 'doctor', true, v_user_owner, v_user_owner),
     (v_staff_inactive, v_user_inactive, 'Inactive CRUD', 'receptionist', false, v_user_owner, v_user_owner),
     (v_staff_unassigned, v_user_unassigned, 'Other Branch CRUD', 'receptionist', true, v_user_owner, v_user_owner);
@@ -135,7 +135,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_staff_owner::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -1069,7 +1069,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_staff_owner::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true
@@ -1224,7 +1224,7 @@ BEGIN
       'organization_id', v_org_id::text,
       'branch_ids', v_branch_id::text,
       'staff_member_id', v_staff_owner::text,
-      'staff_role', 'owner',
+      'staff_role', 'administrator',
       'setup_required', false
     )::text,
     true

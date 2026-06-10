@@ -70,22 +70,6 @@ void main() {
       expect(activate.success, isTrue);
     });
 
-    test('staffAdmin.organizationHasOwner', () async {
-      const ManifestScenario('staffAdmin.organizationHasOwner');
-      final clinic = await ctx.ensureClinic(label: 'staff_owner');
-      await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.owner);
-      await ctx.signInAdmin();
-      expect(await ctx.staffAdmin.organizationHasOwner(), isTrue);
-    });
-
-    test('staffAdmin.organizationHasOwner.false', () async {
-      const ManifestScenario('staffAdmin.organizationHasOwner.false');
-      final clinic = await ctx.ensureClinic(label: 'staff_no_owner');
-      await ctx.signInAdmin();
-      expect(await ctx.staffAdmin.organizationHasOwner(), isFalse);
-      clinic;
-    });
-
     test('staffAdmin.INVALID_INPUT.emptyName', () async {
       const ManifestScenario('staffAdmin.INVALID_INPUT.emptyName');
       final clinic = await ctx.ensureClinic(label: 'staff_invalid');
@@ -122,16 +106,16 @@ void main() {
       );
     });
 
-    test('staffAdmin.FORBIDDEN_OWNER_CREATE', () async {
-      const ManifestScenario('staffAdmin.FORBIDDEN_OWNER_CREATE');
+    test('staffAdmin.FORBIDDEN.nonAdministratorCreate', () async {
+      const ManifestScenario('staffAdmin.FORBIDDEN.nonAdministratorCreate');
       final clinic = await ctx.ensureClinic(label: 'staff_no_own_create');
       await ctx.signInAdmin();
       await ctx.provisioning.createStaffAccount(
         CreateStaffAccountInput(
-          username: clinic.usernameFor(StaffRole.owner),
+          username: clinic.usernameFor(StaffRole.administrator),
           password: 'TestPass1',
-          fullName: 'First Owner',
-          role: StaffRole.owner,
+          fullName: 'First Administrator',
+          role: StaffRole.administrator,
           branchIds: [clinic.branchId],
           primaryBranchId: clinic.branchId,
         ),
@@ -141,25 +125,14 @@ void main() {
       await expectRpcCode(
         () => ctx.provisioning.createStaffAccount(
           CreateStaffAccountInput(
-            username: '${clinic.usernameFor(StaffRole.owner)}2',
+            username: '${clinic.usernameFor(StaffRole.administrator)}2',
             password: 'TestPass1',
-            fullName: 'Second Owner',
-            role: StaffRole.owner,
+            fullName: 'Second Administrator',
+            role: StaffRole.administrator,
             branchIds: [clinic.branchId],
           ),
         ),
         'FORBIDDEN',
-      );
-    });
-
-    test('staffAdmin.FORBIDDEN.lastOwner', () async {
-      const ManifestScenario('staffAdmin.FORBIDDEN.lastOwner');
-      final clinic = await ctx.ensureClinic(label: 'staff_last_owner');
-      final owner = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.owner);
-      await ctx.signInAdmin();
-      await expectRpcCode(
-        () => ctx.staffAdmin.setStaffActive(staffMemberId: owner.staffMemberId, isActive: false),
-        'LAST_OWNER',
       );
     });
 

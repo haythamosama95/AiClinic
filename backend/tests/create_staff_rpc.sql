@@ -20,12 +20,12 @@ DECLARE
   v_result public.rpc_result;
   v_org_id uuid;
   v_branch_id uuid;
-  v_owner_staff_id uuid;
-  v_owner_auth_user uuid;
+  v_admin_staff_id uuid;
+  v_admin_auth_user uuid;
   v_receptionist_staff_id uuid;
   v_receptionist_auth_user uuid;
   v_receptionist_claims jsonb;
-  v_owner_count int;
+  v_admin_count int;
 BEGIN
   -- Extra staff rows for denial tests.
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
@@ -67,7 +67,7 @@ BEGIN
   DELETE FROM public.audit_log;
   DELETE FROM auth.users
   WHERE email LIKE 'us6-%'
-     OR email IN ('owner-one', 'owner-two', 'reception');
+     OR email IN ('admin-one', 'admin-two', 'reception');
 
   UPDATE public.staff_members
   SET role = 'administrator', is_bootstrap_admin = true, is_active = true, is_deleted = false
@@ -214,53 +214,53 @@ PERFORM set_config('role', 'postgres', true);
     true
   );
 
-  -- FR-022c: bootstrap admin may create the first owner.
+  -- Bootstrap admin may create the first administrator.
   v_result := public.create_staff_account(
-    'owner-one',
-    'owner-pass-1',
-    '  First Owner  ',
-    'owner',
+    'admin-one',
+    'admin-pass-1',
+    '  First Administrator  ',
+    'administrator',
     ARRAY[v_branch_id],
     v_branch_id
   );
-  v_owner_staff_id := (v_result.data ->> 'staff_member_id')::uuid;
+  v_admin_staff_id := (v_result.data ->> 'staff_member_id')::uuid;
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'bootstrap_creates_first_owner',
-    v_result.success AND v_owner_staff_id IS NOT NULL,
-    'staff_id=' || COALESCE(v_owner_staff_id::text, '<null>')
+'bootstrap_creates_first_administrator',
+    v_result.success AND v_admin_staff_id IS NOT NULL,
+    'staff_id=' || COALESCE(v_admin_staff_id::text, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'owner_full_name_trimmed',
+'administrator_full_name_trimmed',
     EXISTS (
       SELECT 1
       FROM public.staff_members sm
-      WHERE sm.id = v_owner_staff_id AND sm.full_name = 'First Owner'
+      WHERE sm.id = v_admin_staff_id AND sm.full_name = 'First Administrator'
     ),
     'stored name must be trimmed'
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Bootstrap administrator may create a second owner once one exists.
+  -- Bootstrap administrator may create a second administrator.
   v_result := public.create_staff_account(
-    'owner-bootstrap-second',
-    'owner-pass-2',
-    'Bootstrap Second Owner',
-    'owner',
+    'admin-bootstrap-second',
+    'admin-pass-2',
+    'Bootstrap Second Administrator',
+    'administrator',
     ARRAY[v_branch_id]
   );
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'bootstrap_admin_creates_second_owner',
+'bootstrap_admin_creates_second_administrator',
     v_result.success AND (v_result.data ->> 'staff_member_id') IS NOT NULL,
     COALESCE(v_result.error_code, 'ok')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Non-bootstrap administrator may create owner when owner exists.
+  -- Non-bootstrap administrator may create another administrator.
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object('sub', v_admin_user::text, 'role', 'authenticated')::text,
@@ -273,15 +273,15 @@ PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_staff_account(
-    'owner-admin-attempt',
-    'owner-pass9',
-    'Admin Owner Attempt',
-    'owner',
+    'admin-clinic-attempt',
+    'admin-pass9',
+    'Admin Clinic Attempt',
+    'administrator',
     ARRAY[v_branch_id]
   );
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'admin_can_create_owner_when_owner_exists',
+'admin_can_create_administrator',
     v_result.success AND (v_result.data ->> 'staff_member_id') IS NOT NULL,
     COALESCE(v_result.error_code, 'ok')
   );
@@ -363,56 +363,6 @@ PERFORM set_config('role', 'postgres', true);
 'staff_duplicate_username_rejected',
     NOT v_result.success AND v_result.error_code = 'USERNAME_EXISTS',
     COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Owner may create an additional owner.
-  PERFORM set_config('role', 'postgres', true);
-  SELECT sm.auth_user_id
-  INTO v_owner_auth_user
-  FROM public.staff_members sm
-  WHERE sm.id = v_owner_staff_id;
-  PERFORM set_config('role', 'authenticated', true);
-  PERFORM set_config(
-    'request.jwt.claims',
-    json_build_object('sub', v_owner_auth_user::text, 'role', 'authenticated')::text,
-    true
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
-  SELECT v_owner_staff_id, v_branch_id, true, sm.auth_user_id, sm.auth_user_id
-  FROM public.staff_members sm
-  WHERE sm.id = v_owner_staff_id
-  ON CONFLICT DO NOTHING;
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.create_staff_account(
-    'owner-two',
-    'owner-pass-2',
-    'Second Owner',
-    'owner',
-    ARRAY[v_branch_id]
-  );
-PERFORM set_config('role', 'postgres', true);
-  INSERT INTO create_staff_rpc_results VALUES (
-'owner_creates_additional_owner',
-    v_result.success AND (v_result.data ->> 'staff_member_id') IS NOT NULL,
-    COALESCE(v_result.error_code, 'ok')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  PERFORM set_config('role', 'postgres', true);
-  SELECT count(*)::int
-  INTO v_owner_count
-  FROM public.staff_members sm
-  WHERE sm.role = 'owner' AND sm.is_deleted = false;
-  PERFORM set_config('role', 'authenticated', true);
-
-PERFORM set_config('role', 'postgres', true);
-  INSERT INTO create_staff_rpc_results VALUES (
-'two_active_owners_exist',
-    v_owner_count >= 2,
-    'owner_count=' || v_owner_count::text
   );
   PERFORM set_config('role', 'authenticated', true);
 END;

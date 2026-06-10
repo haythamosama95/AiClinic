@@ -22,7 +22,6 @@ class StaffMemberSummary {
   }
 
   String get roleLabel => switch (role) {
-    StaffRole.owner => 'Owner',
     StaffRole.administrator => 'Administrator',
     StaffRole.doctor => 'Doctor',
     StaffRole.receptionist => 'Receptionist',

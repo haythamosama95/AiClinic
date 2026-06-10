@@ -76,7 +76,7 @@ DELETE FROM public.branches WHERE true;
 DELETE FROM public.organizations WHERE true;
 
 UPDATE public.roles_permissions SET is_granted = true, updated_at = now()
-WHERE role IN ('owner', 'administrator', 'doctor', 'receptionist')
+WHERE role IN ('administrator', 'doctor', 'receptionist')
   AND permission_key IN ('patients.view', 'patients.create', 'patients.edit', 'patients.delete')
   AND is_deleted = false;
 

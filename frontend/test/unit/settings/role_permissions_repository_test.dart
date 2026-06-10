@@ -32,7 +32,7 @@ void main() {
     test('fetchMatrix parses permission rows and skips invalid rows', () async {
       final client = SettingsTableTestClient({
         'roles_permissions': [
-          {'role': 'owner', 'permission_key': 'settings.manage_staff', 'is_granted': true, 'is_deleted': false},
+          {'role': 'administrator', 'permission_key': 'settings.manage_staff', 'is_granted': true, 'is_deleted': false},
           {'role': 'doctor', 'permission_key': 'patients.view', 'is_granted': true, 'is_deleted': false},
           {'role': 'doctor', 'permission_key': '', 'is_granted': true, 'is_deleted': false},
         ],
@@ -45,7 +45,7 @@ void main() {
 
     test('stupid usage: empty permission key throws before RPC', () async {
       expect(
-        () => repository.updateRolePermission(role: StaffRole.owner, permissionKey: '   ', isGranted: true),
+        () => repository.updateRolePermission(role: StaffRole.administrator, permissionKey: '   ', isGranted: true),
         throwsA(isA<StateError>()),
       );
     });
@@ -71,7 +71,7 @@ void main() {
       };
 
       expect(
-        () => repository.updateRolePermission(role: StaffRole.owner, permissionKey: 'made.up.key', isGranted: true),
+        () => repository.updateRolePermission(role: StaffRole.administrator, permissionKey: 'made.up.key', isGranted: true),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_PERMISSION')),
       );
     });
