@@ -415,11 +415,11 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
     );
 
     if (widget.embeddedInShell) {
-      return ColoredBox(color: Colors.white, child: content);
+      return ColoredBox(color: colors.background, child: content);
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: colors.background,
       appBar: AppBar(
         title: const Text('Theme Showcase'),
         leading: IconButton(

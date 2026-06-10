@@ -21,6 +21,10 @@ class ShellNavBadge extends StatelessWidget {
       ShellNavBadgeTone.success => ShellTokens.badgeSuccessBackground,
       ShellNavBadgeTone.neutral => colors.muted,
     };
+    final textColor = switch (tone) {
+      ShellNavBadgeTone.warning || ShellNavBadgeTone.success => const Color(0xFF333333),
+      ShellNavBadgeTone.neutral => colors.foreground,
+    };
 
     return Container(
       constraints: const BoxConstraints(minWidth: 22),
@@ -29,7 +33,7 @@ class ShellNavBadge extends StatelessWidget {
       child: Text(
         '$count',
         textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colors.foreground, fontWeight: FontWeight.w600),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: textColor, fontWeight: FontWeight.w600),
       ),
     );
   }

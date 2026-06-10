@@ -9,12 +9,12 @@ final themeModeProvider = Provider<ThemeMode>((ref) {
   return ref.watch(startupSessionProvider).themeMode;
 });
 
-/// Owns the active design-system variant (clinic vs parchment).
+/// Owns the active design-system variant (parchment vs clinic).
 final themeVariantProvider = NotifierProvider<ThemeVariantNotifier, AppThemeVariant>(ThemeVariantNotifier.new);
 
 class ThemeVariantNotifier extends Notifier<AppThemeVariant> {
   @override
-  AppThemeVariant build() => AppThemeVariant.clinic;
+  AppThemeVariant build() => AppThemeVariant.parchment;
 
   void setVariant(AppThemeVariant variant) {
     state = variant;

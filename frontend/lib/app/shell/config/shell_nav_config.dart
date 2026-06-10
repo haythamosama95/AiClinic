@@ -52,16 +52,6 @@ abstract final class ShellNavConfig {
       }
     }
 
-    if (location == AppRoutes.appointmentsCalendar) {
-      return 'appointments-calendar';
-    }
-    if (location == AppRoutes.appointmentsBook) {
-      return 'appointments-book';
-    }
-    if (location == AppRoutes.appointmentsQueue) {
-      return 'appointments-queue';
-    }
-
     return null;
   }
 

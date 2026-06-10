@@ -6,7 +6,8 @@ abstract final class ShellTokens {
 
   /// Visible width when the sidebar is collapsed (icons only).
   ///
-  /// Matches [iconInsetFromNavEdge] + [itemIconSize] + [itemHorizontalPadding].
+  /// [iconInsetFromNavEdge] + [itemIconSize] + [itemHorizontalPadding] yields 60;
+  /// the extra 4 logical pixels keep the icon footprint clear of the clip edge.
   static const double navCollapsedWidth = 64;
 
   /// Horizontal offset of nav item icons from the nav's left edge.

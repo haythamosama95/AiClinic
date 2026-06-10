@@ -16,7 +16,7 @@ class ForuiAppScope extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final variant = Theme.of(context).extension<AppThemeMeta>()?.variant ?? AppThemeVariant.clinic;
+    final variant = Theme.of(context).extension<AppThemeMeta>()?.variant ?? AppThemeVariant.parchment;
 
     return FTheme(
       data: ForuiTheme.dataFor(brightness, variant: variant),

@@ -37,6 +37,7 @@ class ShellHeader extends StatelessWidget {
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: ShellTokens.headerSearchMaxWidth),
+                  // TODO: Wire global search once the search API and routing are defined.
                   child: AppTextInput(
                     hintText: 'Search patients, appointments, visits…',
                     size: AppFieldSize.sm,

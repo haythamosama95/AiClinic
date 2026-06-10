@@ -9,7 +9,7 @@ import 'variants/theme_palette_resolver.dart';
 
 /// Builds [FThemeData] from a named design-system variant for the desktop client.
 abstract final class ForuiTheme {
-  static FThemeData dataFor(Brightness brightness, {AppThemeVariant variant = AppThemeVariant.clinic}) {
+  static FThemeData dataFor(Brightness brightness, {AppThemeVariant variant = AppThemeVariant.parchment}) {
     final tokens = ThemePaletteResolver.colors(variant, brightness);
     final colors = _colorsFromTokens(tokens, brightness);
     final typography = FTypography.inherit(colors: colors, touch: false);

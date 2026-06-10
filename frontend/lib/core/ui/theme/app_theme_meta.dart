@@ -26,5 +26,5 @@ class AppThemeMeta extends ThemeExtension<AppThemeMeta> {
 
 /// Convenience accessor for [AppThemeMeta] from a [BuildContext].
 extension AppThemeMetaContext on BuildContext {
-  AppThemeVariant get appThemeVariant => Theme.of(this).extension<AppThemeMeta>()?.variant ?? AppThemeVariant.clinic;
+  AppThemeVariant get appThemeVariant => Theme.of(this).extension<AppThemeMeta>()?.variant ?? AppThemeVariant.parchment;
 }

@@ -46,6 +46,14 @@ class ShellNavItemRow extends StatefulWidget {
 class _ShellNavItemRowState extends State<ShellNavItemRow> {
   var _isHovered = false;
 
+  String _semanticsLabel() {
+    final count = widget.badgeCount;
+    if (count != null && count > 0 && widget.badgeTone != null) {
+      return '${widget.label}, $count';
+    }
+    return widget.label;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
@@ -55,7 +63,8 @@ class _ShellNavItemRowState extends State<ShellNavItemRow> {
     final collapseT = ShellNavMetrics.maybeOf(context)?.collapseT ?? 0;
     final labelOpacity = (1 - collapseT).clamp(0.0, 1.0);
     final iconColor = widget.isSelected ? colors.foreground : colors.mutedForeground;
-    final showBadgeDot = collapseT > 0.5 && widget.badgeCount != null && widget.badgeCount! > 0;
+    final showBadgeDot =
+        collapseT > 0.5 && widget.badgeCount != null && widget.badgeCount! > 0 && widget.badgeTone != null;
 
     final row = SizedBox(
       height: ShellTokens.itemHeight,
@@ -144,11 +153,19 @@ class _ShellNavItemRowState extends State<ShellNavItemRow> {
       return row;
     }
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: row),
+    final semanticsLabel = _semanticsLabel();
+
+    return Semantics(
+      button: true,
+      label: semanticsLabel,
+      selected: widget.isSelected,
+      excludeSemantics: true,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: row),
+      ),
     );
   }
 }

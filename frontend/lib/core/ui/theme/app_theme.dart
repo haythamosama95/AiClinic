@@ -12,9 +12,9 @@ import 'variants/theme_palette_resolver.dart';
 class AppTheme {
   const AppTheme._();
 
-  static ThemeData light([AppThemeVariant variant = AppThemeVariant.clinic]) => _build(variant, Brightness.light);
+  static ThemeData light([AppThemeVariant variant = AppThemeVariant.parchment]) => _build(variant, Brightness.light);
 
-  static ThemeData dark([AppThemeVariant variant = AppThemeVariant.clinic]) => _build(variant, Brightness.dark);
+  static ThemeData dark([AppThemeVariant variant = AppThemeVariant.parchment]) => _build(variant, Brightness.dark);
 
   static ThemeData _build(AppThemeVariant variant, Brightness brightness) {
     final tokens = ThemePaletteResolver.colors(variant, brightness);
