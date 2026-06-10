@@ -185,8 +185,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     idle.disable();
   }
 
-  static String _contextFailureReason(Object error) =>
-      SessionContextLoader.contextFailureReason(error);
+  static String _contextFailureReason(Object error) => SessionContextLoader.contextFailureReason(error);
 
   Future<void> _syncFromCurrentSession() async {
     if (!SupabaseBootstrap.isReady) {
@@ -203,13 +202,10 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     await _handleAuthState(AuthState(AuthChangeEvent.initialSession, session));
   }
 
-  SessionContextLoader get _contextLoader => SessionContextLoader(
-        ref.read(supabaseClientProvider),
-        ref.read(permissionRepositoryProvider),
-      );
+  SessionContextLoader get _contextLoader =>
+      SessionContextLoader(ref.read(supabaseClientProvider), ref.read(permissionRepositoryProvider));
 
-  Future<AuthSessionContext> _loadSessionContext(Session session) =>
-      _contextLoader.load(session);
+  Future<AuthSessionContext> _loadSessionContext(Session session) => _contextLoader.load(session);
 
   void setActiveBranch(String branchId) {
     final context = state.context;
@@ -217,6 +213,12 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
       return;
     }
     state = state.copyWith(context: context.copyWith(activeBranchId: branchId));
+  }
+
+  /// Clears a sign-in failure banner without changing auth status.
+  void clearSignInFailureMessage() {
+    if (state.failureMessage == null) return;
+    state = state.copyWith(clearFailure: true);
   }
 
   Future<void> signOut() async {

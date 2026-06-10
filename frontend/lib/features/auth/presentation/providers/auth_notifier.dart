@@ -140,6 +140,17 @@ class AuthNotifier extends Notifier<AuthUiState> {
     );
   }
 
+  /// Clears a displayed sign-in error without affecting an in-flight submission.
+  void clearSignInError() {
+    if (state.errorMessage == null) return;
+    state = state.copyWith(clearError: true);
+  }
+
+  /// Resets transient sign-in UI state when leaving the login screen.
+  void resetSignInForm() {
+    state = const AuthUiState();
+  }
+
   /// Explicit sign-out (US4): clears Supabase session and in-memory permission cache.
   Future<void> signOut() async {
     await ref.read(authSessionProvider.notifier).signOut();

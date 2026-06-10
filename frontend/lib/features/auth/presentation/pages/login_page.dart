@@ -17,6 +17,19 @@ class LoginPage extends ConsumerStatefulWidget {
 }
 
 class _LoginPageState extends ConsumerState<LoginPage> {
+  var _loginPresentationGeneration = 0;
+
+  void _clearSignInErrors() {
+    ref.read(authNotifierProvider.notifier).clearSignInError();
+    ref.read(authSessionProvider.notifier).clearSignInFailureMessage();
+  }
+
+  void _resetSignInPresentation() {
+    ref.read(authNotifierProvider.notifier).resetSignInForm();
+    ref.read(authSessionProvider.notifier).clearSignInFailureMessage();
+    setState(() => _loginPresentationGeneration++);
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
@@ -37,10 +50,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
             child: LoginModal(
+              key: ValueKey(_loginPresentationGeneration),
               isSubmitting: authState.isSubmitting,
               errorMessage: errorMessage,
               initialShowForgotPasswordInfo: GoRouterState.of(context).uri.queryParameters.containsKey('forgot'),
-              onClose: () => context.canPop() ? context.pop() : context.go(AppRoutes.startupEntry),
+              onDismissSignInError: _clearSignInErrors,
+              onClose: () {
+                _resetSignInPresentation();
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go(AppRoutes.startupEntry);
+                }
+              },
               onSubmit: (username, password) {
                 ref.read(authNotifierProvider.notifier).signIn(username: username, password: password);
               },

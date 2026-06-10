@@ -1,4 +1,5 @@
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/login_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -105,6 +106,108 @@ void main() {
     await pumpLoginModal(tester, initialShowForgotPasswordInfo: true);
 
     expect(visiblePanelText(const ValueKey('login-status-panel'), 'administrator-mediated'), findsOneWidget);
+  });
+
+  testWidgets('opening forgot password dismisses sign-in error permanently', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    String? errorMessage = kGenericSignInFailureMessage;
+    var dismissCount = 0;
+
+    Future<void> pumpModal() async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return LoginModal(
+                  errorMessage: errorMessage,
+                  onDismissSignInError: () {
+                    dismissCount++;
+                    setState(() => errorMessage = null);
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pumpModal();
+
+    const statusPanelKey = ValueKey('login-status-panel');
+    expect(visiblePanelText(statusPanelKey, 'incorrect'), findsOneWidget);
+
+    await tester.tap(find.text('Forgot Password?'));
+    await tester.pumpAndSettle();
+
+    expect(dismissCount, 1);
+    expect(visiblePanelText(statusPanelKey, 'administrator-mediated'), findsOneWidget);
+    expect(visiblePanelText(statusPanelKey, 'incorrect'), findsNothing);
+
+    await tester.tap(find.text('Forgot Password?'));
+    await tester.pumpAndSettle();
+
+    expect(visiblePanelText(statusPanelKey, 'incorrect'), findsNothing);
+    expect(visiblePanelText(statusPanelKey, 'administrator-mediated'), findsNothing);
+  });
+
+  testWidgets('close button resets modal and clears parent sign-in error', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    String? errorMessage = kGenericSignInFailureMessage;
+    var closed = false;
+    var presentationGeneration = 0;
+
+    Future<void> pumpModal() async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return LoginModal(
+                  key: ValueKey(presentationGeneration),
+                  errorMessage: errorMessage,
+                  onDismissSignInError: () => setState(() => errorMessage = null),
+                  onClose: () {
+                    closed = true;
+                    setState(() {
+                      errorMessage = null;
+                      presentationGeneration++;
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pumpModal();
+
+    const statusPanelKey = ValueKey('login-status-panel');
+
+    await tester.enterText(find.byType(AppTextField).at(0), 'staff1');
+    await tester.enterText(find.byType(AppTextField).at(1), 'secret');
+    await tester.tap(find.text('Forgot Password?'));
+    await tester.pumpAndSettle();
+
+    expect(visiblePanelText(statusPanelKey, 'administrator-mediated'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+
+    expect(closed, isTrue);
+    expect(errorMessage, isNull);
+    expect(find.text('staff1'), findsNothing);
+    expect(visiblePanelText(statusPanelKey, 'administrator-mediated'), findsNothing);
+    expect(visiblePanelText(statusPanelKey, 'incorrect'), findsNothing);
   });
 
   testWidgets('corner case: panel is visible on narrow width', (tester) async {

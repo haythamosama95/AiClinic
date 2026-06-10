@@ -28,6 +28,7 @@ abstract final class LoginForgotPasswordInfo {
 class LoginModal extends StatefulWidget {
   const LoginModal({
     this.onClose,
+    this.onDismissSignInError,
     this.onSubmit,
     this.isSubmitting = false,
     this.errorMessage,
@@ -36,6 +37,7 @@ class LoginModal extends StatefulWidget {
   });
 
   final VoidCallback? onClose;
+  final VoidCallback? onDismissSignInError;
   final void Function(String username, String password)? onSubmit;
   final bool isSubmitting;
   final String? errorMessage;
@@ -82,10 +84,19 @@ class _LoginModalState extends State<LoginModal> {
   late var _showForgotPasswordInfo = widget.initialShowForgotPasswordInfo;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.initialShowForgotPasswordInfo) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => widget.onDismissSignInError?.call());
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant LoginModal oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initialShowForgotPasswordInfo && !oldWidget.initialShowForgotPasswordInfo) {
       _showForgotPasswordInfo = true;
+      widget.onDismissSignInError?.call();
     }
   }
 
@@ -103,7 +114,29 @@ class _LoginModalState extends State<LoginModal> {
   }
 
   void _toggleForgotPasswordInfo() {
-    setState(() => _showForgotPasswordInfo = !_showForgotPasswordInfo);
+    final willShow = !_showForgotPasswordInfo;
+    if (willShow) widget.onDismissSignInError?.call();
+    setState(() => _showForgotPasswordInfo = willShow);
+  }
+
+  void _resetFormFields() {
+    const empty = TextEditingValue.empty;
+    _usernameController.value = empty;
+    _passwordController.value = empty;
+    _formKey.currentState?.reset();
+  }
+
+  void _handleClose() {
+    _resetFormFields();
+    setState(() {
+      _showForgotPasswordInfo = false;
+      _obscurePassword = true;
+    });
+    if (widget.onClose != null) {
+      widget.onClose!();
+    } else {
+      Navigator.of(context).maybePop();
+    }
   }
 
   @override
@@ -183,7 +216,7 @@ class _LoginModalState extends State<LoginModal> {
           Positioned(
             top: SpacingTokens.sm,
             right: SpacingTokens.sm,
-            child: _CloseButton(onPressed: widget.onClose ?? () => Navigator.of(context).maybePop()),
+            child: _CloseButton(onPressed: _handleClose),
           ),
         ],
       ),
