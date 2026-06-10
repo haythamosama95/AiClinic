@@ -8,6 +8,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
+import 'package:ai_clinic/features/auth/presentation/dev/auth_dev_widgets.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/login_modal.dart';
 
@@ -64,23 +65,41 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
-                child: LoginModal(
-                  key: ValueKey(_loginPresentationGeneration),
-                  isSubmitting: authState.isSubmitting,
-                  errorMessage: errorMessage,
-                  initialShowForgotPasswordInfo: GoRouterState.of(context).uri.queryParameters.containsKey('forgot'),
-                  onDismissSignInError: _clearSignInErrors,
-                  onClose: () {
-                    _resetSignInPresentation();
-                    if (context.canPop()) {
-                      context.pop();
-                    } else {
-                      context.go(AppRoutes.startupEntry);
-                    }
-                  },
-                  onSubmit: (username, password) {
-                    ref.read(authNotifierProvider.notifier).signIn(username: username, password: password);
-                  },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    LoginModal(
+                      key: ValueKey(_loginPresentationGeneration),
+                      isSubmitting: authState.isSubmitting,
+                      errorMessage: errorMessage,
+                      initialShowForgotPasswordInfo: GoRouterState.of(
+                        context,
+                      ).uri.queryParameters.containsKey('forgot'),
+                      onDismissSignInError: _clearSignInErrors,
+                      onClose: () {
+                        _resetSignInPresentation();
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.go(AppRoutes.startupEntry);
+                        }
+                      },
+                      onSubmit: (username, password) {
+                        ref.read(authNotifierProvider.notifier).signIn(username: username, password: password);
+                      },
+                    ),
+                    AuthDevWidgets.panel(
+                      isSubmitting: authState.isSubmitting,
+                      onLoginAsAdmin: () {
+                        ref
+                            .read(authNotifierProvider.notifier)
+                            .signIn(
+                              username: AuthDevBootstrapCredentials.username,
+                              password: AuthDevBootstrapCredentials.password,
+                            );
+                      },
+                    ),
+                  ],
                 ),
               ),
             ),
