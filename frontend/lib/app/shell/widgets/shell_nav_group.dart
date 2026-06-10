@@ -8,7 +8,7 @@ import 'package:ai_clinic/app/shell/widgets/shell_nav_tree_connector.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 
 /// Expandable nav group with tree connectors to child items.
-class ShellNavGroupWidget extends StatelessWidget {
+class ShellNavGroupWidget extends StatefulWidget {
   const ShellNavGroupWidget({
     required this.group,
     required this.isExpanded,
@@ -25,52 +25,89 @@ class ShellNavGroupWidget extends StatelessWidget {
   final ValueChanged<String> onSelected;
 
   @override
+  State<ShellNavGroupWidget> createState() => _ShellNavGroupWidgetState();
+}
+
+class _ShellNavGroupWidgetState extends State<ShellNavGroupWidget> with SingleTickerProviderStateMixin {
+  late final AnimationController _expandController;
+  late final Animation<double> _expandAnimation;
+  late final Animation<double> _chevronRotation;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandController = AnimationController(duration: ShellTokens.expandDuration, vsync: this);
+    _expandAnimation = CurvedAnimation(parent: _expandController, curve: Curves.easeInOut);
+    _chevronRotation = Tween<double>(begin: 0, end: 0.5).animate(_expandAnimation);
+    if (widget.isExpanded) {
+      _expandController.value = 1;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ShellNavGroupWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isExpanded == oldWidget.isExpanded) return;
+
+    if (widget.isExpanded) {
+      _expandController.forward();
+    } else {
+      _expandController.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _expandController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final isGroupSelected = group.children.any((child) => child.id == selectedItemId);
+    final isGroupSelected = widget.group.children.any((child) => child.id == widget.selectedItemId);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ShellNavItemRow(
-          label: group.label,
-          icon: group.icon,
-          isSelected: isGroupSelected && !isExpanded,
-          onTap: () => onToggle(group.id),
-          trailing: AnimatedRotation(
-            turns: isExpanded ? 0.5 : 0,
-            duration: ShellTokens.hoverDuration,
-            curve: Curves.easeOut,
+          label: widget.group.label,
+          icon: widget.group.icon,
+          isSelected: isGroupSelected && !widget.isExpanded,
+          onTap: () => widget.onToggle(widget.group.id),
+          trailing: RotationTransition(
+            turns: _chevronRotation,
             child: Icon(Icons.keyboard_arrow_down, size: 20, color: colors.mutedForeground),
           ),
         ),
-        AnimatedSize(
-          duration: ShellTokens.hoverDuration,
-          curve: Curves.easeOut,
-          alignment: Alignment.topCenter,
-          child: isExpanded
-              ? Padding(
-                  padding: const EdgeInsets.only(left: ShellTokens.itemHorizontalPadding),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+        AnimatedBuilder(
+          animation: _expandAnimation,
+          builder: (context, child) {
+            return ClipRect(
+              child: Align(alignment: Alignment.topCenter, heightFactor: _expandAnimation.value, child: child),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.only(left: ShellTokens.itemHorizontalPadding),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ShellNavTreeConnector(childCount: widget.group.children.length),
+                Expanded(
+                  child: Column(
                     children: [
-                      ShellNavTreeConnector(childCount: group.children.length),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            for (final child in group.children)
-                              ShellNavSingleItem(
-                                item: child,
-                                isSelected: selectedItemId == child.id,
-                                onSelected: onSelected,
-                              ),
-                          ],
+                      for (final child in widget.group.children)
+                        ShellNavSingleItem(
+                          item: child,
+                          isSelected: widget.selectedItemId == child.id,
+                          onSelected: widget.onSelected,
                         ),
-                      ),
                     ],
                   ),
-                )
-              : const SizedBox(width: double.infinity),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );

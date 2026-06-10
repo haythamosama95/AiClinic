@@ -13,7 +13,7 @@ class ShellNavTreeConnector extends StatelessWidget {
   Widget build(BuildContext context) {
     if (childCount == 0) return const SizedBox.shrink();
 
-    final lineColor = context.semanticColors.border.withValues(alpha: 0.4);
+    final lineColor = context.semanticColors.border.withValues(alpha: 0.65);
     final height = childCount * ShellTokens.itemHeight;
 
     return SizedBox(

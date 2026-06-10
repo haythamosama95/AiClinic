@@ -10,6 +10,7 @@ abstract final class ShellTokens {
   static const double itemHorizontalPadding = 12;
   static const double logoSize = 40;
   static const Duration hoverDuration = Duration(milliseconds: 180);
+  static const Duration expandDuration = Duration(milliseconds: 250);
 
   static const Color badgeWarningBackground = Color(0xFFFFD8C0);
   static const Color badgeSuccessBackground = Color(0xFFCFF2E5);
