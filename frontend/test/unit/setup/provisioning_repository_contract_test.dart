@@ -36,7 +36,8 @@ void main() {
       expect(client.lastParams, containsPair('p_primary_branch_id', '22222222-2222-4222-8222-222222222222'));
       expect(result.username, 'newstaff');
       expect(result.staffMemberId, '33333333-3333-4333-8333-333333333333');
-      expect(result.assignedPassword, 'Initial1!');
+      expect(result.revealAssignedPassword(), 'Initial1!');
+      result.clearAssignedPassword();
     });
 
     test('createStaffAccount uses entered password when RPC omits assigned_password', () async {
@@ -50,7 +51,8 @@ void main() {
         ),
       );
 
-      expect(result.assignedPassword, 'Secret12');
+      expect(result.revealAssignedPassword(), 'Secret12');
+      result.clearAssignedPassword();
     });
 
     test('createStaffAccount omits primary branch when null', () async {

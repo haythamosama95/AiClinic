@@ -96,13 +96,17 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
   }
 
   void clearLastCreated() {
-    if (state.lastCreated != null) {
+    final lastCreated = state.lastCreated;
+    if (lastCreated != null) {
+      lastCreated.clearAssignedPassword();
       state = state.copyWith(clearLastCreated: true);
     }
   }
 
   void clearLastPasswordReset() {
-    if (state.lastPasswordReset != null) {
+    final lastPasswordReset = state.lastPasswordReset;
+    if (lastPasswordReset != null) {
+      lastPasswordReset.clearAssignedPassword();
       state = state.copyWith(clearLastPasswordReset: true);
     }
   }
