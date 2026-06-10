@@ -22,6 +22,13 @@ abstract final class _SetupModalPalette {
   static const maxWidth = 920.0;
 }
 
+String _setupStepSubtitle(SetupWizardStep step) => switch (step) {
+  SetupWizardStep.organization => "Enter your clinic's organization details to get started.",
+  SetupWizardStep.branch => 'Start with your main branch. Additional branches can be added later.',
+  SetupWizardStep.staff => 'Create a staff account now, or skip and add team members later.',
+  SetupWizardStep.complete => 'Your clinic is ready to use.',
+};
+
 /// Centered floating clinic setup wizard (Organization → Branch → Staff).
 class SetupModal extends ConsumerStatefulWidget {
   const SetupModal({required this.onFinished, super.key});
@@ -296,7 +303,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                 ),
                 const SizedBox(height: SpacingTokens.sm),
                 Text(
-                  'Enter the details to get going',
+                  _setupStepSubtitle(setup.step),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
