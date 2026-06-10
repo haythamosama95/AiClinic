@@ -31,7 +31,7 @@ Defines RPC and UI contracts for first-time clinic setup and minimal staff admin
 
 ## RPC: `bootstrap_create_branch`
 
-**Caller**: Bootstrap administrator (pre-owner) or owner/administrator after setup
+**Caller**: Bootstrap administrator or administrator after setup
 
 | Parameter           | Type | Required |
 | ------------------- | ---- | -------- |
@@ -48,7 +48,7 @@ Parameter order matches `public.bootstrap_create_branch` in migration `202605211
 
 ## RPC: `create_staff_account`
 
-**Caller**: Owner or administrator (bootstrap admin counts as administrator before owner exists)
+**Caller**: Administrator (bootstrap admin counts as administrator during setup)
 
 | Parameter             | Type       | Required |
 | --------------------- | ---------- | -------- |
@@ -59,21 +59,21 @@ Parameter order matches `public.bootstrap_create_branch` in migration `202605211
 | `p_branch_ids`        | uuid[]     | Yes      |
 | `p_primary_branch_id` | uuid       | No       |
 
-**Owner creation rules (FR-022c)**:
+**Administrator creation rules**:
 
-| Caller state                  | May create `owner`? |
-| ----------------------------- | ------------------- |
-| Bootstrap admin, no owner yet | Yes                 |
-| Administrator, owner exists   | No                  |
-| Owner                         | Yes                 |
+| Caller state    | May create `administrator`? |
+| --------------- | --------------------------- |
+| Administrator   | Yes                         |
+| Bootstrap admin | Yes                         |
+| Other roles     | No                          |
 
 **Returns**: `rpc_result` with `staff_member_id`, `assigned_password` (echo of input for admin display)
 
-**Errors**: `ORG_SETUP_INCOMPLETE`, `FORBIDDEN_OWNER_CREATE`, `USERNAME_EXISTS`
+**Errors**: `ORG_SETUP_INCOMPLETE`, `FORBIDDEN`, `USERNAME_EXISTS`
 
 ## RPC: `admin_reset_staff_password`
 
-**Caller**: Owner or administrator
+**Caller**: Administrator
 
 | Parameter           | Type | Required |
 | ------------------- | ---- | -------- |

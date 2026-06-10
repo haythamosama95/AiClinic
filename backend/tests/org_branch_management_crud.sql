@@ -432,6 +432,88 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Last-administrator guard: leave a single active administrator in the org.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_result := public.set_staff_active(v_admin_staff, false);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_branch_crud_results VALUES (
+    'staff_deactivate_second_administrator_success',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.set_staff_active(v_bootstrap_staff, false);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_branch_crud_results VALUES (
+    'staff_deactivate_bootstrap_administrator_success',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.update_staff_member(
+    v_owner_staff,
+    'Clinic Owner',
+    'doctor',
+    ARRAY[v_branch_main],
+    NULL,
+    v_branch_main,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_branch_crud_results VALUES (
+    'staff_update_demote_last_administrator_rejected',
+    NOT v_result.success AND v_result.error_code = 'LAST_ADMINISTRATOR',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.roles_permissions (role, permission_key, is_granted)
+  VALUES ('doctor', 'settings.manage_staff', true)
+  ON CONFLICT (role, permission_key) DO UPDATE
+  SET is_granted = true, is_deleted = false, updated_at = now();
+  PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_doctor_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_doctor_staff::text,
+      'staff_role', 'doctor',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_result := public.set_staff_active(v_owner_staff, false);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_branch_crud_results VALUES (
+    'staff_deactivate_last_administrator_rejected',
+    NOT v_result.success AND v_result.error_code = 'LAST_ADMINISTRATOR',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'postgres', true);
+  DELETE FROM public.roles_permissions
+  WHERE role = 'doctor' AND permission_key = 'settings.manage_staff';
+  UPDATE public.staff_members SET is_active = true WHERE id IN (v_admin_staff, v_bootstrap_staff);
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Administrator may toggle permission matrix; other roles denied.
   PERFORM set_config(
     'request.jwt.claims',

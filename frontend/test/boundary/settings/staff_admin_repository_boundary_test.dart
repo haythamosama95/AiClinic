@@ -165,6 +165,36 @@ void main() {
       );
     });
 
+    test('staffAdmin.LAST_ADMINISTRATOR', () async {
+      const ManifestScenario('staffAdmin.LAST_ADMINISTRATOR');
+      final clinic = await ctx.ensureClinic(label: 'staff_last_admin');
+      await ctx.signInAdmin();
+      final temporaryAdmin = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.administrator);
+      await ctx.signInAdmin();
+      final deactivateTemporary = await ctx.staffAdmin.setStaffActive(
+        staffMemberId: temporaryAdmin.staffMemberId,
+        isActive: false,
+      );
+      expect(deactivateTemporary.success, isTrue);
+
+      final authSession = ctx.client.auth.currentSession;
+      expect(authSession, isNotNull);
+      final session = await ctx.sessionLoader.load(authSession!);
+      final bootstrapAdministratorId = session.staffProfile.staffMemberId;
+
+      await expectRpcCode(
+        () => ctx.staffAdmin.updateStaffMember(
+          UpdateStaffMemberInput(
+            staffMemberId: bootstrapAdministratorId,
+            fullName: session.staffProfile.fullName,
+            role: StaffRole.doctor,
+            branchIds: [clinic.branchId],
+          ),
+        ),
+        'LAST_ADMINISTRATOR',
+      );
+    });
+
     test('staffAdmin.aggressive.crossOrgStaff', () async {
       const ManifestScenario('staffAdmin.aggressive.crossOrgStaff');
       final clinicA = await ctx.ensureClinic(label: 'staff_cross_a');

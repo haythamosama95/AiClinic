@@ -25,7 +25,8 @@ abstract final class _SetupModalPalette {
 String _setupStepSubtitle(SetupWizardStep step) => switch (step) {
   SetupWizardStep.organization => "Enter your clinic's organization details to get started.",
   SetupWizardStep.branch => 'Start with your main branch. Additional branches can be added later.',
-  SetupWizardStep.staff => 'Create a staff account now, or skip and add team members later.',
+  SetupWizardStep.staff =>
+    'Create at least one staff account to finish setup. You can add more now or manage staff later in Settings.',
   SetupWizardStep.complete => 'Your clinic is ready to use.',
 };
 

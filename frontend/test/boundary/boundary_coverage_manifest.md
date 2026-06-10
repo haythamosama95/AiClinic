@@ -78,6 +78,7 @@ Only rows with `owner=boundary` must have `ManifestScenario('scenario')` in `tes
 | staffAdmin.fetchStaffMember.nested                      | happy      |                      | boundary |                                                  |
 | staffAdmin.updateStaffMember.success                    | happy      |                      | boundary |                                                  |
 | staffAdmin.setStaffActive.success                       | happy      |                      | boundary |                                                  |
+| staffAdmin.LAST_ADMINISTRATOR                           | negative   | LAST_ADMINISTRATOR   | boundary | org_branch_management_crud.sql                   |
 | staffAdmin.INVALID_INPUT.emptyName                      | negative   | INVALID_INPUT        | boundary |                                                  |
 | staffAdmin.INVALID_INPUT.emptyBranches                  | negative   | INVALID_INPUT        | boundary |                                                  |
 | staffAdmin.FORBIDDEN.nonAdministratorCreate             | negative   | FORBIDDEN            | boundary | org_branch_management_crud.sql                   |
@@ -131,12 +132,6 @@ Only rows with `owner=boundary` must have `ManifestScenario('scenario')` in `tes
 | patients.revoke.view.checkDuplicates.FORBIDDEN          | aggressive | FORBIDDEN            | boundary | patient_management_roles.sql                     |
 | patients.revoke.edit.update.FORBIDDEN                   | aggressive | FORBIDDEN            | boundary | patient_management_roles.sql                     |
 | patients.revoke.delete.archive.FORBIDDEN                | aggressive | FORBIDDEN            | boundary | patient_management_roles.sql                     |
-| patientRole.owner.search                                | happy      |                      | boundary | patient_management_roles.sql                     |
-| patientRole.owner.create                                | happy      |                      | boundary | patient_management_roles.sql                     |
-| patientRole.owner.get                                   | happy      |                      | boundary | patient_management_roles.sql                     |
-| patientRole.owner.update                                | happy      |                      | boundary | patient_management_roles.sql                     |
-| patientRole.owner.checkDuplicates                       | happy      |                      | boundary | patient_management_roles.sql                     |
-| patientRole.owner.archive                               | happy      |                      | boundary | patient_management_roles.sql                     |
 | patientRole.administrator.search                        | happy      |                      | boundary | patient_management_roles.sql                     |
 | patientRole.administrator.create                        | happy      |                      | boundary | patient_management_roles.sql                     |
 | patientRole.administrator.get                           | happy      |                      | boundary | patient_management_roles.sql                     |
