@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_content_panel.dart';
@@ -68,7 +67,7 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
     final selectedItemId = ShellNavConfig.itemIdForLocation(location) ?? _selectedItemId;
 
     return ColoredBox(
-      color: colors.background,
+      color: colors.accent,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -91,10 +90,7 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
                       ShellTokens.contentPanelInset,
                       ShellTokens.contentPanelInset,
                     ),
-                    child: ShellContentPanel(
-                      backgroundColor: location == AppRoutes.foundationDemo ? Colors.white : null,
-                      child: widget.child,
-                    ),
+                    child: ShellContentPanel(child: widget.child),
                   ),
                 ),
               ],

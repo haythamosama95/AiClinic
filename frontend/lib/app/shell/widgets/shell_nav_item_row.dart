@@ -96,7 +96,7 @@ class _ShellNavItemRowState extends State<ShellNavItemRow> {
                                 decoration: BoxDecoration(
                                   color: colors.primary,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: colors.background, width: 1.5),
+                                  border: Border.all(color: colors.accent, width: 1.5),
                                 ),
                               ),
                             ),
