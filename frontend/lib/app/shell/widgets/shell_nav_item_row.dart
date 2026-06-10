@@ -47,40 +47,56 @@ class _ShellNavItemRowState extends State<ShellNavItemRow> {
       child: GestureDetector(
         onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: ShellTokens.hoverDuration,
-          curve: Curves.easeOut,
+        child: SizedBox(
           height: ShellTokens.itemHeight,
-          padding: const EdgeInsets.symmetric(horizontal: ShellTokens.itemHorizontalPadding),
-          decoration: BoxDecoration(
-            color: isHighlighted ? colors.card : Colors.transparent,
-            borderRadius: BorderRadius.circular(ShellTokens.itemRadius),
-            boxShadow: isHighlighted ? ShadowTokens.shadowSm : null,
-          ),
-          child: Row(
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              Icon(
-                widget.icon,
-                size: ShellTokens.itemIconSize,
-                color: widget.isSelected ? colors.foreground : colors.mutedForeground,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  widget.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: widget.isSelected ? colors.foreground : colors.mutedForeground,
-                    fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+              // Fade the pill in/out as a whole layer. AnimatedContainer tweens
+              // color and boxShadow separately, which flashes dark mid-animation.
+              IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: isHighlighted ? 1 : 0,
+                  duration: ShellTokens.hoverDuration,
+                  curve: Curves.easeOut,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: colors.card,
+                      borderRadius: BorderRadius.circular(ShellTokens.itemRadius),
+                      boxShadow: ShadowTokens.shadowSm,
+                    ),
                   ),
                 ),
               ),
-              if (widget.badgeCount != null && widget.badgeTone != null) ...[
-                const SizedBox(width: 8),
-                ShellNavBadge(count: widget.badgeCount!, tone: widget.badgeTone!),
-              ],
-              if (widget.trailing != null) ...[const SizedBox(width: 4), widget.trailing!],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: ShellTokens.itemHorizontalPadding),
+                child: Row(
+                  children: [
+                    Icon(
+                      widget.icon,
+                      size: ShellTokens.itemIconSize,
+                      color: widget.isSelected ? colors.foreground : colors.mutedForeground,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        widget.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: widget.isSelected ? colors.foreground : colors.mutedForeground,
+                          fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    if (widget.badgeCount != null && widget.badgeTone != null) ...[
+                      const SizedBox(width: 8),
+                      ShellNavBadge(count: widget.badgeCount!, tone: widget.badgeTone!),
+                    ],
+                    if (widget.trailing != null) ...[const SizedBox(width: 4), widget.trailing!],
+                  ],
+                ),
+              ),
             ],
           ),
         ),
