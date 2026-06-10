@@ -62,20 +62,23 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Reset password'), findsNothing);
   });
 
-  testWidgets('toggling forgot password does not resize the modal', (tester) async {
+  testWidgets('showing forgot password panel grows modal and shifts form upward', (tester) async {
     await pumpLoginModal(tester);
 
     final modalHeightBefore = tester.getSize(find.byType(LoginModal)).height;
+    final loginButtonYBefore = tester.getCenter(find.byType(AppButton)).dy;
+
+    await tester.tap(find.text('Forgot Password?'));
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(find.byType(LoginModal)).height, greaterThan(modalHeightBefore));
+    expect(tester.getCenter(find.byType(AppButton)).dy, lessThan(loginButtonYBefore));
 
     await tester.tap(find.text('Forgot Password?'));
     await tester.pumpAndSettle();
 
     expect(tester.getSize(find.byType(LoginModal)).height, modalHeightBefore);
-
-    await tester.tap(find.text('Forgot Password?'));
-    await tester.pumpAndSettle();
-
-    expect(tester.getSize(find.byType(LoginModal)).height, modalHeightBefore);
+    expect(tester.getCenter(find.byType(AppButton)).dy, loginButtonYBefore);
   });
 
   testWidgets('forgot password info appears below login button', (tester) async {

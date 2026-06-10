@@ -191,18 +191,20 @@ class _LoginModalState extends State<LoginModal> {
                         const SizedBox(width: SpacingTokens.xl),
                         Expanded(
                           flex: 55,
-                          child: SingleChildScrollView(
-                            child: _LoginFormSection(
-                              formKey: _formKey,
-                              usernameController: _usernameController,
-                              passwordController: _passwordController,
-                              obscurePassword: _obscurePassword,
-                              isSubmitting: widget.isSubmitting,
-                              errorMessage: widget.errorMessage,
-                              showForgotPasswordInfo: _showForgotPasswordInfo,
-                              onTogglePasswordVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
-                              onForgotPassword: _toggleForgotPasswordInfo,
-                              onSubmit: _handleSubmit,
+                          child: Center(
+                            child: SingleChildScrollView(
+                              child: _LoginFormSection(
+                                formKey: _formKey,
+                                usernameController: _usernameController,
+                                passwordController: _passwordController,
+                                obscurePassword: _obscurePassword,
+                                isSubmitting: widget.isSubmitting,
+                                errorMessage: widget.errorMessage,
+                                showForgotPasswordInfo: _showForgotPasswordInfo,
+                                onTogglePasswordVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
+                                onForgotPassword: _toggleForgotPasswordInfo,
+                                onSubmit: _handleSubmit,
+                              ),
                             ),
                           ),
                         ),
@@ -316,12 +318,9 @@ class _IllustrationPlaceholder extends StatelessWidget {
 }
 
 class _FadeInOutPanel extends StatefulWidget {
-  const _FadeInOutPanel({required this.visible, required this.layoutChild, required this.child, super.key});
+  const _FadeInOutPanel({required this.visible, required this.child, super.key});
 
   final bool visible;
-
-  /// Sized invisibly so the parent layout stays stable when [child] is hidden.
-  final Widget layoutChild;
   final Widget child;
 
   @override
@@ -370,23 +369,20 @@ class _FadeInOutPanelState extends State<_FadeInOutPanel> with SingleTickerProvi
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return AnimatedSize(
+      duration: _duration,
+      curve: Curves.easeInOut,
       alignment: Alignment.topCenter,
-      fit: StackFit.passthrough,
-      children: [
-        ColorFiltered(
-          colorFilter: const ColorFilter.mode(Colors.transparent, BlendMode.src),
-          child: IgnorePointer(child: Semantics(hidden: true, child: widget.layoutChild)),
-        ),
-        if (_showContent)
-          FadeTransition(
-            opacity: _opacity,
-            child: IgnorePointer(
-              ignoring: !widget.visible,
-              child: Semantics(hidden: !widget.visible, child: widget.child),
-            ),
-          ),
-      ],
+      clipBehavior: Clip.hardEdge,
+      child: _showContent
+          ? FadeTransition(
+              opacity: _opacity,
+              child: IgnorePointer(
+                ignoring: !widget.visible,
+                child: Semantics(hidden: !widget.visible, child: widget.child),
+              ),
+            )
+          : const SizedBox(width: double.infinity),
     );
   }
 }
@@ -419,13 +415,9 @@ class _LoginStatusPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Reserve the tallest possible panel up front so toggling error/forgot does not resize the modal.
-    final layoutChild = Padding(padding: _panelPadding, child: _forgotPasswordAlert());
-
     return _FadeInOutPanel(
       key: const ValueKey('login-status-panel'),
       visible: _visible,
-      layoutChild: layoutChild,
       child: _visible ? Padding(padding: _panelPadding, child: _visibleContent()) : const SizedBox.shrink(),
     );
   }
