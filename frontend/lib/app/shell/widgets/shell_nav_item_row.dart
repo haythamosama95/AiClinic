@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_badge.dart';
+import 'package:ai_clinic/app/shell/widgets/shell_nav_metrics.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shadow_tokens.dart';
 
 /// Shared nav row with icon, label, optional badge/chevron, and hover pill.
+///
+/// The icon sits in a fixed-width slot at a constant horizontal offset so it
+/// does not shift while the sidebar collapses or expands.
 class ShellNavItemRow extends StatefulWidget {
   const ShellNavItemRow({
     required this.label,
@@ -39,6 +43,10 @@ class _ShellNavItemRowState extends State<ShellNavItemRow> {
     final colors = context.semanticColors;
     final theme = Theme.of(context);
     final isHighlighted = widget.isSelected || _isHovered;
+    final collapseT = ShellNavMetrics.maybeOf(context)?.collapseT ?? 0;
+    final labelOpacity = (1 - collapseT).clamp(0.0, 1.0);
+    final iconColor = widget.isSelected ? colors.foreground : colors.mutedForeground;
+    final showBadgeDot = collapseT > 0.5 && widget.badgeCount != null && widget.badgeCount! > 0;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -52,8 +60,6 @@ class _ShellNavItemRowState extends State<ShellNavItemRow> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Fade the pill in/out as a whole layer. AnimatedContainer tweens
-              // color and boxShadow separately, which flashes dark mid-animation.
               IgnorePointer(
                 child: AnimatedOpacity(
                   opacity: isHighlighted ? 1 : 0,
@@ -72,28 +78,59 @@ class _ShellNavItemRowState extends State<ShellNavItemRow> {
                 padding: const EdgeInsets.symmetric(horizontal: ShellTokens.itemHorizontalPadding),
                 child: Row(
                   children: [
-                    Icon(
-                      widget.icon,
-                      size: ShellTokens.itemIconSize,
-                      color: widget.isSelected ? colors.foreground : colors.mutedForeground,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        widget.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: widget.isSelected ? colors.foreground : colors.mutedForeground,
-                          fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
-                        ),
+                    SizedBox(
+                      width: ShellTokens.itemIconSize,
+                      height: ShellTokens.itemIconSize,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(widget.icon, size: ShellTokens.itemIconSize, color: iconColor),
+                          if (showBadgeDot)
+                            Positioned(
+                              top: -1,
+                              right: -1,
+                              child: Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                  color: colors.primary,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: colors.background, width: 1.5),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (widget.badgeCount != null && widget.badgeTone != null) ...[
-                      const SizedBox(width: 8),
-                      ShellNavBadge(count: widget.badgeCount!, tone: widget.badgeTone!),
+                    if (collapseT < 1) ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Opacity(
+                          opacity: labelOpacity,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  widget.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: iconColor,
+                                    fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              if (widget.badgeCount != null && widget.badgeTone != null) ...[
+                                const SizedBox(width: 8),
+                                ShellNavBadge(count: widget.badgeCount!, tone: widget.badgeTone!),
+                              ],
+                              if (widget.trailing != null) ...[const SizedBox(width: 4), widget.trailing!],
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
-                    if (widget.trailing != null) ...[const SizedBox(width: 4), widget.trailing!],
                   ],
                 ),
               ),

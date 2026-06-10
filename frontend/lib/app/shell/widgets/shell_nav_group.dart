@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_item_row.dart';
+import 'package:ai_clinic/app/shell/widgets/shell_nav_metrics.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_single_item.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_tree_connector.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
@@ -66,6 +67,8 @@ class _ShellNavGroupWidgetState extends State<ShellNavGroupWidget> with SingleTi
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final isGroupSelected = widget.group.children.any((child) => child.id == widget.selectedItemId);
+    final collapseT = ShellNavMetrics.maybeOf(context)?.collapseT ?? 0;
+    final isNavCollapsed = collapseT > 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -75,40 +78,45 @@ class _ShellNavGroupWidgetState extends State<ShellNavGroupWidget> with SingleTi
           icon: widget.group.icon,
           isSelected: isGroupSelected && !widget.isExpanded,
           onTap: () => widget.onToggle(widget.group.id),
-          trailing: RotationTransition(
-            turns: _chevronRotation,
-            child: Icon(Icons.keyboard_arrow_down, size: 20, color: colors.mutedForeground),
-          ),
-        ),
-        AnimatedBuilder(
-          animation: _expandAnimation,
-          builder: (context, child) {
-            return ClipRect(
-              child: Align(alignment: Alignment.topCenter, heightFactor: _expandAnimation.value, child: child),
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.only(left: ShellTokens.itemHorizontalPadding),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ShellNavTreeConnector(childCount: widget.group.children.length),
-                Expanded(
-                  child: Column(
-                    children: [
-                      for (final child in widget.group.children)
-                        ShellNavSingleItem(
-                          item: child,
-                          isSelected: widget.selectedItemId == child.id,
-                          onSelected: widget.onSelected,
-                        ),
-                    ],
-                  ),
+          trailing: isNavCollapsed
+              ? null
+              : RotationTransition(
+                  turns: _chevronRotation,
+                  child: Icon(Icons.keyboard_arrow_down, size: 20, color: colors.mutedForeground),
                 ),
-              ],
+        ),
+        if (isNavCollapsed)
+          const SizedBox.shrink()
+        else
+          AnimatedBuilder(
+            animation: _expandAnimation,
+            builder: (context, child) {
+              return ClipRect(
+                child: Align(alignment: Alignment.topCenter, heightFactor: _expandAnimation.value, child: child),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.only(left: ShellTokens.itemHorizontalPadding),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ShellNavTreeConnector(childCount: widget.group.children.length),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        for (final child in widget.group.children)
+                          ShellNavSingleItem(
+                            item: child,
+                            isSelected: widget.selectedItemId == child.id,
+                            onSelected: widget.onSelected,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
       ],
     );
   }
