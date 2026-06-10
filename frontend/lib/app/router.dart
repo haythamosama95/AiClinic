@@ -41,6 +41,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: AppRoutes.login, builder: (context, state) => const LoginPage()),
       GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
+      GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const SetupPage()),
       GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
       GoRoute(path: AppRoutes.staffPasswordReset, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
 
@@ -53,7 +54,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const ThemeShowcasePage(embeddedInShell: true),
           ),
           GoRoute(path: AppRoutes.home, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
-          GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const SetupPage()),
 
           // Patient management
           GoRoute(path: AppRoutes.patients, builder: (context, state) => uiPendingPlaceholder('Patients', state)),
