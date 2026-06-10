@@ -282,6 +282,64 @@ class _IllustrationPlaceholder extends StatelessWidget {
   }
 }
 
+class _FadeInOutPanel extends StatefulWidget {
+  const _FadeInOutPanel({required this.visible, required this.child});
+
+  final bool visible;
+  final Widget child;
+
+  @override
+  State<_FadeInOutPanel> createState() => _FadeInOutPanelState();
+}
+
+class _FadeInOutPanelState extends State<_FadeInOutPanel> with SingleTickerProviderStateMixin {
+  static const _duration = Duration(milliseconds: 220);
+
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+
+  var _onStage = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: _duration);
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+    if (widget.visible) {
+      _onStage = true;
+      _controller.value = 1;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _FadeInOutPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.visible && !oldWidget.visible) {
+      setState(() => _onStage = true);
+      _controller.forward(from: 0);
+    } else if (!widget.visible && oldWidget.visible) {
+      _controller.reverse().then((_) {
+        if (mounted && !widget.visible) {
+          setState(() => _onStage = false);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_onStage) return const SizedBox.shrink();
+
+    return FadeTransition(opacity: _opacity, child: widget.child);
+  }
+}
+
 class _LoginFormSection extends StatelessWidget {
   const _LoginFormSection({
     required this.formKey,
@@ -378,18 +436,24 @@ class _LoginFormSection extends StatelessWidget {
           ),
           const SizedBox(height: SpacingTokens.lg),
           AppButton(label: 'Login', expand: true, isLoading: isSubmitting, onPressed: isSubmitting ? null : onSubmit),
-          if (errorMessage != null) ...[
-            const SizedBox(height: SpacingTokens.md),
-            AppAlert(variant: AppAlertVariant.destructive, title: errorMessage!),
-          ],
-          if (showForgotPasswordInfo) ...[
-            const SizedBox(height: SpacingTokens.md),
-            AppAlert(
-              icon: Icon(Icons.info_outline, color: theme.colorScheme.primary),
-              title: LoginForgotPasswordInfo.title,
-              subtitle: LoginForgotPasswordInfo.subtitle,
+          _FadeInOutPanel(
+            visible: errorMessage != null,
+            child: Padding(
+              padding: const EdgeInsets.only(top: SpacingTokens.md),
+              child: AppAlert(variant: AppAlertVariant.destructive, title: errorMessage ?? ''),
             ),
-          ],
+          ),
+          _FadeInOutPanel(
+            visible: showForgotPasswordInfo,
+            child: Padding(
+              padding: const EdgeInsets.only(top: SpacingTokens.md),
+              child: AppAlert(
+                icon: Icon(Icons.info_outline, color: theme.colorScheme.primary),
+                title: LoginForgotPasswordInfo.title,
+                subtitle: LoginForgotPasswordInfo.subtitle,
+              ),
+            ),
+          ),
         ],
       ),
     );
