@@ -7,7 +7,10 @@ import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 
-/// Pre-auth landing screen with quick access to the theme demo.
+/// Legacy pre-auth landing screen with quick access to the theme demo.
+///
+/// Retained for reference and manual testing; the router redirects `/` and
+/// `/foundation-demo` to [AppRoutes.login] in normal application flow.
 class StartupEntryPage extends ConsumerWidget {
   const StartupEntryPage({super.key});
 

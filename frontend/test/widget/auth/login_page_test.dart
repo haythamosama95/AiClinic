@@ -133,26 +133,27 @@ void main() {
       expect(visiblePanelText('administrator-mediated'), findsOneWidget);
     });
 
-    testWidgets('close navigates to startup entry when stack cannot pop', (tester) async {
+    testWidgets('close stays on login when stack cannot pop', (tester) async {
       await pumpLoginPage(tester);
 
       await tester.tap(find.byTooltip('Close'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Startup Entry'), findsOneWidget);
-      expect(find.byType(LoginModal), findsNothing);
+      expect(find.byType(LoginPage), findsOneWidget);
+      expect(find.byType(LoginModal), findsOneWidget);
     });
 
     testWidgets('close pops when login was pushed onto stack', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
+      const parentRoute = '/parent';
       final router = GoRouter(
-        initialLocation: AppRoutes.startupEntry,
+        initialLocation: parentRoute,
         routes: [
           GoRoute(
-            path: AppRoutes.startupEntry,
-            builder: (_, _) => const Scaffold(body: Text('Startup Entry')),
+            path: parentRoute,
+            builder: (_, _) => const Scaffold(body: Text('Parent')),
           ),
           GoRoute(path: AppRoutes.login, builder: (_, _) => const LoginPage()),
         ],
@@ -180,7 +181,7 @@ void main() {
       await tester.tap(find.byTooltip('Close'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Startup Entry'), findsOneWidget);
+      expect(find.text('Parent'), findsOneWidget);
       expect(find.byType(LoginModal), findsNothing);
     });
 
@@ -198,7 +199,6 @@ void main() {
 
     testWidgets('close clears displayed sign-in error', (tester) async {
       final fakeAuth = await pumpLoginPage(tester);
-      final router = GoRouter.of(tester.element(find.byType(LoginPage)));
 
       fakeAuth.setError(kGenericSignInFailureMessage);
       await tester.pumpAndSettle();
@@ -207,11 +207,7 @@ void main() {
       await tester.tap(find.byTooltip('Close'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Startup Entry'), findsOneWidget);
-
-      router.go(AppRoutes.login);
-      await tester.pumpAndSettle();
-
+      expect(find.byType(LoginPage), findsOneWidget);
       expect(visiblePanelText('incorrect'), findsNothing);
     });
   });

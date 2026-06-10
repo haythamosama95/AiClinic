@@ -200,13 +200,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             return null;
           }
 
-          const preAuthShellRoutes = {
-            AppRoutes.startupEntry,
-            AppRoutes.foundationDemo,
-            AppRoutes.login,
-            AppRoutes.forgotPassword,
-          };
-          return preAuthShellRoutes.contains(location) ? null : AppRoutes.startupEntry;
+          // Legacy landing routes remain registered but are not reachable in normal flow.
+          if (location == AppRoutes.startupEntry || location == AppRoutes.foundationDemo) {
+            return AppRoutes.login;
+          }
+
+          const preAuthShellRoutes = {AppRoutes.login, AppRoutes.forgotPassword};
+          return preAuthShellRoutes.contains(location) ? null : AppRoutes.login;
         }(),
       };
 
