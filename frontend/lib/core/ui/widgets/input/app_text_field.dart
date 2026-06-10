@@ -3,6 +3,29 @@ import 'package:forui/forui.dart';
 
 import 'app_field_size.dart';
 
+const _fieldIconExtent = 32.0;
+
+Widget _centeredFieldIcon(Widget icon) => SizedBox(
+  width: _fieldIconExtent,
+  height: _fieldIconExtent,
+  child: Center(child: icon),
+);
+
+Widget Function(BuildContext context, FTextFieldStyle style, Set<FTextFieldVariant> variants)? _prefixBuilder(
+  Widget? icon,
+) => icon == null
+    ? null
+    : (context, style, variants) => FTextField.prefixIconBuilder(context, style, variants, _centeredFieldIcon(icon));
+
+Widget Function(BuildContext context, FTextFieldStyle style, Set<FTextFieldVariant> variants)? _suffixBuilder(
+  Widget? icon,
+) => icon == null
+    ? null
+    : (context, style, variants) => Padding(
+        padding: const EdgeInsetsDirectional.only(start: 4, end: 12),
+        child: IconTheme(data: style.iconStyle.resolve(variants), child: _centeredFieldIcon(icon)),
+      );
+
 /// Application text form field wrapping [FTextFormField].
 class AppTextField extends StatelessWidget {
   const AppTextField({
@@ -17,6 +40,8 @@ class AppTextField extends StatelessWidget {
     this.description,
     this.maxLines = 1,
     this.onChanged,
+    this.prefixIcon,
+    this.suffixIcon,
     super.key,
   });
 
@@ -31,6 +56,8 @@ class AppTextField extends StatelessWidget {
   final AppFieldSize size;
   final int maxLines;
   final ValueChanged<String>? onChanged;
+  final Widget? prefixIcon;
+  final Widget? suffixIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +79,8 @@ class AppTextField extends StatelessWidget {
       maxLines: maxLines,
       enabled: enabled,
       validator: validator,
+      prefixBuilder: _prefixBuilder(prefixIcon),
+      suffixBuilder: _suffixBuilder(suffixIcon),
       autovalidateMode: validator != null ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled,
     );
   }
@@ -70,6 +99,8 @@ class AppTextInput extends StatelessWidget {
     this.description,
     this.maxLines = 1,
     this.onChanged,
+    this.prefixIcon,
+    this.suffixIcon,
     super.key,
   });
 
@@ -83,6 +114,8 @@ class AppTextInput extends StatelessWidget {
   final AppFieldSize size;
   final int maxLines;
   final ValueChanged<String>? onChanged;
+  final Widget? prefixIcon;
+  final Widget? suffixIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -103,6 +136,8 @@ class AppTextInput extends StatelessWidget {
       keyboardType: keyboardType,
       maxLines: maxLines,
       enabled: enabled,
+      prefixBuilder: _prefixBuilder(prefixIcon),
+      suffixBuilder: _suffixBuilder(suffixIcon),
     );
   }
 }

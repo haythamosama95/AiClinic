@@ -38,7 +38,7 @@ class StartupSessionState {
       configurationStatus: StartupConfigurationStatus.unknown,
       connectivityStatus: StartupConnectivityStatus.unknown,
       currentView: StartupCurrentView.startupCheck,
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.light,
     );
   }
 

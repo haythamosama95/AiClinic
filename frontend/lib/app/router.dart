@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/startup_entry_page.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
+import 'package:ai_clinic/features/auth/presentation/login_page.dart';
 import 'package:ai_clinic/core/ui/demo/theme_showcase_page.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
@@ -38,7 +39,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => uiPendingPlaceholder('Startup', state),
       ),
       GoRoute(path: AppRoutes.foundationDemo, builder: (context, state) => const ThemeShowcasePage()),
-      GoRoute(path: AppRoutes.login, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
+      GoRoute(path: AppRoutes.login, builder: (context, state) => const LoginPage()),
       GoRoute(path: AppRoutes.forgotPassword, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
       GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
       GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Auth', state)),

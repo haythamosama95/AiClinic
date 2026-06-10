@@ -1,0 +1,358 @@
+import 'package:flutter/material.dart';
+
+import 'package:ai_clinic/core/ui/theme/theme.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+
+/// Branding accents used by the login modal illustration panel.
+abstract final class _LoginModalPalette {
+  static const brandCoral = Color(0xFFE8735A);
+  static const panelPeach = Color(0xFFFFF3EC);
+  static const forgotPasswordTan = Color(0xFFB8956A);
+  static const modalRadius = 24.0;
+  static const panelRadius = 16.0;
+  static const compactBreakpoint = 720.0;
+}
+
+/// Centered floating login card with branding panel and credential form.
+class LoginModal extends StatefulWidget {
+  const LoginModal({
+    this.onClose,
+    this.onForgotPassword,
+    this.onSubmit,
+    this.isSubmitting = false,
+    this.errorMessage,
+    super.key,
+  });
+
+  final VoidCallback? onClose;
+  final VoidCallback? onForgotPassword;
+  final void Function(String username, String password)? onSubmit;
+  final bool isSubmitting;
+  final String? errorMessage;
+
+  /// Presents [LoginModal] as a centered dialog over a dimmed scrim.
+  static Future<void> show(
+    BuildContext context, {
+    VoidCallback? onForgotPassword,
+    void Function(String username, String password)? onSubmit,
+    bool isSubmitting = false,
+    String? errorMessage,
+  }) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
+          child: LoginModal(
+            onClose: () => Navigator.of(dialogContext).pop(),
+            onForgotPassword: onForgotPassword,
+            onSubmit: onSubmit,
+            isSubmitting: isSubmitting,
+            errorMessage: errorMessage,
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  State<LoginModal> createState() => _LoginModalState();
+}
+
+class _LoginModalState extends State<LoginModal> {
+  final _formKey = GlobalKey<FormState>();
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+  var _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _handleSubmit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    widget.onSubmit?.call(_usernameController.text.trim(), _passwordController.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 920),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(_LoginModalPalette.modalRadius),
+              boxShadow: ShadowTokens.shadowLg,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(SpacingTokens.xl),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isCompact = constraints.maxWidth < _LoginModalPalette.compactBreakpoint;
+
+                  if (isCompact) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _BrandingPanel(),
+                        const SizedBox(height: SpacingTokens.xl),
+                        _LoginFormSection(
+                          formKey: _formKey,
+                          usernameController: _usernameController,
+                          passwordController: _passwordController,
+                          obscurePassword: _obscurePassword,
+                          isSubmitting: widget.isSubmitting,
+                          errorMessage: widget.errorMessage,
+                          onTogglePasswordVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
+                          onForgotPassword: widget.onForgotPassword,
+                          onSubmit: _handleSubmit,
+                        ),
+                      ],
+                    );
+                  }
+
+                  return IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Expanded(flex: 45, child: _BrandingPanel()),
+                        const SizedBox(width: SpacingTokens.xl),
+                        Expanded(
+                          flex: 55,
+                          child: _LoginFormSection(
+                            formKey: _formKey,
+                            usernameController: _usernameController,
+                            passwordController: _passwordController,
+                            obscurePassword: _obscurePassword,
+                            isSubmitting: widget.isSubmitting,
+                            errorMessage: widget.errorMessage,
+                            onTogglePasswordVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
+                            onForgotPassword: widget.onForgotPassword,
+                            onSubmit: _handleSubmit,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          Positioned(
+            top: SpacingTokens.sm,
+            right: SpacingTokens.sm,
+            child: _CloseButton(onPressed: widget.onClose ?? () => Navigator.of(context).maybePop()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CloseButton extends StatelessWidget {
+  const _CloseButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      icon: const Icon(Icons.close, size: 20),
+      style: IconButton.styleFrom(
+        foregroundColor: const Color(0xFF4A4A4A),
+        backgroundColor: Colors.white.withValues(alpha: 0.9),
+        padding: const EdgeInsets.all(SpacingTokens.sm),
+        minimumSize: const Size(36, 36),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      tooltip: 'Close',
+    );
+  }
+}
+
+class _BrandingPanel extends StatelessWidget {
+  const _BrandingPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: _LoginModalPalette.panelPeach,
+        borderRadius: BorderRadius.circular(_LoginModalPalette.panelRadius),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(SpacingTokens.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'AI Clinic',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: _LoginModalPalette.brandCoral,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: SpacingTokens.lg),
+            const AspectRatio(aspectRatio: 1.05, child: _IllustrationPlaceholder()),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IllustrationPlaceholder extends StatelessWidget {
+  const _IllustrationPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(_LoginModalPalette.panelRadius),
+          border: Border.all(color: _LoginModalPalette.brandCoral.withValues(alpha: 0.2)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(SpacingTokens.xl),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.sentiment_satisfied_alt_outlined,
+                size: 72,
+                color: _LoginModalPalette.brandCoral.withValues(alpha: 0.85),
+              ),
+              const SizedBox(height: SpacingTokens.md),
+              Text(
+                'Character illustration',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF6B5B52)),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoginFormSection extends StatelessWidget {
+  const _LoginFormSection({
+    required this.formKey,
+    required this.usernameController,
+    required this.passwordController,
+    required this.obscurePassword,
+    required this.isSubmitting,
+    required this.onTogglePasswordVisibility,
+    required this.onSubmit,
+    this.errorMessage,
+    this.onForgotPassword,
+  });
+
+  final GlobalKey<FormState> formKey;
+  final TextEditingController usernameController;
+  final TextEditingController passwordController;
+  final bool obscurePassword;
+  final bool isSubmitting;
+  final String? errorMessage;
+  final VoidCallback onTogglePasswordVisibility;
+  final VoidCallback? onForgotPassword;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Form(
+      key: formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Login',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: SpacingTokens.xl),
+          AppTextField(
+            label: 'Username',
+            controller: usernameController,
+            hintText: 'Username',
+            prefixIcon: Icon(Icons.person_outline, color: theme.colorScheme.onSurfaceVariant),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) return 'This field is required';
+              return null;
+            },
+          ),
+          const SizedBox(height: SpacingTokens.lg),
+          AppTextField(
+            label: 'Password',
+            controller: passwordController,
+            hintText: '••••••••',
+            obscureText: obscurePassword,
+            prefixIcon: Icon(Icons.lock_outline, color: theme.colorScheme.onSurfaceVariant),
+            suffixIcon: IconButton(
+              onPressed: onTogglePasswordVisibility,
+              icon: Icon(
+                obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              tooltip: obscurePassword ? 'Show password' : 'Hide password',
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) return 'This field is required';
+              return null;
+            },
+          ),
+          const SizedBox(height: SpacingTokens.sm),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: onForgotPassword,
+              style: TextButton.styleFrom(
+                foregroundColor: _LoginModalPalette.forgotPasswordTan,
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Forgot Password?',
+                style: TextStyle(
+                  decoration: TextDecoration.underline,
+                  decorationColor: _LoginModalPalette.forgotPasswordTan,
+                ),
+              ),
+            ),
+          ),
+          if (errorMessage != null) ...[
+            const SizedBox(height: SpacingTokens.md),
+            AppAlert(variant: AppAlertVariant.destructive, title: errorMessage!),
+          ],
+          const SizedBox(height: SpacingTokens.lg),
+          AppButton(label: 'Login', expand: true, isLoading: isSubmitting, onPressed: isSubmitting ? null : onSubmit),
+        ],
+      ),
+    );
+  }
+}
