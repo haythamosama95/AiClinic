@@ -34,20 +34,18 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
   }
 
   void _onItemSelected(String itemId) {
-    final groupId = ShellNavConfig.groupIdFor(itemId);
-    if (groupId != null) {
-      setState(() {
+    setState(() {
+      _selectedItemId = itemId;
+      final groupId = ShellNavConfig.groupIdFor(itemId);
+      if (groupId != null) {
         _expandedGroupIds = {..._expandedGroupIds, groupId};
-      });
-    }
+      }
+    });
 
     final route = ShellNavConfig.routeFor(itemId);
     if (route != null) {
       context.go(route);
-      return;
     }
-
-    setState(() => _selectedItemId = itemId);
   }
 
   void _onGroupToggled(String groupId) {
@@ -81,7 +79,7 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const ShellHeader(),
+                ShellHeader(pageTitle: ShellNavConfig.labelFor(selectedItemId)),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(
