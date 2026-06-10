@@ -20,6 +20,8 @@ class ShellNavItemRow extends StatefulWidget {
     this.badgeCount,
     this.badgeTone,
     this.trailing,
+    this.hovered,
+    this.enablePointerEvents = true,
     super.key,
   });
 
@@ -30,6 +32,12 @@ class ShellNavItemRow extends StatefulWidget {
   final int? badgeCount;
   final ShellNavBadgeTone? badgeTone;
   final Widget? trailing;
+
+  /// When [enablePointerEvents] is false, drives the hover pill from a parent [MouseRegion].
+  final bool? hovered;
+
+  /// When false, renders visuals only; pointer handling is delegated to a parent widget.
+  final bool enablePointerEvents;
 
   @override
   State<ShellNavItemRow> createState() => _ShellNavItemRowState();
@@ -42,102 +50,105 @@ class _ShellNavItemRowState extends State<ShellNavItemRow> {
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final theme = Theme.of(context);
-    final isHighlighted = widget.isSelected || _isHovered;
+    final isHovered = widget.enablePointerEvents ? _isHovered : (widget.hovered ?? false);
+    final isHighlighted = widget.isSelected || isHovered;
     final collapseT = ShellNavMetrics.maybeOf(context)?.collapseT ?? 0;
     final labelOpacity = (1 - collapseT).clamp(0.0, 1.0);
     final iconColor = widget.isSelected ? colors.foreground : colors.mutedForeground;
     final showBadgeDot = collapseT > 0.5 && widget.badgeCount != null && widget.badgeCount! > 0;
 
+    final row = SizedBox(
+      height: ShellTokens.itemHeight,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: isHighlighted ? 1 : 0,
+              duration: ShellTokens.hoverDuration,
+              curve: Curves.easeOut,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colors.card,
+                  borderRadius: BorderRadius.circular(ShellTokens.itemRadius),
+                  boxShadow: ShadowTokens.shadowSm,
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: ShellTokens.itemHorizontalPadding),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: ShellTokens.itemIconSize,
+                  height: ShellTokens.itemIconSize,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(widget.icon, size: ShellTokens.itemIconSize, color: iconColor),
+                      if (showBadgeDot)
+                        Positioned(
+                          top: -1,
+                          right: -1,
+                          child: Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: colors.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: colors.accent, width: 1.5),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (collapseT < 1) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Opacity(
+                      opacity: labelOpacity,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: iconColor,
+                                fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          if (widget.badgeCount != null && widget.badgeTone != null) ...[
+                            const SizedBox(width: 8),
+                            ShellNavBadge(count: widget.badgeCount!, tone: widget.badgeTone!),
+                          ],
+                          if (widget.trailing != null) ...[const SizedBox(width: 4), widget.trailing!],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (!widget.enablePointerEvents) {
+      return row;
+    }
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: SizedBox(
-          height: ShellTokens.itemHeight,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: isHighlighted ? 1 : 0,
-                  duration: ShellTokens.hoverDuration,
-                  curve: Curves.easeOut,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors.card,
-                      borderRadius: BorderRadius.circular(ShellTokens.itemRadius),
-                      boxShadow: ShadowTokens.shadowSm,
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: ShellTokens.itemHorizontalPadding),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: ShellTokens.itemIconSize,
-                      height: ShellTokens.itemIconSize,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        alignment: Alignment.center,
-                        children: [
-                          Icon(widget.icon, size: ShellTokens.itemIconSize, color: iconColor),
-                          if (showBadgeDot)
-                            Positioned(
-                              top: -1,
-                              right: -1,
-                              child: Container(
-                                width: 7,
-                                height: 7,
-                                decoration: BoxDecoration(
-                                  color: colors.primary,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: colors.accent, width: 1.5),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    if (collapseT < 1) ...[
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Opacity(
-                          opacity: labelOpacity,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  widget.label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.labelLarge?.copyWith(
-                                    color: iconColor,
-                                    fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                              if (widget.badgeCount != null && widget.badgeTone != null) ...[
-                                const SizedBox(width: 8),
-                                ShellNavBadge(count: widget.badgeCount!, tone: widget.badgeTone!),
-                              ],
-                              if (widget.trailing != null) ...[const SizedBox(width: 4), widget.trailing!],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: GestureDetector(onTap: widget.onTap, behavior: HitTestBehavior.opaque, child: row),
     );
   }
 }
