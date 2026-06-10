@@ -19,6 +19,7 @@ class FakePostgrestRpc extends Fake implements PostgrestFilterBuilder<dynamic> {
 class RpcCaptureSupabaseClient extends Fake implements SupabaseClient {
   String? lastFunction;
   Map<String, dynamic>? lastParams;
+  Map<String, dynamic>? finishSetupResponse;
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
@@ -28,6 +29,9 @@ class RpcCaptureSupabaseClient extends Fake implements SupabaseClient {
   }
 
   Map<String, dynamic> _payloadFor(String fn, Map<String, dynamic>? params) {
+    if (fn == 'bootstrap_finish_setup' && finishSetupResponse != null) {
+      return finishSetupResponse!;
+    }
     if (fn == 'bootstrap_create_organization') {
       return {
         'success': true,

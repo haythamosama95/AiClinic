@@ -50,5 +50,12 @@ void main() {
     test('administrator can reset passwords', () {
       expect(ProvisioningRules.canResetStaffPassword(_profile(role: StaffRole.administrator)), isTrue);
     });
+
+    test('receptionist cannot provision or assign administrator', () {
+      final caller = _profile(role: StaffRole.receptionist);
+      expect(ProvisioningRules.canProvisionStaff(caller), isFalse);
+      expect(ProvisioningRules.selectableRoles(caller), isEmpty);
+      expect(ProvisioningRules.validateRoleChoice(caller, StaffRole.administrator), isNotNull);
+    });
   });
 }

@@ -350,6 +350,37 @@ PERFORM set_config('role', 'postgres', true);
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Relaxed password policy: letters only without digits is accepted.
+  v_result := public.create_staff_account(
+    'us6-letters-only',
+    'abcdefgh',
+    'Letters Only',
+    'receptionist',
+    ARRAY[v_branch_id]
+  );
+PERFORM set_config('role', 'postgres', true);
+  INSERT INTO create_staff_rpc_results VALUES (
+    'staff_password_without_digit_accepted',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_staff_account(
+    'us6-no-letter',
+    '12345678',
+    'No Letter',
+    'receptionist',
+    ARRAY[v_branch_id]
+  );
+PERFORM set_config('role', 'postgres', true);
+  INSERT INTO create_staff_rpc_results VALUES (
+    'staff_password_without_letter_rejected',
+    NOT v_result.success AND v_result.error_code = 'WEAK_PASSWORD',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Duplicate username rejected.
   v_result := public.create_staff_account(
     'reception',

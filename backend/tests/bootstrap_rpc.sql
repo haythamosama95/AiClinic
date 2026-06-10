@@ -376,6 +376,28 @@ PERFORM set_config('role', 'postgres', true);
     COALESCE(v_result.error_code, 'ok')
   );
   PERFORM set_config('role', 'authenticated', true);
+
+  -- Empty staff array rejected server-side.
+  v_result := public.bootstrap_finish_setup(
+    'Empty Staff Clinic',
+    'Empty Staff Branch',
+    jsonb_build_array(),
+    '{}'::jsonb,
+    NULL,
+    'USD',
+    'UTC',
+    'EMPT',
+    '1 Empty Way',
+    '+1-555-0210',
+    'https://maps.example/empty'
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO bootstrap_rpc_results VALUES (
+    'finish_setup_empty_staff_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
 END;
 $$;
 
