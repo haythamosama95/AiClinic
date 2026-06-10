@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_form_grid.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_layout.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 class SetupStaffStep extends ConsumerStatefulWidget {
@@ -99,129 +100,126 @@ class _SetupStaffStepState extends ConsumerState<SetupStaffStep> {
 
     return Form(
       key: widget.formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SetupFormGrid(
-            children: [
-              AppTextField(
-                label: 'Username *',
-                controller: widget.usernameController,
-                hintText: 'Staff username',
-                enabled: !isBusy,
-                validator: (value) => validateStaffUsername(value ?? ''),
-              ),
-              AppTextField(
-                label: 'Full name *',
-                controller: widget.fullNameController,
-                hintText: 'Enter full name',
-                enabled: !isBusy,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Full name is required';
-                  }
-                  return null;
-                },
-              ),
-              AppSelect<StaffRole>(
-                label: 'Role *',
-                items: roleItems,
-                value: _selectedRole,
-                hintText: 'Select a role',
-                enabled: !isBusy && roleItems.isNotEmpty,
-                onChanged: isBusy ? null : (role) => setState(() => _selectedRole = role),
-                validator: (value) => value == null ? 'Select a role' : null,
-              ),
-              AppTextField(
-                label: 'Initial password *',
-                controller: widget.passwordController,
-                hintText: '••••••••',
-                obscureText: _obscurePassword,
-                enabled: !isBusy,
-                suffixIcon: IconButton(
-                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                  icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      child: SetupStepLayout(
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SetupFormGrid(
+              children: [
+                AppTextField(
+                  label: 'Username *',
+                  controller: widget.usernameController,
+                  hintText: 'Staff username',
+                  enabled: !isBusy,
+                  validator: (value) => validateStaffUsername(value ?? ''),
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Password is required';
-                  }
-                  if (value.length < 6) {
-                    return 'Password must be at least 6 characters';
-                  }
-                  return null;
-                },
+                AppTextField(
+                  label: 'Full name *',
+                  controller: widget.fullNameController,
+                  hintText: 'Enter full name',
+                  enabled: !isBusy,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Full name is required';
+                    }
+                    return null;
+                  },
+                ),
+                AppSelect<StaffRole>(
+                  label: 'Role *',
+                  items: roleItems,
+                  value: _selectedRole,
+                  hintText: 'Select a role',
+                  enabled: !isBusy && roleItems.isNotEmpty,
+                  onChanged: isBusy ? null : (role) => setState(() => _selectedRole = role),
+                  validator: (value) => value == null ? 'Select a role' : null,
+                ),
+                AppTextField(
+                  label: 'Initial password *',
+                  controller: widget.passwordController,
+                  hintText: '••••••••',
+                  obscureText: _obscurePassword,
+                  enabled: !isBusy,
+                  suffixIcon: IconButton(
+                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                    icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Password is required';
+                    }
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: SpacingTokens.lg),
+            Text('Branch assignments *', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: SpacingTokens.sm),
+            if (branchIds.isEmpty)
+              Text(
+                'No branches are available yet. Go back and finish the branch step.',
+                style: Theme.of(context).textTheme.bodySmall,
+              )
+            else if (branchesAsync.isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: SpacingTokens.sm),
+                child: Center(child: AppCircularProgress()),
+              )
+            else
+              ...branchIds.map((branchId) {
+                final branch = branchById[branchId];
+                final label = branch == null
+                    ? 'Branch $branchId'
+                    : '${branch.name}${branch.code == null ? '' : ' (${branch.code})'}';
+                return AppCheckbox(
+                  value: _selectedBranchIds.contains(branchId),
+                  label: label,
+                  enabled: !isBusy,
+                  onChanged: (checked) {
+                    setState(() {
+                      if (checked) {
+                        _selectedBranchIds.add(branchId);
+                        _primaryBranchId ??= branchId;
+                      } else {
+                        _selectedBranchIds.remove(branchId);
+                        if (_primaryBranchId == branchId) {
+                          _primaryBranchId = _selectedBranchIds.isEmpty ? null : _selectedBranchIds.first;
+                        }
+                      }
+                    });
+                  },
+                );
+              }),
+            if (_selectedBranchIds.length > 1) ...[
+              const SizedBox(height: SpacingTokens.md),
+              AppSelect<String>(
+                label: 'Primary branch',
+                items: {for (final id in _selectedBranchIds) branchById[id]?.name ?? 'Branch $id': id},
+                value: _primaryBranchId,
+                enabled: !isBusy,
+                onChanged: (id) => setState(() => _primaryBranchId = id),
               ),
             ],
-          ),
-          const SizedBox(height: SpacingTokens.lg),
-          Text('Branch assignments *', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: SpacingTokens.sm),
-          if (branchIds.isEmpty)
-            Text(
-              'No branches are available yet. Go back and finish the branch step.',
-              style: Theme.of(context).textTheme.bodySmall,
-            )
-          else if (branchesAsync.isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: SpacingTokens.sm),
-              child: Center(child: AppCircularProgress()),
-            )
-          else
-            ...branchIds.map((branchId) {
-              final branch = branchById[branchId];
-              final label = branch == null
-                  ? 'Branch $branchId'
-                  : '${branch.name}${branch.code == null ? '' : ' (${branch.code})'}';
-              return AppCheckbox(
-                value: _selectedBranchIds.contains(branchId),
-                label: label,
-                enabled: !isBusy,
-                onChanged: (checked) {
-                  setState(() {
-                    if (checked) {
-                      _selectedBranchIds.add(branchId);
-                      _primaryBranchId ??= branchId;
-                    } else {
-                      _selectedBranchIds.remove(branchId);
-                      if (_primaryBranchId == branchId) {
-                        _primaryBranchId = _selectedBranchIds.isEmpty ? null : _selectedBranchIds.first;
-                      }
-                    }
-                  });
-                },
-              );
-            }),
-          if (_selectedBranchIds.length > 1) ...[
-            const SizedBox(height: SpacingTokens.md),
-            AppSelect<String>(
-              label: 'Primary branch',
-              items: {for (final id in _selectedBranchIds) branchById[id]?.name ?? 'Branch $id': id},
-              value: _primaryBranchId,
-              enabled: !isBusy,
-              onChanged: (id) => setState(() => _primaryBranchId = id),
+          ],
+        ),
+        actions: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AppButton(label: 'Skip for now', variant: AppButtonVariant.ghost, onPressed: isBusy ? null : widget.onSkip),
+            const SizedBox(width: SpacingTokens.md),
+            AppButton(
+              label: 'Create staff account',
+              isLoading: isBusy,
+              onPressed: isBusy || branchIds.isEmpty ? null : () => _submit(selectableRoles),
             ),
           ],
-          const SizedBox(height: SpacingTokens.xl),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AppButton(
-                label: 'Skip for now',
-                variant: AppButtonVariant.ghost,
-                onPressed: isBusy ? null : widget.onSkip,
-              ),
-              const SizedBox(width: SpacingTokens.md),
-              AppButton(
-                label: 'Create staff account',
-                isLoading: isBusy,
-                onPressed: isBusy || branchIds.isEmpty ? null : () => _submit(selectableRoles),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }

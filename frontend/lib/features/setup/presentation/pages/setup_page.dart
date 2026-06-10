@@ -9,9 +9,12 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_content_placeholder.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
+import 'package:ai_clinic/features/setup/presentation/dev/setup_dev_widgets.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/first_sign_in_warning_dialog.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_modal.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_layout.dart';
 
 /// Full-screen host for the clinic setup wizard on the `/bootstrap` route.
 class SetupPage extends ConsumerStatefulWidget {
@@ -61,6 +64,10 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
+    final setup = ref.watch(setupNotifierProvider);
+    final provisioning = ref.watch(provisioningNotifierProvider);
+    final isBusy = setup.isSubmitting || provisioning.isSubmitting;
+    final compactViewport = MediaQuery.sizeOf(context).height < SetupLayoutBreakpoints.compactViewportHeight;
 
     ref.listen<SetupUiState>(setupNotifierProvider, (previous, next) {
       if (next.step == SetupWizardStep.complete && previous?.step != SetupWizardStep.complete) {
@@ -84,10 +91,19 @@ class _SetupPageState extends ConsumerState<SetupPage> {
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
-                child: SetupModal(
-                  onFinished: _goHome,
-                  onFillDummy: _fillDummy,
-                  onResetInstallation: _resetInstallation,
+                child: _wrapPageScroll(
+                  compactViewport: compactViewport,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SetupModal(onFinished: _goHome),
+                      SetupDevWidgets.panel(
+                        isBusy: isBusy,
+                        onFillDummy: _fillDummy,
+                        onResetInstallation: _resetInstallation,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -95,5 +111,12 @@ class _SetupPageState extends ConsumerState<SetupPage> {
         ],
       ),
     );
+  }
+
+  Widget _wrapPageScroll({required bool compactViewport, required Widget child}) {
+    if (compactViewport) {
+      return SingleChildScrollView(child: child);
+    }
+    return child;
   }
 }

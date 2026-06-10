@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/setup/domain/branch_field_validation.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_form_grid.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_layout.dart';
 
 class SetupBranchStep extends StatelessWidget {
   const SetupBranchStep({
@@ -13,8 +14,6 @@ class SetupBranchStep extends StatelessWidget {
     required this.phoneController,
     required this.mapsUrlController,
     required this.isBusy,
-    required this.onSubmit,
-    this.onBack,
     super.key,
   });
 
@@ -25,78 +24,53 @@ class SetupBranchStep extends StatelessWidget {
   final TextEditingController phoneController;
   final TextEditingController mapsUrlController;
   final bool isBusy;
-  final Future<void> Function() onSubmit;
-  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
     return Form(
       key: formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SetupFormGrid(
-            children: [
-              AppTextField(
-                label: 'Branch name *',
-                controller: nameController,
-                hintText: 'Enter branch name',
-                enabled: !isBusy,
-                validator: _requiredValidator('Branch name'),
-              ),
-              AppTextField(
-                label: 'Branch code *',
-                controller: codeController,
-                hintText: 'e.g. MAIN',
-                enabled: !isBusy,
-                validator: _requiredValidator('Branch code'),
-              ),
-              AppTextField(
-                label: 'Address *',
-                controller: addressController,
-                hintText: 'Street address',
-                enabled: !isBusy,
-                validator: _requiredValidator('Address'),
-              ),
-              AppTextField(
-                label: 'Phone *',
-                controller: phoneController,
-                hintText: 'Branch phone number',
-                enabled: !isBusy,
-                keyboardType: TextInputType.phone,
-                validator: _requiredValidator('Phone'),
-              ),
-              AppTextField(
-                label: 'Maps URL *',
-                controller: mapsUrlController,
-                hintText: 'https://maps.google.com/...',
-                enabled: !isBusy,
-                keyboardType: TextInputType.url,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Maps URL is required';
-                  }
-                  final trimmed = value.trim();
-                  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-                    return 'Enter a valid URL starting with https://';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: SpacingTokens.xl),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (onBack != null) ...[
-                AppButton(label: 'Back', variant: AppButtonVariant.outline, onPressed: isBusy ? null : onBack),
-                const SizedBox(width: SpacingTokens.md),
-              ],
-              AppButton(label: 'Next', isLoading: isBusy, onPressed: isBusy ? null : onSubmit),
-            ],
-          ),
-        ],
+      child: SetupStepLayout(
+        body: SetupFormGrid(
+          children: [
+            AppTextField(
+              label: 'Branch name *',
+              controller: nameController,
+              hintText: 'Enter branch name',
+              enabled: !isBusy,
+              validator: _requiredValidator('Branch name'),
+            ),
+            AppTextField(
+              label: 'Branch code *',
+              controller: codeController,
+              hintText: 'e.g. MAIN',
+              enabled: !isBusy,
+              validator: _requiredValidator('Branch code'),
+            ),
+            AppTextField(
+              label: 'Address *',
+              controller: addressController,
+              hintText: 'Street address',
+              enabled: !isBusy,
+              validator: _requiredValidator('Address'),
+            ),
+            AppTextField(
+              label: 'Phone *',
+              controller: phoneController,
+              hintText: 'Numbers only',
+              enabled: !isBusy,
+              keyboardType: TextInputType.phone,
+              validator: BranchFieldValidation.validatePhone,
+            ),
+            AppTextField(
+              label: 'Maps URL *',
+              controller: mapsUrlController,
+              hintText: 'maps.google.com/... or www.example.com',
+              enabled: !isBusy,
+              keyboardType: TextInputType.url,
+              validator: BranchFieldValidation.validateMapsUrl,
+            ),
+          ],
+        ),
       ),
     );
   }

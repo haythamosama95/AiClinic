@@ -4,14 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/setup/presentation/dev/setup_dev_widgets.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
+import 'package:ai_clinic/features/setup/domain/setup_step_readiness.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_branch_step.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/setup_wizard_nav_bar.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_complete_step.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_organization_step.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_staff_step.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_indicator.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_layout.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_transition.dart';
 
 abstract final class _SetupModalPalette {
   static const modalRadius = 24.0;
@@ -20,11 +23,9 @@ abstract final class _SetupModalPalette {
 
 /// Centered floating clinic setup wizard (Organization → Branch → Staff).
 class SetupModal extends ConsumerStatefulWidget {
-  const SetupModal({required this.onFinished, this.onFillDummy, this.onResetInstallation, super.key});
+  const SetupModal({required this.onFinished, super.key});
 
   final VoidCallback onFinished;
-  final Future<void> Function()? onFillDummy;
-  final Future<void> Function()? onResetInstallation;
 
   @override
   ConsumerState<SetupModal> createState() => _SetupModalState();
@@ -48,15 +49,35 @@ class _SetupModalState extends ConsumerState<SetupModal> {
 
   String? _currency;
   String? _timezone;
+  int _stepTransitionDirection = 1;
+  late final List<TextEditingController> _fieldControllers;
 
   @override
   void initState() {
     super.initState();
+    _fieldControllers = [
+      _orgNameController,
+      _logoUrlController,
+      _branchNameController,
+      _branchCodeController,
+      _branchAddressController,
+      _branchPhoneController,
+      _branchMapsController,
+      _staffUsernameController,
+      _staffFullNameController,
+      _staffPasswordController,
+    ];
+    for (final controller in _fieldControllers) {
+      controller.addListener(_onFieldChanged);
+    }
     _restoreDraftFromState();
   }
 
   @override
   void dispose() {
+    for (final controller in _fieldControllers) {
+      controller.removeListener(_onFieldChanged);
+    }
     _orgNameController.dispose();
     _logoUrlController.dispose();
     _branchNameController.dispose();
@@ -68,6 +89,42 @@ class _SetupModalState extends ConsumerState<SetupModal> {
     _staffFullNameController.dispose();
     _staffPasswordController.dispose();
     super.dispose();
+  }
+
+  void _onFieldChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  bool _isNextEnabled(SetupWizardStep step) {
+    return switch (step) {
+      SetupWizardStep.organization => isOrganizationStepReady(
+        name: _orgNameController.text,
+        currency: _currency,
+        timezone: _timezone,
+      ),
+      SetupWizardStep.branch => isBranchStepReady(
+        name: _branchNameController.text,
+        code: _branchCodeController.text,
+        address: _branchAddressController.text,
+        phone: _branchPhoneController.text,
+        mapsUrl: _branchMapsController.text,
+      ),
+      _ => false,
+    };
+  }
+
+  void _onNextPressed() {
+    switch (ref.read(setupNotifierProvider).step) {
+      case SetupWizardStep.organization:
+        _continueToBranch();
+      case SetupWizardStep.branch:
+        _finishBranchAndContinue();
+      case SetupWizardStep.staff:
+      case SetupWizardStep.complete:
+        break;
+    }
   }
 
   void _restoreDraftFromState() {
@@ -177,8 +234,15 @@ class _SetupModalState extends ConsumerState<SetupModal> {
     final isBusy = setup.isSubmitting || provisioning.isSubmitting;
     final theme = Theme.of(context);
     final errorMessage = setup.errorMessage ?? provisioning.errorMessage;
+    final compactViewport = MediaQuery.sizeOf(context).height < SetupLayoutBreakpoints.compactViewportHeight;
 
     ref.listen<SetupUiState>(setupNotifierProvider, (previous, next) {
+      if (previous != null && previous.step != next.step) {
+        setState(() {
+          _stepTransitionDirection = next.step.index > previous.step.index ? 1 : -1;
+        });
+      }
+
       if (next.step == SetupWizardStep.organization && next.organizationDraft != null) {
         final draft = next.organizationDraft!;
         _orgNameController.text = draft.name;
@@ -200,11 +264,21 @@ class _SetupModalState extends ConsumerState<SetupModal> {
         ),
         child: Padding(
           padding: const EdgeInsets.all(SpacingTokens.xl),
-          child: SingleChildScrollView(
+          child: _wrapModalScroll(
+            compactViewport: compactViewport,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
+                SetupWizardNavBar(
+                  showBack: setup.step == SetupWizardStep.branch,
+                  showNext: setup.step == SetupWizardStep.organization || setup.step == SetupWizardStep.branch,
+                  nextEnabled: _isNextEnabled(setup.step),
+                  isBusy: isBusy,
+                  onBack: () => ref.read(setupNotifierProvider.notifier).goBackToOrganizationStep(),
+                  onNext: _onNextPressed,
+                ),
+                const SizedBox(height: SpacingTokens.md),
                 Row(
                   children: [
                     Container(
@@ -251,8 +325,10 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                   ),
                 ],
                 const SizedBox(height: SpacingTokens.xl),
-                switch (setup.step) {
-                  SetupWizardStep.organization => SetupOrganizationStep(
+                SetupStepTransition(
+                  step: setup.step,
+                  direction: _stepTransitionDirection,
+                  organizationStep: SetupOrganizationStep(
                     formKey: _orgFormKey,
                     nameController: _orgNameController,
                     logoUrlController: _logoUrlController,
@@ -261,9 +337,8 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                     onCurrencyChanged: (value) => setState(() => _currency = value),
                     onTimezoneChanged: (value) => setState(() => _timezone = value),
                     isBusy: isBusy,
-                    onContinue: _continueToBranch,
                   ),
-                  SetupWizardStep.branch => SetupBranchStep(
+                  branchStep: SetupBranchStep(
                     formKey: _branchFormKey,
                     nameController: _branchNameController,
                     codeController: _branchCodeController,
@@ -271,10 +346,8 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                     phoneController: _branchPhoneController,
                     mapsUrlController: _branchMapsController,
                     isBusy: isBusy,
-                    onSubmit: _finishBranchAndContinue,
-                    onBack: isBusy ? null : () => ref.read(setupNotifierProvider.notifier).goBackToOrganizationStep(),
                   ),
-                  SetupWizardStep.staff => SetupStaffStep(
+                  staffStep: SetupStaffStep(
                     formKey: _staffFormKey,
                     usernameController: _staffUsernameController,
                     fullNameController: _staffFullNameController,
@@ -283,19 +356,20 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                     onCreate: _createStaffAccount,
                     onSkip: _skipStaff,
                   ),
-                  SetupWizardStep.complete => SetupCompleteStep(onGoHome: widget.onFinished),
-                },
-                if (widget.onFillDummy != null || widget.onResetInstallation != null)
-                  SetupDevWidgets.panel(
-                    isBusy: isBusy,
-                    onFillDummy: () => widget.onFillDummy?.call(),
-                    onResetInstallation: () => widget.onResetInstallation?.call(),
-                  ),
+                  completeStep: SetupCompleteStep(onGoHome: widget.onFinished),
+                ),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _wrapModalScroll({required bool compactViewport, required Widget child}) {
+    if (compactViewport) {
+      return SingleChildScrollView(child: child);
+    }
+    return child;
   }
 }
