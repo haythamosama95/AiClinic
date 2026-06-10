@@ -1,9 +1,9 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_dummy_data.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
-import 'package:ai_clinic/features/auth/presentation/providers/bootstrap_notifier.dart';
+import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_dummy_data.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import '../../helpers/auth_test_support.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,33 +11,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
-  group('bootstrapMessageForRpc', () {
-    test('maps known bootstrap error codes', () {
+  group('setupMessageForRpc', () {
+    test('maps known setup error codes', () {
       expect(
-        bootstrapMessageForRpc(
-          RpcFailure(RpcResult.fromDynamic({'success': false, 'error_code': 'ORG_ALREADY_EXISTS'})),
-        ),
+        setupMessageForRpc(RpcFailure(RpcResult.fromDynamic({'success': false, 'error_code': 'ORG_ALREADY_EXISTS'}))),
         contains('already exists'),
       );
 
       expect(
-        bootstrapMessageForRpc(
-          RpcFailure(RpcResult.fromDynamic({'success': false, 'error_code': 'NOT_BOOTSTRAP_ADMIN'})),
-        ),
+        setupMessageForRpc(RpcFailure(RpcResult.fromDynamic({'success': false, 'error_code': 'NOT_BOOTSTRAP_ADMIN'}))),
         contains('bootstrap administrator'),
       );
     });
 
     test('falls back for unknown codes', () {
       expect(
-        bootstrapMessageForRpc(RpcFailure(RpcResult.fromDynamic({'success': false, 'error_code': 'UNKNOWN'}))),
+        setupMessageForRpc(RpcFailure(RpcResult.fromDynamic({'success': false, 'error_code': 'UNKNOWN'}))),
         contains('Unable to save'),
       );
     });
 
     test('maps RESET_SAFE_DELETE to migration hint', () {
       expect(
-        bootstrapMessageForRpc(
+        setupMessageForRpc(
           RpcFailure(
             RpcResult.fromDynamic({
               'success': false,
@@ -51,17 +47,17 @@ void main() {
     });
   });
 
-  group('BootstrapNotifier', () {
+  group('SetupNotifier', () {
     test('continueToBranchStep stores draft without organizationId', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
-      final notifier = container.read(bootstrapNotifierProvider.notifier);
+      final notifier = container.read(setupNotifierProvider.notifier);
 
       final ok = notifier.continueToBranchStep(name: 'Sunrise Clinic', currencyCode: 'EGP', timezone: 'Africa/Cairo');
 
       expect(ok, isTrue);
-      final state = container.read(bootstrapNotifierProvider);
-      expect(state.step, BootstrapWizardStep.branch);
+      final state = container.read(setupNotifierProvider);
+      expect(state.step, SetupWizardStep.branch);
       expect(state.organizationId, isNull);
       expect(state.organizationDraft?.name, 'Sunrise Clinic');
     });
@@ -69,12 +65,12 @@ void main() {
     test('continueToBranchStep rejects invalid currency', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
-      final notifier = container.read(bootstrapNotifierProvider.notifier);
+      final notifier = container.read(setupNotifierProvider.notifier);
 
       final ok = notifier.continueToBranchStep(name: 'Clinic', currencyCode: 'NOTREAL', timezone: 'Africa/Cairo');
 
       expect(ok, isFalse);
-      expect(container.read(bootstrapNotifierProvider).step, BootstrapWizardStep.organization);
+      expect(container.read(setupNotifierProvider).step, SetupWizardStep.organization);
     });
 
     test('finishSetupWithDummyData stores draft and calls repository', () async {
@@ -86,11 +82,11 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final ok = await container.read(bootstrapNotifierProvider.notifier).finishSetupWithDummyData();
+      final ok = await container.read(setupNotifierProvider.notifier).finishSetupWithDummyData();
 
       expect(ok, isTrue);
-      final state = container.read(bootstrapNotifierProvider);
-      expect(state.step, BootstrapWizardStep.complete);
+      final state = container.read(setupNotifierProvider);
+      expect(state.step, SetupWizardStep.complete);
       expect(state.organizationId, 'org-dummy');
       expect(state.branchId, 'branch-dummy');
 
@@ -109,14 +105,14 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final notifier = container.read(bootstrapNotifierProvider.notifier);
+      final notifier = container.read(setupNotifierProvider.notifier);
       notifier.continueToBranchStep(name: 'Clinic', currencyCode: 'EGP', timezone: 'Africa/Cairo');
 
       final ok = await notifier.resetInstallationForDevelopment();
 
       expect(ok, isTrue);
-      final state = container.read(bootstrapNotifierProvider);
-      expect(state.step, BootstrapWizardStep.organization);
+      final state = container.read(setupNotifierProvider);
+      expect(state.step, SetupWizardStep.organization);
       expect(state.organizationDraft, isNull);
       expect(state.isSubmitting, isFalse);
       expect(state.errorMessage, isNull);
@@ -141,10 +137,10 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final ok = await container.read(bootstrapNotifierProvider.notifier).resetInstallationForDevelopment();
+      final ok = await container.read(setupNotifierProvider.notifier).resetInstallationForDevelopment();
 
       expect(ok, isFalse);
-      expect(container.read(bootstrapNotifierProvider).errorMessage, contains('20260521150000'));
+      expect(container.read(setupNotifierProvider).errorMessage, contains('20260521150000'));
     });
   });
 }

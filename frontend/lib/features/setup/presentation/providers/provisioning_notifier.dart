@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/auth_use_case_providers.dart';
-import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
-import 'package:ai_clinic/features/auth/domain/create_staff_account_result.dart';
-import 'package:ai_clinic/features/auth/domain/admin_reset_staff_password_result.dart';
+import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
+import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/setup/domain/create_staff_account_result.dart';
+import 'package:ai_clinic/features/setup/domain/admin_reset_staff_password_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
-import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
+import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/setup/domain/staff_member_summary.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 

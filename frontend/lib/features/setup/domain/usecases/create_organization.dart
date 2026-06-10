@@ -1,5 +1,5 @@
-import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
-import 'package:ai_clinic/features/auth/domain/repositories/bootstrap_repository.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/setup/domain/repositories/bootstrap_repository.dart';
 
 class CreateOrganization {
   const CreateOrganization(this._repository);

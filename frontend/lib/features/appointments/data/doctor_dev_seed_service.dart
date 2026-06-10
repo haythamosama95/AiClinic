@@ -2,8 +2,8 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/domain/doctor_dev_seed_data.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
-import 'package:ai_clinic/features/auth/domain/repositories/provisioning_repository.dart';
+import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/setup/domain/repositories/provisioning_repository.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 

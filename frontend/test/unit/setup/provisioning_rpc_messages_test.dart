@@ -1,5 +1,5 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/presentation/providers/provisioning_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
 

@@ -1,9 +1,9 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
-import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
+import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/auth/data/permission_repository.dart';
-import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
+import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';

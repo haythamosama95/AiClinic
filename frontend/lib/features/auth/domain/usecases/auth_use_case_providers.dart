@@ -1,31 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
-import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/auth/data/permission_repository.dart';
-import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
+import 'package:ai_clinic/features/auth/domain/usecases/clear_persisted_session.dart';
+import 'package:ai_clinic/features/auth/domain/usecases/load_granted_permissions.dart';
+import 'package:ai_clinic/features/auth/domain/usecases/refresh_session.dart';
 import 'package:ai_clinic/features/auth/domain/usecases/sign_in.dart';
 import 'package:ai_clinic/features/auth/domain/usecases/sign_out.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/refresh_session.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/clear_persisted_session.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/create_organization.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/create_bootstrap_branch.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/reset_installation.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/load_granted_permissions.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/list_org_staff_members.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/list_branches_by_ids.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/create_staff_account.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/reset_staff_password.dart';
 
 final signInUseCaseProvider = Provider((ref) => SignIn(ref.watch(authRepositoryProvider)));
 final signOutUseCaseProvider = Provider((ref) => SignOut(ref.watch(authRepositoryProvider)));
 final refreshSessionUseCaseProvider = Provider((ref) => RefreshSession(ref.watch(authRepositoryProvider)));
-final clearPersistedSessionUseCaseProvider = Provider((ref) => ClearPersistedSession(ref.watch(authRepositoryProvider)));
-final createOrganizationUseCaseProvider = Provider((ref) => CreateOrganization(ref.watch(bootstrapRepositoryProvider)));
-final createBootstrapBranchUseCaseProvider = Provider((ref) => CreateBootstrapBranch(ref.watch(bootstrapRepositoryProvider)));
-final resetInstallationUseCaseProvider = Provider((ref) => ResetInstallation(ref.watch(bootstrapRepositoryProvider)));
-final loadGrantedPermissionsUseCaseProvider = Provider((ref) => LoadGrantedPermissions(ref.watch(permissionRepositoryProvider)));
-final listOrgStaffMembersUseCaseProvider = Provider((ref) => ListOrgStaffMembers(ref.watch(provisioningRepositoryProvider)));
-final listBranchesByIdsUseCaseProvider = Provider((ref) => ListBranchesByIds(ref.watch(provisioningRepositoryProvider)));
-final createStaffAccountUseCaseProvider = Provider((ref) => CreateStaffAccount(ref.watch(provisioningRepositoryProvider)));
-final resetStaffPasswordUseCaseProvider = Provider((ref) => ResetStaffPassword(ref.watch(provisioningRepositoryProvider)));
+final clearPersistedSessionUseCaseProvider = Provider(
+  (ref) => ClearPersistedSession(ref.watch(authRepositoryProvider)),
+);
+final loadGrantedPermissionsUseCaseProvider = Provider(
+  (ref) => LoadGrantedPermissions(ref.watch(permissionRepositoryProvider)),
+);

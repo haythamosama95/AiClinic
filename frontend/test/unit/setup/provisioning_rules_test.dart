@@ -1,5 +1,5 @@
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/auth/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 StaffProfile _profile({StaffRole role = StaffRole.administrator, bool isBootstrapAdmin = false}) {

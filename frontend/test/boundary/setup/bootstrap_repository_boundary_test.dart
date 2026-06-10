@@ -4,8 +4,8 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
 
 import '../harness/boundary_assertions.dart';
 import '../harness/boundary_test_context.dart';

@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
+import 'package:ai_clinic/features/setup/domain/branch_summary.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

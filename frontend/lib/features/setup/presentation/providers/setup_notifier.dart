@@ -1,17 +1,17 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/auth_use_case_providers.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_dummy_data.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_field_options.dart';
-import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_dummy_data.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_field_options.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
 
-/// User-facing messages for bootstrap RPC error codes.
-String bootstrapMessageForRpc(RpcFailure failure) {
+/// User-facing messages for clinic setup RPC error codes.
+String setupMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {
     'ORG_ALREADY_EXISTS' => 'An organization already exists for this installation.',
     'NOT_BOOTSTRAP_ADMIN' => 'Only the bootstrap administrator can perform this clinic setup action.',
@@ -25,16 +25,11 @@ String bootstrapMessageForRpc(RpcFailure failure) {
   };
 }
 
-enum BootstrapWizardStep { organization, branch, complete }
+enum SetupWizardStep { organization, branch, complete }
 
 @immutable
-class BootstrapOrganizationDraft {
-  const BootstrapOrganizationDraft({
-    required this.name,
-    this.logoUrl,
-    required this.currencyCode,
-    required this.timezone,
-  });
+class SetupOrganizationDraft {
+  const SetupOrganizationDraft({required this.name, this.logoUrl, required this.currencyCode, required this.timezone});
 
   final String name;
   final String? logoUrl;
@@ -43,9 +38,9 @@ class BootstrapOrganizationDraft {
 }
 
 @immutable
-class BootstrapUiState {
-  const BootstrapUiState({
-    this.step = BootstrapWizardStep.organization,
+class SetupUiState {
+  const SetupUiState({
+    this.step = SetupWizardStep.organization,
     this.isSubmitting = false,
     this.errorMessage,
     this.organizationDraft,
@@ -54,26 +49,26 @@ class BootstrapUiState {
     this.hasShownPasswordWarning = false,
   });
 
-  final BootstrapWizardStep step;
+  final SetupWizardStep step;
   final bool isSubmitting;
   final String? errorMessage;
-  final BootstrapOrganizationDraft? organizationDraft;
+  final SetupOrganizationDraft? organizationDraft;
   final String? organizationId;
   final String? branchId;
   final bool hasShownPasswordWarning;
 
-  BootstrapUiState copyWith({
-    BootstrapWizardStep? step,
+  SetupUiState copyWith({
+    SetupWizardStep? step,
     bool? isSubmitting,
     String? errorMessage,
     bool clearError = false,
-    BootstrapOrganizationDraft? organizationDraft,
+    SetupOrganizationDraft? organizationDraft,
     bool clearOrganizationDraft = false,
     String? organizationId,
     String? branchId,
     bool? hasShownPasswordWarning,
   }) {
-    return BootstrapUiState(
+    return SetupUiState(
       step: step ?? this.step,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
@@ -85,11 +80,11 @@ class BootstrapUiState {
   }
 }
 
-final bootstrapNotifierProvider = NotifierProvider<BootstrapNotifier, BootstrapUiState>(BootstrapNotifier.new);
+final setupNotifierProvider = NotifierProvider<SetupNotifier, SetupUiState>(SetupNotifier.new);
 
-class BootstrapNotifier extends Notifier<BootstrapUiState> {
+class SetupNotifier extends Notifier<SetupUiState> {
   @override
-  BootstrapUiState build() => const BootstrapUiState();
+  SetupUiState build() => const SetupUiState();
 
   void markPasswordWarningShown() {
     state = state.copyWith(hasShownPasswordWarning: true);
@@ -103,16 +98,11 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
 
   /// Returns to organization step without touching the database (draft kept in memory).
   void goBackToOrganizationStep() {
-    state = state.copyWith(
-      step: BootstrapWizardStep.organization,
-      clearError: true,
-      organizationId: null,
-      branchId: null,
-    );
+    state = state.copyWith(step: SetupWizardStep.organization, clearError: true, organizationId: null, branchId: null);
   }
 
   void resetWizardState() {
-    state = const BootstrapUiState(hasShownPasswordWarning: true);
+    state = const SetupUiState(hasShownPasswordWarning: true);
   }
 
   /// Validates organization fields and advances UI only — no RPC until branch step finishes.
@@ -141,45 +131,45 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
 
     state = state.copyWith(
       clearError: true,
-      organizationDraft: BootstrapOrganizationDraft(
+      organizationDraft: SetupOrganizationDraft(
         name: trimmedName,
         logoUrl: _emptyToNull(logoUrl),
         currencyCode: normalizedCurrency,
         timezone: timezone.trim(),
       ),
-      step: BootstrapWizardStep.branch,
+      step: SetupWizardStep.branch,
       organizationId: null,
       branchId: null,
     );
     return true;
   }
 
-  /// Wipes org/branch data via dev RPC and reloads session claims for another bootstrap run.
+  /// Wipes org/branch data via dev RPC and reloads session claims for another setup run.
   Future<bool> resetInstallationForDevelopment() async {
     state = state.copyWith(isSubmitting: true, clearError: true);
-    AppLog.info('bootstrap.dev_reset.start');
+    AppLog.info('setup.dev_reset.start');
 
     try {
       final result = await ref.read(resetInstallationUseCaseProvider)();
       AppLog.info(
-        'bootstrap.dev_reset.rpc_ok orgs=${result.data?['organizations_deleted']} '
+        'setup.dev_reset.rpc_ok orgs=${result.data?['organizations_deleted']} '
         'branches=${result.data?['branches_deleted']}',
       );
 
       await ref.read(authSessionProvider.notifier).refreshSessionContext();
       AppLog.info(
-        'bootstrap.dev_reset.session_refreshed setup_required=${ref.read(authSessionProvider).context?.setupRequired}',
+        'setup.dev_reset.session_refreshed setup_required=${ref.read(authSessionProvider).context?.setupRequired}',
       );
 
       resetWizardState();
       state = state.copyWith(isSubmitting: false);
       return true;
     } on RpcFailure catch (error) {
-      AppLog.warning('bootstrap.dev_reset.rpc_failed code=${error.code}');
-      state = state.copyWith(isSubmitting: false, errorMessage: bootstrapMessageForRpc(error));
+      AppLog.warning('setup.dev_reset.rpc_failed code=${error.code}');
+      state = state.copyWith(isSubmitting: false, errorMessage: setupMessageForRpc(error));
       return false;
     } catch (error) {
-      AppLog.warning('bootstrap.dev_reset.failed reason=${error.runtimeType} detail=$error');
+      AppLog.warning('setup.dev_reset.failed reason=${error.runtimeType} detail=$error');
       state = state.copyWith(
         isSubmitting: false,
         errorMessage: 'Unable to reset clinic data. Check connectivity and try again.',
@@ -190,15 +180,15 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
 
   /// Persists organization and branch with preset dev values (debug UI only).
   Future<bool> finishSetupWithDummyData() async {
-    AppLog.info('bootstrap.dev_dummy_fill.start');
+    AppLog.info('setup.dev_dummy_fill.start');
     state = state.copyWith(
       clearError: true,
-      organizationDraft: const BootstrapOrganizationDraft(
+      organizationDraft: const SetupOrganizationDraft(
         name: BootstrapDummyData.organizationName,
         currencyCode: BootstrapDummyData.currencyCode,
         timezone: BootstrapDummyData.timezone,
       ),
-      step: BootstrapWizardStep.branch,
+      step: SetupWizardStep.branch,
     );
 
     return finishSetup(
@@ -220,10 +210,7 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
   }) async {
     final draft = state.organizationDraft;
     if (draft == null) {
-      state = state.copyWith(
-        errorMessage: 'Complete organization details first.',
-        step: BootstrapWizardStep.organization,
-      );
+      state = state.copyWith(errorMessage: 'Complete organization details first.', step: SetupWizardStep.organization);
       return false;
     }
 
@@ -249,7 +236,7 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
     }
 
     state = state.copyWith(isSubmitting: true, clearError: true);
-    AppLog.info('bootstrap.finish_setup.start');
+    AppLog.info('setup.finish_setup.start');
 
     try {
       final organizationId = await ref.read(createOrganizationUseCaseProvider)(
@@ -260,7 +247,7 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
           timezone: draft.timezone,
         ),
       );
-      AppLog.info('bootstrap.finish_setup.organization_created id=$organizationId');
+      AppLog.info('setup.finish_setup.organization_created id=$organizationId');
 
       final branchId = await ref.read(createBootstrapBranchUseCaseProvider)(
         BootstrapBranchInput(
@@ -272,7 +259,7 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
           mapsUrl: mapsUrl.trim(),
         ),
       );
-      AppLog.info('bootstrap.finish_setup.branch_created id=$branchId');
+      AppLog.info('setup.finish_setup.branch_created id=$branchId');
 
       await ref.read(authSessionProvider.notifier).refreshSessionContext();
 
@@ -280,16 +267,16 @@ class BootstrapNotifier extends Notifier<BootstrapUiState> {
         isSubmitting: false,
         organizationId: organizationId,
         branchId: branchId,
-        step: BootstrapWizardStep.complete,
+        step: SetupWizardStep.complete,
         clearOrganizationDraft: true,
       );
       return true;
     } on RpcFailure catch (error) {
-      AppLog.warning('bootstrap.finish_setup.rpc_failed code=${error.code}');
-      state = state.copyWith(isSubmitting: false, errorMessage: bootstrapMessageForRpc(error));
+      AppLog.warning('setup.finish_setup.rpc_failed code=${error.code}');
+      state = state.copyWith(isSubmitting: false, errorMessage: setupMessageForRpc(error));
       return false;
     } catch (error) {
-      AppLog.warning('bootstrap.finish_setup.failed reason=${error.runtimeType}');
+      AppLog.warning('setup.finish_setup.failed reason=${error.runtimeType}');
       state = state.copyWith(
         isSubmitting: false,
         errorMessage: 'Unable to save clinic setup. Check connectivity and try again.',

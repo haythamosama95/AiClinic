@@ -4,7 +4,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
 

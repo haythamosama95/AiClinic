@@ -4,7 +4,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 
 import '../harness/boundary_assertions.dart';
 import '../harness/boundary_test_context.dart';

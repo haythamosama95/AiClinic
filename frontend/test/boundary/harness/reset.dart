@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
-import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
+import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
 
 import 'boundary_test_context.dart';
 import 'live_supabase_harness.dart';

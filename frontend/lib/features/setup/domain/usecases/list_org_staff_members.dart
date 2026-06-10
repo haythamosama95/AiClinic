@@ -1,5 +1,5 @@
-import 'package:ai_clinic/features/auth/domain/repositories/provisioning_repository.dart';
-import 'package:ai_clinic/features/auth/domain/staff_member_summary.dart';
+import 'package:ai_clinic/features/setup/domain/repositories/provisioning_repository.dart';
+import 'package:ai_clinic/features/setup/domain/staff_member_summary.dart';
 
 class ListOrgStaffMembers {
   const ListOrgStaffMembers(this._repository);

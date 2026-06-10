@@ -1,6 +1,6 @@
-import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

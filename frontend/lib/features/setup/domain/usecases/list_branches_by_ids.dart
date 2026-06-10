@@ -1,5 +1,5 @@
-import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
-import 'package:ai_clinic/features/auth/domain/repositories/provisioning_repository.dart';
+import 'package:ai_clinic/features/setup/domain/branch_summary.dart';
+import 'package:ai_clinic/features/setup/domain/repositories/provisioning_repository.dart';
 
 class ListBranchesByIds {
   const ListBranchesByIds(this._repository);

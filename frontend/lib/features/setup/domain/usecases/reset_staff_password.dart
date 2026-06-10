@@ -1,5 +1,5 @@
-import 'package:ai_clinic/features/auth/domain/admin_reset_staff_password_result.dart';
-import 'package:ai_clinic/features/auth/domain/repositories/provisioning_repository.dart';
+import 'package:ai_clinic/features/setup/domain/admin_reset_staff_password_result.dart';
+import 'package:ai_clinic/features/setup/domain/repositories/provisioning_repository.dart';
 
 class ResetStaffPassword {
   const ResetStaffPassword(this._repository);

@@ -1,12 +1,12 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
-import 'package:ai_clinic/features/auth/data/bootstrap_repository.dart';
-import 'package:ai_clinic/features/auth/data/provisioning_repository.dart';
+import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
+import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_branch_input.dart';
-import 'package:ai_clinic/features/auth/domain/bootstrap_organization_input.dart';
-import 'package:ai_clinic/features/auth/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';

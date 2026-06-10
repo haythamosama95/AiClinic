@@ -1,5 +1,5 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/auth/domain/repositories/bootstrap_repository.dart';
+import 'package:ai_clinic/features/setup/domain/repositories/bootstrap_repository.dart';
 
 class ResetInstallation {
   const ResetInstallation(this._repository);

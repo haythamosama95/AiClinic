@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/features/auth/domain/usecases/auth_use_case_providers.dart';
-import 'package:ai_clinic/features/auth/domain/branch_summary.dart';
+import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
+import 'package:ai_clinic/features/setup/domain/branch_summary.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 /// Active assigned branches for the signed-in staff (shell switcher, staff forms).
