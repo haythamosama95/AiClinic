@@ -17,6 +17,7 @@ import 'package:ai_clinic/app/shell/widgets/shell_content_panel.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -33,10 +34,12 @@ Future<void> pumpShellWidget(
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
-    MaterialApp(
-      theme: AppTheme.light(),
-      builder: (context, appChild) => ForuiAppScope(child: appChild ?? const SizedBox.shrink()),
-      home: Scaffold(body: child),
+    ProviderScope(
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        builder: (context, appChild) => ForuiAppScope(child: appChild ?? const SizedBox.shrink()),
+        home: Scaffold(body: child),
+      ),
     ),
   );
   if (settle) {
@@ -142,10 +145,12 @@ Future<void> pumpAuthenticatedShell(
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
-    MaterialApp.router(
-      theme: AppTheme.light(),
-      builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
-      routerConfig: shellTestRouter(initialLocation: initialLocation),
+    ProviderScope(
+      child: MaterialApp.router(
+        theme: AppTheme.light(),
+        builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
+        routerConfig: shellTestRouter(initialLocation: initialLocation),
+      ),
     ),
   );
   if (settle) {

@@ -3,6 +3,7 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_group.dart';
@@ -111,18 +112,11 @@ class _ShellNavState extends State<ShellNav> with SingleTickerProviderStateMixin
                           ],
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          SpacingTokens.md,
-                          SpacingTokens.sm,
-                          SpacingTokens.md,
-                          SpacingTokens.xs,
-                        ),
-                        child: ShellNavSingleItem(
-                          item: ShellNavConfig.themeShowcaseFooter,
-                          isSelected: widget.selectedItemId == ShellNavConfig.themeShowcaseId,
-                          onSelected: widget.onItemSelected,
-                        ),
+                      ShellDevNavFooter(
+                        selectedItemId: widget.selectedItemId,
+                        expandedGroupIds: widget.expandedGroupIds,
+                        onItemSelected: widget.onItemSelected,
+                        onGroupToggled: widget.onGroupToggled,
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(

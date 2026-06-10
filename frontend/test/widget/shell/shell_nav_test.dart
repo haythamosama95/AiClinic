@@ -17,14 +17,14 @@ void main() {
       expect(find.text('Appointments'), findsOneWidget);
     });
 
-    testWidgets('renders theme showcase footer above collapse control', (tester) async {
+    testWidgets('renders dev options footer above collapse control', (tester) async {
       await pumpShellNav(tester);
 
-      final showcase = find.text('Theme showcase');
+      final devOptions = find.text('Dev Options');
       final collapse = shellNavCollapseControl();
-      expect(showcase, findsOneWidget);
+      expect(devOptions, findsOneWidget);
       expect(collapse, findsOneWidget);
-      expect(tester.getTopLeft(collapse).dy, greaterThan(tester.getTopLeft(showcase).dy));
+      expect(tester.getTopLeft(collapse).dy, greaterThan(tester.getTopLeft(devOptions).dy));
     });
 
     testWidgets('item tap calls onItemSelected', (tester) async {

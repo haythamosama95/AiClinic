@@ -28,7 +28,9 @@ void main() {
     testWidgets('selecting nav item navigates to route', (tester) async {
       await pumpAuthenticatedShell(tester, initialLocation: AppRoutes.home);
 
-      await tester.tap(find.text('Theme showcase'));
+      await tester.tap(find.text('Dev Options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ShellNavItemRow, 'Theme Showcase'));
       await tester.pumpAndSettle();
 
       expect(find.text('Theme showcase content'), findsOneWidget);

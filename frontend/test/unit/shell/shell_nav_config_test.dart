@@ -1,5 +1,6 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -9,7 +10,7 @@ void main() {
       expect(ShellNavConfig.routeFor('appointments-calendar'), AppRoutes.appointmentsCalendar);
       expect(ShellNavConfig.routeFor('appointments-book'), AppRoutes.appointmentsBook);
       expect(ShellNavConfig.routeFor('appointments-queue'), AppRoutes.appointmentsQueue);
-      expect(ShellNavConfig.routeFor(ShellNavConfig.themeShowcaseId), AppRoutes.foundationDemo);
+      expect(ShellNavConfig.routeFor(ShellDevNav.themeShowcaseId), AppRoutes.foundationDemo);
     });
 
     test('routeFor returns null for unknown id', () {
@@ -21,7 +22,7 @@ void main() {
       expect(ShellNavConfig.itemIdForLocation(AppRoutes.appointmentsCalendar), 'appointments-calendar');
       expect(ShellNavConfig.itemIdForLocation(AppRoutes.appointmentsBook), 'appointments-book');
       expect(ShellNavConfig.itemIdForLocation(AppRoutes.appointmentsQueue), 'appointments-queue');
-      expect(ShellNavConfig.itemIdForLocation(AppRoutes.foundationDemo), ShellNavConfig.themeShowcaseId);
+      expect(ShellNavConfig.itemIdForLocation(AppRoutes.foundationDemo), ShellDevNav.themeShowcaseId);
     });
 
     test('itemIdForLocation returns null for unrelated path', () {
@@ -36,8 +37,8 @@ void main() {
       expect(ShellNavConfig.labelFor('appointments-queue'), 'Queue');
     });
 
-    test('labelFor resolves theme showcase footer', () {
-      expect(ShellNavConfig.labelFor(ShellNavConfig.themeShowcaseId), 'Theme showcase');
+    test('labelFor resolves dev theme showcase item', () {
+      expect(ShellNavConfig.labelFor(ShellDevNav.themeShowcaseId), 'Theme Showcase');
     });
 
     test('labelFor returns null for unknown id', () {
