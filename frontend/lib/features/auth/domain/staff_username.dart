@@ -11,7 +11,7 @@ String? validateStaffUsername(String raw) {
     return 'Enter a valid username.';
   }
   if (normalized.length < 3 || normalized.length > 32) {
-    return 'Username must be 3–32 characters.';
+    return 'Enter a valid username.';
   }
   final validPattern = RegExp(r'^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$');
   if (!validPattern.hasMatch(normalized)) {
