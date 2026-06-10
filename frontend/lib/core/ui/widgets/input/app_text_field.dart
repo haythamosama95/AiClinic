@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 
 import 'app_field_size.dart';
@@ -44,6 +45,7 @@ class AppTextField extends StatelessWidget {
     this.textInputAction,
     this.prefixIcon,
     this.suffixIcon,
+    this.inputFormatters,
     super.key,
   });
 
@@ -62,6 +64,7 @@ class AppTextField extends StatelessWidget {
   final TextInputAction? textInputAction;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +88,7 @@ class AppTextField extends StatelessWidget {
       enabled: enabled,
       onSubmit: onSubmit,
       validator: validator,
+      inputFormatters: inputFormatters,
       prefixBuilder: _prefixBuilder(prefixIcon),
       suffixBuilder: _suffixBuilder(suffixIcon),
       autovalidateMode: validator != null ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled,

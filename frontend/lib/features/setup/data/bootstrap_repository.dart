@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_result.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
 import 'package:ai_clinic/features/setup/domain/repositories/bootstrap_repository.dart';
@@ -78,6 +80,57 @@ class BootstrapRepositoryImpl implements BootstrapRepository {
   @override
   Future<RpcResult> resetInstallationForDevelopment() async {
     return _invoke('dev_reset_clinic_installation', null, allowEmptyParams: true);
+  }
+
+  @override
+  Future<BootstrapFinishSetupResult> finishSetup(BootstrapFinishSetupInput input) async {
+    final org = input.organization;
+    final branch = input.branch;
+    final result = await _invoke('bootstrap_finish_setup', {
+      'p_org_name': org.name.trim(),
+      'p_branch_name': branch.name.trim(),
+      'p_staff_accounts': input.staffAccounts
+          .map(
+            (staff) => {
+              'username': staff.username,
+              'password': staff.password,
+              'full_name': staff.fullName,
+              'role': staff.role.wireValue,
+            },
+          )
+          .toList(),
+      'p_settings_json': org.settingsJson,
+      if (org.logoUrl != null) 'p_logo_url': org.logoUrl!.trim(),
+      if (org.currencyCode != null) 'p_currency_code': org.currencyCode!.trim(),
+      if (org.timezone != null) 'p_timezone': org.timezone!.trim(),
+      if (branch.code != null) 'p_branch_code': branch.code!.trim(),
+      if (branch.address != null) 'p_branch_address': branch.address!.trim(),
+      if (branch.phone != null) 'p_branch_phone': branch.phone!.trim(),
+      if (branch.mapsUrl != null) 'p_branch_maps_url': branch.mapsUrl!.trim(),
+    });
+
+    final organizationId = result.data?['organization_id']?.toString();
+    final branchId = result.data?['branch_id']?.toString();
+    final staffMemberIds =
+        (result.data?['staff_member_ids'] as List<dynamic>?)
+            ?.map((id) => id.toString())
+            .where((id) => id.isNotEmpty)
+            .toList() ??
+        const <String>[];
+
+    if (organizationId == null ||
+        organizationId.isEmpty ||
+        branchId == null ||
+        branchId.isEmpty ||
+        staffMemberIds.isEmpty) {
+      throw StateError('Clinic setup finished but required identifiers were not returned.');
+    }
+
+    return BootstrapFinishSetupResult(
+      organizationId: organizationId,
+      branchId: branchId,
+      staffMemberIds: staffMemberIds,
+    );
   }
 
   @override

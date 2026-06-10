@@ -4,7 +4,9 @@ import 'package:ai_clinic/core/ui/theme/theme.dart';
 
 /// Responsive two-column form layout matching the setup wizard reference design.
 class SetupFormGrid extends StatelessWidget {
-  const SetupFormGrid({required this.children, this.compactBreakpoint = 640, super.key});
+  const SetupFormGrid({required this.children, this.compactBreakpoint = compactBreakpointDefault, super.key});
+
+  static const compactBreakpointDefault = 640.0;
 
   final List<Widget> children;
   final double compactBreakpoint;

@@ -6,10 +6,14 @@ void main() {
   group('provisioning RPC messages', () {
     test('WEAK_PASSWORD surfaces server message for create', () {
       final failure = RpcFailure(
-        RpcResult(success: false, errorCode: 'WEAK_PASSWORD', errorMessage: 'Password must contain at least one digit'),
+        RpcResult(
+          success: false,
+          errorCode: 'WEAK_PASSWORD',
+          errorMessage: 'Password must contain at least one letter',
+        ),
       );
 
-      expect(provisioningMessageForRpc(failure), 'Password must contain at least one digit');
+      expect(provisioningMessageForRpc(failure), 'Password must contain at least one letter');
     });
 
     test('WEAK_PASSWORD surfaces server message for password reset', () {

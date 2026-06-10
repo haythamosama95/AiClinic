@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
+import 'package:ai_clinic/features/setup/domain/branch_summary.dart';
+import 'package:ai_clinic/features/setup/domain/setup_wizard_draft_ids.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/setup/domain/setup_step_readiness.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
@@ -14,7 +15,6 @@ import 'package:ai_clinic/features/setup/presentation/widgets/setup_complete_ste
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_organization_step.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_staff_step.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_indicator.dart';
-import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_layout.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_transition.dart';
 
 abstract final class _SetupModalPalette {
@@ -53,11 +53,13 @@ class _SetupModalState extends ConsumerState<SetupModal> {
   final _branchMapsController = TextEditingController();
   final _staffUsernameController = TextEditingController();
   final _staffFullNameController = TextEditingController();
+  final _staffPhoneController = TextEditingController();
   final _staffPasswordController = TextEditingController();
 
   String? _currency = BootstrapCurrencyOptions.defaultCode;
   String? _timezone = BootstrapTimezoneOptions.defaultZone;
   int _stepTransitionDirection = 1;
+  ({String username, String password})? _staffCreatedAcknowledgement;
   late final List<TextEditingController> _fieldControllers;
   late final Listenable _formFieldsListenable;
 
@@ -74,6 +76,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
       _branchMapsController,
       _staffUsernameController,
       _staffFullNameController,
+      _staffPhoneController,
       _staffPasswordController,
     ];
     _formFieldsListenable = Listenable.merge(_fieldControllers);
@@ -91,6 +94,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
     _branchMapsController.dispose();
     _staffUsernameController.dispose();
     _staffFullNameController.dispose();
+    _staffPhoneController.dispose();
     _staffPasswordController.dispose();
     super.dispose();
   }
@@ -109,8 +113,27 @@ class _SetupModalState extends ConsumerState<SetupModal> {
         phone: _branchPhoneController.text,
         mapsUrl: _branchMapsController.text,
       ),
+      SetupWizardStep.staff => ref.read(setupNotifierProvider).staffDrafts.isNotEmpty,
       _ => false,
     };
+  }
+
+  String _nextLabel(SetupWizardStep step) => step == SetupWizardStep.staff ? 'Finish' : 'Next';
+
+  String _nextDisabledTooltip(SetupWizardStep step) => step == SetupWizardStep.staff
+      ? 'Create at least one staff account to finish setup'
+      : 'One or more mandatory fields are empty';
+
+  void _onBackPressed(SetupWizardStep step) {
+    switch (step) {
+      case SetupWizardStep.branch:
+        ref.read(setupNotifierProvider.notifier).goBackToOrganizationStep();
+      case SetupWizardStep.staff:
+        ref.read(setupNotifierProvider.notifier).goBackToBranchStep();
+      case SetupWizardStep.organization:
+      case SetupWizardStep.complete:
+        break;
+    }
   }
 
   void _onNextPressed() {
@@ -118,8 +141,9 @@ class _SetupModalState extends ConsumerState<SetupModal> {
       case SetupWizardStep.organization:
         _continueToBranch();
       case SetupWizardStep.branch:
-        _finishBranchAndContinue();
+        _continueToStaff();
       case SetupWizardStep.staff:
+        _finishSetup();
       case SetupWizardStep.complete:
         break;
     }
@@ -159,14 +183,14 @@ class _SetupModalState extends ConsumerState<SetupModal> {
         );
   }
 
-  Future<void> _finishBranchAndContinue() async {
+  void _continueToStaff() {
     if (!(_branchFormKey.currentState?.validate() ?? false)) {
       return;
     }
 
-    await ref
+    ref
         .read(setupNotifierProvider.notifier)
-        .finishSetup(
+        .continueToStaffStep(
           branchName: _branchNameController.text,
           branchCode: _branchCodeController.text,
           address: _branchAddressController.text,
@@ -175,69 +199,73 @@ class _SetupModalState extends ConsumerState<SetupModal> {
         );
   }
 
-  Future<void> _createStaffAccount({
+  Future<void> _finishSetup() async {
+    final setup = ref.read(setupNotifierProvider);
+    if (setup.staffDrafts.isEmpty) {
+      return;
+    }
+
+    // Saved drafts are submitted on Finish; do not validate the cleared create form.
+    _staffFormKey.currentState?.reset();
+    _staffCreatedAcknowledgement = null;
+
+    await ref.read(setupNotifierProvider.notifier).finishSetup();
+  }
+
+  Future<bool> _addStaffDraft({
     required StaffRole role,
     required List<String> branchIds,
     String? primaryBranchId,
   }) async {
     if (!(_staffFormKey.currentState?.validate() ?? false)) {
-      return;
+      return false;
     }
 
-    final result = await ref
-        .read(provisioningNotifierProvider.notifier)
-        .createStaffAccount(
-          username: _staffUsernameController.text.trim(),
+    final username = _staffUsernameController.text.trim();
+    final password = _staffPasswordController.text;
+    final added = ref
+        .read(setupNotifierProvider.notifier)
+        .addStaffDraft(
+          username: username,
           fullName: _staffFullNameController.text.trim(),
           role: role,
           branchIds: branchIds,
-          password: _staffPasswordController.text,
+          password: password,
           primaryBranchId: primaryBranchId,
         );
 
-    if (!mounted || result == null) {
-      return;
+    if (!mounted || !added) {
+      return false;
     }
 
-    final password = result.revealAssignedPassword();
-    await AppDialog.show<void>(
-      context: context,
-      title: 'Staff account created',
-      body: SelectableText(
-        'Share these credentials with the staff member:\n\n'
-        'Username: ${result.username}\n'
-        'Password: ${password ?? '(already shown)'}',
-      ),
-      actions: [
-        AppButton(
-          label: 'Continue',
-          onPressed: () {
-            ref.read(provisioningNotifierProvider.notifier).clearLastCreated();
-            Navigator.of(context).pop();
-            ref.read(setupNotifierProvider.notifier).markSetupComplete();
-          },
-        ),
-      ],
-    );
-  }
+    _staffUsernameController.clear();
+    _staffFullNameController.clear();
+    _staffPhoneController.clear();
+    _staffPasswordController.clear();
 
-  void _skipStaff() {
-    ref.read(setupNotifierProvider.notifier).markSetupComplete();
+    setState(() => _staffCreatedAcknowledgement = (username: username, password: password));
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _staffFormKey.currentState?.reset();
+    });
+
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
     final setup = ref.watch(setupNotifierProvider);
-    final provisioning = ref.watch(provisioningNotifierProvider);
-    final isBusy = setup.isSubmitting || provisioning.isSubmitting;
+    final isBusy = setup.isSubmitting;
     final theme = Theme.of(context);
-    final errorMessage = setup.errorMessage ?? provisioning.errorMessage;
-    final compactViewport = MediaQuery.sizeOf(context).height < SetupLayoutBreakpoints.compactViewportHeight;
-
+    final errorMessage = setup.errorMessage;
     ref.listen<SetupUiState>(setupNotifierProvider, (previous, next) {
       if (previous != null && previous.step != next.step) {
         setState(() {
           _stepTransitionDirection = next.step.index > previous.step.index ? 1 : -1;
+          if (next.step != SetupWizardStep.staff) {
+            _staffCreatedAcknowledgement = null;
+          }
         });
       }
 
@@ -249,6 +277,15 @@ class _SetupModalState extends ConsumerState<SetupModal> {
           _currency = draft.currencyCode;
           _timezone = draft.timezone;
         });
+      }
+
+      if (next.step == SetupWizardStep.branch && next.branchDraft != null) {
+        final draft = next.branchDraft!;
+        _branchNameController.text = draft.name;
+        _branchCodeController.text = draft.code;
+        _branchAddressController.text = draft.address;
+        _branchPhoneController.text = draft.phone;
+        _branchMapsController.text = draft.mapsUrl;
       }
     });
 
@@ -263,24 +300,12 @@ class _SetupModalState extends ConsumerState<SetupModal> {
         child: Padding(
           padding: const EdgeInsets.all(SpacingTokens.xl),
           child: _wrapModalScroll(
-            compactViewport: compactViewport,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                ListenableBuilder(
-                  listenable: _formFieldsListenable,
-                  builder: (context, _) => SetupWizardNavBar(
-                    showBack: setup.step == SetupWizardStep.branch,
-                    showNext: setup.step == SetupWizardStep.organization || setup.step == SetupWizardStep.branch,
-                    nextEnabled: _isNextEnabled(setup.step),
-                    isBusy: isBusy,
-                    onBack: () => ref.read(setupNotifierProvider.notifier).goBackToOrganizationStep(),
-                    onNext: _onNextPressed,
-                  ),
-                ),
-                const SizedBox(height: SpacingTokens.md),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Container(
                       width: 36,
@@ -292,6 +317,26 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                     Text(
                       'AI Clinic',
                       style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.4),
+                    ),
+                    const Spacer(),
+                    ListenableBuilder(
+                      listenable: _formFieldsListenable,
+                      builder: (context, _) => SetupWizardNavBar(
+                        embedded: true,
+                        showBack: setup.step == SetupWizardStep.branch || setup.step == SetupWizardStep.staff,
+                        showNext:
+                            setup.step == SetupWizardStep.organization ||
+                            setup.step == SetupWizardStep.branch ||
+                            setup.step == SetupWizardStep.staff,
+                        nextLabel: _nextLabel(setup.step),
+                        nextEnabled: setup.step == SetupWizardStep.staff
+                            ? setup.staffDrafts.isNotEmpty
+                            : _isNextEnabled(setup.step),
+                        nextDisabledTooltip: _nextDisabledTooltip(setup.step),
+                        isBusy: isBusy,
+                        onBack: () => _onBackPressed(setup.step),
+                        onNext: _onNextPressed,
+                      ),
                     ),
                   ],
                 ),
@@ -315,16 +360,29 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: isBusy
-                          ? null
-                          : () {
-                              ref.read(setupNotifierProvider.notifier).clearError();
-                              ref.read(provisioningNotifierProvider.notifier).clearError();
-                            },
+                      onPressed: isBusy ? null : () => ref.read(setupNotifierProvider.notifier).clearError(),
                       child: const Text('Dismiss'),
                     ),
                   ),
                 ],
+                if (setup.step == SetupWizardStep.staff)
+                  AppFadeInOutPanel(
+                    key: const ValueKey('setup-staff-created-panel'),
+                    visible: _staffCreatedAcknowledgement != null,
+                    child: _staffCreatedAcknowledgement == null
+                        ? const SizedBox.shrink()
+                        : Padding(
+                            padding: const EdgeInsets.only(top: SpacingTokens.lg),
+                            child: AppAlert(
+                              title: 'Staff member added',
+                              subtitle:
+                                  'This account will be created when you finish setup.\n\n'
+                                  'Username: ${_staffCreatedAcknowledgement!.username}\n'
+                                  'Password: ${_staffCreatedAcknowledgement!.password}\n\n'
+                                  'Create another account below, or click Finish when you are done.',
+                            ),
+                          ),
+                  ),
                 const SizedBox(height: SpacingTokens.xl),
                 SetupStepTransition(
                   step: setup.step,
@@ -352,10 +410,12 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                     formKey: _staffFormKey,
                     usernameController: _staffUsernameController,
                     fullNameController: _staffFullNameController,
+                    phoneController: _staffPhoneController,
                     passwordController: _staffPasswordController,
                     isBusy: isBusy,
-                    onCreate: _createStaffAccount,
-                    onSkip: _skipStaff,
+                    onCreate: _addStaffDraft,
+                    wizardBranches: _wizardBranches(setup.branchDraft),
+                    ownerAlreadyExists: setup.draftOwnerAlreadyExists,
                   ),
                   completeStep: SetupCompleteStep(onGoHome: widget.onFinished),
                 ),
@@ -367,10 +427,24 @@ class _SetupModalState extends ConsumerState<SetupModal> {
     );
   }
 
-  Widget _wrapModalScroll({required bool compactViewport, required Widget child}) {
-    if (compactViewport) {
-      return SingleChildScrollView(child: child);
+  List<BranchSummary> _wizardBranches(SetupBranchDraft? draft) {
+    if (draft == null) {
+      return const [];
     }
-    return child;
+
+    return [
+      BranchSummary(
+        id: SetupWizardDraftIds.branch,
+        name: draft.name,
+        code: draft.code,
+        address: draft.address,
+        phone: draft.phone,
+        mapsUrl: draft.mapsUrl,
+      ),
+    ];
+  }
+
+  Widget _wrapModalScroll({required Widget child}) {
+    return SingleChildScrollView(child: child);
   }
 }

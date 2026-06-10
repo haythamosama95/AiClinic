@@ -36,10 +36,10 @@ void main() {
       expect(ProvisioningRules.selectableRoles(caller, ownerAlreadyExists: false), contains(StaffRole.owner));
     });
 
-    test('administrator cannot assign owner when owner exists', () {
+    test('administrator may assign owner when owner exists', () {
       final caller = _profile(role: StaffRole.administrator);
-      expect(ProvisioningRules.mayAssignOwnerRole(caller, ownerAlreadyExists: true), isFalse);
-      expect(ProvisioningRules.validateRoleChoice(caller, StaffRole.owner, ownerAlreadyExists: true), isNotNull);
+      expect(ProvisioningRules.mayAssignOwnerRole(caller, ownerAlreadyExists: true), isTrue);
+      expect(ProvisioningRules.validateRoleChoice(caller, StaffRole.owner, ownerAlreadyExists: true), isNull);
     });
 
     test('owner may assign owner when owner exists', () {
@@ -48,9 +48,9 @@ void main() {
       expect(ProvisioningRules.validateRoleChoice(caller, StaffRole.owner, ownerAlreadyExists: true), isNull);
     });
 
-    test('bootstrap admin blocked from second owner when owner exists', () {
+    test('bootstrap admin may assign owner when owner exists', () {
       final caller = _profile(role: StaffRole.administrator, isBootstrapAdmin: true);
-      expect(ProvisioningRules.mayAssignOwnerRole(caller, ownerAlreadyExists: true), isFalse);
+      expect(ProvisioningRules.mayAssignOwnerRole(caller, ownerAlreadyExists: true), isTrue);
     });
 
     test('inferOwnerAlreadyExists for non-bootstrap administrator', () {

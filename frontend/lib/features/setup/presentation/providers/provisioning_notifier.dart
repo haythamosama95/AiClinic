@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/setup/domain/create_staff_account_result.dart
 import 'package:ai_clinic/features/setup/domain/admin_reset_staff_password_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
 import 'package:ai_clinic/features/setup/domain/staff_member_summary.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -47,6 +48,7 @@ class ProvisioningUiState {
     this.isSubmitting = false,
     this.errorMessage,
     this.ownerAlreadyExists = false,
+    this.staffAccountsCreatedCount = 0,
     this.lastCreated,
     this.lastPasswordReset,
   });
@@ -54,6 +56,7 @@ class ProvisioningUiState {
   final bool isSubmitting;
   final String? errorMessage;
   final bool ownerAlreadyExists;
+  final int staffAccountsCreatedCount;
   final CreateStaffAccountResult? lastCreated;
   final AdminResetStaffPasswordResult? lastPasswordReset;
 
@@ -62,6 +65,7 @@ class ProvisioningUiState {
     String? errorMessage,
     bool clearError = false,
     bool? ownerAlreadyExists,
+    int? staffAccountsCreatedCount,
     CreateStaffAccountResult? lastCreated,
     bool clearLastCreated = false,
     AdminResetStaffPasswordResult? lastPasswordReset,
@@ -71,6 +75,7 @@ class ProvisioningUiState {
       isSubmitting: isSubmitting ?? this.isSubmitting,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       ownerAlreadyExists: ownerAlreadyExists ?? this.ownerAlreadyExists,
+      staffAccountsCreatedCount: staffAccountsCreatedCount ?? this.staffAccountsCreatedCount,
       lastCreated: clearLastCreated ? null : (lastCreated ?? this.lastCreated),
       lastPasswordReset: clearLastPasswordReset ? null : (lastPasswordReset ?? this.lastPasswordReset),
     );
@@ -149,12 +154,9 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       state = state.copyWith(errorMessage: 'Enter the staff member full name.');
       return null;
     }
-    if (password.trim().isEmpty) {
-      state = state.copyWith(errorMessage: 'Enter an initial password for the new account.');
-      return null;
-    }
-    if (password.length < 6) {
-      state = state.copyWith(errorMessage: 'Password must be at least 6 characters.');
+    final passwordError = StaffPasswordValidation.validateInitialPassword(password);
+    if (passwordError != null) {
+      state = state.copyWith(errorMessage: passwordError);
       return null;
     }
     if (branchIds.isEmpty) {
@@ -193,7 +195,11 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
         markOwnerExists();
       }
 
-      state = state.copyWith(isSubmitting: false, lastCreated: result);
+      state = state.copyWith(
+        isSubmitting: false,
+        lastCreated: result,
+        staffAccountsCreatedCount: state.staffAccountsCreatedCount + 1,
+      );
       ref.invalidate(staffResetCandidatesProvider);
       AppLog.info('provisioning.create_staff.ok staff_id=${result.staffMemberId}');
       return result;

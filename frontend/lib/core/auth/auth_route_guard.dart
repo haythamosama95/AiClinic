@@ -401,15 +401,27 @@ abstract final class AuthRouteGuard {
   }
 
   /// Returns a redirect target path, or `null` when [location] may render.
-  static String? resolveRedirect({required String location, required AuthSessionState auth}) {
-    final redirect = _resolveRedirect(location: location, auth: auth);
+  static String? resolveRedirect({
+    required String location,
+    required AuthSessionState auth,
+    bool bootstrapStaffWizardInProgress = false,
+  }) {
+    final redirect = _resolveRedirect(
+      location: location,
+      auth: auth,
+      bootstrapStaffWizardInProgress: bootstrapStaffWizardInProgress,
+    );
     if (redirect != null) {
       AppLog.fine('auth.route.redirect from=$location to=$redirect');
     }
     return redirect;
   }
 
-  static String? _resolveRedirect({required String location, required AuthSessionState auth}) {
+  static String? _resolveRedirect({
+    required String location,
+    required AuthSessionState auth,
+    bool bootstrapStaffWizardInProgress = false,
+  }) {
     if (auth.status == AuthSessionStatus.unknown || auth.status == AuthSessionStatus.loading) {
       return null;
     }
@@ -435,6 +447,9 @@ abstract final class AuthRouteGuard {
       }
 
       if (location == AppRoutes.login || location == AppRoutes.bootstrap || location == AppRoutes.forgotPassword) {
+        if (location == AppRoutes.bootstrap && bootstrapStaffWizardInProgress) {
+          return null;
+        }
         return AppRoutes.home;
       }
 

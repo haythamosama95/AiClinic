@@ -1,16 +1,17 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:forui/forui.dart';
 
-import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/features/setup/domain/branch_summary.dart';
 import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/setup/domain/setup_wizard_draft_ids.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/staff_assignable_branches_provider.dart';
-import 'package:ai_clinic/features/setup/presentation/widgets/setup_form_grid.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_layout.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/staff_form_fields.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
 class SetupStaffStep extends ConsumerStatefulWidget {
@@ -18,21 +19,25 @@ class SetupStaffStep extends ConsumerStatefulWidget {
     required this.formKey,
     required this.usernameController,
     required this.fullNameController,
+    required this.phoneController,
     required this.passwordController,
     required this.isBusy,
     required this.onCreate,
-    required this.onSkip,
+    this.wizardBranches = const [],
+    this.ownerAlreadyExists = false,
     super.key,
   });
 
   final GlobalKey<FormState> formKey;
   final TextEditingController usernameController;
   final TextEditingController fullNameController;
+  final TextEditingController phoneController;
   final TextEditingController passwordController;
   final bool isBusy;
-  final Future<void> Function({required StaffRole role, required List<String> branchIds, String? primaryBranchId})
+  final Future<bool> Function({required StaffRole role, required List<String> branchIds, String? primaryBranchId})
   onCreate;
-  final VoidCallback onSkip;
+  final List<BranchSummary> wizardBranches;
+  final bool ownerAlreadyExists;
 
   @override
   ConsumerState<SetupStaffStep> createState() => _SetupStaffStepState();
@@ -40,35 +45,143 @@ class SetupStaffStep extends ConsumerStatefulWidget {
 
 class _SetupStaffStepState extends ConsumerState<SetupStaffStep> {
   StaffRole? _selectedRole;
-  final Set<String> _selectedBranchIds = {};
   String? _primaryBranchId;
-  var _obscurePassword = true;
+  late final FMultiValueNotifier<String> _branchSelection;
+  String? _syncedBranchListKey;
+  var _defaultRoleScheduled = false;
+  var _selectionRebuildScheduled = false;
+
+  bool get _usesWizardBranches => widget.wizardBranches.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    ref.listenManual(
-      authSessionProvider.select((s) => s.context?.branchIds ?? const <String>[]),
-      (previous, next) => _onAssignableBranchIdsChanged(next),
-      fireImmediately: true,
-    );
-  }
+    _branchSelection = FMultiValueNotifier<String>();
+    _branchSelection.addListener(_onBranchSelectionChanged);
 
-  void _syncBranchSelection(List<String> branchIds) {
-    _selectedBranchIds.removeWhere((id) => !branchIds.contains(id));
-    if (_selectedBranchIds.isEmpty && branchIds.length == 1) {
-      _selectedBranchIds.add(branchIds.first);
-      _primaryBranchId = branchIds.first;
+    if (_usesWizardBranches) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncBranchAssignment(widget.wizardBranches.map((branch) => branch.id).toList());
+      });
+      return;
     }
-    if (_primaryBranchId != null && !_selectedBranchIds.contains(_primaryBranchId)) {
-      _primaryBranchId = _selectedBranchIds.isEmpty ? null : _selectedBranchIds.first;
-    }
-  }
 
-  void _onAssignableBranchIdsChanged(List<String> branchIds) {
+    ref.listenManual(staffAssignableBranchesProvider, (previous, next) {
+      next.whenData((branches) {
+        if (!mounted) return;
+        _syncBranchAssignment(branches.map((branch) => branch.id).toList());
+      });
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setState(() => _syncBranchSelection(branchIds));
+      ref.read(staffAssignableBranchesProvider).whenData((branches) {
+        _syncBranchAssignment(branches.map((branch) => branch.id).toList());
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant SetupStaffStep oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.wizardBranches != widget.wizardBranches && _usesWizardBranches) {
+      _syncBranchAssignment(widget.wizardBranches.map((branch) => branch.id).toList());
+    }
+  }
+
+  void _syncBranchAssignment(List<String> branchIds) {
+    final assignBranchId = _usesWizardBranches ? SetupWizardDraftIds.branch : null;
+    _applyBranchListSync(branchIds, assignBranchId: assignBranchId);
+  }
+
+  @override
+  void dispose() {
+    _branchSelection
+      ..removeListener(_onBranchSelectionChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onBranchSelectionChanged() {
+    if (_selectionRebuildScheduled) {
+      return;
+    }
+    _selectionRebuildScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _selectionRebuildScheduled = false;
+      if (!mounted) return;
+
+      final selected = _branchSelection.value;
+      final nextPrimary = _primaryBranchId != null && selected.contains(_primaryBranchId!)
+          ? _primaryBranchId
+          : (selected.isEmpty ? null : selected.first);
+      if (nextPrimary == _primaryBranchId) {
+        return;
+      }
+
+      setState(() => _primaryBranchId = nextPrimary);
+    });
+  }
+
+  void _applyBranchListSync(List<String> branchIds, {String? assignBranchId}) {
+    final key = '${assignBranchId ?? ''}|${branchIds.join(',')}';
+    if (_syncedBranchListKey == key) {
+      return;
+    }
+    _syncedBranchListKey = key;
+
+    final validIds = branchIds.toSet();
+    final next = assignBranchId != null && validIds.contains(assignBranchId)
+        ? {assignBranchId}
+        : _branchSelection.value.where(validIds.contains).toSet();
+
+    if (!setEquals(_branchSelection.value, next)) {
+      _branchSelection.value = next;
+      return;
+    }
+
+    final nextPrimary = assignBranchId != null && next.contains(assignBranchId)
+        ? assignBranchId
+        : (_primaryBranchId != null && next.contains(_primaryBranchId!)
+              ? _primaryBranchId
+              : (next.length == 1 ? next.first : null));
+
+    if (nextPrimary != _primaryBranchId) {
+      setState(() => _primaryBranchId = nextPrimary);
+    }
+  }
+
+  void _onBranchChecked(String branchId, bool checked) {
+    if (checked) {
+      _branchSelection.update(branchId, add: true);
+    } else {
+      _branchSelection.update(branchId, add: false);
+    }
+  }
+
+  void _ensureDefaultRole(List<StaffRole> selectableRoles, StaffProfile? caller, bool ownerAlreadyExists) {
+    if (_selectedRole != null || selectableRoles.isEmpty) {
+      return;
+    }
+
+    if (caller != null && caller.isBootstrapAdmin && !ownerAlreadyExists && selectableRoles.contains(StaffRole.owner)) {
+      _selectedRole = StaffRole.owner;
+      return;
+    }
+
+    _selectedRole = selectableRoles.first;
+  }
+
+  void _scheduleDefaultRole(List<StaffRole> selectableRoles, StaffProfile? caller, bool ownerAlreadyExists) {
+    if (_selectedRole != null || selectableRoles.isEmpty || _defaultRoleScheduled) {
+      return;
+    }
+
+    _defaultRoleScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _ensureDefaultRole(selectableRoles, caller, ownerAlreadyExists));
     });
   }
 
@@ -76,149 +189,69 @@ class _SetupStaffStepState extends ConsumerState<SetupStaffStep> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authSessionProvider).context;
     final provisioning = ref.watch(provisioningNotifierProvider);
-    final branchesAsync = ref.watch(staffAssignableBranchesProvider);
-    final branchIds = auth?.branchIds ?? const [];
     final isBusy = widget.isBusy || provisioning.isSubmitting;
-
-    final branchById = branchesAsync.maybeWhen(
-      data: (branches) => {for (final branch in branches) branch.id: branch},
-      orElse: () => const <String, BranchSummary>{},
-    );
+    final ownerAlreadyExists = widget.ownerAlreadyExists || provisioning.ownerAlreadyExists;
 
     final caller = auth?.staffProfile;
     final selectableRoles = caller == null
         ? const <StaffRole>[]
-        : ProvisioningRules.selectableRoles(caller, ownerAlreadyExists: provisioning.ownerAlreadyExists);
+        : ProvisioningRules.selectableRoles(caller, ownerAlreadyExists: ownerAlreadyExists);
 
     if (_selectedRole != null && !selectableRoles.contains(_selectedRole)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _selectedRole = null);
       });
+    } else {
+      _scheduleDefaultRole(selectableRoles, caller, ownerAlreadyExists);
     }
 
-    final roleItems = {for (final role in selectableRoles) _roleLabel(role): role};
+    if (_usesWizardBranches) {
+      return _buildForm(branches: widget.wizardBranches, selectableRoles: selectableRoles, isBusy: isBusy);
+    }
+
+    final branchesAsync = ref.watch(staffAssignableBranchesProvider);
+    return branchesAsync.when(
+      loading: () => const Center(child: AppCircularProgress()),
+      error: (_, _) => const Center(child: Text('Unable to load branches for assignment.')),
+      data: (branches) => _buildForm(branches: branches, selectableRoles: selectableRoles, isBusy: isBusy),
+    );
+  }
+
+  Widget _buildForm({
+    required List<BranchSummary> branches,
+    required List<StaffRole> selectableRoles,
+    required bool isBusy,
+  }) {
+    final branchIds = branches.map((branch) => branch.id).toList();
+    final branchById = {for (final branch in branches) branch.id: branch};
 
     return Form(
       key: widget.formKey,
       child: SetupStepLayout(
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SetupFormGrid(
-              children: [
-                AppTextField(
-                  label: 'Username *',
-                  controller: widget.usernameController,
-                  hintText: 'Staff username',
-                  enabled: !isBusy,
-                  validator: (value) => validateStaffUsername(value ?? ''),
-                ),
-                AppTextField(
-                  label: 'Full name *',
-                  controller: widget.fullNameController,
-                  hintText: 'Enter full name',
-                  enabled: !isBusy,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Full name is required';
-                    }
-                    return null;
-                  },
-                ),
-                AppSelect<StaffRole>(
-                  label: 'Role *',
-                  items: roleItems,
-                  value: _selectedRole,
-                  hintText: 'Select a role',
-                  enabled: !isBusy && roleItems.isNotEmpty,
-                  onChanged: isBusy ? null : (role) => setState(() => _selectedRole = role),
-                  validator: (value) => value == null ? 'Select a role' : null,
-                ),
-                AppTextField(
-                  label: 'Initial password *',
-                  controller: widget.passwordController,
-                  hintText: '••••••••',
-                  obscureText: _obscurePassword,
-                  enabled: !isBusy,
-                  suffixIcon: IconButton(
-                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                    icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Password is required';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: SpacingTokens.lg),
-            Text('Branch assignments *', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: SpacingTokens.sm),
-            if (branchIds.isEmpty)
-              Text(
-                'No branches are available yet. Go back and finish the branch step.',
-                style: Theme.of(context).textTheme.bodySmall,
-              )
-            else if (branchesAsync.isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: SpacingTokens.sm),
-                child: Center(child: AppCircularProgress()),
-              )
-            else
-              ...branchIds.map((branchId) {
-                final branch = branchById[branchId];
-                final label = branch == null
-                    ? 'Branch $branchId'
-                    : '${branch.name}${branch.code == null ? '' : ' (${branch.code})'}';
-                return AppCheckbox(
-                  value: _selectedBranchIds.contains(branchId),
-                  label: label,
-                  enabled: !isBusy,
-                  onChanged: (checked) {
-                    setState(() {
-                      if (checked) {
-                        _selectedBranchIds.add(branchId);
-                        _primaryBranchId ??= branchId;
-                      } else {
-                        _selectedBranchIds.remove(branchId);
-                        if (_primaryBranchId == branchId) {
-                          _primaryBranchId = _selectedBranchIds.isEmpty ? null : _selectedBranchIds.first;
-                        }
-                      }
-                    });
-                  },
-                );
-              }),
-            if (_selectedBranchIds.length > 1) ...[
-              const SizedBox(height: SpacingTokens.md),
-              AppSelect<String>(
-                label: 'Primary branch',
-                items: {for (final id in _selectedBranchIds) branchById[id]?.name ?? 'Branch $id': id},
-                value: _primaryBranchId,
-                enabled: !isBusy,
-                onChanged: (id) => setState(() => _primaryBranchId = id),
-              ),
-            ],
-          ],
-        ),
-        actions: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AppButton(label: 'Skip for now', variant: AppButtonVariant.ghost, onPressed: isBusy ? null : widget.onSkip),
-            const SizedBox(width: SpacingTokens.md),
-            AppButton(
-              label: 'Create staff account',
-              isLoading: isBusy,
-              onPressed: isBusy || branchIds.isEmpty ? null : () => _submit(selectableRoles),
-            ),
-          ],
+        body: StaffFormFields(
+          mode: StaffFormFieldsMode.create,
+          usernameController: widget.usernameController,
+          fullNameController: widget.fullNameController,
+          phoneController: widget.phoneController,
+          passwordController: widget.passwordController,
+          enabled: !isBusy,
+          selectableRoles: selectableRoles,
+          selectedRole: _selectedRole,
+          onRoleChanged: (role) => setState(() => _selectedRole = role),
+          branchIds: branchIds,
+          branchById: branchById,
+          selectedBranchIds: _branchSelection.value,
+          primaryBranchId: _primaryBranchId,
+          branchSelectionControl: _branchSelection,
+          onBranchChecked: _onBranchChecked,
+          onPrimaryBranchChanged: (id) => setState(() => _primaryBranchId = id),
+          showBranchAssignments: true,
+          createAction: AppButton(
+            label: 'Create staff account',
+            expand: false,
+            isLoading: isBusy,
+            onPressed: isBusy || branchIds.isEmpty ? null : () => _submit(selectableRoles),
+          ),
         ),
       ),
     );
@@ -234,18 +267,26 @@ class _SetupStaffStepState extends ConsumerState<SetupStaffStep> {
       return;
     }
 
-    if (_selectedBranchIds.isEmpty) {
+    final selectedBranchIds = _branchSelection.value;
+    if (selectedBranchIds.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Select at least one branch assignment.')));
       return;
     }
 
-    await widget.onCreate(role: role, branchIds: _selectedBranchIds.toList(), primaryBranchId: _primaryBranchId);
-  }
+    final added = await widget.onCreate(
+      role: role,
+      branchIds: selectedBranchIds.toList(),
+      primaryBranchId: _primaryBranchId,
+    );
+    if (!added || !mounted) {
+      return;
+    }
 
-  static String _roleLabel(StaffRole role) => switch (role) {
-    StaffRole.owner => 'Owner',
-    StaffRole.administrator => 'Administrator',
-    StaffRole.doctor => 'Doctor',
-    StaffRole.receptionist => 'Receptionist',
-    StaffRole.labStaff => 'Lab staff',
-  };
+    setState(() {
+      _selectedRole = null;
+      _defaultRoleScheduled = false;
+    });
+  }
 }

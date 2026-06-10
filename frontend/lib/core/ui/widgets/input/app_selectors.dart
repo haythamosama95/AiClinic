@@ -120,6 +120,7 @@ class AppSelect<T> extends StatelessWidget {
     this.enabled = true,
     this.size = AppFieldSize.md,
     this.validator,
+    this.autovalidateMode,
     super.key,
   });
 
@@ -132,10 +133,13 @@ class AppSelect<T> extends StatelessWidget {
   final bool enabled;
   final AppFieldSize size;
   final String? Function(T?)? validator;
+  final AutovalidateMode? autovalidateMode;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final resolvedAutovalidateMode =
+        autovalidateMode ?? (validator != null ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled);
 
     return FSelect<T>(
       items: items,
@@ -146,7 +150,7 @@ class AppSelect<T> extends StatelessWidget {
       hint: hintText,
       enabled: enabled,
       validator: validator == null ? (_) => null : (v) => validator!(v),
-      autovalidateMode: validator != null ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled,
+      autovalidateMode: resolvedAutovalidateMode,
     );
   }
 }
@@ -163,6 +167,8 @@ class AppMultiSelect<T> extends StatelessWidget {
     this.enabled = true,
     this.size = AppFieldSize.md,
     this.validator,
+    this.autovalidateMode,
+    this.control,
     super.key,
   });
 
@@ -170,26 +176,30 @@ class AppMultiSelect<T> extends StatelessWidget {
   final Map<String, T> items;
   final Set<T> values;
   final ValueChanged<Set<T>>? onChanged;
+  final FMultiValueControl<T>? control;
   final String? hintText;
   final String? description;
   final bool enabled;
   final AppFieldSize size;
   final String? Function(Set<T>?)? validator;
+  final AutovalidateMode? autovalidateMode;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final resolvedAutovalidateMode =
+        autovalidateMode ?? (validator != null ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled);
 
     return FMultiSelect<T>(
       items: items,
-      control: FMultiValueControl.lifted(value: values, onChange: onChanged ?? (_) {}),
+      control: control ?? FMultiValueControl.lifted(value: values, onChange: onChanged ?? (_) {}),
       size: size.forui,
       label: Text(label, style: theme.textTheme.labelMedium),
       description: description == null ? null : Text(description!, style: theme.textTheme.bodySmall),
       hint: hintText == null ? null : Text(hintText!),
       enabled: enabled,
       validator: validator ?? (_) => null,
-      autovalidateMode: validator != null ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled,
+      autovalidateMode: resolvedAutovalidateMode,
     );
   }
 }

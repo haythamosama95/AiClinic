@@ -342,7 +342,7 @@ BEGIN
   UPDATE public.branches SET is_active = true WHERE id = v_branch_second;
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Administrator cannot promote staff to owner when owner exists.
+  -- Administrator may promote staff to owner when owner exists.
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(
@@ -367,9 +367,9 @@ BEGIN
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_branch_crud_results VALUES (
-    'staff_update_admin_forbidden_owner_role',
-    NOT v_result.success AND v_result.error_code = 'FORBIDDEN_OWNER_CREATE',
-    COALESCE(v_result.error_code, '<null>')
+    'staff_update_admin_assigns_owner_role',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
   );
   PERFORM set_config('role', 'authenticated', true);
 

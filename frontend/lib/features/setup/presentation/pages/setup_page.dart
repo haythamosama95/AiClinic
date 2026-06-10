@@ -10,11 +10,9 @@ import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_content_placeholder.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/features/setup/presentation/dev/setup_dev_widgets.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/first_sign_in_warning_dialog.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_modal.dart';
-import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_layout.dart';
 
 /// Full-screen host for the clinic setup wizard on the `/bootstrap` route.
 class SetupPage extends ConsumerStatefulWidget {
@@ -51,10 +49,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   }
 
   Future<void> _fillDummy() async {
-    final ok = await ref.read(setupNotifierProvider.notifier).finishSetupWithDummyData();
-    if (ok && mounted) {
-      ref.read(setupNotifierProvider.notifier).markSetupComplete();
-    }
+    await ref.read(setupNotifierProvider.notifier).finishSetupWithDummyData();
   }
 
   Future<void> _resetInstallation() async {
@@ -65,10 +60,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final setup = ref.watch(setupNotifierProvider);
-    final provisioning = ref.watch(provisioningNotifierProvider);
-    final isBusy = setup.isSubmitting || provisioning.isSubmitting;
-    final compactViewport = MediaQuery.sizeOf(context).height < SetupLayoutBreakpoints.compactViewportHeight;
-
+    final isBusy = setup.isSubmitting;
     ref.listen<SetupUiState>(setupNotifierProvider, (previous, next) {
       if (next.step == SetupWizardStep.complete && previous?.step != SetupWizardStep.complete) {
         _goHome();
@@ -88,35 +80,33 @@ class _SetupPageState extends ConsumerState<SetupPage> {
             ),
           ),
           SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
-                child: _wrapPageScroll(
-                  compactViewport: compactViewport,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SetupModal(onFinished: _goHome),
-                      SetupDevWidgets.panel(
-                        isBusy: isBusy,
-                        onFillDummy: _fillDummy,
-                        onResetInstallation: _resetInstallation,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SetupModal(onFinished: _goHome),
+                          SetupDevWidgets.panel(
+                            isBusy: isBusy,
+                            onFillDummy: _fillDummy,
+                            onResetInstallation: _resetInstallation,
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ],
       ),
     );
-  }
-
-  Widget _wrapPageScroll({required bool compactViewport, required Widget child}) {
-    if (compactViewport) {
-      return SingleChildScrollView(child: child);
-    }
-    return child;
   }
 }

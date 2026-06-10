@@ -46,6 +46,17 @@ void main() {
       );
     });
 
+    test('setup-complete bootstrap stays while staff wizard step is active', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(
+          location: AppRoutes.bootstrap,
+          auth: AuthSessionState(status: AuthSessionStatus.authenticated, context: sampleAuthSessionContext()),
+          bootstrapStaffWizardInProgress: true,
+        ),
+        isNull,
+      );
+    });
+
     test('protected app prefix without setup redirects to bootstrap', () {
       expect(
         AuthRouteGuard.resolveRedirect(

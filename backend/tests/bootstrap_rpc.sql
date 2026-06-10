@@ -246,6 +246,94 @@ PERFORM set_config('role', 'postgres', true);
     'branch metadata row check'
   );
   PERFORM set_config('role', 'authenticated', true);
+
+  -- Atomic finish setup rolls back organization when staff provisioning fails.
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff, v_non_bootstrap_staff]::uuid[]);
+  DELETE FROM public.audit_log;
+  DELETE FROM auth.users
+  WHERE email IN ('finish-owner', 'finish-owner-dup');
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+  VALUES (
+    'c0000000-0000-4000-8000-000000000099',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'finish-owner',
+    extensions.crypt('finish-pass-0', extensions.gen_salt('bf')),
+    now(),
+    now(),
+    now()
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  v_result := public.bootstrap_finish_setup(
+    'Atomic Clinic',
+    'Atomic Branch',
+    jsonb_build_array(
+      jsonb_build_object(
+        'username', 'finish-owner',
+        'password', 'finish-pass-1',
+        'full_name', 'Finish Owner',
+        'role', 'owner'
+      )
+    ),
+    '{}'::jsonb,
+    NULL,
+    'USD',
+    'UTC',
+    'ATOM',
+    '1 Atomic Way',
+    '+1-555-0199',
+    'https://maps.example/atomic'
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO bootstrap_rpc_results VALUES (
+    'finish_setup_existing_username_rolls_back',
+    NOT v_result.success
+      AND v_result.error_code = 'USERNAME_EXISTS'
+      AND NOT auth_internal.organization_exists(),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.bootstrap_finish_setup(
+    'Atomic Clinic OK',
+    'Atomic Branch OK',
+    jsonb_build_array(
+      jsonb_build_object(
+        'username', 'finish-owner',
+        'password', 'finish-pass-1',
+        'full_name', 'Finish Owner',
+        'role', 'owner'
+      )
+    ),
+    '{}'::jsonb,
+    NULL,
+    'USD',
+    'UTC',
+    'ATOM',
+    '1 Atomic Way',
+    '+1-555-0199',
+    'https://maps.example/atomic'
+  );
+  v_org_id := (v_result.data ->> 'organization_id')::uuid;
+  v_branch_id := (v_result.data ->> 'branch_id')::uuid;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO bootstrap_rpc_results VALUES (
+    'finish_setup_happy_path',
+    v_result.success AND v_org_id IS NOT NULL AND v_branch_id IS NOT NULL,
+    'org_id=' || COALESCE(v_org_id::text, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
 END;
 $$;
 

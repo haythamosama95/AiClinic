@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/setup/domain/branch_field_validation.dart';
@@ -59,6 +60,7 @@ class SetupBranchStep extends StatelessWidget {
               hintText: 'Numbers only',
               enabled: !isBusy,
               keyboardType: TextInputType.phone,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               validator: BranchFieldValidation.validatePhone,
             ),
             AppTextField(

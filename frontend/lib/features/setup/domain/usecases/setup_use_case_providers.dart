@@ -4,6 +4,7 @@ import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/create_bootstrap_branch.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/create_organization.dart';
+import 'package:ai_clinic/features/setup/domain/usecases/finish_bootstrap_setup.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/create_staff_account.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/list_branches_by_ids.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/list_org_staff_members.dart';
@@ -13,6 +14,9 @@ import 'package:ai_clinic/features/setup/domain/usecases/reset_staff_password.da
 final createOrganizationUseCaseProvider = Provider((ref) => CreateOrganization(ref.watch(bootstrapRepositoryProvider)));
 final createBootstrapBranchUseCaseProvider = Provider(
   (ref) => CreateBootstrapBranch(ref.watch(bootstrapRepositoryProvider)),
+);
+final finishBootstrapSetupUseCaseProvider = Provider(
+  (ref) => FinishBootstrapSetup(ref.watch(bootstrapRepositoryProvider)),
 );
 final resetInstallationUseCaseProvider = Provider((ref) => ResetInstallation(ref.watch(bootstrapRepositoryProvider)));
 final listOrgStaffMembersUseCaseProvider = Provider(

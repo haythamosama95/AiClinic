@@ -161,8 +161,8 @@ void main() {
     test('provisioning.FORBIDDEN_OWNER_CREATE', () async {
       const ManifestScenario('provisioning.FORBIDDEN_OWNER_CREATE');
       final clinic = await ctx.ensureClinic(label: 'prov_no_owner');
-      final sessions = RoleSessions(ctx, clinic);
-      await sessions.signInAs(StaffRole.administrator);
+      final doctor = await ctx.fixtures.createStaff(clinic: clinic, role: StaffRole.doctor);
+      await ctx.signInStaff(doctor.username, doctor.password);
       await expectRpcCode(
         () => ctx.provisioning.createStaffAccount(
           CreateStaffAccountInput(
@@ -173,7 +173,7 @@ void main() {
             branchIds: [clinic.branchId],
           ),
         ),
-        'FORBIDDEN_OWNER_CREATE',
+        'FORBIDDEN',
       );
     });
 

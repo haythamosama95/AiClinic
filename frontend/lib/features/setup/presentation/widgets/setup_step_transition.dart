@@ -1,12 +1,11 @@
-import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
-import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_layout.dart';
 
-/// Keeps every wizard step laid out (tallest step sets height) while animating
-/// slide + fade transitions between the active step and the previous one.
+/// Animates slide + fade between wizard steps while the step area height tracks
+/// each form's natural size (including validation errors) and resizes smoothly.
 class SetupStepTransition extends StatefulWidget {
   const SetupStepTransition({
     required this.step,
@@ -26,6 +25,7 @@ class SetupStepTransition extends StatefulWidget {
   final Widget completeStep;
 
   static const duration = Duration(milliseconds: 300);
+  static const curve = Curves.easeInOutCubic;
 
   @override
   State<SetupStepTransition> createState() => _SetupStepTransitionState();
@@ -34,12 +34,10 @@ class SetupStepTransition extends StatefulWidget {
 class _SetupStepTransitionState extends State<SetupStepTransition> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   SetupWizardStep? _fromStep;
-  final _stackKey = GlobalKey();
+  double? _transitionFromHeight;
+  double? _transitionToHeight;
   final _stepKeys = {for (final step in SetupWizardStep.values) step: GlobalKey()};
-  double? _stepAreaHeight;
-  var _measureFrames = 0;
-  double _lastMeasuredMax = 0;
-  var _stableMeasureFrames = 0;
+  final _stepHeights = <SetupWizardStep, double>{};
 
   @override
   void initState() {
@@ -53,7 +51,20 @@ class _SetupStepTransitionState extends State<SetupStepTransition> with SingleTi
     super.didUpdateWidget(oldWidget);
     if (oldWidget.step != widget.step) {
       _fromStep = oldWidget.step;
-      _controller.forward(from: 0);
+      _transitionFromHeight = _heightForStep(oldWidget.step);
+      _transitionToHeight = null;
+      _controller.reset();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _fromStep == null) {
+          return;
+        }
+        _measureStepHeights();
+        final toHeight = _heightForStep(widget.step);
+        if (toHeight != null) {
+          setState(() => _transitionToHeight = toHeight);
+        }
+        _controller.forward(from: 0);
+      });
     }
   }
 
@@ -61,7 +72,11 @@ class _SetupStepTransitionState extends State<SetupStepTransition> with SingleTi
     if (status != AnimationStatus.completed || !mounted) {
       return;
     }
-    setState(() => _fromStep = null);
+    setState(() {
+      _fromStep = null;
+      _transitionFromHeight = null;
+      _transitionToHeight = null;
+    });
     _controller.reset();
   }
 
@@ -80,107 +95,138 @@ class _SetupStepTransitionState extends State<SetupStepTransition> with SingleTi
     SetupWizardStep.complete => widget.completeStep,
   };
 
-  void _reportRequiredHeight(double height) {
-    if (!mounted || height <= 0) {
-      return;
-    }
-    if (height > (_stepAreaHeight ?? 0)) {
-      setState(() => _stepAreaHeight = height);
-    }
-  }
-
-  void _scheduleStepAreaHeightSync() {
+  void _scheduleStepHeightMeasure() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _stepAreaHeight != null) {
+      if (!mounted) {
         return;
       }
-
-      _measureFrames++;
-
-      var maxHeight = _stackKey.currentContext?.size?.height ?? 0;
-      var allMeasured = true;
-      for (final key in _stepKeys.values) {
-        final height = key.currentContext?.size?.height ?? 0;
-        if (height <= 0) {
-          allMeasured = false;
-        }
-        maxHeight = math.max(maxHeight, height);
-      }
-      if (maxHeight <= 0) {
-        return;
-      }
-
-      if (!allMeasured && _measureFrames < 12) {
-        return;
-      }
-
-      if (maxHeight == _lastMeasuredMax) {
-        _stableMeasureFrames++;
-      } else {
-        _lastMeasuredMax = maxHeight;
-        _stableMeasureFrames = 0;
-      }
-
-      if (_stableMeasureFrames < 2 && _measureFrames < 12) {
-        return;
-      }
-
-      setState(() => _stepAreaHeight = maxHeight);
+      _measureStepHeights();
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    _scheduleStepAreaHeightSync();
+  void _measureStepHeights() {
+    var changed = false;
+    for (final entry in _stepKeys.entries) {
+      final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) {
+        continue;
+      }
+      final height = box.size.height;
+      if (_stepHeights[entry.key] != height) {
+        _stepHeights[entry.key] = height;
+        changed = true;
+      }
+    }
+    if (changed) {
+      setState(() {});
+    }
+  }
 
-    final isAnimating = _fromStep != null;
-    final curve = CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic);
-    final fillHeight = _stepAreaHeight != null;
+  double? _heightForStep(SetupWizardStep step) {
+    final height = _stepHeights[step];
+    if (height == null || height <= 0) {
+      return null;
+    }
+    return height;
+  }
 
-    final stack = Stack(
-      key: _stackKey,
+  double? _animatedTransitionHeight(double progress) {
+    final fromStep = _fromStep;
+    if (fromStep == null) {
+      return null;
+    }
+
+    final fromHeight = _transitionFromHeight ?? _heightForStep(fromStep);
+    final toHeight = _transitionToHeight ?? _heightForStep(widget.step);
+    if (fromHeight == null && toHeight == null) {
+      return null;
+    }
+    if (toHeight == null) {
+      return fromHeight;
+    }
+    if (fromHeight == null) {
+      return toHeight;
+    }
+
+    return lerpDouble(fromHeight, toHeight, progress);
+  }
+
+  Widget _buildStepStack({required bool isAnimating, required Animation<double> animation}) {
+    return Stack(
       alignment: Alignment.topCenter,
       clipBehavior: Clip.hardEdge,
       children: [
         for (final step in SetupWizardStep.values)
-          _layerSlot(
-            fillHeight: fillHeight,
-            child: KeyedSubtree(
-              key: _stepKeys[step],
-              child: _SetupStepLayer(
-                step: step,
-                currentStep: widget.step,
-                fromStep: _fromStep,
-                isAnimating: isAnimating,
-                direction: widget.direction,
-                animation: curve,
-                child: _stepWidget(step),
-              ),
-            ),
+          _buildStepLayerSlot(
+            step: step,
+            isAnimating: isAnimating,
+            animation: animation,
+            child: KeyedSubtree(key: _stepKeys[step], child: _stepWidget(step)),
           ),
       ],
     );
-
-    final clipped = ClipRect(child: stack);
-
-    if (!fillHeight) {
-      return clipped;
-    }
-
-    return SetupStepHeightScope(
-      onRequiredHeight: _reportRequiredHeight,
-      child: SetupStepFillScope(
-        fillHeight: true,
-        child: SizedBox(height: _stepAreaHeight, child: clipped),
-      ),
-    );
   }
 
-  Widget _layerSlot({required bool fillHeight, required Widget child}) {
-    if (!fillHeight) {
-      return child;
+  Widget _buildStepLayerSlot({
+    required SetupWizardStep step,
+    required bool isAnimating,
+    required Animation<double> animation,
+    required Widget child,
+  }) {
+    final layer = _SetupStepLayer(
+      step: step,
+      currentStep: widget.step,
+      fromStep: _fromStep,
+      isAnimating: isAnimating,
+      direction: widget.direction,
+      animation: animation,
+      child: child,
+    );
+
+    if (!isAnimating) {
+      return layer;
     }
-    return Positioned(top: 0, left: 0, right: 0, bottom: 0, child: child);
+
+    final isOutgoing = step == _fromStep;
+    final isIncoming = step == widget.step;
+    if (!isOutgoing && !isIncoming) {
+      return layer;
+    }
+
+    return Positioned(top: 0, left: 0, right: 0, child: layer);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _scheduleStepHeightMeasure();
+
+    final isAnimating = _fromStep != null;
+    final curve = CurvedAnimation(parent: _controller, curve: SetupStepTransition.curve);
+    final stack = _buildStepStack(isAnimating: isAnimating, animation: curve);
+
+    if (isAnimating) {
+      return AnimatedBuilder(
+        animation: curve,
+        builder: (context, child) {
+          final height = _animatedTransitionHeight(curve.value);
+          if (height != null) {
+            return ClipRect(
+              child: SizedBox(height: height, width: double.infinity, child: child),
+            );
+          }
+          return child!;
+        },
+        child: stack,
+      );
+    }
+
+    return AnimatedSize(
+      duration: SetupStepTransition.duration,
+      curve: SetupStepTransition.curve,
+      alignment: Alignment.topCenter,
+      clipBehavior: Clip.hardEdge,
+      child: stack,
+    );
   }
 }
 
@@ -210,51 +256,43 @@ class _SetupStepLayer extends StatelessWidget {
     final isIncoming = isAnimating && isCurrent;
 
     if (!isAnimating && isCurrent) {
-      return _maintainSizeLayer(visible: true, ignoringPointers: false, child: child);
+      return child;
     }
 
     if (!isAnimating) {
-      return _maintainSizeLayer(visible: false, ignoringPointers: true, child: child);
+      return _hiddenLayer(child: child);
     }
 
     if (isIncoming) {
-      return _maintainSizeLayer(
-        visible: true,
-        ignoringPointers: true,
-        child: _animatedChild(
-          begin: Offset(direction.toDouble(), 0),
-          end: Offset.zero,
-          opacityBegin: 0,
-          opacityEnd: 1,
-          child: child,
-        ),
+      return _animatedChild(
+        begin: Offset(direction.toDouble(), 0),
+        end: Offset.zero,
+        opacityBegin: 0,
+        opacityEnd: 1,
+        child: child,
       );
     }
 
     if (isOutgoing) {
-      return _maintainSizeLayer(
-        visible: true,
-        ignoringPointers: true,
-        child: _animatedChild(
-          begin: Offset.zero,
-          end: Offset(-direction.toDouble(), 0),
-          opacityBegin: 1,
-          opacityEnd: 0,
-          child: child,
-        ),
+      return _animatedChild(
+        begin: Offset.zero,
+        end: Offset(-direction.toDouble(), 0),
+        opacityBegin: 1,
+        opacityEnd: 0,
+        child: child,
       );
     }
 
-    return _maintainSizeLayer(visible: false, ignoringPointers: true, child: child);
+    return _hiddenLayer(child: child);
   }
 
-  Widget _maintainSizeLayer({required bool visible, required bool ignoringPointers, required Widget child}) {
+  Widget _hiddenLayer({required Widget child}) {
     return Visibility(
-      visible: visible,
+      visible: false,
       maintainState: true,
       maintainAnimation: true,
-      maintainSize: true,
-      child: IgnorePointer(ignoring: ignoringPointers, child: child),
+      maintainSize: false,
+      child: IgnorePointer(child: child),
     );
   }
 

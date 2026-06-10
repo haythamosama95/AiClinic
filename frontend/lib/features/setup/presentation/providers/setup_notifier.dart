@@ -4,11 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_dummy_data.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
+import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/setup/domain/setup_wizard_draft_ids.dart';
+import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 
 /// User-facing messages for clinic setup RPC error codes.
 String setupMessageForRpc(RpcFailure failure) {
@@ -38,12 +46,50 @@ class SetupOrganizationDraft {
 }
 
 @immutable
+class SetupBranchDraft {
+  const SetupBranchDraft({
+    required this.name,
+    required this.code,
+    required this.address,
+    required this.phone,
+    required this.mapsUrl,
+  });
+
+  final String name;
+  final String code;
+  final String address;
+  final String phone;
+  final String mapsUrl;
+}
+
+@immutable
+class SetupStaffDraft {
+  const SetupStaffDraft({
+    required this.username,
+    required this.fullName,
+    required this.role,
+    required this.password,
+    required this.branchIds,
+    this.primaryBranchId,
+  });
+
+  final String username;
+  final String fullName;
+  final StaffRole role;
+  final String password;
+  final List<String> branchIds;
+  final String? primaryBranchId;
+}
+
+@immutable
 class SetupUiState {
   const SetupUiState({
     this.step = SetupWizardStep.organization,
     this.isSubmitting = false,
     this.errorMessage,
     this.organizationDraft,
+    this.branchDraft,
+    this.staffDrafts = const [],
     this.organizationId,
     this.branchId,
     this.hasShownPasswordWarning = false,
@@ -53,9 +99,16 @@ class SetupUiState {
   final bool isSubmitting;
   final String? errorMessage;
   final SetupOrganizationDraft? organizationDraft;
+  final SetupBranchDraft? branchDraft;
+  final List<SetupStaffDraft> staffDrafts;
   final String? organizationId;
   final String? branchId;
   final bool hasShownPasswordWarning;
+
+  /// Wizard still in progress on `/bootstrap` until Finish submits all setup data.
+  bool get isBootstrapWizardInProgress => step != SetupWizardStep.complete;
+
+  bool get draftOwnerAlreadyExists => staffDrafts.any((draft) => draft.role == StaffRole.owner);
 
   SetupUiState copyWith({
     SetupWizardStep? step,
@@ -64,6 +117,10 @@ class SetupUiState {
     bool clearError = false,
     SetupOrganizationDraft? organizationDraft,
     bool clearOrganizationDraft = false,
+    SetupBranchDraft? branchDraft,
+    bool clearBranchDraft = false,
+    List<SetupStaffDraft>? staffDrafts,
+    bool clearStaffDrafts = false,
     String? organizationId,
     String? branchId,
     bool? hasShownPasswordWarning,
@@ -73,6 +130,8 @@ class SetupUiState {
       isSubmitting: isSubmitting ?? this.isSubmitting,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       organizationDraft: clearOrganizationDraft ? null : (organizationDraft ?? this.organizationDraft),
+      branchDraft: clearBranchDraft ? null : (branchDraft ?? this.branchDraft),
+      staffDrafts: clearStaffDrafts ? const [] : (staffDrafts ?? this.staffDrafts),
       organizationId: organizationId ?? this.organizationId,
       branchId: branchId ?? this.branchId,
       hasShownPasswordWarning: hasShownPasswordWarning ?? this.hasShownPasswordWarning,
@@ -98,15 +157,22 @@ class SetupNotifier extends Notifier<SetupUiState> {
 
   /// Returns to organization step without touching the database (draft kept in memory).
   void goBackToOrganizationStep() {
-    state = state.copyWith(step: SetupWizardStep.organization, clearError: true, organizationId: null, branchId: null);
+    state = state.copyWith(
+      step: SetupWizardStep.organization,
+      clearError: true,
+      organizationId: null,
+      branchId: null,
+      clearBranchDraft: true,
+      clearStaffDrafts: true,
+    );
   }
 
-  /// Returns to branch step after organization and branch are saved (staff step only).
+  /// Returns to branch step from staff without touching the database.
   void goBackToBranchStep() {
     if (state.step != SetupWizardStep.staff) {
       return;
     }
-    state = state.copyWith(step: SetupWizardStep.branch, clearError: true);
+    state = state.copyWith(step: SetupWizardStep.branch, clearError: true, clearStaffDrafts: true);
   }
 
   void markSetupComplete() {
@@ -152,6 +218,139 @@ class SetupNotifier extends Notifier<SetupUiState> {
       step: SetupWizardStep.branch,
       organizationId: null,
       branchId: null,
+      clearBranchDraft: true,
+      clearStaffDrafts: true,
+    );
+    return true;
+  }
+
+  /// Validates branch fields and advances UI only — no RPC until Finish on the staff step.
+  bool continueToStaffStep({
+    required String branchName,
+    required String branchCode,
+    required String address,
+    required String phone,
+    required String mapsUrl,
+  }) {
+    final draft = state.organizationDraft;
+    if (draft == null) {
+      state = state.copyWith(errorMessage: 'Complete organization details first.', step: SetupWizardStep.organization);
+      return false;
+    }
+
+    if (branchName.trim().isEmpty) {
+      state = state.copyWith(errorMessage: 'Enter a name for your first branch.');
+      return false;
+    }
+    if (branchCode.trim().isEmpty) {
+      state = state.copyWith(errorMessage: 'Enter a branch code.');
+      return false;
+    }
+    if (address.trim().isEmpty) {
+      state = state.copyWith(errorMessage: 'Enter the branch address.');
+      return false;
+    }
+    if (phone.trim().isEmpty) {
+      state = state.copyWith(errorMessage: 'Enter a branch phone number.');
+      return false;
+    }
+    if (mapsUrl.trim().isEmpty) {
+      state = state.copyWith(errorMessage: 'Enter a maps link for the branch.');
+      return false;
+    }
+
+    state = state.copyWith(
+      clearError: true,
+      branchDraft: SetupBranchDraft(
+        name: branchName.trim(),
+        code: branchCode.trim(),
+        address: address.trim(),
+        phone: phone.trim(),
+        mapsUrl: mapsUrl.trim(),
+      ),
+      step: SetupWizardStep.staff,
+      organizationId: null,
+      branchId: null,
+      clearStaffDrafts: true,
+    );
+    return true;
+  }
+
+  /// Validates staff fields and stores a draft locally — no RPC until Finish.
+  bool addStaffDraft({
+    required String username,
+    required String fullName,
+    required StaffRole role,
+    required List<String> branchIds,
+    required String password,
+    String? primaryBranchId,
+  }) {
+    final session = ref.read(authSessionProvider).context;
+    if (session == null) {
+      state = state.copyWith(errorMessage: 'Sign in again to create staff accounts.');
+      return false;
+    }
+
+    if (state.branchDraft == null) {
+      state = state.copyWith(errorMessage: 'Complete branch details first.', step: SetupWizardStep.branch);
+      return false;
+    }
+
+    final caller = session.staffProfile;
+    final trimmedName = fullName.trim();
+    final usernameError = validateStaffUsername(username);
+    if (usernameError != null) {
+      state = state.copyWith(errorMessage: usernameError);
+      return false;
+    }
+    final normalizedUsername = normalizeStaffUsername(username);
+    if (trimmedName.isEmpty) {
+      state = state.copyWith(errorMessage: 'Enter the staff member full name.');
+      return false;
+    }
+    final passwordError = StaffPasswordValidation.validateInitialPassword(password);
+    if (passwordError != null) {
+      state = state.copyWith(errorMessage: passwordError);
+      return false;
+    }
+    if (branchIds.isEmpty) {
+      state = state.copyWith(errorMessage: 'Select at least one branch assignment.');
+      return false;
+    }
+
+    final ownerAlreadyExists =
+        ref.read(provisioningNotifierProvider).ownerAlreadyExists || state.draftOwnerAlreadyExists;
+    final roleError = ProvisioningRules.validateRoleChoice(caller, role, ownerAlreadyExists: ownerAlreadyExists);
+    if (roleError != null) {
+      state = state.copyWith(errorMessage: roleError);
+      return false;
+    }
+
+    final primary = primaryBranchId ?? branchIds.first;
+    if (!branchIds.contains(primary)) {
+      state = state.copyWith(errorMessage: 'Primary branch must be one of the selected branches.');
+      return false;
+    }
+
+    final duplicateUsername = state.staffDrafts.any((draft) => draft.username == normalizedUsername);
+    if (duplicateUsername) {
+      state = state.copyWith(errorMessage: 'A staff account with this username is already in the setup list.');
+      return false;
+    }
+
+    state = state.copyWith(
+      clearError: true,
+      staffDrafts: [
+        ...state.staffDrafts,
+        SetupStaffDraft(
+          username: normalizedUsername,
+          fullName: trimmedName,
+          role: role,
+          password: password,
+          branchIds: List<String>.from(branchIds),
+          primaryBranchId: primary,
+        ),
+      ],
     );
     return true;
   }
@@ -190,7 +389,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
     }
   }
 
-  /// Persists organization and branch with preset dev values (debug UI only).
+  /// Persists organization, branch, and a dummy owner with preset dev values (debug UI only).
   Future<bool> finishSetupWithDummyData() async {
     AppLog.info('setup.dev_dummy_fill.start');
     state = state.copyWith(
@@ -200,92 +399,101 @@ class SetupNotifier extends Notifier<SetupUiState> {
         currencyCode: BootstrapDummyData.currencyCode,
         timezone: BootstrapDummyData.timezone,
       ),
-      step: SetupWizardStep.branch,
+      branchDraft: const SetupBranchDraft(
+        name: BootstrapDummyData.branchName,
+        code: BootstrapDummyData.branchCode,
+        address: BootstrapDummyData.branchAddress,
+        phone: BootstrapDummyData.branchPhone,
+        mapsUrl: BootstrapDummyData.branchMapsUrl,
+      ),
+      staffDrafts: const [
+        SetupStaffDraft(
+          username: 'owner',
+          fullName: 'Demo Owner',
+          role: StaffRole.owner,
+          password: 'DemoPass1',
+          branchIds: [SetupWizardDraftIds.branch],
+          primaryBranchId: SetupWizardDraftIds.branch,
+        ),
+      ],
+      step: SetupWizardStep.staff,
     );
 
-    return finishSetup(
-      branchName: BootstrapDummyData.branchName,
-      branchCode: BootstrapDummyData.branchCode,
-      address: BootstrapDummyData.branchAddress,
-      phone: BootstrapDummyData.branchPhone,
-      mapsUrl: BootstrapDummyData.branchMapsUrl,
-    );
+    return finishSetup();
   }
 
-  /// Persists organization and branch together after both wizard steps are complete.
-  Future<bool> finishSetup({
-    required String branchName,
-    required String branchCode,
-    required String address,
-    required String phone,
-    required String mapsUrl,
-  }) async {
-    final draft = state.organizationDraft;
-    if (draft == null) {
+  /// Persists organization, branch, and all staff drafts together when Finish is pressed.
+  Future<bool> finishSetup() async {
+    final orgDraft = state.organizationDraft;
+    if (orgDraft == null) {
       state = state.copyWith(errorMessage: 'Complete organization details first.', step: SetupWizardStep.organization);
       return false;
     }
 
-    if (branchName.trim().isEmpty) {
-      state = state.copyWith(errorMessage: 'Enter a name for your first branch.');
+    final branchDraft = state.branchDraft;
+    if (branchDraft == null) {
+      state = state.copyWith(errorMessage: 'Complete branch details first.', step: SetupWizardStep.branch);
       return false;
     }
-    if (branchCode.trim().isEmpty) {
-      state = state.copyWith(errorMessage: 'Enter a branch code.');
-      return false;
-    }
-    if (address.trim().isEmpty) {
-      state = state.copyWith(errorMessage: 'Enter the branch address.');
-      return false;
-    }
-    if (phone.trim().isEmpty) {
-      state = state.copyWith(errorMessage: 'Enter a branch phone number.');
-      return false;
-    }
-    if (mapsUrl.trim().isEmpty) {
-      state = state.copyWith(errorMessage: 'Enter a maps link for the branch.');
+
+    if (state.staffDrafts.isEmpty) {
+      state = state.copyWith(errorMessage: 'Create at least one staff account to finish setup.');
       return false;
     }
 
     state = state.copyWith(isSubmitting: true, clearError: true);
-    AppLog.info('setup.finish_setup.start');
+    AppLog.info('setup.finish_setup.start staff_count=${state.staffDrafts.length}');
 
     try {
-      final organizationId = await ref.read(createOrganizationUseCaseProvider)(
-        BootstrapOrganizationInput(
-          name: draft.name,
-          logoUrl: draft.logoUrl,
-          currencyCode: draft.currencyCode,
-          timezone: draft.timezone,
+      final result = await ref.read(finishBootstrapSetupUseCaseProvider)(
+        BootstrapFinishSetupInput(
+          organization: BootstrapOrganizationInput(
+            name: orgDraft.name,
+            logoUrl: orgDraft.logoUrl,
+            currencyCode: orgDraft.currencyCode,
+            timezone: orgDraft.timezone,
+          ),
+          branch: BootstrapBranchInput(
+            organizationId: '',
+            name: branchDraft.name,
+            code: branchDraft.code,
+            address: branchDraft.address,
+            phone: branchDraft.phone,
+            mapsUrl: branchDraft.mapsUrl,
+          ),
+          staffAccounts: [
+            for (final staffDraft in state.staffDrafts)
+              CreateStaffAccountInput(
+                username: staffDraft.username,
+                password: staffDraft.password,
+                fullName: staffDraft.fullName,
+                role: staffDraft.role,
+                branchIds: staffDraft.branchIds,
+                primaryBranchId: staffDraft.primaryBranchId,
+              ),
+          ],
         ),
       );
-      AppLog.info('setup.finish_setup.organization_created id=$organizationId');
-
-      final branchId = await ref.read(createBootstrapBranchUseCaseProvider)(
-        BootstrapBranchInput(
-          organizationId: organizationId,
-          name: branchName.trim(),
-          code: branchCode.trim(),
-          address: address.trim(),
-          phone: phone.trim(),
-          mapsUrl: mapsUrl.trim(),
-        ),
+      AppLog.info(
+        'setup.finish_setup.completed org=${result.organizationId} '
+        'branch=${result.branchId} staff_count=${result.staffMemberIds.length}',
       );
-      AppLog.info('setup.finish_setup.branch_created id=$branchId');
 
       await ref.read(authSessionProvider.notifier).refreshSessionContext();
 
       state = state.copyWith(
         isSubmitting: false,
-        organizationId: organizationId,
-        branchId: branchId,
-        step: SetupWizardStep.staff,
+        organizationId: result.organizationId,
+        branchId: result.branchId,
+        step: SetupWizardStep.complete,
         clearOrganizationDraft: true,
+        clearBranchDraft: true,
+        clearStaffDrafts: true,
       );
       return true;
     } on RpcFailure catch (error) {
       AppLog.warning('setup.finish_setup.rpc_failed code=${error.code}');
-      state = state.copyWith(isSubmitting: false, errorMessage: setupMessageForRpc(error));
+      state = state.copyWith(isSubmitting: false, errorMessage: _finishSetupMessageForRpc(error));
       return false;
     } catch (error) {
       AppLog.warning('setup.finish_setup.failed reason=${error.runtimeType}');
@@ -295,6 +503,19 @@ class SetupNotifier extends Notifier<SetupUiState> {
       );
       return false;
     }
+  }
+
+  static String _finishSetupMessageForRpc(RpcFailure failure) {
+    return switch (failure.code) {
+      'ORG_SETUP_INCOMPLETE' ||
+      'FORBIDDEN_OWNER_CREATE' ||
+      'FORBIDDEN' ||
+      'USERNAME_EXISTS' ||
+      'INVALID_BRANCH' ||
+      'WEAK_PASSWORD' ||
+      'RPC_NOT_APPLIED' => provisioningMessageForRpc(failure),
+      _ => setupMessageForRpc(failure),
+    };
   }
 
   static String? _emptyToNull(String? value) {

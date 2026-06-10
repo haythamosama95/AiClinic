@@ -29,12 +29,12 @@ abstract final class ProvisioningRules {
     return operational;
   }
 
-  /// FR-022c: first owner only by bootstrap admin; additional owners only by existing owners.
+  /// FR-022c: first owner only by bootstrap admin; additional owners by owners or administrators.
   static bool mayAssignOwnerRole(StaffProfile caller, {required bool ownerAlreadyExists}) {
     if (!ownerAlreadyExists) {
       return caller.isBootstrapAdmin;
     }
-    return caller.role == StaffRole.owner;
+    return caller.role == StaffRole.owner || caller.role == StaffRole.administrator;
   }
 
   /// Validates a role choice before calling the RPC (mirrors server rules).
@@ -47,7 +47,7 @@ abstract final class ProvisioningRules {
       if (!ownerAlreadyExists) {
         return 'Only the bootstrap administrator can create the first owner account.';
       }
-      return 'Only existing owners can create additional owner accounts.';
+      return 'Only clinic owners and administrators can create additional owner accounts.';
     }
 
     return null;

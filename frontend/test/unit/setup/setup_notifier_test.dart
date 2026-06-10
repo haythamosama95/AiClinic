@@ -1,8 +1,9 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
-import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_dummy_data.dart';
-import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_result.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import '../../helpers/auth_test_support.dart';
@@ -73,27 +74,99 @@ void main() {
       expect(container.read(setupNotifierProvider).step, SetupWizardStep.organization);
     });
 
-    test('finishSetupWithDummyData stores draft and calls repository', () async {
+    test('continueToStaffStep stores branch draft without organizationId', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(setupNotifierProvider.notifier);
+
+      notifier.continueToBranchStep(name: 'Sunrise Clinic', currencyCode: 'EGP', timezone: 'Africa/Cairo');
+      final ok = notifier.continueToStaffStep(
+        branchName: 'Main',
+        branchCode: 'MAIN',
+        address: '123 Street',
+        phone: '+20 100 000 0000',
+        mapsUrl: 'https://maps.example.com/main',
+      );
+
+      expect(ok, isTrue);
+      final state = container.read(setupNotifierProvider);
+      expect(state.step, SetupWizardStep.staff);
+      expect(state.organizationId, isNull);
+      expect(state.branchId, isNull);
+      expect(state.branchDraft?.name, 'Main');
+    });
+
+    test('addStaffDraft stores staff locally without RPC', () {
+      final container = ProviderContainer(overrides: [authSessionProvider.overrideWith(TestAuthSessionNotifier.new)]);
+      addTearDown(container.dispose);
+      (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setSession(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: AuthSessionContext(
+            staffProfile: const StaffProfile(
+              staffMemberId: '00000000-0000-4000-8000-000000000010',
+              fullName: 'Bootstrap Admin',
+              role: StaffRole.administrator,
+              isBootstrapAdmin: true,
+              isActive: true,
+            ),
+            organizationId: null,
+            branchIds: const [],
+            activeBranchId: null,
+            permissions: const {},
+            setupRequired: true,
+          ),
+        ),
+      );
+      final notifier = container.read(setupNotifierProvider.notifier);
+
+      notifier.continueToBranchStep(name: 'Sunrise Clinic', currencyCode: 'EGP', timezone: 'Africa/Cairo');
+      notifier.continueToStaffStep(
+        branchName: 'Main',
+        branchCode: 'MAIN',
+        address: '123 Street',
+        phone: '+20 100 000 0000',
+        mapsUrl: 'https://maps.example.com/main',
+      );
+
+      final ok = notifier.addStaffDraft(
+        username: 'owner1',
+        fullName: 'Owner One',
+        role: StaffRole.owner,
+        branchIds: const ['branch-local'],
+        password: 'Secret12',
+      );
+
+      expect(ok, isTrue);
+      expect(container.read(setupNotifierProvider).staffDrafts, hasLength(1));
+      expect(container.read(setupNotifierProvider).staffDrafts.first.username, 'owner1');
+    });
+
+    test('finishSetupWithDummyData submits organization, branch, and staff atomically', () async {
+      final bootstrapRepo = _RecordingBootstrapRepository();
       final container = ProviderContainer(
         overrides: [
-          bootstrapRepositoryProvider.overrideWith((ref) => _RecordingBootstrapRepository()),
+          bootstrapRepositoryProvider.overrideWithValue(bootstrapRepo),
           authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
         ],
       );
       addTearDown(container.dispose);
+      (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setAuthenticated(setupRequired: true);
 
       final ok = await container.read(setupNotifierProvider.notifier).finishSetupWithDummyData();
 
       expect(ok, isTrue);
       final state = container.read(setupNotifierProvider);
-      expect(state.step, SetupWizardStep.staff);
+      expect(state.step, SetupWizardStep.complete);
       expect(state.organizationId, 'org-dummy');
       expect(state.branchId, 'branch-dummy');
+      expect(state.staffDrafts, isEmpty);
 
-      final repo = container.read(bootstrapRepositoryProvider) as _RecordingBootstrapRepository;
-      expect(repo.organizationInput?.name, BootstrapDummyData.organizationName);
-      expect(repo.branchInput?.name, BootstrapDummyData.branchName);
-      expect(repo.branchInput?.code, BootstrapDummyData.branchCode);
+      expect(bootstrapRepo.finishSetupInput?.organization.name, BootstrapDummyData.organizationName);
+      expect(bootstrapRepo.finishSetupInput?.branch.name, BootstrapDummyData.branchName);
+      expect(bootstrapRepo.finishSetupInput?.branch.code, BootstrapDummyData.branchCode);
+      expect(bootstrapRepo.finishSetupInput?.staffAccounts, hasLength(1));
+      expect(bootstrapRepo.finishSetupInput?.staffAccounts.first.username, 'owner');
     });
 
     test('resetInstallationForDevelopment clears wizard after successful RPC', () async {
@@ -148,19 +221,16 @@ void main() {
 class _RecordingBootstrapRepository extends BootstrapRepositoryImpl {
   _RecordingBootstrapRepository() : super(_ThrowingSupabaseClient());
 
-  BootstrapOrganizationInput? organizationInput;
-  BootstrapBranchInput? branchInput;
+  BootstrapFinishSetupInput? finishSetupInput;
 
   @override
-  Future<String> createOrganization(BootstrapOrganizationInput input) async {
-    organizationInput = input;
-    return 'org-dummy';
-  }
-
-  @override
-  Future<String> createBranch(BootstrapBranchInput input) async {
-    branchInput = input;
-    return 'branch-dummy';
+  Future<BootstrapFinishSetupResult> finishSetup(BootstrapFinishSetupInput input) async {
+    finishSetupInput = input;
+    return const BootstrapFinishSetupResult(
+      organizationId: 'org-dummy',
+      branchId: 'branch-dummy',
+      staffMemberIds: ['staff-dummy'],
+    );
   }
 }
 

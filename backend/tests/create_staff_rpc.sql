@@ -244,7 +244,7 @@ PERFORM set_config('role', 'postgres', true);
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Bootstrap admin cannot create a second owner once one exists.
+  -- Bootstrap administrator may create a second owner once one exists.
   v_result := public.create_staff_account(
     'owner-bootstrap-second',
     'owner-pass-2',
@@ -254,13 +254,13 @@ PERFORM set_config('role', 'postgres', true);
   );
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'bootstrap_blocked_second_owner',
-    NOT v_result.success AND v_result.error_code = 'FORBIDDEN_OWNER_CREATE',
-    COALESCE(v_result.error_code, '<null>')
+'bootstrap_admin_creates_second_owner',
+    v_result.success AND (v_result.data ->> 'staff_member_id') IS NOT NULL,
+    COALESCE(v_result.error_code, 'ok')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Non-bootstrap administrator cannot create owner when owner exists.
+  -- Non-bootstrap administrator may create owner when owner exists.
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object('sub', v_admin_user::text, 'role', 'authenticated')::text,
@@ -281,9 +281,9 @@ PERFORM set_config('role', 'postgres', true);
   );
 PERFORM set_config('role', 'postgres', true);
   INSERT INTO create_staff_rpc_results VALUES (
-'admin_cannot_create_owner_when_owner_exists',
-    NOT v_result.success AND v_result.error_code = 'FORBIDDEN_OWNER_CREATE',
-    COALESCE(v_result.error_code, '<null>')
+'admin_can_create_owner_when_owner_exists',
+    v_result.success AND (v_result.data ->> 'staff_member_id') IS NOT NULL,
+    COALESCE(v_result.error_code, 'ok')
   );
   PERFORM set_config('role', 'authenticated', true);
 

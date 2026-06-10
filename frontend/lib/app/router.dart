@@ -7,6 +7,7 @@ import 'package:ai_clinic/app/presentation/startup_entry_page.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_clinic/features/setup/presentation/pages/setup_page.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/core/ui/demo/theme_showcase_page.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
@@ -21,6 +22,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshSignal.value++;
   });
   ref.listen<AuthSessionState>(authSessionProvider, (_, _) {
+    refreshSignal.value++;
+  });
+  ref.listen<SetupUiState>(setupNotifierProvider, (_, _) {
     refreshSignal.value++;
   });
 
@@ -168,12 +172,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);
       final auth = ref.read(authSessionProvider);
+      final setup = ref.read(setupNotifierProvider);
       final location = state.matchedLocation;
+
+      String? resolveAuthRedirect(String route) => AuthRouteGuard.resolveRedirect(
+        location: route,
+        auth: auth,
+        bootstrapStaffWizardInProgress: setup.isBootstrapWizardInProgress,
+      );
 
       final isProtectedFeatureRoute = AuthRouteGuard.requiresProtectedSetupComplete(location);
       if (isProtectedFeatureRoute) {
         if (session.configurationStatus == StartupConfigurationStatus.valid) {
-          final authTarget = AuthRouteGuard.resolveRedirect(location: location, auth: auth);
+          final authTarget = resolveAuthRedirect(location);
           if (authTarget != null) {
             return authTarget;
           }
@@ -195,7 +206,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         StartupCurrentView.protectedRouteBlocked =>
           location == AppRoutes.protectedBlocked ? null : AppRoutes.protectedBlocked,
         StartupCurrentView.unauthenticatedEntry => () {
-          final authRedirect = AuthRouteGuard.resolveRedirect(location: location, auth: auth);
+          final authRedirect = resolveAuthRedirect(location);
           if (authRedirect != null) {
             return authRedirect;
           }
@@ -219,7 +230,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (session.currentView == StartupCurrentView.unauthenticatedEntry) {
-        final authRedirect = AuthRouteGuard.resolveRedirect(location: location, auth: auth);
+        final authRedirect = resolveAuthRedirect(location);
         if (authRedirect != null) {
           return authRedirect;
         }
