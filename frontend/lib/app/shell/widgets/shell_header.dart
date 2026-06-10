@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
@@ -23,35 +25,59 @@ class ShellHeader extends StatelessWidget {
       height: ShellTokens.headerHeight,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: ShellTokens.contentPanelInset),
-        child: Row(
-          children: [
-            if (pageTitle != null)
-              Text(
-                pageTitle!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleLarge?.copyWith(color: colors.foreground),
-              ),
-            if (pageTitle != null) const SizedBox(width: SpacingTokens.lg),
-            Expanded(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: ShellTokens.headerSearchMaxWidth),
-                  // TODO: Wire global search once the search API and routing are defined.
-                  child: AppTextInput(
-                    hintText: 'Search patients, appointments, visits…',
-                    size: AppFieldSize.sm,
-                    prefixIcon: const Icon(Icons.search, size: 18),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final searchWidth = math.min(ShellTokens.headerSearchMaxWidth, constraints.maxWidth).toDouble();
+            final titleMaxWidth = math.max(0.0, (constraints.maxWidth - searchWidth) / 2 - SpacingTokens.sm);
+
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                Align(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: searchWidth),
+                    // TODO: Wire global search once the search API and routing are defined.
+                    child: AppTextInput(
+                      hintText: 'Search patients, appointments, visits…',
+                      size: AppFieldSize.sm,
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            const ShellHeaderProfile(),
-            const SizedBox(width: ShellTokens.headerActionsGap),
-            const ShellHeaderIconButton(icon: Icons.notifications_outlined, tooltip: 'Notifications'),
-            const SizedBox(width: SpacingTokens.sm),
-            const ShellHeaderIconButton(icon: Icons.settings_outlined, tooltip: 'Settings'),
-          ],
+                if (pageTitle != null)
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: titleMaxWidth,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        pageTitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge?.copyWith(color: colors.foreground),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const ShellHeaderProfile(),
+                      const SizedBox(width: ShellTokens.headerActionsGap),
+                      const ShellHeaderIconButton(icon: Icons.notifications_outlined, tooltip: 'Notifications'),
+                      const SizedBox(width: SpacingTokens.sm),
+                      const ShellHeaderIconButton(icon: Icons.settings_outlined, tooltip: 'Settings'),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
