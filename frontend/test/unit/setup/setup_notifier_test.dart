@@ -86,7 +86,7 @@ void main() {
 
       expect(ok, isTrue);
       final state = container.read(setupNotifierProvider);
-      expect(state.step, SetupWizardStep.complete);
+      expect(state.step, SetupWizardStep.staff);
       expect(state.organizationId, 'org-dummy');
       expect(state.branchId, 'branch-dummy');
 

@@ -25,7 +25,7 @@ String setupMessageForRpc(RpcFailure failure) {
   };
 }
 
-enum SetupWizardStep { organization, branch, complete }
+enum SetupWizardStep { organization, branch, staff, complete }
 
 @immutable
 class SetupOrganizationDraft {
@@ -99,6 +99,18 @@ class SetupNotifier extends Notifier<SetupUiState> {
   /// Returns to organization step without touching the database (draft kept in memory).
   void goBackToOrganizationStep() {
     state = state.copyWith(step: SetupWizardStep.organization, clearError: true, organizationId: null, branchId: null);
+  }
+
+  /// Returns to branch step after organization and branch are saved (staff step only).
+  void goBackToBranchStep() {
+    if (state.step != SetupWizardStep.staff) {
+      return;
+    }
+    state = state.copyWith(step: SetupWizardStep.branch, clearError: true);
+  }
+
+  void markSetupComplete() {
+    state = state.copyWith(step: SetupWizardStep.complete, clearError: true);
   }
 
   void resetWizardState() {
@@ -267,7 +279,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
         isSubmitting: false,
         organizationId: organizationId,
         branchId: branchId,
-        step: SetupWizardStep.complete,
+        step: SetupWizardStep.staff,
         clearOrganizationDraft: true,
       );
       return true;

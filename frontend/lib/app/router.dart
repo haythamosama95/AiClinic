@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/startup_entry_page.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
+import 'package:ai_clinic/features/setup/presentation/pages/setup_page.dart';
 import 'package:ai_clinic/core/ui/demo/theme_showcase_page.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
@@ -52,7 +53,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const ThemeShowcasePage(embeddedInShell: true),
           ),
           GoRoute(path: AppRoutes.home, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
-          GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
+          GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const SetupPage()),
 
           // Patient management
           GoRoute(path: AppRoutes.patients, builder: (context, state) => uiPendingPlaceholder('Patients', state)),

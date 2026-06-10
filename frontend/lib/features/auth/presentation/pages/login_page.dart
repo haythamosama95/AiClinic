@@ -44,7 +44,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     ref.listen<AuthUiState>(authNotifierProvider, (previous, next) {
       if (previous?.isSubmitting == true && next.isSubmitting == false && next.errorMessage == null) {
-        if (mounted) context.go(AppRoutes.home);
+        if (!mounted) return;
+        final setupRequired = ref.read(authSessionProvider).context?.setupRequired ?? false;
+        context.go(setupRequired ? AppRoutes.bootstrap : AppRoutes.home);
       }
     });
 
