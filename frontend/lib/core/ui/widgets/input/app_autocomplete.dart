@@ -50,7 +50,7 @@ class AppAutocomplete<T> extends StatelessWidget {
         initial: initialText,
         onChange: (textValue) {
           final parsed = items[textValue.text];
-          if (parsed != null) {
+          if (parsed != value) {
             onChanged?.call(parsed);
           }
         },
