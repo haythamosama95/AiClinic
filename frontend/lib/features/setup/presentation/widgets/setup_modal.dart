@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/setup/domain/setup_step_readiness.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_branch_step.dart';
@@ -47,8 +48,8 @@ class _SetupModalState extends ConsumerState<SetupModal> {
   final _staffFullNameController = TextEditingController();
   final _staffPasswordController = TextEditingController();
 
-  String? _currency;
-  String? _timezone;
+  String? _currency = BootstrapCurrencyOptions.defaultCode;
+  String? _timezone = BootstrapTimezoneOptions.defaultZone;
   int _stepTransitionDirection = 1;
   late final List<TextEditingController> _fieldControllers;
 

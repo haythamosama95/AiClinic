@@ -1,8 +1,10 @@
+import 'bootstrap_field_options.dart';
+
 /// Preset values for local development bootstrap (debug-only UI).
 abstract final class BootstrapDummyData {
   static const organizationName = 'Demo Clinic';
-  static const currencyCode = 'EGP';
-  static const timezone = 'Africa/Cairo';
+  static const currencyCode = BootstrapCurrencyOptions.defaultCode;
+  static const timezone = BootstrapTimezoneOptions.defaultZone;
   static const branchName = 'Main Branch';
   static const branchCode = 'MAIN';
   static const branchAddress = '123 Demo Street, Cairo';

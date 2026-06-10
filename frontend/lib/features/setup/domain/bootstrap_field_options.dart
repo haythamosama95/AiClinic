@@ -1,5 +1,7 @@
 /// ISO 4217 currency codes supported in clinic bootstrap (searchable dropdown).
 abstract final class BootstrapCurrencyOptions {
+  static const String defaultCode = 'EGP';
+
   static const List<String> codes = [
     'AED',
     'AUD',
@@ -40,6 +42,8 @@ abstract final class BootstrapCurrencyOptions {
 
 /// IANA time zones for clinic bootstrap (searchable dropdown).
 abstract final class BootstrapTimezoneOptions {
+  static const String defaultZone = 'Africa/Cairo';
+
   static const List<String> zones = [
     'Africa/Cairo',
     'Africa/Johannesburg',
