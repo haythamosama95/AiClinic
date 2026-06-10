@@ -1,8 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
@@ -45,30 +48,44 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
-            child: LoginModal(
-              key: ValueKey(_loginPresentationGeneration),
-              isSubmitting: authState.isSubmitting,
-              errorMessage: errorMessage,
-              initialShowForgotPasswordInfo: GoRouterState.of(context).uri.queryParameters.containsKey('forgot'),
-              onDismissSignInError: _clearSignInErrors,
-              onClose: () {
-                _resetSignInPresentation();
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.go(AppRoutes.startupEntry);
-                }
-              },
-              onSubmit: (username, password) {
-                ref.read(authNotifierProvider.notifier).signIn(username: username, password: password);
-              },
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const IgnorePointer(
+            child: UiPendingPlaceholderPage(featureName: 'Setup', routeName: AppRoutes.bootstrap),
+          ),
+          ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: ColoredBox(color: colors.background.withValues(alpha: 0.35)),
             ),
           ),
-        ),
+          SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
+                child: LoginModal(
+                  key: ValueKey(_loginPresentationGeneration),
+                  isSubmitting: authState.isSubmitting,
+                  errorMessage: errorMessage,
+                  initialShowForgotPasswordInfo: GoRouterState.of(context).uri.queryParameters.containsKey('forgot'),
+                  onDismissSignInError: _clearSignInErrors,
+                  onClose: () {
+                    _resetSignInPresentation();
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.go(AppRoutes.startupEntry);
+                    }
+                  },
+                  onSubmit: (username, password) {
+                    ref.read(authNotifierProvider.notifier).signIn(username: username, password: password);
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
