@@ -52,6 +52,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
   String? _timezone = BootstrapTimezoneOptions.defaultZone;
   int _stepTransitionDirection = 1;
   late final List<TextEditingController> _fieldControllers;
+  late final Listenable _formFieldsListenable;
 
   @override
   void initState() {
@@ -68,17 +69,12 @@ class _SetupModalState extends ConsumerState<SetupModal> {
       _staffFullNameController,
       _staffPasswordController,
     ];
-    for (final controller in _fieldControllers) {
-      controller.addListener(_onFieldChanged);
-    }
+    _formFieldsListenable = Listenable.merge(_fieldControllers);
     _restoreDraftFromState();
   }
 
   @override
   void dispose() {
-    for (final controller in _fieldControllers) {
-      controller.removeListener(_onFieldChanged);
-    }
     _orgNameController.dispose();
     _logoUrlController.dispose();
     _branchNameController.dispose();
@@ -90,12 +86,6 @@ class _SetupModalState extends ConsumerState<SetupModal> {
     _staffFullNameController.dispose();
     _staffPasswordController.dispose();
     super.dispose();
-  }
-
-  void _onFieldChanged() {
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   bool _isNextEnabled(SetupWizardStep step) {
@@ -271,13 +261,16 @@ class _SetupModalState extends ConsumerState<SetupModal> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                SetupWizardNavBar(
-                  showBack: setup.step == SetupWizardStep.branch,
-                  showNext: setup.step == SetupWizardStep.organization || setup.step == SetupWizardStep.branch,
-                  nextEnabled: _isNextEnabled(setup.step),
-                  isBusy: isBusy,
-                  onBack: () => ref.read(setupNotifierProvider.notifier).goBackToOrganizationStep(),
-                  onNext: _onNextPressed,
+                ListenableBuilder(
+                  listenable: _formFieldsListenable,
+                  builder: (context, _) => SetupWizardNavBar(
+                    showBack: setup.step == SetupWizardStep.branch,
+                    showNext: setup.step == SetupWizardStep.organization || setup.step == SetupWizardStep.branch,
+                    nextEnabled: _isNextEnabled(setup.step),
+                    isBusy: isBusy,
+                    onBack: () => ref.read(setupNotifierProvider.notifier).goBackToOrganizationStep(),
+                    onNext: _onNextPressed,
+                  ),
                 ),
                 const SizedBox(height: SpacingTokens.md),
                 Row(

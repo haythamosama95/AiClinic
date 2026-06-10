@@ -3,8 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_field_options.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/setup_organization_step.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_searchable_field.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_transition.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_wizard_nav_bar.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 
 void main() {
   testWidgets('clearing searchable field disables Next via onChanged(null)', (tester) async {
@@ -88,5 +91,64 @@ void main() {
     await tester.pump();
 
     expect(nextEnabled, isFalse);
+  });
+
+  testWidgets('organization name field keeps focus while typing with step transition layout', (tester) async {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController();
+    final logoUrlController = TextEditingController();
+    const currency = BootstrapCurrencyOptions.defaultCode;
+    const timezone = BootstrapTimezoneOptions.defaultZone;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              return ListenableBuilder(
+                listenable: Listenable.merge([nameController, logoUrlController]),
+                builder: (context, _) {
+                  return Column(
+                    children: [
+                      SetupStepTransition(
+                        step: SetupWizardStep.organization,
+                        direction: 1,
+                        organizationStep: SetupOrganizationStep(
+                          formKey: formKey,
+                          nameController: nameController,
+                          logoUrlController: logoUrlController,
+                          currency: currency,
+                          timezone: timezone,
+                          onCurrencyChanged: (_) {},
+                          onTimezoneChanged: (_) {},
+                          isBusy: false,
+                        ),
+                        branchStep: const SizedBox.shrink(),
+                        staffStep: const SizedBox.shrink(),
+                        completeStep: const SizedBox.shrink(),
+                      ),
+                      SetupWizardNavBar(showNext: true, nextEnabled: nameController.text.trim().isNotEmpty),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(AppTextField, 'Organization name *'));
+    await tester.pump();
+
+    final focusBefore = FocusManager.instance.primaryFocus;
+    expect(focusBefore, isNotNull);
+
+    await tester.enterText(find.widgetWithText(AppTextField, 'Organization name *'), 'Demo');
+    await tester.pump();
+
+    expect(FocusManager.instance.primaryFocus, focusBefore);
+    expect(nameController.text, 'Demo');
   });
 }
