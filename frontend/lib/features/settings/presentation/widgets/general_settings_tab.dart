@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/idle_timeout_settings_card.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_cards_grid.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_section_card.dart';
 
@@ -57,6 +58,7 @@ class GeneralSettingsTab extends ConsumerWidget {
                 ],
               ),
             ),
+            const IdleTimeoutSettingsCard(),
           ],
         ),
       ],

@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
+import 'package:ai_clinic/features/settings/application/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_cards_grid.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_section_card.dart';
@@ -16,6 +17,11 @@ import 'package:go_router/go_router.dart';
 
 import '../shell/shell_test_support.dart';
 
+class _TestIdleTimeoutSettingsNotifier extends IdleTimeoutSettingsNotifier {
+  @override
+  Future<IdleTimeoutSettingsState> build() async => const IdleTimeoutSettingsState(duration: Duration(minutes: 15));
+}
+
 void main() {
   group('SettingsPage', () {
     Future<void> pumpSettingsPage(WidgetTester tester, {Size size = shellSurfaceSize}) async {
@@ -24,6 +30,7 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [idleTimeoutSettingsProvider.overrideWith(_TestIdleTimeoutSettingsNotifier.new)],
           child: MaterialApp(
             theme: AppTheme.light(),
             builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
@@ -65,8 +72,9 @@ void main() {
     testWidgets('general tab shows appearance settings card', (tester) async {
       await pumpSettingsPage(tester);
 
-      expect(find.byType(SettingsSectionCard), findsOneWidget);
+      expect(find.byType(SettingsSectionCard), findsNWidgets(2));
       expect(find.text('Appearance'), findsOneWidget);
+      expect(find.text('Idle sign-out'), findsOneWidget);
       expect(find.text('Theme'), findsOneWidget);
       expect(find.text('Color mode'), findsOneWidget);
       expect(find.text('Astro Vista'), findsOneWidget);
@@ -80,10 +88,12 @@ void main() {
       await pumpSettingsPage(tester, size: const Size(1000, 800));
 
       final gridBox = tester.renderObject<RenderBox>(find.byType(SettingsCardsGrid));
-      final cardBox = tester.renderObject<RenderBox>(find.byType(SettingsSectionCard));
+      final cardBoxes = tester.renderObjectList<RenderBox>(find.byType(SettingsSectionCard));
       final expectedHalfWidth = (gridBox.size.width - SpacingTokens.lg) / 2;
 
-      expect(cardBox.size.width, closeTo(expectedHalfWidth, 1));
+      for (final cardBox in cardBoxes) {
+        expect(cardBox.size.width, closeTo(expectedHalfWidth, 1));
+      }
     });
 
     testWidgets('appearance card updates color mode selection', (tester) async {
@@ -134,6 +144,7 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [idleTimeoutSettingsProvider.overrideWith(_TestIdleTimeoutSettingsNotifier.new)],
           child: MaterialApp.router(
             theme: AppTheme.light(),
             builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
