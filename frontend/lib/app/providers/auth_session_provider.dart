@@ -10,6 +10,7 @@ import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/data/permission_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/settings/data/idle_timeout_preferences_store.dart';
 import 'package:ai_clinic/app/providers/session_context_loader.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 
@@ -178,11 +179,22 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
 
   void _syncIdleMonitoring() {
     final idle = ref.read(idleTimeoutServiceProvider);
-    if (state.isAuthenticated) {
-      idle.enable(resetTimer: true);
+    if (!state.isAuthenticated) {
+      idle.disable();
       return;
     }
-    idle.disable();
+
+    unawaited(_enableIdleWithPersistedDuration(idle));
+  }
+
+  Future<void> _enableIdleWithPersistedDuration(IdleTimeoutService idle) async {
+    final duration = await ref.read(idleTimeoutPreferencesStoreProvider).loadIdleDuration();
+    if (!state.isAuthenticated) {
+      return;
+    }
+
+    idle.updateIdleDuration(duration);
+    idle.enable(resetTimer: true);
   }
 
   static String _contextFailureReason(Object error) => SessionContextLoader.contextFailureReason(error);

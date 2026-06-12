@@ -27,9 +27,9 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
 
     // Delay bootstrap until the widget is mounted and the provider tree exists.
     Future<void>.microtask(() async {
-      await ref.read(startupSessionProvider.notifier).bootstrap();
-      // Load persisted idle timeout before the first authenticated session.
+      // Load persisted idle timeout before bootstrap can restore an authenticated session.
       await ref.read(idleTimeoutSettingsProvider.future);
+      await ref.read(startupSessionProvider.notifier).bootstrap();
     });
   }
 
