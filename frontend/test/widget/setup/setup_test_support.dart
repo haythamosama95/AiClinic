@@ -3,9 +3,11 @@ import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_modal.dart';
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -98,6 +100,18 @@ Future<void> advanceSetupModalToBranch(WidgetTester tester, {String orgName = 'S
   await tapSetupNext(tester);
 }
 
+Future<void> configureBranchWorkingHours(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(FButton, 'Working hours'));
+  await tester.pumpAndSettle();
+
+  final mondayRow = find.byKey(const ValueKey(BranchWeekday.monday));
+  await tester.tap(find.descendant(of: mondayRow, matching: find.byType(FSwitch)));
+  await tester.pumpAndSettle();
+
+  await tester.tap(find.widgetWithText(AppButton, 'Save'));
+  await tester.pumpAndSettle();
+}
+
 Future<void> advanceSetupModalToStaff(
   WidgetTester tester, {
   String orgName = 'Sunrise Clinic',
@@ -114,6 +128,7 @@ Future<void> advanceSetupModalToStaff(
   await tester.enterText(find.widgetWithText(AppTextField, 'Phone *'), phone);
   await tester.enterText(find.widgetWithText(AppTextField, 'Maps URL *'), mapsUrl);
   await tester.pump();
+  await configureBranchWorkingHours(tester);
   await tapSetupNext(tester);
 }
 

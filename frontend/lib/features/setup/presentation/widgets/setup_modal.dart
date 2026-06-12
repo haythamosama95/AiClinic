@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/setup/domain/setup_wizard_draft_ids.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/setup/domain/setup_step_readiness.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_branch_step.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_wizard_nav_bar.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_complete_step.dart';
@@ -57,6 +58,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
   final _staffPhoneController = TextEditingController();
   final _staffPasswordController = TextEditingController();
 
+  BranchWorkingSchedule _branchWorkingSchedule = BranchWorkingSchedule.emptySchedule();
   String? _currency = BootstrapCurrencyOptions.defaultCode;
   String? _timezone = BootstrapTimezoneOptions.defaultZone;
   int _stepTransitionDirection = 1;
@@ -113,6 +115,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
         address: _branchAddressController.text,
         phone: _branchPhoneController.text,
         mapsUrl: _branchMapsController.text,
+        workingSchedule: _branchWorkingSchedule,
       ),
       SetupWizardStep.staff => ref.read(setupNotifierProvider).staffDrafts.isNotEmpty,
       _ => false,
@@ -121,9 +124,12 @@ class _SetupModalState extends ConsumerState<SetupModal> {
 
   String _nextLabel(SetupWizardStep step) => step == SetupWizardStep.staff ? 'Finish' : 'Next';
 
-  String _nextDisabledTooltip(SetupWizardStep step) => step == SetupWizardStep.staff
-      ? 'Create at least one staff account to finish setup'
-      : 'One or more mandatory fields are empty';
+  String _nextDisabledTooltip(SetupWizardStep step) {
+    if (step == SetupWizardStep.staff) {
+      return 'Create at least one staff account to finish setup';
+    }
+    return 'One or more mandatory fields are empty';
+  }
 
   void _onBackPressed(SetupWizardStep step) {
     switch (step) {
@@ -197,6 +203,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
           address: _branchAddressController.text,
           phone: _branchPhoneController.text,
           mapsUrl: _branchMapsController.text,
+          workingSchedule: _branchWorkingSchedule,
         );
   }
 
@@ -287,6 +294,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
         _branchAddressController.text = draft.address;
         _branchPhoneController.text = draft.phone;
         _branchMapsController.text = draft.mapsUrl;
+        _branchWorkingSchedule = draft.workingSchedule;
       }
     });
 
@@ -405,6 +413,13 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                     addressController: _branchAddressController,
                     phoneController: _branchPhoneController,
                     mapsUrlController: _branchMapsController,
+                    workingSchedule: _branchWorkingSchedule,
+                    onWorkingScheduleChanged: (schedule) {
+                      setState(() => _branchWorkingSchedule = schedule);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _branchFormKey.currentState?.validate();
+                      });
+                    },
                     isBusy: isBusy,
                   ),
                   staffStep: SetupStaffStep(

@@ -80,6 +80,21 @@ void main() {
       expect(find.text('Clinic setup is complete'), findsOneWidget);
     });
 
+    testWidgets('filled branch fields without working hours keep Next disabled', (tester) async {
+      await pumpSetupModal(tester);
+      await advanceSetupModalToBranch(tester);
+
+      await tester.enterText(find.widgetWithText(AppTextField, 'Branch name *'), 'Main Branch');
+      await tester.enterText(find.widgetWithText(AppTextField, 'Branch code *'), 'MAIN');
+      await tester.enterText(find.widgetWithText(AppTextField, 'Address *'), '123 Street');
+      await tester.enterText(find.widgetWithText(AppTextField, 'Phone *'), '201000000000');
+      await tester.enterText(find.widgetWithText(AppTextField, 'Maps URL *'), 'https://maps.example.com/main');
+      await tester.pump();
+
+      final navBar = tester.widget<SetupWizardNavBar>(find.byType(SetupWizardNavBar));
+      expect(navBar.nextEnabled, isFalse);
+    });
+
     testWidgets('clearing branch name disables Next', (tester) async {
       await pumpSetupModal(tester);
       await advanceSetupModalToBranch(tester);

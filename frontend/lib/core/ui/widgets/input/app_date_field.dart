@@ -114,7 +114,7 @@ class _AppDateFieldState extends State<AppDateField> {
 }
 
 /// Application time field wrapping [FTimeField].
-class AppTimeField extends StatelessWidget {
+class AppTimeField extends StatefulWidget {
   const AppTimeField({
     required this.label,
     this.value,
@@ -138,8 +138,42 @@ class AppTimeField extends StatelessWidget {
   final bool use24Hour;
   final bool usePicker;
 
+  @override
+  State<AppTimeField> createState() => _AppTimeFieldState();
+}
+
+class _AppTimeFieldState extends State<AppTimeField> {
+  late final FTimeFieldController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = FTimeFieldController(time: widget.value, validator: widget.validator ?? (_) => null);
+    _controller.addListener(_handleControllerChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant AppTimeField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != _controller.value) {
+      _controller.value = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_handleControllerChange)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleControllerChange() {
+    widget.onChanged?.call(_controller.value);
+  }
+
   FTimeFieldControl _control() {
-    return FTimeFieldControl.managed(initial: value, onChange: onChanged, validator: validator);
+    return FTimeFieldControl.managed(controller: _controller);
   }
 
   @override
@@ -147,27 +181,29 @@ class AppTimeField extends StatelessWidget {
     final theme = Theme.of(context);
     final control = _control();
 
-    final labelWidget = Text(label, style: theme.textTheme.labelMedium);
-    final descriptionWidget = description == null ? null : Text(description!, style: theme.textTheme.bodySmall);
+    final labelWidget = Text(widget.label, style: theme.textTheme.labelMedium);
+    final descriptionWidget = widget.description == null
+        ? null
+        : Text(widget.description!, style: theme.textTheme.bodySmall);
 
-    if (usePicker) {
+    if (widget.usePicker) {
       return FTimeField.picker(
         control: control,
-        size: size.forui,
-        hour24: use24Hour,
+        size: widget.size.forui,
+        hour24: widget.use24Hour,
         label: labelWidget,
         description: descriptionWidget,
-        enabled: enabled,
+        enabled: widget.enabled,
       );
     }
 
     return FTimeField(
       control: control,
-      size: size.forui,
-      hour24: use24Hour,
+      size: widget.size.forui,
+      hour24: widget.use24Hour,
       label: labelWidget,
       description: descriptionWidget,
-      enabled: enabled,
+      enabled: widget.enabled,
     );
   }
 }

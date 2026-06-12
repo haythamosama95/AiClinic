@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_dummy_data.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_field_options.dart';
@@ -53,6 +54,7 @@ class SetupBranchDraft {
     required this.address,
     required this.phone,
     required this.mapsUrl,
+    required this.workingSchedule,
   });
 
   final String name;
@@ -60,6 +62,7 @@ class SetupBranchDraft {
   final String address;
   final String phone;
   final String mapsUrl;
+  final BranchWorkingSchedule workingSchedule;
 }
 
 @immutable
@@ -229,6 +232,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
     required String address,
     required String phone,
     required String mapsUrl,
+    required BranchWorkingSchedule workingSchedule,
   }) {
     final draft = state.organizationDraft;
     if (draft == null) {
@@ -256,6 +260,10 @@ class SetupNotifier extends Notifier<SetupUiState> {
       state = state.copyWith(errorMessage: 'Enter a maps link for the branch.');
       return false;
     }
+    if (!workingSchedule.hasConfiguredWorkingHours) {
+      state = state.copyWith(errorMessage: 'Configure at least one working day with hours.');
+      return false;
+    }
 
     state = state.copyWith(
       clearError: true,
@@ -265,6 +273,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
         address: address.trim(),
         phone: phone.trim(),
         mapsUrl: mapsUrl.trim(),
+        workingSchedule: workingSchedule,
       ),
       step: SetupWizardStep.staff,
       organizationId: null,
@@ -395,12 +404,13 @@ class SetupNotifier extends Notifier<SetupUiState> {
         currencyCode: BootstrapDummyData.currencyCode,
         timezone: BootstrapDummyData.timezone,
       ),
-      branchDraft: const SetupBranchDraft(
+      branchDraft: SetupBranchDraft(
         name: BootstrapDummyData.branchName,
         code: BootstrapDummyData.branchCode,
         address: BootstrapDummyData.branchAddress,
         phone: BootstrapDummyData.branchPhone,
         mapsUrl: BootstrapDummyData.branchMapsUrl,
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       ),
       staffDrafts: const [
         SetupStaffDraft(
@@ -432,6 +442,14 @@ class SetupNotifier extends Notifier<SetupUiState> {
       return false;
     }
 
+    if (!branchDraft.workingSchedule.hasConfiguredWorkingHours) {
+      state = state.copyWith(
+        errorMessage: 'Configure at least one working day with hours.',
+        step: SetupWizardStep.branch,
+      );
+      return false;
+    }
+
     if (state.staffDrafts.isEmpty) {
       state = state.copyWith(errorMessage: 'Create at least one staff account to finish setup.');
       return false;
@@ -456,6 +474,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
             address: branchDraft.address,
             phone: branchDraft.phone,
             mapsUrl: branchDraft.mapsUrl,
+            workingSchedule: branchDraft.workingSchedule,
           ),
           staffAccounts: [
             for (final staffDraft in state.staffDrafts)

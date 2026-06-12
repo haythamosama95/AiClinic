@@ -3,18 +3,37 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 
 /// Grouped settings container: title, divider, then controls.
+///
+/// When [onEdit] is set, the header shows an edit icon in view mode and
+/// save/cancel actions on the same row while [isEditing] is true.
 class SettingsSectionCard extends StatelessWidget {
-  const SettingsSectionCard({required this.title, required this.child, super.key});
+  const SettingsSectionCard({
+    required this.title,
+    required this.child,
+    this.isEditing = false,
+    this.isSaving = false,
+    this.onEdit,
+    this.onSave,
+    this.onCancel,
+    super.key,
+  });
 
   final String title;
   final Widget child;
+  final bool isEditing;
+  final bool isSaving;
+  final VoidCallback? onEdit;
+  final VoidCallback? onSave;
+  final VoidCallback? onCancel;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final theme = Theme.of(context);
+    final headerActions = _buildHeaderActions(context);
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -27,15 +46,56 @@ class SettingsSectionCard extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.md),
-            child: Text(
-              title,
-              style: theme.textTheme.titleMedium?.copyWith(color: colors.foreground, fontWeight: FontWeight.w600),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(color: colors.foreground, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                if (headerActions != null) headerActions,
+              ],
             ),
           ),
           Divider(height: 1, thickness: 1, color: colors.border),
           Padding(padding: const EdgeInsets.all(SpacingTokens.lg), child: child),
         ],
       ),
+    );
+  }
+
+  Widget? _buildHeaderActions(BuildContext context) {
+    if (isEditing) {
+      if (onSave == null || onCancel == null) {
+        return null;
+      }
+
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppButton(
+            label: 'Cancel',
+            variant: AppButtonVariant.outline,
+            expand: false,
+            onPressed: isSaving ? null : onCancel,
+          ),
+          const SizedBox(width: SpacingTokens.sm),
+          AppButton(label: 'Save', expand: false, isLoading: isSaving, onPressed: isSaving ? null : onSave),
+        ],
+      );
+    }
+
+    if (onEdit == null) {
+      return null;
+    }
+
+    final colors = context.semanticColors;
+    return IconButton(
+      tooltip: 'Edit',
+      onPressed: onEdit,
+      icon: Icon(Icons.edit_outlined, color: colors.mutedForeground),
     );
   }
 }

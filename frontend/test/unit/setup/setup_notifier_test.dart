@@ -5,6 +5,7 @@ import 'package:ai_clinic/features/setup/domain/bootstrap_dummy_data.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_result.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import '../../helpers/auth_test_support.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -100,6 +101,7 @@ void main() {
         address: '123 Street',
         phone: '201000000000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
 
       notifier.goBackToOrganizationStep();
@@ -129,6 +131,7 @@ void main() {
         address: '123 Street',
         phone: '201000000000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
       notifier.addStaffDraft(
         username: 'frontdesk',
@@ -169,6 +172,7 @@ void main() {
         address: '123 Street',
         phone: '+20 100 000 0000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
 
       expect(ok, isTrue);
@@ -210,6 +214,7 @@ void main() {
         address: '123 Street',
         phone: '+20 100 000 0000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
 
       final ok = notifier.addStaffDraft(
@@ -243,6 +248,7 @@ void main() {
         address: '123 Street',
         phone: '201000000000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
       notifier.addStaffDraft(
         username: 'frontdesk',
@@ -283,6 +289,7 @@ void main() {
         address: '123 Street',
         phone: '201000000000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
 
       final ok = await notifier.finishSetup();
@@ -383,6 +390,7 @@ void main() {
         address: '123 Street',
         phone: '201000000000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
 
       expect(ok, isFalse);
@@ -408,6 +416,7 @@ void main() {
         address: '123 Street',
         phone: '201000000000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
       notifier.addStaffDraft(
         username: 'staff1',
@@ -501,6 +510,7 @@ void main() {
         address: '123 Street',
         phone: '201000000000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
 
       expect(
@@ -543,6 +553,7 @@ void main() {
         address: '123 Street',
         phone: '201000000000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
 
       expect(
@@ -713,6 +724,7 @@ void main() {
         address: '123 Street',
         phone: '201000000000',
         mapsUrl: 'https://maps.example.com/main',
+        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
       );
 
       expect(container.read(setupNotifierProvider).branchDraft?.code, 'MaIn');
@@ -796,6 +808,7 @@ void _prepareStaffDraftPath(ProviderContainer container, SetupNotifier notifier)
     address: '123 Street',
     phone: '201000000000',
     mapsUrl: 'https://maps.example.com/main',
+    workingSchedule: BranchWorkingSchedule.defaultSchedule(),
   );
 }
 

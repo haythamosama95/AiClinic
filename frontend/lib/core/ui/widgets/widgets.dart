@@ -5,6 +5,7 @@ export 'buttons/app_button.dart';
 export 'feedback/app_fade_panel.dart';
 export 'feedback/app_feedback.dart';
 export 'input/app_autocomplete.dart';
+export 'input/app_clock_time_field.dart';
 export 'input/app_date_field.dart';
 export 'input/app_field_size.dart';
 export 'input/app_label.dart';

@@ -111,6 +111,44 @@ class BranchWorkingSchedule {
     );
   }
 
+  /// Setup wizard initial state: every day closed until the user configures hours.
+  static BranchWorkingSchedule emptySchedule() {
+    return BranchWorkingSchedule(
+      BranchWeekday.values
+          .map((day) => BranchWorkingDayHours(day: day, isWorkingDay: false, openTime: null, closeTime: null))
+          .toList(growable: false),
+    );
+  }
+
+  /// True when at least one day is open with valid HH:mm open/close times.
+  bool get hasConfiguredWorkingHours => days.any(isValidWorkingDay);
+
+  static bool isValidWorkingDay(BranchWorkingDayHours hours) {
+    if (!hours.isWorkingDay) {
+      return false;
+    }
+    final open = parseHmTime(hours.openTime);
+    final close = parseHmTime(hours.closeTime);
+    if (open == null || close == null) {
+      return false;
+    }
+    return open < close;
+  }
+
+  static int? parseHmTime(String? input) {
+    final normalized = input?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+    final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(normalized);
+    if (match == null) {
+      return null;
+    }
+    final hour = int.parse(match.group(1)!);
+    final minute = int.parse(match.group(2)!);
+    return hour * 60 + minute;
+  }
+
   Map<String, dynamic> toJson() => {'days': days.map((day) => day.toJson()).toList(growable: false)};
 
   static BranchWorkingSchedule? fromJson(Object? json) {

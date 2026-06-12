@@ -2,13 +2,22 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 
-/// Responsive two-column form layout matching the setup wizard reference design.
+/// Responsive multi-column form layout matching the setup wizard reference design.
 class SetupFormGrid extends StatelessWidget {
-  const SetupFormGrid({required this.children, this.compactBreakpoint = compactBreakpointDefault, super.key});
+  const SetupFormGrid({
+    required this.children,
+    this.columns = 2,
+    this.compactBreakpoint = compactBreakpointDefault,
+    super.key,
+  });
 
   static const compactBreakpointDefault = 640.0;
 
+  /// Use inside half-width [SettingsSectionCard] grids where available width is often below [compactBreakpointDefault].
+  static const settingsCardBreakpoint = 320.0;
+
   final List<Widget> children;
+  final int columns;
   final double compactBreakpoint;
 
   @override
@@ -16,6 +25,7 @@ class SetupFormGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < compactBreakpoint;
+        final columnCount = columns.clamp(1, children.isEmpty ? 1 : children.length);
 
         if (isCompact) {
           return Column(
@@ -30,19 +40,19 @@ class SetupFormGrid extends StatelessWidget {
         }
 
         final rows = <Widget>[];
-        for (var i = 0; i < children.length; i += 2) {
+        for (var i = 0; i < children.length; i += columnCount) {
           if (i > 0) {
             rows.add(const SizedBox(height: SpacingTokens.lg));
           }
-          final left = children[i];
-          final right = i + 1 < children.length ? children[i + 1] : const SizedBox.shrink();
+          final rowChildren = children.skip(i).take(columnCount).toList(growable: false);
           rows.add(
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: left),
-                const SizedBox(width: SpacingTokens.lg),
-                Expanded(child: right),
+                for (var j = 0; j < rowChildren.length; j++) ...[
+                  if (j > 0) const SizedBox(width: SpacingTokens.lg),
+                  Expanded(child: rowChildren[j]),
+                ],
               ],
             ),
           );

@@ -1,3 +1,5 @@
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+
 /// Branch fields for first-time clinic bootstrap.
 class BootstrapBranchInput {
   const BootstrapBranchInput({
@@ -7,6 +9,7 @@ class BootstrapBranchInput {
     this.address,
     this.phone,
     this.mapsUrl,
+    this.workingSchedule,
   });
 
   final String organizationId;
@@ -15,4 +18,5 @@ class BootstrapBranchInput {
   final String? address;
   final String? phone;
   final String? mapsUrl;
+  final BranchWorkingSchedule? workingSchedule;
 }

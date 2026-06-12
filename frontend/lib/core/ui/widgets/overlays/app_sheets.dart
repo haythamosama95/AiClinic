@@ -15,9 +15,16 @@ abstract final class AppSheets {
     AppSheetSide side = AppSheetSide.bottom,
     bool barrierDismissible = true,
     bool useRootNavigator = false,
+    double? width,
+    BoxConstraints? constraints,
   }) {
+    final resolvedConstraints =
+        constraints ?? (width == null ? const BoxConstraints() : BoxConstraints.tightFor(width: width));
+
     return showFSheet<T>(
       context: context,
+      mainAxisMaxRatio: width == null && constraints == null ? 9 / 16 : null,
+      constraints: resolvedConstraints,
       builder: (context) {
         final colors = context.semanticColors;
         final radius = Radius.circular(context.shapeTokens.xl);

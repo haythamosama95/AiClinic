@@ -2,6 +2,7 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
 import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -156,6 +157,38 @@ void main() {
       expect(staffPayload, hasLength(1));
       expect(staffPayload.first, isNot(contains('branch_ids')));
       expect(staffPayload.first, containsPair('role', 'receptionist'));
+    });
+
+    test('finishSetup sends branch working schedule when provided', () async {
+      client.finishSetupResponse = {
+        'success': true,
+        'data': {
+          'organization_id': '11111111-1111-4111-8111-111111111111',
+          'branch_id': '22222222-2222-4222-8222-222222222222',
+          'staff_member_ids': ['33333333-3333-4333-8333-333333333333'],
+        },
+      };
+
+      final schedule = BranchWorkingSchedule.defaultSchedule();
+
+      await repository.finishSetup(
+        BootstrapFinishSetupInput(
+          organization: const BootstrapOrganizationInput(name: 'Clinic', currencyCode: 'EGP', timezone: 'Africa/Cairo'),
+          branch: BootstrapBranchInput(organizationId: '', name: 'Main', code: 'MAIN', workingSchedule: schedule),
+          staffAccounts: [
+            CreateStaffAccountInput(
+              username: 'staff1',
+              password: 'Secret12',
+              fullName: 'Staff One',
+              role: StaffRole.receptionist,
+              branchIds: const ['branch-local'],
+              primaryBranchId: 'branch-local',
+            ),
+          ],
+        ),
+      );
+
+      expect(client.lastParams, containsPair('p_branch_working_schedule', schedule.toJson()));
     });
   });
 }

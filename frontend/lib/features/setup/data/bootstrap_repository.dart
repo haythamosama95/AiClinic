@@ -107,6 +107,7 @@ class BootstrapRepositoryImpl implements BootstrapRepository {
       if (branch.address != null) 'p_branch_address': branch.address!.trim(),
       if (branch.phone != null) 'p_branch_phone': branch.phone!.trim(),
       if (branch.mapsUrl != null) 'p_branch_maps_url': branch.mapsUrl!.trim(),
+      if (branch.workingSchedule != null) 'p_branch_working_schedule': branch.workingSchedule!.toJson(),
     });
 
     final organizationId = result.data?['organization_id']?.toString();

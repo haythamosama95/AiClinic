@@ -29,6 +29,7 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
   var _selectedPlan = <String>{'standard'};
   String? _autocompleteValue;
   DateTime? _shiftDate;
+  TimeOfDay? _shiftStartTime;
   Set<String> _notificationPrefs = {'email'};
 
   static const _roles = {'Administrator': 'admin', 'Staff': 'staff'};
@@ -179,6 +180,12 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
                   onChanged: (value) => setState(() => _shiftDate = value),
                   firstDate: DateTime.now().subtract(const Duration(days: 7)),
                   lastDate: DateTime.now().add(const Duration(days: 365)),
+                ),
+                const SizedBox(height: SpacingTokens.md),
+                AppClockTimeField(
+                  label: 'Shift start',
+                  value: _shiftStartTime,
+                  onChanged: (value) => setState(() => _shiftStartTime = value),
                 ),
                 const SizedBox(height: SpacingTokens.md),
                 AppSelect<String>(

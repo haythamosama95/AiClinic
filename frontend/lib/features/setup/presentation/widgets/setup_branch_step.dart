@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/setup/domain/branch_field_validation.dart';
-import 'package:ai_clinic/features/setup/presentation/widgets/setup_form_grid.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/branch_working_hours_sheet.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/branch_form_fields.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_step_layout.dart';
 
 class SetupBranchStep extends StatelessWidget {
@@ -14,6 +14,8 @@ class SetupBranchStep extends StatelessWidget {
     required this.addressController,
     required this.phoneController,
     required this.mapsUrlController,
+    required this.workingSchedule,
+    required this.onWorkingScheduleChanged,
     required this.isBusy,
     super.key,
   });
@@ -24,65 +26,41 @@ class SetupBranchStep extends StatelessWidget {
   final TextEditingController addressController;
   final TextEditingController phoneController;
   final TextEditingController mapsUrlController;
+  final BranchWorkingSchedule workingSchedule;
+  final ValueChanged<BranchWorkingSchedule> onWorkingScheduleChanged;
   final bool isBusy;
+
+  Future<void> _openWorkingHoursSheet(BuildContext context) async {
+    await AppSheets.showModal<void>(
+      context: context,
+      side: AppSheetSide.right,
+      width: 520,
+      builder: (context) => BranchWorkingHoursSheet(
+        initialSchedule: workingSchedule,
+        startInEditMode: true,
+        confirmLabel: 'Save',
+        onUpdate: onWorkingScheduleChanged,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Form(
       key: formKey,
       child: SetupStepLayout(
-        body: SetupFormGrid(
-          children: [
-            AppTextField(
-              label: 'Branch name *',
-              controller: nameController,
-              hintText: 'Enter branch name',
-              enabled: !isBusy,
-              validator: _requiredValidator('Branch name'),
-            ),
-            AppTextField(
-              label: 'Branch code *',
-              controller: codeController,
-              hintText: 'e.g. MAIN',
-              enabled: !isBusy,
-              validator: _requiredValidator('Branch code'),
-            ),
-            AppTextField(
-              label: 'Address *',
-              controller: addressController,
-              hintText: 'Street address',
-              enabled: !isBusy,
-              validator: _requiredValidator('Address'),
-            ),
-            AppTextField(
-              label: 'Phone *',
-              controller: phoneController,
-              hintText: 'Numbers only',
-              enabled: !isBusy,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              validator: BranchFieldValidation.validatePhone,
-            ),
-            AppTextField(
-              label: 'Maps URL *',
-              controller: mapsUrlController,
-              hintText: 'maps.google.com/... or www.example.com',
-              enabled: !isBusy,
-              keyboardType: TextInputType.url,
-              validator: BranchFieldValidation.validateMapsUrl,
-            ),
-          ],
+        body: BranchFormFields(
+          mode: BranchFormFieldsMode.create,
+          nameController: nameController,
+          codeController: codeController,
+          addressController: addressController,
+          phoneController: phoneController,
+          mapsUrlController: mapsUrlController,
+          enabled: !isBusy,
+          workingHoursConfigured: workingSchedule.hasConfiguredWorkingHours,
+          onWorkingHours: isBusy ? null : () => _openWorkingHoursSheet(context),
         ),
       ),
     );
-  }
-
-  static String? Function(String?) _requiredValidator(String fieldName) {
-    return (value) {
-      if (value == null || value.trim().isEmpty) {
-        return '$fieldName is required';
-      }
-      return null;
-    };
   }
 }

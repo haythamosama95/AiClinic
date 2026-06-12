@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_modal.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_wizard_nav_bar.dart';
 
@@ -15,7 +16,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [authSessionProvider.overrideWith(TestAuthSessionNotifier.new)],
-        child: MaterialApp(home: Scaffold(body: SetupModal(onFinished: () {}))),
+        child: MaterialApp(
+          home: Scaffold(body: SetupModal(onFinished: () {})),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -30,6 +33,7 @@ void main() {
       address: '123 Street',
       phone: '+20 100 000 0000',
       mapsUrl: 'https://maps.example.com/main',
+      workingSchedule: BranchWorkingSchedule.defaultSchedule(),
     );
     await tester.pumpAndSettle();
 
@@ -45,7 +49,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [authSessionProvider.overrideWith(TestAuthSessionNotifier.new)],
-        child: MaterialApp(home: Scaffold(body: SetupModal(onFinished: () {}))),
+        child: MaterialApp(
+          home: Scaffold(body: SetupModal(onFinished: () {})),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -66,6 +72,7 @@ void main() {
       address: '123 Street',
       phone: '+20 100 000 0000',
       mapsUrl: 'https://maps.example.com/main',
+      workingSchedule: BranchWorkingSchedule.defaultSchedule(),
     );
     await tester.pumpAndSettle();
 
