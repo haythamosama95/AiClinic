@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/features/settings/domain/update_organization_input.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/create_branch_modal.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_section_card.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/organization_form_fields.dart';
 
@@ -134,12 +135,25 @@ class _OrganizationSettingsSectionState extends ConsumerState<OrganizationSettin
     }
   }
 
+  Future<void> _openCreateBranchModal() async {
+    await CreateBranchModal.show(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return SettingsSectionCard(
       title: 'Organization',
       isEditing: _isEditing,
       isSaving: _isSaving,
+      headerLeadingActions: _isEditing
+          ? null
+          : AppButton(
+              label: 'Add branch',
+              variant: AppButtonVariant.outline,
+              expand: false,
+              icon: const Icon(Icons.add_business_outlined, size: 18),
+              onPressed: _openCreateBranchModal,
+            ),
       onEdit: _startEditing,
       onSave: _save,
       onCancel: _cancelEditing,

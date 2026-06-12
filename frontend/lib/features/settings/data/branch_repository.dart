@@ -34,11 +34,11 @@ class BranchRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements Bra
     final List<dynamic> rows;
     switch (filter) {
       case BranchListFilter.active:
-        rows = await base.eq('is_active', true).order('name');
+        rows = await base.eq('is_active', true).order('created_at', ascending: true);
       case BranchListFilter.inactive:
-        rows = await base.eq('is_active', false).order('name');
+        rows = await base.eq('is_active', false).order('created_at', ascending: true);
       case BranchListFilter.all:
-        rows = await base.order('name');
+        rows = await base.order('created_at', ascending: true);
     }
     final items = <BranchListItem>[];
     for (final row in rows) {

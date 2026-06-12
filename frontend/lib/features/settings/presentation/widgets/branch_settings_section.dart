@@ -308,6 +308,7 @@ class _BranchSettingsHeaderBar extends StatelessWidget {
             label: 'Working hours',
             variant: AppButtonVariant.outline,
             expand: false,
+            icon: const Icon(Icons.schedule_outlined, size: 18),
             isLoading: isSavingWorkingHours,
             onPressed: isSaving || isSavingWorkingHours ? null : onWorkingHours,
           ),

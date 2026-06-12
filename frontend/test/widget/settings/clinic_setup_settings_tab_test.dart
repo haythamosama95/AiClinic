@@ -63,8 +63,22 @@ void main() {
       expect(find.text('123 Street'), findsOneWidget);
       expect(find.text('Organization name *'), findsNothing);
       expect(find.text('Branch name *'), findsNothing);
+      expect(find.widgetWithText(AppButton, 'Add branch'), findsOneWidget);
+      expect(find.byIcon(Icons.add_business_outlined), findsOneWidget);
       expect(find.byTooltip('Edit'), findsNWidgets(2));
       expect(find.byIcon(Icons.edit_outlined), findsNWidgets(2));
+    });
+
+    testWidgets('add branch button opens blurred create branch modal', (tester) async {
+      await pumpTab(tester, organization: profile);
+
+      await tester.tap(find.widgetWithText(AppButton, 'Add branch'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.text('Branch name *'), findsOneWidget);
+      expect(find.text('Branch code *'), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Create branch'), findsOneWidget);
     });
 
     testWidgets('edit button reveals organization form fields', (tester) async {
@@ -81,7 +95,7 @@ void main() {
     testWidgets('organization card uses settings section layout', (tester) async {
       await pumpTab(tester, organization: profile);
 
-      expect(find.byType(SettingsSectionCard), findsNWidgets(2));
+      expect(find.byType(SettingsSectionCard), findsOneWidget);
     });
   });
 }

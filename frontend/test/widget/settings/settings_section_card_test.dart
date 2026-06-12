@@ -14,6 +14,7 @@ void main() {
       VoidCallback? onEdit,
       VoidCallback? onSave,
       VoidCallback? onCancel,
+      Widget? headerLeadingActions,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -23,6 +24,7 @@ void main() {
             body: SettingsSectionCard(
               title: 'Organization',
               isEditing: isEditing,
+              headerLeadingActions: headerLeadingActions,
               onEdit: onEdit,
               onSave: onSave,
               onCancel: onCancel,
@@ -55,6 +57,18 @@ void main() {
 
       expect(find.byTooltip('Edit'), findsNothing);
       expect(find.widgetWithText(AppButton, 'Save'), findsNothing);
+    });
+
+    testWidgets('shows leading header actions to the left of edit icon', (tester) async {
+      await pumpCard(
+        tester,
+        isEditing: false,
+        onEdit: () {},
+        headerLeadingActions: const Icon(Icons.add_business_outlined),
+      );
+
+      expect(find.byIcon(Icons.add_business_outlined), findsOneWidget);
+      expect(find.byTooltip('Edit'), findsOneWidget);
     });
   });
 }

@@ -238,6 +238,7 @@ class _BranchWorkingHoursField extends StatelessWidget {
           size: AppFieldSize.md.buttonSize,
           mainAxisSize: MainAxisSize.max,
           onPress: enabled ? onPressed : null,
+          prefix: Icon(Icons.schedule_outlined, size: 18, color: colors.foreground),
           suffix: isConfigured ? Icon(Icons.check, size: 18, color: colors.primary) : null,
           child: const Text('Working hours'),
         ),

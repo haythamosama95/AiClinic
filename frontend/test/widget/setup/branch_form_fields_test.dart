@@ -95,6 +95,7 @@ void main() {
 
       expect(find.text('Working hours *'), findsOneWidget);
       expect(find.widgetWithText(FButton, 'Working hours'), findsOneWidget);
+      expect(find.byIcon(Icons.schedule_outlined), findsOneWidget);
       expect(find.byIcon(Icons.check), findsNothing);
       expect(find.byType(SetupFormGrid), findsOneWidget);
     });

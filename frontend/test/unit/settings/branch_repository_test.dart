@@ -40,7 +40,9 @@ void main() {
 
     test('stupid usage: empty branch name rejected locally', () async {
       expect(
-        () => repository.createBranch(CreateBranchInput(name: '  ', workingSchedule: BranchWorkingSchedule.defaultSchedule())),
+        () => repository.createBranch(
+          CreateBranchInput(name: '  ', workingSchedule: BranchWorkingSchedule.defaultSchedule()),
+        ),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
       );
     });
@@ -94,6 +96,35 @@ void main() {
       expect(all, hasLength(2));
     });
 
+    test('listBranches returns branches in creation order', () async {
+      const orgId = '11111111-1111-4111-8111-111111111111';
+      final client = SettingsTableTestClient({
+        'branches': [
+          {
+            'id': 'b-new',
+            'name': 'Alpha Branch',
+            'is_active': true,
+            'is_deleted': false,
+            'organization_id': orgId,
+            'created_at': '2026-06-13T12:00:00Z',
+          },
+          {
+            'id': 'b-old',
+            'name': 'Zulu Branch',
+            'is_active': true,
+            'is_deleted': false,
+            'organization_id': orgId,
+            'created_at': '2026-01-01T12:00:00Z',
+          },
+        ],
+      });
+      final repo = BranchRepositoryImpl(client);
+
+      final branches = await repo.listBranches(organizationId: orgId);
+
+      expect(branches.map((b) => b.id), ['b-old', 'b-new']);
+    });
+
     test('advanced: RPC_NOT_APPLIED when migration missing', () async {
       final client = SettingsRpcTestClient(
         rpcException: const PostgrestException(
@@ -103,8 +134,9 @@ void main() {
       );
 
       expect(
-        () => BranchRepositoryImpl(client)
-            .createBranch(CreateBranchInput(name: 'X', workingSchedule: BranchWorkingSchedule.defaultSchedule())),
+        () => BranchRepositoryImpl(
+          client,
+        ).createBranch(CreateBranchInput(name: 'X', workingSchedule: BranchWorkingSchedule.defaultSchedule())),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'RPC_NOT_APPLIED')),
       );
     });

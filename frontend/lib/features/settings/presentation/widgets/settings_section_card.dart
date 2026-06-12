@@ -15,6 +15,7 @@ class SettingsSectionCard extends StatelessWidget {
     required this.child,
     this.isEditing = false,
     this.isSaving = false,
+    this.headerLeadingActions,
     this.onEdit,
     this.onSave,
     this.onCancel,
@@ -25,6 +26,9 @@ class SettingsSectionCard extends StatelessWidget {
   final Widget child;
   final bool isEditing;
   final bool isSaving;
+
+  /// Optional actions shown to the left of the edit icon in view mode.
+  final Widget? headerLeadingActions;
   final VoidCallback? onEdit;
   final VoidCallback? onSave;
   final VoidCallback? onCancel;
@@ -92,10 +96,16 @@ class SettingsSectionCard extends StatelessWidget {
     }
 
     final colors = context.semanticColors;
-    return IconButton(
-      tooltip: 'Edit',
-      onPressed: onEdit,
-      icon: Icon(Icons.edit_outlined, color: colors.mutedForeground),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (headerLeadingActions != null) ...[headerLeadingActions!, const SizedBox(width: SpacingTokens.sm)],
+        IconButton(
+          tooltip: 'Edit',
+          onPressed: onEdit,
+          icon: Icon(Icons.edit_outlined, color: colors.mutedForeground),
+        ),
+      ],
     );
   }
 }
