@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_content_panel.dart';
@@ -48,6 +49,13 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
     }
   }
 
+  String? _pageTitleForLocation(String location, String selectedItemId) {
+    if (location == AppRoutes.settings || location.startsWith('${AppRoutes.settings}/')) {
+      return 'Settings';
+    }
+    return ShellNavConfig.labelFor(selectedItemId);
+  }
+
   void _onGroupToggled(String groupId) {
     setState(() {
       if (_expandedGroupIds.contains(groupId)) {
@@ -63,6 +71,7 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
     final colors = context.semanticColors;
     final location = GoRouterState.of(context).matchedLocation;
     final selectedItemId = ShellNavConfig.itemIdForLocation(location) ?? _selectedItemId;
+    final pageTitle = _pageTitleForLocation(location, selectedItemId);
 
     return ColoredBox(
       color: colors.accent,
@@ -79,7 +88,7 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ShellHeader(pageTitle: ShellNavConfig.labelFor(selectedItemId)),
+                ShellHeader(pageTitle: pageTitle),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(

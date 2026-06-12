@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_header_icon_button.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_header_profile.dart';
@@ -71,7 +73,11 @@ class ShellHeader extends StatelessWidget {
                       const SizedBox(width: ShellTokens.headerActionsGap),
                       const ShellHeaderIconButton(icon: Icons.notifications_outlined, tooltip: 'Notifications'),
                       const SizedBox(width: SpacingTokens.sm),
-                      const ShellHeaderIconButton(icon: Icons.settings_outlined, tooltip: 'Settings'),
+                      ShellHeaderIconButton(
+                        icon: Icons.settings_outlined,
+                        tooltip: 'Settings',
+                        onTap: () => context.go(AppRoutes.settings),
+                      ),
                     ],
                   ),
                 ),

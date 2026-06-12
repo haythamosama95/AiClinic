@@ -5,10 +5,11 @@ import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 
 /// Circular icon control for shell header actions (notifications, settings, …).
 class ShellHeaderIconButton extends StatefulWidget {
-  const ShellHeaderIconButton({required this.icon, required this.tooltip, super.key});
+  const ShellHeaderIconButton({required this.icon, required this.tooltip, this.onTap, super.key});
 
   final IconData icon;
   final String tooltip;
+  final VoidCallback? onTap;
 
   @override
   State<ShellHeaderIconButton> createState() => _ShellHeaderIconButtonState();
@@ -31,7 +32,7 @@ class _ShellHeaderIconButtonState extends State<ShellHeaderIconButton> {
           shape: const CircleBorder(),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: () {},
+            onTap: widget.onTap,
             customBorder: const CircleBorder(),
             child: SizedBox(
               width: ShellTokens.headerIconButtonSize,
