@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/startup_entry_page.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
 import 'package:ai_clinic/features/setup/presentation/pages/setup_page.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
@@ -163,10 +164,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '${AppRoutes.settingsStaff}/:staffId/reset-password',
             builder: (context, state) => uiPendingPlaceholder('Settings', state),
           ),
-          GoRoute(
-            path: AppRoutes.settingsPermissions,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
+          GoRoute(path: AppRoutes.settingsPermissions, builder: (context, state) => const RolePermissionsPage()),
         ],
       ),
     ],

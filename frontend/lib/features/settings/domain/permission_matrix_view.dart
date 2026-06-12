@@ -34,6 +34,13 @@ class PermissionMatrixView {
     }
 
     final keys = grants.keys.toList()..sort();
+    for (final permissionKey in keys) {
+      final roleGrants = grants.putIfAbsent(permissionKey, () => {});
+      for (final role in displayRoles) {
+        roleGrants.putIfAbsent(role, () => false);
+      }
+    }
+
     return PermissionMatrixView(permissionKeys: keys, grantsByRoleAndKey: grants);
   }
 
@@ -70,9 +77,9 @@ class PermissionMatrixView {
         .join(' ');
   }
 
-  /// Whether this role has a persisted row for [permissionKey].
+  /// Whether this role/permission pair is shown in the configurable matrix.
   bool hasDefinedCell(StaffRole role, String permissionKey) {
-    return grantsByRoleAndKey[permissionKey]?.containsKey(role) ?? false;
+    return permissionKeys.contains(permissionKey) && displayRoles.contains(role);
   }
 
   static String categoryLabel(String category) => switch (category) {
@@ -85,8 +92,7 @@ class PermissionMatrixView {
   }
 
   PermissionMatrixView withGrant({required StaffRole role, required String permissionKey, required bool isGranted}) {
-    final roleGrants = grantsByRoleAndKey[permissionKey];
-    if (roleGrants == null || !roleGrants.containsKey(role)) {
+    if (!hasDefinedCell(role, permissionKey)) {
       return this;
     }
 
@@ -94,20 +100,23 @@ class PermissionMatrixView {
     for (final entry in grantsByRoleAndKey.entries) {
       nextGrants[entry.key] = Map<StaffRole, bool>.from(entry.value);
     }
+    nextGrants.putIfAbsent(permissionKey, () => {for (final displayRole in displayRoles) displayRole: false});
+    for (final displayRole in displayRoles) {
+      nextGrants[permissionKey]!.putIfAbsent(displayRole, () => false);
+    }
     nextGrants[permissionKey]![role] = isGranted;
 
     final keys = nextGrants.keys.toList()..sort();
     return PermissionMatrixView(permissionKeys: keys, grantsByRoleAndKey: nextGrants);
   }
 
-  /// Cells whose grant differs from [other] (only persisted role/permission pairs).
+  /// Cells whose grant differs from [other] across the full role × permission grid.
   Iterable<({StaffRole role, String permissionKey, bool isGranted})> changesFrom(PermissionMatrixView other) sync* {
     for (final permissionKey in permissionKeys) {
-      final roleGrants = grantsByRoleAndKey[permissionKey];
-      if (roleGrants == null) {
-        continue;
-      }
-      for (final role in roleGrants.keys) {
+      for (final role in displayRoles) {
+        if (!hasDefinedCell(role, permissionKey)) {
+          continue;
+        }
         final next = isGranted(role, permissionKey);
         if (next != other.isGranted(role, permissionKey)) {
           yield (role: role, permissionKey: permissionKey, isGranted: next);
@@ -134,8 +143,10 @@ class PermissionMatrixView {
 
     final allKeys = {...permissionKeys, ...other.permissionKeys};
     for (final permissionKey in allKeys) {
-      final roles = {...?grantsByRoleAndKey[permissionKey]?.keys, ...?other.grantsByRoleAndKey[permissionKey]?.keys};
-      for (final role in roles) {
+      for (final role in displayRoles) {
+        if (!hasDefinedCell(role, permissionKey) && !other.hasDefinedCell(role, permissionKey)) {
+          continue;
+        }
         if (isGranted(role, permissionKey) != other.isGranted(role, permissionKey)) {
           return false;
         }
@@ -148,11 +159,10 @@ class PermissionMatrixView {
   int get hashCode {
     var hash = Object.hashAll(permissionKeys);
     for (final permissionKey in permissionKeys) {
-      final roleGrants = grantsByRoleAndKey[permissionKey];
-      if (roleGrants == null) {
-        continue;
-      }
-      for (final role in roleGrants.keys) {
+      for (final role in displayRoles) {
+        if (!hasDefinedCell(role, permissionKey)) {
+          continue;
+        }
         hash = Object.hash(hash, role, isGranted(role, permissionKey));
       }
     }
