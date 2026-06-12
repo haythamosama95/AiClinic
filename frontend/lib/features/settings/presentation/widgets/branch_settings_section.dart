@@ -35,6 +35,8 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
   var _isEditing = false;
   var _isSaving = false;
   var _isSavingWorkingHours = false;
+  var _isTogglingActive = false;
+  var _isDeletingBranch = false;
   String? _errorMessage;
 
   @override
@@ -150,6 +152,121 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
     }
   }
 
+  Future<void> _confirmDelete() async {
+    await AppDialog.showConfirmation(
+      context: context,
+      title: 'Deactivate branch?',
+      message:
+          'This branch will be hidden from pickers and new assignments. '
+          'Historical records stay linked. You can reactivate it later.',
+      confirmLabel: 'Deactivate branch',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: _delete,
+    );
+  }
+
+  Future<void> _delete() async {
+    setState(() => _isTogglingActive = true);
+
+    try {
+      await ref.read(setBranchActiveUseCaseProvider)(branchId: widget.branch.id, isActive: false);
+
+      ref.invalidate(clinicSetupBranchesProvider);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _isTogglingActive = false);
+      AppToast.success(context, message: 'Branch deactivated.');
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isTogglingActive = false);
+      AppToast.error(context, message: branchMessageForRpc(error));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isTogglingActive = false);
+      AppToast.error(context, message: 'Unable to deactivate branch. Check connectivity and try again.');
+    }
+  }
+
+  Future<void> _activate() async {
+    setState(() => _isTogglingActive = true);
+
+    try {
+      await ref.read(setBranchActiveUseCaseProvider)(branchId: widget.branch.id, isActive: true);
+
+      ref.invalidate(clinicSetupBranchesProvider);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _isTogglingActive = false);
+      AppToast.success(context, message: 'Branch activated.');
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isTogglingActive = false);
+      AppToast.error(context, message: branchMessageForRpc(error));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isTogglingActive = false);
+      AppToast.error(context, message: 'Unable to activate branch. Check connectivity and try again.');
+    }
+  }
+
+  Future<void> _confirmPermanentDelete() async {
+    await AppDialog.showConfirmation(
+      context: context,
+      title: 'Delete branch permanently?',
+      message:
+          'This branch will be removed from settings and cannot be reactivated. '
+          'Historical records linked to this branch are kept for audit.',
+      confirmLabel: 'Delete branch',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: _permanentlyDelete,
+    );
+  }
+
+  Future<void> _permanentlyDelete() async {
+    setState(() => _isDeletingBranch = true);
+
+    try {
+      await ref.read(deleteBranchUseCaseProvider)(branchId: widget.branch.id);
+
+      ref.invalidate(clinicSetupBranchesProvider);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _isDeletingBranch = false);
+      AppToast.success(context, message: 'Branch deleted.');
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isDeletingBranch = false);
+      AppToast.error(context, message: branchMessageForRpc(error));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isDeletingBranch = false);
+      AppToast.error(context, message: 'Unable to delete branch. Check connectivity and try again.');
+    }
+  }
+
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
@@ -222,11 +339,17 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
         children: [
           _BranchSettingsHeaderBar(
             title: title,
+            isActive: widget.branch.isActive,
             isEditing: _isEditing,
             isSaving: _isSaving,
             isSavingWorkingHours: _isSavingWorkingHours,
+            isTogglingActive: _isTogglingActive,
+            isDeletingBranch: _isDeletingBranch,
             onWorkingHours: _openWorkingHoursSheet,
             onEdit: _startEditing,
+            onDelete: _confirmDelete,
+            onPermanentDelete: _confirmPermanentDelete,
+            onActivate: _activate,
             onSave: _save,
             onCancel: _cancelEditing,
           ),
@@ -238,10 +361,6 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (!widget.branch.isActive) ...[
-                    AppAlert(title: 'This branch is inactive.'),
-                    const SizedBox(height: SpacingTokens.lg),
-                  ],
                   if (_errorMessage != null) ...[
                     AppAlert(variant: AppAlertVariant.destructive, title: _errorMessage!),
                     const SizedBox(height: SpacingTokens.lg),
@@ -270,21 +389,33 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
 class _BranchSettingsHeaderBar extends StatelessWidget {
   const _BranchSettingsHeaderBar({
     required this.title,
+    required this.isActive,
     required this.isEditing,
     required this.isSaving,
     required this.isSavingWorkingHours,
+    required this.isTogglingActive,
+    required this.isDeletingBranch,
     required this.onWorkingHours,
     required this.onEdit,
+    required this.onDelete,
+    required this.onPermanentDelete,
+    required this.onActivate,
     required this.onSave,
     required this.onCancel,
   });
 
   final String title;
+  final bool isActive;
   final bool isEditing;
   final bool isSaving;
   final bool isSavingWorkingHours;
+  final bool isTogglingActive;
+  final bool isDeletingBranch;
   final VoidCallback onWorkingHours;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onPermanentDelete;
+  final Future<void> Function() onActivate;
   final Future<void> Function() onSave;
   final VoidCallback onCancel;
 
@@ -292,44 +423,140 @@ class _BranchSettingsHeaderBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final theme = Theme.of(context);
+    final titleStyle = theme.textTheme.titleMedium?.copyWith(color: colors.foreground, fontWeight: FontWeight.w600);
+    final titleRow = _BranchTitleRow(title: title, isActive: isActive, style: titleStyle);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.md),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: theme.textTheme.titleMedium?.copyWith(color: colors.foreground, fontWeight: FontWeight.w600),
-            ),
-          ),
-          AppButton(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stackActions = constraints.maxWidth < 420;
+
+          if (stackActions) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                titleRow,
+                const SizedBox(height: SpacingTokens.sm),
+                Align(alignment: Alignment.centerRight, child: _buildActions(context, colors, compact: true)),
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: titleRow),
+              _buildActions(context, colors, compact: false),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context, SemanticColors colors, {required bool compact}) {
+    final actionsLocked = isSaving || isSavingWorkingHours || isTogglingActive || isDeletingBranch;
+
+    final workingHoursAction = compact
+        ? IconButton(
+            tooltip: 'Working hours',
+            onPressed: actionsLocked ? null : onWorkingHours,
+            icon: isSavingWorkingHours
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: colors.mutedForeground),
+                  )
+                : Icon(Icons.schedule_outlined, color: colors.mutedForeground),
+          )
+        : AppButton(
             label: 'Working hours',
             variant: AppButtonVariant.outline,
             expand: false,
             icon: const Icon(Icons.schedule_outlined, size: 18),
             isLoading: isSavingWorkingHours,
-            onPressed: isSaving || isSavingWorkingHours ? null : onWorkingHours,
+            onPressed: actionsLocked ? null : onWorkingHours,
+          );
+
+    final togglingIndicator = SizedBox(
+      width: 18,
+      height: 18,
+      child: CircularProgressIndicator(strokeWidth: 2, color: isActive ? colors.destructive : colors.primary),
+    );
+
+    final deletingIndicator = SizedBox(
+      width: 18,
+      height: 18,
+      child: CircularProgressIndicator(strokeWidth: 2, color: colors.destructive),
+    );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        workingHoursAction,
+        if (!compact) const SizedBox(width: SpacingTokens.sm),
+        if (isEditing) ...[
+          AppButton(
+            label: 'Cancel',
+            variant: AppButtonVariant.outline,
+            expand: false,
+            onPressed: isSaving ? null : onCancel,
           ),
           const SizedBox(width: SpacingTokens.sm),
-          if (isEditing) ...[
-            AppButton(
-              label: 'Cancel',
-              variant: AppButtonVariant.outline,
-              expand: false,
-              onPressed: isSaving ? null : onCancel,
-            ),
-            const SizedBox(width: SpacingTokens.sm),
-            AppButton(label: 'Save', expand: false, isLoading: isSaving, onPressed: isSaving ? null : onSave),
-          ] else
+          AppButton(label: 'Save', expand: false, isLoading: isSaving, onPressed: isSaving ? null : onSave),
+        ] else ...[
+          IconButton(
+            tooltip: 'Edit',
+            onPressed: actionsLocked ? null : onEdit,
+            icon: Icon(Icons.edit_outlined, color: colors.mutedForeground),
+          ),
+          if (isActive)
             IconButton(
-              tooltip: 'Edit',
-              onPressed: onEdit,
-              icon: Icon(Icons.edit_outlined, color: colors.mutedForeground),
+              tooltip: 'Deactivate branch',
+              onPressed: actionsLocked ? null : onDelete,
+              icon: isTogglingActive ? togglingIndicator : Icon(Icons.delete_outline, color: colors.destructive),
+            )
+          else ...[
+            IconButton(
+              tooltip: 'Activate branch',
+              onPressed: actionsLocked ? null : onActivate,
+              icon: isTogglingActive ? togglingIndicator : Icon(Icons.play_circle_outline, color: colors.primary),
             ),
+            IconButton(
+              tooltip: 'Delete branch permanently',
+              onPressed: actionsLocked ? null : onPermanentDelete,
+              icon: isDeletingBranch
+                  ? deletingIndicator
+                  : Icon(Icons.delete_forever_outlined, color: colors.destructive),
+            ),
+          ],
         ],
-      ),
+      ],
+    );
+  }
+}
+
+class _BranchTitleRow extends StatelessWidget {
+  const _BranchTitleRow({required this.title, required this.isActive, required this.style});
+
+  final String title;
+  final bool isActive;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    final statusIcon = isActive
+        ? Icon(Icons.check_circle_outline, size: 20, color: colors.primary)
+        : Icon(Icons.pause_circle_outline, size: 20, color: colors.mutedForeground);
+
+    return Row(
+      children: [
+        Tooltip(message: isActive ? 'Active branch' : 'Inactive branch', child: statusIcon),
+        const SizedBox(width: SpacingTokens.sm),
+        Expanded(child: Text(title, style: style)),
+      ],
     );
   }
 }

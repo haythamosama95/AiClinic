@@ -264,6 +264,47 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- ===========================================================================
+  -- BRANCH DELETE: inactive only, soft delete
+  -- ===========================================================================
+
+  v_result := public.set_branch_active(v_branch_third, false);
+  v_result := public.delete_branch(v_branch_second);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_ext_results VALUES (
+    'branch_delete_active_rejected',
+    NOT v_result.success AND v_result.error_code = 'BRANCH_STILL_ACTIVE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.delete_branch(v_branch_third);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_ext_results VALUES (
+    'branch_delete_inactive_success',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  SELECT count(*)::int INTO v_active_count
+  FROM public.branches b
+  WHERE b.id = v_branch_third AND b.is_deleted = true;
+  INSERT INTO org_ext_results VALUES (
+    'branch_delete_marks_is_deleted',
+    v_active_count = 1,
+    'deleted_rows=' || v_active_count::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.delete_branch(v_branch_third);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_ext_results VALUES (
+    'branch_delete_idempotent_rejected',
+    NOT v_result.success AND v_result.error_code = 'BRANCH_ALREADY_DELETED',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- ===========================================================================
   -- ORGANIZATION UPDATE: metadata fields persisted correctly
   -- ===========================================================================
 

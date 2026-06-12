@@ -22,6 +22,7 @@ abstract final class AppDialog {
 
     return showFDialog<T>(
       context: context,
+      useRootNavigator: true,
       barrierDismissible: barrierDismissible,
       builder: (dialogContext, style, animation) {
         return FTheme(
@@ -59,6 +60,7 @@ abstract final class AppDialog {
 
     return showFDialog<void>(
       context: context,
+      useRootNavigator: true,
       builder: (dialogContext, style, animation) {
         return FTheme(
           data: fTheme,

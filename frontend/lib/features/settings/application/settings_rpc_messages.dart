@@ -18,6 +18,8 @@ String branchMessageForRpc(RpcFailure failure) {
     'DUPLICATE_CODE' => 'Another branch already uses this code. Choose a different code.',
     'FORBIDDEN' => 'You do not have permission to manage branches.',
     'BRANCH_NOT_FOUND' => 'That branch was not found. Refresh the list and try again.',
+    'BRANCH_STILL_ACTIVE' => 'Deactivate the branch before deleting it.',
+    'BRANCH_ALREADY_DELETED' => 'That branch has already been deleted.',
     'INVALID_INPUT' => failure.message,
     'RPC_NOT_APPLIED' => failure.message,
     _ => 'Unable to complete the branch action. Check connectivity and try again.',

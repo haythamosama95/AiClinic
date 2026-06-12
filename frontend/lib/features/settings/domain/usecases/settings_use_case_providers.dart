@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/settings/domain/usecases/list_branches.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/create_branch.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/update_branch.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/set_branch_active.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/delete_branch.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/fetch_organization_profile.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/update_organization.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/fetch_permission_matrix.dart';
@@ -21,6 +22,7 @@ final listBranchesUseCaseProvider = Provider((ref) => ListBranches(ref.watch(bra
 final createBranchUseCaseProvider = Provider((ref) => CreateBranch(ref.watch(branchRepositoryProvider)));
 final updateBranchUseCaseProvider = Provider((ref) => UpdateBranch(ref.watch(branchRepositoryProvider)));
 final setBranchActiveUseCaseProvider = Provider((ref) => SetBranchActive(ref.watch(branchRepositoryProvider)));
+final deleteBranchUseCaseProvider = Provider((ref) => DeleteBranch(ref.watch(branchRepositoryProvider)));
 final fetchOrganizationProfileUseCaseProvider = Provider(
   (ref) => FetchOrganizationProfile(ref.watch(organizationRepositoryProvider)),
 );

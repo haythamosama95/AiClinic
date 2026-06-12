@@ -13,4 +13,5 @@ abstract class BranchRepository {
   Future<String> createBranch(CreateBranchInput input);
   Future<String> updateBranch(UpdateBranchInput input);
   Future<RpcResult> setBranchActive({required String branchId, required bool isActive});
+  Future<RpcResult> deleteBranch({required String branchId});
 }

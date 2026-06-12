@@ -14,7 +14,7 @@ abstract final class AppSheets {
     required WidgetBuilder builder,
     AppSheetSide side = AppSheetSide.bottom,
     bool barrierDismissible = true,
-    bool useRootNavigator = false,
+    bool useRootNavigator = true,
     double? width,
     BoxConstraints? constraints,
   }) {

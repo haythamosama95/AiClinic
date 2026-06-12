@@ -67,6 +67,9 @@ void main() {
       expect(find.byIcon(Icons.add_business_outlined), findsOneWidget);
       expect(find.byTooltip('Edit'), findsNWidgets(2));
       expect(find.byIcon(Icons.edit_outlined), findsNWidgets(2));
+      expect(find.byTooltip('Deactivate branch'), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
     });
 
     testWidgets('add branch button opens blurred create branch modal', (tester) async {
@@ -79,6 +82,45 @@ void main() {
       expect(find.text('Branch name *'), findsOneWidget);
       expect(find.text('Branch code *'), findsOneWidget);
       expect(find.widgetWithText(AppButton, 'Create branch'), findsOneWidget);
+    });
+
+    testWidgets('inactive branch shows activate and permanent delete buttons', (tester) async {
+      const inactiveBranches = [BranchListItem(id: 'branch-1', name: 'Closed Branch', isActive: false, code: 'CLOSED')];
+
+      await pumpTab(tester, organization: profile, branchList: inactiveBranches);
+
+      expect(find.text('Closed Branch (CLOSED)'), findsOneWidget);
+      expect(find.text('This branch is inactive.'), findsNothing);
+      expect(find.byIcon(Icons.pause_circle_outline), findsOneWidget);
+      expect(find.byTooltip('Inactive branch'), findsOneWidget);
+      expect(find.byTooltip('Activate branch'), findsOneWidget);
+      expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
+      expect(find.byTooltip('Delete branch permanently'), findsOneWidget);
+      expect(find.byIcon(Icons.delete_forever_outlined), findsOneWidget);
+      expect(find.byTooltip('Deactivate branch'), findsNothing);
+      expect(find.byIcon(Icons.delete_outline), findsNothing);
+    });
+
+    testWidgets('permanent delete button opens confirmation dialog', (tester) async {
+      const inactiveBranches = [BranchListItem(id: 'branch-1', name: 'Closed Branch', isActive: false, code: 'CLOSED')];
+
+      await pumpTab(tester, organization: profile, branchList: inactiveBranches);
+
+      await tester.tap(find.byTooltip('Delete branch permanently'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete branch permanently?'), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Delete branch'), findsOneWidget);
+    });
+
+    testWidgets('deactivate button opens confirmation dialog', (tester) async {
+      await pumpTab(tester, organization: profile);
+
+      await tester.tap(find.byTooltip('Deactivate branch'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Deactivate branch?'), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Deactivate branch'), findsOneWidget);
     });
 
     testWidgets('edit button reveals organization form fields', (tester) async {

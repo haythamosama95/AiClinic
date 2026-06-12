@@ -101,6 +101,11 @@ class BranchRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements Bra
   Future<RpcResult> setBranchActive({required String branchId, required bool isActive}) {
     return invokeSettingsRpc('set_branch_active', {'p_branch_id': branchId, 'p_is_active': isActive});
   }
+
+  @override
+  Future<RpcResult> deleteBranch({required String branchId}) {
+    return invokeSettingsRpc('delete_branch', {'p_branch_id': branchId});
+  }
 }
 
 final branchRepositoryProvider = Provider<BranchRepository>((ref) {

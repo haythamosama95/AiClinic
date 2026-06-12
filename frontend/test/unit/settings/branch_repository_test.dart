@@ -60,6 +60,28 @@ void main() {
       );
     });
 
+    test('deleteBranch sends delete_branch parameters', () async {
+      const branchId = '22222222-2222-4222-8222-222222222222';
+
+      await repository.deleteBranch(branchId: branchId);
+
+      expect(client.lastFunction, 'delete_branch');
+      expect(client.lastParams, containsPair('p_branch_id', branchId));
+    });
+
+    test('deleteBranch maps BRANCH_STILL_ACTIVE from server', () async {
+      client.rpcResults['delete_branch'] = {
+        'success': false,
+        'error_code': 'BRANCH_STILL_ACTIVE',
+        'error_message': 'Deactivate the branch before deleting it.',
+      };
+
+      expect(
+        () => repository.deleteBranch(branchId: '22222222-2222-4222-8222-222222222222'),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'BRANCH_STILL_ACTIVE')),
+      );
+    });
+
     test('updateBranch omits optional empty fields but keeps name', () async {
       await repository.updateBranch(
         UpdateBranchInput(
