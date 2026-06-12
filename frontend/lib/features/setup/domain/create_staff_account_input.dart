@@ -9,6 +9,7 @@ class CreateStaffAccountInput {
     required this.role,
     required this.branchIds,
     this.primaryBranchId,
+    this.phone,
   });
 
   final String username;
@@ -17,4 +18,5 @@ class CreateStaffAccountInput {
   final StaffRole role;
   final List<String> branchIds;
   final String? primaryBranchId;
+  final String? phone;
 }

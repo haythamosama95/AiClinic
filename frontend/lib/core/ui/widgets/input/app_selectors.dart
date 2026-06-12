@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 
+import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
+import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+
 import 'app_field_size.dart';
 
 /// Selection mode for [AppSelectGroup] and [AppSelectTileGroup].
@@ -169,6 +172,9 @@ class AppMultiSelect<T> extends StatelessWidget {
     this.validator,
     this.autovalidateMode,
     this.control,
+    this.contentGroupId,
+    this.contentHideRegion,
+    this.showPopoverCloseButton = false,
     super.key,
   });
 
@@ -183,6 +189,36 @@ class AppMultiSelect<T> extends StatelessWidget {
   final AppFieldSize size;
   final String? Function(Set<T>?)? validator;
   final AutovalidateMode? autovalidateMode;
+  final Object? contentGroupId;
+  final FPopoverHideRegion? contentHideRegion;
+  final bool showPopoverCloseButton;
+
+  static FMultiSelectPopoverBuilder<T> _popoverWithCloseButton<T>() {
+    return (context, _, popoverController, content) {
+      final colors = context.semanticColors;
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              onPressed: popoverController.hide,
+              icon: Icon(Icons.close, size: 18, color: colors.mutedForeground),
+              style: IconButton.styleFrom(
+                padding: const EdgeInsets.all(SpacingTokens.xs),
+                minimumSize: const Size(28, 28),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              tooltip: 'Close',
+            ),
+          ),
+          content,
+        ],
+      );
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -200,6 +236,9 @@ class AppMultiSelect<T> extends StatelessWidget {
       enabled: enabled,
       validator: validator ?? (_) => null,
       autovalidateMode: resolvedAutovalidateMode,
+      contentGroupId: contentGroupId,
+      contentHideRegion: contentHideRegion ?? FPopoverHideRegion.excludeChild,
+      popoverBuilder: showPopoverCloseButton ? _popoverWithCloseButton<T>() : FPopover.defaultPopoverBuilder,
     );
   }
 }

@@ -6,12 +6,16 @@ class AppFadeInOutPanel extends StatefulWidget {
     required this.visible,
     required this.child,
     this.duration = const Duration(milliseconds: 220),
+    this.animateOnMount = false,
+    this.onHidden,
     super.key,
   });
 
   final bool visible;
   final Widget child;
   final Duration duration;
+  final bool animateOnMount;
+  final VoidCallback? onHidden;
 
   @override
   State<AppFadeInOutPanel> createState() => _AppFadeInOutPanelState();
@@ -30,7 +34,11 @@ class _AppFadeInOutPanelState extends State<AppFadeInOutPanel> with SingleTicker
     _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
     if (widget.visible) {
       _showContent = true;
-      _controller.value = 1;
+      if (widget.animateOnMount) {
+        _controller.forward(from: 0);
+      } else {
+        _controller.value = 1;
+      }
     }
   }
 
@@ -47,6 +55,7 @@ class _AppFadeInOutPanelState extends State<AppFadeInOutPanel> with SingleTicker
       _controller.reverse().then((_) {
         if (mounted && !widget.visible) {
           setState(() => _showContent = false);
+          widget.onHidden?.call();
         }
       });
     }

@@ -47,6 +47,7 @@ void main() {
       expect(find.byType(SettingsTabBar), findsOneWidget);
       expect(find.text('General'), findsOneWidget);
       expect(find.text('Clinic Setup'), findsOneWidget);
+      expect(find.text('Staff'), findsOneWidget);
       expect(find.text('Staff Roles'), findsOneWidget);
     });
 

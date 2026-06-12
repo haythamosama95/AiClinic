@@ -20,9 +20,11 @@ abstract final class SettingsTabs {
     icon: Icons.apartment_outlined,
   );
 
+  static const staff = SettingsTabDefinition(id: 'staff', label: 'Staff Management', icon: Icons.people_outlined);
+
   static const staffRoles = SettingsTabDefinition(id: 'staff-roles', label: 'Staff Roles', icon: Icons.badge_outlined);
 
-  static const all = <SettingsTabDefinition>[general, clinicSetup, staffRoles];
+  static const all = <SettingsTabDefinition>[general, clinicSetup, staff, staffRoles];
 
   static const defaultTabId = 'general';
 

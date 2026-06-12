@@ -90,6 +90,7 @@ class ProvisioningRepositoryImpl implements ProvisioningRepository {
       'p_role': input.role.wireValue,
       'p_branch_ids': input.branchIds,
       if (input.primaryBranchId != null) 'p_primary_branch_id': input.primaryBranchId,
+      if (input.phone != null) 'p_phone': input.phone!.trim(),
     });
 
     final staffMemberId = result.data?['staff_member_id']?.toString();

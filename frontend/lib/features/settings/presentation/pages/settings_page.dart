@@ -6,6 +6,7 @@ import 'package:ai_clinic/features/settings/presentation/widgets/clinic_setup_se
 import 'package:ai_clinic/features/settings/presentation/widgets/general_settings_tab.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_tab_bar.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/staff_roles_settings_tab.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/staff_settings_tab.dart';
 
 /// Clinic workstation settings hub with a scrollable section tab header.
 class SettingsPage extends StatefulWidget {
@@ -56,6 +57,7 @@ class _SettingsTabBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (selectedTabId) {
       'clinic-setup' => const ClinicSetupSettingsTab(),
+      'staff' => const StaffSettingsTab(),
       'staff-roles' => const StaffRolesSettingsTab(),
       _ => const GeneralSettingsTab(),
     };

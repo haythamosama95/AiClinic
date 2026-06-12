@@ -69,6 +69,35 @@ void main() {
       expect(client.lastParams, isNot(contains('p_primary_branch_id')));
     });
 
+    test('createStaffAccount omits phone when null', () async {
+      await repository.createStaffAccount(
+        const CreateStaffAccountInput(
+          username: 'doctor1',
+          password: 'x',
+          fullName: 'A',
+          role: StaffRole.doctor,
+          branchIds: ['22222222-2222-4222-8222-222222222222'],
+        ),
+      );
+
+      expect(client.lastParams, isNot(contains('p_phone')));
+    });
+
+    test('createStaffAccount forwards phone when provided', () async {
+      await repository.createStaffAccount(
+        const CreateStaffAccountInput(
+          username: 'doctor1',
+          password: 'x',
+          fullName: 'A',
+          role: StaffRole.doctor,
+          branchIds: ['22222222-2222-4222-8222-222222222222'],
+          phone: ' 201005551234 ',
+        ),
+      );
+
+      expect(client.lastParams, containsPair('p_phone', '201005551234'));
+    });
+
     test('createStaffAccount forwards empty branch list when UI guard skipped', () async {
       await repository.createStaffAccount(
         const CreateStaffAccountInput(

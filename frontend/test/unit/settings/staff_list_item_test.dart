@@ -16,7 +16,7 @@ void main() {
       expect(item, isNotNull);
       expect(item!.fullName, 'Dr. Sam');
       expect(item.role, StaffRole.doctor);
-      expect(item.branchNames, isEmpty);
+      expect(item.branches, isEmpty);
       expect(item.phone, '+20 111');
     });
 
@@ -32,32 +32,44 @@ void main() {
       expect(item!.role, StaffRole.labStaff);
     });
 
-    test('fromRow always yields empty branchNames (loaded separately via copyWith)', () {
+    test('fromRow always yields empty branches (loaded separately via copyWith)', () {
       final item = StaffListItem.fromRow({'id': '1', 'full_name': 'X', 'role': 'administrator', 'is_active': false});
-      expect(item!.branchNames, isEmpty);
-      expect(item.branchNamesLabel, 'No branches assigned');
+      expect(item!.branches, isEmpty);
     });
   });
 
-  group('StaffListItem.branchNamesLabel', () {
-    test('joins multiple branches for list subtitle', () {
-      const item = StaffListItem(
-        id: '1',
-        fullName: 'A',
-        role: StaffRole.administrator,
-        isActive: true,
-        branchNames: ['North', 'South'],
-      );
+  group('StaffBranchLabel', () {
+    test('equality includes primary flag', () {
+      const primary = StaffBranchLabel(name: 'North', isPrimary: true);
+      const other = StaffBranchLabel(name: 'North', isPrimary: false);
 
-      expect(item.branchNamesLabel, 'North, South');
+      expect(primary, isNot(equals(other)));
     });
   });
 
   group('StaffListItem equality', () {
-    test('listEquals on branchNames', () {
-      const a = StaffListItem(id: '1', fullName: 'A', role: StaffRole.doctor, isActive: true, branchNames: ['X']);
-      const b = StaffListItem(id: '1', fullName: 'A', role: StaffRole.doctor, isActive: true, branchNames: ['X']);
-      const c = StaffListItem(id: '1', fullName: 'A', role: StaffRole.doctor, isActive: true, branchNames: ['Y']);
+    test('listEquals on branches', () {
+      const a = StaffListItem(
+        id: '1',
+        fullName: 'A',
+        role: StaffRole.doctor,
+        isActive: true,
+        branches: [StaffBranchLabel(name: 'X')],
+      );
+      const b = StaffListItem(
+        id: '1',
+        fullName: 'A',
+        role: StaffRole.doctor,
+        isActive: true,
+        branches: [StaffBranchLabel(name: 'X')],
+      );
+      const c = StaffListItem(
+        id: '1',
+        fullName: 'A',
+        role: StaffRole.doctor,
+        isActive: true,
+        branches: [StaffBranchLabel(name: 'Y')],
+      );
 
       expect(a, equals(b));
       expect(a == c, isFalse);

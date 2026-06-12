@@ -6,6 +6,23 @@ import 'app_field_size.dart';
 
 const _fieldIconExtent = 32.0;
 
+FTextFieldStyleDelta _inputFieldStyle(AppFieldSize size) => FTextFieldStyleDelta.delta(
+  contentPadding: EdgeInsetsGeometryDelta.value(_inputContentPadding(size)),
+  constraints: BoxConstraints(minHeight: _inputMinHeight(size)),
+);
+
+EdgeInsets _inputContentPadding(AppFieldSize size) => switch (size) {
+  AppFieldSize.sm => const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+  AppFieldSize.md => const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+  AppFieldSize.lg => const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+};
+
+double _inputMinHeight(AppFieldSize size) => switch (size) {
+  AppFieldSize.sm => 38,
+  AppFieldSize.md => 42,
+  AppFieldSize.lg => 46,
+};
+
 Widget _centeredFieldIcon(Widget icon) => SizedBox(
   width: _fieldIconExtent,
   height: _fieldIconExtent,
@@ -139,6 +156,7 @@ class AppTextInput extends StatelessWidget {
             )
           : FTextFieldControl.managed(onChange: onChanged == null ? null : (value) => onChanged!(value.text)),
       size: size.forui,
+      style: _inputFieldStyle(size),
       label: label == null ? null : Text(label!, style: theme.textTheme.labelMedium),
       description: description == null ? null : Text(description!, style: theme.textTheme.bodySmall),
       hint: hintText,

@@ -224,6 +224,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
     required StaffRole role,
     required List<String> branchIds,
     String? primaryBranchId,
+    String? phone,
   }) async {
     if (!(_staffFormKey.currentState?.validate() ?? false)) {
       return false;
@@ -240,6 +241,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
           branchIds: branchIds,
           password: password,
           primaryBranchId: primaryBranchId,
+          phone: phone,
         );
 
     if (!mounted || !added) {

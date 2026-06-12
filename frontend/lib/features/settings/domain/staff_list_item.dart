@@ -2,6 +2,29 @@ import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter/foundation.dart';
 
+/// Branch label for a staff list row, with optional primary flag.
+@immutable
+class StaffBranchLabel {
+  const StaffBranchLabel({this.id, required this.name, this.isPrimary = false});
+
+  final String? id;
+  final String name;
+  final bool isPrimary;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is StaffBranchLabel &&
+            runtimeType == other.runtimeType &&
+            id == other.id &&
+            name == other.name &&
+            isPrimary == other.isPrimary;
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, isPrimary);
+}
+
 /// Staff row for administration list (V1-2).
 @immutable
 class StaffListItem {
@@ -11,7 +34,8 @@ class StaffListItem {
     required this.role,
     required this.isActive,
     this.phone,
-    this.branchNames = const [],
+    this.username,
+    this.branches = const [],
   });
 
   final String id;
@@ -19,7 +43,12 @@ class StaffListItem {
   final StaffRole role;
   final bool isActive;
   final String? phone;
-  final List<String> branchNames;
+  final String? username;
+  final List<StaffBranchLabel> branches;
+
+  static int compareByFullName(StaffListItem a, StaffListItem b) {
+    return a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase());
+  }
 
   static StaffListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
@@ -40,7 +69,8 @@ class StaffListItem {
       role: role,
       isActive: _parseIsActive(row['is_active']),
       phone: optionalString(row['phone']),
-      branchNames: const [],
+      username: optionalString(row['username']),
+      branches: const [],
     );
   }
 
@@ -52,21 +82,14 @@ class StaffListItem {
     return text == 'true' || text == 't' || text == '1';
   }
 
-  /// Comma-separated branch labels for list subtitle.
-  String get branchNamesLabel {
-    if (branchNames.isEmpty) {
-      return 'No branches assigned';
-    }
-    return branchNames.join(', ');
-  }
-
   StaffListItem copyWith({
     String? id,
     String? fullName,
     StaffRole? role,
     bool? isActive,
     Object? phone = copyWithSentinel,
-    List<String>? branchNames,
+    Object? username = copyWithSentinel,
+    List<StaffBranchLabel>? branches,
   }) {
     return StaffListItem(
       id: id ?? this.id,
@@ -74,7 +97,8 @@ class StaffListItem {
       role: role ?? this.role,
       isActive: isActive ?? this.isActive,
       phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
-      branchNames: branchNames ?? this.branchNames,
+      username: identical(username, copyWithSentinel) ? this.username : username as String?,
+      branches: branches ?? this.branches,
     );
   }
 
@@ -88,9 +112,10 @@ class StaffListItem {
             role == other.role &&
             isActive == other.isActive &&
             phone == other.phone &&
-            listEquals(branchNames, other.branchNames);
+            username == other.username &&
+            listEquals(branches, other.branches);
   }
 
   @override
-  int get hashCode => Object.hash(id, fullName, role, isActive, phone, Object.hashAll(branchNames));
+  int get hashCode => Object.hash(id, fullName, role, isActive, phone, username, Object.hashAll(branches));
 }

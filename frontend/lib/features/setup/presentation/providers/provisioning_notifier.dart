@@ -115,6 +115,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
     required List<String> branchIds,
     required String password,
     String? primaryBranchId,
+    String? phone,
   }) async {
     final session = ref.read(authSessionProvider).context;
     if (session == null) {
@@ -164,6 +165,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
     state = state.copyWith(isSubmitting: true, clearError: true, clearLastCreated: true);
     AppLog.info('provisioning.create_staff.start role=${role.wireValue}');
 
+    final trimmedPhone = phone?.trim();
     try {
       final result = await ref.read(createStaffAccountUseCaseProvider)(
         CreateStaffAccountInput(
@@ -173,6 +175,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
           role: role,
           branchIds: branchIds,
           primaryBranchId: primary,
+          phone: trimmedPhone == null || trimmedPhone.isEmpty ? null : trimmedPhone,
         ),
       );
 

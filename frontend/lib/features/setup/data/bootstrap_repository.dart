@@ -96,6 +96,7 @@ class BootstrapRepositoryImpl implements BootstrapRepository {
               'password': staff.password,
               'full_name': staff.fullName,
               'role': staff.role.wireValue,
+              if (staff.phone != null) 'phone': staff.phone,
             },
           )
           .toList(),

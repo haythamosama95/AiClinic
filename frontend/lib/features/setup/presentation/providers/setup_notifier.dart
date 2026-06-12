@@ -74,6 +74,7 @@ class SetupStaffDraft {
     required this.password,
     required this.branchIds,
     this.primaryBranchId,
+    this.phone,
   });
 
   final String username;
@@ -82,6 +83,7 @@ class SetupStaffDraft {
   final String password;
   final List<String> branchIds;
   final String? primaryBranchId;
+  final String? phone;
 }
 
 @immutable
@@ -291,6 +293,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
     required List<String> branchIds,
     required String password,
     String? primaryBranchId,
+    String? phone,
   }) {
     final session = ref.read(authSessionProvider).context;
     if (session == null) {
@@ -343,6 +346,8 @@ class SetupNotifier extends Notifier<SetupUiState> {
       return false;
     }
 
+    final trimmedPhone = phone?.trim();
+
     state = state.copyWith(
       clearError: true,
       staffDrafts: [
@@ -354,6 +359,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
           password: password,
           branchIds: List<String>.from(branchIds),
           primaryBranchId: primary,
+          phone: trimmedPhone == null || trimmedPhone.isEmpty ? null : trimmedPhone,
         ),
       ],
     );
@@ -485,6 +491,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
                 role: staffDraft.role,
                 branchIds: staffDraft.branchIds,
                 primaryBranchId: staffDraft.primaryBranchId,
+                phone: staffDraft.phone,
               ),
           ],
         ),

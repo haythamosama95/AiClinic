@@ -63,7 +63,7 @@ SELECT
     WHERE n.nspname = 'public'
       AND p.proname = 'create_staff_account'
       AND pg_get_function_identity_arguments(p.oid) =
-        'p_username text, p_password text, p_full_name text, p_role staff_role, p_branch_ids uuid[], p_primary_branch_id uuid'
+        'p_username text, p_password text, p_full_name text, p_role staff_role, p_branch_ids uuid[], p_primary_branch_id uuid, p_phone text'
   ),
   coalesce(
     (SELECT pg_get_function_identity_arguments(p.oid)

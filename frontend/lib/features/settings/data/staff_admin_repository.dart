@@ -27,11 +27,11 @@ class StaffAdminRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements
     final List<dynamic> rows;
     switch (filter) {
       case StaffListFilter.active:
-        rows = await base.eq('is_active', true).order('full_name');
+        rows = await base.eq('is_active', true).order('full_name', ascending: true);
       case StaffListFilter.inactive:
-        rows = await base.eq('is_active', false).order('full_name');
+        rows = await base.eq('is_active', false).order('full_name', ascending: true);
       case StaffListFilter.all:
-        rows = await base.order('full_name');
+        rows = await base.order('full_name', ascending: true);
     }
     final items = <StaffListItem>[];
     for (final row in rows) {
@@ -45,8 +45,15 @@ class StaffAdminRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements
       return items;
     }
 
-    final branchNamesByStaff = await _loadBranchNamesByStaffId(items.map((s) => s.id).toList());
-    return [for (final item in items) item.copyWith(branchNames: branchNamesByStaff[item.id] ?? const [])];
+    final staffIds = items.map((s) => s.id).toList();
+    final branchesByStaff = await _loadBranchesByStaffId(staffIds);
+    final usernamesByStaff = await _loadUsernamesByStaffId(staffIds);
+    final enriched = [
+      for (final item in items)
+        item.copyWith(branches: branchesByStaff[item.id] ?? const [], username: usernamesByStaff[item.id]),
+    ];
+    enriched.sort(StaffListItem.compareByFullName);
+    return enriched;
   }
 
   @override
@@ -64,23 +71,24 @@ class StaffAdminRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements
     return StaffMemberDetail.fromRow(Map<String, dynamic>.from(row));
   }
 
-  Future<Map<String, List<String>>> _loadBranchNamesByStaffId(List<String> staffIds) async {
+  Future<Map<String, List<StaffBranchLabel>>> _loadBranchesByStaffId(List<String> staffIds) async {
     if (staffIds.isEmpty) {
       return const {};
     }
 
     final rows = await _client
         .from('staff_branch_assignments')
-        .select('staff_member_id, branches(name)')
+        .select('staff_member_id, branch_id, is_primary, branches(name)')
         .inFilter('staff_member_id', staffIds)
         .eq('is_deleted', false);
 
-    final map = <String, List<String>>{};
+    final map = <String, List<StaffBranchLabel>>{};
     for (final row in rows) {
       final staffId = row['staff_member_id']?.toString();
       if (staffId == null || staffId.isEmpty) {
         continue;
       }
+      final branchId = row['branch_id']?.toString();
       final branch = row['branches'];
       String? name;
       if (branch is Map) {
@@ -89,9 +97,50 @@ class StaffAdminRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements
       if (name == null || name.isEmpty) {
         continue;
       }
-      map.putIfAbsent(staffId, () => <String>[]).add(name);
+      final isPrimary = row['is_primary'] == true || row['is_primary']?.toString().toLowerCase() == 'true';
+      map
+          .putIfAbsent(staffId, () => <StaffBranchLabel>[])
+          .add(StaffBranchLabel(id: branchId, name: name, isPrimary: isPrimary));
     }
+
+    for (final entry in map.entries) {
+      entry.value.sort((a, b) {
+        if (a.isPrimary != b.isPrimary) {
+          return a.isPrimary ? -1 : 1;
+        }
+        return a.name.compareTo(b.name);
+      });
+    }
+
     return map;
+  }
+
+  Future<Map<String, String>> _loadUsernamesByStaffId(List<String> staffIds) async {
+    if (staffIds.isEmpty) {
+      return const {};
+    }
+
+    try {
+      final rows = await _client.rpc('staff_login_usernames', params: {'p_staff_ids': staffIds});
+      if (rows is! List) {
+        return const {};
+      }
+
+      final map = <String, String>{};
+      for (final row in rows) {
+        if (row is! Map) {
+          continue;
+        }
+        final staffId = row['staff_member_id']?.toString();
+        final username = row['username']?.toString().trim();
+        if (staffId != null && staffId.isNotEmpty && username != null && username.isNotEmpty) {
+          map[staffId] = username;
+        }
+      }
+      return map;
+    } catch (_) {
+      return const {};
+    }
   }
 
   @override

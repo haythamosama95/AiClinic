@@ -88,6 +88,21 @@ void main() {
       expect(inactive.map((s) => s.fullName), ['Inactive User']);
     });
 
+    test('listStaff returns staff sorted alphabetically by full name', () async {
+      final client = SettingsTableTestClient({
+        'staff_members': [
+          {'id': 's3', 'full_name': 'Zoe', 'role': 'lab_staff', 'is_active': true, 'is_deleted': false},
+          {'id': 's1', 'full_name': 'Alice', 'role': 'administrator', 'is_active': true, 'is_deleted': false},
+          {'id': 's2', 'full_name': 'bob', 'role': 'doctor', 'is_active': true, 'is_deleted': false},
+        ],
+      });
+      final repo = StaffAdminRepositoryImpl(client);
+
+      final staff = await repo.listStaff();
+
+      expect(staff.map((s) => s.fullName), ['Alice', 'bob', 'Zoe']);
+    });
+
     test('advanced: cross-org denial surfaces from RPC', () async {
       client.rpcResults['update_staff_member'] = {
         'success': false,

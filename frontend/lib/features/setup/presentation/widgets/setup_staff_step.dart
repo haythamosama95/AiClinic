@@ -33,7 +33,12 @@ class SetupStaffStep extends ConsumerStatefulWidget {
   final TextEditingController phoneController;
   final TextEditingController passwordController;
   final bool isBusy;
-  final Future<bool> Function({required StaffRole role, required List<String> branchIds, String? primaryBranchId})
+  final Future<bool> Function({
+    required StaffRole role,
+    required List<String> branchIds,
+    String? primaryBranchId,
+    String? phone,
+  })
   onCreate;
   final List<BranchSummary> wizardBranches;
 
@@ -274,6 +279,7 @@ class _SetupStaffStepState extends ConsumerState<SetupStaffStep> {
       role: role,
       branchIds: selectedBranchIds.toList(),
       primaryBranchId: _primaryBranchId,
+      phone: widget.phoneController.text.trim().isEmpty ? null : widget.phoneController.text.trim(),
     );
     if (!added || !mounted) {
       return;
