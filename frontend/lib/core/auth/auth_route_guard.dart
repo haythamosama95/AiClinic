@@ -68,6 +68,13 @@ abstract final class AuthRouteGuard {
     return PermissionService(auth.context).canEditPatients();
   }
 
+  static bool canAccessPatientDelete(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canDeletePatients();
+  }
+
   /// V1-4 appointment routes under `/appointments`.
   static bool isAppointmentRoute(String location) {
     return location == AppRoutes.appointments || location.startsWith('${AppRoutes.appointments}/');

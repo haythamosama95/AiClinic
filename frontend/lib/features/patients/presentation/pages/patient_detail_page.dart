@@ -6,13 +6,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/patients/application/patient_rpc_messages.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_history_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
@@ -41,8 +44,9 @@ class PatientDetailPage extends ConsumerWidget {
 
     return detailAsync.when(
       skipLoadingOnReload: true,
-      loading: () => _PatientDetailLoadingView(preview: preview, onBack: () => _goBack(context)),
+      loading: () => _PatientDetailLoadingView(patientId: patientId, preview: preview, onBack: () => _goBack(context)),
       error: (error, _) => _PatientDetailErrorView(
+        patientId: patientId,
         message: error.toString(),
         onBack: () => _goBack(context),
         onRetry: () => ref.invalidate(patientDetailProvider(patientId)),
@@ -73,6 +77,9 @@ class _PatientDetailContentView extends ConsumerWidget {
     final upcomingAsync = ref.watch(patientUpcomingAppointmentsProvider(historyQuery));
 
     return _PatientDetailScaffold(
+      patientId: detail.id,
+      patientName: detail.fullName,
+      onBack: onBack,
       body: (pageHeight) => LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth >= 1080;
@@ -87,7 +94,6 @@ class _PatientDetailContentView extends ConsumerWidget {
                   mode: _PatientDetailSplitLayoutMode.wide,
                   pageHeight: pageHeight,
                   detail: detail,
-                  onBack: onBack,
                   pastCount: pastVisitsAsync.value?.length ?? 0,
                   upcomingCount: upcomingAsync.value?.length ?? 0,
                   historyQuery: historyQuery,
@@ -105,7 +111,6 @@ class _PatientDetailContentView extends ConsumerWidget {
                   mode: _PatientDetailSplitLayoutMode.medium,
                   pageHeight: pageHeight,
                   detail: detail,
-                  onBack: onBack,
                   pastCount: pastVisitsAsync.value?.length ?? 0,
                   upcomingCount: upcomingAsync.value?.length ?? 0,
                   historyQuery: historyQuery,
@@ -124,7 +129,6 @@ class _PatientDetailContentView extends ConsumerWidget {
                   children: [
                     _PatientProfileCard(
                       detail: detail,
-                      onBack: onBack,
                       upcomingCount: upcomingAsync.value?.length ?? 0,
                       pastCount: pastVisitsAsync.value?.length ?? 0,
                     ),
@@ -172,7 +176,6 @@ class _PatientDetailSplitLayout extends StatelessWidget {
     required this.mode,
     required this.pageHeight,
     required this.detail,
-    required this.onBack,
     required this.pastCount,
     required this.upcomingCount,
     required this.historyQuery,
@@ -189,7 +192,6 @@ class _PatientDetailSplitLayout extends StatelessWidget {
   final _PatientDetailSplitLayoutMode mode;
   final double pageHeight;
   final PatientDetail detail;
-  final VoidCallback onBack;
   final int pastCount;
   final int upcomingCount;
   final PatientDetailHistoryQuery historyQuery;
@@ -222,12 +224,7 @@ class _PatientDetailSplitLayout extends StatelessWidget {
       return _EqualHeightRow(
         children: [
           _EqualHeightRowChild(
-            child: _PatientProfileCard(
-              detail: detail,
-              onBack: onBack,
-              upcomingCount: upcomingCount,
-              pastCount: pastCount,
-            ),
+            child: _PatientProfileCard(detail: detail, upcomingCount: upcomingCount, pastCount: pastCount),
           ),
           _EqualHeightRowChild(flex: 2, child: _PatientBasicInfoCard(detail: detail)),
         ],
@@ -276,7 +273,7 @@ class _PatientDetailSplitLayout extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _PatientProfileCard(detail: detail, onBack: onBack, upcomingCount: upcomingCount, pastCount: pastCount),
+          _PatientProfileCard(detail: detail, upcomingCount: upcomingCount, pastCount: pastCount),
           const SizedBox(height: SpacingTokens.lg),
           splitRow,
         ],
@@ -377,15 +374,9 @@ class _EqualHeightRowState extends State<_EqualHeightRow> {
 }
 
 class _PatientProfileCard extends StatelessWidget {
-  const _PatientProfileCard({
-    required this.detail,
-    required this.onBack,
-    required this.pastCount,
-    required this.upcomingCount,
-  });
+  const _PatientProfileCard({required this.detail, required this.pastCount, required this.upcomingCount});
 
   final PatientDetail detail;
-  final VoidCallback onBack;
   final int pastCount;
   final int upcomingCount;
 
@@ -400,48 +391,29 @@ class _PatientProfileCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(context.shapeTokens.lg),
         border: Border.all(color: colors.border),
       ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(SpacingTokens.lg),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  detail.fullName,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: SpacingTokens.xs),
-                Text(
-                  'ID ${PatientPresentationFormatting.displayId(detail.id)}',
-                  style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: SpacingTokens.md),
-                _ProfileStatsWithFloatingAvatar(
-                  gender: detail.gender,
-                  pastCount: pastCount,
-                  upcomingCount: upcomingCount,
-                ),
-              ],
+      child: Padding(
+        padding: const EdgeInsets.all(SpacingTokens.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              detail.fullName,
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          Positioned(
-            top: SpacingTokens.sm,
-            left: SpacingTokens.sm,
-            child: AppIconButton(
-              variant: AppIconButtonVariant.outline,
-              icon: const Icon(Icons.arrow_back, size: 20),
-              tooltip: 'Back to patients',
-              onPressed: onBack,
+            const SizedBox(height: SpacingTokens.xs),
+            Text(
+              'ID ${PatientPresentationFormatting.displayId(detail.id)}',
+              style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+              textAlign: TextAlign.center,
             ),
-          ),
-        ],
+            const SizedBox(height: SpacingTokens.md),
+            _ProfileStatsWithFloatingAvatar(gender: detail.gender, pastCount: pastCount, upcomingCount: upcomingCount),
+          ],
+        ),
       ),
     );
   }
@@ -628,18 +600,22 @@ class _InfoGrid extends StatelessWidget {
 }
 
 class _PatientDetailLoadingView extends StatelessWidget {
-  const _PatientDetailLoadingView({required this.onBack, this.preview});
+  const _PatientDetailLoadingView({required this.patientId, required this.onBack, this.preview});
 
+  final String patientId;
   final VoidCallback onBack;
   final PatientListItem? preview;
 
   @override
   Widget build(BuildContext context) {
     return _PatientDetailScaffold(
+      patientId: patientId,
+      patientName: preview?.fullName,
+      onBack: onBack,
       body: (pageHeight) => AppDeferredLoading(
         isLoading: true,
         placeholder: preview != null
-            ? _PatientDetailPreviewLayout(preview: preview!, onBack: onBack, pageHeight: pageHeight)
+            ? _PatientDetailPreviewLayout(preview: preview!, pageHeight: pageHeight)
             : _PatientDetailBodySkeleton(pageHeight: pageHeight),
         loading: _PatientDetailBodyLoading(pageHeight: pageHeight),
       ),
@@ -648,10 +624,9 @@ class _PatientDetailLoadingView extends StatelessWidget {
 }
 
 class _PatientDetailPreviewLayout extends StatelessWidget {
-  const _PatientDetailPreviewLayout({required this.preview, required this.onBack, required this.pageHeight});
+  const _PatientDetailPreviewLayout({required this.preview, required this.pageHeight});
 
   final PatientListItem preview;
-  final VoidCallback onBack;
   final double pageHeight;
 
   @override
@@ -669,45 +644,25 @@ class _PatientDetailPreviewLayout extends StatelessWidget {
               borderRadius: BorderRadius.circular(context.shapeTokens.lg),
               border: Border.all(color: colors.border),
             ),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(SpacingTokens.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          PatientGenderAvatar(gender: preview.gender, size: 72),
-                          const SizedBox(width: SpacingTokens.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  preview.fullName,
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+            child: Padding(
+              padding: const EdgeInsets.all(SpacingTokens.lg),
+              child: Row(
+                children: [
+                  PatientGenderAvatar(gender: preview.gender, size: 72),
+                  const SizedBox(width: SpacingTokens.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          preview.fullName,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Positioned(
-                  top: SpacingTokens.sm,
-                  left: SpacingTokens.sm,
-                  child: AppIconButton(
-                    variant: AppIconButtonVariant.outline,
-                    icon: const Icon(Icons.arrow_back, size: 20),
-                    tooltip: 'Back to patients',
-                    onPressed: onBack,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: SpacingTokens.lg),
@@ -719,8 +674,14 @@ class _PatientDetailPreviewLayout extends StatelessWidget {
 }
 
 class _PatientDetailErrorView extends StatelessWidget {
-  const _PatientDetailErrorView({required this.message, required this.onBack, required this.onRetry});
+  const _PatientDetailErrorView({
+    required this.patientId,
+    required this.message,
+    required this.onBack,
+    required this.onRetry,
+  });
 
+  final String patientId;
   final String message;
   final VoidCallback onBack;
   final VoidCallback onRetry;
@@ -728,28 +689,154 @@ class _PatientDetailErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _PatientDetailScaffold(
-      body: (_) => _PatientDetailBodyError(message: message, onRetry: onRetry, onBack: onBack),
+      patientId: patientId,
+      onBack: onBack,
+      body: (_) => _PatientDetailBodyError(message: message, onRetry: onRetry),
     );
   }
 }
 
-class _PatientDetailScaffold extends StatelessWidget {
-  const _PatientDetailScaffold({required this.body});
+class _PatientDetailScaffold extends ConsumerWidget {
+  const _PatientDetailScaffold({required this.patientId, required this.onBack, this.patientName, required this.body});
 
+  final String patientId;
+  final VoidCallback onBack;
+  final String? patientName;
   final Widget Function(double pageHeight) body;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.all(SpacingTokens.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _PatientDetailHeader(patientId: patientId, patientName: patientName, onBack: onBack),
+          const SizedBox(height: SpacingTokens.md),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
                 return SingleChildScrollView(child: body(constraints.maxHeight));
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PatientDetailHeader extends ConsumerStatefulWidget {
+  const _PatientDetailHeader({required this.patientId, required this.onBack, this.patientName});
+
+  final String patientId;
+  final VoidCallback onBack;
+  final String? patientName;
+
+  @override
+  ConsumerState<_PatientDetailHeader> createState() => _PatientDetailHeaderState();
+}
+
+class _PatientDetailHeaderState extends ConsumerState<_PatientDetailHeader> {
+  var _isDeleting = false;
+
+  bool get _canEdit => AuthRouteGuard.canAccessPatientEdit(ref.read(authSessionProvider));
+
+  bool get _canDelete => AuthRouteGuard.canAccessPatientDelete(ref.read(authSessionProvider));
+
+  Future<void> _confirmDelete() async {
+    final name = widget.patientName?.trim();
+    final message = name == null || name.isEmpty
+        ? 'This patient will be archived and removed from active lists. Historical records stay linked.'
+        : '$name will be archived and removed from active lists. Historical records stay linked.';
+
+    await AppDialog.showConfirmation(
+      context: context,
+      title: 'Delete patient?',
+      message: message,
+      confirmLabel: 'Delete patient',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: _deletePatient,
+    );
+  }
+
+  Future<void> _deletePatient() async {
+    if (_isDeleting) {
+      return;
+    }
+
+    setState(() => _isDeleting = true);
+    try {
+      await ref.read(archivePatientUseCaseProvider)(widget.patientId);
+      if (!mounted) {
+        return;
+      }
+      AppToast.success(context, message: 'Patient deleted.');
+      PatientDetailPage._goBack(context);
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isDeleting = false);
+      AppToast.error(context, message: patientMessageForRpc(error));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isDeleting = false);
+      AppToast.error(context, message: 'Unable to delete patient. Try again.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.semanticColors;
+
+    return SizedBox(
+      height: 40,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: AppIconButton(
+              icon: const Icon(Icons.arrow_back, size: 20),
+              tooltip: 'Back to patients',
+              onPressed: widget.onBack,
+            ),
+          ),
+          Text(
+            'Patient Details',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_canEdit)
+                  IconButton(
+                    tooltip: 'Edit patient',
+                    onPressed: () => context.nav.goPatientEdit(widget.patientId),
+                    icon: Icon(Icons.edit_outlined, color: colors.mutedForeground),
+                  ),
+                if (_canDelete)
+                  IconButton(
+                    tooltip: 'Delete patient',
+                    onPressed: _isDeleting ? null : _confirmDelete,
+                    icon: _isDeleting
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: colors.destructive),
+                          )
+                        : Icon(Icons.delete_outline, color: colors.destructive),
+                  ),
+              ],
             ),
           ),
         ],
@@ -875,60 +962,45 @@ class _PatientDetailBodyLoading extends StatelessWidget {
 }
 
 class _PatientDetailBodyError extends StatelessWidget {
-  const _PatientDetailBodyError({required this.message, required this.onRetry, required this.onBack});
+  const _PatientDetailBodyError({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;
-  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final theme = Theme.of(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: AppIconButton(
-            icon: const Icon(Icons.arrow_back, size: 20),
-            tooltip: 'Back to patients',
-            onPressed: onBack,
-          ),
-        ),
-        const SizedBox(height: SpacingTokens.lg),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.card,
-            borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-            border: Border.all(color: colors.border),
-          ),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(SpacingTokens.xl),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Unable to load patient details',
-                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: SpacingTokens.xs),
-                  Text(
-                    message,
-                    style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: SpacingTokens.lg),
-                  AppButton(label: 'Retry', expand: false, onPressed: onRetry),
-                ],
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
+        border: Border.all(color: colors.border),
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(SpacingTokens.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Unable to load patient details',
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
               ),
-            ),
+              const SizedBox(height: SpacingTokens.xs),
+              Text(
+                message,
+                style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: SpacingTokens.lg),
+              AppButton(label: 'Retry', expand: false, onPressed: onRetry),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }

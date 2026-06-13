@@ -269,11 +269,12 @@ void main() {
         return tester.renderObject<RenderBox>(container);
       }
 
-      final pageHeight = surfaceHeight - (SpacingTokens.lg * 2);
+      const headerHeight = 40.0;
+      final pageHeight = surfaceHeight - (SpacingTokens.lg * 2) - headerHeight - SpacingTokens.md;
       final halfCardHeight = (pageHeight - SpacingTokens.lg) / 2;
       final notesHeight = cardBoxFor(find.text('Notes')).size.height;
       final documentsHeight = cardBoxFor(find.text('Documents')).size.height;
-      final profileHeight = cardBoxFor(find.byTooltip('Back to patients')).size.height;
+      final profileHeight = cardBoxFor(find.text('Sara Ali')).size.height;
       final basicInfoHeight = cardBoxFor(find.text('Basic information')).size.height;
 
       expect(notesHeight, closeTo(halfCardHeight, 1));
