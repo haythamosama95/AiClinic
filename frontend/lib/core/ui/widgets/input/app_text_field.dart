@@ -6,11 +6,12 @@ import 'app_field_size.dart';
 
 const _fieldIconExtent = 32.0;
 
-FTextFieldStyleDelta _inputFieldStyle(AppFieldSize size, {Color? fillColor}) => FTextFieldStyleDelta.delta(
-  contentPadding: EdgeInsetsGeometryDelta.value(_inputContentPadding(size)),
-  constraints: BoxConstraints(minHeight: _inputMinHeight(size)),
-  color: fillColor == null ? null : FVariantsValueDelta.delta([FVariantValueDeltaOperation.base(fillColor)]),
-);
+FTextFieldStyleDelta _inputFieldStyle(AppFieldSize size, {Color? fillColor, bool expands = false}) =>
+    FTextFieldStyleDelta.delta(
+      contentPadding: EdgeInsetsGeometryDelta.value(_inputContentPadding(size)),
+      constraints: expands ? null : BoxConstraints(minHeight: _inputMinHeight(size)),
+      color: fillColor == null ? null : FVariantsValueDelta.delta([FVariantValueDeltaOperation.base(fillColor)]),
+    );
 
 EdgeInsets _inputContentPadding(AppFieldSize size) => switch (size) {
   AppFieldSize.sm => const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -165,7 +166,7 @@ class AppTextInput extends StatelessWidget {
             )
           : FTextFieldControl.managed(onChange: onChanged == null ? null : (value) => onChanged!(value.text)),
       size: size.forui,
-      style: _inputFieldStyle(size, fillColor: fillColor),
+      style: _inputFieldStyle(size, fillColor: fillColor, expands: expands),
       label: label == null ? null : Text(label!, style: theme.textTheme.labelMedium),
       description: description == null ? null : Text(description!, style: theme.textTheme.bodySmall),
       hint: hintText,

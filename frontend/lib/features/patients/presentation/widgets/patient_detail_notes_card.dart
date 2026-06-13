@@ -193,7 +193,9 @@ class _PatientDetailNotesCardState extends ConsumerState<PatientDetailNotesCard>
       children: [
         header,
         const SizedBox(height: SpacingTokens.sm),
-        Expanded(child: notesInput),
+        Expanded(
+          child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 0), child: notesInput),
+        ),
         if (createdByFooter != null) ...[const SizedBox(height: SpacingTokens.sm), createdByFooter],
       ],
     );
