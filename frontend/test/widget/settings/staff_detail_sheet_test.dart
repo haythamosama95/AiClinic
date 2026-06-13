@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
@@ -14,12 +12,10 @@ import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.d
 import 'package:ai_clinic/features/settings/presentation/widgets/staff_detail_sheet.dart';
 import 'package:ai_clinic/features/setup/domain/branch_summary.dart';
 import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../helpers/auth_test_support.dart';
 import '../../support/fake_postgrest_rpc.dart';
@@ -425,9 +421,8 @@ Widget _listHost({required StaffListItem member, bool includeInactive = false, S
 }
 
 class _DeletableStaffRepository extends StaffAdminRepositoryImpl {
-  _DeletableStaffRepository(this._tableClient, this._rpcRepo, this.member) : super(_tableClient);
+  _DeletableStaffRepository(super.tableClient, this._rpcRepo, this.member);
 
-  final SettingsTableTestClient _tableClient;
   final StaffAdminRepositoryImpl _rpcRepo;
   final StaffListItem member;
   var _deleted = false;
@@ -534,18 +529,11 @@ Widget _host({
 }
 
 class _StaffDetailFakeRepository extends StaffAdminRepositoryImpl {
-  _StaffDetailFakeRepository(this._tableClient, this._rpcRepo, this.member, {this.detailUsername})
-    : super(_tableClient);
+  _StaffDetailFakeRepository(super.tableClient, this._rpcRepo, this.member, {this.detailUsername});
 
-  final SettingsTableTestClient _tableClient;
   final StaffAdminRepositoryImpl _rpcRepo;
   final StaffListItem member;
   final String? detailUsername;
-
-  @override
-  Future<List<StaffListItem>> listStaff({StaffListFilter filter = StaffListFilter.all}) {
-    return super.listStaff(filter: filter);
-  }
 
   @override
   Future<StaffMemberDetail?> fetchStaffMember(String staffMemberId) async {

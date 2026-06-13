@@ -12,7 +12,6 @@ import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/animated_filter_cards_grid.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_cards_grid.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/staff_member_card.dart';

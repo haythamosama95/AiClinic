@@ -1,7 +1,6 @@
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_schedule.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_spec.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
-import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:timezone/timezone.dart' as tz;

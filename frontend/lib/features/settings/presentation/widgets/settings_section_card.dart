@@ -60,7 +60,7 @@ class SettingsSectionCard extends StatelessWidget {
                     style: theme.textTheme.titleMedium?.copyWith(color: colors.foreground, fontWeight: FontWeight.w600),
                   ),
                 ),
-                if (headerActions != null) headerActions,
+                ?headerActions,
               ],
             ),
           ),

@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/theme/shadow_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/settings/application/settings_rpc_messages.dart';

@@ -96,7 +96,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 return Stack(
                   fit: StackFit.expand,
                   alignment: Alignment.topCenter,
-                  children: [...previousChildren, if (currentChild != null) currentChild],
+                  children: [...previousChildren, ?currentChild],
                 );
               },
               transitionBuilder: (child, animation) {

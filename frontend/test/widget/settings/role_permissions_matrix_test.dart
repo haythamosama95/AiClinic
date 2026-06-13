@@ -13,7 +13,7 @@ import '../../support/settings_table_test_client.dart';
 
 void main() {
   group('RolePermissionsMatrix', () {
-    List<Map<String, dynamic>> _largeMatrixRows() {
+    List<Map<String, dynamic>> largeMatrixRows() {
       const keys = [
         'settings.manage_branches',
         'settings.manage_staff',
@@ -47,7 +47,7 @@ void main() {
           overrides: [
             authSessionProvider.overrideWith(_TestAuthSessionNotifier.new),
             rolePermissionsRepositoryProvider.overrideWithValue(
-              RolePermissionsRepositoryImpl(SettingsTableTestClient({'roles_permissions': _largeMatrixRows()})),
+              RolePermissionsRepositoryImpl(SettingsTableTestClient({'roles_permissions': largeMatrixRows()})),
             ),
           ],
           child: MaterialApp(
@@ -63,7 +63,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    Finder _horizontalScrollables() {
+    Finder horizontalScrollables() {
       return find.byWidgetPredicate(
         (widget) =>
             widget is Scrollable &&
@@ -74,7 +74,7 @@ void main() {
     testWidgets('horizontal scroll syncs header and body', (tester) async {
       await pumpMatrix(tester, size: const Size(360, 640));
 
-      final scrollables = _horizontalScrollables();
+      final scrollables = horizontalScrollables();
       expect(scrollables, findsAtLeastNWidgets(2));
 
       final bodyPosition = Scrollable.of(tester.element(scrollables.last)).position;

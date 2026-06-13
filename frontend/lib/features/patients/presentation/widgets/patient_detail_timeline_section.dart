@@ -144,7 +144,7 @@ class _PatientDetailTimelineSectionState extends ConsumerState<PatientDetailTime
                       clipBehavior: Clip.hardEdge,
                       children: [
                         ...previousChildren.map((child) => Positioned(top: 0, left: 0, right: 0, child: child)),
-                        if (currentChild != null) currentChild,
+                        ?currentChild,
                       ],
                     );
                   },

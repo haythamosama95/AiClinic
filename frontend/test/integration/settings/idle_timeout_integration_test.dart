@@ -1,5 +1,4 @@
 import 'package:ai_clinic/core/auth/idle_timeout_service.dart';
-import 'package:ai_clinic/features/settings/application/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/features/settings/data/idle_timeout_preferences_store.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

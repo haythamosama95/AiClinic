@@ -11,7 +11,6 @@ import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
@@ -27,6 +26,7 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/auth_test_support.dart';
@@ -303,7 +303,7 @@ Widget _host({
   );
 }
 
-_detailPageOverrides({
+List<Override> _detailPageOverrides({
   required Future<PatientDetail> Function(String patientId) getPatient,
   List<Map<String, dynamic>> visitItems = const [],
 }) {
