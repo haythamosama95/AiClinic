@@ -26,7 +26,7 @@ DECLARE
   v_role_count int;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
-  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff, v_owner_staff, v_doctor_staff]::uuid[]);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
   DELETE FROM public.audit_log;
   DELETE FROM auth.users WHERE id IN (v_owner_user, v_doctor_user);
 

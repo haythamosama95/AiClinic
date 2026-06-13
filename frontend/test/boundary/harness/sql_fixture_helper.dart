@@ -223,6 +223,7 @@ WHERE sba.staff_member_id IN (
     await execute('''
 DELETE FROM public.staff_members WHERE NOT is_bootstrap_admin;
 ''');
+    await execute('DELETE FROM public.audit_log WHERE true;');
     await execute('''
 DELETE FROM auth.users au
 WHERE NOT EXISTS (

@@ -247,6 +247,8 @@ BEGIN
   );
 
   v_result := public.dev_reset_clinic_installation();
+
+  PERFORM set_config('role', 'postgres', true);
   v_passed := v_result.success
     AND COALESCE((v_result.data ->> 'staff_deleted')::int, 0) >= 1
     AND COALESCE((v_result.data ->> 'auth_users_deleted')::int, 0) >= 1
@@ -265,8 +267,6 @@ BEGIN
       FROM public.staff_members sm
       WHERE sm.is_bootstrap_admin
     );
-
-  PERFORM set_config('role', 'postgres', true);
   INSERT INTO dev_reset_results VALUES (
     'dev_reset_deletes_non_bootstrap_staff_and_auth_users',
     v_passed,

@@ -21,6 +21,7 @@ import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_
 import 'package:ai_clinic/features/setup/domain/branch_summary.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/staff_assignable_branches_provider.dart';
 import 'package:flutter/material.dart';
+import 'dart:ui' show Tristate;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -433,8 +434,8 @@ void main() {
       final generalSemantics = tester.getSemantics(find.text('General'));
       final clinicSemantics = tester.getSemantics(find.text('Clinic Setup'));
 
-      expect(generalSemantics.flagsCollection.isSelected, isTrue);
-      expect(clinicSemantics.flagsCollection.isSelected, isFalse);
+      expect(generalSemantics.flagsCollection.isSelected, Tristate.isTrue);
+      expect(clinicSemantics.flagsCollection.isSelected, Tristate.isFalse);
     });
 
     testWidgets('filter popover dismissed when switching settings tab', (tester) async {

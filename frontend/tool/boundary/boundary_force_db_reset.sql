@@ -64,6 +64,8 @@ WHERE sba.staff_member_id IN (
 
 DELETE FROM public.staff_members WHERE NOT is_bootstrap_admin;
 
+DELETE FROM public.audit_log WHERE true;
+
 DELETE FROM auth.users au
 WHERE NOT EXISTS (
   SELECT 1 FROM public.staff_members sm WHERE sm.auth_user_id = au.id
