@@ -58,14 +58,6 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
     final listAsync = ref.watch(staffListProvider);
     final canAccess = AuthRouteGuard.canAccessStaffManagement(auth);
 
-    ref.listen<AsyncValue<StaffListUiState>>(staffListProvider, (previous, next) {
-      final actionError = next.value?.actionError;
-      if (actionError != null && actionError != previous?.value?.actionError) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(actionError)));
-        ref.read(staffListProvider.notifier).clearActionError();
-      }
-    });
-
     final body = _StaffListBody(
       canAccess: canAccess,
       listAsync: listAsync,
@@ -76,7 +68,6 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
       onQueryChanged: (query) => setState(() => _query = query),
       onNewStaff: () => _openCreateStaffModal(context),
       onViewStaff: _openStaffDetailSheet,
-      onToggleActive: _confirmToggleActive,
     );
 
     if (widget.embedded) {
@@ -122,32 +113,6 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
   Future<void> _openStaffDetailSheet(StaffListItem member) async {
     await StaffDetailSheet.show(context, member);
   }
-
-  Future<void> _confirmToggleActive(BuildContext context, StaffListItem member) async {
-    final targetActive = !member.isActive;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(targetActive ? 'Reactivate staff member?' : 'Deactivate staff member?'),
-        content: Text(
-          targetActive
-              ? '${member.fullName} will be able to sign in again when assigned to active branches.'
-              : '${member.fullName} will not be able to sign in until reactivated.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(targetActive ? 'Reactivate' : 'Deactivate'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      await ref.read(staffListProvider.notifier).toggleStaffActive(member);
-    }
-  }
 }
 
 class _StaffListBody extends ConsumerWidget {
@@ -161,7 +126,6 @@ class _StaffListBody extends ConsumerWidget {
     required this.onQueryChanged,
     required this.onNewStaff,
     required this.onViewStaff,
-    required this.onToggleActive,
   });
 
   final bool canAccess;
@@ -173,7 +137,6 @@ class _StaffListBody extends ConsumerWidget {
   final ValueChanged<StaffListQuery> onQueryChanged;
   final VoidCallback onNewStaff;
   final Future<void> Function(StaffListItem member) onViewStaff;
-  final Future<void> Function(BuildContext context, StaffListItem member) onToggleActive;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -207,12 +170,7 @@ class _StaffListBody extends ConsumerWidget {
               columns: 3,
               enforceColumns: true,
               emptyPlaceholder: const _CenteredMessage('No staff match your search or filters.'),
-              itemBuilder: (member) => StaffMemberCard(
-                member: member,
-                isBusy: ui.isTogglingActive && ui.togglingStaffId == member.id,
-                onEdit: () => onViewStaff(member),
-                onToggleActive: () => onToggleActive(context, member),
-              ),
+              itemBuilder: (member) => StaffMemberCard(member: member, onOpen: () => onViewStaff(member)),
             ),
           ],
         );

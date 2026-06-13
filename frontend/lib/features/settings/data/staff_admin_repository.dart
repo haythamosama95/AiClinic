@@ -198,6 +198,11 @@ class StaffAdminRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements
   Future<RpcResult> setStaffActive({required String staffMemberId, required bool isActive}) {
     return invokeSettingsRpc('set_staff_active', {'p_staff_member_id': staffMemberId, 'p_is_active': isActive});
   }
+
+  @override
+  Future<RpcResult> deleteStaffMember({required String staffMemberId}) {
+    return invokeSettingsRpc('delete_staff_member', {'p_staff_member_id': staffMemberId});
+  }
 }
 
 final staffAdminRepositoryProvider = Provider<StaffAdminRepository>((ref) {

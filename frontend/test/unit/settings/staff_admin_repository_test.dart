@@ -71,6 +71,12 @@ void main() {
       expect(client.lastParams, containsPair('p_is_active', false));
     });
 
+    test('deleteStaffMember sends delete_staff_member parameters', () async {
+      await repository.deleteStaffMember(staffMemberId: '33333333-3333-4333-8333-333333333333');
+      expect(client.lastFunction, 'delete_staff_member');
+      expect(client.lastParams, containsPair('p_staff_member_id', '33333333-3333-4333-8333-333333333333'));
+    });
+
     test('listStaff filters active and inactive rows', () async {
       final client = SettingsTableTestClient({
         'staff_members': [

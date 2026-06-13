@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_cards_grid.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/staff_member_card.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -118,57 +119,28 @@ void main() {
       expect(find.text('East Wing'), findsOneWidget);
     });
 
-    testWidgets('deactivate confirms before calling RPC', (tester) async {
-      final rpcClient = SettingsRpcTestClient();
-      await tester.pumpWidget(_host(rpcClient: rpcClient));
+    testWidgets('active staff card shows status icon only', (tester) async {
+      await tester.pumpWidget(_host());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(PopupMenuButton<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Deactivate'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Deactivate staff member?'), findsOneWidget);
-      await tester.tap(find.text('Deactivate').last);
-      await tester.pumpAndSettle();
-
-      expect(rpcClient.lastFunction, 'set_staff_active');
-      expect(rpcClient.lastParams, containsPair('p_is_active', false));
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+      expect(find.byTooltip('Active staff member'), findsOneWidget);
+      expect(find.byTooltip('Deactivate staff member'), findsNothing);
+      expect(find.byTooltip('Edit'), findsNothing);
     });
 
-    testWidgets('advanced: RPC failure shows snackbar', (tester) async {
-      final rpcClient = SettingsRpcTestClient(
-        rpcResults: {
-          'set_staff_active': {'success': false, 'error_code': 'FORBIDDEN', 'error_message': 'Not allowed'},
-        },
-      );
-      await tester.pumpWidget(_host(rpcClient: rpcClient));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byType(PopupMenuButton<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Deactivate'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Deactivate').last);
-      await tester.pumpAndSettle();
-
-      expect(find.byType(SnackBar), findsOneWidget);
-      expect(find.textContaining('permission'), findsOneWidget);
-    });
-
-    testWidgets('regression: reactivate inactive staff succeeds', (tester) async {
+    testWidgets('inactive staff card shows inactive status icon only', (tester) async {
       await tester.pumpWidget(_host(includeInactive: true));
       await tester.pumpAndSettle();
 
       final inactiveCard = find.ancestor(of: find.text('Former Receptionist'), matching: find.byType(StaffMemberCard));
-      await tester.tap(find.descendant(of: inactiveCard, matching: find.byType(PopupMenuButton<String>)));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Reactivate'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Reactivate').last);
-      await tester.pumpAndSettle();
-
-      expect(find.byType(SnackBar), findsNothing);
+      expect(find.descendant(of: inactiveCard, matching: find.byIcon(Icons.pause_circle_outline)), findsOneWidget);
+      expect(find.descendant(of: inactiveCard, matching: find.byTooltip('Inactive staff member')), findsOneWidget);
+      expect(find.descendant(of: inactiveCard, matching: find.byTooltip('Activate staff member')), findsNothing);
+      expect(
+        find.descendant(of: inactiveCard, matching: find.byTooltip('Delete staff member permanently')),
+        findsNothing,
+      );
     });
 
     testWidgets('embedded mode omits scaffold app bar', (tester) async {
@@ -199,7 +171,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Login credentials'), findsOneWidget);
-      expect(find.byTooltip('Edit'), findsOneWidget);
+      expect(find.byTooltip('Edit'), findsWidgets);
+      expect(find.byTooltip('Deactivate staff member'), findsWidgets);
       expect(find.byTooltip('Close'), findsOneWidget);
     });
 
@@ -494,5 +467,10 @@ class _FakeStaffAdminRepository extends StaffAdminRepositoryImpl {
   @override
   Future<RpcResult> setStaffActive({required String staffMemberId, required bool isActive}) {
     return _rpcRepo.setStaffActive(staffMemberId: staffMemberId, isActive: isActive);
+  }
+
+  @override
+  Future<RpcResult> deleteStaffMember({required String staffMemberId}) {
+    return _rpcRepo.deleteStaffMember(staffMemberId: staffMemberId);
   }
 }

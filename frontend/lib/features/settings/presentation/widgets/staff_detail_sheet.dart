@@ -54,6 +54,8 @@ class _StaffDetailSheetState extends ConsumerState<StaffDetailSheet> {
   var _isLoading = true;
   var _isEditing = false;
   var _isSaving = false;
+  var _isTogglingActive = false;
+  var _isDeletingStaff = false;
   var _usernameRevealed = false;
   String? _originalUsername;
   String? _errorMessage;
@@ -304,6 +306,131 @@ class _StaffDetailSheetState extends ConsumerState<StaffDetailSheet> {
     setState(() => _primaryBranchId = nextPrimary);
   }
 
+  bool get _isActive => _detail?.isActive ?? widget.member.isActive;
+
+  Future<void> _confirmDeactivate() async {
+    await AppDialog.showConfirmation(
+      context: context,
+      title: 'Deactivate staff member?',
+      message:
+          '${widget.member.fullName} will not be able to sign in until reactivated. '
+          'Historical records stay linked. You can reactivate them later.',
+      confirmLabel: 'Deactivate staff member',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: _deactivate,
+    );
+  }
+
+  Future<void> _deactivate() async {
+    setState(() => _isTogglingActive = true);
+
+    try {
+      await ref.read(setStaffActiveUseCaseProvider)(staffMemberId: widget.member.id, isActive: false);
+      ref.invalidate(staffListProvider);
+
+      if (!mounted) {
+        return;
+      }
+
+      await _loadDetail();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _isTogglingActive = false);
+      AppToast.success(context, message: 'Staff member deactivated.');
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isTogglingActive = false);
+      AppToast.error(context, message: staffMessageForRpc(error));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isTogglingActive = false);
+      AppToast.error(context, message: 'Unable to deactivate staff member. Check connectivity and try again.');
+    }
+  }
+
+  Future<void> _activate() async {
+    setState(() => _isTogglingActive = true);
+
+    try {
+      await ref.read(setStaffActiveUseCaseProvider)(staffMemberId: widget.member.id, isActive: true);
+      ref.invalidate(staffListProvider);
+
+      if (!mounted) {
+        return;
+      }
+
+      await _loadDetail();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _isTogglingActive = false);
+      AppToast.success(context, message: 'Staff member activated.');
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isTogglingActive = false);
+      AppToast.error(context, message: staffMessageForRpc(error));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isTogglingActive = false);
+      AppToast.error(context, message: 'Unable to activate staff member. Check connectivity and try again.');
+    }
+  }
+
+  Future<void> _confirmPermanentDelete() async {
+    await AppDialog.showConfirmation(
+      context: context,
+      title: 'Delete staff member permanently?',
+      message:
+          'This staff member will be removed from settings and cannot be reactivated. '
+          'Historical records linked to them are kept for audit.',
+      confirmLabel: 'Delete staff member',
+      cancelLabel: 'Cancel',
+      destructive: true,
+      onConfirm: _permanentlyDelete,
+    );
+  }
+
+  Future<void> _permanentlyDelete() async {
+    setState(() => _isDeletingStaff = true);
+
+    try {
+      await ref.read(deleteStaffMemberUseCaseProvider)(staffMemberId: widget.member.id);
+      ref.invalidate(staffListProvider);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _isDeletingStaff = false);
+      AppToast.success(context, message: 'Staff member deleted.');
+      _closeSheet();
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isDeletingStaff = false);
+      AppToast.error(context, message: staffMessageForRpc(error));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isDeletingStaff = false);
+      AppToast.error(context, message: 'Unable to delete staff member. Check connectivity and try again.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
@@ -320,7 +447,18 @@ class _StaffDetailSheetState extends ConsumerState<StaffDetailSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _SheetHeader(member: widget.member, isEditing: _isEditing, onClose: _closeSheet, onEdit: _startEditing),
+            _SheetHeader(
+              member: widget.member,
+              isActive: _isActive,
+              isEditing: _isEditing,
+              isTogglingActive: _isTogglingActive,
+              isDeletingStaff: _isDeletingStaff,
+              onClose: _closeSheet,
+              onEdit: _startEditing,
+              onDeactivate: _confirmDeactivate,
+              onActivate: _activate,
+              onPermanentDelete: _confirmPermanentDelete,
+            ),
             Expanded(
               child: _isLoading
                   ? const Center(child: AppCircularProgress())
@@ -476,17 +614,51 @@ class _StaffDetailSheetState extends ConsumerState<StaffDetailSheet> {
 }
 
 class _SheetHeader extends StatelessWidget {
-  const _SheetHeader({required this.member, required this.isEditing, required this.onClose, required this.onEdit});
+  const _SheetHeader({
+    required this.member,
+    required this.isActive,
+    required this.isEditing,
+    required this.isTogglingActive,
+    required this.isDeletingStaff,
+    required this.onClose,
+    required this.onEdit,
+    required this.onDeactivate,
+    required this.onActivate,
+    required this.onPermanentDelete,
+  });
 
   final StaffListItem member;
+  final bool isActive;
   final bool isEditing;
+  final bool isTogglingActive;
+  final bool isDeletingStaff;
   final VoidCallback onClose;
   final VoidCallback onEdit;
+  final VoidCallback onDeactivate;
+  final Future<void> Function() onActivate;
+  final VoidCallback onPermanentDelete;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
+    final actionsLocked = isTogglingActive || isDeletingStaff;
+
+    final togglingIndicator = SizedBox(
+      width: 18,
+      height: 18,
+      child: CircularProgressIndicator(strokeWidth: 2, color: isActive ? colors.destructive : colors.primary),
+    );
+
+    final deletingIndicator = SizedBox(
+      width: 18,
+      height: 18,
+      child: CircularProgressIndicator(strokeWidth: 2, color: colors.destructive),
+    );
+
+    final statusIcon = isActive
+        ? Icon(Icons.check_circle_outline, size: 20, color: colors.primary)
+        : Icon(Icons.pause_circle_outline, size: 20, color: colors.mutedForeground);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.md, SpacingTokens.lg),
@@ -504,7 +676,18 @@ class _SheetHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(member.fullName, style: theme.textTheme.titleLarge?.copyWith(color: colors.foreground)),
+                Row(
+                  children: [
+                    Tooltip(message: isActive ? 'Active staff member' : 'Inactive staff member', child: statusIcon),
+                    const SizedBox(width: SpacingTokens.sm),
+                    Expanded(
+                      child: Text(
+                        member.fullName,
+                        style: theme.textTheme.titleLarge?.copyWith(color: colors.foreground),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: SpacingTokens.xs),
                 Text(
                   StaffFormFields.roleLabel(member.role),
@@ -513,12 +696,33 @@ class _SheetHeader extends StatelessWidget {
               ],
             ),
           ),
-          if (!isEditing)
+          if (!isEditing) ...[
             IconButton(
               tooltip: 'Edit',
-              onPressed: onEdit,
+              onPressed: actionsLocked ? null : onEdit,
               icon: Icon(Icons.edit_outlined, color: colors.mutedForeground),
             ),
+            if (isActive)
+              IconButton(
+                tooltip: 'Deactivate staff member',
+                onPressed: actionsLocked ? null : onDeactivate,
+                icon: isTogglingActive ? togglingIndicator : Icon(Icons.delete_outline, color: colors.destructive),
+              )
+            else ...[
+              IconButton(
+                tooltip: 'Activate staff member',
+                onPressed: actionsLocked ? null : onActivate,
+                icon: isTogglingActive ? togglingIndicator : Icon(Icons.play_circle_outline, color: colors.primary),
+              ),
+              IconButton(
+                tooltip: 'Delete staff member permanently',
+                onPressed: actionsLocked ? null : onPermanentDelete,
+                icon: isDeletingStaff
+                    ? deletingIndicator
+                    : Icon(Icons.delete_forever_outlined, color: colors.destructive),
+              ),
+            ],
+          ],
           IconButton(
             tooltip: 'Close',
             onPressed: onClose,

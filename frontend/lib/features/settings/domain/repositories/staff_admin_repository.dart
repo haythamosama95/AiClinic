@@ -10,4 +10,5 @@ abstract class StaffAdminRepository {
   Future<StaffMemberDetail?> fetchStaffMember(String staffMemberId);
   Future<String> updateStaffMember(UpdateStaffMemberInput input);
   Future<RpcResult> setStaffActive({required String staffMemberId, required bool isActive});
+  Future<RpcResult> deleteStaffMember({required String staffMemberId});
 }

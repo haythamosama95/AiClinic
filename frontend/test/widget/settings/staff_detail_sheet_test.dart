@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -15,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/auth_test_support.dart';
+import '../../support/settings_rpc_test_client.dart';
 import '../../support/settings_table_test_client.dart';
 
 void main() {
@@ -102,6 +104,76 @@ void main() {
 
       expect(find.text('drsmith'), findsOneWidget);
     });
+
+    testWidgets('detail sheet shows lifecycle actions for active staff', (tester) async {
+      await tester.pumpWidget(_host(member: member));
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Deactivate staff member'), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+      expect(find.byTooltip('Activate staff member'), findsNothing);
+    });
+
+    testWidgets('detail sheet shows reactivate and delete for inactive staff', (tester) async {
+      const inactiveMember = StaffListItem(
+        id: staffId,
+        fullName: 'Dr. Smith',
+        role: StaffRole.doctor,
+        isActive: false,
+        phone: '(603) 555-0123',
+        username: 'drsmith',
+        branches: [StaffBranchLabel(id: '00000000-0000-4000-8000-000000000201', name: 'Main Clinic', isPrimary: true)],
+      );
+
+      await tester.pumpWidget(_host(member: inactiveMember));
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Activate staff member'), findsOneWidget);
+      expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
+      expect(find.byTooltip('Delete staff member permanently'), findsOneWidget);
+      expect(find.byTooltip('Deactivate staff member'), findsNothing);
+    });
+
+    testWidgets('deactivate in sheet confirms before calling RPC', (tester) async {
+      final rpcClient = SettingsRpcTestClient();
+      await tester.pumpWidget(_host(member: member, rpcClient: rpcClient));
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Deactivate staff member'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Deactivate staff member?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(AppButton, 'Deactivate staff member'));
+      await tester.pumpAndSettle();
+
+      expect(rpcClient.lastFunction, 'set_staff_active');
+      expect(rpcClient.lastParams, containsPair('p_is_active', false));
+    });
+
+    testWidgets('last administrator deactivation shows error toast', (tester) async {
+      final rpcClient = SettingsRpcTestClient(
+        rpcResults: {
+          'set_staff_active': {
+            'success': false,
+            'error_code': 'LAST_ADMINISTRATOR',
+            'error_message': 'Cannot deactivate the last active administrator.',
+          },
+        },
+      );
+      await tester.pumpWidget(_host(member: member, rpcClient: rpcClient));
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Deactivate staff member'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(AppButton, 'Deactivate staff member'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('last active administrator'), findsOneWidget);
+    });
   });
 }
 
@@ -110,6 +182,7 @@ Widget _host({
   StaffRole role = StaffRole.administrator,
   Set<String> permissions = const {'settings.manage_staff'},
   String? detailUsername,
+  SettingsRpcTestClient? rpcClient,
 }) {
   final tableClient = SettingsTableTestClient({
     'staff_members': [
@@ -128,6 +201,8 @@ Widget _host({
     ],
   });
 
+  final rpcRepo = StaffAdminRepositoryImpl(rpcClient ?? SettingsRpcTestClient());
+
   return ProviderScope(
     overrides: [
       authSessionProvider.overrideWith(
@@ -139,7 +214,7 @@ Widget _host({
         ),
       ),
       staffAdminRepositoryProvider.overrideWithValue(
-        _StaffDetailFakeRepository(tableClient, member, detailUsername: detailUsername ?? member.username),
+        _StaffDetailFakeRepository(tableClient, rpcRepo, member, detailUsername: detailUsername ?? member.username),
       ),
       staffAssignableBranchesProvider.overrideWith(
         (ref) async => const [BranchSummary(id: '00000000-0000-4000-8000-000000000201', name: 'Main Clinic')],
@@ -162,9 +237,11 @@ Widget _host({
 }
 
 class _StaffDetailFakeRepository extends StaffAdminRepositoryImpl {
-  _StaffDetailFakeRepository(this._tableClient, this.member, {this.detailUsername}) : super(_tableClient);
+  _StaffDetailFakeRepository(this._tableClient, this._rpcRepo, this.member, {this.detailUsername})
+    : super(_tableClient);
 
   final SettingsTableTestClient _tableClient;
+  final StaffAdminRepositoryImpl _rpcRepo;
   final StaffListItem member;
   final String? detailUsername;
 
@@ -191,6 +268,16 @@ class _StaffDetailFakeRepository extends StaffAdminRepositoryImpl {
       ],
       primaryBranchId: member.branches.where((branch) => branch.isPrimary).map((branch) => branch.id).firstOrNull,
     );
+  }
+
+  @override
+  Future<RpcResult> setStaffActive({required String staffMemberId, required bool isActive}) {
+    return _rpcRepo.setStaffActive(staffMemberId: staffMemberId, isActive: isActive);
+  }
+
+  @override
+  Future<RpcResult> deleteStaffMember({required String staffMemberId}) {
+    return _rpcRepo.deleteStaffMember(staffMemberId: staffMemberId);
   }
 }
 

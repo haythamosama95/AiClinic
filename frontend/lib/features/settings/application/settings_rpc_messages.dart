@@ -43,8 +43,14 @@ String staffMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {
     'FORBIDDEN' => 'You do not have permission to manage staff.',
     'STAFF_NOT_FOUND' => 'That staff member was not found. Refresh the list and try again.',
+    'STAFF_STILL_ACTIVE' => 'Deactivate the staff member before deleting them.',
+    'STAFF_ALREADY_DELETED' => 'That staff member has already been deleted.',
     'CROSS_ORG_DENIED' => 'That staff member is outside your clinic organization.',
     'INVALID_BRANCH' => 'One or more selected branches are invalid or inactive.',
+    'LAST_ADMINISTRATOR' =>
+      failure.message.isNotEmpty ? failure.message : 'Cannot deactivate the last active administrator.',
+    'CANNOT_DEACTIVATE_SELF' => 'You cannot deactivate your own account.',
+    'CANNOT_DELETE_SELF' => 'You cannot delete your own account.',
     'INVALID_INPUT' => failure.message,
     'RPC_NOT_APPLIED' => failure.message,
     _ => 'Unable to complete the staff action. Check connectivity and try again.',

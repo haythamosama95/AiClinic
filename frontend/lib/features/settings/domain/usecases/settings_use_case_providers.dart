@@ -17,6 +17,7 @@ import 'package:ai_clinic/features/settings/domain/usecases/list_staff.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/fetch_staff_member.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/update_staff_member.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/set_staff_active.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/delete_staff_member.dart';
 
 final listBranchesUseCaseProvider = Provider((ref) => ListBranches(ref.watch(branchRepositoryProvider)));
 final createBranchUseCaseProvider = Provider((ref) => CreateBranch(ref.watch(branchRepositoryProvider)));
@@ -39,3 +40,4 @@ final listStaffUseCaseProvider = Provider((ref) => ListStaff(ref.watch(staffAdmi
 final fetchStaffMemberUseCaseProvider = Provider((ref) => FetchStaffMember(ref.watch(staffAdminRepositoryProvider)));
 final updateStaffMemberUseCaseProvider = Provider((ref) => UpdateStaffMember(ref.watch(staffAdminRepositoryProvider)));
 final setStaffActiveUseCaseProvider = Provider((ref) => SetStaffActive(ref.watch(staffAdminRepositoryProvider)));
+final deleteStaffMemberUseCaseProvider = Provider((ref) => DeleteStaffMember(ref.watch(staffAdminRepositoryProvider)));

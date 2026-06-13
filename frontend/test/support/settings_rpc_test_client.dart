@@ -55,6 +55,10 @@ class SettingsRpcTestClient extends RpcCaptureSupabaseClient {
         'success': true,
         'data': {'staff_member_id': paramsId('p_staff_member_id'), 'is_active': lastParams?['p_is_active']},
       },
+      'delete_staff_member' => {
+        'success': true,
+        'data': {'staff_member_id': paramsId('p_staff_member_id')},
+      },
       'update_role_permission' => {
         'success': true,
         'data': {

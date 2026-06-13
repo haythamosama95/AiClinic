@@ -3,24 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 
 /// Card displaying a staff member's name, role, phone, and branch assignments.
 class StaffMemberCard extends StatelessWidget {
-  const StaffMemberCard({
-    required this.member,
-    required this.onEdit,
-    required this.onToggleActive,
-    this.isBusy = false,
-    super.key,
-  });
+  const StaffMemberCard({required this.member, required this.onOpen, super.key});
 
   final StaffListItem member;
-  final VoidCallback onEdit;
-  final VoidCallback onToggleActive;
-  final bool isBusy;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +30,7 @@ class StaffMemberCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: isBusy ? null : onEdit,
+          onTap: onOpen,
           borderRadius: BorderRadius.circular(context.shapeTokens.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -65,8 +56,9 @@ class StaffMemberCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            member.fullName,
+                          _StaffTitleRow(
+                            fullName: member.fullName,
+                            isActive: member.isActive,
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: colors.foreground,
                               fontWeight: FontWeight.w600,
@@ -80,23 +72,6 @@ class StaffMemberCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (isBusy)
-                      const SizedBox(width: 24, height: 24, child: AppCircularProgress())
-                    else
-                      PopupMenuButton<String>(
-                        onSelected: (value) {
-                          switch (value) {
-                            case 'edit':
-                              onEdit();
-                            case 'toggle':
-                              onToggleActive();
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                          PopupMenuItem(value: 'toggle', child: Text(member.isActive ? 'Deactivate' : 'Reactivate')),
-                        ],
-                      ),
                   ],
                 ),
               ),
@@ -160,6 +135,30 @@ class StaffMemberCard extends StatelessWidget {
     StaffRole.receptionist => 'Receptionist',
     StaffRole.labStaff => 'Lab staff',
   };
+}
+
+class _StaffTitleRow extends StatelessWidget {
+  const _StaffTitleRow({required this.fullName, required this.isActive, required this.style});
+
+  final String fullName;
+  final bool isActive;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    final statusIcon = isActive
+        ? Icon(Icons.check_circle_outline, size: 20, color: colors.primary)
+        : Icon(Icons.pause_circle_outline, size: 20, color: colors.mutedForeground);
+
+    return Row(
+      children: [
+        Tooltip(message: isActive ? 'Active staff member' : 'Inactive staff member', child: statusIcon),
+        const SizedBox(width: SpacingTokens.sm),
+        Expanded(child: Text(fullName, style: style)),
+      ],
+    );
+  }
 }
 
 class _InfoRow extends StatelessWidget {
