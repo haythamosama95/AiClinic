@@ -195,6 +195,90 @@ BEGIN
 END;
 $$;
 
+-- Reset must delete non-bootstrap staff and their auth users so usernames can be reused.
+DO $$
+DECLARE
+  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_extra_user uuid := 'f1000000-0000-4000-8000-00000000bb01';
+  v_extra_staff uuid := 'f2000000-0000-4000-8000-00000000bb02';
+  v_result public.rpc_result;
+  v_passed boolean;
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
+  DELETE FROM public.audit_log WHERE true;
+  DELETE FROM public.app_settings WHERE true;
+  DELETE FROM public.subscription_cache WHERE true;
+
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+  VALUES (
+    v_extra_user,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'dev_b1_doc',
+    extensions.crypt('test-pass1', extensions.gen_salt('bf')),
+    now(), now(), now()
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.staff_members (id, auth_user_id, full_name, role, is_active, is_bootstrap_admin, created_by, updated_by)
+  VALUES (
+    v_extra_staff,
+    v_extra_user,
+    'Extra Doctor',
+    'doctor',
+    true,
+    false,
+    v_bootstrap_user,
+    v_bootstrap_user
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET auth_user_id = EXCLUDED.auth_user_id,
+      is_bootstrap_admin = false,
+      is_active = true,
+      is_deleted = false;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.dev_reset_clinic_installation();
+  v_passed := v_result.success
+    AND COALESCE((v_result.data ->> 'staff_deleted')::int, 0) >= 1
+    AND COALESCE((v_result.data ->> 'auth_users_deleted')::int, 0) >= 1
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.staff_members sm
+      WHERE sm.id = v_extra_staff
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM auth.users u
+      WHERE u.id = v_extra_user
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM public.staff_members sm
+      WHERE sm.is_bootstrap_admin
+    );
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO dev_reset_results VALUES (
+    'dev_reset_deletes_non_bootstrap_staff_and_auth_users',
+    v_passed,
+    COALESCE(
+      v_result.error_code,
+      'staff_deleted=' || COALESCE(v_result.data ->> 'staff_deleted', '?')
+        || ' auth_users_deleted=' || COALESCE(v_result.data ->> 'auth_users_deleted', '?')
+    )
+  );
+END;
+$$;
+
 DO $$
 DECLARE
   v_failures int;

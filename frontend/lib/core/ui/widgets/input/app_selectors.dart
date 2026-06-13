@@ -299,3 +299,39 @@ class AppSelectGroup<T> extends StatelessWidget {
     );
   }
 }
+
+/// Compact select for toolbar filters — label is optional to save vertical space.
+class AppFilterSelect<T> extends StatelessWidget {
+  const AppFilterSelect({
+    required this.items,
+    this.label,
+    this.value,
+    this.onChanged,
+    this.hintText,
+    this.enabled = true,
+    this.size = AppFieldSize.sm,
+    super.key,
+  });
+
+  final String? label;
+  final Map<String, T> items;
+  final T? value;
+  final ValueChanged<T?>? onChanged;
+  final String? hintText;
+  final bool enabled;
+  final AppFieldSize size;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return FSelect<T>(
+      items: items,
+      control: FSelectControl.lifted(value: value, onChange: onChanged ?? (_) {}),
+      size: size.forui,
+      label: label == null ? null : Text(label!, style: theme.textTheme.labelSmall),
+      hint: hintText,
+      enabled: enabled,
+    );
+  }
+}

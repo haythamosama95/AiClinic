@@ -9,12 +9,10 @@ import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
-import 'package:ai_clinic/features/setup/domain/bootstrap_dummy_data.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';
 import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
-import 'package:ai_clinic/features/setup/domain/setup_wizard_draft_ids.dart';
 import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
@@ -398,40 +396,6 @@ class SetupNotifier extends Notifier<SetupUiState> {
       );
       return false;
     }
-  }
-
-  /// Persists organization, branch, and a dummy administrator with preset dev values (debug UI only).
-  Future<bool> finishSetupWithDummyData() async {
-    AppLog.info('setup.dev_dummy_fill.start');
-    state = state.copyWith(
-      clearError: true,
-      organizationDraft: const SetupOrganizationDraft(
-        name: BootstrapDummyData.organizationName,
-        currencyCode: BootstrapDummyData.currencyCode,
-        timezone: BootstrapDummyData.timezone,
-      ),
-      branchDraft: SetupBranchDraft(
-        name: BootstrapDummyData.branchName,
-        code: BootstrapDummyData.branchCode,
-        address: BootstrapDummyData.branchAddress,
-        phone: BootstrapDummyData.branchPhone,
-        mapsUrl: BootstrapDummyData.branchMapsUrl,
-        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
-      ),
-      staffDrafts: const [
-        SetupStaffDraft(
-          username: 'admin',
-          fullName: 'Demo Administrator',
-          role: StaffRole.administrator,
-          password: 'DemoPass1',
-          branchIds: [SetupWizardDraftIds.branch],
-          primaryBranchId: SetupWizardDraftIds.branch,
-        ),
-      ],
-      step: SetupWizardStep.staff,
-    );
-
-    return finishSetup();
   }
 
   /// Persists organization, branch, and all staff drafts together when Finish is pressed.

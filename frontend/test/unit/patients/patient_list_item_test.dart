@@ -1,3 +1,4 @@
+import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,6 +10,9 @@ void main() {
         'full_name': '  Ahmed Hassan  ',
         'phone': '201234567890',
         'date_of_birth': '1990-05-15',
+        'gender': 'male',
+        'last_visit_at': '2026-01-10',
+        'next_appointment_at': '2026-06-20T14:30:00.000Z',
         'branch_id': 'b1',
         'branch_name': 'Main Clinic',
       });
@@ -17,6 +21,9 @@ void main() {
       expect(item!.fullName, 'Ahmed Hassan');
       expect(item.phone, '201234567890');
       expect(item.dateOfBirth, DateTime.utc(1990, 5, 15));
+      expect(item.gender, PatientGender.male);
+      expect(item.lastVisitAt, DateTime.utc(2026, 1, 10));
+      expect(item.nextAppointmentAt, DateTime.parse('2026-06-20T14:30:00.000Z'));
       expect(item.registeringBranchId, 'b1');
       expect(item.registeringBranchName, 'Main Clinic');
     });

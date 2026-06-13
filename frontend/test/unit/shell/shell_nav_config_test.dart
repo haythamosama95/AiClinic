@@ -7,6 +7,7 @@ void main() {
   group('ShellNavConfig', () {
     test('routeFor returns path for wired items', () {
       expect(ShellNavConfig.routeFor('dashboard'), AppRoutes.home);
+      expect(ShellNavConfig.routeFor('patients'), AppRoutes.patients);
       expect(ShellNavConfig.routeFor('appointments-calendar'), AppRoutes.appointmentsCalendar);
       expect(ShellNavConfig.routeFor('appointments-book'), AppRoutes.appointmentsBook);
       expect(ShellNavConfig.routeFor('appointments-queue'), AppRoutes.appointmentsQueue);
@@ -19,6 +20,9 @@ void main() {
 
     test('itemIdForLocation resolves exact paths', () {
       expect(ShellNavConfig.itemIdForLocation(AppRoutes.home), 'dashboard');
+      expect(ShellNavConfig.itemIdForLocation(AppRoutes.patients), 'patients');
+      expect(ShellNavConfig.itemIdForLocation(AppRoutes.patientsNew), 'patients');
+      expect(ShellNavConfig.itemIdForLocation(AppRoutes.patientDetail('abc')), 'patients');
       expect(ShellNavConfig.itemIdForLocation(AppRoutes.appointmentsCalendar), 'appointments-calendar');
       expect(ShellNavConfig.itemIdForLocation(AppRoutes.appointmentsBook), 'appointments-book');
       expect(ShellNavConfig.itemIdForLocation(AppRoutes.appointmentsQueue), 'appointments-queue');
@@ -31,6 +35,7 @@ void main() {
 
     test('labelFor resolves top-level single', () {
       expect(ShellNavConfig.labelFor('dashboard'), 'Dashboard');
+      expect(ShellNavConfig.labelFor('patients'), 'Patients');
     });
 
     test('labelFor resolves group child', () {

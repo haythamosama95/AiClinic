@@ -98,6 +98,10 @@ BEGIN
   v_result := public.create_patient(v_branch_main, '50% Discount Patient', '201000000310', NULL, NULL, NULL, NULL, false);
   v_patient_percent := (v_result.data ->> 'patient_id')::uuid;
 
+  -- Prefix vs substring ordering: "Alpha" matches start and middle of different names.
+  PERFORM public.create_patient(v_branch_main, 'Alpha Prefix Target', '201000000311', NULL, NULL, NULL, NULL, false);
+  PERFORM public.create_patient(v_branch_main, 'ZZZ Alpha Middle', '201000000312', NULL, NULL, NULL, NULL, false);
+
   -- ===========================================================================
   -- SEARCH ORDERING: results sorted alphabetically by full_name
   -- ===========================================================================
@@ -530,6 +534,26 @@ BEGIN
     'search_contains_not_prefix_only',
     v_result.success AND jsonb_array_length(v_items) >= 7,
     'items=' || jsonb_array_length(v_items)::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Prefix matches should appear before substring-only matches.
+  v_result := public.search_patients('Alpha', 'branch', v_branch_main, 25, 0);
+  v_items := COALESCE(v_result.data -> 'items', '[]'::jsonb);
+  v_first_name := v_items -> 0 ->> 'full_name';
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_search_results VALUES (
+    'search_prefix_matches_rank_before_substring',
+    v_result.success
+      AND jsonb_array_length(v_items) >= 2
+      AND v_first_name IN ('Alpha Patient', 'Alpha Prefix Target')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_items) WITH ORDINALITY AS t(item, ord)
+        WHERE ord = 1
+          AND lower(item ->> 'full_name') NOT LIKE 'alpha%'
+      ),
+    'first=' || COALESCE(v_first_name, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 END;

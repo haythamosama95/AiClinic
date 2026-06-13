@@ -7,6 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
+import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_notifier.dart';
+import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_overlay.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_fill_dummy_clinic.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_content_placeholder.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/features/setup/presentation/dev/setup_dev_widgets.dart';
@@ -49,7 +52,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   }
 
   Future<void> _fillDummy() async {
-    await ref.read(setupNotifierProvider.notifier).finishSetupWithDummyData();
+    await ShellDevFillDummyClinic.confirmAndRun(context, ref, onSuccess: _goHome);
   }
 
   Future<void> _resetInstallation() async {
@@ -60,52 +63,55 @@ class _SetupPageState extends ConsumerState<SetupPage> {
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final setup = ref.watch(setupNotifierProvider);
-    final isBusy = setup.isSubmitting;
+    final seed = ref.watch(devClinicSeedProvider);
+    final isBusy = setup.isSubmitting || seed.inProgress;
     ref.listen<SetupUiState>(setupNotifierProvider, (previous, next) {
       if (next.step == SetupWizardStep.complete && previous?.step != SetupWizardStep.complete) {
         _goHome();
       }
     });
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          const IgnorePointer(child: AuthenticatedShell(child: ShellContentPlaceholder())),
-          ClipRect(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: ColoredBox(color: colors.background.withValues(alpha: 0.35)),
+    return DevClinicSeedOverlay(
+      child: Scaffold(
+        backgroundColor: colors.background,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            const IgnorePointer(child: AuthenticatedShell(child: ShellContentPlaceholder())),
+            ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: ColoredBox(color: colors.background.withValues(alpha: 0.35)),
+              ),
             ),
-          ),
-          SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SetupModal(onFinished: _goHome),
-                          SetupDevWidgets.panel(
-                            isBusy: isBusy,
-                            onFillDummy: _fillDummy,
-                            onResetInstallation: _resetInstallation,
-                          ),
-                        ],
+            SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SetupModal(onFinished: _goHome),
+                            SetupDevWidgets.panel(
+                              isBusy: isBusy,
+                              onFillDummy: _fillDummy,
+                              onResetInstallation: _resetInstallation,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

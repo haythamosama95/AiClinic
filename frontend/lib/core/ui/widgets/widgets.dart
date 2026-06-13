@@ -2,8 +2,12 @@
 library;
 
 export 'buttons/app_button.dart';
+export 'buttons/app_icon_button.dart';
+export 'data/app_badge.dart';
+export 'data/app_data_table.dart';
 export 'feedback/app_fade_panel.dart';
 export 'feedback/app_feedback.dart';
+export 'feedback/app_skeleton.dart';
 export 'input/app_autocomplete.dart';
 export 'input/app_clock_time_field.dart';
 export 'input/app_date_field.dart';

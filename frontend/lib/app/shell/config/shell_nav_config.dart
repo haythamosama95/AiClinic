@@ -8,6 +8,7 @@ import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 abstract final class ShellNavConfig {
   static const Map<String, String> _routesByItemId = {
     'dashboard': AppRoutes.home,
+    'patients': AppRoutes.patients,
     'appointments-calendar': AppRoutes.appointmentsCalendar,
     'appointments-book': AppRoutes.appointmentsBook,
     'appointments-queue': AppRoutes.appointmentsQueue,
@@ -15,6 +16,7 @@ abstract final class ShellNavConfig {
 
   static const List<ShellNavEntry> entries = [
     ShellNavSingle(id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard_outlined),
+    ShellNavSingle(id: 'patients', label: 'Patients', icon: Icons.people_outline),
     ShellNavGroup(
       id: 'appointments',
       label: 'Appointments',
@@ -42,6 +44,10 @@ abstract final class ShellNavConfig {
       if (entry.value == location) {
         return entry.key;
       }
+    }
+
+    if (location == AppRoutes.patients || location.startsWith('${AppRoutes.patients}/')) {
+      return 'patients';
     }
 
     return ShellDevNav.itemIdForLocation(location);

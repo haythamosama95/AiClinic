@@ -10,6 +10,7 @@ import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_group.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_fill_dummy_clinic.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 
 /// Debug-only shell nav footer: Dev Options group (Theme Showcase, Reset Database).
@@ -22,13 +23,19 @@ abstract final class ShellDevNav {
   static const themeShowcaseId = 'theme-showcase';
   static const resetDatabaseId = 'reset-database';
 
-  static const ShellNavGroup footerGroup = ShellNavGroup(
+  static ShellNavGroup get footerGroup => ShellNavGroup(
     id: groupId,
     label: 'Dev Options',
     icon: Icons.developer_mode_outlined,
     children: [
-      ShellNavSingle(id: themeShowcaseId, label: 'Theme Showcase', icon: Icons.palette_outlined),
-      ShellNavSingle(id: resetDatabaseId, label: 'Reset Database', icon: Icons.storage_outlined),
+      const ShellNavSingle(id: themeShowcaseId, label: 'Theme Showcase', icon: Icons.palette_outlined),
+      if (ShellDevFillDummyClinic.isEnabled)
+        ShellNavSingle(
+          id: ShellDevFillDummyClinic.itemId,
+          label: ShellDevFillDummyClinic.label,
+          icon: ShellDevFillDummyClinic.icon,
+        ),
+      const ShellNavSingle(id: resetDatabaseId, label: 'Reset Database', icon: Icons.storage_outlined),
     ],
   );
 
@@ -93,6 +100,10 @@ class ShellDevNavFooter extends ConsumerWidget {
         selectedItemId: selectedItemId,
         onToggle: onGroupToggled,
         onSelected: (itemId) {
+          if (itemId == ShellDevFillDummyClinic.itemId) {
+            unawaited(ShellDevFillDummyClinic.handleNavSelection(context, ref));
+            return;
+          }
           if (itemId == ShellDevNav.resetDatabaseId) {
             unawaited(_confirmAndResetDatabase(context, ref));
             return;

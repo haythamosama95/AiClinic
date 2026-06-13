@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_content_panel.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_header.dart';
@@ -73,37 +74,39 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
     final selectedItemId = ShellNavConfig.itemIdForLocation(location) ?? _selectedItemId;
     final pageTitle = _pageTitleForLocation(location, selectedItemId);
 
-    return ColoredBox(
-      color: colors.accent,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ShellNav(
-            selectedItemId: selectedItemId,
-            expandedGroupIds: _expandedGroupIds,
-            onItemSelected: _onItemSelected,
-            onGroupToggled: _onGroupToggled,
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ShellHeader(pageTitle: pageTitle),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      ShellTokens.contentPanelInset,
-                      SpacingTokens.sm,
-                      ShellTokens.contentPanelInset,
-                      ShellTokens.contentPanelInset,
-                    ),
-                    child: ShellContentPanel(child: widget.child),
-                  ),
-                ),
-              ],
+    return ShellDevShellWrapper(
+      child: ColoredBox(
+        color: colors.accent,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ShellNav(
+              selectedItemId: selectedItemId,
+              expandedGroupIds: _expandedGroupIds,
+              onItemSelected: _onItemSelected,
+              onGroupToggled: _onGroupToggled,
             ),
-          ),
-        ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ShellHeader(pageTitle: pageTitle),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        ShellTokens.contentPanelInset,
+                        SpacingTokens.sm,
+                        ShellTokens.contentPanelInset,
+                        ShellTokens.contentPanelInset,
+                      ),
+                      child: ShellContentPanel(child: widget.child),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/startup_entry_page.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
 import 'package:ai_clinic/features/setup/presentation/pages/setup_page.dart';
@@ -15,6 +16,7 @@ import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -29,6 +31,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   ref.listen<SetupUiState>(setupNotifierProvider, (_, _) {
     refreshSignal.value++;
   });
+
+  shellDevListenForRouterRefresh(ref, () => refreshSignal.value++);
 
   final notifier = ref.read(startupSessionProvider.notifier);
 
@@ -62,7 +66,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: AppRoutes.home, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
 
           // Patient management
-          GoRoute(path: AppRoutes.patients, builder: (context, state) => uiPendingPlaceholder('Patients', state)),
+          GoRoute(path: AppRoutes.patients, builder: (context, state) => const PatientsPage()),
           GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => uiPendingPlaceholder('Patients', state)),
           GoRoute(
             path: '${AppRoutes.patients}/:patientId',
@@ -173,6 +177,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final auth = ref.read(authSessionProvider);
       final setup = ref.read(setupNotifierProvider);
       final location = state.matchedLocation;
+
+      if (shellDevSuppressAuthRedirect(ref, auth)) {
+        return null;
+      }
 
       String? resolveAuthRedirect(String route) => AuthRouteGuard.resolveRedirect(
         location: route,

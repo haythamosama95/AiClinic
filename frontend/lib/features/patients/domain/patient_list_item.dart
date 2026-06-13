@@ -1,4 +1,5 @@
 import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
+import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_row_parsing.dart';
 import 'package:flutter/foundation.dart';
 
@@ -12,12 +13,18 @@ class PatientListItem {
     required this.registeringBranchName,
     this.phone,
     this.dateOfBirth,
+    this.gender,
+    this.lastVisitAt,
+    this.nextAppointmentAt,
   });
 
   final String id;
   final String fullName;
   final String? phone;
   final DateTime? dateOfBirth;
+  final PatientGender? gender;
+  final DateTime? lastVisitAt;
+  final DateTime? nextAppointmentAt;
   final String registeringBranchId;
   final String registeringBranchName;
 
@@ -42,6 +49,9 @@ class PatientListItem {
       fullName: fullName,
       phone: optionalPatientString(row['phone']),
       dateOfBirth: parsePatientDate(row['date_of_birth']),
+      gender: PatientGender.tryParse(row['gender']?.toString()),
+      lastVisitAt: parsePatientDate(row['last_visit_at']),
+      nextAppointmentAt: parsePatientDateTime(row['next_appointment_at']),
       registeringBranchId: branchId,
       registeringBranchName: branchName,
     );
@@ -52,6 +62,9 @@ class PatientListItem {
     String? fullName,
     Object? phone = copyWithSentinel,
     Object? dateOfBirth = copyWithSentinel,
+    Object? gender = copyWithSentinel,
+    Object? lastVisitAt = copyWithSentinel,
+    Object? nextAppointmentAt = copyWithSentinel,
     String? registeringBranchId,
     String? registeringBranchName,
   }) {
@@ -60,6 +73,11 @@ class PatientListItem {
       fullName: fullName ?? this.fullName,
       phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
       dateOfBirth: identical(dateOfBirth, copyWithSentinel) ? this.dateOfBirth : dateOfBirth as DateTime?,
+      gender: identical(gender, copyWithSentinel) ? this.gender : gender as PatientGender?,
+      lastVisitAt: identical(lastVisitAt, copyWithSentinel) ? this.lastVisitAt : lastVisitAt as DateTime?,
+      nextAppointmentAt: identical(nextAppointmentAt, copyWithSentinel)
+          ? this.nextAppointmentAt
+          : nextAppointmentAt as DateTime?,
       registeringBranchId: registeringBranchId ?? this.registeringBranchId,
       registeringBranchName: registeringBranchName ?? this.registeringBranchName,
     );
@@ -74,10 +92,23 @@ class PatientListItem {
             fullName == other.fullName &&
             phone == other.phone &&
             dateOfBirth == other.dateOfBirth &&
+            gender == other.gender &&
+            lastVisitAt == other.lastVisitAt &&
+            nextAppointmentAt == other.nextAppointmentAt &&
             registeringBranchId == other.registeringBranchId &&
             registeringBranchName == other.registeringBranchName;
   }
 
   @override
-  int get hashCode => Object.hash(id, fullName, phone, dateOfBirth, registeringBranchId, registeringBranchName);
+  int get hashCode => Object.hash(
+    id,
+    fullName,
+    phone,
+    dateOfBirth,
+    gender,
+    lastVisitAt,
+    nextAppointmentAt,
+    registeringBranchId,
+    registeringBranchName,
+  );
 }

@@ -1,7 +1,6 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/setup/domain/bootstrap_dummy_data.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_result.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
@@ -297,33 +296,6 @@ void main() {
       expect(ok, isFalse);
       expect(container.read(setupNotifierProvider).errorMessage, contains('at least one staff'));
       expect(bootstrapRepo.finishSetupInput, isNull);
-    });
-
-    test('finishSetupWithDummyData submits organization, branch, and staff atomically', () async {
-      final bootstrapRepo = _RecordingBootstrapRepository();
-      final container = ProviderContainer(
-        overrides: [
-          bootstrapRepositoryProvider.overrideWithValue(bootstrapRepo),
-          authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
-        ],
-      );
-      addTearDown(container.dispose);
-      (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setAuthenticated(setupRequired: true);
-
-      final ok = await container.read(setupNotifierProvider.notifier).finishSetupWithDummyData();
-
-      expect(ok, isTrue);
-      final state = container.read(setupNotifierProvider);
-      expect(state.step, SetupWizardStep.complete);
-      expect(state.organizationId, 'org-dummy');
-      expect(state.branchId, 'branch-dummy');
-      expect(state.staffDrafts, isEmpty);
-
-      expect(bootstrapRepo.finishSetupInput?.organization.name, BootstrapDummyData.organizationName);
-      expect(bootstrapRepo.finishSetupInput?.branch.name, BootstrapDummyData.branchName);
-      expect(bootstrapRepo.finishSetupInput?.branch.code, BootstrapDummyData.branchCode);
-      expect(bootstrapRepo.finishSetupInput?.staffAccounts, hasLength(1));
-      expect(bootstrapRepo.finishSetupInput?.staffAccounts.first.username, 'admin');
     });
 
     test('resetInstallationForDevelopment clears wizard after successful RPC', () async {
