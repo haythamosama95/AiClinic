@@ -93,7 +93,7 @@ class _SettingsTabItemState extends State<_SettingsTabItem> {
                 ),
                 const SizedBox(height: SpacingTokens.md),
                 AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration: const Duration(milliseconds: 220),
                   curve: Curves.easeOut,
                   height: 3,
                   color: isActive ? colors.primary : Colors.transparent,

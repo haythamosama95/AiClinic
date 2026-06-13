@@ -19,12 +19,42 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  static const _tabTransitionDuration = Duration(milliseconds: 220);
+
   late String _selectedTabId;
+  var _tabTransitionDirection = 1;
 
   @override
   void initState() {
     super.initState();
     _selectedTabId = SettingsTabs.byId(widget.initialTabId)?.id ?? SettingsTabs.defaultTabId;
+  }
+
+  void _onTabSelected(String tabId) {
+    if (tabId == _selectedTabId) {
+      return;
+    }
+
+    final currentIndex = _tabIndexFor(_selectedTabId);
+    final nextIndex = _tabIndexFor(tabId);
+
+    setState(() {
+      _tabTransitionDirection = nextIndex >= currentIndex ? 1 : -1;
+      _selectedTabId = tabId;
+    });
+  }
+
+  int _tabIndexFor(String tabId) {
+    return SettingsTabs.all.indexWhere((tab) => tab.id == tabId);
+  }
+
+  Widget _tabContentFor(String tabId) {
+    return switch (tabId) {
+      'clinic-setup' => const ClinicSetupSettingsTab(),
+      'staff' => const StaffSettingsTab(),
+      'staff-roles' => const StaffRolesSettingsTab(),
+      _ => const GeneralSettingsTab(),
+    };
   }
 
   @override
@@ -36,30 +66,35 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SettingsTabBar(
-            tabs: SettingsTabs.all,
-            selectedTabId: _selectedTabId,
-            onTabSelected: (tabId) => setState(() => _selectedTabId = tabId),
+          SettingsTabBar(tabs: SettingsTabs.all, selectedTabId: _selectedTabId, onTabSelected: _onTabSelected),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: _tabTransitionDuration,
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeOut,
+              layoutBuilder: (currentChild, previousChildren) {
+                return Stack(
+                  fit: StackFit.expand,
+                  alignment: Alignment.topCenter,
+                  children: [...previousChildren, if (currentChild != null) currentChild],
+                );
+              },
+              transitionBuilder: (child, animation) {
+                final slideAnimation = Tween<Offset>(
+                  begin: Offset(0.012 * _tabTransitionDirection, 0),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
+
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(position: slideAnimation, child: child),
+                );
+              },
+              child: KeyedSubtree(key: ValueKey<String>(_selectedTabId), child: _tabContentFor(_selectedTabId)),
+            ),
           ),
-          Expanded(child: _SettingsTabBody(selectedTabId: _selectedTabId)),
         ],
       ),
     );
-  }
-}
-
-class _SettingsTabBody extends StatelessWidget {
-  const _SettingsTabBody({required this.selectedTabId});
-
-  final String selectedTabId;
-
-  @override
-  Widget build(BuildContext context) {
-    return switch (selectedTabId) {
-      'clinic-setup' => const ClinicSetupSettingsTab(),
-      'staff' => const StaffSettingsTab(),
-      'staff-roles' => const StaffRolesSettingsTab(),
-      _ => const GeneralSettingsTab(),
-    };
   }
 }
