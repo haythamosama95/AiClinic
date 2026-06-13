@@ -41,13 +41,11 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
 
   Future<void> applyFilters(PatientListFilters filters) async {
     _filters = filters;
-    state = const AsyncLoading();
-    state = AsyncData(await _load(filters));
+    state = await AsyncValue.guard(() => _load(filters));
   }
 
   Future<void> reload() async {
-    state = const AsyncLoading();
-    state = AsyncData(await _load(_filters));
+    state = await AsyncValue.guard(() => _load(_filters));
   }
 
   Future<PatientListUiState> _load(PatientListFilters filters) async {

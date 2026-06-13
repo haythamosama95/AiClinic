@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/ui/widgets/feedback/app_paginated_slide_switcher.dart';
 
 /// Column definition for [AppDataTable].
 class AppDataTableColumn {
@@ -20,6 +21,9 @@ class AppDataTable extends StatelessWidget {
     required this.rowCount,
     required this.rowBuilder,
     this.footer,
+    this.bodyPageKey,
+    this.bodySlideDirection = 0,
+    this.onBodyTransitionAnimating,
     this.headerHeight = 36,
     this.rowHeight = 44,
     super.key,
@@ -29,6 +33,9 @@ class AppDataTable extends StatelessWidget {
   final int rowCount;
   final Widget Function(BuildContext context, int index) rowBuilder;
   final Widget? footer;
+  final Object? bodyPageKey;
+  final int bodySlideDirection;
+  final ValueChanged<bool>? onBodyTransitionAnimating;
   final double headerHeight;
   final double rowHeight;
 
@@ -66,9 +73,7 @@ class AppDataTable extends StatelessWidget {
               ),
             ),
           ),
-          Expanded(
-            child: ListView.builder(itemCount: rowCount, itemExtent: rowHeight, itemBuilder: rowBuilder),
-          ),
+          Expanded(child: _buildBody()),
           if (footer != null)
             DecoratedBox(
               decoration: BoxDecoration(
@@ -79,6 +84,21 @@ class AppDataTable extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBody() {
+    final listView = ListView.builder(itemCount: rowCount, itemExtent: rowHeight, itemBuilder: rowBuilder);
+    final pageKey = bodyPageKey;
+    if (pageKey == null) {
+      return listView;
+    }
+
+    return AppPaginatedSlideSwitcher(
+      pageKey: pageKey,
+      direction: bodySlideDirection,
+      onAnimatingChanged: onBodyTransitionAnimating,
+      child: listView,
     );
   }
 }
@@ -119,7 +139,7 @@ class AppDataTableRow extends StatefulWidget {
 
   final List<AppDataTableColumn> columns;
   final List<Widget> cells;
-  final VoidCallback? onTap;
+  final void Function(BuildContext rowContext)? onTap;
 
   @override
   State<AppDataTableRow> createState() => _AppDataTableRowState();
@@ -138,7 +158,7 @@ class _AppDataTableRowState extends State<AppDataTableRow> {
       child: Material(
         color: _hovered ? colors.accent.withValues(alpha: 0.35) : Colors.transparent,
         child: InkWell(
-          onTap: widget.onTap,
+          onTap: widget.onTap == null ? null : () => widget.onTap!(context),
           hoverColor: Colors.transparent,
           splashColor: colors.primary.withValues(alpha: 0.08),
           child: DecoratedBox(

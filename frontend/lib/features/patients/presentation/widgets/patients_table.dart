@@ -17,7 +17,7 @@ final patientTableColumns = <AppDataTableColumn>[
 ];
 
 /// Dense patient data table with pagination footer.
-class PatientsTable extends StatelessWidget {
+class PatientsTable extends StatefulWidget {
   const PatientsTable({
     required this.rows,
     required this.totalCount,
@@ -30,14 +30,46 @@ class PatientsTable extends StatelessWidget {
   final List<PatientTableRow> rows;
   final int totalCount;
   final PatientListFilters filters;
-  final ValueChanged<PatientTableRow> onRowTap;
+  final void Function(PatientTableRow row, Rect? sourceRect) onRowTap;
   final ValueChanged<int> onPageChanged;
+
+  @override
+  State<PatientsTable> createState() => _PatientsTableState();
+}
+
+class _PatientsTableState extends State<PatientsTable> {
+  var _slideDirection = 0;
+  var _isPageAnimating = false;
 
   static final _dateFormat = DateFormat.yMMMd();
   static final _dateTimeFormat = DateFormat('MMM d · h:mm a');
 
+  void _goToPage(int page) {
+    final currentPage = widget.filters.page;
+    if (page == currentPage || _isPageAnimating) {
+      return;
+    }
+    setState(() => _slideDirection = page > currentPage ? 1 : -1);
+    widget.onPageChanged(page);
+  }
+
+  void _onPageTransitionAnimating(bool animating) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isPageAnimating = animating;
+      if (!animating) {
+        _slideDirection = 0;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final rows = widget.rows;
+    final totalCount = widget.totalCount;
+    final filters = widget.filters;
     final start = totalCount == 0 ? 0 : filters.offset + 1;
     final end = (filters.offset + rows.length).clamp(0, totalCount);
     final totalPages = (totalCount / filters.pageSize).ceil().clamp(1, 1 << 30);
@@ -46,11 +78,18 @@ class PatientsTable extends StatelessWidget {
     return AppDataTable(
       columns: patientTableColumns,
       rowCount: rows.length,
+      bodyPageKey: currentPage,
+      bodySlideDirection: _slideDirection,
+      onBodyTransitionAnimating: _onPageTransitionAnimating,
       rowBuilder: (context, index) {
         final row = rows[index];
         return AppDataTableRow(
           columns: patientTableColumns,
-          onTap: () => onRowTap(row),
+          onTap: (rowContext) {
+            final box = rowContext.findRenderObject() as RenderBox?;
+            final sourceRect = box != null && box.hasSize ? box.localToGlobal(Offset.zero) & box.size : null;
+            widget.onRowTap(row, sourceRect);
+          },
           cells: [
             _PatientCell(row: row),
             Text(row.ageGenderLabel, style: _cellStyle(context)),
@@ -70,8 +109,8 @@ class PatientsTable extends StatelessWidget {
         summary: 'Showing $start–$end of $totalCount',
         currentPage: currentPage,
         totalPages: totalPages,
-        onPrevious: currentPage > 1 ? () => onPageChanged(currentPage - 1) : null,
-        onNext: currentPage < totalPages ? () => onPageChanged(currentPage + 1) : null,
+        onPrevious: currentPage > 1 && !_isPageAnimating ? () => _goToPage(currentPage - 1) : null,
+        onNext: currentPage < totalPages && !_isPageAnimating ? () => _goToPage(currentPage + 1) : null,
       ),
     );
   }

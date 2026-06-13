@@ -6,6 +6,9 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/startup_entry_page.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
+import 'package:ai_clinic/features/patients/presentation/navigation/patient_container_transform_transition.dart';
+import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/patient_detail_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
@@ -70,7 +73,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => uiPendingPlaceholder('Patients', state)),
           GoRoute(
             path: '${AppRoutes.patients}/:patientId',
-            builder: (context, state) => uiPendingPlaceholder('Patients', state),
+            pageBuilder: (context, state) {
+              final patientId = state.pathParameters['patientId']!;
+              final routeExtra = PatientDetailRouteExtra.fromExtra(state.extra);
+              return PatientDetailContainerTransformPage(
+                state: state,
+                sourceRect: routeExtra.sourceRect,
+                child: PatientDetailPage(patientId: patientId, preview: routeExtra.preview),
+              );
+            },
           ),
           GoRoute(
             path: '${AppRoutes.patients}/:patientId/edit',

@@ -9,7 +9,6 @@ import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
-import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_drawer.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patients_empty_state.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patients_toolbar.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patients_table.dart';
@@ -27,17 +26,6 @@ class _PatientsPageState extends ConsumerState<PatientsPage> {
   final _searchController = TextEditingController();
   Timer? _searchDebounce;
   PatientListFilters _filters = const PatientListFilters();
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      ref.read(patientListProvider.notifier).applyFilters(_filters);
-    });
-  }
 
   @override
   void dispose() {
@@ -63,8 +51,8 @@ class _PatientsPageState extends ConsumerState<PatientsPage> {
     ref.read(patientListProvider.notifier).applyFilters(filters);
   }
 
-  Future<void> _onRowTap(PatientTableRow row) async {
-    await PatientDetailDrawer.show(context, row);
+  void _onRowTap(PatientTableRow row, Rect? sourceRect) {
+    AppNavigator(context).pushPatientDetail(row.item.id, preview: row.item, sourceRect: sourceRect);
   }
 
   @override
@@ -80,52 +68,110 @@ class _PatientsPageState extends ConsumerState<PatientsPage> {
 
     return Padding(
       padding: const EdgeInsets.all(SpacingTokens.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PatientsToolbar(
-            searchController: _searchController,
-            filters: _filters,
+      child: listAsync.when(
+        skipLoadingOnReload: true,
+        loading: () => _PatientsListShell(
+          filters: _filters,
+          canCreate: canCreate,
+          searchController: _searchController,
+          onSearchChanged: _onSearchChanged,
+          onFiltersChanged: _onFiltersChanged,
+          body: const PatientsTableSkeleton(),
+        ),
+        error: (error, _) => PatientsEmptyState(title: 'Unable to load patients', subtitle: error.toString()),
+        data: (state) => _PatientsListShell(
+          filters: _filters,
+          canCreate: canCreate,
+          searchController: _searchController,
+          onSearchChanged: _onSearchChanged,
+          onFiltersChanged: _onFiltersChanged,
+          body: _PatientsListBody(
+            state: state,
             canCreate: canCreate,
-            onSearchChanged: _onSearchChanged,
-            onFiltersChanged: _onFiltersChanged,
-            onAddPatient: canCreate ? () => AppNavigator(context).goPatientRegister() : null,
+            onRowTap: _onRowTap,
+            onPageChanged: (page) => _onFiltersChanged(_filters.copyWith(page: page)),
           ),
-          const SizedBox(height: SpacingTokens.md),
-          Expanded(
-            child: listAsync.when(
-              loading: () => const PatientsTableSkeleton(),
-              error: (error, _) => PatientsEmptyState(title: 'Unable to load patients', subtitle: error.toString()),
-              data: (state) {
-                if (state.searchHint != null) {
-                  return PatientsEmptyState(
-                    title: state.searchHint!,
-                    subtitle: 'Keep typing to search, or clear the field to browse.',
-                  );
-                }
-
-                if (state.isNoPatientsYet) {
-                  return PatientsEmptyState.noPatientsYet(
-                    onAction: canCreate ? () => AppNavigator(context).goPatientRegister() : null,
-                  );
-                }
-
-                if (state.isNoMatch) {
-                  return const PatientsEmptyState();
-                }
-
-                return PatientsTable(
-                  rows: state.rows,
-                  totalCount: state.totalCount,
-                  filters: state.filters,
-                  onRowTap: _onRowTap,
-                  onPageChanged: (page) => _onFiltersChanged(_filters.copyWith(page: page)),
-                );
-              },
-            ),
-          ),
-        ],
+        ),
       ),
+    );
+  }
+}
+
+class _PatientsListShell extends StatelessWidget {
+  const _PatientsListShell({
+    required this.filters,
+    required this.canCreate,
+    required this.searchController,
+    required this.onSearchChanged,
+    required this.onFiltersChanged,
+    required this.body,
+  });
+
+  final PatientListFilters filters;
+  final bool canCreate;
+  final TextEditingController searchController;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<PatientListFilters> onFiltersChanged;
+  final Widget body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PatientsToolbar(
+          searchController: searchController,
+          filters: filters,
+          canCreate: canCreate,
+          onSearchChanged: onSearchChanged,
+          onFiltersChanged: onFiltersChanged,
+          onAddPatient: canCreate ? () => AppNavigator(context).goPatientRegister() : null,
+        ),
+        const SizedBox(height: SpacingTokens.md),
+        Expanded(child: body),
+      ],
+    );
+  }
+}
+
+class _PatientsListBody extends StatelessWidget {
+  const _PatientsListBody({
+    required this.state,
+    required this.canCreate,
+    required this.onRowTap,
+    required this.onPageChanged,
+  });
+
+  final PatientListUiState state;
+  final bool canCreate;
+  final void Function(PatientTableRow row, Rect? sourceRect) onRowTap;
+  final ValueChanged<int> onPageChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.searchHint != null) {
+      return PatientsEmptyState(
+        title: state.searchHint!,
+        subtitle: 'Keep typing to search, or clear the field to browse.',
+      );
+    }
+
+    if (state.isNoPatientsYet) {
+      return PatientsEmptyState.noPatientsYet(
+        onAction: canCreate ? () => AppNavigator(context).goPatientRegister() : null,
+      );
+    }
+
+    if (state.isNoMatch) {
+      return const PatientsEmptyState();
+    }
+
+    return PatientsTable(
+      rows: state.rows,
+      totalCount: state.totalCount,
+      filters: state.filters,
+      onRowTap: onRowTap,
+      onPageChanged: onPageChanged,
     );
   }
 }

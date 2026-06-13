@@ -1,8 +1,8 @@
-import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_query.dart';
+import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
 
 /// Sort options for the patients list (client-side until RPC supports ordering).
 enum PatientSortField { nameAsc, nameDesc, lastVisitAsc, lastVisitDesc }
@@ -90,41 +90,15 @@ class PatientTableRow {
   final PatientListItem item;
   final String? assignedDoctorName;
 
-  String get displayId => item.id.length > 8 ? item.id.substring(0, 8).toUpperCase() : item.id.toUpperCase();
+  String get displayId => PatientPresentationFormatting.displayId(item.id);
 
   DateTime? get lastVisitAt => item.lastVisitAt;
 
   DateTime? get nextAppointmentAt => item.nextAppointmentAt;
 
-  int? get age {
-    final dob = item.dateOfBirth;
-    if (dob == null) {
-      return null;
-    }
-    final now = clock.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final birthDate = DateTime(dob.year, dob.month, dob.day);
-    var years = today.year - birthDate.year;
-    if (today.month < birthDate.month || (today.month == birthDate.month && today.day < birthDate.day)) {
-      years--;
-    }
-    return years;
-  }
+  int? get age => PatientPresentationFormatting.ageYears(item.dateOfBirth);
 
-  String get ageGenderLabel {
-    final agePart = age?.toString();
-    final genderPart = item.gender?.label;
-    if (agePart != null && genderPart != null) {
-      return '$agePart, $genderPart';
-    }
-    if (agePart != null) {
-      return agePart;
-    }
-    if (genderPart != null) {
-      return genderPart;
-    }
-    return '—';
-  }
+  String get ageGenderLabel => PatientPresentationFormatting.ageGenderLabel(age: age, gender: item.gender);
 
   static List<PatientTableRow> fromItems(List<PatientListItem> items) {
     return items.map((item) => PatientTableRow(item: item)).toList();

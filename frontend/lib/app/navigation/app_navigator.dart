@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
 
 /// Centralized navigation service to avoid scattered `context.go()`/`context.push()` calls.
 ///
@@ -27,7 +29,10 @@ class AppNavigator {
   // Patient management
   void goPatients() => _context.go(AppRoutes.patients);
   void goPatientDetail(String id) => _context.go(AppRoutes.patientDetail(id));
-  void pushPatientDetail(String id) => _context.push(AppRoutes.patientDetail(id));
+  void pushPatientDetail(String id, {PatientListItem? preview, Rect? sourceRect}) => _context.push(
+    AppRoutes.patientDetail(id),
+    extra: PatientDetailRouteExtra(preview: preview, sourceRect: sourceRect),
+  );
   void goPatientEdit(String id) => _context.go(AppRoutes.patientEdit(id));
   void pushPatientEdit(String id) => _context.push(AppRoutes.patientEdit(id));
   void goPatientRegister() => _context.push(AppRoutes.patientsNew);
