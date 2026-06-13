@@ -34,6 +34,7 @@ class StaffMemberCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(context.shapeTokens.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.max,
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(

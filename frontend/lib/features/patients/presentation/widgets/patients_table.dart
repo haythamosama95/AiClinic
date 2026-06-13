@@ -125,37 +125,38 @@ class _PatientCell extends StatelessWidget {
 
   final PatientTableRow row;
 
+  static const _avatarWidth = 30.0;
+  static const _avatarGap = SpacingTokens.sm;
+  static const _avatarLayoutWidth = _avatarWidth + _avatarGap;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
 
-    return Row(
+    final nameStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: 13);
+    final idStyle = theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground, fontSize: 11);
+    final labels = Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _PatientAvatar(name: row.item.fullName),
-        const SizedBox(width: SpacingTokens.sm),
-        Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                row.item.fullName,
-                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: 13),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'ID ${row.displayId}',
-                style: theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground, fontSize: 11),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
+        Text(row.item.fullName, style: nameStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 2),
+        Text('ID ${row.displayId}', style: idStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showAvatar = constraints.maxWidth > _avatarLayoutWidth;
+
+        return Row(
+          children: [
+            if (showAvatar) ...[_PatientAvatar(name: row.item.fullName), const SizedBox(width: _avatarGap)],
+            Expanded(child: labels),
+          ],
+        );
+      },
     );
   }
 }

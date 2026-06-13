@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,11 +10,18 @@ import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_history_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_documents_card.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_notes_card.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_timeline_section.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_gender_avatar.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/visits/domain/visit_list_item.dart';
 
 /// Full patient profile page loaded via `get_patient`.
 class PatientDetailPage extends ConsumerWidget {
@@ -31,6 +40,7 @@ class PatientDetailPage extends ConsumerWidget {
     final detailAsync = ref.watch(patientDetailProvider(patientId));
 
     return detailAsync.when(
+      skipLoadingOnReload: true,
       loading: () => _PatientDetailLoadingView(preview: preview, onBack: () => _goBack(context)),
       error: (error, _) => _PatientDetailErrorView(
         message: error.toString(),
@@ -50,24 +60,566 @@ class PatientDetailPage extends ConsumerWidget {
   }
 }
 
-class _PatientDetailContentView extends StatelessWidget {
+class _PatientDetailContentView extends ConsumerWidget {
   const _PatientDetailContentView({required this.detail, required this.onBack});
 
   final PatientDetail detail;
   final VoidCallback onBack;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final historyQuery = PatientDetailHistoryQuery(patientId: detail.id, branchId: detail.branchId);
+    final pastVisitsAsync = ref.watch(patientPastVisitsProvider(detail.id));
+    final upcomingAsync = ref.watch(patientUpcomingAppointmentsProvider(historyQuery));
+
     return _PatientDetailScaffold(
-      onBack: onBack,
-      header: _PatientDetailHeader(
-        fullName: detail.fullName,
-        id: detail.id,
-        phone: detail.phone,
-        dateOfBirth: detail.dateOfBirth,
-        gender: detail.gender,
+      body: (pageHeight) => LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth >= 1080;
+          final isMedium = constraints.maxWidth >= 720;
+          final sideCardHeight = (pageHeight - SpacingTokens.lg) / 2;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isWide)
+                _PatientDetailSplitLayout(
+                  mode: _PatientDetailSplitLayoutMode.wide,
+                  pageHeight: pageHeight,
+                  detail: detail,
+                  onBack: onBack,
+                  pastCount: pastVisitsAsync.value?.length ?? 0,
+                  upcomingCount: upcomingAsync.value?.length ?? 0,
+                  historyQuery: historyQuery,
+                  pastVisits: pastVisitsAsync.value ?? const [],
+                  upcomingAppointments: upcomingAsync.value ?? const [],
+                  pastLoading: pastVisitsAsync.isLoading,
+                  upcomingLoading: upcomingAsync.isLoading,
+                  pastError: pastVisitsAsync.hasError ? 'Unable to load past visits.' : null,
+                  upcomingError: upcomingAsync.hasError ? 'Unable to load upcoming appointments.' : null,
+                  onRetryPast: () => ref.invalidate(patientPastVisitsProvider(detail.id)),
+                  onRetryUpcoming: () => ref.invalidate(patientUpcomingAppointmentsProvider(historyQuery)),
+                )
+              else if (isMedium)
+                _PatientDetailSplitLayout(
+                  mode: _PatientDetailSplitLayoutMode.medium,
+                  pageHeight: pageHeight,
+                  detail: detail,
+                  onBack: onBack,
+                  pastCount: pastVisitsAsync.value?.length ?? 0,
+                  upcomingCount: upcomingAsync.value?.length ?? 0,
+                  historyQuery: historyQuery,
+                  pastVisits: pastVisitsAsync.value ?? const [],
+                  upcomingAppointments: upcomingAsync.value ?? const [],
+                  pastLoading: pastVisitsAsync.isLoading,
+                  upcomingLoading: upcomingAsync.isLoading,
+                  pastError: pastVisitsAsync.hasError ? 'Unable to load past visits.' : null,
+                  upcomingError: upcomingAsync.hasError ? 'Unable to load upcoming appointments.' : null,
+                  onRetryPast: () => ref.invalidate(patientPastVisitsProvider(detail.id)),
+                  onRetryUpcoming: () => ref.invalidate(patientUpcomingAppointmentsProvider(historyQuery)),
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _PatientProfileCard(
+                      detail: detail,
+                      onBack: onBack,
+                      upcomingCount: upcomingAsync.value?.length ?? 0,
+                      pastCount: pastVisitsAsync.value?.length ?? 0,
+                    ),
+                    const SizedBox(height: SpacingTokens.lg),
+                    _PatientBasicInfoCard(detail: detail),
+                    const SizedBox(height: SpacingTokens.lg),
+                    SizedBox(
+                      height: sideCardHeight,
+                      child: PatientDetailNotesCard(detail: detail),
+                    ),
+                    const SizedBox(height: SpacingTokens.lg),
+                    PatientDetailTimelineSection(
+                      patientId: detail.id,
+                      pastVisits: pastVisitsAsync.value ?? const [],
+                      upcomingAppointments: upcomingAsync.value ?? const [],
+                      patientBranchName: detail.branchName,
+                      pastLoading: pastVisitsAsync.isLoading,
+                      upcomingLoading: upcomingAsync.isLoading,
+                      pastError: pastVisitsAsync.hasError ? 'Unable to load past visits.' : null,
+                      upcomingError: upcomingAsync.hasError ? 'Unable to load upcoming appointments.' : null,
+                      onRetryPast: () => ref.invalidate(patientPastVisitsProvider(detail.id)),
+                      onRetryUpcoming: () => ref.invalidate(patientUpcomingAppointmentsProvider(historyQuery)),
+                    ),
+                    const SizedBox(height: SpacingTokens.lg),
+                    SizedBox(
+                      height: sideCardHeight,
+                      child: PatientDetailDocumentsCard(patientId: detail.id),
+                    ),
+                  ],
+                ),
+            ],
+          );
+        },
       ),
-      body: _PatientDetailBody(detail: detail),
+    );
+  }
+}
+
+enum _PatientDetailSplitLayoutMode { wide, medium }
+
+/// Wide/medium layout with a left content column and a right column for notes
+/// and documents, each sized to half of the patient detail page viewport.
+class _PatientDetailSplitLayout extends StatelessWidget {
+  const _PatientDetailSplitLayout({
+    required this.mode,
+    required this.pageHeight,
+    required this.detail,
+    required this.onBack,
+    required this.pastCount,
+    required this.upcomingCount,
+    required this.historyQuery,
+    required this.pastVisits,
+    required this.upcomingAppointments,
+    required this.pastLoading,
+    required this.upcomingLoading,
+    this.pastError,
+    this.upcomingError,
+    required this.onRetryPast,
+    required this.onRetryUpcoming,
+  });
+
+  final _PatientDetailSplitLayoutMode mode;
+  final double pageHeight;
+  final PatientDetail detail;
+  final VoidCallback onBack;
+  final int pastCount;
+  final int upcomingCount;
+  final PatientDetailHistoryQuery historyQuery;
+  final List<VisitListItem> pastVisits;
+  final List<AppointmentListItem> upcomingAppointments;
+  final bool pastLoading;
+  final bool upcomingLoading;
+  final String? pastError;
+  final String? upcomingError;
+  final VoidCallback onRetryPast;
+  final VoidCallback onRetryUpcoming;
+
+  Widget _buildTimelineSection() {
+    return PatientDetailTimelineSection(
+      patientId: detail.id,
+      pastVisits: pastVisits,
+      upcomingAppointments: upcomingAppointments,
+      patientBranchName: detail.branchName,
+      pastLoading: pastLoading,
+      upcomingLoading: upcomingLoading,
+      pastError: pastError,
+      upcomingError: upcomingError,
+      onRetryPast: onRetryPast,
+      onRetryUpcoming: onRetryUpcoming,
+    );
+  }
+
+  Widget _buildTopSection() {
+    if (mode == _PatientDetailSplitLayoutMode.wide) {
+      return _EqualHeightRow(
+        children: [
+          _EqualHeightRowChild(
+            child: _PatientProfileCard(
+              detail: detail,
+              onBack: onBack,
+              upcomingCount: upcomingCount,
+              pastCount: pastCount,
+            ),
+          ),
+          _EqualHeightRowChild(flex: 2, child: _PatientBasicInfoCard(detail: detail)),
+        ],
+      );
+    }
+
+    return _PatientBasicInfoCard(detail: detail);
+  }
+
+  Widget _buildSideColumn() {
+    return SizedBox(
+      height: pageHeight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: PatientDetailNotesCard(detail: detail)),
+          const SizedBox(height: SpacingTokens.lg),
+          Expanded(child: PatientDetailDocumentsCard(patientId: detail.id)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final splitRow = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: mode == _PatientDetailSplitLayoutMode.wide ? 3 : 1,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildTopSection(),
+              const SizedBox(height: SpacingTokens.lg),
+              _buildTimelineSection(),
+            ],
+          ),
+        ),
+        const SizedBox(width: SpacingTokens.lg),
+        Expanded(child: _buildSideColumn()),
+      ],
+    );
+
+    if (mode == _PatientDetailSplitLayoutMode.medium) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PatientProfileCard(detail: detail, onBack: onBack, upcomingCount: upcomingCount, pastCount: pastCount),
+          const SizedBox(height: SpacingTokens.lg),
+          splitRow,
+        ],
+      );
+    }
+
+    return splitRow;
+  }
+}
+
+@immutable
+class _EqualHeightRowChild {
+  const _EqualHeightRowChild({required this.child, this.flex = 1});
+
+  final Widget child;
+  final int flex;
+}
+
+/// Keeps row children at a shared height equal to the tallest card.
+///
+/// Uses post-layout measurement because [IntrinsicHeight] is unreliable when
+/// descendants include [LayoutBuilder] (for example [_InfoGrid]).
+class _EqualHeightRow extends StatefulWidget {
+  const _EqualHeightRow({required this.children});
+
+  final List<_EqualHeightRowChild> children;
+
+  @override
+  State<_EqualHeightRow> createState() => _EqualHeightRowState();
+}
+
+class _EqualHeightRowState extends State<_EqualHeightRow> {
+  final _childKeys = <GlobalKey>[];
+  double? _sharedHeight;
+
+  @override
+  void initState() {
+    super.initState();
+    _resetKeys();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncSharedHeight());
+  }
+
+  @override
+  void didUpdateWidget(covariant _EqualHeightRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.children.length != widget.children.length) {
+      _resetKeys();
+      _sharedHeight = null;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncSharedHeight());
+  }
+
+  void _resetKeys() {
+    _childKeys
+      ..clear()
+      ..addAll(List.generate(widget.children.length, (_) => GlobalKey()));
+  }
+
+  void _syncSharedHeight() {
+    if (!mounted) {
+      return;
+    }
+
+    final measuredHeights = <double>[
+      for (final key in _childKeys)
+        if (key.currentContext?.size case final size?) size.height,
+    ];
+    if (measuredHeights.isEmpty) {
+      return;
+    }
+
+    final tallest = measuredHeights.reduce(math.max);
+    if (tallest <= 0 || _sharedHeight == tallest) {
+      return;
+    }
+
+    setState(() => _sharedHeight = tallest);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < widget.children.length; i++) ...[
+          if (i > 0) const SizedBox(width: SpacingTokens.lg),
+          Expanded(
+            flex: widget.children[i].flex,
+            child: SizedBox(
+              height: _sharedHeight,
+              child: KeyedSubtree(key: _childKeys[i], child: widget.children[i].child),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PatientProfileCard extends StatelessWidget {
+  const _PatientProfileCard({
+    required this.detail,
+    required this.onBack,
+    required this.pastCount,
+    required this.upcomingCount,
+  });
+
+  final PatientDetail detail;
+  final VoidCallback onBack;
+  final int pastCount;
+  final int upcomingCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.semanticColors;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
+        border: Border.all(color: colors.border),
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(SpacingTokens.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  detail.fullName,
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: SpacingTokens.xs),
+                Text(
+                  'ID ${PatientPresentationFormatting.displayId(detail.id)}',
+                  style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: SpacingTokens.md),
+                _ProfileStatsWithFloatingAvatar(
+                  gender: detail.gender,
+                  pastCount: pastCount,
+                  upcomingCount: upcomingCount,
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: SpacingTokens.sm,
+            left: SpacingTokens.sm,
+            child: AppIconButton(
+              variant: AppIconButtonVariant.outline,
+              icon: const Icon(Icons.arrow_back, size: 20),
+              tooltip: 'Back to patients',
+              onPressed: onBack,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Past / upcoming counts with the avatar centered over the middle gap.
+///
+/// The stats row and avatar share the same vertical band; the avatar is painted
+/// on top via [Stack] rather than occupying a third column.
+class _ProfileStatsWithFloatingAvatar extends StatelessWidget {
+  const _ProfileStatsWithFloatingAvatar({required this.gender, required this.pastCount, required this.upcomingCount});
+
+  static const _avatarSize = 96.0;
+
+  final PatientGender? gender;
+  final int pastCount;
+  final int upcomingCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: SpacingTokens.sm, horizontal: SpacingTokens.md),
+          child: SizedBox(
+            height: _avatarSize,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Center(
+                    child: _ProfileStat(label: 'Past', value: '$pastCount'),
+                  ),
+                ),
+                SizedBox(width: _avatarSize, child: const SizedBox()),
+                Container(
+                  margin: const EdgeInsets.only(left: 5.0),
+                  child: Center(
+                    child: _ProfileStat(label: 'Upcoming', value: '$upcomingCount'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        PatientGenderAvatar(gender: gender, size: _avatarSize),
+      ],
+    );
+  }
+}
+
+class _ProfileStat extends StatelessWidget {
+  const _ProfileStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.semanticColors;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: SpacingTokens.xs),
+        Text(
+          value,
+          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: colors.primary),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+}
+
+class _PatientBasicInfoCard extends StatelessWidget {
+  const _PatientBasicInfoCard({required this.detail});
+
+  final PatientDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.semanticColors;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
+        border: Border.all(color: colors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(SpacingTokens.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Basic information',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                const SizedBox(width: SpacingTokens.sm),
+                Flexible(
+                  child: Text(
+                    'Registered ${PatientPresentationFormatting.dateTime.format(detail.createdAt)}',
+                    style: theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
+                    textAlign: TextAlign.end,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: SpacingTokens.lg),
+            _InfoGrid(
+              items: [
+                _InfoGridItem(label: 'Gender', value: detail.gender?.label ?? '—'),
+                _InfoGridItem(
+                  label: 'Date of birth',
+                  value: PatientPresentationFormatting.dateOfBirthLabel(detail.dateOfBirth),
+                ),
+                _InfoGridItem(label: 'Phone', value: PatientPresentationFormatting.orDash(detail.phone)),
+                _InfoGridItem(label: 'Marital status', value: detail.maritalStatus?.label ?? '—'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+@immutable
+class _InfoGridItem {
+  const _InfoGridItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+}
+
+class _InfoGrid extends StatelessWidget {
+  const _InfoGrid({required this.items});
+
+  final List<_InfoGridItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columnCount = constraints.maxWidth >= 360 ? 2 : 1;
+        final itemWidth = (constraints.maxWidth - (columnCount - 1) * SpacingTokens.lg) / columnCount;
+
+        return Wrap(
+          spacing: SpacingTokens.lg,
+          runSpacing: SpacingTokens.lg,
+          children: [
+            for (final item in items)
+              SizedBox(
+                width: columnCount == 1 ? constraints.maxWidth : itemWidth,
+                child: _PatientDetailInfoRow(label: item.label, value: item.value),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -81,20 +633,82 @@ class _PatientDetailLoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _PatientDetailScaffold(
-      onBack: onBack,
-      header: preview != null
-          ? _PatientDetailHeader(
-              fullName: preview!.fullName,
-              id: preview!.id,
-              phone: preview!.phone,
-              dateOfBirth: preview!.dateOfBirth,
-              gender: preview!.gender,
-            )
-          : const _PatientDetailHeaderSkeleton(),
-      body: const AppDeferredLoading(
+      body: (_) => AppDeferredLoading(
         isLoading: true,
-        placeholder: _PatientDetailBodySkeleton(),
-        loading: _PatientDetailBodyLoading(),
+        placeholder: preview != null
+            ? _PatientDetailPreviewLayout(preview: preview!, onBack: onBack)
+            : const _PatientDetailBodySkeleton(),
+        loading: const _PatientDetailBodyLoading(),
+      ),
+    );
+  }
+}
+
+class _PatientDetailPreviewLayout extends StatelessWidget {
+  const _PatientDetailPreviewLayout({required this.preview, required this.onBack});
+
+  final PatientListItem preview;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+
+    return Opacity(
+      opacity: 0.72,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: colors.card,
+              borderRadius: BorderRadius.circular(context.shapeTokens.lg),
+              border: Border.all(color: colors.border),
+            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(SpacingTokens.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          PatientGenderAvatar(gender: preview.gender, size: 72),
+                          const SizedBox(width: SpacingTokens.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  preview.fullName,
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  top: SpacingTokens.sm,
+                  left: SpacingTokens.sm,
+                  child: AppIconButton(
+                    variant: AppIconButtonVariant.outline,
+                    icon: const Icon(Icons.arrow_back, size: 20),
+                    tooltip: 'Back to patients',
+                    onPressed: onBack,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: SpacingTokens.lg),
+          const _PatientDetailBodySkeleton(),
+        ],
       ),
     );
   }
@@ -110,215 +724,31 @@ class _PatientDetailErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _PatientDetailScaffold(
-      onBack: onBack,
-      body: _PatientDetailBodyError(message: message, onRetry: onRetry),
+      body: (_) => _PatientDetailBodyError(message: message, onRetry: onRetry, onBack: onBack),
     );
   }
 }
 
 class _PatientDetailScaffold extends StatelessWidget {
-  const _PatientDetailScaffold({required this.onBack, required this.body, this.header});
+  const _PatientDetailScaffold({required this.body});
 
-  final VoidCallback onBack;
-  final Widget? header;
-  final Widget body;
+  final Widget Function(double pageHeight) body;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(SpacingTokens.lg),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _PatientDetailTopBar(onBack: onBack),
-                    SizedBox(height: header == null ? SpacingTokens.lg : SpacingTokens.md),
-                    if (header != null) ...[header!, const SizedBox(height: SpacingTokens.lg)],
-                    Expanded(child: body),
-                  ],
-                ),
-              ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(child: body(constraints.maxHeight));
+              },
             ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _PatientDetailTopBar extends StatelessWidget {
-  const _PatientDetailTopBar({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Row(
-      children: [
-        AppIconButton(icon: const Icon(Icons.arrow_back, size: 20), tooltip: 'Back to patients', onPressed: onBack),
-        const SizedBox(width: SpacingTokens.sm),
-        Text('Patient detail', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-      ],
-    );
-  }
-}
-
-class _PatientDetailHeader extends StatelessWidget {
-  const _PatientDetailHeader({required this.fullName, required this.id, this.phone, this.dateOfBirth, this.gender});
-
-  final String fullName;
-  final String id;
-  final String? phone;
-  final DateTime? dateOfBirth;
-  final PatientGender? gender;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = context.semanticColors;
-    final ageGender = PatientPresentationFormatting.ageGenderLabel(
-      age: PatientPresentationFormatting.ageYears(dateOfBirth),
-      gender: gender,
-    );
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-        border: Border.all(color: colors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
-        child: Row(
-          children: [
-            _PatientAvatar(name: fullName),
-            const SizedBox(width: SpacingTokens.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    fullName,
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: SpacingTokens.xs),
-                  Text(
-                    'Patient ID ${PatientPresentationFormatting.displayId(id)}',
-                    style: theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
-                  ),
-                  const SizedBox(height: SpacingTokens.sm),
-                  Text(
-                    '${PatientPresentationFormatting.orDash(phone)} · $ageGender',
-                    style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PatientDetailHeaderSkeleton extends StatelessWidget {
-  const _PatientDetailHeaderSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-        border: Border.all(color: colors.border),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.all(SpacingTokens.lg),
-        child: Row(
-          children: [
-            AppSkeletonCircle(size: 44),
-            SizedBox(width: SpacingTokens.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppSkeletonBox(width: 180, height: 16),
-                  SizedBox(height: SpacingTokens.xs),
-                  AppSkeletonBox(width: 120, height: 12),
-                  SizedBox(height: SpacingTokens.sm),
-                  AppSkeletonBox(width: 160, height: 12),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PatientDetailBody extends StatelessWidget {
-  const _PatientDetailBody({required this.detail});
-
-  final PatientDetail detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-        border: Border.all(color: colors.border),
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _PatientDetailInfoRow(label: 'Phone', value: PatientPresentationFormatting.orDash(detail.phone)),
-            const SizedBox(height: SpacingTokens.lg),
-            _PatientDetailInfoRow(
-              label: 'Date of birth',
-              value: PatientPresentationFormatting.dateOfBirthLabel(detail.dateOfBirth),
-            ),
-            const SizedBox(height: SpacingTokens.lg),
-            _PatientDetailInfoRow(label: 'Gender', value: detail.gender?.label ?? '—'),
-            const SizedBox(height: SpacingTokens.lg),
-            _PatientDetailInfoRow(label: 'Marital status', value: detail.maritalStatus?.label ?? '—'),
-            const SizedBox(height: SpacingTokens.lg),
-            _PatientDetailInfoRow(label: 'Branch', value: detail.branchName),
-            const SizedBox(height: SpacingTokens.lg),
-            _PatientDetailInfoRow(label: 'Notes', value: PatientPresentationFormatting.orDash(detail.notes)),
-            const SizedBox(height: SpacingTokens.lg),
-            _PatientDetailInfoRow(
-              label: 'Created',
-              value: PatientPresentationFormatting.dateTime.format(detail.createdAt),
-            ),
-            const SizedBox(height: SpacingTokens.lg),
-            _PatientDetailInfoRow(
-              label: 'Last updated',
-              value: PatientPresentationFormatting.dateTime.format(detail.updatedAt),
-            ),
-            const SizedBox(height: SpacingTokens.lg),
-            _PatientDetailInfoRow(
-              label: 'Created by',
-              value: PatientPresentationFormatting.orDash(detail.createdByDisplay),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -327,32 +757,59 @@ class _PatientDetailBody extends StatelessWidget {
 class _PatientDetailBodySkeleton extends StatelessWidget {
   const _PatientDetailBodySkeleton();
 
-  static const _labels = ['Phone', 'Date of birth', 'Gender', 'Marital status', 'Branch', 'Notes'];
-
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final theme = Theme.of(context);
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _EqualHeightRow(
+                    children: [
+                      _EqualHeightRowChild(child: _skeletonCard(colors, context)),
+                      _EqualHeightRowChild(flex: 2, child: _skeletonCard(colors, context)),
+                    ],
+                  ),
+                  const SizedBox(height: SpacingTokens.lg),
+                  _skeletonCard(colors, context),
+                ],
+              ),
+            ),
+            const SizedBox(width: SpacingTokens.lg),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _skeletonCard(colors, context),
+                  const SizedBox(height: SpacingTokens.lg),
+                  _skeletonCard(colors, context),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _skeletonCard(SemanticColors colors, BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.card,
         borderRadius: BorderRadius.circular(context.shapeTokens.lg),
         border: Border.all(color: colors.border),
       ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var index = 0; index < _labels.length; index++) ...[
-              if (index > 0) const SizedBox(height: SpacingTokens.lg),
-              Text(_labels[index], style: theme.textTheme.labelMedium?.copyWith(color: colors.mutedForeground)),
-              const SizedBox(height: SpacingTokens.xs),
-              AppSkeletonBox(width: index.isEven ? 160 : 120, height: 16),
-            ],
-          ],
-        ),
+      child: const Padding(
+        padding: EdgeInsets.all(SpacingTokens.xl),
+        child: Center(child: AppSkeletonBox(width: 120, height: 16)),
       ),
     );
   }
@@ -367,7 +824,6 @@ class _PatientDetailBodyLoading extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Stack(
-      fit: StackFit.expand,
       children: [
         const _PatientDetailBodySkeleton(),
         ColoredBox(
@@ -393,45 +849,60 @@ class _PatientDetailBodyLoading extends StatelessWidget {
 }
 
 class _PatientDetailBodyError extends StatelessWidget {
-  const _PatientDetailBodyError({required this.message, required this.onRetry});
+  const _PatientDetailBodyError({required this.message, required this.onRetry, required this.onBack});
 
   final String message;
   final VoidCallback onRetry;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final theme = Theme.of(context);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-        border: Border.all(color: colors.border),
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(SpacingTokens.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Unable to load patient details',
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: SpacingTokens.xs),
-              Text(
-                message,
-                style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: SpacingTokens.lg),
-              AppButton(label: 'Retry', expand: false, onPressed: onRetry),
-            ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: AppIconButton(
+            icon: const Icon(Icons.arrow_back, size: 20),
+            tooltip: 'Back to patients',
+            onPressed: onBack,
           ),
         ),
-      ),
+        const SizedBox(height: SpacingTokens.lg),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.card,
+            borderRadius: BorderRadius.circular(context.shapeTokens.lg),
+            border: Border.all(color: colors.border),
+          ),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(SpacingTokens.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Unable to load patient details',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: SpacingTokens.xs),
+                  Text(
+                    message,
+                    style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: SpacingTokens.lg),
+                  AppButton(label: 'Retry', expand: false, onPressed: onRetry),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -455,49 +926,6 @@ class _PatientDetailInfoRow extends StatelessWidget {
         Text(value, style: theme.textTheme.bodyLarge?.copyWith(color: colors.foreground)),
       ],
     );
-  }
-}
-
-class _PatientAvatar extends StatelessWidget {
-  const _PatientAvatar({required this.name});
-
-  final String name;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final initials = _initialsFor(name);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.secondary,
-        borderRadius: BorderRadius.circular(context.shapeTokens.sm),
-        border: Border.all(color: colors.border),
-      ),
-      child: SizedBox(
-        width: 44,
-        height: 44,
-        child: Center(
-          child: Text(
-            initials,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(color: colors.secondaryForeground, fontWeight: FontWeight.w700),
-          ),
-        ),
-      ),
-    );
-  }
-
-  static String _initialsFor(String fullName) {
-    final parts = fullName.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
-    if (parts.isEmpty) {
-      return '?';
-    }
-    if (parts.length == 1) {
-      return parts.first[0].toUpperCase();
-    }
-    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
   }
 }
 

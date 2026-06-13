@@ -62,7 +62,11 @@ class _PatientContainerTransformTransition extends StatelessWidget {
             final contentOpacity = Curves.easeOut.transform(contentProgress);
             final contentScale = 0.94 + (0.06 * contentOpacity);
 
-            return Stack(
+            if (t >= 1) {
+              return child!;
+            }
+
+            final transitionChild = Stack(
               fit: StackFit.expand,
               clipBehavior: Clip.none,
               children: [
@@ -97,6 +101,10 @@ class _PatientContainerTransformTransition extends StatelessWidget {
                 ),
               ],
             );
+
+            // Semantics are collected after layout; animated flex parent data during
+            // the route transition can trip `!semantics.parentDataDirty` assertions.
+            return ExcludeSemantics(child: transitionChild);
           },
         );
       },

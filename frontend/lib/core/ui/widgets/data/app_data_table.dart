@@ -128,7 +128,7 @@ class _HeaderCell extends StatelessWidget {
 
     return Expanded(
       flex: column.flex,
-      child: Align(alignment: column.alignment, child: child),
+      child: Align(alignment: column.alignment, widthFactor: 1, heightFactor: 1, child: child),
     );
   }
 }
@@ -191,16 +191,15 @@ class _BodyCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final alignedChild = Align(alignment: column.alignment, widthFactor: 1, heightFactor: 1, child: child);
+
     if (column.width != null) {
       return SizedBox(
         width: column.width,
-        child: Align(alignment: column.alignment, child: child),
+        child: ClipRect(child: alignedChild),
       );
     }
 
-    return Expanded(
-      flex: column.flex,
-      child: Align(alignment: column.alignment, child: child),
-    );
+    return Expanded(flex: column.flex, child: alignedChild);
   }
 }

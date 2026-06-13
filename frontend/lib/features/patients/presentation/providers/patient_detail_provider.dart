@@ -7,8 +7,8 @@ import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_pro
 
 /// Loads a full patient profile for the detail view (`get_patient` RPC).
 final patientDetailProvider = FutureProvider.autoDispose.family<PatientDetail, String>((ref, patientId) async {
-  final auth = ref.watch(authSessionProvider);
-  if (!AuthRouteGuard.canAccessPatientDetail(auth)) {
+  final canAccess = ref.watch(authSessionProvider.select(AuthRouteGuard.canAccessPatientDetail));
+  if (!canAccess) {
     throw StateError('You do not have permission to view this patient.');
   }
 

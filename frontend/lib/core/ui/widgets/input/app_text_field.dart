@@ -6,9 +6,10 @@ import 'app_field_size.dart';
 
 const _fieldIconExtent = 32.0;
 
-FTextFieldStyleDelta _inputFieldStyle(AppFieldSize size) => FTextFieldStyleDelta.delta(
+FTextFieldStyleDelta _inputFieldStyle(AppFieldSize size, {Color? fillColor}) => FTextFieldStyleDelta.delta(
   contentPadding: EdgeInsetsGeometryDelta.value(_inputContentPadding(size)),
   constraints: BoxConstraints(minHeight: _inputMinHeight(size)),
+  color: fillColor == null ? null : FVariantsValueDelta.delta([FVariantValueDeltaOperation.base(fillColor)]),
 );
 
 EdgeInsets _inputContentPadding(AppFieldSize size) => switch (size) {
@@ -124,7 +125,11 @@ class AppTextInput extends StatelessWidget {
     this.enabled = true,
     this.size = AppFieldSize.md,
     this.description,
+    this.minLines,
     this.maxLines = 1,
+    this.expands = false,
+    this.fillColor,
+    this.textAlignVertical,
     this.onChanged,
     this.prefixIcon,
     this.suffixIcon,
@@ -139,7 +144,11 @@ class AppTextInput extends StatelessWidget {
   final TextInputType? keyboardType;
   final bool enabled;
   final AppFieldSize size;
-  final int maxLines;
+  final int? minLines;
+  final int? maxLines;
+  final bool expands;
+  final Color? fillColor;
+  final TextAlignVertical? textAlignVertical;
   final ValueChanged<String>? onChanged;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
@@ -156,13 +165,16 @@ class AppTextInput extends StatelessWidget {
             )
           : FTextFieldControl.managed(onChange: onChanged == null ? null : (value) => onChanged!(value.text)),
       size: size.forui,
-      style: _inputFieldStyle(size),
+      style: _inputFieldStyle(size, fillColor: fillColor),
       label: label == null ? null : Text(label!, style: theme.textTheme.labelMedium),
       description: description == null ? null : Text(description!, style: theme.textTheme.bodySmall),
       hint: hintText,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      minLines: minLines,
       maxLines: maxLines,
+      expands: expands,
+      textAlignVertical: textAlignVertical,
       enabled: enabled,
       prefixBuilder: _prefixBuilder(prefixIcon),
       suffixBuilder: _suffixBuilder(suffixIcon),
