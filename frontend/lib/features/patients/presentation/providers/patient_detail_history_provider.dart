@@ -61,7 +61,7 @@ final patientPastVisitsProvider = FutureProvider.autoDispose.family<List<VisitLi
   return visits;
 });
 
-/// Upcoming appointments for a patient (filtered from `list_appointments`).
+/// Upcoming appointments for a patient (`list_appointments` with `p_patient_id`).
 final patientUpcomingAppointmentsProvider = FutureProvider.autoDispose
     .family<List<AppointmentListItem>, PatientDetailHistoryQuery>((ref, query) async {
       final now = clock.now().toUtc();
@@ -71,6 +71,7 @@ final patientUpcomingAppointmentsProvider = FutureProvider.autoDispose
             branchId: query.branchId,
             from: now,
             to: now.add(const Duration(days: 365)),
+            patientId: query.patientId,
             statuses: const [
               AppointmentStatus.scheduled,
               AppointmentStatus.confirmed,
@@ -79,37 +80,17 @@ final patientUpcomingAppointmentsProvider = FutureProvider.autoDispose
             ],
           );
 
-      final upcoming = items.where((item) => item.patientId == query.patientId).toList()
-        ..sort((a, b) => a.startTime.compareTo(b.startTime));
-      return upcoming;
+      return [...items]..sort((a, b) => a.startTime.compareTo(b.startTime));
     });
 
-/// Visit attachments aggregated from the patient's past visits (`get_visit` per visit).
+/// Visit attachments for a patient (`list_patient_visit_attachments`).
 final patientVisitDocumentsProvider = FutureProvider.autoDispose.family<List<PatientVisitDocument>, String>((
   ref,
   patientId,
 ) async {
-  final visits = await ref.watch(patientPastVisitsProvider(patientId).future);
-  if (visits.isEmpty) {
-    return const [];
-  }
-
-  final repository = ref.read(visitRepositoryProvider);
-  final documents = <PatientVisitDocument>[];
-
-  await Future.wait(
-    visits.map((visit) async {
-      try {
-        final detail = await repository.getVisit(visitId: visit.id);
-        for (final attachment in detail.attachments) {
-          documents.add(PatientVisitDocument(visitId: visit.id, visitDate: visit.visitDate, attachment: attachment));
-        }
-      } on Object {
-        // Skip visits the current user cannot access in full.
-      }
-    }),
-  );
-
-  documents.sort((a, b) => b.attachment.createdAt.compareTo(a.attachment.createdAt));
-  return documents;
+  final rows = await ref.read(visitRepositoryProvider).listPatientVisitAttachments(patientId: patientId);
+  return [
+    for (final row in rows)
+      PatientVisitDocument(visitId: row.visitId, visitDate: row.visitDate, attachment: row.attachment),
+  ];
 });

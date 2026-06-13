@@ -1,6 +1,7 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
+import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/patient_rpc_test_client.dart';
@@ -30,6 +31,19 @@ void main() {
       expect(client.lastParams?['p_branch_id'], '44444444-4444-4444-8444-444444444444');
       expect(client.lastParams?['p_limit'], 10);
       expect(client.lastParams?['p_offset'], 5);
+      expect(client.lastParams?['p_last_visit_filter'], 'any');
+      expect(client.lastParams?['p_sort_field'], 'name_asc');
+    });
+
+    test('sends last visit filter and sort field to RPC', () async {
+      await repository.searchPatients(
+        scope: PatientListScope.allBranches,
+        lastVisitFilter: PatientLastVisitFilter.over90Days,
+        sortField: PatientSortField.lastVisitDesc,
+      );
+
+      expect(client.lastParams?['p_last_visit_filter'], 'over_90_days');
+      expect(client.lastParams?['p_sort_field'], 'last_visit_desc');
     });
 
     test('browse mode omits p_query', () async {

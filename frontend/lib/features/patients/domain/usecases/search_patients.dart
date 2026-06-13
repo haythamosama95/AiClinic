@@ -1,6 +1,7 @@
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
+import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 
 class SearchPatients {
   const SearchPatients(this._repository);
@@ -12,6 +13,8 @@ class SearchPatients {
     String? branchId,
     int limit = 25,
     int offset = 0,
+    PatientLastVisitFilter lastVisitFilter = PatientLastVisitFilter.any,
+    PatientSortField sortField = PatientSortField.nameAsc,
   }) {
     return _repository.searchPatients(
       query: query,
@@ -19,6 +22,8 @@ class SearchPatients {
       branchId: branchId,
       limit: limit,
       offset: offset,
+      lastVisitFilter: lastVisitFilter,
+      sortField: sortField,
     );
   }
 }

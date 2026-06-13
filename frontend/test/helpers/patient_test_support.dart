@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
+import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 
 const _testBranchId = '44444444-4444-4444-8444-444444444444';
 const _testBranchName = 'Test Branch';
@@ -77,6 +78,7 @@ class FakePatientRepository implements PatientRepository {
   CreatePatientInput? lastCreateInput;
   UpdatePatientInput? lastUpdateInput;
   String? lastArchivedId;
+  int searchCallCount = 0;
 
   @override
   Future<PatientSearchPage> searchPatients({
@@ -85,7 +87,10 @@ class FakePatientRepository implements PatientRepository {
     String? branchId,
     int limit = 25,
     int offset = 0,
+    PatientLastVisitFilter lastVisitFilter = PatientLastVisitFilter.any,
+    PatientSortField sortField = PatientSortField.nameAsc,
   }) async {
+    searchCallCount++;
     var filtered = patients.toList();
     if (query != null && query.isNotEmpty) {
       final q = query.toLowerCase();
@@ -95,12 +100,7 @@ class FakePatientRepository implements PatientRepository {
       filtered = filtered.where((p) => p.registeringBranchId == branchId).toList();
     }
     final page = filtered.skip(offset).take(limit).toList();
-    return PatientSearchPage(
-      items: page,
-      totalCount: filtered.length,
-      limit: limit,
-      offset: offset,
-    );
+    return PatientSearchPage(items: page, totalCount: filtered.length, limit: limit, offset: offset);
   }
 
   @override

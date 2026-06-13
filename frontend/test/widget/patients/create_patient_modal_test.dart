@@ -4,6 +4,7 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
@@ -82,6 +83,17 @@ void main() {
       await _tapRegister(tester);
 
       expect(find.text('Mobile number is required.'), findsOneWidget);
+    });
+
+    testWidgets('M5: mobile field strips non-digit characters before validation', (tester) async {
+      await _pumpModal(tester, _host());
+
+      await tester.enterText(find.widgetWithText(AppTextField, 'Full name *'), 'New Patient');
+      await tester.enterText(find.widgetWithText(AppTextField, 'Mobile number *'), 'abc12');
+      await _tapRegister(tester);
+
+      expect(find.text('Only numbers are allowed.'), findsNothing);
+      expect(find.text('Mobile number must be 8 to 15 digits.'), findsOneWidget);
     });
 
     testWidgets('empty gender blocked on submit', (tester) async {
@@ -171,6 +183,21 @@ void main() {
 
       expect(client.createCallCount, 1);
     });
+
+    testWidgets('L3: create trims leading and trailing whitespace from name and phone', (tester) async {
+      final repository = FakePatientRepository();
+
+      await _pumpModal(tester, _hostWithRepository(repository));
+
+      await tester.enterText(find.widgetWithText(AppTextField, 'Full name *'), '  New Patient  ');
+      await tester.enterText(find.widgetWithText(AppTextField, 'Mobile number *'), '  201005551234  ');
+      await _enterDateOfBirth(tester);
+      await _selectGender(tester, 'Male');
+      await _tapRegister(tester);
+
+      expect(repository.lastCreateInput?.fullName, 'New Patient');
+      expect(repository.lastCreateInput?.phone, '201005551234');
+    });
   });
 
   group('CreatePatientModal edit mode', () {
@@ -219,6 +246,48 @@ void main() {
 
       expect(find.text('You do not have permission to edit patients.'), findsOneWidget);
       expect(find.byKey(const Key('patient_update_submit')), findsNothing);
+    });
+
+    testWidgets('L3: update trims leading and trailing whitespace from name and phone', (tester) async {
+      final patient = samplePatientDetail();
+      final repository = FakePatientRepository(detail: patient);
+
+      await _pumpEditModal(tester, _editHost(patient: patient, repository: repository));
+
+      await tester.enterText(find.widgetWithText(AppTextField, 'Full name *'), '  Updated Patient  ');
+      await tester.enterText(find.widgetWithText(AppTextField, 'Mobile number *'), '  201009991234  ');
+      await tester.ensureVisible(find.byKey(const Key('patient_update_submit')));
+      await tester.tap(find.byKey(const Key('patient_update_submit')));
+      await tester.pumpAndSettle();
+
+      expect(repository.lastUpdateInput?.fullName, 'Updated Patient');
+      expect(repository.lastUpdateInput?.phone, '201009991234');
+    });
+
+    testWidgets('L5: successful update invalidates patient list provider', (tester) async {
+      final patient = samplePatientDetail();
+      final repository = FakePatientRepository(
+        detail: patient,
+        patients: [samplePatientListItem(id: patient.id, fullName: patient.fullName)],
+      );
+
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(_editHostWithListWatch(patient: patient, repository: repository));
+      await tester.pumpAndSettle();
+
+      expect(repository.searchCallCount, 1);
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.widgetWithText(AppTextField, 'Full name *'), 'Updated Patient');
+      await tester.ensureVisible(find.byKey(const Key('patient_update_submit')));
+      await tester.tap(find.byKey(const Key('patient_update_submit')));
+      await tester.pumpAndSettle();
+
+      expect(repository.searchCallCount, greaterThan(1));
     });
   });
 }
@@ -286,6 +355,70 @@ Widget _editHost({
                   }
                 },
               ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+Widget _editHostWithListWatch({required PatientDetail patient, required FakePatientRepository repository}) {
+  return ProviderScope(
+    overrides: [
+      authSessionProvider.overrideWith(
+        () => _PresetAuthSessionNotifier(
+          AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(permissions: const {'patients.view', 'patients.edit'}),
+          ),
+        ),
+      ),
+      patientRepositoryProvider.overrideWith((ref) => repository),
+    ],
+    child: MaterialApp(
+      theme: AppTheme.light(),
+      builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
+      home: Consumer(
+        builder: (context, ref, _) {
+          ref.watch(patientListProvider);
+          return Scaffold(
+            body: Center(
+              child: AppButton(
+                label: 'Open',
+                onPressed: () async {
+                  await CreatePatientModal.showEdit(context, patient: patient);
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+Widget _hostWithRepository(FakePatientRepository repository) {
+  return ProviderScope(
+    overrides: [
+      authSessionProvider.overrideWith(
+        () => _PresetAuthSessionNotifier(
+          AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(permissions: const {'patients.view', 'patients.create'}),
+          ),
+        ),
+      ),
+      patientRepositoryProvider.overrideWith((ref) => repository),
+    ],
+    child: MaterialApp(
+      theme: AppTheme.light(),
+      builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
+      home: Builder(
+        builder: (context) {
+          return Scaffold(
+            body: Center(
+              child: AppButton(label: 'Open', onPressed: () => CreatePatientModal.show(context)),
             ),
           );
         },

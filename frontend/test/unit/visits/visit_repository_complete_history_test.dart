@@ -219,4 +219,25 @@ void main() {
       );
     });
   });
+
+  group('VisitRepository.listPatientVisitAttachments', () {
+    late VisitRpcTestClient client;
+    late VisitRepository repository;
+
+    setUp(() {
+      client = VisitRpcTestClient();
+      repository = VisitRepository(client);
+    });
+
+    test('M2: forwards patient id to list_patient_visit_attachments', () async {
+      const patientId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+      final rows = await repository.listPatientVisitAttachments(patientId: patientId);
+
+      expect(client.lastFunction, 'list_patient_visit_attachments');
+      expect(client.lastParams?['p_patient_id'], patientId);
+      expect(rows, hasLength(1));
+      expect(rows.first.attachment.label, 'Lab PDF');
+    });
+  });
 }

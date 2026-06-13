@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
+import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 
 /// Patient list/detail mutations via secured RPCs (V1-3).
 class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
@@ -34,6 +35,8 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     String? branchId,
     int limit = 25,
     int offset = 0,
+    PatientLastVisitFilter lastVisitFilter = PatientLastVisitFilter.any,
+    PatientSortField sortField = PatientSortField.nameAsc,
   }) async {
     if (scope == PatientListScope.thisBranch && (branchId == null || branchId.trim().isEmpty)) {
       throw ArgumentError('branchId is required when scope is thisBranch');
@@ -43,6 +46,8 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
       'p_scope': scope.rpcScopeValue,
       'p_limit': limit,
       'p_offset': offset,
+      'p_last_visit_filter': lastVisitFilter.wireValue,
+      'p_sort_field': sortField.wireValue,
       if (query != null && query.trim().isNotEmpty) 'p_query': query.trim(),
       if (branchId != null && branchId.trim().isNotEmpty) 'p_branch_id': branchId,
     };

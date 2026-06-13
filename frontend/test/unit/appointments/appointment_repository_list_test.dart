@@ -28,17 +28,19 @@ void main() {
       expect(client.lastParams?['p_to'], to.toIso8601String());
     });
 
-    test('advanced: sends doctor and statuses filters', () async {
+    test('advanced: sends doctor, statuses, and patient filters', () async {
       await repository.listAppointments(
         branchId: '44444444-4444-4444-8444-444444444444',
         from: DateTime.utc(2026, 6, 1),
         to: DateTime.utc(2026, 6, 8),
         doctorId: '55555555-5555-4555-8555-555555555555',
         statuses: const [AppointmentStatus.scheduled, AppointmentStatus.checkedIn],
+        patientId: '11111111-1111-4111-8111-111111111111',
       );
 
       expect(client.lastParams?['p_doctor_id'], '55555555-5555-4555-8555-555555555555');
       expect(client.lastParams?['p_statuses'], ['scheduled', 'checked_in']);
+      expect(client.lastParams?['p_patient_id'], '11111111-1111-4111-8111-111111111111');
     });
 
     test('invalid state: inverted range throws INVALID_INPUT', () async {

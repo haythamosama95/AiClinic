@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
+import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
@@ -376,6 +377,8 @@ class _FakePatientRepository implements PatientRepository {
     String? branchId,
     int limit = 25,
     int offset = 0,
+    PatientLastVisitFilter lastVisitFilter = PatientLastVisitFilter.any,
+    PatientSortField sortField = PatientSortField.nameAsc,
   }) => throw UnimplementedError();
 
   @override

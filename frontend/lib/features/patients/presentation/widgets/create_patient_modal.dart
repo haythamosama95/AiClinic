@@ -14,11 +14,13 @@ import 'package:ai_clinic/features/patients/application/patient_rpc_messages.dar
 import 'package:ai_clinic/features/patients/data/patient_rpc_failure.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/domain/patient_field_validation.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/duplicate_candidates_dialog.dart';
 
 abstract final class _CreatePatientModalPalette {
@@ -132,7 +134,7 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
     }
 
     _fullNameController.text = patient.fullName;
-    _phoneController.text = patient.phone ?? '';
+    _phoneController.text = patient.phone?.replaceAll(RegExp(r'\D'), '') ?? '';
     _notesController.text = patient.notes ?? '';
     _dateOfBirth = patient.dateOfBirth;
     _gender = patient.gender;
@@ -160,8 +162,8 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
   CreatePatientInput _buildCreateInput({required String activeBranchId, required bool acknowledgeDuplicate}) {
     return CreatePatientInput(
       activeBranchId: activeBranchId,
-      fullName: _fullNameController.text,
-      phone: _phoneController.text,
+      fullName: _fullNameController.text.trim(),
+      phone: _phoneController.text.trim(),
       dateOfBirth: _dateOfBirth,
       gender: _gender,
       maritalStatus: _maritalStatus,
@@ -174,7 +176,7 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
     final patient = widget.patient!;
     return UpdatePatientInput(
       patientId: patient.id,
-      fullName: _fullNameController.text,
+      fullName: _fullNameController.text.trim(),
       expectedUpdatedAt: _expectedUpdatedAt ?? patient.updatedAt,
       phone: _phoneController.text.trim(),
       dateOfBirth: _dateOfBirth,
@@ -256,6 +258,7 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
       }
 
       ref.invalidate(patientDetailProvider(patientId));
+      ref.invalidate(patientListProvider);
       AppToast.success(context, message: 'Patient updated successfully.');
       Navigator.of(context).pop(patientId);
     } on RpcFailure catch (error) {
@@ -441,7 +444,8 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
                   controller: _phoneController,
                   enabled: !_isSaving,
                   keyboardType: TextInputType.phone,
-                  validator: (value) => value == null || value.trim().isEmpty ? 'Mobile number is required.' : null,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  validator: PatientFieldValidation.validateMobileNumber,
                 ),
               ),
               const SizedBox(width: SpacingTokens.md),

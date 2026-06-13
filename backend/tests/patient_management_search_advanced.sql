@@ -28,6 +28,12 @@ DECLARE
   v_patient_underscore uuid;
   v_patient_backslash uuid;
   v_patient_percent uuid;
+  v_duplicate_name_first uuid;
+  v_duplicate_name_second uuid;
+  v_page_one_id uuid;
+  v_page_two_id uuid;
+  v_repeat_page_one_id uuid;
+  v_repeat_page_two_id uuid;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -101,6 +107,12 @@ BEGIN
   -- Prefix vs substring ordering: "Alpha" matches start and middle of different names.
   PERFORM public.create_patient(v_branch_main, 'Alpha Prefix Target', '201000000311', NULL, NULL, NULL, NULL, false);
   PERFORM public.create_patient(v_branch_main, 'ZZZ Alpha Middle', '201000000312', NULL, NULL, NULL, NULL, false);
+
+  -- Duplicate full names for stable pagination tiebreaker tests (L1).
+  v_result := public.create_patient(v_branch_main, 'Same Name Patient', '201000000313', NULL, NULL, NULL, NULL, false);
+  v_duplicate_name_first := (v_result.data ->> 'patient_id')::uuid;
+  v_result := public.create_patient(v_branch_main, 'Same Name Patient', '201000000314', NULL, NULL, NULL, NULL, false);
+  v_duplicate_name_second := (v_result.data ->> 'patient_id')::uuid;
 
   -- ===========================================================================
   -- SEARCH ORDERING: results sorted alphabetically by full_name
@@ -554,6 +566,39 @@ BEGIN
           AND lower(item ->> 'full_name') NOT LIKE 'alpha%'
       ),
     'first=' || COALESCE(v_first_name, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- ===========================================================================
+  -- L1: duplicate names paginate with stable id tiebreaker (no overlap/reorder)
+  -- ===========================================================================
+
+  v_result := public.search_patients('Same Name Patient', 'branch', v_branch_main, 1, 0);
+  v_page_one_id := (COALESCE(v_result.data -> 'items', '[]'::jsonb) -> 0 ->> 'id')::uuid;
+
+  v_result := public.search_patients('Same Name Patient', 'branch', v_branch_main, 1, 1);
+  v_page_two_id := (COALESCE(v_result.data -> 'items', '[]'::jsonb) -> 0 ->> 'id')::uuid;
+
+  v_result := public.search_patients('Same Name Patient', 'branch', v_branch_main, 1, 0);
+  v_repeat_page_one_id := (COALESCE(v_result.data -> 'items', '[]'::jsonb) -> 0 ->> 'id')::uuid;
+
+  v_result := public.search_patients('Same Name Patient', 'branch', v_branch_main, 1, 1);
+  v_repeat_page_two_id := (COALESCE(v_result.data -> 'items', '[]'::jsonb) -> 0 ->> 'id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_search_results VALUES (
+    'search_duplicate_name_pages_do_not_overlap',
+    v_page_one_id IS NOT NULL
+      AND v_page_two_id IS NOT NULL
+      AND v_page_one_id <> v_page_two_id
+      AND v_page_one_id IN (v_duplicate_name_first, v_duplicate_name_second)
+      AND v_page_two_id IN (v_duplicate_name_first, v_duplicate_name_second),
+    'page1=' || COALESCE(v_page_one_id::text, '<null>') || ' page2=' || COALESCE(v_page_two_id::text, '<null>')
+  );
+  INSERT INTO patient_search_results VALUES (
+    'search_duplicate_name_pagination_stable_across_requests',
+    v_page_one_id = v_repeat_page_one_id AND v_page_two_id = v_repeat_page_two_id,
+    'first=' || COALESCE(v_repeat_page_one_id::text, '<null>') || ' second=' || COALESCE(v_repeat_page_two_id::text, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 END;

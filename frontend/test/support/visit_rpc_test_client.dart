@@ -130,6 +130,28 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           'offset': lastParams?['p_offset'] ?? 0,
         },
       },
+      'list_patient_visit_attachments' => {
+        'success': true,
+        'data': {
+          'items': [
+            {
+              'visit_id': 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+              'visit_date': '2026-05-31',
+              'id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              'file_type': 'pdf',
+              'label': 'Lab PDF',
+              'uploaded_by': 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+              'uploaded_by_name': 'Dr Test',
+              'size_bytes': 1024,
+              'created_at': '2026-05-31T10:00:00.000Z',
+              'can_download': true,
+            },
+          ],
+          'total_count': 1,
+          'limit': lastParams?['p_limit'] ?? 100,
+          'offset': lastParams?['p_offset'] ?? 0,
+        },
+      },
       'create_treatment_plan' => {
         'success': true,
         'data': {'treatment_plan_id': 'tttttttt-tttt-4ttt-8ttt-tttttttttttt'},

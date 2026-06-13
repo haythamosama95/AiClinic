@@ -4,8 +4,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_list_item.dart';
+import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
 
 /// Visit medical records RPC wrappers (V1-5).
 class VisitRepository with AppRpcInvoker {
@@ -205,6 +207,33 @@ class VisitRepository with AppRpcInvoker {
     return page;
   }
 
+  Future<List<PatientVisitAttachmentRow>> listPatientVisitAttachments({
+    required String patientId,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    _assertNonEmpty('patientId', patientId);
+
+    final result = await invokeRpc('list_patient_visit_attachments', {
+      'p_patient_id': patientId.trim(),
+      'p_limit': limit,
+      'p_offset': offset,
+    });
+
+    final rawItems = result.data?['items'];
+    if (rawItems is! List) {
+      return const [];
+    }
+
+    return [
+      for (final item in rawItems)
+        if (item is Map<String, dynamic>)
+          PatientVisitAttachmentRow.fromRow(item)
+        else if (item is Map)
+          PatientVisitAttachmentRow.fromRow(Map<String, dynamic>.from(item)),
+    ].whereType<PatientVisitAttachmentRow>().toList(growable: false);
+  }
+
   Future<Map<String, dynamic>> getSpecialtyFormSchema() async {
     final result = await invokeRpc('get_specialty_form_schema', null);
     return _parseSchemaJson(result.data?['schema_json']);
@@ -385,6 +414,25 @@ class VisitAttachmentDownloadResult {
       expiresAt: expiresAtRaw == null ? null : DateTime.tryParse(expiresAtRaw),
       filePath: filePath != null && filePath.isNotEmpty ? filePath : null,
     );
+  }
+}
+
+/// Visit attachment row from `list_patient_visit_attachments`.
+class PatientVisitAttachmentRow {
+  const PatientVisitAttachmentRow({required this.visitId, required this.visitDate, required this.attachment});
+
+  final String visitId;
+  final DateTime visitDate;
+  final VisitAttachmentItem attachment;
+
+  static PatientVisitAttachmentRow? fromRow(Map<String, dynamic> row) {
+    final visitId = row['visit_id']?.toString();
+    final visitDate = parseVisitDate(row['visit_date']);
+    final attachment = VisitAttachmentItem.fromRow(row);
+    if (visitId == null || visitId.isEmpty || visitDate == null || attachment == null) {
+      return null;
+    }
+    return PatientVisitAttachmentRow(visitId: visitId, visitDate: visitDate, attachment: attachment);
   }
 }
 

@@ -120,6 +120,7 @@ class AppointmentRepository with AppRpcInvoker {
     required DateTime to,
     String? doctorId,
     List<AppointmentStatus>? statuses,
+    String? patientId,
   }) async {
     _assertNonEmpty('branchId', branchId);
 
@@ -140,6 +141,7 @@ class AppointmentRepository with AppRpcInvoker {
       if (doctorId != null && doctorId.trim().isNotEmpty) 'p_doctor_id': doctorId.trim(),
       if (statuses != null && statuses.isNotEmpty)
         'p_statuses': statuses.map((s) => s.wireValue).toList(growable: false),
+      if (patientId != null && patientId.trim().isNotEmpty) 'p_patient_id': patientId.trim(),
     };
 
     final result = await invokeRpc('list_appointments', params);

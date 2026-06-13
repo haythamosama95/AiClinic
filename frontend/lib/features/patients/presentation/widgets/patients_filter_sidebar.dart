@@ -82,13 +82,6 @@ class PatientsFilterSidebar extends ConsumerStatefulWidget {
 }
 
 class _PatientsFilterSidebarState extends ConsumerState<PatientsFilterSidebar> {
-  static const _doctorOptions = <String, String>{
-    'All doctors': '',
-    'Dr. Ahmed Hassan': 'doc-1',
-    'Dr. Sara Mahmoud': 'doc-2',
-    'Dr. Omar Khalil': 'doc-3',
-  };
-
   static const _lastVisitOptions = <String, PatientLastVisitFilter>{
     'Any visit': PatientLastVisitFilter.any,
     'Last 30 days': PatientLastVisitFilter.last30Days,
@@ -98,32 +91,13 @@ class _PatientsFilterSidebarState extends ConsumerState<PatientsFilterSidebar> {
   };
 
   late String? _branchId;
-  late String? _assignedDoctorId;
   late PatientLastVisitFilter _lastVisitFilter;
 
   @override
   void initState() {
     super.initState();
     _branchId = widget.filters.branchId;
-    _assignedDoctorId = widget.filters.assignedDoctorId;
     _lastVisitFilter = widget.filters.lastVisitFilter;
-  }
-
-  String? _doctorValueForFilter() {
-    final id = _assignedDoctorId;
-    if (id == null || id.isEmpty) {
-      return '';
-    }
-    return id;
-  }
-
-  String _doctorLabelForValue(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'All doctors';
-    }
-    return _doctorOptions.entries
-        .firstWhere((e) => e.value == value, orElse: () => const MapEntry('All doctors', ''))
-        .key;
   }
 
   Map<String, String> _branchItems(List<BranchListItem> branches) {
@@ -152,12 +126,7 @@ class _PatientsFilterSidebarState extends ConsumerState<PatientsFilterSidebar> {
 
   void _clearAll() {
     widget.onFiltersChanged(
-      widget.filters.copyWith(
-        branchId: null,
-        assignedDoctorId: null,
-        lastVisitFilter: PatientLastVisitFilter.any,
-        page: 1,
-      ),
+      widget.filters.copyWith(branchId: null, lastVisitFilter: PatientLastVisitFilter.any, page: 1),
     );
     Navigator.of(context).pop();
   }
@@ -166,7 +135,6 @@ class _PatientsFilterSidebarState extends ConsumerState<PatientsFilterSidebar> {
     widget.onFiltersChanged(
       widget.filters.copyWith(
         branchId: _branchId == null || _branchId!.isEmpty ? null : _branchId,
-        assignedDoctorId: _assignedDoctorId == null || _assignedDoctorId!.isEmpty ? null : _assignedDoctorId,
         lastVisitFilter: _lastVisitFilter,
         page: 1,
       ),
@@ -239,17 +207,6 @@ class _PatientsFilterSidebarState extends ConsumerState<PatientsFilterSidebar> {
                       items: _branchItems(branches),
                       value: _branchValueForFilter(),
                       onChanged: (value) => setState(() => _branchId = value == null || value.isEmpty ? null : value),
-                    ),
-                    const SizedBox(height: SpacingTokens.lg),
-                    Divider(height: 1, color: colors.border),
-                    const SizedBox(height: SpacingTokens.lg),
-                    AppFilterSelect<String>(
-                      label: 'Assigned Doctor',
-                      hintText: _doctorLabelForValue(_assignedDoctorId),
-                      items: _doctorOptions,
-                      value: _doctorValueForFilter(),
-                      onChanged: (value) =>
-                          setState(() => _assignedDoctorId = value == null || value.isEmpty ? null : value),
                     ),
                     const SizedBox(height: SpacingTokens.lg),
                     AppFilterSelect<PatientLastVisitFilter>(

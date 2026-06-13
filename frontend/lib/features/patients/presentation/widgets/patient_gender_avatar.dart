@@ -13,30 +13,49 @@ class PatientGenderAvatar extends StatelessWidget {
   static const _femaleAsset = 'assets/images/patient_avatar_female.png';
   static const _maleAsset = 'assets/images/patient_avatar_male.png';
 
+  /// Decode size for [Image.asset] given the on-screen [size] and [devicePixelRatio].
+  @visibleForTesting
+  static int decodeCacheSize(double size, double devicePixelRatio) => (size * devicePixelRatio).round();
+
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final asset = switch (gender) {
+    final decoration = BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(color: colors.border),
+      boxShadow: [
+        BoxShadow(color: colors.foreground.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2)),
+      ],
+    );
+
+    if (gender == null) {
+      return DecoratedBox(
+        decoration: decoration,
+        child: ClipOval(
+          child: _FallbackAvatar(gender: gender, size: size),
+        ),
+      );
+    }
+
+    final resolvedGender = gender!;
+    final asset = switch (resolvedGender) {
       PatientGender.female => _femaleAsset,
       PatientGender.male => _maleAsset,
       _ => _maleAsset,
     };
+    final cacheSize = decodeCacheSize(size, MediaQuery.devicePixelRatioOf(context));
 
     return DecoratedBox(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: colors.border),
-        boxShadow: [
-          BoxShadow(color: colors.foreground.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2)),
-        ],
-      ),
+      decoration: decoration,
       child: ClipOval(
         child: Image.asset(
           asset,
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _FallbackAvatar(gender: gender, size: size),
+          cacheWidth: cacheSize,
+          cacheHeight: cacheSize,
+          errorBuilder: (context, error, stackTrace) => _FallbackAvatar(gender: resolvedGender, size: size),
         ),
       ),
     );

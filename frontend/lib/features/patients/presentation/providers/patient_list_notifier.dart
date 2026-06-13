@@ -36,6 +36,8 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
 
   @override
   Future<PatientListUiState> build() async {
+    // Rebuild when the shell active branch changes so this-branch lists stay in sync.
+    ref.watch(authSessionProvider.select((state) => state.context?.activeBranchId));
     return _load(_filters);
   }
 
@@ -77,9 +79,14 @@ class PatientListNotifier extends AsyncNotifier<PatientListUiState> {
       branchId: branchId,
       limit: filters.pageSize,
       offset: filters.offset,
+      lastVisitFilter: filters.lastVisitFilter,
+      sortField: filters.sortField,
     );
 
-    final rows = applyClientFilters(PatientTableRow.fromItems(page.items), filters);
-    return PatientListUiState(rows: rows, totalCount: page.totalCount, filters: filters);
+    return PatientListUiState(
+      rows: PatientTableRow.fromItems(page.items),
+      totalCount: page.totalCount,
+      filters: filters,
+    );
   }
 }
