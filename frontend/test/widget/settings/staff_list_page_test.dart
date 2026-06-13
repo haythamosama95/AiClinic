@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_cards_grid.dart';
@@ -190,6 +191,18 @@ void main() {
       expect(find.byTooltip('Close'), findsOneWidget);
     });
 
+    testWidgets('tapping staff card opens detail sheet', (tester) async {
+      await tester.pumpWidget(_host(usernames: const {'00000000-0000-4000-8000-000000000101': 'drsmith'}));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Dr. Smith'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Login credentials'), findsOneWidget);
+      expect(find.byTooltip('Edit'), findsOneWidget);
+      expect(find.byTooltip('Close'), findsOneWidget);
+    });
+
     testWidgets('staff cards stay sorted alphabetically after clearing search', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1000, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -339,6 +352,7 @@ Widget _host({
   bool embedded = false,
   List<Map<String, dynamic>> extraStaff = const [],
   Map<String, List<StaffBranchLabel>>? branches,
+  Map<String, String>? usernames,
   SettingsRpcTestClient? rpcClient,
 }) {
   final staff = <Map<String, dynamic>>[
@@ -378,7 +392,7 @@ Widget _host({
         ),
       ),
       staffAdminRepositoryProvider.overrideWithValue(
-        _FakeStaffAdminRepository(tableClient, rpcRepo, branches: branches),
+        _FakeStaffAdminRepository(tableClient, rpcRepo, branches: branches, usernames: usernames),
       ),
       staffAssignableBranchesProvider.overrideWith(
         (ref) async => const [BranchSummary(id: '00000000-0000-4000-8000-000000000201', name: 'Main Clinic')],
@@ -438,6 +452,43 @@ class _FakeStaffAdminRepository extends StaffAdminRepositoryImpl {
     }
     items.sort(StaffListItem.compareByFullName);
     return items;
+  }
+
+  @override
+  Future<StaffMemberDetail?> fetchStaffMember(String staffMemberId) async {
+    final row = await _tableClient
+        .from('staff_members')
+        .select('id, full_name, role, phone, is_active')
+        .eq('id', staffMemberId)
+        .eq('is_deleted', false)
+        .maybeSingle();
+
+    if (row == null) {
+      return null;
+    }
+
+    final item = StaffListItem.fromRow(Map<String, dynamic>.from(row));
+    if (item == null) {
+      return null;
+    }
+
+    final branchLabels = branches?[staffMemberId] ?? const <StaffBranchLabel>[];
+    final branchIds = [
+      for (final branch in branchLabels)
+        if (branch.id != null) branch.id!,
+    ];
+    final primaryBranchId = branchLabels.where((branch) => branch.isPrimary).map((branch) => branch.id).firstOrNull;
+
+    return StaffMemberDetail(
+      id: item.id,
+      fullName: item.fullName,
+      role: item.role,
+      isActive: item.isActive,
+      phone: item.phone,
+      username: usernames?[staffMemberId],
+      branchIds: branchIds,
+      primaryBranchId: primaryBranchId ?? (branchIds.length == 1 ? branchIds.first : null),
+    );
   }
 
   @override

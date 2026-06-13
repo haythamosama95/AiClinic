@@ -13,6 +13,7 @@ import 'package:ai_clinic/features/settings/presentation/providers/staff_list_no
 import 'package:ai_clinic/features/settings/presentation/widgets/create_staff_modal.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/animated_filter_cards_grid.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/staff_list_toolbar.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/staff_detail_sheet.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/staff_member_card.dart';
 
 /// Staff list with card layout and lifecycle actions.
@@ -74,7 +75,7 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
       onSearchChanged: (value) => setState(() => _query = _query.copyWith(searchText: value)),
       onQueryChanged: (query) => setState(() => _query = query),
       onNewStaff: () => _openCreateStaffModal(context),
-      onEditStaff: (id) => context.go(AppRoutes.settingsStaffDetail(id)),
+      onViewStaff: _openStaffDetailSheet,
       onToggleActive: _confirmToggleActive,
     );
 
@@ -118,6 +119,10 @@ class _StaffListPageState extends ConsumerState<StaffListPage> {
     await CreateStaffModal.show(context);
   }
 
+  Future<void> _openStaffDetailSheet(StaffListItem member) async {
+    await StaffDetailSheet.show(context, member);
+  }
+
   Future<void> _confirmToggleActive(BuildContext context, StaffListItem member) async {
     final targetActive = !member.isActive;
     final confirmed = await showDialog<bool>(
@@ -155,7 +160,7 @@ class _StaffListBody extends ConsumerWidget {
     required this.onSearchChanged,
     required this.onQueryChanged,
     required this.onNewStaff,
-    required this.onEditStaff,
+    required this.onViewStaff,
     required this.onToggleActive,
   });
 
@@ -167,7 +172,7 @@ class _StaffListBody extends ConsumerWidget {
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<StaffListQuery> onQueryChanged;
   final VoidCallback onNewStaff;
-  final void Function(String id) onEditStaff;
+  final Future<void> Function(StaffListItem member) onViewStaff;
   final Future<void> Function(BuildContext context, StaffListItem member) onToggleActive;
 
   @override
@@ -205,7 +210,7 @@ class _StaffListBody extends ConsumerWidget {
               itemBuilder: (member) => StaffMemberCard(
                 member: member,
                 isBusy: ui.isTogglingActive && ui.togglingStaffId == member.id,
-                onEdit: () => onEditStaff(member.id),
+                onEdit: () => onViewStaff(member),
                 onToggleActive: () => onToggleActive(context, member),
               ),
             ),

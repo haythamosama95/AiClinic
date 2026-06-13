@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/setup/domain/create_staff_account_result.dart';
 import 'package:ai_clinic/features/setup/domain/admin_reset_staff_password_result.dart';
+import 'package:ai_clinic/features/setup/domain/admin_update_staff_username_result.dart';
 import 'package:ai_clinic/features/setup/domain/branch_summary.dart';
 import 'package:ai_clinic/features/setup/domain/repositories/provisioning_repository.dart';
 import 'package:ai_clinic/features/setup/domain/staff_member_summary.dart';
@@ -26,7 +27,7 @@ RpcFailure? provisioningRpcFailureFromPostgrest(PostgrestException error, String
   return null;
 }
 
-/// Calls staff provisioning RPCs (`create_staff_account`, `admin_reset_staff_password`).
+/// Calls staff provisioning RPCs (`create_staff_account`, `admin_reset_staff_password`, `admin_update_staff_username`).
 class ProvisioningRepositoryImpl implements ProvisioningRepository {
   ProvisioningRepositoryImpl(this._client);
 
@@ -122,6 +123,21 @@ class ProvisioningRepositoryImpl implements ProvisioningRepository {
     final assignedPassword = result.data?['assigned_password']?.toString() ?? newPassword;
 
     return AdminResetStaffPasswordResult(staffMemberId: staffMemberId, assignedPassword: assignedPassword);
+  }
+
+  @override
+  Future<AdminUpdateStaffUsernameResult> updateStaffUsername({
+    required String staffMemberId,
+    required String newUsername,
+  }) async {
+    final result = await _invoke('admin_update_staff_username', {
+      'p_staff_member_id': staffMemberId,
+      'p_new_username': newUsername,
+    });
+
+    final username = result.data?['username']?.toString() ?? normalizeStaffUsername(newUsername);
+
+    return AdminUpdateStaffUsernameResult(staffMemberId: staffMemberId, username: username);
   }
 
   Future<RpcResult> _invoke(String functionName, Map<String, dynamic> params) async {

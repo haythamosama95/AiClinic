@@ -12,6 +12,7 @@ class StaffMemberDetail {
     required this.branchIds,
     this.phone,
     this.primaryBranchId,
+    this.username,
   });
 
   final String id;
@@ -21,6 +22,7 @@ class StaffMemberDetail {
   final String? phone;
   final List<String> branchIds;
   final String? primaryBranchId;
+  final String? username;
 
   static StaffMemberDetail? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();

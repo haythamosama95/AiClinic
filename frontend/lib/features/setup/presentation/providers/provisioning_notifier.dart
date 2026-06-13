@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_provider
 import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/setup/domain/create_staff_account_result.dart';
 import 'package:ai_clinic/features/setup/domain/admin_reset_staff_password_result.dart';
+import 'package:ai_clinic/features/setup/domain/admin_update_staff_username_result.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
 import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
@@ -38,6 +39,19 @@ String passwordResetMessageForRpc(RpcFailure failure) {
     'WEAK_PASSWORD' => failure.message,
     'RPC_NOT_APPLIED' => failure.message,
     _ => 'Unable to reset the password. Check connectivity and try again.',
+  };
+}
+
+/// User-facing messages for username-update RPC error codes.
+String usernameUpdateMessageForRpc(RpcFailure failure) {
+  return switch (failure.code) {
+    'FORBIDDEN' => 'You do not have permission to change staff usernames.',
+    'STAFF_NOT_FOUND' => 'That staff member was not found. Refresh the list and try again.',
+    'CROSS_ORG_DENIED' => 'That staff member is outside your clinic organization.',
+    'USERNAME_EXISTS' => 'A staff account with this username already exists.',
+    'INVALID_INPUT' => failure.message,
+    'RPC_NOT_APPLIED' => failure.message,
+    _ => 'Unable to update the username. Check connectivity and try again.',
   };
 }
 
@@ -259,6 +273,66 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       state = state.copyWith(
         isSubmitting: false,
         errorMessage: 'Unable to reset the password. Check connectivity and try again.',
+      );
+      return null;
+    }
+  }
+
+  /// Validates administrator username update before invoking the RPC.
+  Future<AdminUpdateStaffUsernameResult?> updateStaffUsername({
+    required String staffMemberId,
+    required String newUsername,
+  }) async {
+    final session = ref.read(authSessionProvider).context;
+    if (session == null) {
+      state = state.copyWith(errorMessage: 'Sign in again to update staff usernames.');
+      return null;
+    }
+
+    if (session.setupRequired) {
+      state = state.copyWith(errorMessage: 'Finish clinic setup before updating staff usernames.');
+      return null;
+    }
+
+    if (!ProvisioningRules.canResetStaffPassword(session.staffProfile)) {
+      state = state.copyWith(errorMessage: 'Only clinic administrators can update staff usernames.');
+      return null;
+    }
+
+    final trimmedId = staffMemberId.trim();
+    final trimmedUsername = newUsername.trim();
+    final validationError = validateStaffUsername(trimmedUsername);
+
+    if (trimmedId.isEmpty) {
+      state = state.copyWith(errorMessage: 'Select a staff member to update.');
+      return null;
+    }
+    if (validationError != null) {
+      state = state.copyWith(errorMessage: validationError);
+      return null;
+    }
+
+    state = state.copyWith(isSubmitting: true, clearError: true);
+    AppLog.info('provisioning.update_username.start staff_id=$trimmedId');
+
+    try {
+      final result = await ref.read(updateStaffUsernameUseCaseProvider)(
+        staffMemberId: trimmedId,
+        newUsername: trimmedUsername,
+      );
+
+      state = state.copyWith(isSubmitting: false);
+      AppLog.info('provisioning.update_username.ok staff_id=${result.staffMemberId}');
+      return result;
+    } on RpcFailure catch (error) {
+      AppLog.warning('provisioning.update_username.rpc_failed code=${error.code}');
+      state = state.copyWith(isSubmitting: false, errorMessage: usernameUpdateMessageForRpc(error));
+      return null;
+    } catch (error) {
+      AppLog.warning('provisioning.update_username.failed reason=${error.runtimeType}');
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: 'Unable to update the username. Check connectivity and try again.',
       );
       return null;
     }

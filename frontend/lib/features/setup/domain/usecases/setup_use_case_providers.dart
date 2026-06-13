@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/setup/domain/usecases/list_branches_by_ids.da
 import 'package:ai_clinic/features/setup/domain/usecases/list_org_staff_members.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/reset_installation.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/reset_staff_password.dart';
+import 'package:ai_clinic/features/setup/domain/usecases/update_staff_username.dart';
 
 final createOrganizationUseCaseProvider = Provider((ref) => CreateOrganization(ref.watch(bootstrapRepositoryProvider)));
 final createBootstrapBranchUseCaseProvider = Provider(
@@ -30,4 +31,7 @@ final createStaffAccountUseCaseProvider = Provider(
 );
 final resetStaffPasswordUseCaseProvider = Provider(
   (ref) => ResetStaffPassword(ref.watch(provisioningRepositoryProvider)),
+);
+final updateStaffUsernameUseCaseProvider = Provider(
+  (ref) => UpdateStaffUsername(ref.watch(provisioningRepositoryProvider)),
 );

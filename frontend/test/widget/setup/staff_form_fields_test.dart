@@ -138,7 +138,7 @@ void main() {
   });
 
   group('StaffFormFields edit mode', () {
-    testWidgets('edit mode shows read-only values until Modify tapped', (tester) async {
+    testWidgets('edit mode shows editable fields and credential inputs', (tester) async {
       final fullNameController = TextEditingController(text: 'Existing Name');
       final phoneController = TextEditingController(text: '201000000000');
       final usernameController = TextEditingController(text: 'staff1');
@@ -154,48 +154,57 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: StaffFormFields(
-              mode: StaffFormFieldsMode.edit,
-              usernameController: usernameController,
-              fullNameController: fullNameController,
-              phoneController: phoneController,
-              passwordController: passwordController,
-              existing: const StaffFormExistingData(
-                fullName: 'Existing Name',
-                phone: '201000000000',
-                role: StaffRole.doctor,
-              ),
-              selectableRoles: const [StaffRole.doctor, StaffRole.receptionist],
-              selectedRole: StaffRole.doctor,
-              onRoleChanged: (_) {},
-              branchIds: const ['branch-1'],
-              branchById: const {
-                'branch-1': BranchSummary(
-                  id: 'branch-1',
-                  name: 'Main',
-                  code: 'MAIN',
-                  address: '123 Street',
+            body: SingleChildScrollView(
+              child: StaffFormFields(
+                mode: StaffFormFieldsMode.edit,
+                usernameController: usernameController,
+                fullNameController: fullNameController,
+                phoneController: phoneController,
+                passwordController: passwordController,
+                showCredentials: true,
+                existing: const StaffFormExistingData(
+                  fullName: 'Existing Name',
                   phone: '201000000000',
-                  mapsUrl: 'https://maps.example.com/main',
+                  role: StaffRole.doctor,
                 ),
-              },
-              selectedBranchIds: const {'branch-1'},
-              primaryBranchId: 'branch-1',
-              onBranchChecked: (_, _) {},
-              onPrimaryBranchChanged: (_) {},
+                selectableRoles: const [StaffRole.doctor, StaffRole.receptionist],
+                selectedRole: StaffRole.doctor,
+                onRoleChanged: (_) {},
+                branchIds: const ['branch-1'],
+                branchById: const {
+                  'branch-1': BranchSummary(
+                    id: 'branch-1',
+                    name: 'Main',
+                    code: 'MAIN',
+                    address: '123 Street',
+                    phone: '201000000000',
+                    mapsUrl: 'https://maps.example.com/main',
+                  ),
+                },
+                selectedBranchIds: const {'branch-1'},
+                primaryBranchId: 'branch-1',
+                onBranchChecked: (_, _) {},
+                onPrimaryBranchChanged: (_) {},
+              ),
             ),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Existing Name'), findsOneWidget);
-      expect(find.widgetWithText(AppTextField, 'Full name *'), findsNothing);
-
-      await tester.tap(find.widgetWithText(TextButton, 'Modify').first);
-      await tester.pumpAndSettle();
-
       expect(find.widgetWithText(AppTextField, 'Full name *'), findsOneWidget);
+      expect(find.widgetWithText(AppTextField, 'Username *'), findsOneWidget);
+      expect(find.widgetWithText(AppTextField, 'New password'), findsOneWidget);
+      expect(find.text('Modify'), findsNothing);
+
+      final passwordField = tester.widget<AppTextField>(find.widgetWithText(AppTextField, 'New password'));
+      expect(passwordField.obscureText, isTrue);
+
+      await tester.tap(find.byIcon(Icons.visibility_outlined));
+      await tester.pump();
+
+      final revealed = tester.widget<AppTextField>(find.widgetWithText(AppTextField, 'New password'));
+      expect(revealed.obscureText, isFalse);
     });
   });
 }

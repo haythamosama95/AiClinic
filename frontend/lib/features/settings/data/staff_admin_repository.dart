@@ -68,7 +68,27 @@ class StaffAdminRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker implements
     if (row == null) {
       return null;
     }
-    return StaffMemberDetail.fromRow(Map<String, dynamic>.from(row));
+    final detail = StaffMemberDetail.fromRow(Map<String, dynamic>.from(row));
+    if (detail == null) {
+      return null;
+    }
+
+    final usernames = await _loadUsernamesByStaffId([staffMemberId]);
+    final username = usernames[staffMemberId];
+    if (username == null) {
+      return detail;
+    }
+
+    return StaffMemberDetail(
+      id: detail.id,
+      fullName: detail.fullName,
+      role: detail.role,
+      isActive: detail.isActive,
+      branchIds: detail.branchIds,
+      phone: detail.phone,
+      primaryBranchId: detail.primaryBranchId,
+      username: username,
+    );
   }
 
   Future<Map<String, List<StaffBranchLabel>>> _loadBranchesByStaffId(List<String> staffIds) async {

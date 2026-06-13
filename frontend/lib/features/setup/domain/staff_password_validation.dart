@@ -18,4 +18,12 @@ abstract final class StaffPasswordValidation {
     }
     return null;
   }
+
+  /// Returns a validation message when a non-empty password is invalid, or null.
+  static String? validateOptionalPassword(String? raw) {
+    if (raw == null || raw.trim().isEmpty) {
+      return null;
+    }
+    return validateInitialPassword(raw);
+  }
 }

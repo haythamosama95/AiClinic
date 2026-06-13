@@ -16,7 +16,7 @@ enum StaffFormFieldsMode {
   /// Create: standard form fields.
   create,
 
-  /// Edit: read-only values with **Modify** before editing.
+  /// Edit: all fields editable immediately (e.g. staff detail sheet).
   edit,
 }
 
@@ -42,6 +42,7 @@ class StaffFormFields extends StatefulWidget {
     required this.passwordController,
     this.existing,
     this.enabled = true,
+    this.showCredentials = false,
     this.fieldErrors = const {},
     required this.selectableRoles,
     required this.selectedRole,
@@ -65,6 +66,7 @@ class StaffFormFields extends StatefulWidget {
   final TextEditingController passwordController;
   final StaffFormExistingData? existing;
   final bool enabled;
+  final bool showCredentials;
   final Map<String, String> fieldErrors;
   final List<StaffRole> selectableRoles;
   final StaffRole? selectedRole;
@@ -98,7 +100,6 @@ class _StaffFormFieldsState extends State<StaffFormFields> {
 
   @override
   Widget build(BuildContext context) {
-    final isEdit = widget.mode == StaffFormFieldsMode.edit;
     final isCreate = widget.mode == StaffFormFieldsMode.create;
     final roleItems = {for (final role in widget.selectableRoles) StaffFormFields.roleLabel(role): role};
 
@@ -108,12 +109,11 @@ class _StaffFormFieldsState extends State<StaffFormFields> {
         if (isCreate) ...[
           SetupFormGrid(
             children: [
-              _textField(
-                isEdit: false,
+              AppTextField(
                 label: 'Full name *',
-                currentValue: null,
                 controller: widget.fullNameController,
                 hintText: 'Enter full name',
+                enabled: widget.enabled,
                 validator: (value) {
                   final serverError = widget.fieldErrors['fullName'];
                   if (serverError != null) {
@@ -125,12 +125,11 @@ class _StaffFormFieldsState extends State<StaffFormFields> {
                   return null;
                 },
               ),
-              _textField(
-                isEdit: false,
+              AppTextField(
                 label: 'Phone number *',
-                currentValue: null,
                 controller: widget.phoneController,
                 hintText: 'Numbers only',
+                enabled: widget.enabled,
                 keyboardType: TextInputType.phone,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: BranchFieldValidation.validatePhone,
@@ -205,12 +204,11 @@ class _StaffFormFieldsState extends State<StaffFormFields> {
           ],
         ],
         if (!isCreate) ...[
-          _textField(
-            isEdit: isEdit,
+          AppTextField(
             label: 'Full name *',
-            currentValue: widget.existing?.fullName,
             controller: widget.fullNameController,
             hintText: 'Enter full name',
+            enabled: widget.enabled,
             validator: (value) {
               final serverError = widget.fieldErrors['fullName'];
               if (serverError != null) {
@@ -223,12 +221,11 @@ class _StaffFormFieldsState extends State<StaffFormFields> {
             },
           ),
           const SizedBox(height: SpacingTokens.lg),
-          _textField(
-            isEdit: isEdit,
+          AppTextField(
             label: 'Phone (optional)',
-            currentValue: widget.existing?.phone,
             controller: widget.phoneController,
             hintText: 'Numbers only',
+            enabled: widget.enabled,
             keyboardType: TextInputType.phone,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             validator: (value) {
@@ -239,296 +236,58 @@ class _StaffFormFieldsState extends State<StaffFormFields> {
             },
           ),
           const SizedBox(height: SpacingTokens.lg),
-          if (isEdit)
-            _ModifiableRoleField(
-              currentRole: widget.existing?.role,
-              selectableRoles: widget.selectableRoles,
-              selectedRole: widget.selectedRole,
-              enabled: widget.enabled,
-              onRoleChanged: widget.onRoleChanged,
-            )
-          else
-            AppSelect<StaffRole>(
-              label: 'Role *',
-              items: roleItems,
-              value: widget.selectedRole,
-              hintText: 'Select a role',
-              enabled: widget.enabled && roleItems.isNotEmpty,
-              onChanged: widget.enabled ? widget.onRoleChanged : null,
-              autovalidateMode: AutovalidateMode.disabled,
-              validator: (value) => value == null ? 'Select a role' : null,
-            ),
+          AppSelect<StaffRole>(
+            label: 'Role *',
+            items: roleItems,
+            value: widget.selectedRole,
+            hintText: 'Select a role',
+            enabled: widget.enabled && roleItems.isNotEmpty,
+            onChanged: widget.enabled ? widget.onRoleChanged : null,
+            autovalidateMode: AutovalidateMode.disabled,
+            validator: (value) => value == null ? 'Select a role' : null,
+          ),
           const SizedBox(height: SpacingTokens.lg),
-          if (isEdit)
-            _ModifiableBranchAssignmentsField(
-              currentLabel: widget.existing?.branchAssignmentLabel,
-              branchIds: widget.branchIds,
-              branchById: widget.branchById,
-              selectedBranchIds: widget.selectedBranchIds,
-              primaryBranchId: widget.primaryBranchId,
+          _BranchAssignmentsEditor(
+            branchIds: widget.branchIds,
+            branchById: widget.branchById,
+            selectedBranchIds: widget.selectedBranchIds,
+            primaryBranchId: widget.primaryBranchId,
+            enabled: widget.enabled,
+            onBranchChecked: widget.onBranchChecked,
+            onPrimaryBranchChanged: widget.onPrimaryBranchChanged,
+          ),
+          if (widget.showCredentials) ...[
+            const SizedBox(height: SpacingTokens.xl),
+            Text('Login credentials', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: SpacingTokens.md),
+            AppTextField(
+              label: 'Username *',
+              description: staffUsernameRequirements,
+              controller: widget.usernameController,
+              hintText: 'Staff username',
               enabled: widget.enabled,
-              onBranchChecked: widget.onBranchChecked,
-              onPrimaryBranchChanged: widget.onPrimaryBranchChanged,
-            )
-          else
-            _BranchAssignmentsEditor(
-              branchIds: widget.branchIds,
-              branchById: widget.branchById,
-              selectedBranchIds: widget.selectedBranchIds,
-              primaryBranchId: widget.primaryBranchId,
-              enabled: widget.enabled,
-              onBranchChecked: widget.onBranchChecked,
-              onPrimaryBranchChanged: widget.onPrimaryBranchChanged,
+              validator: (value) => validateStaffUsername(value ?? ''),
             ),
+            const SizedBox(height: SpacingTokens.lg),
+            AppTextField(
+              label: 'New password',
+              description:
+                  '${StaffPasswordValidation.initialPasswordRequirements} '
+                  'Leave blank to keep the current password.',
+              controller: widget.passwordController,
+              hintText: '••••••••',
+              obscureText: _obscurePassword,
+              enabled: widget.enabled,
+              suffixIcon: IconButton(
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              validator: StaffPasswordValidation.validateOptionalPassword,
+            ),
+          ],
         ],
-      ],
-    );
-  }
-
-  Widget _textField({
-    required bool isEdit,
-    required String label,
-    required TextEditingController controller,
-    String? currentValue,
-    String? hintText,
-    String? Function(String?)? validator,
-    TextInputType? keyboardType,
-    List<TextInputFormatter>? inputFormatters,
-  }) {
-    if (isEdit) {
-      return _ModifiableTextField(
-        label: label,
-        currentValue: currentValue,
-        controller: controller,
-        hintText: hintText,
-        enabled: widget.enabled,
-        validator: validator,
-        keyboardType: keyboardType,
-        inputFormatters: inputFormatters,
-      );
-    }
-    return AppTextField(
-      label: label,
-      controller: controller,
-      hintText: hintText,
-      enabled: widget.enabled,
-      validator: validator,
-      keyboardType: keyboardType,
-      inputFormatters: inputFormatters,
-    );
-  }
-}
-
-class _ModifiableTextField extends StatefulWidget {
-  const _ModifiableTextField({
-    required this.label,
-    required this.currentValue,
-    required this.controller,
-    this.hintText,
-    required this.enabled,
-    this.validator,
-    this.keyboardType,
-    this.inputFormatters,
-  });
-
-  final String label;
-  final String? currentValue;
-  final TextEditingController controller;
-  final String? hintText;
-  final bool enabled;
-  final String? Function(String?)? validator;
-  final TextInputType? keyboardType;
-  final List<TextInputFormatter>? inputFormatters;
-
-  @override
-  State<_ModifiableTextField> createState() => _ModifiableTextFieldState();
-}
-
-class _ModifiableTextFieldState extends State<_ModifiableTextField> {
-  var _isEditing = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isEditing) {
-      return AppTextField(
-        label: widget.label,
-        controller: widget.controller,
-        hintText: widget.hintText,
-        enabled: widget.enabled,
-        validator: widget.validator,
-        keyboardType: widget.keyboardType,
-        inputFormatters: widget.inputFormatters,
-      );
-    }
-
-    final theme = Theme.of(context);
-    final display = widget.currentValue?.trim();
-    final hasDisplay = display != null && display.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(widget.label, style: theme.textTheme.labelMedium),
-        const SizedBox(height: SpacingTokens.sm),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                hasDisplay ? display : 'This value has not been set before.',
-                style: hasDisplay
-                    ? theme.textTheme.bodyLarge
-                    : theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ),
-            TextButton(
-              onPressed: widget.enabled ? () => setState(() => _isEditing = true) : null,
-              child: const Text('Modify'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ModifiableRoleField extends StatefulWidget {
-  const _ModifiableRoleField({
-    required this.currentRole,
-    required this.selectableRoles,
-    required this.selectedRole,
-    required this.enabled,
-    required this.onRoleChanged,
-  });
-
-  final StaffRole? currentRole;
-  final List<StaffRole> selectableRoles;
-  final StaffRole? selectedRole;
-  final bool enabled;
-  final ValueChanged<StaffRole?> onRoleChanged;
-
-  @override
-  State<_ModifiableRoleField> createState() => _ModifiableRoleFieldState();
-}
-
-class _ModifiableRoleFieldState extends State<_ModifiableRoleField> {
-  var _isEditing = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isEditing) {
-      final roleItems = {for (final role in widget.selectableRoles) StaffFormFields.roleLabel(role): role};
-      return AppSelect<StaffRole>(
-        label: 'Role *',
-        items: roleItems,
-        value: widget.selectedRole,
-        hintText: 'Select a role',
-        enabled: widget.enabled,
-        onChanged: widget.onRoleChanged,
-        autovalidateMode: AutovalidateMode.disabled,
-        validator: (value) => value == null ? 'Select a role' : null,
-      );
-    }
-
-    final theme = Theme.of(context);
-    final role = widget.currentRole;
-    final display = role == null ? null : StaffFormFields.roleLabel(role);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Role', style: theme.textTheme.labelMedium),
-        const SizedBox(height: SpacingTokens.sm),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                display ?? 'This value has not been set before.',
-                style: display == null
-                    ? theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)
-                    : theme.textTheme.bodyLarge,
-              ),
-            ),
-            TextButton(
-              onPressed: widget.enabled ? () => setState(() => _isEditing = true) : null,
-              child: const Text('Modify'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ModifiableBranchAssignmentsField extends StatefulWidget {
-  const _ModifiableBranchAssignmentsField({
-    required this.currentLabel,
-    required this.branchIds,
-    required this.branchById,
-    required this.selectedBranchIds,
-    required this.primaryBranchId,
-    required this.enabled,
-    required this.onBranchChecked,
-    required this.onPrimaryBranchChanged,
-  });
-
-  final String? currentLabel;
-  final List<String> branchIds;
-  final Map<String, BranchSummary> branchById;
-  final Set<String> selectedBranchIds;
-  final String? primaryBranchId;
-  final bool enabled;
-  final void Function(String branchId, bool checked) onBranchChecked;
-  final ValueChanged<String?> onPrimaryBranchChanged;
-
-  @override
-  State<_ModifiableBranchAssignmentsField> createState() => _ModifiableBranchAssignmentsFieldState();
-}
-
-class _ModifiableBranchAssignmentsFieldState extends State<_ModifiableBranchAssignmentsField> {
-  var _isEditing = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isEditing) {
-      return _BranchAssignmentsEditor(
-        branchIds: widget.branchIds,
-        branchById: widget.branchById,
-        selectedBranchIds: widget.selectedBranchIds,
-        primaryBranchId: widget.primaryBranchId,
-        enabled: widget.enabled,
-        onBranchChecked: widget.onBranchChecked,
-        onPrimaryBranchChanged: widget.onPrimaryBranchChanged,
-      );
-    }
-
-    final theme = Theme.of(context);
-    final display = widget.currentLabel?.trim();
-    final hasDisplay = display != null && display.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Branch assignments', style: theme.textTheme.titleSmall),
-        const SizedBox(height: SpacingTokens.sm),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                hasDisplay ? display : 'No branches assigned.',
-                style: hasDisplay
-                    ? theme.textTheme.bodyLarge
-                    : theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ),
-            TextButton(
-              onPressed: widget.enabled ? () => setState(() => _isEditing = true) : null,
-              child: const Text('Modify'),
-            ),
-          ],
-        ),
       ],
     );
   }
