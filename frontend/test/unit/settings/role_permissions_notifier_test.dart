@@ -131,10 +131,8 @@ void main() {
       final saved = await notifier.saveChanges();
       expect(saved, isTrue);
       expect(rpcClient.rpcCalls, hasLength(1));
-      expect(rpcClient.rpcCalls.single.function, 'update_role_permission');
-      expect(rpcClient.rpcCalls.single.params, containsPair('p_role', 'doctor'));
-      expect(rpcClient.rpcCalls.single.params, containsPair('p_permission_key', 'patients.view'));
-      expect(rpcClient.rpcCalls.single.params, containsPair('p_is_granted', false));
+      expect(rpcClient.rpcCalls.single.function, 'update_role_permissions');
+      expect(rpcClient.rpcCalls.single.params, containsPair('p_changes', isA<List<dynamic>>()));
     });
 
     test('saveChanges no-op when matrix unchanged', () async {
@@ -147,6 +145,27 @@ void main() {
 
       expect(saved, isTrue);
       expect(rpcClient.rpcCalls, isEmpty);
+    });
+
+    test('saveChanges refetches matrix on partial RPC failure', () async {
+      final rpcClient = _PartialFailureRpcClient(matrixTables);
+      final c = container(rpcClient: rpcClient);
+      addTearDown(c.dispose);
+
+      await c.read(rolePermissionsProvider.future);
+      final notifier = c.read(rolePermissionsProvider.notifier);
+      notifier
+        ..setLocalGrant(role: StaffRole.doctor, permissionKey: 'patients.view', isGranted: false)
+        ..setLocalGrant(role: StaffRole.doctor, permissionKey: 'settings.manage_branches', isGranted: true);
+
+      final saved = await notifier.saveChanges();
+      expect(saved, isFalse);
+
+      final state = c.read(rolePermissionsProvider).value!;
+      expect(state.isSaving, isFalse);
+      expect(state.errorMessage, isNotNull);
+      expect(state.workingMatrix, state.savedMatrix);
+      expect(state.hasUnsavedChanges, isFalse);
     });
 
     test('saveChanges surfaces PERMISSION_NOT_DELEGABLE for billing.manage', () async {
@@ -181,6 +200,23 @@ void main() {
   });
 }
 
+class _PartialFailureRpcClient extends _RolePermissionsTestClient {
+  _PartialFailureRpcClient(super._tables);
+
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    if (fn == 'update_role_permissions') {
+      return FakePostgrestRpc({
+            'success': false,
+            'error_code': 'INVALID_PERMISSION',
+            'error_message': 'Permission key is not in the catalog.',
+          })
+          as PostgrestFilterBuilder<T>;
+    }
+    return super.rpc<T>(fn, params: params, get: get);
+  }
+}
+
 class _BillingDeniedRpcClient extends _RolePermissionsTestClient {
   _BillingDeniedRpcClient(super._tables);
 
@@ -188,16 +224,31 @@ class _BillingDeniedRpcClient extends _RolePermissionsTestClient {
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
-    if (fn == 'update_role_permission' && params?['p_permission_key'] == 'settings.billing.manage') {
-      lastErrorCode = 'PERMISSION_NOT_DELEGABLE';
-      return FakePostgrestRpc({
-            'success': false,
-            'error_code': 'PERMISSION_NOT_DELEGABLE',
-            'error_message': 'Billing manage cannot be delegated.',
-          })
-          as PostgrestFilterBuilder<T>;
+    if (fn == 'update_role_permission' || fn == 'update_role_permissions') {
+      if (params?['p_permission_key'] == 'settings.billing.manage' ||
+          _changesIncludeBillingManage(params?['p_changes'])) {
+        lastErrorCode = 'PERMISSION_NOT_DELEGABLE';
+        return FakePostgrestRpc({
+              'success': false,
+              'error_code': 'PERMISSION_NOT_DELEGABLE',
+              'error_message': 'Billing manage cannot be delegated.',
+            })
+            as PostgrestFilterBuilder<T>;
+      }
     }
     return super.rpc<T>(fn, params: params, get: get);
+  }
+
+  bool _changesIncludeBillingManage(Object? changes) {
+    if (changes is! List) {
+      return false;
+    }
+    for (final change in changes) {
+      if (change is Map && change['permission_key'] == 'settings.billing.manage') {
+        return true;
+      }
+    }
+    return false;
   }
 }
 

@@ -13,6 +13,7 @@ import 'package:ai_clinic/features/settings/domain/usecases/fetch_organization_p
 import 'package:ai_clinic/features/settings/domain/usecases/update_organization.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/fetch_permission_matrix.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/update_role_permission.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/update_role_permissions.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/list_staff.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/fetch_staff_member.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/update_staff_member.dart';
@@ -35,6 +36,9 @@ final fetchPermissionMatrixUseCaseProvider = Provider(
 );
 final updateRolePermissionUseCaseProvider = Provider(
   (ref) => UpdateRolePermission(ref.watch(rolePermissionsRepositoryProvider)),
+);
+final updateRolePermissionsUseCaseProvider = Provider(
+  (ref) => UpdateRolePermissions(ref.watch(rolePermissionsRepositoryProvider)),
 );
 final listStaffUseCaseProvider = Provider((ref) => ListStaff(ref.watch(staffAdminRepositoryProvider)));
 final fetchStaffMemberUseCaseProvider = Provider((ref) => FetchStaffMember(ref.watch(staffAdminRepositoryProvider)));

@@ -128,13 +128,7 @@ class RolePermissionsNotifier extends AsyncNotifier<RolePermissionsUiState> {
     AppLog.info('settings.permissions.save.start count=${changes.length}');
 
     try {
-      for (final change in changes) {
-        await ref.read(updateRolePermissionUseCaseProvider)(
-          role: change.role,
-          permissionKey: change.permissionKey,
-          isGranted: change.isGranted,
-        );
-      }
+      await ref.read(updateRolePermissionsUseCaseProvider)(changes);
 
       final rows = await ref.read(fetchPermissionMatrixUseCaseProvider)();
       final matrix = PermissionMatrixView.fromRows(rows);
@@ -152,7 +146,17 @@ class RolePermissionsNotifier extends AsyncNotifier<RolePermissionsUiState> {
       return true;
     } on RpcFailure catch (error) {
       AppLog.warning('settings.permissions.save.rpc_failed code=${error.code}');
-      state = AsyncData(current.copyWith(isSaving: false, errorMessage: permissionMessageForRpc(error)));
+      final rows = await ref.read(fetchPermissionMatrixUseCaseProvider)();
+      final matrix = PermissionMatrixView.fromRows(rows);
+      state = AsyncData(
+        RolePermissionsUiState(
+          savedMatrix: matrix,
+          workingMatrix: matrix,
+          editable: true,
+          isSaving: false,
+          errorMessage: permissionMessageForRpc(error),
+        ),
+      );
       return false;
     } catch (error) {
       AppLog.warning('settings.permissions.save.failed reason=${error.runtimeType}');

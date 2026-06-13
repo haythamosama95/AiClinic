@@ -43,6 +43,16 @@ class _SettingsAdminAuthNotifier extends TestAuthSessionNotifier {
   }
 }
 
+class _SettingsDoctorAuthNotifier extends TestAuthSessionNotifier {
+  @override
+  AuthSessionState build() {
+    return AuthSessionState(
+      status: AuthSessionStatus.authenticated,
+      context: sampleAuthSessionContext(role: StaffRole.doctor, permissions: {'patients.view'}),
+    );
+  }
+}
+
 class _TestIdleTimeoutSettingsNotifier extends IdleTimeoutSettingsNotifier {
   @override
   Future<IdleTimeoutSettingsState> build() async => const IdleTimeoutSettingsState(duration: Duration(minutes: 15));
@@ -59,6 +69,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       final overrides = [
+        authSessionProvider.overrideWith(_SettingsAdminAuthNotifier.new),
         idleTimeoutSettingsProvider.overrideWith(_TestIdleTimeoutSettingsNotifier.new),
         clinicSetupOrganizationProvider.overrideWith(
           (ref) async => const OrganizationProfile(
@@ -75,7 +86,6 @@ void main() {
 
       if (withStaffAndRoles) {
         overrides.addAll([
-          authSessionProvider.overrideWith(_SettingsAdminAuthNotifier.new),
           rolePermissionsRepositoryProvider.overrideWithValue(
             RolePermissionsRepositoryImpl(
               SettingsTableTestClient({
@@ -137,7 +147,36 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('renders all settings tabs', (tester) async {
+    testWidgets('doctor does not see clinic setup tab', (tester) async {
+      await tester.binding.setSurfaceSize(shellSurfaceSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authSessionProvider.overrideWith(_SettingsDoctorAuthNotifier.new),
+            idleTimeoutSettingsProvider.overrideWith(_TestIdleTimeoutSettingsNotifier.new),
+            clinicSetupOrganizationProvider.overrideWith(
+              (ref) async => const OrganizationProfile(id: 'org-1', name: 'Demo Clinic'),
+            ),
+            clinicSetupBranchesProvider.overrideWith((ref) async => const []),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
+            home: const Scaffold(body: SettingsPage()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('General'), findsOneWidget);
+      expect(find.text('Clinic Setup'), findsNothing);
+      expect(find.text('Staff Management'), findsOneWidget);
+      expect(find.text('Staff Roles'), findsOneWidget);
+    });
+
+    testWidgets('renders all settings tabs for administrator', (tester) async {
       await pumpSettingsPage(tester);
 
       expect(find.byType(SettingsTabBar), findsOneWidget);
@@ -265,6 +304,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            authSessionProvider.overrideWith(_SettingsAdminAuthNotifier.new),
             idleTimeoutSettingsProvider.overrideWith(_TestIdleTimeoutSettingsNotifier.new),
             clinicSetupOrganizationProvider.overrideWith(
               (ref) async => const OrganizationProfile(id: 'org-1', name: 'Demo Clinic'),

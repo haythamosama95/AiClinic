@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/features/settings/presentation/models/settings_tab.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/clinic_setup_settings_tab.dart';
@@ -9,16 +11,16 @@ import 'package:ai_clinic/features/settings/presentation/widgets/staff_roles_set
 import 'package:ai_clinic/features/settings/presentation/widgets/staff_settings_tab.dart';
 
 /// Clinic workstation settings hub with a scrollable section tab header.
-class SettingsPage extends StatefulWidget {
+class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({this.initialTabId = SettingsTabs.defaultTabId, super.key});
 
   final String initialTabId;
 
   @override
-  State<SettingsPage> createState() => _SettingsPageState();
+  ConsumerState<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends ConsumerState<SettingsPage> {
   static const _tabTransitionDuration = Duration(milliseconds: 220);
 
   late String _selectedTabId;
@@ -35,8 +37,9 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    final currentIndex = _tabIndexFor(_selectedTabId);
-    final nextIndex = _tabIndexFor(tabId);
+    final visibleTabs = _visibleTabs;
+    final currentIndex = visibleTabs.indexWhere((tab) => tab.id == _selectedTabId);
+    final nextIndex = visibleTabs.indexWhere((tab) => tab.id == tabId);
 
     setState(() {
       _tabTransitionDirection = nextIndex >= currentIndex ? 1 : -1;
@@ -44,8 +47,15 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  int _tabIndexFor(String tabId) {
-    return SettingsTabs.all.indexWhere((tab) => tab.id == tabId);
+  List<SettingsTabDefinition> get _visibleTabs {
+    return SettingsTabs.visibleFor(ref.read(authSessionProvider));
+  }
+
+  String _resolveSelectedTabId(List<SettingsTabDefinition> visibleTabs) {
+    if (visibleTabs.any((tab) => tab.id == _selectedTabId)) {
+      return _selectedTabId;
+    }
+    return visibleTabs.first.id;
   }
 
   Widget _tabContentFor(String tabId) {
@@ -60,13 +70,23 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
+    final visibleTabs = SettingsTabs.visibleFor(ref.watch(authSessionProvider));
+    final selectedTabId = _resolveSelectedTabId(visibleTabs);
+
+    if (selectedTabId != _selectedTabId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() => _selectedTabId = selectedTabId);
+        }
+      });
+    }
 
     return Material(
       color: colors.background,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SettingsTabBar(tabs: SettingsTabs.all, selectedTabId: _selectedTabId, onTabSelected: _onTabSelected),
+          SettingsTabBar(tabs: visibleTabs, selectedTabId: selectedTabId, onTabSelected: _onTabSelected),
           Expanded(
             child: AnimatedSwitcher(
               duration: _tabTransitionDuration,
@@ -90,7 +110,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: SlideTransition(position: slideAnimation, child: child),
                 );
               },
-              child: KeyedSubtree(key: ValueKey<String>(_selectedTabId), child: _tabContentFor(_selectedTabId)),
+              child: KeyedSubtree(key: ValueKey<String>(selectedTabId), child: _tabContentFor(selectedTabId)),
             ),
           ),
         ],

@@ -17,9 +17,10 @@ import 'package:ai_clinic/features/setup/presentation/widgets/branch_form_fields
 
 /// Single branch card for clinic setup settings.
 class BranchSettingsSection extends ConsumerStatefulWidget {
-  const BranchSettingsSection({required this.branch, super.key});
+  const BranchSettingsSection({required this.branch, this.canManage = true, super.key});
 
   final BranchListItem branch;
+  final bool canManage;
 
   @override
   ConsumerState<BranchSettingsSection> createState() => _BranchSettingsSectionState();
@@ -345,6 +346,7 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
             isSavingWorkingHours: _isSavingWorkingHours,
             isTogglingActive: _isTogglingActive,
             isDeletingBranch: _isDeletingBranch,
+            canManage: widget.canManage,
             onWorkingHours: _openWorkingHoursSheet,
             onEdit: _startEditing,
             onDelete: _confirmDelete,
@@ -367,7 +369,7 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
                   ],
                   BranchFormFields(
                     mode: BranchFormFieldsMode.edit,
-                    isEditing: _isEditing,
+                    isEditing: widget.canManage && _isEditing,
                     existing: _existingData,
                     nameController: _nameController,
                     codeController: _codeController,
@@ -395,6 +397,7 @@ class _BranchSettingsHeaderBar extends StatelessWidget {
     required this.isSavingWorkingHours,
     required this.isTogglingActive,
     required this.isDeletingBranch,
+    required this.canManage,
     required this.onWorkingHours,
     required this.onEdit,
     required this.onDelete,
@@ -411,6 +414,7 @@ class _BranchSettingsHeaderBar extends StatelessWidget {
   final bool isSavingWorkingHours;
   final bool isTogglingActive;
   final bool isDeletingBranch;
+  final bool canManage;
   final VoidCallback onWorkingHours;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -437,8 +441,10 @@ class _BranchSettingsHeaderBar extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 titleRow,
-                const SizedBox(height: SpacingTokens.sm),
-                Align(alignment: Alignment.centerRight, child: _buildActions(context, colors, compact: true)),
+                if (canManage) ...[
+                  const SizedBox(height: SpacingTokens.sm),
+                  Align(alignment: Alignment.centerRight, child: _buildActions(context, colors, compact: true)),
+                ],
               ],
             );
           }
@@ -447,7 +453,7 @@ class _BranchSettingsHeaderBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(child: titleRow),
-              _buildActions(context, colors, compact: false),
+              if (canManage) _buildActions(context, colors, compact: false),
             ],
           );
         },

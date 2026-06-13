@@ -15,9 +15,10 @@ import 'package:ai_clinic/features/setup/presentation/widgets/organization_form_
 
 /// Organization profile card for clinic setup settings.
 class OrganizationSettingsSection extends ConsumerStatefulWidget {
-  const OrganizationSettingsSection({required this.profile, super.key});
+  const OrganizationSettingsSection({required this.profile, this.canManageBranches = true, super.key});
 
   final OrganizationProfile profile;
+  final bool canManageBranches;
 
   @override
   ConsumerState<OrganizationSettingsSection> createState() => _OrganizationSettingsSectionState();
@@ -145,16 +146,16 @@ class _OrganizationSettingsSectionState extends ConsumerState<OrganizationSettin
       title: 'Organization',
       isEditing: _isEditing,
       isSaving: _isSaving,
-      headerLeadingActions: _isEditing
-          ? null
-          : AppButton(
+      headerLeadingActions: widget.canManageBranches && !_isEditing
+          ? AppButton(
               label: 'Add branch',
               variant: AppButtonVariant.outline,
               expand: false,
               icon: const Icon(Icons.add_business_outlined, size: 18),
               onPressed: _openCreateBranchModal,
-            ),
-      onEdit: _startEditing,
+            )
+          : null,
+      onEdit: widget.canManageBranches ? _startEditing : null,
       onSave: _save,
       onCancel: _cancelEditing,
       child: Form(

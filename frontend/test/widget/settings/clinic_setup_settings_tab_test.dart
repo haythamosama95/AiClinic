@@ -15,7 +15,10 @@ import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/clinic_setup_settings_tab.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_section_card.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 
+import '../../helpers/auth_test_support.dart';
 import '../../support/settings_rpc_test_client.dart';
 
 void main() {
@@ -49,6 +52,8 @@ void main() {
       Future<OrganizationProfile?> Function()? organizationLoader,
       Future<List<BranchListItem>> Function()? branchesLoader,
       bool settle = true,
+      StaffRole role = StaffRole.administrator,
+      Set<String> permissions = const {'settings.manage_branches'},
     }) async {
       final orgClient = orgRpcClient ?? SettingsRpcTestClient();
       final branchClient = branchRpcClient ?? SettingsRpcTestClient();
@@ -56,6 +61,14 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            authSessionProvider.overrideWith(
+              () => _ClinicSetupAuthNotifier(
+                AuthSessionState(
+                  status: AuthSessionStatus.authenticated,
+                  context: sampleAuthSessionContext(role: role, permissions: permissions),
+                ),
+              ),
+            ),
             organizationRepositoryProvider.overrideWithValue(OrganizationRepositoryImpl(orgClient)),
             branchRepositoryProvider.overrideWithValue(BranchRepositoryImpl(branchClient)),
             clinicSetupOrganizationProvider.overrideWith(
@@ -337,5 +350,22 @@ void main() {
       expect(find.textContaining('connectivity'), findsOneWidget);
       expect(find.text('Delete branch permanently?'), findsNothing);
     });
+
+    testWidgets('user without clinic setup permission sees denial message', (tester) async {
+      await pumpTab(tester, organization: profile, role: StaffRole.doctor, permissions: {'patients.view'});
+
+      expect(find.textContaining('do not have permission'), findsOneWidget);
+      expect(find.text('Demo Clinic'), findsNothing);
+      expect(find.byTooltip('Edit'), findsNothing);
+    });
   });
+}
+
+class _ClinicSetupAuthNotifier extends TestAuthSessionNotifier {
+  _ClinicSetupAuthNotifier(this.initial);
+
+  final AuthSessionState initial;
+
+  @override
+  AuthSessionState build() => initial;
 }

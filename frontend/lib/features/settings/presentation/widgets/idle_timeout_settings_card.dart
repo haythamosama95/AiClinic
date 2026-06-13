@@ -115,7 +115,7 @@ class _IdleTimeoutSettingsCardState extends ConsumerState<IdleTimeoutSettingsCar
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Shared clinic workstations sign out automatically when there is no keyboard or mouse activity in the app window.',
+                'This workstation signs out automatically when there is no keyboard or mouse activity in the app window. The timeout applies only on this device.',
                 style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
               ),
               const SizedBox(height: SpacingTokens.md),

@@ -82,6 +82,7 @@ run_sql_test "Org branch management extended" "org_branch_management_extended.sq
 run_sql_test "Role permissions matrix" "role_permissions_matrix.sql"
 run_sql_test "Admin update staff username" "admin_update_staff_username.sql"
 run_sql_test "Delete staff member" "delete_staff_member.sql"
+run_sql_test "Settings code review fixes" "settings_code_review_fixes.sql"
 
 # --- Patient Management ---
 printf -- '\n--- Patient Management ---\n'

@@ -66,5 +66,11 @@ void main() {
       expect(container.read(idleTimeoutSettingsProvider).value!.duration, const Duration(minutes: 30));
       expect(find.text('Current timeout: 30 minutes'), findsOneWidget);
     });
+
+    testWidgets('describes workstation-only idle timeout policy', (tester) async {
+      await pumpCard(tester);
+
+      expect(find.textContaining('only on this device'), findsOneWidget);
+    });
   });
 }

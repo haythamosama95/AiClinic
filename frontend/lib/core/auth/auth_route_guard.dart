@@ -327,6 +327,11 @@ abstract final class AuthRouteGuard {
     return auth.context!.permissions.contains(PermissionKeys.manageBranches);
   }
 
+  /// Clinic setup tab: organization profile and/or branch administration.
+  static bool canAccessClinicSetup(AuthSessionState auth) {
+    return canAccessOrganizationSettings(auth) || canAccessBranchManagement(auth);
+  }
+
   static bool canAccessStaffManagement(AuthSessionState auth) {
     if (!auth.isAuthenticated || auth.context!.setupRequired) {
       return false;

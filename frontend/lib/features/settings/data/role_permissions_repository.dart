@@ -53,6 +53,20 @@ class RolePermissionsRepositoryImpl with AppRpcInvoker, SettingsRpcInvoker imple
       'p_is_granted': isGranted,
     });
   }
+
+  @override
+  Future<void> updateRolePermissions(Iterable<PermissionMatrixChange> changes) async {
+    final payload = [
+      for (final change in changes)
+        {'role': change.role.wireValue, 'permission_key': change.permissionKey.trim(), 'is_granted': change.isGranted},
+    ];
+
+    if (payload.isEmpty) {
+      return;
+    }
+
+    await invokeSettingsRpc('update_role_permissions', {'p_changes': payload});
+  }
 }
 
 final rolePermissionsRepositoryProvider = Provider<RolePermissionsRepository>((ref) {

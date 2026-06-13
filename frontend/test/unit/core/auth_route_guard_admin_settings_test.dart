@@ -36,6 +36,7 @@ void main() {
         context: sampleAuthSessionContext(role: StaffRole.doctor, permissions: {'patients.view'}),
       );
 
+      expect(AuthRouteGuard.canAccessClinicSetup(auth), isFalse);
       expect(
         AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsBranches, auth: auth),
         AppRoutes.settings,
