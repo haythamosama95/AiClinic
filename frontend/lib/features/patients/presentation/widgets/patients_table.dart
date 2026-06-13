@@ -7,6 +7,9 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 
+/// Row height for patient list entries (2× the default [AppDataTable.rowHeight]).
+const patientTableRowHeight = 60.0;
+
 /// Column layout shared by header, body rows, and skeleton.
 final patientTableColumns = <AppDataTableColumn>[
   const AppDataTableColumn(label: 'Patient', flex: 3),
@@ -77,6 +80,7 @@ class _PatientsTableState extends State<PatientsTable> {
 
     return AppDataTable(
       columns: patientTableColumns,
+      rowHeight: patientTableRowHeight,
       rowCount: rows.length,
       bodyPageKey: currentPage,
       bodySlideDirection: _slideDirection,

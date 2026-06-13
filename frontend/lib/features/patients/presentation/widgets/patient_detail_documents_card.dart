@@ -18,6 +18,7 @@ class PatientDetailDocumentsCard extends ConsumerWidget {
   final String patientId;
 
   static final _visitDateFormat = DateFormat('d MMM \'yy');
+  static const _minDocumentsFillHeight = 80.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -25,54 +26,72 @@ class PatientDetailDocumentsCard extends ConsumerWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final fillHeight = constraints.hasBoundedHeight;
+        final bounded = constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+        final fillHeight = bounded && constraints.maxHeight >= _minDocumentsFillHeight;
+        final title = Text(
+          'Documents',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        );
+        final body = documentsAsync.when(
+          loading: () => fillHeight
+              ? const Center(child: AppCircularProgress())
+              : const Center(
+                  child: Padding(padding: EdgeInsets.all(SpacingTokens.lg), child: AppCircularProgress()),
+                ),
+          error: (_, _) =>
+              _DocumentsErrorState(onRetry: () => ref.invalidate(patientVisitDocumentsProvider(patientId))),
+          data: (documents) {
+            if (documents.isEmpty) {
+              return fillHeight ? const Center(child: _DocumentsEmptyState()) : const _DocumentsEmptyState();
+            }
 
-        return SizedBox(
-          width: double.infinity,
-          height: fillHeight ? constraints.maxHeight : null,
-          child: DecoratedBox(
+            final list = _DocumentsList(documents: documents, visitDateFormat: _visitDateFormat);
+            return fillHeight ? SingleChildScrollView(child: list) : list;
+          },
+        );
+
+        if (!bounded || !fillHeight) {
+          final content = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              title,
+              SizedBox(height: fillHeight ? SpacingTokens.sm : SpacingTokens.lg),
+              body,
+            ],
+          );
+
+          return DecoratedBox(
             decoration: _cardDecoration(context),
-            child: Padding(
-              padding: const EdgeInsets.all(SpacingTokens.lg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
-                children: [
-                  Text(
-                    'Documents',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  SizedBox(height: fillHeight ? SpacingTokens.sm : SpacingTokens.lg),
-                  if (fillHeight)
-                    Expanded(
-                      child: documentsAsync.when(
-                        loading: () => const Center(child: AppCircularProgress()),
-                        error: (_, _) => _DocumentsErrorState(
-                          onRetry: () => ref.invalidate(patientVisitDocumentsProvider(patientId)),
-                        ),
-                        data: (documents) {
-                          if (documents.isEmpty) {
-                            return const Center(child: _DocumentsEmptyState());
-                          }
+            child: bounded
+                ? ClipRect(
+                    child: SingleChildScrollView(padding: const EdgeInsets.all(SpacingTokens.lg), child: content),
+                  )
+                : Padding(padding: const EdgeInsets.all(SpacingTokens.lg), child: content),
+          );
+        }
 
-                          return SingleChildScrollView(
-                            child: _DocumentsList(documents: documents, visitDateFormat: _visitDateFormat),
-                          );
-                        },
-                      ),
-                    )
-                  else
-                    documentsAsync.when(
-                      loading: () => const Center(
-                        child: Padding(padding: EdgeInsets.all(SpacingTokens.lg), child: AppCircularProgress()),
-                      ),
-                      error: (_, _) =>
-                          _DocumentsErrorState(onRetry: () => ref.invalidate(patientVisitDocumentsProvider(patientId))),
-                      data: (documents) => _DocumentsList(documents: documents, visitDateFormat: _visitDateFormat),
-                    ),
-                ],
+        return DecoratedBox(
+          decoration: _cardDecoration(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  SpacingTokens.lg,
+                  SpacingTokens.lg,
+                  SpacingTokens.lg,
+                  SpacingTokens.sm,
+                ),
+                child: title,
               ),
-            ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, 0, SpacingTokens.lg, SpacingTokens.lg),
+                  child: body,
+                ),
+              ),
+            ],
           ),
         );
       },

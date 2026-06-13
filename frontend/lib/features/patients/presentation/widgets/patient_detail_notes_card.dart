@@ -13,6 +13,9 @@ import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_pro
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
 
+/// Minimum height required before switching the notes editor to [expands] mode.
+const _minNotesFillHeight = 120.0;
+
 /// Editable patient notes panel for the detail page.
 class PatientDetailNotesCard extends ConsumerStatefulWidget {
   const PatientDetailNotesCard({required this.detail, super.key});
@@ -95,46 +98,48 @@ class _PatientDetailNotesCardState extends ConsumerState<PatientDetailNotesCard>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final fillHeight = constraints.hasBoundedHeight;
+        final bounded = constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+        final fillHeight = bounded && constraints.maxHeight >= _minNotesFillHeight;
+        final decoration = BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(context.shapeTokens.lg),
+          border: Border.all(color: colors.border),
+        );
 
-        return SizedBox(
-          width: double.infinity,
-          height: fillHeight ? constraints.maxHeight : null,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.card,
-              borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-              border: Border.all(color: colors.border),
-            ),
+        if (!bounded) {
+          return DecoratedBox(
+            decoration: decoration,
             child: Padding(
               padding: const EdgeInsets.all(SpacingTokens.lg),
-              child: _buildContent(context, theme, colors, fillHeight),
+              child: _buildContent(context, theme, colors, fillHeight: false),
             ),
-          ),
-        );
+          );
+        }
+
+        if (!fillHeight) {
+          return DecoratedBox(
+            decoration: decoration,
+            child: ClipRect(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(SpacingTokens.lg),
+                child: _buildContent(context, theme, colors, fillHeight: false),
+              ),
+            ),
+          );
+        }
+
+        return DecoratedBox(decoration: decoration, child: _buildContent(context, theme, colors, fillHeight: true));
       },
     );
   }
 
-  Widget _buildContent(BuildContext context, ThemeData theme, SemanticColors colors, bool fillHeight) {
+  Widget _buildContent(BuildContext context, ThemeData theme, SemanticColors colors, {required bool fillHeight}) {
     final header = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: Text('Notes', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
         ),
-        if (widget.detail.updatedAt != widget.detail.createdAt) ...[
-          Flexible(
-            child: Text(
-              'Updated ${PatientPresentationFormatting.dateTime.format(widget.detail.updatedAt)}',
-              style: theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
-              textAlign: TextAlign.end,
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ),
-          const SizedBox(width: SpacingTokens.sm),
-        ],
         if (_canEdit)
           AppButton(
             label: 'Save note',
@@ -191,12 +196,21 @@ class _PatientDetailNotesCardState extends ConsumerState<PatientDetailNotesCard>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        header,
-        const SizedBox(height: SpacingTokens.sm),
-        Expanded(
-          child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 0), child: notesInput),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.sm),
+          child: header,
         ),
-        if (createdByFooter != null) ...[const SizedBox(height: SpacingTokens.sm), createdByFooter],
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg),
+            child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 0), child: notesInput),
+          ),
+        ),
+        if (createdByFooter != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.sm, SpacingTokens.lg, SpacingTokens.lg),
+            child: createdByFooter,
+          ),
       ],
     );
   }

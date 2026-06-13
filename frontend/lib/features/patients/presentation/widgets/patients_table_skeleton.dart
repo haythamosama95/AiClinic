@@ -15,6 +15,7 @@ class PatientsTableSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppDataTable(
       columns: patientTableColumns,
+      rowHeight: patientTableRowHeight,
       rowCount: rowCount,
       rowBuilder: (context, index) {
         return Padding(

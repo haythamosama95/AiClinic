@@ -62,10 +62,6 @@ class _PatientContainerTransformTransition extends StatelessWidget {
             final contentOpacity = Curves.easeOut.transform(contentProgress);
             final contentScale = 0.94 + (0.06 * contentOpacity);
 
-            if (t >= 1) {
-              return child!;
-            }
-
             final transitionChild = Stack(
               fit: StackFit.expand,
               clipBehavior: Clip.none,
@@ -91,9 +87,18 @@ class _PatientContainerTransformTransition extends StatelessWidget {
                       ),
                       child: ClipRRect(
                         borderRadius: borderRadius,
-                        child: Opacity(
-                          opacity: contentOpacity,
-                          child: Transform.scale(scale: contentScale, alignment: Alignment.topCenter, child: child),
+                        child: OverflowBox(
+                          alignment: Alignment.topLeft,
+                          maxWidth: size.width,
+                          maxHeight: size.height,
+                          child: SizedBox(
+                            width: size.width,
+                            height: size.height,
+                            child: Opacity(
+                              opacity: contentOpacity,
+                              child: Transform.scale(scale: contentScale, alignment: Alignment.topCenter, child: child),
+                            ),
+                          ),
                         ),
                       ),
                     ),

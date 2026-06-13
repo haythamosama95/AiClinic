@@ -479,8 +479,7 @@ class _ProfileStatsWithFloatingAvatar extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: _avatarSize, child: const SizedBox()),
-                Container(
-                  margin: const EdgeInsets.only(left: 5.0),
+                Expanded(
                   child: Center(
                     child: _ProfileStat(label: 'Upcoming', value: '$upcomingCount'),
                   ),
@@ -514,12 +513,16 @@ class _ProfileStat extends StatelessWidget {
           label,
           style: theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
           textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: SpacingTokens.xs),
         Text(
           value,
           style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: colors.primary),
           textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
@@ -633,22 +636,23 @@ class _PatientDetailLoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _PatientDetailScaffold(
-      body: (_) => AppDeferredLoading(
+      body: (pageHeight) => AppDeferredLoading(
         isLoading: true,
         placeholder: preview != null
-            ? _PatientDetailPreviewLayout(preview: preview!, onBack: onBack)
-            : const _PatientDetailBodySkeleton(),
-        loading: const _PatientDetailBodyLoading(),
+            ? _PatientDetailPreviewLayout(preview: preview!, onBack: onBack, pageHeight: pageHeight)
+            : _PatientDetailBodySkeleton(pageHeight: pageHeight),
+        loading: _PatientDetailBodyLoading(pageHeight: pageHeight),
       ),
     );
   }
 }
 
 class _PatientDetailPreviewLayout extends StatelessWidget {
-  const _PatientDetailPreviewLayout({required this.preview, required this.onBack});
+  const _PatientDetailPreviewLayout({required this.preview, required this.onBack, required this.pageHeight});
 
   final PatientListItem preview;
   final VoidCallback onBack;
+  final double pageHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -707,7 +711,7 @@ class _PatientDetailPreviewLayout extends StatelessWidget {
             ),
           ),
           const SizedBox(height: SpacingTokens.lg),
-          const _PatientDetailBodySkeleton(),
+          _PatientDetailBodySkeleton(pageHeight: pageHeight),
         ],
       ),
     );
@@ -755,16 +759,33 @@ class _PatientDetailScaffold extends StatelessWidget {
 }
 
 class _PatientDetailBodySkeleton extends StatelessWidget {
-  const _PatientDetailBodySkeleton();
+  const _PatientDetailBodySkeleton({required this.pageHeight});
+
+  final double pageHeight;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
+    final sideCardHeight = (pageHeight - SpacingTokens.lg) / 2;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 1080;
+
+        if (!isWide) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _skeletonCard(colors, context),
+              const SizedBox(height: SpacingTokens.lg),
+              SizedBox(height: sideCardHeight, child: _skeletonCard(colors, context)),
+              const SizedBox(height: SpacingTokens.lg),
+              SizedBox(height: sideCardHeight, child: _skeletonCard(colors, context)),
+            ],
+          );
+        }
+
+        return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
@@ -785,18 +806,21 @@ class _PatientDetailBodySkeleton extends StatelessWidget {
             ),
             const SizedBox(width: SpacingTokens.lg),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _skeletonCard(colors, context),
-                  const SizedBox(height: SpacingTokens.lg),
-                  _skeletonCard(colors, context),
-                ],
+              child: SizedBox(
+                height: pageHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _skeletonCard(colors, context)),
+                    const SizedBox(height: SpacingTokens.lg),
+                    Expanded(child: _skeletonCard(colors, context)),
+                  ],
+                ),
               ),
             ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -816,7 +840,9 @@ class _PatientDetailBodySkeleton extends StatelessWidget {
 }
 
 class _PatientDetailBodyLoading extends StatelessWidget {
-  const _PatientDetailBodyLoading();
+  const _PatientDetailBodyLoading({required this.pageHeight});
+
+  final double pageHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -825,7 +851,7 @@ class _PatientDetailBodyLoading extends StatelessWidget {
 
     return Stack(
       children: [
-        const _PatientDetailBodySkeleton(),
+        _PatientDetailBodySkeleton(pageHeight: pageHeight),
         ColoredBox(
           color: colors.background.withValues(alpha: 0.72),
           child: Center(

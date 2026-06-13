@@ -240,12 +240,14 @@ class _HistoryTabButton extends StatelessWidget {
       selected: isSelected,
       label: label,
       child: Material(
-        color: isSelected ? colors.card : Colors.transparent,
+        color: isSelected ? colors.primary : Colors.transparent,
         borderRadius: BorderRadius.circular(context.shapeTokens.sm),
         child: InkWell(
           onTap: onTap,
           excludeFromSemantics: true,
           borderRadius: BorderRadius.circular(context.shapeTokens.sm),
+          splashColor: colors.primaryForeground.withValues(alpha: 0.12),
+          highlightColor: colors.primaryForeground.withValues(alpha: 0.08),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: SpacingTokens.sm, horizontal: SpacingTokens.sm),
             child: Row(
@@ -256,7 +258,7 @@ class _HistoryTabButton extends StatelessWidget {
                     label,
                     style: theme.textTheme.labelMedium?.copyWith(
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                      color: isSelected ? colors.foreground : colors.mutedForeground,
+                      color: isSelected ? colors.primaryForeground : colors.mutedForeground,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
