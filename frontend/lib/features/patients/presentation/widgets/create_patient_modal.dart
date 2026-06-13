@@ -13,9 +13,12 @@ import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/features/patients/application/patient_rpc_messages.dart';
 import 'package:ai_clinic/features/patients/data/patient_rpc_failure.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
+import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
+import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/duplicate_candidates_dialog.dart';
 
 abstract final class _CreatePatientModalPalette {
@@ -23,14 +26,29 @@ abstract final class _CreatePatientModalPalette {
   static const maxWidth = 640.0;
 }
 
-/// Blurred overlay for registering a new patient from the patients list.
+/// Blurred overlay for registering or editing a patient.
 class CreatePatientModal extends ConsumerStatefulWidget {
-  const CreatePatientModal({super.key});
+  const CreatePatientModal({super.key, this.patient});
+
+  final PatientDetail? patient;
+
+  bool get isEditMode => patient != null;
 
   /// Presents the registration form over a blurred scrim.
   ///
   /// Returns the new patient id when registration succeeds.
   static Future<String?> show(BuildContext context) {
+    return _present(context);
+  }
+
+  /// Presents the same form pre-filled for editing an existing patient.
+  ///
+  /// Returns the patient id when the update succeeds.
+  static Future<String?> showEdit(BuildContext context, {required PatientDetail patient}) {
+    return _present(context, patient: patient);
+  }
+
+  static Future<String?> _present(BuildContext context, {PatientDetail? patient}) {
     return showGeneralDialog<String>(
       context: context,
       barrierDismissible: true,
@@ -39,7 +57,7 @@ class CreatePatientModal extends ConsumerStatefulWidget {
       pageBuilder: (dialogContext, animation, secondaryAnimation) {
         return UncontrolledProviderScope(
           container: ProviderScope.containerOf(context, listen: false),
-          child: const _CreatePatientModalOverlay(),
+          child: _CreatePatientModalOverlay(patient: patient),
         );
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
@@ -53,7 +71,9 @@ class CreatePatientModal extends ConsumerStatefulWidget {
 }
 
 class _CreatePatientModalOverlay extends StatelessWidget {
-  const _CreatePatientModalOverlay();
+  const _CreatePatientModalOverlay({this.patient});
+
+  final PatientDetail? patient;
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +99,7 @@ class _CreatePatientModalOverlay extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: _CreatePatientModalPalette.maxWidth),
-                  child: const CreatePatientModal(),
+                  child: CreatePatientModal(patient: patient),
                 ),
               ),
             ),
@@ -99,8 +119,26 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
   DateTime? _dateOfBirth;
   PatientGender? _gender;
   PatientMaritalStatus? _maritalStatus;
+  DateTime? _expectedUpdatedAt;
   var _isSaving = false;
   String? _formError;
+
+  @override
+  void initState() {
+    super.initState();
+    final patient = widget.patient;
+    if (patient == null) {
+      return;
+    }
+
+    _fullNameController.text = patient.fullName;
+    _phoneController.text = patient.phone ?? '';
+    _notesController.text = patient.notes ?? '';
+    _dateOfBirth = patient.dateOfBirth;
+    _gender = patient.gender;
+    _maritalStatus = patient.maritalStatus;
+    _expectedUpdatedAt = patient.updatedAt;
+  }
 
   static final _genderItems = {
     PatientGender.male.label: PatientGender.male,
@@ -119,11 +157,26 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
   bool get _isReady =>
       _fullNameController.text.trim().isNotEmpty && _phoneController.text.trim().isNotEmpty && _gender != null;
 
-  CreatePatientInput _buildInput({required String activeBranchId, required bool acknowledgeDuplicate}) {
+  CreatePatientInput _buildCreateInput({required String activeBranchId, required bool acknowledgeDuplicate}) {
     return CreatePatientInput(
       activeBranchId: activeBranchId,
       fullName: _fullNameController.text,
       phone: _phoneController.text,
+      dateOfBirth: _dateOfBirth,
+      gender: _gender,
+      maritalStatus: _maritalStatus,
+      notes: _trimOrNull(_notesController.text),
+      acknowledgeDuplicate: acknowledgeDuplicate,
+    );
+  }
+
+  UpdatePatientInput _buildUpdateInput({required bool acknowledgeDuplicate}) {
+    final patient = widget.patient!;
+    return UpdatePatientInput(
+      patientId: patient.id,
+      fullName: _fullNameController.text,
+      expectedUpdatedAt: _expectedUpdatedAt ?? patient.updatedAt,
+      phone: _phoneController.text.trim(),
       dateOfBirth: _dateOfBirth,
       gender: _gender,
       maritalStatus: _maritalStatus,
@@ -139,6 +192,15 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    if (widget.isEditMode) {
+      setState(() {
+        _isSaving = true;
+        _formError = null;
+      });
+      await _updateWithDuplicateHandling(acknowledgeDuplicate: false);
       return;
     }
 
@@ -163,7 +225,7 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
   }) async {
     try {
       final patientId = await ref.read(createPatientUseCaseProvider)(
-        _buildInput(activeBranchId: activeBranchId, acknowledgeDuplicate: acknowledgeDuplicate),
+        _buildCreateInput(activeBranchId: activeBranchId, acknowledgeDuplicate: acknowledgeDuplicate),
       );
 
       if (!mounted) {
@@ -173,37 +235,83 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
       AppToast.success(context, message: 'Patient registered successfully.');
       Navigator.of(context).pop(patientId);
     } on RpcFailure catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      if (error.isDuplicateWarning) {
-        final candidates = error.duplicateCandidates;
-        setState(() => _isSaving = false);
-
-        final proceed = await DuplicateCandidatesDialog.show(context, candidates: candidates);
-        if (proceed != true || !mounted) {
-          return;
-        }
-
-        setState(() => _isSaving = true);
-        await _createWithDuplicateHandling(activeBranchId: activeBranchId, acknowledgeDuplicate: true);
-        return;
-      }
-
-      setState(() {
-        _isSaving = false;
-        _formError = patientMessageForRpc(error);
-      });
+      await _handleSubmitFailure(
+        error,
+        onDuplicateAcknowledged: () =>
+            _createWithDuplicateHandling(activeBranchId: activeBranchId, acknowledgeDuplicate: true),
+      );
     } catch (error) {
+      _handleUnexpectedSubmitFailure(error);
+    }
+  }
+
+  Future<void> _updateWithDuplicateHandling({required bool acknowledgeDuplicate}) async {
+    final patientId = widget.patient!.id;
+
+    try {
+      await ref.read(updatePatientUseCaseProvider)(_buildUpdateInput(acknowledgeDuplicate: acknowledgeDuplicate));
+
       if (!mounted) {
         return;
       }
-      setState(() {
-        _isSaving = false;
-        _formError = UserErrorMapper.mapToUserMessage(error);
-      });
+
+      ref.invalidate(patientDetailProvider(patientId));
+      AppToast.success(context, message: 'Patient updated successfully.');
+      Navigator.of(context).pop(patientId);
+    } on RpcFailure catch (error) {
+      await _handleSubmitFailure(
+        error,
+        onDuplicateAcknowledged: () => _updateWithDuplicateHandling(acknowledgeDuplicate: true),
+        onStalePatient: () async {
+          ref.invalidate(patientDetailProvider(patientId));
+        },
+      );
+    } catch (error) {
+      _handleUnexpectedSubmitFailure(error);
     }
+  }
+
+  Future<void> _handleSubmitFailure(
+    RpcFailure error, {
+    required Future<void> Function() onDuplicateAcknowledged,
+    Future<void> Function()? onStalePatient,
+  }) async {
+    if (!mounted) {
+      return;
+    }
+
+    if (error.isDuplicateWarning) {
+      final candidates = error.duplicateCandidates;
+      setState(() => _isSaving = false);
+
+      final proceed = await DuplicateCandidatesDialog.show(context, candidates: candidates);
+      if (proceed != true || !mounted) {
+        return;
+      }
+
+      setState(() => _isSaving = true);
+      await onDuplicateAcknowledged();
+      return;
+    }
+
+    if (error.isStalePatient) {
+      await onStalePatient?.call();
+    }
+
+    setState(() {
+      _isSaving = false;
+      _formError = patientMessageForRpc(error);
+    });
+  }
+
+  void _handleUnexpectedSubmitFailure(Object error) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isSaving = false;
+      _formError = UserErrorMapper.mapToUserMessage(error);
+    });
   }
 
   @override
@@ -211,12 +319,14 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
     final auth = ref.watch(authSessionProvider);
-    final canCreate = AuthRouteGuard.canAccessPatientRegistration(auth);
+    final canSubmit = widget.isEditMode
+        ? AuthRouteGuard.canAccessPatientEdit(auth)
+        : AuthRouteGuard.canAccessPatientRegistration(auth);
 
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.enter): () {
-          if (!_isSaving && _isReady && canCreate) {
+          if (!_isSaving && _isReady && canSubmit) {
             _submit();
           }
         },
@@ -235,7 +345,7 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
               Padding(
                 padding: const EdgeInsets.all(SpacingTokens.xl),
                 child: SingleChildScrollView(
-                  child: canCreate ? _buildForm(theme, colors) : _buildPermissionDenied(theme, colors),
+                  child: canSubmit ? _buildForm(theme, colors) : _buildPermissionDenied(theme, colors),
                 ),
               ),
               Positioned(
@@ -262,17 +372,21 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
   }
 
   Widget _buildPermissionDenied(ThemeData theme, SemanticColors colors) {
+    final isEditMode = widget.isEditMode;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Register patient',
+          isEditMode ? 'Edit patient' : 'Register patient',
           textAlign: TextAlign.center,
           style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: SpacingTokens.lg),
         Text(
-          'You do not have permission to register patients.',
+          isEditMode
+              ? 'You do not have permission to edit patients.'
+              : 'You do not have permission to register patients.',
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
         ),
@@ -282,6 +396,8 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
 
   Widget _buildForm(ThemeData theme, SemanticColors colors) {
     final now = DateTime.now();
+    final isEditMode = widget.isEditMode;
+    final patient = widget.patient;
 
     return Form(
       key: _formKey,
@@ -290,13 +406,15 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Register patient',
+            isEditMode ? 'Edit patient' : 'Register patient',
             textAlign: TextAlign.center,
             style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: SpacingTokens.sm),
           Text(
-            'Add a new patient at the active branch.',
+            isEditMode
+                ? 'Update patient details at ${patient!.branchName}.'
+                : 'Add a new patient at the active branch.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
           ),
@@ -390,8 +508,8 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
               ),
               const SizedBox(width: SpacingTokens.sm),
               AppButton(
-                key: const Key('patient_register_submit'),
-                label: 'Register patient',
+                key: Key(isEditMode ? 'patient_update_submit' : 'patient_register_submit'),
+                label: isEditMode ? 'Update' : 'Register patient',
                 expand: false,
                 isLoading: _isSaving,
                 onPressed: _isSaving ? null : _submit,

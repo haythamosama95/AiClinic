@@ -19,6 +19,7 @@ import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_pro
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_history_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_documents_card.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_notes_card.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_timeline_section.dart';
@@ -79,6 +80,7 @@ class _PatientDetailContentView extends ConsumerWidget {
     return _PatientDetailScaffold(
       patientId: detail.id,
       patientName: detail.fullName,
+      patient: detail,
       onBack: onBack,
       body: (pageHeight) => LayoutBuilder(
         builder: (context, constraints) {
@@ -697,11 +699,18 @@ class _PatientDetailErrorView extends StatelessWidget {
 }
 
 class _PatientDetailScaffold extends ConsumerWidget {
-  const _PatientDetailScaffold({required this.patientId, required this.onBack, this.patientName, required this.body});
+  const _PatientDetailScaffold({
+    required this.patientId,
+    required this.onBack,
+    this.patientName,
+    this.patient,
+    required this.body,
+  });
 
   final String patientId;
   final VoidCallback onBack;
   final String? patientName;
+  final PatientDetail? patient;
   final Widget Function(double pageHeight) body;
 
   @override
@@ -711,7 +720,7 @@ class _PatientDetailScaffold extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _PatientDetailHeader(patientId: patientId, patientName: patientName, onBack: onBack),
+          _PatientDetailHeader(patientId: patientId, patientName: patientName, patient: patient, onBack: onBack),
           const SizedBox(height: SpacingTokens.md),
           Expanded(
             child: LayoutBuilder(
@@ -727,11 +736,12 @@ class _PatientDetailScaffold extends ConsumerWidget {
 }
 
 class _PatientDetailHeader extends ConsumerStatefulWidget {
-  const _PatientDetailHeader({required this.patientId, required this.onBack, this.patientName});
+  const _PatientDetailHeader({required this.patientId, required this.onBack, this.patientName, this.patient});
 
   final String patientId;
   final VoidCallback onBack;
   final String? patientName;
+  final PatientDetail? patient;
 
   @override
   ConsumerState<_PatientDetailHeader> createState() => _PatientDetailHeaderState();
@@ -821,7 +831,9 @@ class _PatientDetailHeaderState extends ConsumerState<_PatientDetailHeader> {
                 if (_canEdit)
                   IconButton(
                     tooltip: 'Edit patient',
-                    onPressed: () => context.nav.goPatientEdit(widget.patientId),
+                    onPressed: widget.patient == null
+                        ? null
+                        : () => CreatePatientModal.showEdit(context, patient: widget.patient!),
                     icon: Icon(Icons.edit_outlined, color: colors.mutedForeground),
                   ),
                 if (_canDelete)

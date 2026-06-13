@@ -3,6 +3,7 @@ import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
+import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter/material.dart';
@@ -10,9 +11,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../helpers/patient_test_support.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../support/fake_postgrest_rpc.dart';
 import '../../support/patient_rpc_test_client.dart';
+
+Future<void> _pumpEditModal(WidgetTester tester, Widget widget) async {
+  await tester.binding.setSurfaceSize(const Size(900, 1400));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(widget);
+  await tester.pumpAndSettle();
+
+  await tester.tap(find.text('Open'));
+  await tester.pumpAndSettle();
+}
 
 Future<void> _pumpModal(WidgetTester tester, Widget widget) async {
   await tester.binding.setSurfaceSize(const Size(900, 1400));
@@ -34,6 +46,11 @@ Future<void> _selectGender(WidgetTester tester, String label) async {
   await tester.tap(find.widgetWithText(AppSelect<PatientGender>, 'Gender *'));
   await tester.pumpAndSettle();
   await tester.tap(find.text(label).last);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _enterDateOfBirth(WidgetTester tester) async {
+  await tester.enterText(find.widgetWithText(AppDateField, 'Date of birth *'), '15/01/1990');
   await tester.pumpAndSettle();
 }
 
@@ -91,6 +108,7 @@ void main() {
 
       await tester.enterText(find.widgetWithText(AppTextField, 'Full name *'), 'New Patient');
       await tester.enterText(find.widgetWithText(AppTextField, 'Mobile number *'), '201005551234');
+      await _enterDateOfBirth(tester);
       await _selectGender(tester, 'Male');
       await _tapRegister(tester);
 
@@ -106,6 +124,7 @@ void main() {
 
       await tester.enterText(find.widgetWithText(AppTextField, 'Full name *'), 'Dup Patient');
       await tester.enterText(find.widgetWithText(AppTextField, 'Mobile number *'), '201000000001');
+      await _enterDateOfBirth(tester);
       await _selectGender(tester, 'Male');
       await _tapRegister(tester);
 
@@ -143,6 +162,7 @@ void main() {
 
       await tester.enterText(find.widgetWithText(AppTextField, 'Full name *'), 'Dup Patient');
       await tester.enterText(find.widgetWithText(AppTextField, 'Mobile number *'), '201000000001');
+      await _enterDateOfBirth(tester);
       await _selectGender(tester, 'Male');
       await _tapRegister(tester);
 
@@ -150,6 +170,55 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(client.createCallCount, 1);
+    });
+  });
+
+  group('CreatePatientModal edit mode', () {
+    testWidgets('prefills fields and shows Update button', (tester) async {
+      final patient = samplePatientDetail(fullName: 'Existing Patient', phone: '201005551234', notes: 'Desk note');
+
+      await _pumpEditModal(tester, _editHost(patient: patient));
+
+      expect(find.text('Edit patient'), findsWidgets);
+      expect(find.text('Update'), findsOneWidget);
+      expect(find.widgetWithText(AppTextField, 'Full name *'), findsOneWidget);
+      expect(find.text('Existing Patient'), findsOneWidget);
+      expect(find.text('201005551234'), findsOneWidget);
+      expect(find.text('Desk note'), findsOneWidget);
+    });
+
+    testWidgets('successful update closes modal', (tester) async {
+      final patient = samplePatientDetail();
+      final repository = FakePatientRepository(detail: patient);
+      String? updatedPatientId;
+
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _editHost(patient: patient, repository: repository, onUpdated: (id) => updatedPatientId = id),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.widgetWithText(AppTextField, 'Full name *'), 'Updated Patient');
+      await tester.ensureVisible(find.byKey(const Key('patient_update_submit')));
+      await tester.tap(find.byKey(const Key('patient_update_submit')));
+      await tester.pumpAndSettle();
+
+      expect(updatedPatientId, patient.id);
+      expect(repository.lastUpdateInput?.fullName, 'Updated Patient');
+      expect(find.text('Patient updated successfully.'), findsOneWidget);
+      expect(find.text('Edit patient'), findsNothing);
+    });
+
+    testWidgets('permission denied without patients.edit', (tester) async {
+      await _pumpEditModal(tester, _editHost(patient: samplePatientDetail(), permissions: const {'patients.view'}));
+
+      expect(find.text('You do not have permission to edit patients.'), findsOneWidget);
+      expect(find.byKey(const Key('patient_update_submit')), findsNothing);
     });
   });
 }
@@ -179,6 +248,50 @@ class _DuplicateThenSuccessClient extends PatientRpcTestClient {
     }
     return super.rpc(fn, params: params, get: get);
   }
+}
+
+Widget _editHost({
+  required PatientDetail patient,
+  FakePatientRepository? repository,
+  Set<String> permissions = const {'patients.view', 'patients.edit'},
+  void Function(String patientId)? onUpdated,
+}) {
+  final repo = repository ?? FakePatientRepository(detail: patient);
+
+  return ProviderScope(
+    overrides: [
+      authSessionProvider.overrideWith(
+        () => _PresetAuthSessionNotifier(
+          AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(permissions: permissions),
+          ),
+        ),
+      ),
+      patientRepositoryProvider.overrideWith((ref) => repo),
+    ],
+    child: MaterialApp(
+      theme: AppTheme.light(),
+      builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
+      home: Builder(
+        builder: (context) {
+          return Scaffold(
+            body: Center(
+              child: AppButton(
+                label: 'Open',
+                onPressed: () async {
+                  final patientId = await CreatePatientModal.showEdit(context, patient: patient);
+                  if (patientId != null) {
+                    onUpdated?.call(patientId);
+                  }
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
 }
 
 Widget _host({
