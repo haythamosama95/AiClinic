@@ -9,6 +9,7 @@ import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patients_empty_state.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patients_toolbar.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patients_table.dart';
@@ -55,6 +56,15 @@ class _PatientsPageState extends ConsumerState<PatientsPage> {
     AppNavigator(context).pushPatientDetail(row.item.id, preview: row.item, sourceRect: sourceRect);
   }
 
+  Future<void> _openCreatePatient() async {
+    final patientId = await CreatePatientModal.show(context);
+    if (patientId == null || !mounted) {
+      return;
+    }
+    ref.invalidate(patientListProvider);
+    AppNavigator(context).pushPatientDetail(patientId);
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authSessionProvider);
@@ -76,6 +86,7 @@ class _PatientsPageState extends ConsumerState<PatientsPage> {
           searchController: _searchController,
           onSearchChanged: _onSearchChanged,
           onFiltersChanged: _onFiltersChanged,
+          onAddPatient: canCreate ? () => _openCreatePatient() : null,
           body: const PatientsTableSkeleton(),
         ),
         error: (error, _) => PatientsEmptyState(title: 'Unable to load patients', subtitle: error.toString()),
@@ -85,10 +96,12 @@ class _PatientsPageState extends ConsumerState<PatientsPage> {
           searchController: _searchController,
           onSearchChanged: _onSearchChanged,
           onFiltersChanged: _onFiltersChanged,
+          onAddPatient: canCreate ? () => _openCreatePatient() : null,
           body: _PatientsListBody(
             state: state,
             canCreate: canCreate,
             onRowTap: _onRowTap,
+            onAddPatient: canCreate ? () => _openCreatePatient() : null,
             onPageChanged: (page) => _onFiltersChanged(_filters.copyWith(page: page)),
           ),
         ),
@@ -105,6 +118,7 @@ class _PatientsListShell extends StatelessWidget {
     required this.onSearchChanged,
     required this.onFiltersChanged,
     required this.body,
+    this.onAddPatient,
   });
 
   final PatientListFilters filters;
@@ -112,6 +126,7 @@ class _PatientsListShell extends StatelessWidget {
   final TextEditingController searchController;
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<PatientListFilters> onFiltersChanged;
+  final VoidCallback? onAddPatient;
   final Widget body;
 
   @override
@@ -125,7 +140,7 @@ class _PatientsListShell extends StatelessWidget {
           canCreate: canCreate,
           onSearchChanged: onSearchChanged,
           onFiltersChanged: onFiltersChanged,
-          onAddPatient: canCreate ? () => AppNavigator(context).goPatientRegister() : null,
+          onAddPatient: onAddPatient,
         ),
         const SizedBox(height: SpacingTokens.md),
         Expanded(child: body),
@@ -139,12 +154,14 @@ class _PatientsListBody extends StatelessWidget {
     required this.state,
     required this.canCreate,
     required this.onRowTap,
+    required this.onAddPatient,
     required this.onPageChanged,
   });
 
   final PatientListUiState state;
   final bool canCreate;
   final void Function(PatientTableRow row, Rect? sourceRect) onRowTap;
+  final VoidCallback? onAddPatient;
   final ValueChanged<int> onPageChanged;
 
   @override
@@ -157,9 +174,7 @@ class _PatientsListBody extends StatelessWidget {
     }
 
     if (state.isNoPatientsYet) {
-      return PatientsEmptyState.noPatientsYet(
-        onAction: canCreate ? () => AppNavigator(context).goPatientRegister() : null,
-      );
+      return PatientsEmptyState.noPatientsYet(onAction: onAddPatient);
     }
 
     if (state.isNoMatch) {

@@ -20,6 +20,7 @@ class AppDateField extends StatefulWidget {
     this.mode = AppDateFieldMode.combined,
     this.firstDate,
     this.lastDate,
+    this.locale,
     super.key,
   });
 
@@ -34,6 +35,9 @@ class AppDateField extends StatefulWidget {
   final AppDateFieldMode mode;
   final DateTime? firstDate;
   final DateTime? lastDate;
+
+  /// When set, overrides the locale used for date input/display (e.g. [Locale]('en', 'GB') for dd/mm/yyyy).
+  final Locale? locale;
 
   @override
   State<AppDateField> createState() => _AppDateFieldState();
@@ -83,7 +87,7 @@ class _AppDateFieldState extends State<AppDateField> {
         ? null
         : Text(widget.description!, style: theme.textTheme.bodySmall);
 
-    return switch (widget.mode) {
+    final field = switch (widget.mode) {
       AppDateFieldMode.input => FDateField.input(
         control: control,
         size: widget.size.forui,
@@ -110,6 +114,12 @@ class _AppDateFieldState extends State<AppDateField> {
         calendar: FDateFieldCalendarProperties(start: widget.firstDate, end: widget.lastDate),
       ),
     };
+
+    if (widget.locale == null) {
+      return field;
+    }
+
+    return Localizations(locale: widget.locale!, delegates: FLocalizations.localizationsDelegates, child: field);
   }
 }
 

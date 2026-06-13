@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
 
 /// Centralized navigation service to avoid scattered `context.go()`/`context.push()` calls.
 ///
@@ -36,6 +37,9 @@ class AppNavigator {
   void goPatientEdit(String id) => _context.go(AppRoutes.patientEdit(id));
   void pushPatientEdit(String id) => _context.push(AppRoutes.patientEdit(id));
   void goPatientRegister() => _context.push(AppRoutes.patientsNew);
+
+  /// Opens the blurred patient registration modal over the current route.
+  Future<String?> showPatientRegister() => CreatePatientModal.show(_context);
 
   // Appointments (V1-4)
   void goAppointments() => _context.go(AppRoutes.appointments);
