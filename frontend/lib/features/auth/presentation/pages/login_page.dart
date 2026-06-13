@@ -64,7 +64,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           ),
           SafeArea(
             child: Center(
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.xl),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

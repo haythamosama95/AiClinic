@@ -107,31 +107,44 @@ void main() {
     });
 
     testWidgets('expand animates heightFactor from 0 to 1', (tester) async {
-      await pumpShellNavGroup(tester, isExpanded: false, settle: false);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ShellNavMetrics(
-              collapseT: 0,
-              child: ShellNavGroupWidget(
+      final isExpanded = ValueNotifier(false);
+      addTearDown(isExpanded.dispose);
+
+      await pumpShellWidget(
+        tester,
+        settle: false,
+        child: ShellNavMetrics(
+          collapseT: 0,
+          child: ValueListenableBuilder<bool>(
+            valueListenable: isExpanded,
+            builder: (context, expanded, _) {
+              return ShellNavGroupWidget(
                 group: _appointmentsGroup,
-                isExpanded: true,
+                isExpanded: expanded,
                 selectedItemId: 'appointments-calendar',
                 onToggle: (_) {},
                 onSelected: (_) {},
-              ),
-            ),
+              );
+            },
           ),
         ),
       );
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 125));
 
-      final align = tester.widget<Align>(
+      final collapsedAlign = tester.widget<Align>(
         find.descendant(of: find.byType(ShellNavGroupWidget), matching: find.byType(Align)),
       );
-      expect(align.heightFactor, greaterThan(0));
-      expect(align.heightFactor, lessThan(1));
+      expect(collapsedAlign.heightFactor, 0);
+
+      isExpanded.value = true;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 125));
+
+      final midAlign = tester.widget<Align>(
+        find.descendant(of: find.byType(ShellNavGroupWidget), matching: find.byType(Align)),
+      );
+      expect(midAlign.heightFactor, greaterThan(0));
+      expect(midAlign.heightFactor, lessThan(1));
 
       await tester.pump(ShellTokens.expandDuration);
       final settledAlign = tester.widget<Align>(

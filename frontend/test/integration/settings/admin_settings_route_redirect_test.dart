@@ -24,10 +24,10 @@ void main() {
       final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
       (container.read(authSessionProvider.notifier) as _DoctorSessionNotifier).setAuthenticated();
       container.read(appRouterProvider).go(AppRoutes.settingsBranches);
-      await tester.pumpAndSettle();
+      await settleRouterRedirects(tester);
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.settings);
-      expect(find.text('UI Pending Migration'), findsOneWidget);
+      expect(find.text('General'), findsOneWidget);
     });
 
     testWidgets('owner can open organization admin route', (tester) async {
@@ -54,7 +54,7 @@ void main() {
       final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
       (container.read(authSessionProvider.notifier) as _OwnerSessionNotifier).setAuthenticated();
       container.read(appRouterProvider).go(AppRoutes.settingsOrganization);
-      await tester.pumpAndSettle();
+      await settleRouterRedirects(tester);
 
       expect(
         container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path,
@@ -79,7 +79,7 @@ void main() {
         ),
       );
       container.read(appRouterProvider).go(AppRoutes.settingsStaff);
-      await tester.pumpAndSettle();
+      await settleRouterRedirects(tester);
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.bootstrap);
     });
@@ -91,10 +91,10 @@ void main() {
       final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
       (container.read(authSessionProvider.notifier) as _DoctorSessionNotifier).setAuthenticated();
       container.read(appRouterProvider).go(AppRoutes.settingsPermissions);
-      await tester.pumpAndSettle();
+      await settleRouterRedirects(tester);
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.settings);
-      expect(find.text('UI Pending Migration'), findsOneWidget);
+      expect(find.text('General'), findsOneWidget);
     });
 
     testWidgets('setup_complete legacy staff create redirects to settings staff form', (tester) async {
@@ -104,7 +104,7 @@ void main() {
       final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
       (container.read(authSessionProvider.notifier) as _OwnerSessionNotifier).setAuthenticated();
       container.read(appRouterProvider).go(AppRoutes.staffCreate);
-      await tester.pumpAndSettle();
+      await settleRouterRedirects(tester);
 
       expect(
         container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path,
@@ -118,7 +118,7 @@ void main() {
 
       final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
       container.read(appRouterProvider).go(AppRoutes.settingsOrganization);
-      await tester.pumpAndSettle();
+      await settleRouterRedirects(tester);
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.login);
     });

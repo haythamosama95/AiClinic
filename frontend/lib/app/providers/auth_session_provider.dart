@@ -196,7 +196,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
       duration = kIdleTimeoutDuration;
     }
 
-    if (!state.isAuthenticated) {
+    if (!ref.mounted || !state.isAuthenticated) {
       return;
     }
 

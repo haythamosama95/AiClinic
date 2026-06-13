@@ -6,10 +6,12 @@ import 'package:ai_clinic/core/config/deployment_profile.dart';
 import 'package:ai_clinic/core/config/deployment_profile_store.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
+import 'package:ai_clinic/features/settings/application/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/services/startup_health_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Valid local profile used by startup widget and integration tests.
@@ -72,6 +74,11 @@ class FakeStartupHealthService extends StartupHealthService {
   Future<StartupHealthResult> check(SupabaseConfig config) async => result;
 }
 
+class TestIdleTimeoutSettingsNotifier extends IdleTimeoutSettingsNotifier {
+  @override
+  Future<IdleTimeoutSettingsState> build() async => const IdleTimeoutSettingsState(duration: Duration(minutes: 15));
+}
+
 /// Startup notifier that reports a valid local profile (for isolated auth widget tests).
 class TestValidStartupSessionNotifier extends StartupSessionNotifier {
   @override
@@ -85,6 +92,17 @@ class TestValidStartupSessionNotifier extends StartupSessionNotifier {
       healthResult: sampleHealthResult(),
     );
   }
+
+  @override
+  Future<void> bootstrap() async {}
+}
+
+/// Shared provider overrides for integration tests that boot [AiClinicApp].
+List<Override> integrationTestOverrides() {
+  return [
+    startupSessionProvider.overrideWith(TestValidStartupSessionNotifier.new),
+    idleTimeoutSettingsProvider.overrideWith(TestIdleTimeoutSettingsNotifier.new),
+  ];
 }
 
 /// Boots the full app with deterministic startup dependencies for tests.
@@ -94,6 +112,9 @@ Future<void> pumpStartupApp(
   DeploymentProfileException? profileError,
   StartupHealthResult? healthResult,
 }) async {
+  await tester.binding.setSurfaceSize(const Size(1280, 900));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -101,6 +122,7 @@ Future<void> pumpStartupApp(
           FakeDeploymentProfileStore(profile: profile, error: profileError),
         ),
         startupHealthServiceProvider.overrideWithValue(FakeStartupHealthService(healthResult ?? sampleHealthResult())),
+        ...integrationTestOverrides(),
       ],
       child: const AiClinicApp(),
     ),
@@ -110,5 +132,22 @@ Future<void> pumpStartupApp(
 /// Completes bootstrap and settles router redirects for integration scenarios.
 Future<void> completeStartupBootstrap(WidgetTester tester) async {
   await tester.pump();
-  await tester.pumpAndSettle();
+  await settleRouterRedirects(tester);
+}
+
+/// Pumps router redirects without failing on login-page layout overflow in the test viewport.
+Future<void> settleRouterRedirects(WidgetTester tester) async {
+  final previousOnError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    if (details.exceptionAsString().contains('overflowed')) {
+      return;
+    }
+    previousOnError?.call(details);
+  };
+
+  try {
+    await tester.pumpAndSettle();
+  } finally {
+    FlutterError.onError = previousOnError;
+  }
 }

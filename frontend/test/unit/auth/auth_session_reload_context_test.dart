@@ -94,7 +94,6 @@ void main() {
     await notifier.refreshSessionContext();
 
     expect(notifier.state.context?.staffProfile.role, StaffRole.administrator);
-    container.dispose();
   });
 
   test('reloadContext refreshes session and reloads permission grants', () async {
