@@ -1,5 +1,8 @@
 -- Add optional patient filter to list_appointments for patient-detail upcoming views.
 
+DROP FUNCTION IF EXISTS public.list_appointments(uuid, timestamptz, timestamptz, uuid, text[]);
+DROP FUNCTION IF EXISTS auth_internal.list_appointments(uuid, timestamptz, timestamptz, uuid, text[]);
+
 CREATE OR REPLACE FUNCTION auth_internal.list_appointments(
   p_branch_id uuid,
   p_from timestamptz,

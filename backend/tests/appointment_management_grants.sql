@@ -25,7 +25,7 @@ DECLARE
     'auth_internal.reschedule_appointment(uuid,timestamp with time zone,integer,timestamp with time zone)'::regprocedure,
     'auth_internal.cancel_appointment(uuid,text)'::regprocedure,
     'auth_internal.update_appointment_status(uuid,text)'::regprocedure,
-    'auth_internal.list_appointments(uuid,timestamp with time zone,timestamp with time zone,uuid,text[])'::regprocedure
+    'auth_internal.list_appointments(uuid,timestamp with time zone,timestamp with time zone,uuid,text[],uuid)'::regprocedure
   ];
 BEGIN
   FOREACH v_sig IN ARRAY v_required LOOP
@@ -73,7 +73,7 @@ BEGIN
     'public_list_appointments_granted',
     has_function_privilege(
       'authenticated',
-      'public.list_appointments(uuid,timestamp with time zone,timestamp with time zone,uuid,text[])'::regprocedure,
+      'public.list_appointments(uuid,timestamp with time zone,timestamp with time zone,uuid,text[],uuid)'::regprocedure,
       'EXECUTE'
     ),
     'public wrapper'
