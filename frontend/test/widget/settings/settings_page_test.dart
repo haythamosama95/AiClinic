@@ -454,6 +454,26 @@ void main() {
       expect(find.text('Filters'), findsNothing);
       expect(find.text('Appearance'), findsOneWidget);
     });
+
+    group('I. Regression Testing (REG)', () {
+      testWidgets('REG-001: settings card grid keeps two-column layout on General tab', (tester) async {
+        await pumpSettingsPage(tester);
+
+        final grid = tester.getSize(find.byType(SettingsCardsGrid));
+        final card = tester.getSize(find.byType(SettingsSectionCard).first);
+        expect(card.width, closeTo(grid.width / 2 - 8, 20));
+      });
+
+      testWidgets('REG-002: staff management tab still renders staff list', (tester) async {
+        await pumpSettingsPage(tester, withStaffAndRoles: true);
+
+        await tester.tap(find.descendant(of: find.byType(SettingsTabBar), matching: find.text('Staff Management')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Dr. Smith'), findsOneWidget);
+        expect(find.text('New staff'), findsOneWidget);
+      });
+    });
   });
 
   group('Settings navigation', () {

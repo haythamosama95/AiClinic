@@ -18,6 +18,7 @@ import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_history_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_documents_card.dart';
@@ -782,6 +783,7 @@ class _PatientDetailHeaderState extends ConsumerState<_PatientDetailHeader> {
       if (!mounted) {
         return;
       }
+      ref.invalidate(patientListProvider);
       AppToast.success(context, message: 'Patient deleted.');
       PatientDetailPage._goBack(context);
     } on RpcFailure catch (error) {

@@ -298,26 +298,28 @@ void main() {
       expect(bootstrapRepo.finishSetupInput, isNull);
     });
 
-    test('resetInstallationForDevelopment clears wizard after successful RPC', () async {
-      final container = ProviderContainer(
-        overrides: [
-          bootstrapRepositoryProvider.overrideWith((ref) => _FakeBootstrapRepository()),
-          authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
-        ],
-      );
-      addTearDown(container.dispose);
+    group('REG-005 — Setup / Reset installation', () {
+      test('resetInstallationForDevelopment clears wizard after successful RPC', () async {
+        final container = ProviderContainer(
+          overrides: [
+            bootstrapRepositoryProvider.overrideWith((ref) => _FakeBootstrapRepository()),
+            authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
+          ],
+        );
+        addTearDown(container.dispose);
 
-      final notifier = container.read(setupNotifierProvider.notifier);
-      notifier.continueToBranchStep(name: 'Clinic', currencyCode: 'EGP', timezone: 'Africa/Cairo');
+        final notifier = container.read(setupNotifierProvider.notifier);
+        notifier.continueToBranchStep(name: 'Clinic', currencyCode: 'EGP', timezone: 'Africa/Cairo');
 
-      final ok = await notifier.resetInstallationForDevelopment();
+        final ok = await notifier.resetInstallationForDevelopment();
 
-      expect(ok, isTrue);
-      final state = container.read(setupNotifierProvider);
-      expect(state.step, SetupWizardStep.organization);
-      expect(state.organizationDraft, isNull);
-      expect(state.isSubmitting, isFalse);
-      expect(state.errorMessage, isNull);
+        expect(ok, isTrue);
+        final state = container.read(setupNotifierProvider);
+        expect(state.step, SetupWizardStep.organization);
+        expect(state.organizationDraft, isNull);
+        expect(state.isSubmitting, isFalse);
+        expect(state.errorMessage, isNull);
+      });
     });
 
     test('resetInstallationForDevelopment surfaces RESET_SAFE_DELETE without connectivity fallback', () async {

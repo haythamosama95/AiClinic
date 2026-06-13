@@ -91,11 +91,13 @@ run_sql_test "Patient management RLS" "patient_management_rls.sql"
 run_sql_test "Patient management extended" "patient_management_extended.sql"
 run_sql_test "Patient management roles" "patient_management_roles.sql"
 run_sql_test "Patient management search advanced" "patient_management_search_advanced.sql"
+run_sql_test "Patient management search filters" "patient_management_search_filters.sql"
 run_sql_test "Patient management concurrent" "patient_management_concurrent.sql"
 
 # --- Appointment Management ---
 printf '\n--- Appointment Management ---\n'
 run_sql_test "Appointment management CRUD" "appointment_management_crud.sql"
+run_sql_test "Appointment management patient filter" "appointment_management_patient_filter.sql"
 run_sql_test "Appointment management RLS" "appointment_management_rls.sql"
 run_sql_test "Appointment management grants" "appointment_management_grants.sql"
 

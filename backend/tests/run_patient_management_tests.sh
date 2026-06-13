@@ -25,6 +25,7 @@ sql_tests=(
   patient_management_extended.sql
   patient_management_roles.sql
   patient_management_search_advanced.sql
+  patient_management_search_filters.sql
 )
 
 for f in "${sql_tests[@]}"; do

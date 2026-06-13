@@ -117,5 +117,36 @@ void main() {
       expect(page.items, hasLength(1));
       expect(page.items.first.fullName, 'Valid');
     });
+
+    group('INT-008 — search_patients wire enums', () {
+      test('maps all PatientLastVisitFilter values to wire enums', () async {
+        final expected = <PatientLastVisitFilter, String>{
+          PatientLastVisitFilter.any: 'any',
+          PatientLastVisitFilter.last30Days: 'last_30_days',
+          PatientLastVisitFilter.last90Days: 'last_90_days',
+          PatientLastVisitFilter.over90Days: 'over_90_days',
+          PatientLastVisitFilter.never: 'never',
+        };
+
+        for (final entry in expected.entries) {
+          await repository.searchPatients(scope: PatientListScope.allBranches, lastVisitFilter: entry.key);
+          expect(client.lastParams?['p_last_visit_filter'], entry.value);
+        }
+      });
+
+      test('maps all PatientSortField values to wire enums', () async {
+        final expected = <PatientSortField, String>{
+          PatientSortField.nameAsc: 'name_asc',
+          PatientSortField.nameDesc: 'name_desc',
+          PatientSortField.lastVisitAsc: 'last_visit_asc',
+          PatientSortField.lastVisitDesc: 'last_visit_desc',
+        };
+
+        for (final entry in expected.entries) {
+          await repository.searchPatients(scope: PatientListScope.allBranches, sortField: entry.key);
+          expect(client.lastParams?['p_sort_field'], entry.value);
+        }
+      });
+    });
   });
 }

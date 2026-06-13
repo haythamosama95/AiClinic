@@ -101,7 +101,7 @@ void main() {
       repository.nextPage = const PatientSearchPage(items: [], totalCount: 0, limit: 20, offset: 0);
     });
 
-    test('M4: reloads when active branch changes', () async {
+    test('M4 / PL-F-027: reloads when active branch changes', () async {
       const branchA = '00000000-0000-4000-8000-000000000001';
       const branchB = '00000000-0000-4000-8000-000000000002';
       final auth = _SwitchablePatientsAuthNotifier(
@@ -123,6 +123,119 @@ void main() {
 
       expect(repository.searchCallCount, 2);
       expect(repository.lastBranchId, branchB);
+    });
+  });
+
+  group('PatientListNotifier filter and sort wiring (PL-F)', () {
+    late _TrackingPatientRepository repository;
+
+    ProviderContainer createContainer() {
+      return ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(_PatientsAuthNotifier.new),
+          searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(repository)),
+        ],
+      );
+    }
+
+    setUp(() {
+      repository = _TrackingPatientRepository();
+      repository.nextPage = const PatientSearchPage(items: [], totalCount: 0, limit: 20, offset: 0);
+    });
+
+    test('PL-F-017: forwards never last-visit filter', () async {
+      final providerContainer = createContainer();
+      addTearDown(providerContainer.dispose);
+
+      await providerContainer
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(lastVisitFilter: PatientLastVisitFilter.never));
+
+      expect(repository.lastLastVisitFilter, PatientLastVisitFilter.never);
+    });
+
+    test('PL-F-018: forwards last 30 days filter', () async {
+      final providerContainer = createContainer();
+      addTearDown(providerContainer.dispose);
+
+      await providerContainer
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(lastVisitFilter: PatientLastVisitFilter.last30Days));
+
+      expect(repository.lastLastVisitFilter, PatientLastVisitFilter.last30Days);
+    });
+
+    test('PL-F-019: forwards last 90 days filter', () async {
+      final providerContainer = createContainer();
+      addTearDown(providerContainer.dispose);
+
+      await providerContainer
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(lastVisitFilter: PatientLastVisitFilter.last90Days));
+
+      expect(repository.lastLastVisitFilter, PatientLastVisitFilter.last90Days);
+    });
+
+    test('PL-F-020: forwards over 90 days filter', () async {
+      final providerContainer = createContainer();
+      addTearDown(providerContainer.dispose);
+
+      await providerContainer
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(lastVisitFilter: PatientLastVisitFilter.over90Days));
+
+      expect(repository.lastLastVisitFilter, PatientLastVisitFilter.over90Days);
+    });
+
+    test('PL-F-021: forwards name descending sort', () async {
+      final providerContainer = createContainer();
+      addTearDown(providerContainer.dispose);
+
+      await providerContainer
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(sortField: PatientSortField.nameDesc));
+
+      expect(repository.lastSortField, PatientSortField.nameDesc);
+    });
+
+    test('PL-F-022: forwards last visit ascending sort', () async {
+      final providerContainer = createContainer();
+      addTearDown(providerContainer.dispose);
+
+      await providerContainer
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(sortField: PatientSortField.lastVisitAsc));
+
+      expect(repository.lastSortField, PatientSortField.lastVisitAsc);
+    });
+
+    test('PL-F-023: forwards combined never filter and name asc sort', () async {
+      final providerContainer = createContainer();
+      addTearDown(providerContainer.dispose);
+
+      await providerContainer
+          .read(patientListProvider.notifier)
+          .applyFilters(
+            const PatientListFilters(
+              lastVisitFilter: PatientLastVisitFilter.never,
+              sortField: PatientSortField.nameAsc,
+            ),
+          );
+
+      expect(repository.lastLastVisitFilter, PatientLastVisitFilter.never);
+      expect(repository.lastSortField, PatientSortField.nameAsc);
+    });
+
+    test('PL-F-014/015: forwards organization scope for all-branches filter', () async {
+      final providerContainer = createContainer();
+      addTearDown(providerContainer.dispose);
+
+      await providerContainer
+          .read(patientListProvider.notifier)
+          .applyFilters(const PatientListFilters(branchId: PatientListFilters.allBranchesSentinel));
+
+      expect(repository.lastScope, PatientListScope.allBranches);
+      expect(repository.lastBranchId, isNull);
     });
   });
 }
@@ -157,6 +270,7 @@ class _TrackingPatientRepository implements PatientRepository {
 
   PatientLastVisitFilter? lastLastVisitFilter;
   PatientSortField? lastSortField;
+  PatientListScope? lastScope;
   String? lastBranchId;
   int searchCallCount = 0;
 
@@ -173,6 +287,7 @@ class _TrackingPatientRepository implements PatientRepository {
     searchCallCount++;
     lastLastVisitFilter = lastVisitFilter;
     lastSortField = sortField;
+    lastScope = scope;
     lastBranchId = branchId;
     return nextPage;
   }

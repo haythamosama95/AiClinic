@@ -14,19 +14,21 @@ void main() {
   });
 
   group('PatientGenderAvatar low-severity regressions', () {
-    testWidgets('L4: null gender shows neutral person icon instead of male avatar', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
-          home: const Scaffold(body: PatientGenderAvatar(gender: null, size: 72)),
-        ),
-      );
-      await tester.pumpAndSettle();
+    group('UI-002 — Avatar null gender', () {
+      testWidgets('null gender shows neutral person icon instead of male avatar', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light(),
+            builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
+            home: const Scaffold(body: PatientGenderAvatar(gender: null, size: 72)),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.person_outline), findsOneWidget);
-      expect(find.byIcon(Icons.face_outlined), findsNothing);
-      expect(find.byType(Image), findsNothing);
+        expect(find.byIcon(Icons.person_outline), findsOneWidget);
+        expect(find.byIcon(Icons.face_outlined), findsNothing);
+        expect(find.byType(Image), findsNothing);
+      });
     });
 
     testWidgets('L4: male gender still uses male portrait asset', (tester) async {

@@ -21,46 +21,48 @@ class _FakeIdleStore extends IdleTimeoutPreferencesStore {
 }
 
 void main() {
-  test('idle timeout triggers sign-out after duration elapses', () {
-    FakeAsync().run((async) {
-      var signedOut = false;
-      final container = ProviderContainer(
-        overrides: [
-          idleTimeoutPreferencesStoreProvider.overrideWithValue(_FakeIdleStore(const Duration(seconds: 5))),
-          idleTimeoutServiceProvider.overrideWith((ref) {
-            final idle = IdleTimeoutService(
-              idleDuration: const Duration(seconds: 5),
-              onIdleTimeout: () => signedOut = true,
-            );
-            ref.onDispose(idle.dispose);
-            return idle;
-          }),
-        ],
-      );
-      addTearDown(container.dispose);
+  group('I. Regression Testing (REG-004) — Idle timeout', () {
+    test('idle timeout triggers sign-out after duration elapses', () {
+      FakeAsync().run((async) {
+        var signedOut = false;
+        final container = ProviderContainer(
+          overrides: [
+            idleTimeoutPreferencesStoreProvider.overrideWithValue(_FakeIdleStore(const Duration(seconds: 5))),
+            idleTimeoutServiceProvider.overrideWith((ref) {
+              final idle = IdleTimeoutService(
+                idleDuration: const Duration(seconds: 5),
+                onIdleTimeout: () => signedOut = true,
+              );
+              ref.onDispose(idle.dispose);
+              return idle;
+            }),
+          ],
+        );
+        addTearDown(container.dispose);
 
-      container.read(idleTimeoutServiceProvider).enable(resetTimer: true);
-      async.elapse(const Duration(seconds: 5));
-      expect(signedOut, isTrue);
+        container.read(idleTimeoutServiceProvider).enable(resetTimer: true);
+        async.elapse(const Duration(seconds: 5));
+        expect(signedOut, isTrue);
+      });
     });
-  });
 
-  test('user activity resets idle timer', () {
-    FakeAsync().run((async) {
-      var signedOut = false;
-      final service = IdleTimeoutService(
-        idleDuration: const Duration(seconds: 30),
-        onIdleTimeout: () => signedOut = true,
-      );
-      addTearDown(service.dispose);
+    test('user activity resets idle timer', () {
+      FakeAsync().run((async) {
+        var signedOut = false;
+        final service = IdleTimeoutService(
+          idleDuration: const Duration(seconds: 30),
+          onIdleTimeout: () => signedOut = true,
+        );
+        addTearDown(service.dispose);
 
-      service.enable(resetTimer: true);
-      async.elapse(const Duration(seconds: 25));
-      service.recordActivity();
-      async.elapse(const Duration(seconds: 25));
-      expect(signedOut, isFalse);
-      async.elapse(const Duration(seconds: 5));
-      expect(signedOut, isTrue);
+        service.enable(resetTimer: true);
+        async.elapse(const Duration(seconds: 25));
+        service.recordActivity();
+        async.elapse(const Duration(seconds: 25));
+        expect(signedOut, isFalse);
+        async.elapse(const Duration(seconds: 5));
+        expect(signedOut, isTrue);
+      });
     });
   });
 }

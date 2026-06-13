@@ -75,5 +75,14 @@ void main() {
       expect(find.text('Calendar content'), findsOneWidget);
       expect(find.text('Calendar'), findsWidgets);
     });
+
+    testWidgets('REG-006: Patients nav item navigates to patients route', (tester) async {
+      await pumpAuthenticatedShell(tester, initialLocation: AppRoutes.home);
+
+      await tester.tap(find.widgetWithText(ShellNavItemRow, 'Patients'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Patients content'), findsOneWidget);
+    });
   });
 }

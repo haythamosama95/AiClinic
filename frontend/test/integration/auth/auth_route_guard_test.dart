@@ -70,6 +70,18 @@ void main() {
       expect(find.byType(LoginPage), findsOneWidget);
     });
 
+    testWidgets('REG-008: unauthenticated /patients redirects to login', (tester) async {
+      await pumpStartupApp(tester);
+      await completeStartupBootstrap(tester);
+
+      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+      container.read(appRouterProvider).go(AppRoutes.patients);
+      await settleRouterRedirects(tester);
+
+      expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.login);
+      expect(find.byType(LoginPage), findsOneWidget);
+    });
+
     testWidgets('authenticated setup-complete user reaches home from login', (tester) async {
       await pumpAuthApp(tester, extraOverrides: [authSessionProvider.overrideWith(TestAuthSessionNotifier.new)]);
       await completeStartupBootstrap(tester);

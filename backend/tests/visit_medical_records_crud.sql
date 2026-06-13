@@ -700,6 +700,56 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- PD-F-010: list_patient_visit_attachments can_download for clinical vs lab_staff.
+  v_result := public.list_patient_visit_attachments(v_patient_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'list_patient_visit_attachments_clinical_can_download',
+    v_result.success
+      AND jsonb_array_length(v_result.data -> 'items') >= 1
+      AND COALESCE((v_result.data -> 'items' -> 0 ->> 'can_download')::boolean, false),
+    'count=' || COALESCE(jsonb_array_length(v_result.data -> 'items')::text, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_lab_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_lab_staff::text,
+      'staff_role', 'lab_staff',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_result := public.list_patient_visit_attachments(v_patient_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'list_patient_visit_attachments_lab_staff_other_upload_denied',
+    v_result.success
+      AND jsonb_array_length(v_result.data -> 'items') >= 1
+      AND NOT COALESCE((v_result.data -> 'items' -> 0 ->> 'can_download')::boolean, true),
+    'can_download=' || COALESCE((v_result.data -> 'items' -> 0 ->> 'can_download'), '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+
   -- list_patient_visits pagination metadata (multiple completed visits).
   v_start := pg_temp.test_appointment_same_day_slot(8);
   v_result := public.create_appointment(

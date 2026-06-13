@@ -22,6 +22,7 @@ psql_run() {
 sql_tests=(
   appointment_management_grants.sql
   appointment_management_crud.sql
+  appointment_management_patient_filter.sql
   appointment_management_rls.sql
 )
 

@@ -82,5 +82,15 @@ void main() {
       expect(items, hasLength(1));
       expect(items.first.patientName, 'Valid');
     });
+
+    test('REG-003 regression: branch-wide list omits p_patient_id', () async {
+      await repository.listAppointments(
+        branchId: '44444444-4444-4444-8444-444444444444',
+        from: DateTime.utc(2026, 6, 1),
+        to: DateTime.utc(2026, 6, 2),
+      );
+
+      expect(client.lastParams?.containsKey('p_patient_id'), isFalse);
+    });
   });
 }
