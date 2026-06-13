@@ -188,7 +188,14 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   }
 
   Future<void> _enableIdleWithPersistedDuration(IdleTimeoutService idle) async {
-    final duration = await ref.read(idleTimeoutPreferencesStoreProvider).loadIdleDuration();
+    Duration duration;
+    try {
+      duration = await ref.read(idleTimeoutPreferencesStoreProvider).loadIdleDuration();
+    } catch (error) {
+      AppLog.warning('auth.session.idle_duration_load_failed reason=${error.runtimeType}');
+      duration = kIdleTimeoutDuration;
+    }
+
     if (!state.isAuthenticated) {
       return;
     }

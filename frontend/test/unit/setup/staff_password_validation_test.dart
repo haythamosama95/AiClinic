@@ -17,4 +17,15 @@ void main() {
       expect(StaffPasswordValidation.validateInitialPassword('12345678'), contains('letter'));
     });
   });
+
+  group('StaffPasswordValidation.validateOptionalPassword', () {
+    test('treats whitespace-only as empty', () {
+      expect(StaffPasswordValidation.validateOptionalPassword('   '), isNull);
+    });
+
+    test('validates trimmed non-empty passwords', () {
+      expect(StaffPasswordValidation.validateOptionalPassword('  short  '), contains('8 characters'));
+      expect(StaffPasswordValidation.validateOptionalPassword('  Secret12  '), isNull);
+    });
+  });
 }

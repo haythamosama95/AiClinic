@@ -82,11 +82,20 @@ class _AnimatedFilterCardsGridState<T> extends State<AnimatedFilterCardsGrid<T>>
           AppFadeInOutPanel(
             key: ValueKey(key),
             visible: widget.isVisible(itemByKey[key] as T),
-            animateOnMount: _keysPendingFadeIn.remove(key),
+            animateOnMount: _keysPendingFadeIn.contains(key),
             onHidden: () => _removeKey(key),
             child: widget.itemBuilder(itemByKey[key] as T),
           ),
     ];
+
+    if (_keysPendingFadeIn.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(_keysPendingFadeIn.clear);
+      });
+    }
 
     final showEmpty = !widget.items.any(widget.isVisible) && _displayedKeys.isEmpty;
 

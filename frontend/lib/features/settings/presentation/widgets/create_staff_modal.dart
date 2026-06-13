@@ -136,7 +136,30 @@ class _CreateStaffModalState extends ConsumerState<CreateStaffModal> {
   }
 
   Future<void> _showCredentialsDialog(CreateStaffAccountResult result) async {
-    final password = result.revealAssignedPassword() ?? '';
+    final password = result.revealAssignedPassword();
+    if (password == null) {
+      await AppDialog.show<void>(
+        context: context,
+        title: 'Staff account created',
+        body: const Text(
+          'The account was created, but the assigned password is no longer available. '
+          'Use password reset if the staff member needs access.',
+        ),
+        actions: [
+          AppButton(
+            label: 'Done',
+            expand: false,
+            onPressed: () {
+              ref.read(provisioningNotifierProvider.notifier).clearLastCreated();
+              Navigator.of(context).pop();
+              Navigator.of(context).pop(true);
+            },
+          ),
+        ],
+      );
+      return;
+    }
+
     await AppDialog.show<void>(
       context: context,
       title: 'Staff account created',

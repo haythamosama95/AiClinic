@@ -76,7 +76,7 @@ class RolePermissionsNotifier extends AsyncNotifier<RolePermissionsUiState> {
 
     final rows = await ref.read(fetchPermissionMatrixUseCaseProvider)();
     final matrix = PermissionMatrixView.fromRows(rows);
-    final role = auth.context!.staffProfile.role;
+    final role = auth.context?.staffProfile.role ?? StaffRole.receptionist;
     final editable = role == StaffRole.administrator;
     return RolePermissionsUiState(savedMatrix: matrix, workingMatrix: matrix, editable: editable);
   }
