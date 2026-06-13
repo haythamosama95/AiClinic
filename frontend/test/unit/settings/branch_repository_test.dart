@@ -82,6 +82,25 @@ void main() {
       );
     });
 
+    test('createBranch sends working_schedule payload', () async {
+      final schedule = BranchWorkingSchedule.defaultSchedule();
+
+      await repository.createBranch(CreateBranchInput(name: 'North', workingSchedule: schedule, code: 'N1'));
+
+      expect(client.lastParams, contains('p_working_schedule'));
+      expect(client.lastParams!['p_working_schedule'], isNotNull);
+    });
+
+    test('updateBranch sends working_schedule payload', () async {
+      final schedule = BranchWorkingSchedule.defaultSchedule();
+
+      await repository.updateBranch(
+        UpdateBranchInput(branchId: '22222222-2222-4222-8222-222222222222', name: 'Renamed', workingSchedule: schedule),
+      );
+
+      expect(client.lastParams, contains('p_working_schedule'));
+    });
+
     test('updateBranch omits optional empty fields but keeps name', () async {
       await repository.updateBranch(
         UpdateBranchInput(

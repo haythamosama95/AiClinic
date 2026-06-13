@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
@@ -71,6 +72,71 @@ void main() {
 
       expect(find.text('Close time must be after open time.'), findsNothing);
       expect(find.byType(AppAlert), findsNothing);
+    });
+
+    testWidgets('toggle day off clears times', (tester) async {
+      await pumpSheet(
+        tester,
+        initialSchedule: scheduleWithMonday(openTime: '09:00', closeTime: '17:00'),
+      );
+
+      final mondaySwitch = find.descendant(
+        of: find.ancestor(of: find.text('Monday'), matching: find.byType(Row)).first,
+        matching: find.byType(FSwitch),
+      );
+      await tester.tap(mondaySwitch);
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(AppClockTimeField, 'From'), findsNothing);
+    });
+
+    testWidgets('all days off rejected on save', (tester) async {
+      await pumpSheet(
+        tester,
+        initialSchedule: scheduleWithMonday(openTime: '09:00', closeTime: '17:00'),
+      );
+
+      final mondaySwitch = find.descendant(
+        of: find.ancestor(of: find.text('Monday'), matching: find.byType(Row)).first,
+        matching: find.byType(FSwitch),
+      );
+      await tester.tap(mondaySwitch);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(AppButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('At least one working day is required.'), findsOneWidget);
+    });
+
+    testWidgets('midnight-spanning hours rejected', (tester) async {
+      await pumpSheet(
+        tester,
+        initialSchedule: scheduleWithMonday(openTime: '22:00', closeTime: '06:00'),
+      );
+
+      expect(find.text('Close time must be after open time.'), findsOneWidget);
+    });
+
+    testWidgets('stupid usage: spam toggle all days', (tester) async {
+      await pumpSheet(
+        tester,
+        initialSchedule: scheduleWithMonday(openTime: '09:00', closeTime: '17:00'),
+      );
+
+      for (final day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
+        final daySwitch = find.descendant(
+          of: find.ancestor(of: find.text(day), matching: find.byType(Row)).first,
+          matching: find.byType(FSwitch),
+        );
+        if (daySwitch.evaluate().isNotEmpty) {
+          await tester.tap(daySwitch);
+          await tester.pump();
+        }
+      }
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
     });
   });
 }

@@ -56,6 +56,7 @@ class _StaffDetailSheetState extends ConsumerState<StaffDetailSheet> {
   var _isSaving = false;
   var _isTogglingActive = false;
   var _isDeletingStaff = false;
+  var _isResettingPassword = false;
   var _usernameRevealed = false;
   String? _originalUsername;
   String? _errorMessage;
@@ -388,6 +389,106 @@ class _StaffDetailSheetState extends ConsumerState<StaffDetailSheet> {
     }
   }
 
+  Future<void> _promptResetPassword() async {
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+
+        return AlertDialog(
+          title: Text('Reset password?', style: theme.textTheme.titleLarge),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Set a new password for ${widget.member.fullName}. They will need this to sign in.',
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: SpacingTokens.md),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'New password *'),
+                  validator: (value) {
+                    if (value == null || value.trim().length < 6) {
+                      return 'Password must be at least 6 characters.';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () {
+                if (formKey.currentState?.validate() ?? false) {
+                  Navigator.of(dialogContext).pop(true);
+                }
+              },
+              child: const Text('Reset password'),
+            ),
+          ],
+        );
+      },
+    );
+
+    final newPassword = passwordController.text.trim();
+
+    if (confirmed == true && mounted) {
+      await _resetPassword(newPassword);
+    }
+  }
+
+  Future<void> _resetPassword(String newPassword) async {
+    final detail = _detail;
+    if (detail == null) {
+      return;
+    }
+
+    setState(() => _isResettingPassword = true);
+
+    try {
+      final result = await ref
+          .read(provisioningNotifierProvider.notifier)
+          .resetStaffPassword(staffMemberId: detail.id, newPassword: newPassword);
+      if (result == null) {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _isResettingPassword = false);
+        AppToast.error(
+          context,
+          message: ref.read(provisioningNotifierProvider).errorMessage ?? 'Unable to reset the password.',
+        );
+        return;
+      }
+
+      result.clearAssignedPassword();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _isResettingPassword = false);
+      AppToast.success(context, message: 'Password reset.');
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isResettingPassword = false);
+      AppToast.error(context, message: 'Unable to reset the password. Check connectivity and try again.');
+    }
+  }
+
   Future<void> _confirmPermanentDelete() async {
     await AppDialog.showConfirmation(
       context: context,
@@ -562,10 +663,20 @@ class _StaffDetailSheetState extends ConsumerState<StaffDetailSheet> {
           canReveal: false,
           isRevealed: false,
           unavailableMessage: _canViewCredentials
-              ? 'Passwords cannot be viewed. Set a new password in edit mode.'
+              ? 'Passwords cannot be viewed. Use Reset password below or set a new password in edit mode.'
               : 'Only administrators can manage credentials.',
           onReveal: () {},
         ),
+        if (_canViewCredentials) ...[
+          const SizedBox(height: SpacingTokens.md),
+          AppButton(
+            label: 'Reset password',
+            variant: AppButtonVariant.outline,
+            expand: false,
+            isLoading: _isResettingPassword,
+            onPressed: _isResettingPassword || _isTogglingActive || _isDeletingStaff ? null : _promptResetPassword,
+          ),
+        ],
       ],
     );
   }

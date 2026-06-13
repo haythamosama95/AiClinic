@@ -7,14 +7,17 @@ import 'package:ai_clinic/features/setup/presentation/providers/staff_assignable
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_query.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_member_detail.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/animated_filter_cards_grid.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_cards_grid.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/staff_member_card.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -315,6 +318,125 @@ void main() {
       expect(find.text('Main Clinic'), findsNothing);
       expect(find.text('Filters'), findsOneWidget);
     });
+
+    testWidgets('apply branch filter restricts list', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      const eastWingDoctor = StaffListItem(
+        id: '00000000-0000-4000-8000-000000000103',
+        fullName: 'East Wing Doctor',
+        role: StaffRole.doctor,
+        isActive: true,
+        branches: [StaffBranchLabel(id: '00000000-0000-4000-8000-000000000202', name: 'East Wing', isPrimary: true)],
+      );
+      const mainClinicDoctor = StaffListItem(
+        id: '00000000-0000-4000-8000-000000000101',
+        fullName: 'Dr. Smith',
+        role: StaffRole.doctor,
+        isActive: true,
+        branches: [StaffBranchLabel(id: '00000000-0000-4000-8000-000000000201', name: 'Main Clinic', isPrimary: true)],
+      );
+
+      const query = StaffListQuery(branchIds: {'00000000-0000-4000-8000-000000000201'});
+      expect(query.matches(mainClinicDoctor), isTrue);
+      expect(query.matches(eastWingDoctor), isFalse);
+    });
+
+    testWidgets('apply role filter restricts list', (tester) async {
+      const doctor = StaffListItem(id: '1', fullName: 'Dr. Smith', role: StaffRole.doctor, isActive: true);
+      const receptionist = StaffListItem(
+        id: '2',
+        fullName: 'Former Receptionist',
+        role: StaffRole.receptionist,
+        isActive: false,
+      );
+
+      const query = StaffListQuery(roles: {StaffRole.doctor});
+      expect(query.matches(doctor), isTrue);
+      expect(query.matches(receptionist), isFalse);
+    });
+
+    testWidgets('clear all filters resets to full list', (tester) async {
+      const query = StaffListQuery(roles: {StaffRole.doctor}, branchIds: {'branch-1'});
+      final cleared = query.copyWith(roles: {}, branchIds: {});
+      expect(cleared.activeFilterCount, 0);
+      expect(cleared.roles, isEmpty);
+      expect(cleared.branchIds, isEmpty);
+    });
+
+    testWidgets('stupid usage: search special characters', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          extraStaff: const [
+            {
+              'id': '00000000-0000-4000-8000-000000000105',
+              'full_name': 'Dr. %Wildcard',
+              'role': 'doctor',
+              'is_active': true,
+              'is_deleted': false,
+            },
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      for (final query in ['%', '_', '😀']) {
+        await tester.enterText(find.byType(TextField), query);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+    });
+
+    testWidgets('very long staff name truncates gracefully on card', (tester) async {
+      final longName = 'A' * 200;
+      await tester.pumpWidget(
+        _host(
+          extraStaff: [
+            {
+              'id': '00000000-0000-4000-8000-000000000106',
+              'full_name': longName,
+              'role': 'doctor',
+              'is_active': true,
+              'is_deleted': false,
+            },
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final card = tester.renderObject<RenderBox>(find.text(longName));
+      final screen = tester.renderObject<RenderBox>(find.byType(StaffListPage));
+      expect(card.size.width, lessThanOrEqualTo(screen.size.width));
+    });
+
+    testWidgets('animated filter cards grid fade', (tester) async {
+      await tester.pumpWidget(_host(includeInactive: true));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AnimatedFilterCardsGrid<StaffListItem>), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'Former');
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Former Receptionist'), findsOneWidget);
+      expect(find.text('Dr. Smith'), findsNothing);
+    });
+
+    testWidgets('animated filter grid disposal safe when page closes mid-animation', (tester) async {
+      await tester.pumpWidget(_host(includeInactive: true));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'Former');
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(tester.takeException(), isNull);
+    });
   });
 }
 
@@ -327,6 +449,7 @@ Widget _host({
   Map<String, List<StaffBranchLabel>>? branches,
   Map<String, String>? usernames,
   SettingsRpcTestClient? rpcClient,
+  List<BranchListItem>? clinicBranches,
 }) {
   final staff = <Map<String, dynamic>>[
     if (!empty)
@@ -371,9 +494,9 @@ Widget _host({
         (ref) async => const [BranchSummary(id: '00000000-0000-4000-8000-000000000201', name: 'Main Clinic')],
       ),
       clinicSetupBranchesProvider.overrideWith(
-        (ref) async => const [
-          BranchListItem(id: '00000000-0000-4000-8000-000000000201', name: 'Main Clinic', isActive: true),
-        ],
+        (ref) async =>
+            clinicBranches ??
+            const [BranchListItem(id: '00000000-0000-4000-8000-000000000201', name: 'Main Clinic', isActive: true)],
       ),
     ],
     child: MaterialApp(

@@ -59,6 +59,13 @@ class SettingsRpcTestClient extends RpcCaptureSupabaseClient {
         'success': true,
         'data': {'staff_member_id': paramsId('p_staff_member_id')},
       },
+      'admin_update_staff_username' => {
+        'success': true,
+        'data': {
+          'staff_member_id': paramsId('p_staff_member_id'),
+          'username': lastParams?['p_new_username'],
+        },
+      },
       'update_role_permission' => {
         'success': true,
         'data': {

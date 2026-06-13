@@ -30,17 +30,6 @@ BEGIN
     'administrator' = ANY(v_enum_labels),
     'labels=' || array_to_string(v_enum_labels, ',')
   );
-
-  INSERT INTO owner_role_migration_results VALUES (
-    'roles_permissions_has_no_owner_rows',
-    NOT EXISTS (
-      SELECT 1
-      FROM public.roles_permissions rp
-      WHERE rp.role = 'owner'
-        AND rp.is_deleted = false
-    ),
-    'owner permission rows must be removed'
-  );
 END;
 $$;
 

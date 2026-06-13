@@ -61,44 +61,49 @@ class _SettingsTabItemState extends State<_SettingsTabItem> {
     final isActive = widget.isSelected;
     final contentColor = isActive ? colors.primary : (_isHovered ? colors.foreground : colors.mutedForeground);
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: InkWell(
-        onTap: widget.onTap,
-        child: Padding(
-          padding: const EdgeInsets.only(top: SpacingTokens.md),
-          child: IntrinsicWidth(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.xs),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(widget.tab.icon, size: 18, color: contentColor),
-                      const SizedBox(width: SpacingTokens.sm),
-                      Text(
-                        widget.tab.label,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: contentColor,
-                          fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+    return Semantics(
+      button: true,
+      selected: isActive,
+      label: widget.tab.label,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: InkWell(
+          onTap: widget.onTap,
+          child: Padding(
+            padding: const EdgeInsets.only(top: SpacingTokens.md),
+            child: IntrinsicWidth(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.xs),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(widget.tab.icon, size: 18, color: contentColor),
+                        const SizedBox(width: SpacingTokens.sm),
+                        Text(
+                          widget.tab.label,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: contentColor,
+                            fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: SpacingTokens.md),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                  height: 3,
-                  color: isActive ? colors.primary : Colors.transparent,
-                ),
-              ],
+                  const SizedBox(height: SpacingTokens.md),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    height: 3,
+                    color: isActive ? colors.primary : Colors.transparent,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

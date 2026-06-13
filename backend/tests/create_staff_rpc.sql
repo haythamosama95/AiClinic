@@ -67,7 +67,13 @@ BEGIN
   DELETE FROM public.audit_log;
   DELETE FROM auth.users
   WHERE email LIKE 'us6-%'
-     OR email IN ('admin-one', 'admin-two', 'reception');
+     OR email IN (
+       'admin-one',
+       'admin-two',
+       'admin-bootstrap-second',
+       'admin-clinic-attempt',
+       'reception'
+     );
 
   UPDATE public.staff_members
   SET role = 'administrator', is_bootstrap_admin = true, is_active = true, is_deleted = false
@@ -396,6 +402,55 @@ PERFORM set_config('role', 'postgres', true);
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
+
+  -- Optional phone accepted and trimmed.
+  v_result := public.create_staff_account(
+    'us6-phone',
+    'secret12',
+    'Phone Staff',
+    'receptionist',
+    ARRAY[v_branch_id],
+    v_branch_id,
+    '  +20 100 200 3000  '
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO create_staff_rpc_results VALUES (
+    'create_staff_account_accepts_optional_phone',
+    v_result.success AND EXISTS (
+      SELECT 1 FROM public.staff_members sm
+      WHERE sm.id = (v_result.data ->> 'staff_member_id')::uuid
+        AND sm.phone = '+20 100 200 3000'
+    ),
+    COALESCE(v_result.error_code, 'ok')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- staff_login_usernames requires caller JWT org context (not bare postgres).
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_admin_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_id::text,
+      'staff_member_id', v_admin_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO create_staff_rpc_results VALUES (
+    'staff_login_usernames_view_exposes_usernames',
+    EXISTS (
+      SELECT 1
+      FROM public.staff_login_usernames(ARRAY[v_receptionist_staff_id]) u
+      WHERE u.staff_member_id = v_receptionist_staff_id AND u.username = 'reception'
+    ),
+    'receptionist username queryable'
+  );
+  PERFORM set_config('role', 'authenticated', true);
 END;
 $$;
 
@@ -413,6 +468,4 @@ BEGIN
 END;
 $$;
 
-COMMIT;
-
-SELECT test_name, passed, detail FROM create_staff_rpc_results ORDER BY test_name;
+ROLLBACK;

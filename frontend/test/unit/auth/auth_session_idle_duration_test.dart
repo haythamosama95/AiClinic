@@ -42,4 +42,18 @@ void main() {
     expect(container.read(idleTimeoutServiceProvider).idleDuration, const Duration(minutes: 60));
     expect(store.duration, const Duration(minutes: 60));
   });
+
+  test('app startup loads idle settings before timer starts', () async {
+    final store = _FakeIdleStore(const Duration(minutes: 90));
+
+    final container = ProviderContainer(overrides: [idleTimeoutPreferencesStoreProvider.overrideWithValue(store)]);
+    addTearDown(container.dispose);
+
+    final service = container.read(idleTimeoutServiceProvider);
+    expect(service.idleDuration, const Duration(minutes: 15));
+
+    await container.read(idleTimeoutSettingsProvider.future);
+
+    expect(service.idleDuration, const Duration(minutes: 90));
+  });
 }

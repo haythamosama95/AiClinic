@@ -32,6 +32,7 @@ sql_tests=(
   rpc_contract_alignment.sql
   rls_isolation.sql
   auth_rbac_extended.sql
+  owner_role_migration.sql
   dev_reset_clinic_installation.sql
 )
 
@@ -39,5 +40,8 @@ for f in "${sql_tests[@]}"; do
   printf '== Auth backend suite: %s ==\n' "${f}"
   psql_run -f "${script_dir}/${f}" >/dev/null
 done
+
+printf '== Auth backend suite: staff_sign_in_after_create.sh ==\n'
+"${script_dir}/staff_sign_in_after_create.sh" >/dev/null
 
 printf 'Auth backend suite: all checks passed.\n'

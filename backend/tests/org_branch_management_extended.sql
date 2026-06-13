@@ -32,6 +32,8 @@ DECLARE
   v_branch_name text;
   v_audit_count int;
   v_active_count int;
+  v_stored_schedule jsonb;
+  v_updated_schedule jsonb;
   v_working_schedule jsonb := '{
     "days": [
       {"day":"monday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
@@ -190,6 +192,16 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Branch create without working schedule rejected.
+  v_result := public.manage_create_branch('No Schedule Branch', NULL, 'NOSCH', NULL, NULL, NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_ext_results VALUES (
+    'branch_create_missing_working_schedule_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- ===========================================================================
   -- BRANCH CREATE: duplicate code (case-insensitive)
   -- ===========================================================================
@@ -267,6 +279,12 @@ BEGIN
   -- BRANCH DELETE: inactive only, soft delete
   -- ===========================================================================
 
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
+  VALUES (v_receptionist_staff, v_branch_third, false, v_bootstrap_user, v_bootstrap_user)
+  ON CONFLICT DO NOTHING;
+  PERFORM set_config('role', 'authenticated', true);
+
   v_result := public.set_branch_active(v_branch_third, false);
   v_result := public.delete_branch(v_branch_second);
   PERFORM set_config('role', 'postgres', true);
@@ -304,6 +322,109 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Delete soft-deletes staff_branch_assignments for the branch.
+  PERFORM set_config('role', 'postgres', true);
+  SELECT count(*)::int INTO v_active_count
+  FROM public.staff_branch_assignments sba
+  WHERE sba.branch_id = v_branch_third AND sba.is_deleted = true;
+  INSERT INTO org_ext_results VALUES (
+    'branch_delete_soft_deletes_assignments',
+    v_active_count >= 1,
+    'deleted_assignments=' || v_active_count::text
+  );
+
+  SELECT count(*)::int INTO v_audit_count
+  FROM public.audit_log al
+  WHERE al.organization_id = v_org_id AND al.action = 'branch.delete' AND al.record_id = v_branch_third;
+  INSERT INTO org_ext_results VALUES (
+    'branch_delete_writes_audit_log',
+    v_audit_count >= 1,
+    'count=' || v_audit_count::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Doctor caller forbidden for delete_branch.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_doctor_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_doctor_staff::text,
+      'staff_role', 'doctor',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_result := public.delete_branch(v_branch_second);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_ext_results VALUES (
+    'branch_delete_doctor_forbidden',
+    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Cross-org branch id rejected.
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+  v_result := public.delete_branch('00000000-0000-4000-8000-000000009999');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO org_ext_results VALUES (
+    'branch_delete_cross_org_rejected',
+    NOT v_result.success AND v_result.error_code IN ('BRANCH_NOT_FOUND', 'CROSS_ORG_DENIED'),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- ===========================================================================
+  -- BRANCH UPDATE: working_schedule persisted
+  -- ===========================================================================
+
+  v_updated_schedule := '{
+    "days": [
+      {"day":"monday","is_working_day":true,"open_time":"10:00","close_time":"18:00"},
+      {"day":"tuesday","is_working_day":true,"open_time":"10:00","close_time":"18:00"},
+      {"day":"wednesday","is_working_day":true,"open_time":"10:00","close_time":"18:00"},
+      {"day":"thursday","is_working_day":true,"open_time":"10:00","close_time":"18:00"},
+      {"day":"friday","is_working_day":true,"open_time":"10:00","close_time":"18:00"},
+      {"day":"saturday","is_working_day":false},
+      {"day":"sunday","is_working_day":false}
+    ]
+  }'::jsonb;
+
+  v_result := public.update_branch(
+    v_branch_main,
+    'Main',
+    v_updated_schedule,
+    'MAIN',
+    '1 Main St',
+    '+1234567890',
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  SELECT b.working_schedule INTO v_stored_schedule
+  FROM public.branches b
+  WHERE b.id = v_branch_main;
+  INSERT INTO org_ext_results VALUES (
+    'update_branch_persists_working_schedule',
+    v_result.success AND v_stored_schedule = v_updated_schedule,
+    'stored=' || COALESCE(v_stored_schedule::text, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- ===========================================================================
   -- ORGANIZATION UPDATE: metadata fields persisted correctly
   -- ===========================================================================
@@ -338,7 +459,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- ===========================================================================
-  -- STAFF: create_staff_account with empty username rejected
+  -- STAFF DEACTIVATION: cannot deactivate self
   -- ===========================================================================
 
   PERFORM set_config(
@@ -354,56 +475,10 @@ BEGIN
     )::text,
     true
   );
-  v_result := public.create_staff_account('', 'password1', 'Empty User', 'receptionist', ARRAY[v_branch_main]);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO org_ext_results VALUES (
-    'staff_create_empty_username_rejected',
-    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Empty password rejected.
-  v_result := public.create_staff_account('valid-user', '', 'Empty Pass', 'receptionist', ARRAY[v_branch_main]);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO org_ext_results VALUES (
-    'staff_create_empty_password_rejected',
-    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Empty branches rejected.
-  v_result := public.create_staff_account('valid-user2', 'password1', 'No Branch', 'receptionist', ARRAY[]::uuid[]);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO org_ext_results VALUES (
-    'staff_create_empty_branches_rejected',
-    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- ===========================================================================
-  -- STAFF DEACTIVATION: cannot deactivate self
-  -- ===========================================================================
-
   v_result := public.set_staff_active(v_owner_staff, false);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO org_ext_results VALUES (
     'staff_self_deactivation_rejected',
-    NOT v_result.success,
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- ===========================================================================
-  -- PERMISSION MATRIX: non-existent permission key
-  -- ===========================================================================
-
-  v_result := public.update_role_permission('receptionist', 'non.existent.key', true);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO org_ext_results VALUES (
-    'permission_nonexistent_key_rejected',
     NOT v_result.success,
     COALESCE(v_result.error_code, '<null>')
   );

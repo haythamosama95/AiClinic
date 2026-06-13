@@ -70,13 +70,18 @@ run_sql_test "Subscription cache nonblocking" "subscription_cache_nonblocking.sq
 run_sql_test "RPC contract alignment" "rpc_contract_alignment.sql"
 run_sql_test "RLS isolation" "rls_isolation.sql"
 run_sql_test "Auth RBAC extended" "auth_rbac_extended.sql"
+run_sql_test "Owner role migration" "owner_role_migration.sql"
 run_sql_test "Dev reset clinic installation" "dev_reset_clinic_installation.sql"
+run_shell_test "Staff sign-in after create" "staff_sign_in_after_create.sh"
 
 # --- Org / Branch Management ---
 printf -- '\n--- Org / Branch Management ---\n'
 run_sql_test "Org branch management CRUD" "org_branch_management_crud.sql"
 run_sql_test "Org branch management RLS" "org_branch_management_rls.sql"
 run_sql_test "Org branch management extended" "org_branch_management_extended.sql"
+run_sql_test "Role permissions matrix" "role_permissions_matrix.sql"
+run_sql_test "Admin update staff username" "admin_update_staff_username.sql"
+run_sql_test "Delete staff member" "delete_staff_member.sql"
 
 # --- Patient Management ---
 printf -- '\n--- Patient Management ---\n'

@@ -23,6 +23,9 @@ sql_tests=(
   org_branch_management_crud.sql
   org_branch_management_rls.sql
   org_branch_management_extended.sql
+  role_permissions_matrix.sql
+  admin_update_staff_username.sql
+  delete_staff_member.sql
 )
 
 for f in "${sql_tests[@]}"; do

@@ -21,6 +21,17 @@ DECLARE
   v_assignment_count int;
   v_claims jsonb;
   v_setup_required text;
+  v_working_schedule jsonb := '{
+    "days": [
+      {"day":"monday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"tuesday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"wednesday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"thursday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"friday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"saturday","is_working_day":true,"open_time":"09:00","close_time":"17:00"},
+      {"day":"sunday","is_working_day":false}
+    ]
+  }'::jsonb;
 BEGIN
   -- Isolate from prior suite scripts (e.g. jwt_claims_contract) that may create an org.
   PERFORM set_config('role', 'postgres', true);
@@ -261,6 +272,7 @@ PERFORM set_config('role', 'postgres', true);
     true
   );
 
+  PERFORM set_config('role', 'postgres', true);
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
   VALUES (
     'c0000000-0000-4000-8000-000000000099',
@@ -293,7 +305,8 @@ PERFORM set_config('role', 'postgres', true);
     'ATOM',
     '1 Atomic Way',
     '+1-555-0199',
-    'https://maps.example/atomic'
+    'https://maps.example/atomic',
+    v_working_schedule
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO bootstrap_rpc_results VALUES (
@@ -304,6 +317,15 @@ PERFORM set_config('role', 'postgres', true);
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM set_config('role', 'postgres', true);
+  DELETE FROM auth.users WHERE email = 'finish-owner';
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
 
   v_result := public.bootstrap_finish_setup(
     'Atomic Clinic OK',
@@ -323,7 +345,8 @@ PERFORM set_config('role', 'postgres', true);
     'ATOM',
     '1 Atomic Way',
     '+1-555-0199',
-    'https://maps.example/atomic'
+    'https://maps.example/atomic',
+    v_working_schedule
   );
   v_org_id := (v_result.data ->> 'organization_id')::uuid;
   v_branch_id := (v_result.data ->> 'branch_id')::uuid;
@@ -340,7 +363,7 @@ PERFORM set_config('role', 'postgres', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff, v_non_bootstrap_staff]::uuid[]);
   DELETE FROM public.audit_log;
   DELETE FROM auth.users
-  WHERE email IN ('finish-receptionist');
+  WHERE email IN ('finish-receptionist', 'finish-owner');
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
@@ -367,7 +390,8 @@ PERFORM set_config('role', 'postgres', true);
     'OPST',
     '1 Operational Way',
     '+1-555-0200',
-    'https://maps.example/operational'
+    'https://maps.example/operational',
+    v_working_schedule
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO bootstrap_rpc_results VALUES (
@@ -378,6 +402,19 @@ PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('role', 'authenticated', true);
 
   -- Empty staff array rejected server-side.
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff, v_non_bootstrap_staff]::uuid[]);
+  DELETE FROM public.audit_log;
+  DELETE FROM auth.users
+  WHERE email IN ('finish-receptionist', 'finish-owner');
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
   v_result := public.bootstrap_finish_setup(
     'Empty Staff Clinic',
     'Empty Staff Branch',
@@ -389,7 +426,8 @@ PERFORM set_config('role', 'postgres', true);
     'EMPT',
     '1 Empty Way',
     '+1-555-0210',
-    'https://maps.example/empty'
+    'https://maps.example/empty',
+    v_working_schedule
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO bootstrap_rpc_results VALUES (
@@ -415,6 +453,4 @@ BEGIN
 END;
 $$;
 
-COMMIT;
-
-SELECT test_name, passed, detail FROM bootstrap_rpc_results ORDER BY test_name;
+ROLLBACK;

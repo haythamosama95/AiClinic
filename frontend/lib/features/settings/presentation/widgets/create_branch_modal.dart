@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -183,76 +184,88 @@ class _CreateBranchModalState extends ConsumerState<CreateBranchModal> {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(_CreateBranchModalPalette.modalRadius),
-        boxShadow: ShadowTokens.shadowLg,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.xl),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Add branch',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter): () {
+          if (!_isSaving && _isReady) {
+            _create();
+          }
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.card,
+            borderRadius: BorderRadius.circular(_CreateBranchModalPalette.modalRadius),
+            boxShadow: ShadowTokens.shadowLg,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(SpacingTokens.xl),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Add branch',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: SpacingTokens.sm),
+                  Text(
+                    'Start with your main branch. Additional branches can be added later.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
+                  ),
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: SpacingTokens.lg),
+                    AppAlert(variant: AppAlertVariant.destructive, title: _errorMessage!),
+                  ],
+                  const SizedBox(height: SpacingTokens.xl),
+                  SetupBranchStep(
+                    formKey: _formKey,
+                    nameController: _nameController,
+                    codeController: _codeController,
+                    addressController: _addressController,
+                    phoneController: _phoneController,
+                    mapsUrlController: _mapsUrlController,
+                    workingSchedule: _workingSchedule,
+                    onWorkingScheduleChanged: (schedule) {
+                      setState(() => _workingSchedule = schedule);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _formKey.currentState?.validate();
+                      });
+                    },
+                    isBusy: _isSaving,
+                  ),
+                  const SizedBox(height: SpacingTokens.xl),
+                  ListenableBuilder(
+                    listenable: _formFieldsListenable,
+                    builder: (context, _) {
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          AppButton(
+                            label: 'Cancel',
+                            variant: AppButtonVariant.outline,
+                            expand: false,
+                            onPressed: _isSaving ? null : () => Navigator.of(context).pop(false),
+                          ),
+                          const SizedBox(width: SpacingTokens.sm),
+                          AppButton(
+                            label: 'Create branch',
+                            expand: false,
+                            isLoading: _isSaving,
+                            onPressed: _isSaving || !_isReady ? null : _create,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: SpacingTokens.sm),
-              Text(
-                'Start with your main branch. Additional branches can be added later.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-              ),
-              if (_errorMessage != null) ...[
-                const SizedBox(height: SpacingTokens.lg),
-                AppAlert(variant: AppAlertVariant.destructive, title: _errorMessage!),
-              ],
-              const SizedBox(height: SpacingTokens.xl),
-              SetupBranchStep(
-                formKey: _formKey,
-                nameController: _nameController,
-                codeController: _codeController,
-                addressController: _addressController,
-                phoneController: _phoneController,
-                mapsUrlController: _mapsUrlController,
-                workingSchedule: _workingSchedule,
-                onWorkingScheduleChanged: (schedule) {
-                  setState(() => _workingSchedule = schedule);
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _formKey.currentState?.validate();
-                  });
-                },
-                isBusy: _isSaving,
-              ),
-              const SizedBox(height: SpacingTokens.xl),
-              ListenableBuilder(
-                listenable: _formFieldsListenable,
-                builder: (context, _) {
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      AppButton(
-                        label: 'Cancel',
-                        variant: AppButtonVariant.outline,
-                        expand: false,
-                        onPressed: _isSaving ? null : () => Navigator.of(context).pop(false),
-                      ),
-                      const SizedBox(width: SpacingTokens.sm),
-                      AppButton(
-                        label: 'Create branch',
-                        expand: false,
-                        isLoading: _isSaving,
-                        onPressed: _isSaving || !_isReady ? null : _create,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
+            ),
           ),
         ),
       ),

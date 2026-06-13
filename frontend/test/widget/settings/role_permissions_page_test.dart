@@ -4,6 +4,7 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/data/role_permissions_repository.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -77,6 +78,50 @@ void main() {
 
       expect(find.textContaining('administrators'), findsOneWidget);
       expect(find.text('Manage Branches'), findsNothing);
+    });
+
+    testWidgets('toggling permission shows discard and save controls', (tester) async {
+      await pumpPage(tester);
+
+      expect(find.widgetWithText(AppButton, 'Save changes'), findsOneWidget);
+      expect(find.widgetWithText(AppButton, 'Discard'), findsNothing);
+
+      final doctorViewCell = find
+          .descendant(
+            of: find.ancestor(of: find.text('View'), matching: find.byType(DecoratedBox)).first,
+            matching: find.byIcon(Icons.check),
+          )
+          .last;
+      await tester.tap(doctorViewCell);
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(AppButton, 'Discard'), findsOneWidget);
+    });
+
+    testWidgets('discard restores matrix and hides discard button', (tester) async {
+      await pumpPage(tester);
+
+      final doctorViewCell = find
+          .descendant(
+            of: find.ancestor(of: find.text('View'), matching: find.byType(DecoratedBox)).first,
+            matching: find.byIcon(Icons.check),
+          )
+          .last;
+      await tester.tap(doctorViewCell);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(AppButton, 'Discard'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(AppButton, 'Discard'), findsNothing);
+      expect(find.widgetWithText(AppButton, 'Save changes'), findsOneWidget);
+    });
+
+    testWidgets('embedded mode fits settings staff-roles tab without duplicate app bar', (tester) async {
+      await pumpPage(tester);
+
+      expect(find.byType(AppBar), findsNothing);
+      expect(find.text('Manage Branches'), findsOneWidget);
     });
   });
 }
