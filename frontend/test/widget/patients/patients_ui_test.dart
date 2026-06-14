@@ -25,11 +25,6 @@ void main() {
 
     group('UI-003 — Next appointment badge', () {
       testWidgets('shows accent AppBadge with formatted datetime', (tester) async {
-        final errors = <Object>[];
-        final old = FlutterError.onError;
-        FlutterError.onError = (details) => errors.add(details.exception);
-        addTearDown(() => FlutterError.onError = old);
-
         final appointmentAt = DateTime(2026, 6, 1, 9, 0);
         await pumpPatientsPage(
           tester,

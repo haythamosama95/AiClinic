@@ -84,7 +84,7 @@ PatientDetail samplePatientDetail({
 /// In-memory patient repository fake for widget and integration tests.
 class FakePatientRepository implements PatientRepository {
   FakePatientRepository({
-    this.patients = const [],
+    List<PatientListItem> patients = const [],
     this.detail,
     this.duplicates = const [],
     this.createResult = '33333333-3333-4333-8333-333333333333',
@@ -95,7 +95,7 @@ class FakePatientRepository implements PatientRepository {
     this.createException,
     this.updateException,
     this.archiveException,
-  });
+  }) : patients = List.from(patients);
 
   final List<PatientListItem> patients;
   final PatientDetail? detail;

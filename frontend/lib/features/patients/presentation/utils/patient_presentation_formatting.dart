@@ -19,6 +19,9 @@ abstract final class PatientPresentationFormatting {
     final now = clock.now();
     final today = DateTime(now.year, now.month, now.day);
     final birthDate = DateTime(dateOfBirth.year, dateOfBirth.month, dateOfBirth.day);
+    if (birthDate.isAfter(today)) {
+      return null;
+    }
     var years = today.year - birthDate.year;
     if (today.month < birthDate.month || (today.month == birthDate.month && today.day < birthDate.day)) {
       years--;

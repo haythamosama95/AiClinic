@@ -101,10 +101,14 @@ class _PatientsTableState extends State<PatientsTable> {
             Text(row.lastVisitAt == null ? '—' : _dateFormat.format(row.lastVisitAt!), style: _cellStyle(context)),
             row.nextAppointmentAt == null
                 ? _SchedulePlaceholder()
-                : AppBadge(
-                    label: _dateTimeFormat.format(row.nextAppointmentAt!),
-                    variant: AppBadgeVariant.accent,
-                    dense: true,
+                : FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: AppBadge(
+                      label: _dateTimeFormat.format(row.nextAppointmentAt!),
+                      variant: AppBadgeVariant.accent,
+                      dense: true,
+                    ),
                   ),
           ],
         );

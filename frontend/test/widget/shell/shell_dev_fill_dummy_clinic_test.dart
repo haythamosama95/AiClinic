@@ -47,7 +47,7 @@ void main() {
       expect(find.text('Cancel'), findsOneWidget);
     });
 
-    testWidgets('DV-S-003: canceling confirmation dismisses without side effects', (tester) async {
+    testWidgets('DV-S-004: canceling confirmation dismisses without side effects', (tester) async {
       if (!kDebugMode) {
         return;
       }
@@ -100,6 +100,6 @@ class _TrackingDevClinicSeedNotifier extends DevClinicSeedNotifier {
   @override
   Future<bool> fillDummyClinic() async {
     fillCallCount++;
-    return super.fillDummyClinic();
+    return false;
   }
 }
