@@ -54,6 +54,7 @@ DECLARE
   v_soap_updated_at timestamptz;
   v_plan_id uuid;
   v_attachment_id uuid;
+  v_attachment_patient_id uuid;
   v_file_path text;
   v_start timestamptz;
   v_items jsonb;
@@ -510,6 +511,7 @@ BEGIN
   v_result := public.update_appointment_status(v_appt_id, 'checked_in');
   v_result := public.create_visit(v_appt_id, NULL);
   v_visit_id := (v_result.data ->> 'visit_id')::uuid;
+  v_attachment_patient_id := v_sd_patient;
 
   v_result := public.create_treatment_plan(
     v_visit_id,
@@ -701,7 +703,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- PD-F-010: list_patient_visit_attachments can_download for clinical vs lab_staff.
-  v_result := public.list_patient_visit_attachments(v_patient_id);
+  v_result := public.list_patient_visit_attachments(v_attachment_patient_id);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
     'list_patient_visit_attachments_clinical_can_download',
@@ -725,7 +727,7 @@ BEGIN
     )::text,
     true
   );
-  v_result := public.list_patient_visit_attachments(v_patient_id);
+  v_result := public.list_patient_visit_attachments(v_attachment_patient_id);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
     'list_patient_visit_attachments_lab_staff_other_upload_denied',
