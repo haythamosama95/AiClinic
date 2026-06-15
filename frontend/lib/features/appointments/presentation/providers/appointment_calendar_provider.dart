@@ -101,7 +101,12 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
       final bounds = appointmentCalendarFetchBounds(state.focusDate, state.mode);
       final items = await ref
           .read(appointmentRepositoryProvider)
-          .listAppointments(branchId: branchId, from: bounds.$1, to: bounds.$2, doctorId: state.selectedDoctorId);
+          .listAppointments(
+            branchId: branchId,
+            from: bounds.$1,
+            to: bounds.$2,
+            doctorId: state.mode == AppointmentCalendarMode.doctors ? null : state.selectedDoctorId,
+          );
       state = state.copyWith(loading: false, items: items, error: null);
     } catch (_) {
       state = state.copyWith(loading: false, items: const [], error: 'Could not load appointments. Please retry.');

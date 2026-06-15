@@ -12,6 +12,13 @@ void main() {
       expect(to, dayStart.add(const Duration(days: 1)).toUtc());
     });
 
+    test('doctors mode returns single local day as UTC window', () {
+      final dayStart = DateTime(focus.year, focus.month, focus.day);
+      final (from, to) = appointmentCalendarFetchBounds(focus, AppointmentCalendarMode.doctors);
+      expect(from, dayStart.toUtc());
+      expect(to, dayStart.add(const Duration(days: 1)).toUtc());
+    });
+
     test('week mode returns Monday through next Monday', () {
       final dayStart = DateTime(focus.year, focus.month, focus.day);
       final weekStart = dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));

@@ -19,6 +19,23 @@ void main() {
       expect(layout.timeIntervalHeight, greaterThanOrEqualTo(AppointmentCalendarDisplay.minTimeIntervalHeight));
     });
 
+    test('doctors layout matches day layout', () {
+      final dayLayout = AppointmentCalendarDisplay.timeSlotLayout(
+        schedule: schedule,
+        mode: AppointmentCalendarMode.day,
+        focusDate: DateTime(2026, 6, 4),
+      );
+      final doctorsLayout = AppointmentCalendarDisplay.timeSlotLayout(
+        schedule: schedule,
+        mode: AppointmentCalendarMode.doctors,
+        focusDate: DateTime(2026, 6, 4),
+      );
+
+      expect(doctorsLayout.startHour, dayLayout.startHour);
+      expect(doctorsLayout.endHour, dayLayout.endHour);
+      expect(doctorsLayout.shadeRegions, isEmpty);
+    });
+
     test('week layout spans union of working-day hours', () {
       final layout = AppointmentCalendarDisplay.timeSlotLayout(
         schedule: schedule,

@@ -35,6 +35,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   AppointmentCalendarMode? _lastMode;
   DateTime? _lastSyncedFocusDate;
   int _itemsFingerprint = 0;
+  int _resourceFingerprint = 0;
 
   @override
   void initState() {
@@ -65,11 +66,15 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final visibleItems = AppointmentCalendarDisplay.filterVisibleAppointments(state.items, schedule);
     final doctors = doctorsAsync.maybeWhen(data: (items) => items, orElse: () => const <StaffListItem>[]);
     final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
-    _syncDataSource(visibleItems);
+    _syncDataSource(
+      visibleItems,
+      doctors: doctors,
+      includeDoctorResources: state.mode == AppointmentCalendarMode.doctors,
+    );
     _syncCalendarView(state);
 
     final isClosedDay =
-        state.mode == AppointmentCalendarMode.day &&
+        (state.mode == AppointmentCalendarMode.day || state.mode == AppointmentCalendarMode.doctors) &&
         AppointmentCalendarDisplay.isClosedOnDate(schedule, state.focusDate);
 
     return Padding(
@@ -82,6 +87,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
             doctorsAsync: doctorsAsync,
             selectedBranchId: state.selectedBranchId,
             selectedDoctorId: state.selectedDoctorId,
+            showDoctorFilter: state.mode != AppointmentCalendarMode.doctors,
             onBranchChanged: controller.setBranchFilter,
             onDoctorChanged: controller.setDoctorFilter,
           ),
@@ -142,11 +148,22 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                         child: SfCalendar(
                           controller: _calendarController,
                           view: _calendarViewFor(state.mode),
-                          allowedViews: const [CalendarView.day, CalendarView.week, CalendarView.month],
+                          allowedViews: const [
+                            CalendarView.day,
+                            CalendarView.week,
+                            CalendarView.month,
+                            CalendarView.timelineDay,
+                          ],
                           dataSource: _dataSource,
                           initialDisplayDate: state.focusDate,
                           backgroundColor: colors.card,
                           cellBorderColor: colors.border,
+                          resourceViewSettings: ResourceViewSettings(
+                            showAvatar: false,
+                            size: 120,
+                            visibleResourceCount: -1,
+                            displayNameTextStyle: textTheme.labelMedium?.copyWith(color: colors.foreground),
+                          ),
                           showNavigationArrow: true,
                           showTodayButton: true,
                           showDatePickerButton: false,
@@ -223,15 +240,21 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     );
   }
 
-  void _syncDataSource(List<AppointmentListItem> items) {
-    final fingerprint = Object.hashAll(
-      items.map((item) => Object.hash(item.id, item.startTime, item.endTime, item.status)),
+  void _syncDataSource(
+    List<AppointmentListItem> items, {
+    required List<StaffListItem> doctors,
+    required bool includeDoctorResources,
+  }) {
+    final itemsFingerprint = Object.hashAll(
+      items.map((item) => Object.hash(item.id, item.startTime, item.endTime, item.status, item.doctorId)),
     );
-    if (fingerprint == _itemsFingerprint) {
+    final resourceFingerprint = Object.hash(includeDoctorResources, Object.hashAll(doctors.map((doctor) => doctor.id)));
+    if (itemsFingerprint == _itemsFingerprint && resourceFingerprint == _resourceFingerprint) {
       return;
     }
-    _itemsFingerprint = fingerprint;
-    _dataSource.updateItems(items);
+    _itemsFingerprint = itemsFingerprint;
+    _resourceFingerprint = resourceFingerprint;
+    _dataSource.updateItems(items, doctors: doctors, includeDoctorResources: includeDoctorResources);
   }
 
   void _syncCalendarView(AppointmentCalendarState state) {
@@ -274,6 +297,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   static bool _isSameCalendarPeriod(DateTime a, DateTime b, AppointmentCalendarMode mode) {
     return switch (mode) {
       AppointmentCalendarMode.day => a.year == b.year && a.month == b.month && a.day == b.day,
+      AppointmentCalendarMode.doctors => a.year == b.year && a.month == b.month && a.day == b.day,
       AppointmentCalendarMode.week => _weekStart(a) == _weekStart(b),
       AppointmentCalendarMode.month => a.year == b.year && a.month == b.month,
     };
@@ -326,7 +350,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         schedule: schedule,
         slotStart: slotRange.start,
         slotEnd: slotRange.end,
-        initialDoctorId: ref.read(appointmentCalendarProvider).selectedDoctorId,
+        initialDoctorId:
+            doctorIdFromCalendarResource(details.resource) ?? ref.read(appointmentCalendarProvider).selectedDoctorId,
         doctors: doctors,
       ),
     );
@@ -411,6 +436,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       AppointmentCalendarMode.day => CalendarView.day,
       AppointmentCalendarMode.week => CalendarView.week,
       AppointmentCalendarMode.month => CalendarView.month,
+      AppointmentCalendarMode.doctors => CalendarView.timelineDay,
     };
   }
 
@@ -419,6 +445,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       CalendarView.day => AppointmentCalendarMode.day,
       CalendarView.week => AppointmentCalendarMode.week,
       CalendarView.month => AppointmentCalendarMode.month,
+      CalendarView.timelineDay => AppointmentCalendarMode.doctors,
       _ => AppointmentCalendarMode.week,
     };
   }
@@ -441,6 +468,7 @@ class _CalendarToolbar extends StatelessWidget {
     required this.doctorsAsync,
     required this.selectedBranchId,
     required this.selectedDoctorId,
+    required this.showDoctorFilter,
     required this.onBranchChanged,
     required this.onDoctorChanged,
   });
@@ -449,6 +477,7 @@ class _CalendarToolbar extends StatelessWidget {
   final AsyncValue<List<StaffListItem>> doctorsAsync;
   final String? selectedBranchId;
   final String? selectedDoctorId;
+  final bool showDoctorFilter;
   final ValueChanged<String?> onBranchChanged;
   final ValueChanged<String?> onDoctorChanged;
 
@@ -474,20 +503,22 @@ class _CalendarToolbar extends StatelessWidget {
               error: (_, _) => const Text('Could not load branches.'),
             ),
           ),
-          const SizedBox(width: SpacingTokens.sm),
-          SizedBox(
-            width: 200,
-            child: doctorsAsync.when(
-              data: (doctors) => AppFilterSelect<String>(
-                label: 'Doctor',
-                items: {'All doctors': '', for (final doctor in doctors) doctor.fullName: doctor.id},
-                value: selectedDoctorId ?? '',
-                onChanged: (doctorId) => onDoctorChanged(doctorId == null || doctorId.isEmpty ? null : doctorId),
+          if (showDoctorFilter) ...[
+            const SizedBox(width: SpacingTokens.sm),
+            SizedBox(
+              width: 200,
+              child: doctorsAsync.when(
+                data: (doctors) => AppFilterSelect<String>(
+                  label: 'Doctor',
+                  items: {'All doctors': '', for (final doctor in doctors) doctor.fullName: doctor.id},
+                  value: selectedDoctorId ?? '',
+                  onChanged: (doctorId) => onDoctorChanged(doctorId == null || doctorId.isEmpty ? null : doctorId),
+                ),
+                loading: () => const Text('Loading doctors…'),
+                error: (_, _) => const Text('Could not load doctors.'),
               ),
-              loading: () => const Text('Loading doctors…'),
-              error: (_, _) => const Text('Could not load doctors.'),
             ),
-          ),
+          ],
         ],
       ),
     );
