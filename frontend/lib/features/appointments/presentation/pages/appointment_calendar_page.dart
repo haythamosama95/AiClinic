@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_calendar_disp
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/syncfusion_calendar_hover_guard.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
@@ -118,45 +119,54 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                     ),
                     child: ClipRRect(
                       borderRadius: radius,
-                      child: SfCalendar(
-                        controller: _calendarController,
-                        view: _calendarViewFor(state.mode),
-                        allowedViews: const [CalendarView.day, CalendarView.week, CalendarView.month],
-                        dataSource: _dataSource,
-                        initialDisplayDate: state.focusDate,
-                        showNavigationArrow: true,
-                        showTodayButton: true,
-                        showDatePickerButton: false,
-                        allowViewNavigation: true,
-                        blackoutDates: state.mode == AppointmentCalendarMode.month
-                            ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
-                            : const [],
-                        timeSlotViewSettings: TimeSlotViewSettings(
-                          startHour: slotLayout.startHour,
-                          endHour: slotLayout.endHour,
-                          timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
-                          timeIntervalHeight: slotLayout.timeIntervalHeight,
-                          nonWorkingDays: slotLayout.nonWorkingDays,
-                          timeFormat: 'HH:mm',
-                          dateFormat: 'd',
-                          dayFormat: 'EEE',
+                      child: SyncfusionCalendarHoverGuard(
+                        child: SfCalendar(
+                          controller: _calendarController,
+                          view: _calendarViewFor(state.mode),
+                          allowedViews: const [CalendarView.day, CalendarView.week, CalendarView.month],
+                          dataSource: _dataSource,
+                          initialDisplayDate: state.focusDate,
+                          showNavigationArrow: true,
+                          showTodayButton: true,
+                          showDatePickerButton: false,
+                          allowViewNavigation: true,
+                          blackoutDates: state.mode == AppointmentCalendarMode.month
+                              ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
+                              : const [],
+                          timeSlotViewSettings: TimeSlotViewSettings(
+                            startHour: slotLayout.startHour,
+                            endHour: slotLayout.endHour,
+                            timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
+                            timeIntervalHeight: slotLayout.timeIntervalHeight,
+                            nonWorkingDays: slotLayout.nonWorkingDays,
+                            timeFormat: 'HH:mm',
+                            dateFormat: 'd',
+                            dayFormat: 'EEE',
+                          ),
+                          monthViewSettings: const MonthViewSettings(
+                            showAgenda: true,
+                            appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
+                          ),
+                          specialRegions: [
+                            for (final region in slotLayout.shadeRegions)
+                              TimeRegion(
+                                startTime: region.start,
+                                endTime: region.end,
+                                enablePointerInteraction: false,
+                                color: colors.muted.withValues(alpha: 0.45),
+                              ),
+                          ],
+                          appointmentBuilder: (context, details) => _AppointmentTile(
+                            details: details,
+                            onTap: () => _onAppointmentTileTap(details, state.items),
+                          ),
+                          onViewChanged: (details) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              unawaited(_onViewChanged(details, controller));
+                            });
+                          },
+                          onTap: (details) => _onCalendarTap(details, state.items),
                         ),
-                        monthViewSettings: const MonthViewSettings(
-                          showAgenda: true,
-                          appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
-                        ),
-                        specialRegions: [
-                          for (final region in slotLayout.shadeRegions)
-                            TimeRegion(
-                              startTime: region.start,
-                              endTime: region.end,
-                              enablePointerInteraction: false,
-                              color: colors.muted.withValues(alpha: 0.45),
-                            ),
-                        ],
-                        appointmentBuilder: (context, details) => _AppointmentTile(details: details),
-                        onViewChanged: (details) => unawaited(_onViewChanged(details, controller)),
-                        onTap: (details) => _onCalendarTap(details, state.items),
                       ),
                     ),
                   ),
@@ -235,6 +245,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
     final id = appointmentIdFromTap(details);
+    _openAppointmentById(id, items);
+  }
+
+  void _onAppointmentTileTap(CalendarAppointmentDetails details, List<AppointmentListItem> items) {
+    _openAppointmentById(appointmentIdFromAppointmentDetails(details), items);
+  }
+
+  void _openAppointmentById(String? id, List<AppointmentListItem> items) {
     if (id == null) {
       return;
     }
@@ -371,9 +389,10 @@ class _CalendarToolbar extends StatelessWidget {
 }
 
 class _AppointmentTile extends StatelessWidget {
-  const _AppointmentTile({required this.details});
+  const _AppointmentTile({required this.details, required this.onTap});
 
   final CalendarAppointmentDetails details;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -381,22 +400,25 @@ class _AppointmentTile extends StatelessWidget {
     final brightness = ThemeData.estimateBrightnessForColor(appointment.color);
     final textColor = brightness == Brightness.dark ? Colors.white : Colors.black87;
 
-    return Container(
-      margin: const EdgeInsets.all(2),
-      padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
-      decoration: BoxDecoration(
-        color: appointment.color.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: appointment.color),
-      ),
-      alignment: Alignment.topLeft,
-      child: Text(
-        appointment.notes == null || appointment.notes!.isEmpty
-            ? appointment.subject
-            : '${appointment.subject}\n${appointment.notes}',
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
+        decoration: BoxDecoration(
+          color: appointment.color.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: appointment.color),
+        ),
+        alignment: Alignment.topLeft,
+        child: Text(
+          appointment.notes == null || appointment.notes!.isEmpty
+              ? appointment.subject
+              : '${appointment.subject}\n${appointment.notes}',
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor),
+        ),
       ),
     );
   }

@@ -30,10 +30,8 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
   }
 }
 
-/// Resolves tapped calendar appointment id from [details].
-String? appointmentIdFromTap(CalendarTapDetails details) {
-  final appointment = details.appointments?.firstOrNull;
-  if (appointment is! Appointment) {
+String? _appointmentId(Appointment? appointment) {
+  if (appointment == null) {
     return null;
   }
   final id = appointment.id?.toString();
@@ -41,4 +39,16 @@ String? appointmentIdFromTap(CalendarTapDetails details) {
     return null;
   }
   return id;
+}
+
+/// Resolves tapped calendar appointment id from [details].
+String? appointmentIdFromTap(CalendarTapDetails details) {
+  final appointment = details.appointments?.firstOrNull;
+  return appointment is Appointment ? _appointmentId(appointment) : null;
+}
+
+/// Resolves appointment id from [details] produced by [CalendarAppointmentDetails].
+String? appointmentIdFromAppointmentDetails(CalendarAppointmentDetails details) {
+  final appointment = details.appointments.firstOrNull;
+  return appointment is Appointment ? _appointmentId(appointment) : null;
 }
