@@ -67,7 +67,7 @@ void main() {
       final settings = await ctx.appointments.getSettings(branchId: clinic.branchId);
 
       expect(settings.defaultDurationMinutes, greaterThanOrEqualTo(5));
-      expect(settings.maxDurationMinutes, 240);
+      expect(settings.minDurationMinutes, greaterThanOrEqualTo(5));
     });
 
     test('appointments.createAppointment.planned.success', () async {
@@ -179,7 +179,7 @@ void main() {
       final settings = await ctx.appointments.getSettings(branchId: clinic.branchId);
 
       expect(settings.defaultDurationMinutes, greaterThanOrEqualTo(5));
-      expect(settings.maxDurationMinutes, 240);
+      expect(settings.minDurationMinutes, greaterThanOrEqualTo(5));
     });
 
     test('appointments.updateAppointmentStatus.lifecycle.success', () async {

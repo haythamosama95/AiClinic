@@ -15,6 +15,12 @@ void main() {
       expect(settings?.maxDurationMinutes, 240);
     });
 
+    test('parses settings without max duration cap', () {
+      final settings = AppointmentSettings.fromRpcData({'default_duration_minutes': 30, 'min_duration_minutes': 5});
+
+      expect(settings?.maxDurationMinutes, isNull);
+    });
+
     test('edge case: returns null when fields missing', () {
       expect(AppointmentSettings.fromRpcData({'default_duration_minutes': 20}), isNull);
     });

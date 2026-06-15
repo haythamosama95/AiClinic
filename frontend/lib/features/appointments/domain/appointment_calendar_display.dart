@@ -142,6 +142,30 @@ class AppointmentCalendarDisplay {
     return regions;
   }
 
+  /// Resolves the booking window for a calendar tap (slot start/end in local time).
+  static ({DateTime start, DateTime end}) slotRangeFromTap({
+    required DateTime tappedDate,
+    required BranchWorkingSchedule schedule,
+    required AppointmentCalendarMode mode,
+    int slotMinutes = defaultTimeIntervalMinutes,
+  }) {
+    final local = tappedDate.toLocal();
+    final hasExplicitTime = local.hour != 0 || local.minute != 0;
+    final DateTime start;
+
+    if (mode == AppointmentCalendarMode.month || !hasExplicitTime) {
+      final dayHours = AppointmentBranchWorkingHours.hoursForDate(schedule, local);
+      final openMinutes = dayHours != null && dayHours.isWorkingDay
+          ? AppointmentBranchWorkingHours.parseHm(dayHours.openTime) ?? 9 * 60
+          : 9 * 60;
+      start = DateTime(local.year, local.month, local.day, openMinutes ~/ 60, openMinutes % 60);
+    } else {
+      start = DateTime(local.year, local.month, local.day, local.hour, local.minute);
+    }
+
+    return (start: start, end: start.add(Duration(minutes: slotMinutes)));
+  }
+
   static List<AppointmentListItem> filterVisibleAppointments(
     List<AppointmentListItem> items,
     BranchWorkingSchedule schedule,

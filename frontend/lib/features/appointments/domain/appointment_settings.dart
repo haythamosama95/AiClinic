@@ -7,13 +7,15 @@ class AppointmentSettings {
   const AppointmentSettings({
     required this.defaultDurationMinutes,
     required this.minDurationMinutes,
-    required this.maxDurationMinutes,
+    this.maxDurationMinutes,
     this.workingSchedule,
   });
 
   final int defaultDurationMinutes;
   final int minDurationMinutes;
-  final int maxDurationMinutes;
+
+  /// Optional upper bound from settings RPC; not enforced client-side when absent.
+  final int? maxDurationMinutes;
   final BranchWorkingSchedule? workingSchedule;
 
   static AppointmentSettings? fromRpcData(Map<String, dynamic>? data) {
@@ -25,7 +27,7 @@ class AppointmentSettings {
     final minMinutes = _parseInt(data['min_duration_minutes']);
     final maxMinutes = _parseInt(data['max_duration_minutes']);
 
-    if (defaultMinutes == null || minMinutes == null || maxMinutes == null) {
+    if (defaultMinutes == null || minMinutes == null) {
       return null;
     }
 

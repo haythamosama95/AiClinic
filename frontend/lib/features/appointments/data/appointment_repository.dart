@@ -264,12 +264,12 @@ class AppointmentRepository with AppRpcInvoker {
   }
 
   void _assertDurationMinutes(int minutes) {
-    if (minutes < 5 || minutes > 240) {
+    if (minutes < 5) {
       throw RpcFailure(
         const RpcResult(
           success: false,
           errorCode: 'INVALID_INPUT',
-          errorMessage: 'Duration must be between 5 and 240 minutes.',
+          errorMessage: 'Duration must be at least 5 minutes.',
         ),
       );
     }

@@ -14,8 +14,8 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/syncfusion_calendar_hover_guard.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
@@ -62,6 +62,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final selectedBranch = branches.where((item) => item.id == state.selectedBranchId).firstOrNull;
     final schedule = selectedBranch?.workingSchedule ?? BranchWorkingSchedule.defaultSchedule();
     final visibleItems = AppointmentCalendarDisplay.filterVisibleAppointments(state.items, schedule);
+    final doctors = doctorsAsync.maybeWhen(data: (items) => items, orElse: () => const <StaffListItem>[]);
+    final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
     _syncDataSource(visibleItems);
     _syncCalendarView(state);
 
@@ -119,54 +121,70 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                     ),
                     child: ClipRRect(
                       borderRadius: radius,
-                      child: SyncfusionCalendarHoverGuard(
-                        child: SfCalendar(
-                          controller: _calendarController,
-                          view: _calendarViewFor(state.mode),
-                          allowedViews: const [CalendarView.day, CalendarView.week, CalendarView.month],
-                          dataSource: _dataSource,
-                          initialDisplayDate: state.focusDate,
-                          showNavigationArrow: true,
-                          showTodayButton: true,
-                          showDatePickerButton: false,
-                          allowViewNavigation: true,
-                          blackoutDates: state.mode == AppointmentCalendarMode.month
-                              ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
-                              : const [],
-                          timeSlotViewSettings: TimeSlotViewSettings(
-                            startHour: slotLayout.startHour,
-                            endHour: slotLayout.endHour,
-                            timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
-                            timeIntervalHeight: slotLayout.timeIntervalHeight,
-                            nonWorkingDays: slotLayout.nonWorkingDays,
-                            timeFormat: 'HH:mm',
-                            dateFormat: 'd',
-                            dayFormat: 'EEE',
-                          ),
-                          monthViewSettings: const MonthViewSettings(
-                            showAgenda: true,
-                            appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
-                          ),
-                          specialRegions: [
-                            for (final region in slotLayout.shadeRegions)
-                              TimeRegion(
-                                startTime: region.start,
-                                endTime: region.end,
-                                enablePointerInteraction: false,
-                                color: colors.muted.withValues(alpha: 0.45),
-                              ),
-                          ],
-                          appointmentBuilder: (context, details) => _AppointmentTile(
-                            details: details,
-                            onTap: () => _onAppointmentTileTap(details, state.items),
-                          ),
-                          onViewChanged: (details) {
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              unawaited(_onViewChanged(details, controller));
-                            });
-                          },
-                          onTap: (details) => _onCalendarTap(details, state.items),
+                      child: SfCalendar(
+                        controller: _calendarController,
+                        view: _calendarViewFor(state.mode),
+                        allowedViews: const [CalendarView.day, CalendarView.week, CalendarView.month],
+                        dataSource: _dataSource,
+                        initialDisplayDate: state.focusDate,
+                        showNavigationArrow: true,
+                        showTodayButton: true,
+                        showDatePickerButton: false,
+                        allowViewNavigation: true,
+                        selectionDecoration: const BoxDecoration(
+                          color: Colors.transparent,
+                          border: Border.fromBorderSide(BorderSide(color: Colors.transparent, width: 0)),
                         ),
+                        blackoutDates: state.mode == AppointmentCalendarMode.month
+                            ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
+                            : const [],
+                        timeSlotViewSettings: TimeSlotViewSettings(
+                          startHour: slotLayout.startHour,
+                          endHour: slotLayout.endHour,
+                          timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
+                          timeIntervalHeight: slotLayout.timeIntervalHeight,
+                          nonWorkingDays: slotLayout.nonWorkingDays,
+                          timeFormat: 'HH:mm',
+                          dateFormat: 'd',
+                          dayFormat: 'EEE',
+                        ),
+                        monthViewSettings: const MonthViewSettings(
+                          showAgenda: true,
+                          appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
+                        ),
+                        specialRegions: [
+                          for (final region in slotLayout.shadeRegions)
+                            TimeRegion(
+                              startTime: region.start,
+                              endTime: region.end,
+                              enablePointerInteraction: false,
+                              color: colors.muted.withValues(alpha: 0.45),
+                            ),
+                        ],
+                        appointmentBuilder: (context, details) => _AppointmentTile(
+                          details: details,
+                          onTap: () => _onAppointmentTileTap(details, state.items),
+                        ),
+                        onViewChanged: (details) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            unawaited(_onViewChanged(details, controller));
+                          });
+                        },
+                        onTap: (details) {
+                          if (details.targetElement != CalendarElement.appointment) {
+                            _calendarController.selectedDate = null;
+                          }
+                          _onCalendarTap(
+                            details,
+                            state.items,
+                            branchId: state.selectedBranchId,
+                            schedule: schedule,
+                            mode: state.mode,
+                            slotMinutes: slotLayout.timeIntervalMinutes,
+                            doctors: doctors,
+                            canCreate: canCreate,
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -240,12 +258,74 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     return dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
   }
 
-  void _onCalendarTap(CalendarTapDetails details, List<AppointmentListItem> items) {
-    if (details.targetElement != CalendarElement.appointment) {
+  void _onCalendarTap(
+    CalendarTapDetails details,
+    List<AppointmentListItem> items, {
+    required String? branchId,
+    required BranchWorkingSchedule schedule,
+    required AppointmentCalendarMode mode,
+    required int slotMinutes,
+    required List<StaffListItem> doctors,
+    required bool canCreate,
+  }) {
+    if (details.targetElement == CalendarElement.appointment) {
+      final id = appointmentIdFromTap(details);
+      _openAppointmentById(id, items);
       return;
     }
-    final id = appointmentIdFromTap(details);
-    _openAppointmentById(id, items);
+
+    if (!canCreate || branchId == null || branchId.isEmpty) {
+      return;
+    }
+
+    if (details.targetElement != CalendarElement.calendarCell && details.targetElement != CalendarElement.agenda) {
+      return;
+    }
+
+    final tappedDate = details.date;
+    if (tappedDate == null) {
+      return;
+    }
+
+    final slotRange = AppointmentCalendarDisplay.slotRangeFromTap(
+      tappedDate: tappedDate,
+      schedule: schedule,
+      mode: mode,
+      slotMinutes: slotMinutes,
+    );
+
+    unawaited(
+      _showBookingSheet(
+        branchId: branchId,
+        schedule: schedule,
+        slotStart: slotRange.start,
+        slotEnd: slotRange.end,
+        initialDoctorId: ref.read(appointmentCalendarProvider).selectedDoctorId,
+        doctors: doctors,
+      ),
+    );
+  }
+
+  Future<void> _showBookingSheet({
+    required String branchId,
+    required BranchWorkingSchedule schedule,
+    required DateTime slotStart,
+    required DateTime slotEnd,
+    String? initialDoctorId,
+    required List<StaffListItem> doctors,
+  }) async {
+    final booked = await AppointmentBookingSheet.show(
+      context,
+      branchId: branchId,
+      schedule: schedule,
+      slotStart: slotStart,
+      slotEnd: slotEnd,
+      initialDoctorId: initialDoctorId,
+      doctors: doctors,
+    );
+    if (booked == true && mounted) {
+      await ref.read(appointmentCalendarProvider.notifier).refresh();
+    }
   }
 
   void _onAppointmentTileTap(CalendarAppointmentDetails details, List<AppointmentListItem> items) {

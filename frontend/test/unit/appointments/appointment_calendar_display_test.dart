@@ -61,5 +61,29 @@ void main() {
       final closed = AppointmentCalendarDisplay.closedDatesInMonth(schedule, DateTime(2026, 6, 1));
       expect(closed.any((date) => date.weekday == DateTime.sunday), isTrue);
     });
+
+    test('slotRangeFromTap uses tapped time in day view', () {
+      final tapped = DateTime(2026, 6, 4, 10, 30);
+      final range = AppointmentCalendarDisplay.slotRangeFromTap(
+        tappedDate: tapped,
+        schedule: schedule,
+        mode: AppointmentCalendarMode.day,
+      );
+
+      expect(range.start, DateTime(2026, 6, 4, 10, 30));
+      expect(range.end, DateTime(2026, 6, 4, 11, 0));
+    });
+
+    test('slotRangeFromTap uses branch open time in month view', () {
+      final tapped = DateTime(2026, 6, 4);
+      final range = AppointmentCalendarDisplay.slotRangeFromTap(
+        tappedDate: tapped,
+        schedule: schedule,
+        mode: AppointmentCalendarMode.month,
+      );
+
+      expect(range.start, DateTime(2026, 6, 4, 9, 0));
+      expect(range.end, DateTime(2026, 6, 4, 9, 30));
+    });
   });
 }

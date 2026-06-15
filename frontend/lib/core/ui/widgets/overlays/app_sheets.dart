@@ -40,7 +40,10 @@ abstract final class AppSheets {
 
         return DecoratedBox(
           decoration: BoxDecoration(color: colors.popover, borderRadius: borderRadius, border: border),
-          child: ClipRRect(borderRadius: borderRadius, child: builder(context)),
+          child: ClipRRect(
+            borderRadius: borderRadius,
+            child: Material(color: colors.popover, child: builder(context)),
+          ),
         );
       },
       side: _mapSide(side),

@@ -60,7 +60,13 @@ class _AppClockTimeFieldState extends State<AppClockTimeField> {
   void didUpdateWidget(covariant AppClockTimeField oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.value != oldWidget.value) {
-      _fieldKey.currentState?.didChange(widget.value);
+      final nextValue = widget.value;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _fieldKey.currentState?.didChange(nextValue);
+      });
     }
   }
 
@@ -115,44 +121,47 @@ class _AppClockTimeFieldState extends State<AppClockTimeField> {
           error: field.errorText,
           child: MouseRegion(
             cursor: _interactive ? SystemMouseCursors.click : SystemMouseCursors.basic,
-            child: InkWell(
-              onTap: _interactive ? () => _openTimePicker(field) : null,
-              borderRadius: BorderRadius.circular(8),
-              child: InputDecorator(
-                isEmpty: !hasValue,
-                isFocused: false,
-                decoration: InputDecoration(
-                  hintText: widget.hintText ?? 'Select time',
-                  contentPadding: _fieldContentPadding(widget.size),
-                  filled: true,
-                  fillColor: _interactive ? colors.background : colors.muted,
-                  suffixIcon: Icon(
-                    Icons.schedule_outlined,
-                    size: 18,
-                    color: _interactive
-                        ? theme.colorScheme.onSurfaceVariant
-                        : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _interactive ? () => _openTimePicker(field) : null,
+                borderRadius: BorderRadius.circular(8),
+                child: InputDecorator(
+                  isEmpty: !hasValue,
+                  isFocused: false,
+                  decoration: InputDecoration(
+                    hintText: widget.hintText ?? 'Select time',
+                    contentPadding: _fieldContentPadding(widget.size),
+                    filled: true,
+                    fillColor: _interactive ? colors.background : colors.muted,
+                    suffixIcon: Icon(
+                      Icons.schedule_outlined,
+                      size: 18,
+                      color: _interactive
+                          ? theme.colorScheme.onSurfaceVariant
+                          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.38),
+                    ),
+                    enabled: _interactive,
+                    enabledBorder: field.hasError
+                        ? theme.inputDecorationTheme.errorBorder
+                        : theme.inputDecorationTheme.enabledBorder,
+                    focusedBorder: field.hasError
+                        ? theme.inputDecorationTheme.errorBorder
+                        : theme.inputDecorationTheme.focusedBorder,
+                    disabledBorder: theme.inputDecorationTheme.disabledBorder,
+                    errorBorder: theme.inputDecorationTheme.errorBorder,
                   ),
-                  enabled: _interactive,
-                  enabledBorder: field.hasError
-                      ? theme.inputDecorationTheme.errorBorder
-                      : theme.inputDecorationTheme.enabledBorder,
-                  focusedBorder: field.hasError
-                      ? theme.inputDecorationTheme.errorBorder
-                      : theme.inputDecorationTheme.focusedBorder,
-                  disabledBorder: theme.inputDecorationTheme.disabledBorder,
-                  errorBorder: theme.inputDecorationTheme.errorBorder,
+                  child: hasValue
+                      ? Text(
+                          displayText!,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: _interactive
+                                ? theme.colorScheme.onSurface
+                                : theme.colorScheme.onSurface.withValues(alpha: 0.38),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
-                child: hasValue
-                    ? Text(
-                        displayText!,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: _interactive
-                              ? theme.colorScheme.onSurface
-                              : theme.colorScheme.onSurface.withValues(alpha: 0.38),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
               ),
             ),
           ),
