@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
+import 'package:syncfusion_flutter_core/theme.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -110,81 +111,106 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                   viewportHeight: constraints.maxHeight,
                 );
                 final colors = context.semanticColors;
+                final textTheme = Theme.of(context).textTheme;
                 final radius = BorderRadius.circular(context.shapeTokens.lg);
+                final calendarTheme = SfCalendarThemeData(
+                  backgroundColor: colors.card,
+                  headerBackgroundColor: colors.card,
+                  viewHeaderBackgroundColor: colors.card,
+                  agendaBackgroundColor: colors.card,
+                  allDayPanelColor: colors.card,
+                  cellBorderColor: colors.border,
+                  headerTextStyle: textTheme.titleMedium?.copyWith(color: colors.foreground),
+                  viewHeaderDayTextStyle: textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
+                  viewHeaderDateTextStyle: textTheme.labelMedium?.copyWith(color: colors.foreground),
+                  timeTextStyle: textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
+                  todayHighlightColor: colors.primary,
+                );
                 return SizedBox(
                   height: constraints.maxHeight,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors.card,
-                      border: Border.all(color: colors.border),
+                  child: Material(
+                    color: colors.card,
+                    shape: RoundedRectangleBorder(
                       borderRadius: radius,
+                      side: BorderSide(color: colors.border),
                     ),
-                    child: ClipRRect(
-                      borderRadius: radius,
-                      child: SfCalendar(
-                        controller: _calendarController,
-                        view: _calendarViewFor(state.mode),
-                        allowedViews: const [CalendarView.day, CalendarView.week, CalendarView.month],
-                        dataSource: _dataSource,
-                        initialDisplayDate: state.focusDate,
-                        showNavigationArrow: true,
-                        showTodayButton: true,
-                        showDatePickerButton: false,
-                        allowViewNavigation: true,
-                        selectionDecoration: const BoxDecoration(
-                          color: Colors.transparent,
-                          border: Border.fromBorderSide(BorderSide(color: Colors.transparent, width: 0)),
+                    clipBehavior: Clip.antiAlias,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: SpacingTokens.sm),
+                      child: SfCalendarTheme(
+                        data: calendarTheme,
+                        child: SfCalendar(
+                          controller: _calendarController,
+                          view: _calendarViewFor(state.mode),
+                          allowedViews: const [CalendarView.day, CalendarView.week, CalendarView.month],
+                          dataSource: _dataSource,
+                          initialDisplayDate: state.focusDate,
+                          backgroundColor: colors.card,
+                          cellBorderColor: colors.border,
+                          showNavigationArrow: true,
+                          showTodayButton: true,
+                          showDatePickerButton: false,
+                          allowViewNavigation: true,
+                          headerStyle: CalendarHeaderStyle(
+                            backgroundColor: colors.card,
+                            textStyle: textTheme.titleMedium?.copyWith(color: colors.foreground),
+                          ),
+                          viewHeaderStyle: ViewHeaderStyle(backgroundColor: colors.card),
+                          selectionDecoration: const BoxDecoration(
+                            color: Colors.transparent,
+                            border: Border.fromBorderSide(BorderSide(color: Colors.transparent, width: 0)),
+                          ),
+                          blackoutDates: state.mode == AppointmentCalendarMode.month
+                              ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
+                              : const [],
+                          timeSlotViewSettings: TimeSlotViewSettings(
+                            startHour: slotLayout.startHour,
+                            endHour: slotLayout.endHour,
+                            timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
+                            timeIntervalHeight: slotLayout.timeIntervalHeight,
+                            nonWorkingDays: slotLayout.nonWorkingDays,
+                            timeFormat: 'HH:mm',
+                            dateFormat: 'd',
+                            dayFormat: 'EEE',
+                          ),
+                          monthViewSettings: const MonthViewSettings(
+                            showAgenda: true,
+                            appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
+                          ),
+                          specialRegions: [
+                            for (final region in slotLayout.shadeRegions)
+                              TimeRegion(
+                                startTime: region.start,
+                                endTime: region.end,
+                                enablePointerInteraction: false,
+                                color: colors.muted.withValues(alpha: 0.45),
+                              ),
+                          ],
+                          appointmentBuilder: (context, details) => _AppointmentTile(
+                            details: details,
+                            onTap: () => _onAppointmentTileTap(details, state.items),
+                          ),
+                          onViewChanged: (details) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              unawaited(_onViewChanged(details, controller));
+                            });
+                          },
+                          onTap: (details) {
+                            if (details.targetElement != CalendarElement.appointment) {
+                              _calendarController.selectedDate = null;
+                            }
+                            _onCalendarTap(
+                              details,
+                              state.items,
+                              branchId: state.selectedBranchId,
+                              schedule: schedule,
+                              mode: state.mode,
+                              slotMinutes: slotLayout.timeIntervalMinutes,
+                              doctors: doctors,
+                              canCreate: canCreate,
+                            );
+                          },
                         ),
-                        blackoutDates: state.mode == AppointmentCalendarMode.month
-                            ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
-                            : const [],
-                        timeSlotViewSettings: TimeSlotViewSettings(
-                          startHour: slotLayout.startHour,
-                          endHour: slotLayout.endHour,
-                          timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
-                          timeIntervalHeight: slotLayout.timeIntervalHeight,
-                          nonWorkingDays: slotLayout.nonWorkingDays,
-                          timeFormat: 'HH:mm',
-                          dateFormat: 'd',
-                          dayFormat: 'EEE',
-                        ),
-                        monthViewSettings: const MonthViewSettings(
-                          showAgenda: true,
-                          appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
-                        ),
-                        specialRegions: [
-                          for (final region in slotLayout.shadeRegions)
-                            TimeRegion(
-                              startTime: region.start,
-                              endTime: region.end,
-                              enablePointerInteraction: false,
-                              color: colors.muted.withValues(alpha: 0.45),
-                            ),
-                        ],
-                        appointmentBuilder: (context, details) => _AppointmentTile(
-                          details: details,
-                          onTap: () => _onAppointmentTileTap(details, state.items),
-                        ),
-                        onViewChanged: (details) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            unawaited(_onViewChanged(details, controller));
-                          });
-                        },
-                        onTap: (details) {
-                          if (details.targetElement != CalendarElement.appointment) {
-                            _calendarController.selectedDate = null;
-                          }
-                          _onCalendarTap(
-                            details,
-                            state.items,
-                            branchId: state.selectedBranchId,
-                            schedule: schedule,
-                            mode: state.mode,
-                            slotMinutes: slotLayout.timeIntervalMinutes,
-                            doctors: doctors,
-                            canCreate: canCreate,
-                          );
-                        },
                       ),
                     ),
                   ),
