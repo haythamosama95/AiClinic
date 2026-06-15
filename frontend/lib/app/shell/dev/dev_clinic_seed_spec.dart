@@ -7,7 +7,7 @@ abstract final class DevClinicSeedSpec {
   static const currencyCode = BootstrapDummyData.currencyCode;
   static const timezone = BootstrapDummyData.timezone;
   static const defaultStaffPassword = 'DemoPass1';
-  static const patientsPerBranch = 50;
+  static const patientsPerBranch = 16;
   static const patientNamePrefix = 'Dev Seed ';
 
   static const branches = <DevClinicBranchSpec>[

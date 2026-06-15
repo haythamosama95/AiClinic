@@ -272,7 +272,7 @@ class DevClinicSeedService {
             doctorId: doctorId,
             type: AppointmentType.planned,
             startTime: startTime,
-            durationMinutes: DevClinicSeedSchedule.appointmentDurationMinutes,
+            durationMinutes: DevClinicSeedSchedule.appointmentDurationMinutesFor(seedKey),
             notes: DevClinicSeedSchedule.appointmentNotes(
               branchCode: branch.branchCode,
               patientIndex: patientIndex,

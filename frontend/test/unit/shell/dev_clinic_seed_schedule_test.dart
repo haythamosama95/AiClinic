@@ -65,6 +65,37 @@ void main() {
       );
     });
 
+    test('appointment durations range from 30 to 90 minutes', () {
+      for (var seedKey = 0; seedKey < 200; seedKey++) {
+        final duration = DevClinicSeedSchedule.appointmentDurationMinutesFor(seedKey);
+        expect(duration, inInclusiveRange(30, 90));
+      }
+    });
+
+    test('appointments on the same branch day do not overlap', () {
+      for (final dayOffset in DevClinicSeedSchedule.appointmentDayOffsets) {
+        final referenceUtc = DateTime.utc(2026, 6, 13, 12);
+
+        for (var patientIndex = 2; patientIndex <= DevClinicSeedSpec.patientsPerBranch; patientIndex++) {
+          final previousStart = DevClinicSeedSchedule.appointmentStartUtc(
+            timezone: 'Africa/Cairo',
+            dayOffset: dayOffset,
+            patientIndex: patientIndex - 1,
+            referenceUtc: referenceUtc,
+          );
+          final currentStart = DevClinicSeedSchedule.appointmentStartUtc(
+            timezone: 'Africa/Cairo',
+            dayOffset: dayOffset,
+            patientIndex: patientIndex,
+            referenceUtc: referenceUtc,
+          );
+          final previousDuration = DevClinicSeedSchedule.appointmentDurationMinutesFor(patientIndex - 1 + dayOffset);
+
+          expect(currentStart, previousStart.add(Duration(minutes: previousDuration)));
+        }
+      }
+    });
+
     test('appointment slots start at 9 AM and end by branch close at 9 PM', () {
       final first = DevClinicSeedSchedule.appointmentStartUtc(
         timezone: 'Africa/Cairo',
@@ -82,7 +113,8 @@ void main() {
       final location = tz.getLocation('Africa/Cairo');
       final firstLocal = tz.TZDateTime.from(first, location);
       final lastLocal = tz.TZDateTime.from(last, location);
-      final lastEndLocal = lastLocal.add(const Duration(minutes: DevClinicSeedSchedule.appointmentDurationMinutes));
+      final lastDuration = DevClinicSeedSchedule.appointmentDurationMinutesFor(DevClinicSeedSpec.patientsPerBranch);
+      final lastEndLocal = lastLocal.add(Duration(minutes: lastDuration));
 
       expect(firstLocal.hour, 9);
       expect(firstLocal.minute, 0);

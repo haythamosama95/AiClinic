@@ -8,7 +8,8 @@ import 'package:timezone/timezone.dart' as tz;
 /// Appointment and visit scheduling helpers for dev clinic seeding.
 abstract final class DevClinicSeedSchedule {
   static const appointmentDayOffsets = [-2, -1, 0, 1, 2, 3, 4, 5];
-  static const appointmentDurationMinutes = 10;
+  static const minAppointmentDurationMinutes = 30;
+  static const maxAppointmentDurationMinutes = 90;
   static const firstSlotLocalHour = 9;
   static const firstSlotLocalMinute = 0;
   static const branchCloseLocalHour = 21;
@@ -61,6 +62,24 @@ abstract final class DevClinicSeedSchedule {
     return allowed[seedKey % allowed.length];
   }
 
+  /// Deterministic appointment length in [minAppointmentDurationMinutes, maxAppointmentDurationMinutes].
+  static int appointmentDurationMinutesFor(int seedKey) {
+    final span = maxAppointmentDurationMinutes - minAppointmentDurationMinutes + 1;
+    return minAppointmentDurationMinutes + (seedKey % span);
+  }
+
+  /// Cumulative minutes before [patientIndex] on a single branch-day timeline.
+  ///
+  /// The backend rejects any overlapping slot in the same branch (regardless of doctor),
+  /// so appointments must be packed sequentially rather than on parallel doctor tracks.
+  static int minutesBeforePatient({required int dayOffset, required int patientIndex}) {
+    var total = 0;
+    for (var i = 1; i < patientIndex; i++) {
+      total += appointmentDurationMinutesFor(i + dayOffset);
+    }
+    return total;
+  }
+
   /// Whether a visit row should be created for the target appointment status.
   static bool shouldSeedVisit(AppointmentStatus status) {
     return switch (status) {
@@ -104,9 +123,10 @@ abstract final class DevClinicSeedSchedule {
     final location = tz.getLocation(timezone);
     final localNow = tz.TZDateTime.from(ref, location);
     final day = tz.TZDateTime(location, localNow.year, localNow.month, localNow.day).add(Duration(days: dayOffset));
-    final slotIndex = patientIndex - 1;
-    final startMinutes = firstSlotLocalHour * 60 + firstSlotLocalMinute + slotIndex * appointmentDurationMinutes;
-    final endMinutes = startMinutes + appointmentDurationMinutes;
+    final durationMinutes = appointmentDurationMinutesFor(patientIndex + dayOffset);
+    final trackOffsetMinutes = minutesBeforePatient(dayOffset: dayOffset, patientIndex: patientIndex);
+    final startMinutes = firstSlotLocalHour * 60 + firstSlotLocalMinute + trackOffsetMinutes;
+    final endMinutes = startMinutes + durationMinutes;
     final closeMinutes = branchCloseLocalHour * 60;
     if (endMinutes > closeMinutes) {
       throw StateError(
