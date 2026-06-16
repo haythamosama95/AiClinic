@@ -12,8 +12,13 @@ import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 /// Syncfusion calendar default header row height.
 const appointmentCalendarHeaderRowHeight = 40.0;
 
-/// Total custom header height (single navigation row).
-const appointmentCalendarHeaderHeight = appointmentCalendarHeaderRowHeight;
+const appointmentCalendarHeaderTopPadding = SpacingTokens.sm;
+const appointmentCalendarHeaderRightPadding = SpacingTokens.sm;
+const appointmentCalendarHeaderBottomPadding = SpacingTokens.sm;
+
+/// Total custom header height (navigation row + vertical padding).
+const appointmentCalendarHeaderHeight =
+    appointmentCalendarHeaderRowHeight + appointmentCalendarHeaderTopPadding + appointmentCalendarHeaderBottomPadding;
 
 const _viewTabFontSize = 12.0;
 const _viewTabPadding = 10.0;
@@ -68,69 +73,75 @@ class AppointmentCalendarHeaderBar extends ConsumerWidget {
 
     return ColoredBox(
       color: headerBackgroundColor,
-      child: SizedBox(
-        height: appointmentCalendarHeaderRowHeight,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final iconWidth = (constraints.maxWidth / 8).clamp(0.0, _maxArrowButtonWidth);
+      child: Padding(
+        padding: const EdgeInsets.only(
+          top: appointmentCalendarHeaderTopPadding,
+          right: appointmentCalendarHeaderRightPadding,
+          bottom: appointmentCalendarHeaderBottomPadding,
+        ),
+        child: SizedBox(
+          height: appointmentCalendarHeaderRowHeight,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final iconWidth = (constraints.maxWidth / 8).clamp(0.0, _maxArrowButtonWidth);
 
-            return Row(
-              children: [
-                if (showNavigation) ...[
-                  _HeaderIconButton(
-                    width: iconWidth,
-                    height: appointmentCalendarHeaderRowHeight,
-                    backgroundColor: headerBackgroundColor,
-                    onTap: () => controller.previousPeriod(),
-                    child: Icon(Icons.chevron_left, color: arrowColor, size: arrowSize),
-                  ),
-                  _HeaderIconButton(
-                    width: iconWidth,
-                    height: appointmentCalendarHeaderRowHeight,
-                    backgroundColor: headerBackgroundColor,
-                    onTap: () => controller.nextPeriod(),
-                    child: Icon(Icons.chevron_right, color: arrowColor, size: arrowSize),
-                  ),
-                ],
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm),
-                    child: Text(
-                      title,
-                      style: headerTextStyle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.start,
+              return Row(
+                children: [
+                  if (showNavigation) ...[
+                    _HeaderIconButton(
+                      width: iconWidth,
+                      height: appointmentCalendarHeaderRowHeight,
+                      backgroundColor: headerBackgroundColor,
+                      onTap: () => controller.previousPeriod(),
+                      child: Icon(Icons.chevron_left, color: arrowColor, size: arrowSize),
+                    ),
+                    _HeaderIconButton(
+                      width: iconWidth,
+                      height: appointmentCalendarHeaderRowHeight,
+                      backgroundColor: headerBackgroundColor,
+                      onTap: () => controller.nextPeriod(),
+                      child: Icon(Icons.chevron_right, color: arrowColor, size: arrowSize),
+                    ),
+                  ],
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm),
+                      child: Text(
+                        title,
+                        style: headerTextStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.start,
+                      ),
                     ),
                   ),
-                ),
-                _HeaderTextButton(
-                  label: 'Today',
-                  height: appointmentCalendarHeaderRowHeight,
-                  textColor: headerTextColor,
-                  borderColor: tabBorderColor,
-                  onTap: () => controller.goToToday(),
-                ),
-                const SizedBox(width: SpacingTokens.sm),
-                const SizedBox(
-                  height: appointmentCalendarHeaderRowHeight,
-                  child: VerticalDivider(width: 0.5, thickness: 0.5, color: Colors.grey),
-                ),
-                const SizedBox(width: SpacingTokens.xs),
-                AppointmentCalendarFilterButton(
-                  branchesAsync: branchesAsync,
-                  doctorsAsync: doctorsAsync,
-                  selectedBranchId: selectedBranchId,
-                  selectedDoctorId: selectedDoctorId,
-                  showDoctorFilter: showDoctorFilter,
-                  onBranchChanged: onBranchChanged,
-                  onDoctorChanged: onDoctorChanged,
-                ),
-                const SizedBox(width: SpacingTokens.xs),
-                Flexible(
-                  child: SingleChildScrollView(
+                  AppointmentCalendarFilterButton(
+                    branchesAsync: branchesAsync,
+                    doctorsAsync: doctorsAsync,
+                    selectedBranchId: selectedBranchId,
+                    selectedDoctorId: selectedDoctorId,
+                    showDoctorFilter: showDoctorFilter,
+                    onBranchChanged: onBranchChanged,
+                    onDoctorChanged: onDoctorChanged,
+                  ),
+                  const SizedBox(width: SpacingTokens.xs),
+                  _HeaderTextButton(
+                    label: 'Today',
+                    height: appointmentCalendarHeaderRowHeight,
+                    textColor: headerTextColor,
+                    borderColor: tabBorderColor,
+                    onTap: () => controller.goToToday(),
+                  ),
+                  const SizedBox(width: SpacingTokens.sm),
+                  const SizedBox(
+                    height: appointmentCalendarHeaderRowHeight,
+                    child: VerticalDivider(width: 0.5, thickness: 0.5, color: Colors.grey),
+                  ),
+                  const SizedBox(width: SpacingTokens.xs),
+                  SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         for (var i = 0; i < _modes.length; i++) ...[
                           if (i > 0) const SizedBox(width: SpacingTokens.xs),
@@ -145,10 +156,10 @@ class AppointmentCalendarHeaderBar extends ConsumerWidget {
                       ],
                     ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
