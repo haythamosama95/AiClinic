@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
@@ -15,6 +16,13 @@ import 'fake_postgrest_rpc.dart';
 const calendarTestBranchAId = '00000000-0000-4000-8000-000000000001';
 const calendarTestBranchBId = '00000000-0000-4000-8000-000000000002';
 const calendarTestBranchCId = '00000000-0000-4000-8000-000000000003';
+const calendarTestDoctorAId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const calendarTestDoctorBId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+const calendarTestDoctors = [
+  StaffListItem(id: calendarTestDoctorAId, fullName: 'Dr. Ada', role: StaffRole.doctor, isActive: true),
+  StaffListItem(id: calendarTestDoctorBId, fullName: 'Dr. Ben', role: StaffRole.doctor, isActive: true),
+];
 
 /// Delays [list_appointments] responses for loading-state widget tests.
 class SlowAppointmentRpcTestClient extends AppointmentRpcTestClient {
@@ -52,6 +60,51 @@ class FlakyListAppointmentRpcClient extends AppointmentRpcTestClient {
       rpcCallCounts[fn] = (rpcCallCounts[fn] ?? 0) + 1;
       return FakePostgrestRpc({'success': false, 'error_code': 'INTERNAL', 'error_message': 'Temporary list failure'})
           as PostgrestFilterBuilder<T>;
+    }
+    return super.rpc(fn, params: params, get: get);
+  }
+}
+
+/// Returns different appointment rows per doctor filter.
+class DoctorAwareAppointmentRpcClient extends AppointmentRpcTestClient {
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    if (fn == 'list_appointments') {
+      final doctorId = params?['p_doctor_id']?.toString();
+      final items = switch (doctorId) {
+        calendarTestDoctorAId => [
+          appointmentRpcDefaultListItem(
+            patientName: 'Ada Patient',
+            doctorId: calendarTestDoctorAId,
+            doctorName: 'Dr. Ada',
+          ),
+        ],
+        calendarTestDoctorBId => [
+          appointmentRpcDefaultListItem(
+            patientName: 'Ben Patient',
+            doctorId: calendarTestDoctorBId,
+            doctorName: 'Dr. Ben',
+            id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccd',
+          ),
+        ],
+        _ => [
+          appointmentRpcDefaultListItem(
+            patientName: 'Ada Patient',
+            doctorId: calendarTestDoctorAId,
+            doctorName: 'Dr. Ada',
+          ),
+          appointmentRpcDefaultListItem(
+            patientName: 'Ben Patient',
+            doctorId: calendarTestDoctorBId,
+            doctorName: 'Dr. Ben',
+            id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccd',
+          ),
+        ],
+      };
+      rpcResults[fn] = {
+        'success': true,
+        'data': {'items': items},
+      };
     }
     return super.rpc(fn, params: params, get: get);
   }
@@ -124,8 +177,42 @@ class CalendarStubBranchRepository implements BranchRepository {
 }
 
 class CalendarStubStaffRepository implements StaffAdminRepository {
+  CalendarStubStaffRepository({this.doctors});
+
+  final List<StaffListItem>? doctors;
+
   @override
-  Future<List<StaffListItem>> listStaff({StaffListFilter filter = StaffListFilter.all}) async => const [];
+  Future<List<StaffListItem>> listStaff({StaffListFilter filter = StaffListFilter.all}) async => doctors ?? const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class CalendarDoctorsStubStaffRepository extends CalendarStubStaffRepository {
+  CalendarDoctorsStubStaffRepository({List<StaffListItem>? doctors}) : super(doctors: doctors ?? calendarTestDoctors);
+}
+
+class SlowCalendarStubBranchRepository extends CalendarStubBranchRepository {
+  SlowCalendarStubBranchRepository({this.listDelay = const Duration(milliseconds: 400), super.branches});
+
+  final Duration listDelay;
+
+  @override
+  Future<List<BranchListItem>> listBranches({
+    required String organizationId,
+    BranchListFilter filter = BranchListFilter.all,
+  }) async {
+    await Future<void>.delayed(listDelay);
+    return super.listBranches(organizationId: organizationId, filter: filter);
+  }
+}
+
+class EmptyCalendarStubBranchRepository implements BranchRepository {
+  @override
+  Future<List<BranchListItem>> listBranches({
+    required String organizationId,
+    BranchListFilter filter = BranchListFilter.all,
+  }) async => const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

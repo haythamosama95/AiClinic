@@ -2,16 +2,22 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'fake_postgrest_rpc.dart';
 
-Map<String, dynamic> appointmentRpcDefaultListItem({String patientName = 'Test Patient', DateTime? startLocal}) {
+Map<String, dynamic> appointmentRpcDefaultListItem({
+  String patientName = 'Test Patient',
+  DateTime? startLocal,
+  String id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  String doctorId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  String doctorName = 'Dr Test',
+}) {
   final now = DateTime.now();
   final start = startLocal ?? DateTime(now.year, now.month, now.day, 10, 0);
   final end = start.add(const Duration(minutes: 30));
   return {
-    'id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'id': id,
     'patient_id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     'patient_name': patientName,
-    'doctor_id': 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-    'doctor_name': 'Dr Test',
+    'doctor_id': doctorId,
+    'doctor_name': doctorName,
     'start_time': start.toUtc().toIso8601String(),
     'end_time': end.toUtc().toIso8601String(),
     'type': 'planned',
