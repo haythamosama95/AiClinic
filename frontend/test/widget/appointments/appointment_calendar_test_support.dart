@@ -71,11 +71,14 @@ Future<void> pumpAppointmentCalendarPage(
   BranchRepository? branchRepository,
   CalendarStubStaffRepository? staffRepository,
   FakePatientRepository? patientRepository,
+  ThemeData? theme,
+  Size? surfaceSize,
 }) async {
   final client = rpcClient ?? AppointmentRpcTestClient();
   final patients = patientRepository ?? FakePatientRepository();
+  final size = surfaceSize ?? calendarWidgetSurfaceSize;
 
-  await tester.binding.setSurfaceSize(calendarWidgetSurfaceSize);
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
@@ -91,7 +94,7 @@ Future<void> pumpAppointmentCalendarPage(
         searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(ref.watch(patientRepositoryProvider))),
       ],
       child: MaterialApp(
-        theme: AppTheme.light(),
+        theme: theme ?? AppTheme.light(),
         builder: (context, child) => ForuiAppScope(child: child!),
         home: const Scaffold(body: AppointmentCalendarPage()),
       ),
@@ -257,4 +260,99 @@ Future<ProviderContainer> waitForCalendarDataBeforeReveal(WidgetTester tester) a
   }
   await tester.pump();
   return container;
+}
+
+Appointment firstCalendarAppointment(WidgetTester tester) {
+  final calendar = calendarWidget(tester);
+  final dataSource = calendar.dataSource! as AppointmentCalendarDataSource;
+  final appointments = dataSource.appointments;
+  expect(appointments, isNotEmpty);
+  return appointments!.first as Appointment;
+}
+
+Appointment? calendarAppointmentById(WidgetTester tester, String id) {
+  final calendar = calendarWidget(tester);
+  final dataSource = calendar.dataSource! as AppointmentCalendarDataSource;
+  for (final entry in dataSource.appointments ?? const <dynamic>[]) {
+    if (entry is Appointment && entry.id?.toString() == id) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+/// Simulates a drag gesture via Syncfusion callbacks (avoids real pointer drags).
+Future<void> invokeCalendarDrag(
+  WidgetTester tester, {
+  required Appointment appointment,
+  required DateTime droppingTime,
+  CalendarResource? sourceResource,
+  CalendarResource? targetResource,
+  DateTime? draggingTime,
+}) async {
+  final calendar = calendarWidget(tester);
+  expect(calendar.onDragStart, isNotNull);
+  expect(calendar.onDragEnd, isNotNull);
+
+  calendar.onDragStart!(AppointmentDragStartDetails(appointment, sourceResource));
+  await tester.pump();
+
+  if (draggingTime != null && calendar.onDragUpdate != null) {
+    calendar.onDragUpdate!(
+      AppointmentDragUpdateDetails(appointment, sourceResource, targetResource, null, draggingTime),
+    );
+    await tester.pump();
+  }
+
+  calendar.onDragEnd!(AppointmentDragEndDetails(appointment, sourceResource, targetResource, droppingTime));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+/// Simulates a resize gesture via Syncfusion callbacks.
+Future<void> invokeCalendarResize(
+  WidgetTester tester, {
+  required Appointment appointment,
+  required DateTime startTime,
+  required DateTime endTime,
+  CalendarResource? resource,
+  List<DateTime>? updateTimes,
+}) async {
+  final calendar = calendarWidget(tester);
+  expect(calendar.onAppointmentResizeStart, isNotNull);
+  expect(calendar.onAppointmentResizeEnd, isNotNull);
+
+  calendar.onAppointmentResizeStart!(AppointmentResizeStartDetails(appointment, resource));
+  await tester.pump();
+
+  if (updateTimes != null && calendar.onAppointmentResizeUpdate != null) {
+    for (final resizingTime in updateTimes) {
+      calendar.onAppointmentResizeUpdate!(AppointmentResizeUpdateDetails(appointment, resource, resizingTime, null));
+      await tester.pump();
+    }
+  }
+
+  calendar.onAppointmentResizeEnd!(AppointmentResizeEndDetails(appointment, resource, startTime, endTime));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+Future<void> confirmRescheduleDialog(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('appointment_reschedule_confirm')));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+Future<void> cancelRescheduleDialog(WidgetTester tester) async {
+  await tester.tap(find.text('Cancel').last);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+AppointmentRpcTestClient calendarClientWithItems(List<Map<String, dynamic>> items) {
+  return AppointmentRpcTestClient()
+    ..rpcResults['list_appointments'] = {
+      'success': true,
+      'data': {'items': items},
+    };
 }

@@ -24,6 +24,35 @@ const calendarTestDoctors = [
   StaffListItem(id: calendarTestDoctorBId, fullName: 'Dr. Ben', role: StaffRole.doctor, isActive: true),
 ];
 
+/// Delays [reschedule_appointment] responses for concurrent-drag widget tests.
+class SlowRescheduleRpcClient extends AppointmentRpcTestClient {
+  SlowRescheduleRpcClient({this.rescheduleDelay = const Duration(milliseconds: 400)});
+
+  final Duration rescheduleDelay;
+
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    if (fn == 'reschedule_appointment') {
+      rpcLog.add(fn);
+      lastFunction = fn;
+      lastParams = params == null ? null : Map<String, dynamic>.from(params);
+      rpcCallCounts[fn] = (rpcCallCounts[fn] ?? 0) + 1;
+      final payload =
+          rpcResults[fn] ??
+          {
+            'success': true,
+            'data': {
+              'appointment_id': lastParams?['p_appointment_id'],
+              'start_time': lastParams?['p_start_time'],
+              'end_time': lastParams?['p_end_time'],
+            },
+          };
+      return _DelayedFakePostgrestRpc(payload, rescheduleDelay) as PostgrestFilterBuilder<T>;
+    }
+    return super.rpc(fn, params: params, get: get);
+  }
+}
+
 /// Delays [list_appointments] responses for loading-state widget tests.
 class SlowAppointmentRpcTestClient extends AppointmentRpcTestClient {
   SlowAppointmentRpcTestClient({this.listDelay = const Duration(milliseconds: 400)});

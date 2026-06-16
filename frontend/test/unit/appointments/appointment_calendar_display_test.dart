@@ -1,5 +1,8 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -128,6 +131,54 @@ void main() {
         ),
         isFalse,
       );
+    });
+
+    group('CAL-I — display (unit)', () {
+      test('CAL-I01: statusColor maps each appointment status', () {
+        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled), const Color(0xFF2563EB));
+        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed), const Color(0xFF0D9488));
+        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.completed), const Color(0xFF16A34A));
+        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.cancelled), const Color(0xFFDC2626));
+      });
+
+      test('CAL-I03: resourceRowStripeRegions stripes odd-indexed doctor rows', () {
+        final regions = AppointmentCalendarDisplay.resourceRowStripeRegions(
+          resourceIds: const ['doc-1', 'doc-2', 'doc-3'],
+          focusDate: DateTime(2026, 6, 4),
+          startHour: 9,
+          endHour: 17,
+          stripeColor: const Color(0xFFE5E7EB),
+        );
+
+        expect(regions, hasLength(1));
+        expect(regions.single.resourceIds, ['doc-2']);
+      });
+
+      test('CAL-I07: filterVisibleAppointments hides appointments outside branch hours', () {
+        final earlyBird = AppointmentListItem(
+          id: 'early',
+          patientId: 'p1',
+          patientName: 'Early Bird',
+          startTime: DateTime(2026, 6, 4, 7, 0),
+          endTime: DateTime(2026, 6, 4, 7, 30),
+          type: AppointmentType.planned,
+          status: AppointmentStatus.scheduled,
+        );
+        final inHours = AppointmentListItem(
+          id: 'ok',
+          patientId: 'p2',
+          patientName: 'In Hours',
+          startTime: DateTime(2026, 6, 4, 10, 0),
+          endTime: DateTime(2026, 6, 4, 10, 30),
+          type: AppointmentType.planned,
+          status: AppointmentStatus.scheduled,
+        );
+
+        final visible = AppointmentCalendarDisplay.filterVisibleAppointments([earlyBird, inHours], schedule);
+
+        expect(visible, hasLength(1));
+        expect(visible.single.id, 'ok');
+      });
     });
   });
 }
