@@ -16,10 +16,15 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
+import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_reschedule_validation.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_header_bar.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_skeleton.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_reschedule_confirm_dialog.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
@@ -47,6 +52,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   Set<String> _revealedAppointmentIds = {};
   int _revealGeneration = 0;
   int _lastRevealSourceFingerprint = -1;
+  bool _isProcessingDrag = false;
+  _CalendarDragSession? _dragSession;
 
   @override
   void initState() {
@@ -84,13 +91,15 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final oddResourceRowColor = colors.muted.withValues(alpha: 0.3);
     _scheduleRevealIfNeeded(visibleItems, loading: state.loading);
     if (!state.loading) {
-      _syncDataSource(
-        visibleItems,
-        doctors: doctors,
-        includeDoctorResources: _usesDoctorResources(state.mode),
-        evenResourceRowColor: colors.card,
-        oddResourceRowColor: oddResourceRowColor,
-      );
+      if (_dragSession == null) {
+        _syncDataSource(
+          visibleItems,
+          doctors: doctors,
+          includeDoctorResources: _usesDoctorResources(state.mode),
+          evenResourceRowColor: colors.card,
+          oddResourceRowColor: oddResourceRowColor,
+        );
+      }
       _syncCalendarView(state);
     }
 
@@ -132,6 +141,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                     schedule: schedule,
                     doctors: doctors,
                     canCreate: canCreate,
+                    visibleItems: visibleItems,
                     oddResourceRowColor: oddResourceRowColor,
                     loading: state.loading,
                     viewportHeight: constraints.maxHeight - appointmentCalendarHeaderHeight,
@@ -156,6 +166,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required BranchWorkingSchedule schedule,
     required List<StaffListItem> doctors,
     required bool canCreate,
+    required List<AppointmentListItem> visibleItems,
     required Color oddResourceRowColor,
     required bool loading,
     required double viewportHeight,
@@ -169,6 +180,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     );
     final textTheme = Theme.of(context).textTheme;
     final radius = BorderRadius.circular(context.shapeTokens.lg);
+    final allowDragAndDrop = canCreate && _supportsDragAndDrop(state.mode);
     final calendarTheme = SfCalendarThemeData(
       backgroundColor: colors.card,
       headerBackgroundColor: colors.card,
@@ -285,6 +297,15 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                         ],
                         appointmentBuilder: (context, details) {
                           final id = appointmentIdFromAppointmentDetails(details);
+                          if (id != null &&
+                              _dragSession?.item.id == id &&
+                              !AppointmentCalendarDisplay.isAlignedToSlotGrid(
+                                details.bounds,
+                                slotLayout.timeIntervalHeight,
+                                timelineAxisIsHorizontal: state.mode == AppointmentCalendarMode.doctors,
+                              )) {
+                            return const SizedBox.shrink();
+                          }
                           final isRevealed = id == null || _revealedAppointmentIds.contains(id);
                           return Skeletonizer(
                             enabled: !isRevealed,
@@ -305,6 +326,29 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                             unawaited(_onViewChanged(details, controller));
                           });
                         },
+                        allowDragAndDrop: allowDragAndDrop,
+                        dragAndDropSettings: const DragAndDropSettings(showTimeIndicator: false),
+                        onDragStart: allowDragAndDrop
+                            ? (details) => _onAppointmentDragStart(
+                                details,
+                                items: visibleItems,
+                                slotMinutes: slotLayout.timeIntervalMinutes,
+                                doctors: doctors,
+                                includeDoctorResources: _usesDoctorResources(state.mode),
+                                evenResourceRowColor: colors.card,
+                                oddResourceRowColor: oddResourceRowColor,
+                              )
+                            : null,
+                        onDragUpdate: allowDragAndDrop
+                            ? (details) => _onAppointmentDragUpdate(
+                                details,
+                                slotMinutes: slotLayout.timeIntervalMinutes,
+                                doctors: doctors,
+                                includeDoctorResources: _usesDoctorResources(state.mode),
+                                evenResourceRowColor: colors.card,
+                                oddResourceRowColor: oddResourceRowColor,
+                              )
+                            : null,
                         onTap: (details) {
                           _onCalendarSelectionTap(details, state.mode);
                           _onCalendarTap(
@@ -318,6 +362,23 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                             canCreate: canCreate,
                           );
                         },
+                        onDragEnd: allowDragAndDrop
+                            ? (details) {
+                                unawaited(
+                                  _onAppointmentDragEnd(
+                                    details,
+                                    items: visibleItems,
+                                    schedule: schedule,
+                                    mode: state.mode,
+                                    slotMinutes: slotLayout.timeIntervalMinutes,
+                                    doctors: doctors,
+                                    includeDoctorResources: _usesDoctorResources(state.mode),
+                                    evenResourceRowColor: colors.card,
+                                    oddResourceRowColor: oddResourceRowColor,
+                                  ),
+                                );
+                              }
+                            : null,
                       ),
                     ),
             ),
@@ -457,6 +518,366 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   static DateTime _weekStart(DateTime date) {
     final dayStart = DateTime(date.year, date.month, date.day);
     return dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
+  }
+
+  void _onAppointmentDragStart(
+    AppointmentDragStartDetails details, {
+    required List<AppointmentListItem> items,
+    required int slotMinutes,
+    required List<StaffListItem> doctors,
+    required bool includeDoctorResources,
+    required Color evenResourceRowColor,
+    required Color oddResourceRowColor,
+  }) {
+    final calendarAppointment = details.appointment;
+    if (calendarAppointment is! Appointment) {
+      return;
+    }
+
+    final appointmentId = calendarAppointment.id?.toString();
+    if (appointmentId == null || appointmentId.isEmpty) {
+      return;
+    }
+
+    final item = items.where((entry) => entry.id == appointmentId).firstOrNull;
+    if (item == null) {
+      return;
+    }
+
+    setState(() {
+      _dragSession = _CalendarDragSession(
+        item: item,
+        previewStart: item.startTime.toLocal(),
+        slotMinutes: slotMinutes,
+        baseItems: items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+      );
+    });
+    _applyDragPreview(_dragSession!);
+  }
+
+  void _onAppointmentDragUpdate(
+    AppointmentDragUpdateDetails details, {
+    required int slotMinutes,
+    required List<StaffListItem> doctors,
+    required bool includeDoctorResources,
+    required Color evenResourceRowColor,
+    required Color oddResourceRowColor,
+  }) {
+    final session = _dragSession;
+    final draggingTime = details.draggingTime;
+    if (session == null || draggingTime == null) {
+      return;
+    }
+
+    final snappedStart = AppointmentCalendarDisplay.snapTimeToSlot(draggingTime, slotMinutes: slotMinutes);
+    if (snappedStart == session.previewStart) {
+      return;
+    }
+
+    session.previewStart = snappedStart;
+    session
+      ..doctors = doctors
+      ..includeDoctorResources = includeDoctorResources
+      ..evenResourceRowColor = evenResourceRowColor
+      ..oddResourceRowColor = oddResourceRowColor;
+    _applyDragPreview(session);
+  }
+
+  void _applyDragPreview(_CalendarDragSession session) {
+    final duration = session.item.endTime.difference(session.item.startTime);
+    final previewEnd = session.previewStart.add(duration);
+    final previewItems = [
+      for (final entry in session.baseItems)
+        if (entry.id == session.item.id)
+          entry.copyWith(startTime: session.previewStart, endTime: previewEnd)
+        else
+          entry,
+    ];
+    _revertCalendarItems(
+      previewItems,
+      doctors: session.doctors,
+      includeDoctorResources: session.includeDoctorResources,
+      evenResourceRowColor: session.evenResourceRowColor,
+      oddResourceRowColor: session.oddResourceRowColor,
+    );
+  }
+
+  void _clearDragSession({required List<AppointmentListItem> items}) {
+    final session = _dragSession;
+    if (session == null) {
+      return;
+    }
+
+    _revertCalendarItems(
+      items,
+      doctors: session.doctors,
+      includeDoctorResources: session.includeDoctorResources,
+      evenResourceRowColor: session.evenResourceRowColor,
+      oddResourceRowColor: session.oddResourceRowColor,
+    );
+    setState(() => _dragSession = null);
+  }
+
+  Future<void> _onAppointmentDragEnd(
+    AppointmentDragEndDetails details, {
+    required List<AppointmentListItem> items,
+    required BranchWorkingSchedule schedule,
+    required AppointmentCalendarMode mode,
+    required int slotMinutes,
+    required List<StaffListItem> doctors,
+    required bool includeDoctorResources,
+    required Color evenResourceRowColor,
+    required Color oddResourceRowColor,
+  }) async {
+    if (_isProcessingDrag) {
+      return;
+    }
+
+    final session = _dragSession;
+    final droppingTime = details.droppingTime;
+    final calendarAppointment = details.appointment;
+    if (droppingTime == null || calendarAppointment is! Appointment) {
+      _clearDragSession(items: items);
+      return;
+    }
+
+    final appointmentId = calendarAppointment.id?.toString();
+    if (appointmentId == null || appointmentId.isEmpty) {
+      _clearDragSession(items: items);
+      return;
+    }
+
+    final item = items.where((entry) => entry.id == appointmentId).firstOrNull;
+    if (item == null) {
+      _clearDragSession(items: items);
+      return;
+    }
+
+    final duration = item.endTime.difference(item.startTime);
+    final newStart =
+        session?.previewStart ?? AppointmentCalendarDisplay.snapTimeToSlot(droppingTime, slotMinutes: slotMinutes);
+    final newEnd = newStart.add(duration);
+
+    setState(() => _dragSession = null);
+
+    _applySnappedPreview(
+      items: items,
+      appointmentId: item.id,
+      newStart: newStart,
+      newEnd: newEnd,
+      doctors: doctors,
+      includeDoctorResources: includeDoctorResources,
+      evenResourceRowColor: evenResourceRowColor,
+      oddResourceRowColor: oddResourceRowColor,
+    );
+
+    if (AppointmentRescheduleValidation.isNoOpMove(appointment: item, newStart: newStart)) {
+      _revertCalendarItems(
+        items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+      );
+      return;
+    }
+
+    if (mode == AppointmentCalendarMode.doctors) {
+      final resourceError = AppointmentRescheduleValidation.validateDoctorResourceMove(
+        appointment: item,
+        targetDoctorId: doctorIdFromCalendarResource(details.targetResource),
+      );
+      if (resourceError != null) {
+        _revertCalendarItems(
+          items,
+          doctors: doctors,
+          includeDoctorResources: includeDoctorResources,
+          evenResourceRowColor: evenResourceRowColor,
+          oddResourceRowColor: oddResourceRowColor,
+        );
+        if (mounted) {
+          AppToast.error(context, message: resourceError);
+        }
+        return;
+      }
+    }
+
+    final validationError = AppointmentRescheduleValidation.validateMove(
+      appointment: item,
+      newStart: newStart,
+      schedule: schedule,
+      branchAppointments: items,
+    );
+    if (validationError != null) {
+      _revertCalendarItems(
+        items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+      );
+      if (mounted) {
+        AppToast.error(context, message: validationError);
+      }
+      return;
+    }
+
+    if (!mounted) {
+      _revertCalendarItems(
+        items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+      );
+      return;
+    }
+
+    final confirmed = await AppointmentRescheduleConfirmDialog.show(
+      context,
+      appointment: item,
+      newStart: newStart,
+      newEnd: newEnd,
+      schedule: schedule,
+      branchAppointments: items,
+    );
+    if (confirmed == null) {
+      _revertCalendarItems(
+        items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+      );
+      return;
+    }
+
+    final finalStart = confirmed.start;
+    final finalEnd = confirmed.end;
+
+    if (AppointmentRescheduleValidation.isNoOpMove(appointment: item, newStart: finalStart) &&
+        _isSameInstant(finalEnd, item.endTime)) {
+      _revertCalendarItems(
+        items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+      );
+      return;
+    }
+
+    final postEditValidationError = AppointmentRescheduleValidation.validateMove(
+      appointment: item,
+      newStart: finalStart,
+      newEnd: finalEnd,
+      schedule: schedule,
+      branchAppointments: items,
+    );
+    if (postEditValidationError != null) {
+      _revertCalendarItems(
+        items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+      );
+      if (mounted) {
+        AppToast.error(context, message: postEditValidationError);
+      }
+      return;
+    }
+
+    _isProcessingDrag = true;
+    try {
+      await ref
+          .read(appointmentRepositoryProvider)
+          .rescheduleAppointment(appointmentId: item.id, startTime: finalStart, endTime: finalEnd);
+      if (!mounted) {
+        return;
+      }
+      await ref.read(appointmentCalendarProvider.notifier).refresh();
+      if (!mounted) {
+        return;
+      }
+      AppToast.success(context, message: 'Appointment moved to ${_formatRange(finalStart, finalEnd)}.');
+    } on RpcFailure catch (error) {
+      _revertCalendarItems(
+        items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+      );
+      if (mounted) {
+        AppToast.error(context, message: appointmentMessageForRpc(error));
+      }
+    } catch (error) {
+      _revertCalendarItems(
+        items,
+        doctors: doctors,
+        includeDoctorResources: includeDoctorResources,
+        evenResourceRowColor: evenResourceRowColor,
+        oddResourceRowColor: oddResourceRowColor,
+      );
+      if (mounted) {
+        AppToast.error(context, message: 'Could not move the appointment. Please try again.');
+      }
+    } finally {
+      _isProcessingDrag = false;
+    }
+  }
+
+  void _revertCalendarItems(
+    List<AppointmentListItem> items, {
+    required List<StaffListItem> doctors,
+    required bool includeDoctorResources,
+    required Color evenResourceRowColor,
+    required Color oddResourceRowColor,
+  }) {
+    _dataSource.updateItems(
+      items,
+      doctors: doctors,
+      includeDoctorResources: includeDoctorResources,
+      evenResourceRowColor: evenResourceRowColor,
+      oddResourceRowColor: oddResourceRowColor,
+    );
+  }
+
+  void _applySnappedPreview({
+    required List<AppointmentListItem> items,
+    required String appointmentId,
+    required DateTime newStart,
+    required DateTime newEnd,
+    required List<StaffListItem> doctors,
+    required bool includeDoctorResources,
+    required Color evenResourceRowColor,
+    required Color oddResourceRowColor,
+  }) {
+    final previewItems = [
+      for (final entry in items)
+        if (entry.id == appointmentId) entry.copyWith(startTime: newStart, endTime: newEnd) else entry,
+    ];
+    _revertCalendarItems(
+      previewItems,
+      doctors: doctors,
+      includeDoctorResources: includeDoctorResources,
+      evenResourceRowColor: evenResourceRowColor,
+      oddResourceRowColor: oddResourceRowColor,
+    );
+  }
+
+  static bool _supportsDragAndDrop(AppointmentCalendarMode mode) {
+    return switch (mode) {
+      AppointmentCalendarMode.day => true,
+      AppointmentCalendarMode.week => true,
+      AppointmentCalendarMode.doctors => true,
+      _ => false,
+    };
   }
 
   void _onCalendarSelectionTap(CalendarTapDetails details, AppointmentCalendarMode mode) {
@@ -641,6 +1062,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
   static String _weekdayLabel(DateTime date) => DateFormat.EEEE().format(date);
 
+  static bool _isSameInstant(DateTime a, DateTime b) {
+    return a.toUtc().millisecondsSinceEpoch == b.toUtc().millisecondsSinceEpoch;
+  }
+
   static String _formatRange(DateTime start, DateTime end) {
     final localStart = start.toLocal();
     final localEnd = end.toLocal();
@@ -649,6 +1074,28 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final to = DateFormat.Hm().format(localEnd);
     return '$day · $from – $to';
   }
+}
+
+class _CalendarDragSession {
+  _CalendarDragSession({
+    required this.item,
+    required this.previewStart,
+    required this.slotMinutes,
+    required this.baseItems,
+    required this.doctors,
+    required this.includeDoctorResources,
+    required this.evenResourceRowColor,
+    required this.oddResourceRowColor,
+  });
+
+  final AppointmentListItem item;
+  DateTime previewStart;
+  final int slotMinutes;
+  final List<AppointmentListItem> baseItems;
+  List<StaffListItem> doctors;
+  bool includeDoctorResources;
+  Color evenResourceRowColor;
+  Color oddResourceRowColor;
 }
 
 class _AppointmentTile extends StatelessWidget {

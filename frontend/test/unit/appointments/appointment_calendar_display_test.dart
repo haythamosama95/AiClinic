@@ -1,6 +1,7 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -101,6 +102,32 @@ void main() {
 
       expect(range.start, DateTime(2026, 6, 4, 9, 0));
       expect(range.end, DateTime(2026, 6, 4, 9, 30));
+    });
+
+    test('snapTimeToSlot rounds to nearest 30-minute slot start', () {
+      expect(AppointmentCalendarDisplay.snapTimeToSlot(DateTime(2026, 6, 4, 14, 58)), DateTime(2026, 6, 4, 15, 0));
+      expect(AppointmentCalendarDisplay.snapTimeToSlot(DateTime(2026, 6, 4, 15, 2)), DateTime(2026, 6, 4, 15, 0));
+      expect(AppointmentCalendarDisplay.snapTimeToSlot(DateTime(2026, 6, 4, 15, 16)), DateTime(2026, 6, 4, 15, 30));
+    });
+
+    test('isAlignedToSlotGrid detects grid-aligned bounds', () {
+      const slotHeight = 48.0;
+      expect(
+        AppointmentCalendarDisplay.isAlignedToSlotGrid(
+          const Rect.fromLTWH(0, 96, 100, 48),
+          slotHeight,
+          timelineAxisIsHorizontal: false,
+        ),
+        isTrue,
+      );
+      expect(
+        AppointmentCalendarDisplay.isAlignedToSlotGrid(
+          const Rect.fromLTWH(0, 110, 100, 48),
+          slotHeight,
+          timelineAxisIsHorizontal: false,
+        ),
+        isFalse,
+      );
     });
   });
 }

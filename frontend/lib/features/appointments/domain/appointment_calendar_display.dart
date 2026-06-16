@@ -214,6 +214,30 @@ class AppointmentCalendarDisplay {
     return (start: start, end: start.add(Duration(minutes: slotMinutes)));
   }
 
+  /// Snaps [time] to the nearest calendar slot start (e.g. 30-minute grid).
+  static DateTime snapTimeToSlot(DateTime time, {int slotMinutes = defaultTimeIntervalMinutes}) {
+    if (slotMinutes <= 0) {
+      return time.toLocal();
+    }
+
+    final local = time.toLocal();
+    final dayStart = DateTime(local.year, local.month, local.day);
+    final totalMinutes = local.hour * 60 + local.minute;
+    final slotIndex = ((totalMinutes + slotMinutes ~/ 2) / slotMinutes).floor();
+    final snappedMinutes = slotIndex * slotMinutes;
+    return dayStart.add(Duration(minutes: snappedMinutes));
+  }
+
+  /// Whether [bounds] align to the calendar slot grid (as opposed to a free drag ghost).
+  static bool isAlignedToSlotGrid(Rect bounds, double slotSize, {required bool timelineAxisIsHorizontal}) {
+    if (slotSize <= 0) {
+      return true;
+    }
+
+    final offset = timelineAxisIsHorizontal ? bounds.left % slotSize : bounds.top % slotSize;
+    return offset <= 1 || offset >= slotSize - 1;
+  }
+
   static List<AppointmentListItem> filterVisibleAppointments(
     List<AppointmentListItem> items,
     BranchWorkingSchedule schedule,
