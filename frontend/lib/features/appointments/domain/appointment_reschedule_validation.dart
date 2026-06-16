@@ -13,6 +13,15 @@ class AppointmentRescheduleValidation {
     return _isSameInstant(newStart.toLocal(), appointment.startTime);
   }
 
+  static bool isNoOpResize({
+    required AppointmentListItem appointment,
+    required DateTime newStart,
+    required DateTime newEnd,
+  }) {
+    return isNoOpMove(appointment: appointment, newStart: newStart) &&
+        _isSameInstant(newEnd.toLocal(), appointment.endTime);
+  }
+
   static String? validateMove({
     required AppointmentListItem appointment,
     required DateTime newStart,

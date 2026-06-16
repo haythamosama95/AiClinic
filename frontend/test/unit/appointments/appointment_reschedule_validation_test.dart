@@ -160,5 +160,23 @@ void main() {
     test('isNoOpMove true when start time unchanged', () {
       expect(AppointmentRescheduleValidation.isNoOpMove(appointment: item(), newStart: thursday), isTrue);
     });
+
+    test('isNoOpResize true when start and end unchanged', () {
+      expect(
+        AppointmentRescheduleValidation.isNoOpResize(appointment: item(), newStart: thursday, newEnd: thursdayEnd),
+        isTrue,
+      );
+    });
+
+    test('isNoOpResize false when only end time changes', () {
+      expect(
+        AppointmentRescheduleValidation.isNoOpResize(
+          appointment: item(),
+          newStart: thursday,
+          newEnd: DateTime(2026, 6, 4, 11, 0),
+        ),
+        isFalse,
+      );
+    });
   });
 }
