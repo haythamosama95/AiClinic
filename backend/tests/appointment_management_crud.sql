@@ -186,13 +186,18 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- No upper duration cap (see 20260615120000_remove_appointment_max_duration.sql).
   v_result := public.set_appointment_default_duration(241, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'set_duration_rejects_too_long',
-    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    'set_duration_accepts_over_240_min',
+    v_result.success AND (v_result.data ->> 'default_duration_minutes')::int = 241,
     COALESCE(v_result.error_code, '<null>')
   );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Restore org-wide default for subsequent duration-dependent tests.
+  v_result := public.set_appointment_default_duration(30, NULL);
   PERFORM set_config('role', 'authenticated', true);
 
   -- Stupid: invalid type on create.
