@@ -213,9 +213,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                             });
                           },
                           onTap: (details) {
-                            if (details.targetElement != CalendarElement.appointment) {
-                              _calendarController.selectedDate = null;
-                            }
+                            _onCalendarSelectionTap(details, state.mode);
                             _onCalendarTap(
                               details,
                               state.items,
@@ -308,6 +306,23 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     return dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
   }
 
+  void _onCalendarSelectionTap(CalendarTapDetails details, AppointmentCalendarMode mode) {
+    if (details.targetElement == CalendarElement.appointment) {
+      return;
+    }
+
+    if (mode == AppointmentCalendarMode.month) {
+      final tappedDate = details.date;
+      if (tappedDate != null &&
+          (details.targetElement == CalendarElement.calendarCell || details.targetElement == CalendarElement.agenda)) {
+        _calendarController.selectedDate = DateTime(tappedDate.year, tappedDate.month, tappedDate.day);
+      }
+      return;
+    }
+
+    _calendarController.selectedDate = null;
+  }
+
   void _onCalendarTap(
     CalendarTapDetails details,
     List<AppointmentListItem> items, {
@@ -325,6 +340,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     }
 
     if (!canCreate || branchId == null || branchId.isEmpty) {
+      return;
+    }
+
+    if (mode != AppointmentCalendarMode.day && mode != AppointmentCalendarMode.week) {
       return;
     }
 
