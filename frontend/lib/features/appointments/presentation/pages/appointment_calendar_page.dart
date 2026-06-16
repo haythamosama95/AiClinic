@@ -25,6 +25,9 @@ import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 
 const _skeletonRevealDelay = Duration(milliseconds: 180);
 
+/// Resource row height in the doctor timeline view; must match [TimeSlotViewSettings.timelineAppointmentHeight].
+const _timelineResourceRowHeight = 120.0;
+
 /// Branch appointment calendar with day, week, month, schedule, and doctor timeline views.
 class AppointmentCalendarPage extends ConsumerStatefulWidget {
   const AppointmentCalendarPage({super.key});
@@ -209,7 +212,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
             cellBorderColor: colors.border,
             resourceViewSettings: ResourceViewSettings(
               showAvatar: false,
-              size: 120,
+              size: _timelineResourceRowHeight,
               visibleResourceCount: -1,
               displayNameTextStyle: textTheme.labelMedium?.copyWith(color: colors.foreground),
             ),
@@ -234,6 +237,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
               endHour: slotLayout.endHour,
               timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
               timeIntervalHeight: slotLayout.timeIntervalHeight,
+              timelineAppointmentHeight: _timelineResourceRowHeight,
               nonWorkingDays: slotLayout.nonWorkingDays,
               timeFormat: 'HH:mm',
               dateFormat: 'd',
@@ -688,25 +692,29 @@ class _AppointmentTile extends StatelessWidget {
     final appointment = details.appointments.first;
     final brightness = ThemeData.estimateBrightnessForColor(appointment.color);
     final textColor = brightness == Brightness.dark ? Colors.white : Colors.black87;
+    final bounds = details.bounds;
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.all(2),
-        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
-        decoration: BoxDecoration(
-          color: appointment.color.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: appointment.color),
-        ),
-        alignment: Alignment.topLeft,
-        child: Text(
-          appointment.notes == null || appointment.notes!.isEmpty
-              ? appointment.subject
-              : '${appointment.subject}\n${appointment.notes}',
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor),
+      child: SizedBox(
+        width: bounds.width,
+        height: bounds.height,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
+          decoration: BoxDecoration(
+            color: appointment.color.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: appointment.color),
+          ),
+          alignment: Alignment.topLeft,
+          child: Text(
+            appointment.notes == null || appointment.notes!.isEmpty
+                ? appointment.subject
+                : '${appointment.subject}\n${appointment.notes}',
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor),
+          ),
         ),
       ),
     );
