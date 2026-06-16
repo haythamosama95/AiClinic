@@ -21,7 +21,7 @@ import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 
-/// Branch appointment calendar with day, week, and month views.
+/// Branch appointment calendar with day, week, month, schedule, and doctor timeline views.
 class AppointmentCalendarPage extends ConsumerStatefulWidget {
   const AppointmentCalendarPage({super.key});
 
@@ -71,7 +71,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     _syncDataSource(
       visibleItems,
       doctors: doctors,
-      includeDoctorResources: state.mode == AppointmentCalendarMode.doctors,
+      includeDoctorResources: _usesDoctorResources(state.mode),
       evenResourceRowColor: colors.card,
       oddResourceRowColor: oddResourceRowColor,
     );
@@ -155,6 +155,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                             CalendarView.day,
                             CalendarView.week,
                             CalendarView.month,
+                            CalendarView.schedule,
                             CalendarView.timelineDay,
                           ],
                           dataSource: _dataSource,
@@ -197,6 +198,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                             showAgenda: true,
                             appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
                           ),
+                          scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 52),
                           specialRegions: [
                             for (final region in slotLayout.shadeRegions)
                               TimeRegion(
@@ -324,6 +326,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       AppointmentCalendarMode.day => a.year == b.year && a.month == b.month && a.day == b.day,
       AppointmentCalendarMode.doctors => a.year == b.year && a.month == b.month && a.day == b.day,
       AppointmentCalendarMode.week => _weekStart(a) == _weekStart(b),
+      AppointmentCalendarMode.schedule => _weekStart(a) == _weekStart(b),
       AppointmentCalendarMode.month => a.year == b.year && a.month == b.month,
     };
   }
@@ -477,11 +480,16 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     );
   }
 
+  static bool _usesDoctorResources(AppointmentCalendarMode mode) {
+    return mode == AppointmentCalendarMode.doctors;
+  }
+
   static CalendarView _calendarViewFor(AppointmentCalendarMode mode) {
     return switch (mode) {
       AppointmentCalendarMode.day => CalendarView.day,
       AppointmentCalendarMode.week => CalendarView.week,
       AppointmentCalendarMode.month => CalendarView.month,
+      AppointmentCalendarMode.schedule => CalendarView.schedule,
       AppointmentCalendarMode.doctors => CalendarView.timelineDay,
     };
   }
@@ -491,6 +499,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       CalendarView.day => AppointmentCalendarMode.day,
       CalendarView.week => AppointmentCalendarMode.week,
       CalendarView.month => AppointmentCalendarMode.month,
+      CalendarView.schedule => AppointmentCalendarMode.schedule,
       CalendarView.timelineDay => AppointmentCalendarMode.doctors,
       _ => AppointmentCalendarMode.week,
     };

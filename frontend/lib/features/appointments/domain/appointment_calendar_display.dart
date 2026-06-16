@@ -57,6 +57,7 @@ class AppointmentCalendarDisplay {
       AppointmentCalendarMode.day => _hourRangeForDay(schedule, focusDate),
       AppointmentCalendarMode.doctors => _hourRangeForDay(schedule, focusDate),
       AppointmentCalendarMode.week => _hourRangeForWeek(schedule),
+      AppointmentCalendarMode.schedule => (8.0, 18.0),
       AppointmentCalendarMode.month => (8.0, 18.0),
     };
 

@@ -1,5 +1,5 @@
 /// Calendar view granularity for appointment scheduling (V1-4).
-enum AppointmentCalendarMode { day, week, month, doctors }
+enum AppointmentCalendarMode { day, week, month, doctors, schedule }
 
 /// UTC fetch window for [list_appointments] given focus date and view mode.
 (DateTime, DateTime) appointmentCalendarFetchBounds(DateTime focusDate, AppointmentCalendarMode mode) {
@@ -9,6 +9,7 @@ enum AppointmentCalendarMode { day, week, month, doctors }
     case AppointmentCalendarMode.doctors:
       return (dayStart.toUtc(), dayStart.add(const Duration(days: 1)).toUtc());
     case AppointmentCalendarMode.week:
+    case AppointmentCalendarMode.schedule:
       final weekStart = dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
       return (weekStart.toUtc(), weekStart.add(const Duration(days: 7)).toUtc());
     case AppointmentCalendarMode.month:
@@ -26,6 +27,8 @@ DateTime appointmentCalendarPreviousFocus(DateTime focusDate, AppointmentCalenda
       return DateTime(focusDate.year, focusDate.month, focusDate.day - 1);
     case AppointmentCalendarMode.week:
       return DateTime(focusDate.year, focusDate.month, focusDate.day - 7);
+    case AppointmentCalendarMode.schedule:
+      return DateTime(focusDate.year, focusDate.month, focusDate.day - 1);
     case AppointmentCalendarMode.month:
       return DateTime(focusDate.year, focusDate.month - 1, focusDate.day);
   }
@@ -39,6 +42,8 @@ DateTime appointmentCalendarNextFocus(DateTime focusDate, AppointmentCalendarMod
       return DateTime(focusDate.year, focusDate.month, focusDate.day + 1);
     case AppointmentCalendarMode.week:
       return DateTime(focusDate.year, focusDate.month, focusDate.day + 7);
+    case AppointmentCalendarMode.schedule:
+      return DateTime(focusDate.year, focusDate.month, focusDate.day + 1);
     case AppointmentCalendarMode.month:
       return DateTime(focusDate.year, focusDate.month + 1, focusDate.day);
   }
