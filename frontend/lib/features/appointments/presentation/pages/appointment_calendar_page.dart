@@ -216,6 +216,26 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
             onApplyFilters: (filters) =>
                 controller.applyFilters(branchId: filters.branchId, doctorId: filters.doctorId),
             onClearFilters: controller.clearFilters,
+            onBookAppointment: canCreate && state.selectedBranchId != null && state.selectedBranchId!.isNotEmpty
+                ? () {
+                    final slotRange = AppointmentCalendarDisplay.slotRangeFromTap(
+                      tappedDate: state.focusDate,
+                      schedule: schedule,
+                      mode: state.mode,
+                      slotMinutes: slotLayout.timeIntervalMinutes,
+                    );
+                    unawaited(
+                      _showBookingSheet(
+                        branchId: state.selectedBranchId!,
+                        schedule: schedule,
+                        slotStart: slotRange.start,
+                        slotEnd: slotRange.end,
+                        initialDoctorId: state.selectedDoctorId,
+                        doctors: doctors,
+                      ),
+                    );
+                  }
+                : null,
           ),
           Expanded(
             child: Padding(

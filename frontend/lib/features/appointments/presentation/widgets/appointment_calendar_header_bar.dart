@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_filter_popover.dart';
@@ -35,6 +36,7 @@ class AppointmentCalendarHeaderBar extends ConsumerWidget {
     required this.hasActiveFilters,
     required this.onApplyFilters,
     required this.onClearFilters,
+    this.onBookAppointment,
     super.key,
   });
 
@@ -46,6 +48,7 @@ class AppointmentCalendarHeaderBar extends ConsumerWidget {
   final bool hasActiveFilters;
   final ValueChanged<AppointmentCalendarFilters> onApplyFilters;
   final VoidCallback onClearFilters;
+  final VoidCallback? onBookAppointment;
 
   static const _modes = <AppointmentCalendarMode>[
     AppointmentCalendarMode.day,
@@ -117,6 +120,10 @@ class AppointmentCalendarHeaderBar extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  if (onBookAppointment != null) ...[
+                    AppButton(label: 'Book Appointment', size: AppFieldSize.sm, onPressed: onBookAppointment),
+                    const SizedBox(width: SpacingTokens.sm),
+                  ],
                   AppointmentCalendarFilterButton(
                     branchesAsync: branchesAsync,
                     doctorsAsync: doctorsAsync,
