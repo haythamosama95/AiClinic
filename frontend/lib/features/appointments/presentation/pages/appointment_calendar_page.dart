@@ -196,7 +196,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                           ),
                           monthViewSettings: const MonthViewSettings(
                             showAgenda: true,
-                            appointmentDisplayMode: MonthAppointmentDisplayMode.appointment,
+                            appointmentDisplayMode: MonthAppointmentDisplayMode.indicator,
                           ),
                           scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 52),
                           specialRegions: [
