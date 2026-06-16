@@ -24,6 +24,7 @@ sql_tests=(
   appointment_management_crud.sql
   appointment_management_patient_filter.sql
   appointment_management_rls.sql
+  appointment_calendar_backend_integrity.sql
 )
 
 for f in "${sql_tests[@]}"; do
