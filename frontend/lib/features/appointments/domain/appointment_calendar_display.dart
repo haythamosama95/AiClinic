@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'package:syncfusion_flutter_calendar/calendar.dart';
+
 import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
@@ -100,6 +102,35 @@ class AppointmentCalendarDisplay {
       }
     }
     return closed;
+  }
+
+  /// Alternating row stripes for the doctor resource timeline view.
+  static List<TimeRegion> resourceRowStripeRegions({
+    required List<Object> resourceIds,
+    required DateTime focusDate,
+    required double startHour,
+    required double endHour,
+    required Color stripeColor,
+  }) {
+    if (resourceIds.isEmpty) {
+      return const [];
+    }
+
+    final dayStart = DateTime(focusDate.year, focusDate.month, focusDate.day);
+    final rangeStart = dayStart.add(Duration(minutes: (startHour * 60).round()));
+    final rangeEnd = dayStart.add(Duration(minutes: (endHour * 60).round()));
+
+    return [
+      for (var index = 0; index < resourceIds.length; index++)
+        if (index.isOdd)
+          TimeRegion(
+            startTime: rangeStart,
+            endTime: rangeEnd,
+            enablePointerInteraction: false,
+            color: stripeColor,
+            resourceIds: [resourceIds[index]],
+          ),
+    ];
   }
 
   static List<AppointmentCalendarShadeRegion> shadeRegionsForWeek(BranchWorkingSchedule schedule, DateTime focusDate) {

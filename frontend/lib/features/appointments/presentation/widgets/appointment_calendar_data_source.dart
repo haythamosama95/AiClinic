@@ -11,21 +11,43 @@ const appointmentCalendarUnassignedResourceId = '__unassigned__';
 /// Syncfusion data source for branch appointment rows.
 class AppointmentCalendarDataSource extends CalendarDataSource {
   AppointmentCalendarDataSource(List<AppointmentListItem> items, {List<StaffListItem> doctors = const []}) {
-    _apply(items, doctors, includeDoctorResources: false);
+    _apply(
+      items,
+      doctors,
+      includeDoctorResources: false,
+      evenResourceRowColor: Colors.transparent,
+      oddResourceRowColor: Colors.transparent,
+    );
   }
 
   void updateItems(
     List<AppointmentListItem> items, {
     List<StaffListItem> doctors = const [],
     required bool includeDoctorResources,
+    Color evenResourceRowColor = Colors.transparent,
+    Color oddResourceRowColor = Colors.transparent,
   }) {
-    _apply(items, doctors, includeDoctorResources: includeDoctorResources);
+    _apply(
+      items,
+      doctors,
+      includeDoctorResources: includeDoctorResources,
+      evenResourceRowColor: evenResourceRowColor,
+      oddResourceRowColor: oddResourceRowColor,
+    );
     notifyListeners(CalendarDataSourceAction.reset, appointments ?? const []);
   }
 
-  void _apply(List<AppointmentListItem> items, List<StaffListItem> doctors, {required bool includeDoctorResources}) {
+  void _apply(
+    List<AppointmentListItem> items,
+    List<StaffListItem> doctors, {
+    required bool includeDoctorResources,
+    required Color evenResourceRowColor,
+    required Color oddResourceRowColor,
+  }) {
     appointments = _mapAppointments(items, assignResources: includeDoctorResources);
-    resources = includeDoctorResources ? _mapDoctorResources(doctors) : const [];
+    resources = includeDoctorResources
+        ? _mapDoctorResources(doctors, evenRowColor: evenResourceRowColor, oddRowColor: oddResourceRowColor)
+        : const [];
   }
 
   static List<Appointment> _mapAppointments(List<AppointmentListItem> items, {required bool assignResources}) {
@@ -51,16 +73,27 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
     return [doctorId];
   }
 
-  static List<CalendarResource> _mapDoctorResources(List<StaffListItem> doctors) {
-    return [
-      for (final doctor in doctors)
-        CalendarResource(id: doctor.id, displayName: doctor.fullName, color: Colors.transparent),
+  static List<CalendarResource> _mapDoctorResources(
+    List<StaffListItem> doctors, {
+    required Color evenRowColor,
+    required Color oddRowColor,
+  }) {
+    final resources = <CalendarResource>[];
+    var index = 0;
+    for (final doctor in doctors) {
+      resources.add(
+        CalendarResource(id: doctor.id, displayName: doctor.fullName, color: index.isEven ? evenRowColor : oddRowColor),
+      );
+      index++;
+    }
+    resources.add(
       CalendarResource(
         id: appointmentCalendarUnassignedResourceId,
         displayName: 'Unassigned',
-        color: Colors.transparent,
+        color: index.isEven ? evenRowColor : oddRowColor,
       ),
-    ];
+    );
+    return resources;
   }
 }
 

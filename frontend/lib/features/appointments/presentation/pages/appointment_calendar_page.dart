@@ -51,6 +51,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.semanticColors;
     final canAccess = ref.watch(permissionServiceProvider).canAccessAppointments();
     if (!canAccess) {
       return const _CalendarPermissionDenied();
@@ -66,10 +67,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final visibleItems = AppointmentCalendarDisplay.filterVisibleAppointments(state.items, schedule);
     final doctors = doctorsAsync.maybeWhen(data: (items) => items, orElse: () => const <StaffListItem>[]);
     final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
+    final oddResourceRowColor = colors.muted.withValues(alpha: 0.3);
     _syncDataSource(
       visibleItems,
       doctors: doctors,
       includeDoctorResources: state.mode == AppointmentCalendarMode.doctors,
+      evenResourceRowColor: colors.card,
+      oddResourceRowColor: oddResourceRowColor,
     );
     _syncCalendarView(state);
 
@@ -116,7 +120,6 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                   focusDate: state.focusDate,
                   viewportHeight: constraints.maxHeight,
                 );
-                final colors = context.semanticColors;
                 final textTheme = Theme.of(context).textTheme;
                 final radius = BorderRadius.circular(context.shapeTokens.lg);
                 final calendarTheme = SfCalendarThemeData(
@@ -202,6 +205,17 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                 enablePointerInteraction: false,
                                 color: colors.muted.withValues(alpha: 0.45),
                               ),
+                            if (state.mode == AppointmentCalendarMode.doctors)
+                              ...AppointmentCalendarDisplay.resourceRowStripeRegions(
+                                resourceIds: [
+                                  for (final resource in _dataSource.resources ?? const <CalendarResource>[])
+                                    resource.id,
+                                ],
+                                focusDate: state.focusDate,
+                                startHour: slotLayout.startHour,
+                                endHour: slotLayout.endHour,
+                                stripeColor: oddResourceRowColor,
+                              ),
                           ],
                           appointmentBuilder: (context, details) => _AppointmentTile(
                             details: details,
@@ -242,17 +256,30 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     List<AppointmentListItem> items, {
     required List<StaffListItem> doctors,
     required bool includeDoctorResources,
+    required Color evenResourceRowColor,
+    required Color oddResourceRowColor,
   }) {
     final itemsFingerprint = Object.hashAll(
       items.map((item) => Object.hash(item.id, item.startTime, item.endTime, item.status, item.doctorId)),
     );
-    final resourceFingerprint = Object.hash(includeDoctorResources, Object.hashAll(doctors.map((doctor) => doctor.id)));
+    final resourceFingerprint = Object.hash(
+      includeDoctorResources,
+      Object.hashAll(doctors.map((doctor) => doctor.id)),
+      evenResourceRowColor,
+      oddResourceRowColor,
+    );
     if (itemsFingerprint == _itemsFingerprint && resourceFingerprint == _resourceFingerprint) {
       return;
     }
     _itemsFingerprint = itemsFingerprint;
     _resourceFingerprint = resourceFingerprint;
-    _dataSource.updateItems(items, doctors: doctors, includeDoctorResources: includeDoctorResources);
+    _dataSource.updateItems(
+      items,
+      doctors: doctors,
+      includeDoctorResources: includeDoctorResources,
+      evenResourceRowColor: evenResourceRowColor,
+      oddResourceRowColor: oddResourceRowColor,
+    );
   }
 
   void _syncCalendarView(AppointmentCalendarState state) {
