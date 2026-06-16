@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
@@ -25,8 +23,7 @@ import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 
-const _progressiveRevealThreshold = 16;
-const _progressiveRevealBatchSize = 12;
+const _skeletonRevealDelay = Duration(milliseconds: 180);
 
 /// Branch appointment calendar with day, week, month, schedule, and doctor timeline views.
 class AppointmentCalendarPage extends ConsumerStatefulWidget {
@@ -44,7 +41,6 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   int _itemsFingerprint = 0;
   int _resourceFingerprint = 0;
   Set<String> _revealedAppointmentIds = {};
-  Set<String> _stagedAppointmentIds = {};
   int _revealGeneration = 0;
   int _lastRevealSourceFingerprint = -1;
 
@@ -81,9 +77,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final oddResourceRowColor = colors.muted.withValues(alpha: 0.3);
     _scheduleRevealIfNeeded(visibleItems, loading: state.loading);
     if (!state.loading) {
-      final calendarItems = _calendarItemsForDisplay(visibleItems);
       _syncDataSource(
-        calendarItems,
+        visibleItems,
         doctors: doctors,
         includeDoctorResources: _usesDoctorResources(state.mode),
         evenResourceRowColor: colors.card,
@@ -143,7 +138,6 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                     doctors: doctors,
                     canCreate: canCreate,
                     oddResourceRowColor: oddResourceRowColor,
-                    visibleItemCount: visibleItems.length,
                     viewportHeight: constraints.maxHeight,
                   ),
                 );
@@ -164,7 +158,6 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required List<StaffListItem> doctors,
     required bool canCreate,
     required Color oddResourceRowColor,
-    required int visibleItemCount,
     required double viewportHeight,
   }) {
     final slotLayout = AppointmentCalendarDisplay.timeSlotLayout(
@@ -272,14 +265,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
             ],
             appointmentBuilder: (context, details) {
               final id = appointmentIdFromAppointmentDetails(details);
-              final revealAll = visibleItemCount <= _progressiveRevealThreshold;
-              final isRevealed = revealAll || id == null || _revealedAppointmentIds.contains(id);
-              final isStaged = revealAll || id == null || _stagedAppointmentIds.contains(id);
-              if (!isStaged) {
-                return const SizedBox.shrink();
-              }
+              final isRevealed = id == null || _revealedAppointmentIds.contains(id);
               return Skeletonizer(
                 enabled: !isRevealed,
+                enableSwitchAnimation: true,
                 effect: ShimmerEffect(baseColor: colors.muted, highlightColor: colors.muted.withValues(alpha: 0.55)),
                 containersColor: colors.muted,
                 child: _AppointmentTile(
@@ -312,16 +301,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     );
   }
 
-  List<AppointmentListItem> _calendarItemsForDisplay(List<AppointmentListItem> items) {
-    if (items.length <= _progressiveRevealThreshold) {
-      return items;
-    }
-    return items.where((item) => _stagedAppointmentIds.contains(item.id)).toList(growable: false);
-  }
-
   void _scheduleRevealIfNeeded(List<AppointmentListItem> items, {required bool loading}) {
     if (loading) {
-      if (_revealedAppointmentIds.isEmpty && _stagedAppointmentIds.isEmpty && _lastRevealSourceFingerprint == -1) {
+      if (_revealedAppointmentIds.isEmpty && _lastRevealSourceFingerprint == -1) {
         return;
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -330,7 +312,6 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         }
         setState(() {
           _revealedAppointmentIds = {};
-          _stagedAppointmentIds = {};
           _lastRevealSourceFingerprint = -1;
           _revealGeneration++;
         });
@@ -348,54 +329,26 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         return;
       }
       _lastRevealSourceFingerprint = sourceFingerprint;
-      _startProgressiveReveal(items.map((item) => item.id).toList(growable: false));
+      _startSkeletonReveal(items.map((item) => item.id).toList(growable: false));
     });
   }
 
-  void _startProgressiveReveal(List<String> appointmentIds) {
+  void _startSkeletonReveal(List<String> appointmentIds) {
     _revealGeneration++;
     final generation = _revealGeneration;
 
-    if (appointmentIds.length <= _progressiveRevealThreshold) {
-      setState(() {
-        _stagedAppointmentIds = appointmentIds.toSet();
-        _revealedAppointmentIds = appointmentIds.toSet();
-      });
+    setState(() => _revealedAppointmentIds = {});
+
+    if (appointmentIds.isEmpty) {
       return;
     }
 
-    setState(() {
-      _stagedAppointmentIds = {};
-      _revealedAppointmentIds = {};
-    });
-
-    var index = 0;
-    void stageNextBatch() {
+    Future<void>.delayed(_skeletonRevealDelay, () {
       if (!mounted || generation != _revealGeneration) {
         return;
       }
-
-      final end = math.min(index + _progressiveRevealBatchSize, appointmentIds.length);
-      final batch = appointmentIds.sublist(index, end);
-      setState(() {
-        _stagedAppointmentIds = {..._stagedAppointmentIds, ...batch};
-      });
-      index = end;
-
-      SchedulerBinding.instance.scheduleFrameCallback((_) {
-        if (!mounted || generation != _revealGeneration) {
-          return;
-        }
-        setState(() {
-          _revealedAppointmentIds = {..._revealedAppointmentIds, ...batch};
-        });
-        if (index < appointmentIds.length) {
-          SchedulerBinding.instance.scheduleFrameCallback((_) => stageNextBatch());
-        }
-      });
-    }
-
-    SchedulerBinding.instance.scheduleFrameCallback((_) => stageNextBatch());
+      setState(() => _revealedAppointmentIds = appointmentIds.toSet());
+    });
   }
 
   void _syncDataSource(
