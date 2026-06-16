@@ -11,15 +11,21 @@ DateTime appointmentTestStartTime({int daysAhead = 7}) {
   return DateTime(day.year, day.month, day.day, 10, 0);
 }
 
-/// Opens the booking start-time pickers and selects [startTime] (local).
+/// Opens the booking end-time clock picker and selects [endTime] (local, time only).
+Future<void> pickBookingEndTimeInForm(WidgetTester tester, {required DateTime endTime}) async {
+  await tester.tap(find.byKey(const Key('appointment_booking_pick_end')));
+  await tester.pumpAndSettle();
+
+  await _selectTimeInPicker(tester, TimeOfDay(hour: endTime.hour, minute: endTime.minute));
+  await tester.tap(find.text('OK'));
+  await tester.pumpAndSettle();
+}
+
+/// Opens the booking start-time clock picker and selects [startTime] (local, time only).
 Future<void> pickBookingStartTimeInForm(WidgetTester tester, {DateTime? startTime}) async {
   final target = startTime ?? appointmentTestStartTime(daysAhead: 1);
 
   await tester.tap(find.byKey(const Key('appointment_booking_pick_start')));
-  await tester.pumpAndSettle();
-
-  await _selectCalendarDay(tester, target);
-  await tester.tap(find.text('OK'));
   await tester.pumpAndSettle();
 
   await _selectTimeInPicker(tester, TimeOfDay(hour: target.hour, minute: target.minute));

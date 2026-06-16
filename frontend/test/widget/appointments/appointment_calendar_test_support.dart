@@ -6,8 +6,13 @@ import 'package:ai_clinic/features/appointments/data/appointment_repository.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_header_bar.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
+import 'package:ai_clinic/features/patients/data/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
+import 'package:ai_clinic/features/patients/domain/usecases/search_patients.dart';
 import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/list_branches.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/list_staff.dart';
@@ -19,6 +24,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
 import '../../helpers/auth_test_support.dart';
+import '../../helpers/patient_test_support.dart';
 import '../../support/appointment_calendar_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
 
@@ -64,8 +70,10 @@ Future<void> pumpAppointmentCalendarPage(
   SupabaseClient? rpcClient,
   BranchRepository? branchRepository,
   CalendarStubStaffRepository? staffRepository,
+  FakePatientRepository? patientRepository,
 }) async {
   final client = rpcClient ?? AppointmentRpcTestClient();
+  final patients = patientRepository ?? FakePatientRepository();
 
   await tester.binding.setSurfaceSize(calendarWidgetSurfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -79,6 +87,8 @@ Future<void> pumpAppointmentCalendarPage(
           (ref) => ListBranches(branchRepository ?? CalendarStubBranchRepository()),
         ),
         listStaffUseCaseProvider.overrideWith((ref) => ListStaff(staffRepository ?? CalendarStubStaffRepository())),
+        patientRepositoryProvider.overrideWithValue(patients),
+        searchPatientsUseCaseProvider.overrideWith((ref) => SearchPatients(ref.watch(patientRepositoryProvider))),
       ],
       child: MaterialApp(
         theme: AppTheme.light(),
@@ -193,4 +203,58 @@ String expectedCalendarHeaderTitle(AppointmentCalendarState state) {
 DateTime nearestSunday(DateTime date) {
   final normalized = DateTime(date.year, date.month, date.day);
   return normalized.subtract(Duration(days: normalized.weekday % 7));
+}
+
+AuthSessionState calendarAuthStateWithCreate({List<String> branchIds = const [calendarTestBranchAId]}) {
+  return calendarAuthState(
+    permissions: {PermissionKeys.appointmentsCreate, PermissionKeys.appointmentsRead},
+    branchIds: branchIds,
+  );
+}
+
+Future<void> invokeCalendarTap(
+  WidgetTester tester, {
+  required DateTime date,
+  CalendarElement element = CalendarElement.calendarCell,
+  List<dynamic>? appointments,
+  CalendarResource? resource,
+}) async {
+  final calendar = calendarWidget(tester);
+  final onTap = calendar.onTap;
+  expect(onTap, isNotNull);
+  onTap!(CalendarTapDetails(appointments, date, element, resource));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
+Future<void> tapFirstCalendarAppointment(WidgetTester tester) async {
+  final calendar = calendarWidget(tester);
+  final dataSource = calendar.dataSource! as AppointmentCalendarDataSource;
+  final appointments = dataSource.appointments;
+  expect(appointments, isNotEmpty);
+  final appointment = appointments!.first;
+  await invokeCalendarTap(
+    tester,
+    date: appointment.startTime,
+    element: CalendarElement.appointment,
+    appointments: [appointment],
+  );
+}
+
+Future<void> waitForAppointmentTileReveal(WidgetTester tester) async {
+  await tester.pump(const Duration(milliseconds: 200));
+}
+
+/// Waits for appointment data without exceeding the skeleton reveal delay.
+Future<ProviderContainer> waitForCalendarDataBeforeReveal(WidgetTester tester) async {
+  final container = ProviderScope.containerOf(tester.element(find.byType(AppointmentCalendarPage)));
+  for (var i = 0; i < 30; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    final state = container.read(appointmentCalendarProvider);
+    if (!state.loading && state.items.isNotEmpty) {
+      break;
+    }
+  }
+  await tester.pump();
+  return container;
 }
