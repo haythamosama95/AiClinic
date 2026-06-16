@@ -65,7 +65,7 @@ class AppointmentCalendarHeaderBar extends ConsumerWidget {
     final state = ref.watch(appointmentCalendarProvider);
     final controller = ref.read(appointmentCalendarProvider.notifier);
 
-    final headerBackgroundColor = colors.card;
+    final headerBackgroundColor = colors.background;
     final headerTextStyle = textTheme.titleMedium?.copyWith(color: colors.foreground);
     final headerTextColor = headerTextStyle?.color ?? colors.foreground;
     final arrowColor = headerTextColor.withValues(alpha: headerTextColor.a * 0.6);
