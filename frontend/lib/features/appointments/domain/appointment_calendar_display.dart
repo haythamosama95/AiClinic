@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
 import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
@@ -46,6 +47,20 @@ class AppointmentCalendarDisplay {
 
   /// Day/week header chrome above the scrollable time-slot grid.
   static const double timeSlotChromeHeight = 80;
+
+  /// Header title text matching Syncfusion calendar header formatting.
+  static String headerTitle(AppointmentCalendarMode mode, DateTime focusDate) {
+    final anchor = switch (mode) {
+      AppointmentCalendarMode.week => _weekStart(focusDate),
+      _ => DateTime(focusDate.year, focusDate.month, focusDate.day),
+    };
+    return '${DateFormat('MMMM').format(anchor)} ${anchor.year}';
+  }
+
+  static DateTime _weekStart(DateTime date) {
+    final dayStart = DateTime(date.year, date.month, date.day);
+    return dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
+  }
 
   static AppointmentCalendarTimeSlotLayout timeSlotLayout({
     required BranchWorkingSchedule schedule,

@@ -18,6 +18,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_header_bar.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_skeleton.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
@@ -99,16 +100,6 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _CalendarToolbar(
-            branchesAsync: branchesAsync,
-            doctorsAsync: doctorsAsync,
-            selectedBranchId: state.selectedBranchId,
-            selectedDoctorId: state.selectedDoctorId,
-            showDoctorFilter: state.mode != AppointmentCalendarMode.doctors,
-            onBranchChanged: controller.setBranchFilter,
-            onDoctorChanged: controller.setDoctorFilter,
-          ),
-          const SizedBox(height: SpacingTokens.md),
           if (!state.loading && state.error != null) ...[
             const SizedBox(height: SpacingTokens.sm),
             Text(state.error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -126,10 +117,6 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                if (state.loading) {
-                  return SizedBox(height: constraints.maxHeight, child: const AppointmentCalendarSkeleton());
-                }
-
                 return SizedBox(
                   height: constraints.maxHeight,
                   child: _buildCalendar(
@@ -137,11 +124,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                     colors: colors,
                     state: state,
                     controller: controller,
+                    branchesAsync: branchesAsync,
+                    doctorsAsync: doctorsAsync,
                     schedule: schedule,
                     doctors: doctors,
                     canCreate: canCreate,
                     oddResourceRowColor: oddResourceRowColor,
-                    viewportHeight: constraints.maxHeight,
+                    loading: state.loading,
+                    viewportHeight: constraints.maxHeight - appointmentCalendarHeaderHeight,
                   ),
                 );
               },
@@ -157,10 +147,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required SemanticColors colors,
     required AppointmentCalendarState state,
     required AppointmentCalendarController controller,
+    required AsyncValue<List<BranchListItem>> branchesAsync,
+    required AsyncValue<List<StaffListItem>> doctorsAsync,
     required BranchWorkingSchedule schedule,
     required List<StaffListItem> doctors,
     required bool canCreate,
     required Color oddResourceRowColor,
+    required bool loading,
     required double viewportHeight,
   }) {
     final slotLayout = AppointmentCalendarDisplay.timeSlotLayout(
@@ -192,115 +185,137 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         side: BorderSide(color: colors.border),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.only(right: SpacingTokens.sm),
-        child: SfCalendarTheme(
-          data: calendarTheme,
-          child: SfCalendar(
-            controller: _calendarController,
-            view: _calendarViewFor(state.mode),
-            allowedViews: const [
-              CalendarView.day,
-              CalendarView.week,
-              CalendarView.month,
-              CalendarView.schedule,
-              CalendarView.timelineDay,
-            ],
-            dataSource: _dataSource,
-            initialDisplayDate: state.focusDate,
-            backgroundColor: colors.card,
-            cellBorderColor: colors.border,
-            resourceViewSettings: ResourceViewSettings(
-              showAvatar: false,
-              size: _timelineResourceRowHeight,
-              visibleResourceCount: -1,
-              displayNameTextStyle: textTheme.labelMedium?.copyWith(color: colors.foreground),
-            ),
-            showNavigationArrow: true,
-            showTodayButton: true,
-            showDatePickerButton: false,
-            allowViewNavigation: true,
-            headerStyle: CalendarHeaderStyle(
-              backgroundColor: colors.card,
-              textStyle: textTheme.titleMedium?.copyWith(color: colors.foreground),
-            ),
-            viewHeaderStyle: ViewHeaderStyle(backgroundColor: colors.card),
-            selectionDecoration: const BoxDecoration(
-              color: Colors.transparent,
-              border: Border.fromBorderSide(BorderSide(color: Colors.transparent, width: 0)),
-            ),
-            blackoutDates: state.mode == AppointmentCalendarMode.month
-                ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
-                : const [],
-            timeSlotViewSettings: TimeSlotViewSettings(
-              startHour: slotLayout.startHour,
-              endHour: slotLayout.endHour,
-              timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
-              timeIntervalHeight: slotLayout.timeIntervalHeight,
-              timelineAppointmentHeight: _timelineResourceRowHeight,
-              nonWorkingDays: slotLayout.nonWorkingDays,
-              timeFormat: 'HH:mm',
-              dateFormat: 'd',
-              dayFormat: 'EEE',
-            ),
-            monthViewSettings: const MonthViewSettings(
-              showAgenda: true,
-              appointmentDisplayMode: MonthAppointmentDisplayMode.indicator,
-            ),
-            scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 52),
-            specialRegions: [
-              for (final region in slotLayout.shadeRegions)
-                TimeRegion(
-                  startTime: region.start,
-                  endTime: region.end,
-                  enablePointerInteraction: false,
-                  color: colors.muted.withValues(alpha: 0.45),
-                ),
-              if (state.mode == AppointmentCalendarMode.doctors)
-                ...AppointmentCalendarDisplay.resourceRowStripeRegions(
-                  resourceIds: [
-                    for (final resource in _dataSource.resources ?? const <CalendarResource>[]) resource.id,
-                  ],
-                  focusDate: state.focusDate,
-                  startHour: slotLayout.startHour,
-                  endHour: slotLayout.endHour,
-                  stripeColor: oddResourceRowColor,
-                ),
-            ],
-            appointmentBuilder: (context, details) {
-              final id = appointmentIdFromAppointmentDetails(details);
-              final isRevealed = id == null || _revealedAppointmentIds.contains(id);
-              return Skeletonizer(
-                enabled: !isRevealed,
-                enableSwitchAnimation: true,
-                effect: ShimmerEffect(baseColor: colors.muted, highlightColor: colors.muted.withValues(alpha: 0.55)),
-                containersColor: colors.muted,
-                child: _AppointmentTile(
-                  details: details,
-                  onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
-                ),
-              );
-            },
-            onViewChanged: (details) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                unawaited(_onViewChanged(details, controller));
-              });
-            },
-            onTap: (details) {
-              _onCalendarSelectionTap(details, state.mode);
-              _onCalendarTap(
-                details,
-                state.items,
-                branchId: state.selectedBranchId,
-                schedule: schedule,
-                mode: state.mode,
-                slotMinutes: slotLayout.timeIntervalMinutes,
-                doctors: doctors,
-                canCreate: canCreate,
-              );
-            },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppointmentCalendarHeaderBar(
+            branchesAsync: branchesAsync,
+            doctorsAsync: doctorsAsync,
+            selectedBranchId: state.selectedBranchId,
+            selectedDoctorId: state.selectedDoctorId,
+            showDoctorFilter: state.mode != AppointmentCalendarMode.doctors,
+            onBranchChanged: controller.setBranchFilter,
+            onDoctorChanged: controller.setDoctorFilter,
           ),
-        ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(right: SpacingTokens.sm),
+              child: loading
+                  ? const AppointmentCalendarSkeleton()
+                  : SfCalendarTheme(
+                      data: calendarTheme,
+                      child: SfCalendar(
+                        controller: _calendarController,
+                        view: _calendarViewFor(state.mode),
+                        allowedViews: const [
+                          CalendarView.day,
+                          CalendarView.week,
+                          CalendarView.month,
+                          CalendarView.schedule,
+                          CalendarView.timelineDay,
+                        ],
+                        dataSource: _dataSource,
+                        initialDisplayDate: state.focusDate,
+                        backgroundColor: colors.card,
+                        cellBorderColor: colors.border,
+                        headerHeight: 0,
+                        resourceViewSettings: ResourceViewSettings(
+                          showAvatar: false,
+                          size: _timelineResourceRowHeight,
+                          visibleResourceCount: -1,
+                          displayNameTextStyle: textTheme.labelMedium?.copyWith(color: colors.foreground),
+                        ),
+                        showNavigationArrow: false,
+                        showTodayButton: false,
+                        showDatePickerButton: false,
+                        allowViewNavigation: false,
+                        headerStyle: CalendarHeaderStyle(
+                          backgroundColor: colors.card,
+                          textStyle: textTheme.titleMedium?.copyWith(color: colors.foreground),
+                        ),
+                        viewHeaderStyle: ViewHeaderStyle(backgroundColor: colors.card),
+                        selectionDecoration: const BoxDecoration(
+                          color: Colors.transparent,
+                          border: Border.fromBorderSide(BorderSide(color: Colors.transparent, width: 0)),
+                        ),
+                        blackoutDates: state.mode == AppointmentCalendarMode.month
+                            ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
+                            : const [],
+                        timeSlotViewSettings: TimeSlotViewSettings(
+                          startHour: slotLayout.startHour,
+                          endHour: slotLayout.endHour,
+                          timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
+                          timeIntervalHeight: slotLayout.timeIntervalHeight,
+                          timelineAppointmentHeight: _timelineResourceRowHeight,
+                          nonWorkingDays: slotLayout.nonWorkingDays,
+                          timeFormat: 'HH:mm',
+                          dateFormat: 'd',
+                          dayFormat: 'EEE',
+                        ),
+                        monthViewSettings: const MonthViewSettings(
+                          showAgenda: true,
+                          appointmentDisplayMode: MonthAppointmentDisplayMode.indicator,
+                        ),
+                        scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 52),
+                        specialRegions: [
+                          for (final region in slotLayout.shadeRegions)
+                            TimeRegion(
+                              startTime: region.start,
+                              endTime: region.end,
+                              enablePointerInteraction: false,
+                              color: colors.muted.withValues(alpha: 0.45),
+                            ),
+                          if (state.mode == AppointmentCalendarMode.doctors)
+                            ...AppointmentCalendarDisplay.resourceRowStripeRegions(
+                              resourceIds: [
+                                for (final resource in _dataSource.resources ?? const <CalendarResource>[]) resource.id,
+                              ],
+                              focusDate: state.focusDate,
+                              startHour: slotLayout.startHour,
+                              endHour: slotLayout.endHour,
+                              stripeColor: oddResourceRowColor,
+                            ),
+                        ],
+                        appointmentBuilder: (context, details) {
+                          final id = appointmentIdFromAppointmentDetails(details);
+                          final isRevealed = id == null || _revealedAppointmentIds.contains(id);
+                          return Skeletonizer(
+                            enabled: !isRevealed,
+                            enableSwitchAnimation: true,
+                            effect: ShimmerEffect(
+                              baseColor: colors.muted,
+                              highlightColor: colors.muted.withValues(alpha: 0.55),
+                            ),
+                            containersColor: colors.muted,
+                            child: _AppointmentTile(
+                              details: details,
+                              onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
+                            ),
+                          );
+                        },
+                        onViewChanged: (details) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            unawaited(_onViewChanged(details, controller));
+                          });
+                        },
+                        onTap: (details) {
+                          _onCalendarSelectionTap(details, state.mode);
+                          _onCalendarTap(
+                            details,
+                            state.items,
+                            branchId: state.selectedBranchId,
+                            schedule: schedule,
+                            mode: state.mode,
+                            slotMinutes: slotLayout.timeIntervalMinutes,
+                            doctors: doctors,
+                            canCreate: canCreate,
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -615,69 +630,6 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final from = DateFormat.Hm().format(localStart);
     final to = DateFormat.Hm().format(localEnd);
     return '$day · $from – $to';
-  }
-}
-
-class _CalendarToolbar extends StatelessWidget {
-  const _CalendarToolbar({
-    required this.branchesAsync,
-    required this.doctorsAsync,
-    required this.selectedBranchId,
-    required this.selectedDoctorId,
-    required this.showDoctorFilter,
-    required this.onBranchChanged,
-    required this.onDoctorChanged,
-  });
-
-  final AsyncValue<List<BranchListItem>> branchesAsync;
-  final AsyncValue<List<StaffListItem>> doctorsAsync;
-  final String? selectedBranchId;
-  final String? selectedDoctorId;
-  final bool showDoctorFilter;
-  final ValueChanged<String?> onBranchChanged;
-  final ValueChanged<String?> onDoctorChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 200,
-            child: branchesAsync.when(
-              data: (items) => AppFilterSelect<String?>(
-                label: 'Branch',
-                items: {for (final branch in items) branch.name: branch.id},
-                value: selectedBranchId,
-                hintText: items.isEmpty ? 'No branches' : 'Select branch',
-                enabled: items.isNotEmpty,
-                onChanged: items.isEmpty ? null : onBranchChanged,
-              ),
-              loading: () => const Text('Loading branches…'),
-              error: (_, _) => const Text('Could not load branches.'),
-            ),
-          ),
-          if (showDoctorFilter) ...[
-            const SizedBox(width: SpacingTokens.sm),
-            SizedBox(
-              width: 200,
-              child: doctorsAsync.when(
-                data: (doctors) => AppFilterSelect<String>(
-                  label: 'Doctor',
-                  items: {'All doctors': '', for (final doctor in doctors) doctor.fullName: doctor.id},
-                  value: selectedDoctorId ?? '',
-                  onChanged: (doctorId) => onDoctorChanged(doctorId == null || doctorId.isEmpty ? null : doctorId),
-                ),
-                loading: () => const Text('Loading doctors…'),
-                error: (_, _) => const Text('Could not load doctors.'),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }
 

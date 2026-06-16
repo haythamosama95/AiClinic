@@ -72,9 +72,18 @@ void main() {
     testWidgets('renders view controls when appointment access granted', (tester) async {
       await pumpCalendar(tester, permissions: {PermissionKeys.appointmentsRead});
 
+      expect(find.text('Today'), findsOneWidget);
+      expect(find.text('Day'), findsOneWidget);
+      expect(find.byTooltip('Filter appointments'), findsOneWidget);
+      expect(find.byType(SfCalendar), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.filter_list_outlined));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      expect(find.text('Filter by'), findsOneWidget);
       expect(find.text('Branch'), findsOneWidget);
       expect(find.text('Doctor'), findsOneWidget);
-      expect(find.byType(SfCalendar), findsOneWidget);
     });
   });
 }

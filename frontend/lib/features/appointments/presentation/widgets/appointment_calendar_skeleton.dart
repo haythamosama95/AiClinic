@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 
 /// Placeholder calendar grid shown while appointment data is loading.
@@ -12,55 +11,34 @@ class AppointmentCalendarSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final radius = BorderRadius.circular(context.shapeTokens.lg);
 
-    return Material(
-      color: colors.card,
-      shape: RoundedRectangleBorder(
-        borderRadius: radius,
-        side: BorderSide(color: colors.border),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Skeletonizer(
-        effect: ShimmerEffect(baseColor: colors.muted, highlightColor: colors.muted.withValues(alpha: 0.55)),
-        containersColor: colors.muted,
-        child: Padding(
-          padding: const EdgeInsets.all(SpacingTokens.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.chevron_left, size: 20),
-                  const Spacer(),
-                  const Text('June 2026'),
-                  const Spacer(),
-                  const Icon(Icons.chevron_right, size: 20),
-                  const SizedBox(width: SpacingTokens.sm),
-                  const Text('Today'),
-                ],
-              ),
-              const SizedBox(height: SpacingTokens.md),
-              Row(
-                children: [
-                  for (var i = 0; i < 7; i++) ...[
-                    if (i > 0) const SizedBox(width: SpacingTokens.xs),
-                    const Expanded(
-                      child: Column(
-                        children: [
-                          Text('Mon'),
-                          SizedBox(height: SpacingTokens.xs),
-                          Text('16'),
-                        ],
-                      ),
+    return Skeletonizer(
+      effect: ShimmerEffect(baseColor: colors.muted, highlightColor: colors.muted.withValues(alpha: 0.55)),
+      containersColor: colors.muted,
+      child: Padding(
+        padding: const EdgeInsets.all(SpacingTokens.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                for (var i = 0; i < 7; i++) ...[
+                  if (i > 0) const SizedBox(width: SpacingTokens.xs),
+                  const Expanded(
+                    child: Column(
+                      children: [
+                        Text('Mon'),
+                        SizedBox(height: SpacingTokens.xs),
+                        Text('16'),
+                      ],
                     ),
-                  ],
+                  ),
                 ],
-              ),
-              const SizedBox(height: SpacingTokens.md),
-              const Expanded(child: _CalendarGridSkeleton()),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(height: SpacingTokens.md),
+            const Expanded(child: _CalendarGridSkeleton()),
+          ],
         ),
       ),
     );
