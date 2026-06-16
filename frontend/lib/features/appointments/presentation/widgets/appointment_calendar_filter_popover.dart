@@ -17,26 +17,31 @@ final _filterPopoverMotion = FPopoverStyleDelta.delta(
   ),
 );
 
+/// Applied branch and doctor filters for the appointment calendar.
+typedef AppointmentCalendarFilters = ({String? branchId, String? doctorId});
+
 /// Filter popover for the appointment calendar header.
 class AppointmentCalendarFilterButton extends ConsumerStatefulWidget {
   const AppointmentCalendarFilterButton({
     required this.branchesAsync,
     required this.doctorsAsync,
-    required this.selectedBranchId,
-    required this.selectedDoctorId,
+    required this.appliedBranchId,
+    required this.appliedDoctorId,
     required this.showDoctorFilter,
-    required this.onBranchChanged,
-    required this.onDoctorChanged,
+    required this.hasActiveFilters,
+    required this.onApplyFilters,
+    required this.onClearFilters,
     super.key,
   });
 
   final AsyncValue<List<BranchListItem>> branchesAsync;
   final AsyncValue<List<StaffListItem>> doctorsAsync;
-  final String? selectedBranchId;
-  final String? selectedDoctorId;
+  final String? appliedBranchId;
+  final String? appliedDoctorId;
   final bool showDoctorFilter;
-  final ValueChanged<String?> onBranchChanged;
-  final ValueChanged<String?> onDoctorChanged;
+  final bool hasActiveFilters;
+  final ValueChanged<AppointmentCalendarFilters> onApplyFilters;
+  final VoidCallback onClearFilters;
 
   @override
   ConsumerState<AppointmentCalendarFilterButton> createState() => _AppointmentCalendarFilterButtonState();
@@ -45,6 +50,7 @@ class AppointmentCalendarFilterButton extends ConsumerStatefulWidget {
 class _AppointmentCalendarFilterButtonState extends ConsumerState<AppointmentCalendarFilterButton>
     with SingleTickerProviderStateMixin {
   late final FPopoverController _controller = FPopoverController(vsync: this);
+  final _filterPopoverGroup = Object();
   var _isHovered = false;
 
   @override
@@ -53,29 +59,28 @@ class _AppointmentCalendarFilterButtonState extends ConsumerState<AppointmentCal
     super.dispose();
   }
 
-  bool _isFilterActive() {
-    return widget.showDoctorFilter && widget.selectedDoctorId != null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final isFilterActive = _isFilterActive();
+    final isFilterActive = widget.hasActiveFilters;
 
     return FPopover(
       control: FPopoverControl.managed(controller: _controller),
       style: _filterPopoverMotion,
+      groupId: _filterPopoverGroup,
       constraints: const FPortalConstraints(minWidth: 280, maxWidth: 320),
       popoverAnchor: Alignment.topCenter,
       childAnchor: Alignment.bottomCenter,
       popoverBuilder: (context, controller) => _AppointmentCalendarFilterPanel(
+        controller: controller,
+        filterPopoverGroup: _filterPopoverGroup,
         branchesAsync: widget.branchesAsync,
         doctorsAsync: widget.doctorsAsync,
-        selectedBranchId: widget.selectedBranchId,
-        selectedDoctorId: widget.selectedDoctorId,
+        appliedBranchId: widget.appliedBranchId,
+        appliedDoctorId: widget.appliedDoctorId,
         showDoctorFilter: widget.showDoctorFilter,
-        onBranchChanged: widget.onBranchChanged,
-        onDoctorChanged: widget.onDoctorChanged,
+        onApplyFilters: widget.onApplyFilters,
+        onClearFilters: widget.onClearFilters,
       ),
       builder: (context, controller, child) => MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
@@ -87,7 +92,7 @@ class _AppointmentCalendarFilterButtonState extends ConsumerState<AppointmentCal
         ),
       ),
       child: Tooltip(
-        message: 'Filter appointments',
+        message: isFilterActive ? 'Filters active' : 'Filter appointments',
         child: SizedBox(
           width: 40,
           height: 40,
@@ -114,77 +119,133 @@ class _AppointmentCalendarFilterButtonState extends ConsumerState<AppointmentCal
   }
 }
 
-class _AppointmentCalendarFilterPanel extends StatelessWidget {
+class _AppointmentCalendarFilterPanel extends StatefulWidget {
   const _AppointmentCalendarFilterPanel({
+    required this.controller,
+    required this.filterPopoverGroup,
     required this.branchesAsync,
     required this.doctorsAsync,
-    required this.selectedBranchId,
-    required this.selectedDoctorId,
+    required this.appliedBranchId,
+    required this.appliedDoctorId,
     required this.showDoctorFilter,
-    required this.onBranchChanged,
-    required this.onDoctorChanged,
+    required this.onApplyFilters,
+    required this.onClearFilters,
   });
 
+  final FPopoverController controller;
+  final Object filterPopoverGroup;
   final AsyncValue<List<BranchListItem>> branchesAsync;
   final AsyncValue<List<StaffListItem>> doctorsAsync;
-  final String? selectedBranchId;
-  final String? selectedDoctorId;
+  final String? appliedBranchId;
+  final String? appliedDoctorId;
   final bool showDoctorFilter;
-  final ValueChanged<String?> onBranchChanged;
-  final ValueChanged<String?> onDoctorChanged;
+  final ValueChanged<AppointmentCalendarFilters> onApplyFilters;
+  final VoidCallback onClearFilters;
+
+  @override
+  State<_AppointmentCalendarFilterPanel> createState() => _AppointmentCalendarFilterPanelState();
+}
+
+class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFilterPanel> {
+  late String? _draftBranchId;
+  late String? _draftDoctorId;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncDraftFromApplied();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AppointmentCalendarFilterPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.appliedBranchId != widget.appliedBranchId || oldWidget.appliedDoctorId != widget.appliedDoctorId) {
+      _syncDraftFromApplied();
+    }
+  }
+
+  void _syncDraftFromApplied() {
+    _draftBranchId = widget.appliedBranchId;
+    _draftDoctorId = widget.appliedDoctorId;
+  }
+
+  void _applyFilters() {
+    widget.onApplyFilters((branchId: _draftBranchId, doctorId: _draftDoctorId));
+    widget.controller.hide();
+  }
+
+  void _clearFilters() {
+    widget.onClearFilters();
+    widget.controller.hide();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
 
-    return Padding(
-      padding: const EdgeInsets.all(SpacingTokens.sm),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(SpacingTokens.sm, SpacingTokens.sm, SpacingTokens.sm, SpacingTokens.xs),
-            child: Text('Filter by', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-          ),
-          _FilterSection(
-            title: 'Branch',
-            icon: Icons.storefront_outlined,
-            child: branchesAsync.when(
-              data: (items) => AppFilterSelect<String?>(
-                items: {for (final branch in items) branch.name: branch.id},
-                value: selectedBranchId,
-                hintText: items.isEmpty ? 'No branches' : 'Select branch',
-                enabled: items.isNotEmpty,
-                onChanged: items.isEmpty ? null : onBranchChanged,
-              ),
-              loading: () => const _FilterPanelPlaceholder(message: 'Loading branches…'),
-              error: (_, _) => const _FilterPanelPlaceholder(message: 'Could not load branches.', error: true),
-            ),
-          ),
-          if (showDoctorFilter) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
-              child: Divider(height: 1, color: colors.border),
-            ),
-            _FilterSection(
-              title: 'Doctor',
-              icon: Icons.person_outline,
-              child: doctorsAsync.when(
-                data: (doctors) => AppFilterSelect<String>(
-                  items: {'All doctors': '', for (final doctor in doctors) doctor.fullName: doctor.id},
-                  value: selectedDoctorId ?? '',
-                  hintText: 'All doctors',
-                  onChanged: (doctorId) => onDoctorChanged(doctorId == null || doctorId.isEmpty ? null : doctorId),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(SpacingTokens.sm),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  SpacingTokens.sm,
+                  SpacingTokens.sm,
+                  SpacingTokens.sm,
+                  SpacingTokens.xs,
                 ),
-                loading: () => const _FilterPanelPlaceholder(message: 'Loading doctors…'),
-                error: (_, _) => const _FilterPanelPlaceholder(message: 'Could not load doctors.', error: true),
+                child: Text('Filter by', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
               ),
-            ),
-          ],
-        ],
-      ),
+              _FilterSection(
+                title: 'Branch',
+                icon: Icons.storefront_outlined,
+                child: widget.branchesAsync.when(
+                  data: (items) => AppFilterSelect<String?>(
+                    items: {for (final branch in items) branch.name: branch.id},
+                    value: _draftBranchId,
+                    hintText: items.isEmpty ? 'No branches' : 'Select branch',
+                    enabled: items.isNotEmpty,
+                    contentGroupId: widget.filterPopoverGroup,
+                    onChanged: items.isEmpty ? null : (branchId) => setState(() => _draftBranchId = branchId),
+                  ),
+                  loading: () => const _FilterPanelPlaceholder(message: 'Loading branches…'),
+                  error: (_, _) => const _FilterPanelPlaceholder(message: 'Could not load branches.', error: true),
+                ),
+              ),
+              if (widget.showDoctorFilter) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
+                  child: Divider(height: 1, color: colors.border),
+                ),
+                _FilterSection(
+                  title: 'Doctor',
+                  icon: Icons.person_outline,
+                  child: widget.doctorsAsync.when(
+                    data: (doctors) => AppFilterSelect<String>(
+                      items: {'All doctors': '', for (final doctor in doctors) doctor.fullName: doctor.id},
+                      value: _draftDoctorId ?? '',
+                      hintText: 'All doctors',
+                      contentGroupId: widget.filterPopoverGroup,
+                      onChanged: (doctorId) =>
+                          setState(() => _draftDoctorId = doctorId == null || doctorId.isEmpty ? null : doctorId),
+                    ),
+                    loading: () => const _FilterPanelPlaceholder(message: 'Loading doctors…'),
+                    error: (_, _) => const _FilterPanelPlaceholder(message: 'Could not load doctors.', error: true),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        _FilterFooter(onClearFilters: _clearFilters, onApplyFilters: _applyFilters),
+      ],
     );
   }
 }
@@ -223,6 +284,42 @@ class _FilterSection extends StatelessWidget {
           const SizedBox(height: SpacingTokens.sm),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _FilterFooter extends StatelessWidget {
+  const _FilterFooter({required this.onClearFilters, required this.onApplyFilters});
+
+  final VoidCallback onClearFilters;
+  final VoidCallback onApplyFilters;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.muted.withValues(alpha: 0.45),
+        border: Border(top: BorderSide(color: colors.border)),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(SpacingTokens.md, SpacingTokens.md, SpacingTokens.md, SpacingTokens.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AppButton(label: 'Apply Filters', size: AppFieldSize.sm, onPressed: onApplyFilters),
+            const SizedBox(height: SpacingTokens.sm),
+            AppButton(
+              label: 'Clear Filters',
+              variant: AppButtonVariant.outline,
+              size: AppFieldSize.sm,
+              onPressed: onClearFilters,
+            ),
+          ],
+        ),
       ),
     );
   }

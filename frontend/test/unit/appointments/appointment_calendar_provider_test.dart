@@ -112,5 +112,81 @@ void main() {
       expect(params!['p_from'], bounds.$1.toIso8601String());
       expect(params['p_to'], bounds.$2.toIso8601String());
     });
+
+    test('applyFilters updates branch and doctor then refreshes', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      await container
+          .read(appointmentCalendarProvider.notifier)
+          .applyFilters(
+            branchId: '00000000-0000-4000-8000-000000000002',
+            doctorId: '00000000-0000-4000-8000-000000000099',
+          );
+      await pumpEventQueue();
+
+      final state = container.read(appointmentCalendarProvider);
+      expect(state.selectedBranchId, '00000000-0000-4000-8000-000000000002');
+      expect(state.selectedDoctorId, '00000000-0000-4000-8000-000000000099');
+      expect(client.lastParams?['p_branch_id'], '00000000-0000-4000-8000-000000000002');
+      expect(client.lastParams?['p_doctor_id'], '00000000-0000-4000-8000-000000000099');
+    });
+
+    test('clearFilters resets to active branch and clears doctor', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      await container
+          .read(appointmentCalendarProvider.notifier)
+          .applyFilters(
+            branchId: '00000000-0000-4000-8000-000000000002',
+            doctorId: '00000000-0000-4000-8000-000000000099',
+          );
+      await pumpEventQueue();
+
+      await container.read(appointmentCalendarProvider.notifier).clearFilters();
+      await pumpEventQueue();
+
+      final state = container.read(appointmentCalendarProvider);
+      expect(state.selectedBranchId, '00000000-0000-4000-8000-000000000001');
+      expect(state.selectedDoctorId, isNull);
+      expect(client.lastParams?['p_branch_id'], '00000000-0000-4000-8000-000000000001');
+      expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
+    });
+
+    test('hasActiveFilters is false for initial branch-only state', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final state = await readAfterInit(container);
+
+      expect(state.hasActiveFilters(initialBranchId: '00000000-0000-4000-8000-000000000001'), isFalse);
+    });
   });
 }

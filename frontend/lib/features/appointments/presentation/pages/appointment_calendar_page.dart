@@ -70,13 +70,16 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
     final state = ref.watch(appointmentCalendarProvider);
     final controller = ref.read(appointmentCalendarProvider.notifier);
+    final authState = ref.watch(authSessionProvider);
     final branchesAsync = ref.watch(appointmentCalendarBranchesProvider);
     final doctorsAsync = ref.watch(appointmentCalendarDoctorsProvider);
     final branches = branchesAsync.maybeWhen(data: (items) => items, orElse: () => const <BranchListItem>[]);
     final selectedBranch = branches.where((item) => item.id == state.selectedBranchId).firstOrNull;
     final schedule = selectedBranch?.workingSchedule ?? BranchWorkingSchedule.defaultSchedule();
     final visibleItems = AppointmentCalendarDisplay.filterVisibleAppointments(state.items, schedule);
-    final doctors = doctorsAsync.maybeWhen(data: (items) => items, orElse: () => const <StaffListItem>[]);
+    final allDoctors = doctorsAsync.maybeWhen(data: (items) => items, orElse: () => const <StaffListItem>[]);
+    final doctors = _filteredDoctors(allDoctors, selectedDoctorId: state.selectedDoctorId, mode: state.mode);
+    final hasActiveFilters = state.hasActiveFilters(initialBranchId: authState.context?.activeBranchId);
     final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
     final oddResourceRowColor = colors.muted.withValues(alpha: 0.3);
     _scheduleRevealIfNeeded(visibleItems, loading: state.loading);
@@ -132,6 +135,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                     oddResourceRowColor: oddResourceRowColor,
                     loading: state.loading,
                     viewportHeight: constraints.maxHeight - appointmentCalendarHeaderHeight,
+                    hasActiveFilters: hasActiveFilters,
                   ),
                 );
               },
@@ -155,6 +159,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required Color oddResourceRowColor,
     required bool loading,
     required double viewportHeight,
+    required bool hasActiveFilters,
   }) {
     final slotLayout = AppointmentCalendarDisplay.timeSlotLayout(
       schedule: schedule,
@@ -191,11 +196,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           AppointmentCalendarHeaderBar(
             branchesAsync: branchesAsync,
             doctorsAsync: doctorsAsync,
-            selectedBranchId: state.selectedBranchId,
-            selectedDoctorId: state.selectedDoctorId,
-            showDoctorFilter: state.mode != AppointmentCalendarMode.doctors,
-            onBranchChanged: controller.setBranchFilter,
-            onDoctorChanged: controller.setDoctorFilter,
+            appliedBranchId: state.selectedBranchId,
+            appliedDoctorId: state.selectedDoctorId,
+            showDoctorFilter: true,
+            hasActiveFilters: hasActiveFilters,
+            onApplyFilters: (filters) =>
+                controller.applyFilters(branchId: filters.branchId, doctorId: filters.doctorId),
+            onClearFilters: controller.clearFilters,
           ),
           Expanded(
             child: Padding(
@@ -598,6 +605,17 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
   static bool _usesDoctorResources(AppointmentCalendarMode mode) {
     return mode == AppointmentCalendarMode.doctors;
+  }
+
+  static List<StaffListItem> _filteredDoctors(
+    List<StaffListItem> doctors, {
+    required String? selectedDoctorId,
+    required AppointmentCalendarMode mode,
+  }) {
+    if (mode != AppointmentCalendarMode.doctors || selectedDoctorId == null || selectedDoctorId.isEmpty) {
+      return doctors;
+    }
+    return doctors.where((doctor) => doctor.id == selectedDoctorId).toList(growable: false);
   }
 
   static CalendarView _calendarViewFor(AppointmentCalendarMode mode) {

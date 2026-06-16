@@ -55,6 +55,14 @@ class AppointmentCalendarState {
       error: identical(error, _sentinel) ? this.error : error as String?,
     );
   }
+
+  /// Whether applied filters differ from the session's initial branch-only view.
+  bool hasActiveFilters({required String? initialBranchId}) {
+    final baselineBranch = AppointmentCalendarController._normalizedOrNull(initialBranchId);
+    final doctorFiltered = selectedDoctorId != null && selectedDoctorId!.isNotEmpty;
+    final branchFiltered = selectedBranchId != baselineBranch;
+    return doctorFiltered || branchFiltered;
+  }
 }
 
 const _sentinel = Object();
@@ -69,7 +77,7 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
       final prevBranch = previous?.context?.activeBranchId;
       final nextBranch = next.context?.activeBranchId;
       if (prevBranch != nextBranch) {
-        unawaited(setBranchFilter(nextBranch));
+        unawaited(clearFilters());
       }
     });
 
@@ -101,12 +109,7 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
       final bounds = appointmentCalendarFetchBounds(state.focusDate, state.mode);
       final items = await ref
           .read(appointmentRepositoryProvider)
-          .listAppointments(
-            branchId: branchId,
-            from: bounds.$1,
-            to: bounds.$2,
-            doctorId: state.mode == AppointmentCalendarMode.doctors ? null : state.selectedDoctorId,
-          );
+          .listAppointments(branchId: branchId, from: bounds.$1, to: bounds.$2, doctorId: state.selectedDoctorId);
       state = state.copyWith(loading: false, items: items, error: null);
     } catch (_) {
       state = state.copyWith(loading: false, items: const [], error: 'Could not load appointments. Please retry.');
@@ -143,19 +146,34 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
     await setFocusDate(appointmentCalendarNextFocus(state.focusDate, state.mode));
   }
 
-  Future<void> setDoctorFilter(String? doctorId) async {
-    final normalized = doctorId?.trim();
-    state = state.copyWith(selectedDoctorId: (normalized == null || normalized.isEmpty) ? null : normalized);
+  Future<void> applyFilters({String? branchId, String? doctorId}) async {
+    final normalizedBranch = _normalizedOrNull(branchId);
+    final normalizedDoctor = doctorId?.trim();
+    final nextDoctor = (normalizedDoctor == null || normalizedDoctor.isEmpty) ? null : normalizedDoctor;
+    if (normalizedBranch == state.selectedBranchId && nextDoctor == state.selectedDoctorId) {
+      return;
+    }
+    state = state.copyWith(selectedBranchId: normalizedBranch, selectedDoctorId: nextDoctor);
     await refresh();
   }
 
-  Future<void> setBranchFilter(String? branchId) async {
-    final normalized = _normalizedOrNull(branchId);
-    if (normalized == state.selectedBranchId) {
+  Future<void> clearFilters() async {
+    final initialBranchId = _normalizedOrNull(ref.read(authSessionProvider).context?.activeBranchId);
+    if (initialBranchId == state.selectedBranchId && state.selectedDoctorId == null) {
       return;
     }
-    state = state.copyWith(selectedBranchId: normalized);
+    state = state.copyWith(selectedBranchId: initialBranchId, selectedDoctorId: null);
     await refresh();
+  }
+
+  /// Updates only the branch filter while preserving the current doctor filter.
+  Future<void> setBranchFilter(String? branchId) async {
+    await applyFilters(branchId: branchId, doctorId: state.selectedDoctorId);
+  }
+
+  /// Updates only the doctor filter while preserving the current branch filter.
+  Future<void> setDoctorFilter(String? doctorId) async {
+    await applyFilters(branchId: state.selectedBranchId, doctorId: doctorId);
   }
 
   static String? _normalizedOrNull(String? value) {

@@ -29,21 +29,23 @@ class AppointmentCalendarHeaderBar extends ConsumerWidget {
   const AppointmentCalendarHeaderBar({
     required this.branchesAsync,
     required this.doctorsAsync,
-    required this.selectedBranchId,
-    required this.selectedDoctorId,
+    required this.appliedBranchId,
+    required this.appliedDoctorId,
     required this.showDoctorFilter,
-    required this.onBranchChanged,
-    required this.onDoctorChanged,
+    required this.hasActiveFilters,
+    required this.onApplyFilters,
+    required this.onClearFilters,
     super.key,
   });
 
   final AsyncValue<List<BranchListItem>> branchesAsync;
   final AsyncValue<List<StaffListItem>> doctorsAsync;
-  final String? selectedBranchId;
-  final String? selectedDoctorId;
+  final String? appliedBranchId;
+  final String? appliedDoctorId;
   final bool showDoctorFilter;
-  final ValueChanged<String?> onBranchChanged;
-  final ValueChanged<String?> onDoctorChanged;
+  final bool hasActiveFilters;
+  final ValueChanged<AppointmentCalendarFilters> onApplyFilters;
+  final VoidCallback onClearFilters;
 
   static const _modes = <AppointmentCalendarMode>[
     AppointmentCalendarMode.day,
@@ -118,11 +120,12 @@ class AppointmentCalendarHeaderBar extends ConsumerWidget {
                   AppointmentCalendarFilterButton(
                     branchesAsync: branchesAsync,
                     doctorsAsync: doctorsAsync,
-                    selectedBranchId: selectedBranchId,
-                    selectedDoctorId: selectedDoctorId,
+                    appliedBranchId: appliedBranchId,
+                    appliedDoctorId: appliedDoctorId,
                     showDoctorFilter: showDoctorFilter,
-                    onBranchChanged: onBranchChanged,
-                    onDoctorChanged: onDoctorChanged,
+                    hasActiveFilters: hasActiveFilters,
+                    onApplyFilters: onApplyFilters,
+                    onClearFilters: onClearFilters,
                   ),
                   const SizedBox(width: SpacingTokens.xs),
                   _HeaderTextButton(

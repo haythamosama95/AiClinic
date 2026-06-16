@@ -310,6 +310,8 @@ class AppFilterSelect<T> extends StatelessWidget {
     this.hintText,
     this.enabled = true,
     this.size = AppFieldSize.sm,
+    this.contentGroupId,
+    this.contentHideRegion,
     super.key,
   });
 
@@ -320,6 +322,8 @@ class AppFilterSelect<T> extends StatelessWidget {
   final String? hintText;
   final bool enabled;
   final AppFieldSize size;
+  final Object? contentGroupId;
+  final FPopoverHideRegion? contentHideRegion;
 
   @override
   Widget build(BuildContext context) {
@@ -332,6 +336,8 @@ class AppFilterSelect<T> extends StatelessWidget {
       label: label == null ? null : Text(label!, style: theme.textTheme.labelSmall),
       hint: hintText,
       enabled: enabled,
+      contentGroupId: contentGroupId,
+      contentHideRegion: contentHideRegion ?? FPopoverHideRegion.excludeChild,
     );
   }
 }

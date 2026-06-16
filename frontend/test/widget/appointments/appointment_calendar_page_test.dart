@@ -84,6 +84,8 @@ void main() {
       expect(find.text('Filter by'), findsOneWidget);
       expect(find.text('Branch'), findsOneWidget);
       expect(find.text('Doctor'), findsOneWidget);
+      expect(find.text('Apply Filters'), findsOneWidget);
+      expect(find.text('Clear Filters'), findsOneWidget);
     });
   });
 }
