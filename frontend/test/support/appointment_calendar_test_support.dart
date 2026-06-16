@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
@@ -169,6 +170,42 @@ class _DelayedFakePostgrestRpc extends FakePostgrestRpc {
   @override
   Future<R> then<R>(FutureOr<R> Function(dynamic value) onValue, {Function? onError}) {
     return Future<void>.delayed(delay).then((_) => super.then(onValue, onError: onError));
+  }
+}
+
+/// Throws [error] when the RPC future is awaited (simulates offline / network failure).
+class ThrowingFakePostgrestRpc extends FakePostgrestRpc {
+  ThrowingFakePostgrestRpc(this.error) : super(null);
+
+  final Object error;
+
+  @override
+  Future<R> then<R>(FutureOr<R> Function(dynamic value) onValue, {Function? onError}) {
+    return Future<R>.error(error);
+  }
+}
+
+/// Fails selected RPCs with a network error; other calls use the default stub payloads.
+class OfflineAppointmentRpcClient extends AppointmentRpcTestClient {
+  OfflineAppointmentRpcClient({this.offlineFunctions = const {'list_appointments'}, this.throwSocketException = false});
+
+  final Set<String> offlineFunctions;
+  final bool throwSocketException;
+
+  @override
+  PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
+    if (offlineFunctions.contains(fn)) {
+      rpcLog.add(fn);
+      lastFunction = fn;
+      lastParams = params == null ? null : Map<String, dynamic>.from(params);
+      rpcCallCounts[fn] = (rpcCallCounts[fn] ?? 0) + 1;
+      if (throwSocketException) {
+        return ThrowingFakePostgrestRpc(const SocketException('Network unreachable')) as PostgrestFilterBuilder<T>;
+      }
+      return FakePostgrestRpc({'success': false, 'error_code': 'NETWORK', 'error_message': 'Network unreachable'})
+          as PostgrestFilterBuilder<T>;
+    }
+    return super.rpc(fn, params: params, get: get);
   }
 }
 

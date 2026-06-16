@@ -282,6 +282,19 @@ Appointment? calendarAppointmentById(WidgetTester tester, String id) {
 }
 
 /// Simulates a drag gesture via Syncfusion callbacks (avoids real pointer drags).
+/// Ends a drag with no drop target (e.g. dragged off the calendar viewport).
+Future<void> invokeCalendarDragCancel(WidgetTester tester, {required Appointment appointment}) async {
+  final calendar = calendarWidget(tester);
+  expect(calendar.onDragStart, isNotNull);
+  expect(calendar.onDragEnd, isNotNull);
+
+  calendar.onDragStart!(AppointmentDragStartDetails(appointment, null));
+  await tester.pump();
+  calendar.onDragEnd!(AppointmentDragEndDetails(appointment, null, null, null));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
 Future<void> invokeCalendarDrag(
   WidgetTester tester, {
   required Appointment appointment,
