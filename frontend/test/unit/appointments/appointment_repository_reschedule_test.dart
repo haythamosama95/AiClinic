@@ -174,7 +174,7 @@ void main() {
       );
     });
 
-    test('regression: FORBIDDEN permission denial propagates', () async {
+    test('CAL-A06: reschedule without appointments.create surfaces FORBIDDEN from RPC', () async {
       client.rpcResults['reschedule_appointment'] = {
         'success': false,
         'error_code': 'FORBIDDEN',

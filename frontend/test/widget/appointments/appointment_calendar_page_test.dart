@@ -1,81 +1,199 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_skeleton.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
-import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/list_branches.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/list_staff.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
 import '../../helpers/auth_test_support.dart';
+import '../../support/appointment_calendar_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
-
-class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
-  _PresetAuthSessionNotifier(this.initial);
-
-  final AuthSessionState initial;
-
-  @override
-  AuthSessionState build() => initial;
-}
+import 'appointment_calendar_test_support.dart';
 
 void main() {
-  Future<void> pumpCalendar(WidgetTester tester, {required Set<String> permissions}) async {
-    final authState = AuthSessionState(
-      status: AuthSessionStatus.authenticated,
-      context: sampleAuthSessionContext(permissions: permissions),
-    );
-
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authSessionProvider.overrideWith(() => _PresetAuthSessionNotifier(authState)),
-          appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(AppointmentRpcTestClient())),
-          listBranchesUseCaseProvider.overrideWith((ref) => ListBranches(_StubBranchRepository())),
-          listStaffUseCaseProvider.overrideWith((ref) => ListStaff(_StubStaffRepository())),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          builder: (context, child) => ForuiAppScope(child: child!),
-          home: const Scaffold(body: AppointmentCalendarPage()),
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-  }
-
   group('AppointmentCalendarPage', () {
-    testWidgets('shows permission denied without appointment access', (tester) async {
-      await pumpCalendar(tester, permissions: {PermissionKeys.patientsView});
+    group('CAL-A — access control', () {
+      testWidgets('CAL-A02: permission denied without appointment access', (tester) async {
+        await pumpAppointmentCalendarPage(
+          tester,
+          authState: calendarAuthState(permissions: {PermissionKeys.patientsView}),
+        );
+        await settleCalendarWidgetTest(tester);
 
-      expect(find.text('You do not have permission to view appointments.'), findsOneWidget);
+        expect(find.text('You do not have permission to view appointments.'), findsOneWidget);
+        expect(find.byType(SfCalendar), findsNothing);
+      });
+
+      testWidgets('CAL-A03: read-only user sees calendar without Book button or drag', (tester) async {
+        await pumpAppointmentCalendarPage(
+          tester,
+          authState: calendarAuthState(permissions: {PermissionKeys.appointmentsRead}),
+        );
+        await settleCalendarWidgetTest(tester);
+
+        expect(find.text('Today'), findsOneWidget);
+        expect(find.byType(SfCalendar), findsOneWidget);
+        expect(find.text('Book Appointment'), findsNothing);
+        expect(calendarWidget(tester).allowDragAndDrop, isFalse);
+        expect(calendarWidget(tester).allowAppointmentResize, isFalse);
+      });
+
+      testWidgets('CAL-A05: read-only user has drag and resize disabled', (tester) async {
+        await pumpAppointmentCalendarPage(
+          tester,
+          authState: calendarAuthState(permissions: {PermissionKeys.appointmentsRead}),
+        );
+        await settleCalendarWidgetTest(tester);
+
+        final calendar = calendarWidget(tester);
+        expect(calendar.allowDragAndDrop, isFalse);
+        expect(calendar.onDragStart, isNull);
+        expect(calendar.onAppointmentResizeStart, isNull);
+      });
+
+      testWidgets('CAL-A07: missing active branch shows selection error', (tester) async {
+        await pumpAppointmentCalendarPage(
+          tester,
+          authState: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: AuthSessionContext(
+              staffProfile: StaffProfile(
+                staffMemberId: '00000000-0000-4000-8000-000000000010',
+                fullName: 'Test Staff',
+                role: StaffRole.administrator,
+                isBootstrapAdmin: false,
+                isActive: true,
+              ),
+              organizationId: '00000000-0000-4000-8000-000000000020',
+              branchIds: const [],
+              activeBranchId: null,
+              permissions: {PermissionKeys.appointmentsRead},
+              setupRequired: false,
+            ),
+          ),
+        );
+
+        final container = ProviderScope.containerOf(tester.element(find.byType(AppointmentCalendarPage)));
+        for (var i = 0; i < 10; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+          final state = container.read(appointmentCalendarProvider);
+          if (!state.loading && state.error != null) {
+            break;
+          }
+        }
+        await settleCalendarWidgetTest(tester);
+
+        final state = container.read(appointmentCalendarProvider);
+        expect(state.error, contains('active branch'));
+        expect(state.items, isEmpty);
+        expect(state.loading, isFalse);
+        expect(find.byType(AppointmentCalendarSkeleton), findsNothing);
+        expect(find.text('Test Patient'), findsNothing);
+      });
     });
 
-    testWidgets('renders view controls when appointment access granted', (tester) async {
-      await pumpCalendar(tester, permissions: {PermissionKeys.appointmentsRead});
+    group('CAL-B — loading and error states', () {
+      testWidgets('CAL-B01: shows skeleton while appointments load', (tester) async {
+        final client = SlowAppointmentRpcTestClient();
 
-      expect(find.text('Today'), findsOneWidget);
-      expect(find.text('Day'), findsOneWidget);
-      expect(find.byTooltip('Filter appointments'), findsOneWidget);
-      expect(find.byType(SfCalendar), findsOneWidget);
+        await pumpAppointmentCalendarPage(tester, authState: calendarAuthState(), rpcClient: client);
+        await tester.pump();
+
+        expect(find.byType(AppointmentCalendarSkeleton), findsOneWidget);
+        expect(find.byType(SfCalendar), findsNothing);
+
+        await settleCalendarWidgetTest(tester, passes: 3);
+
+        expect(find.byType(AppointmentCalendarSkeleton), findsNothing);
+        expect(find.byType(SfCalendar), findsOneWidget);
+      });
+
+      testWidgets('CAL-B02: appointment data loads and tile reveal completes after stagger delay', (tester) async {
+        await pumpAppointmentCalendarPage(tester, authState: calendarAuthState());
+
+        final container = ProviderScope.containerOf(tester.element(find.byType(AppointmentCalendarPage)));
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+          final state = container.read(appointmentCalendarProvider);
+          if (!state.loading && state.items.isNotEmpty) {
+            break;
+          }
+        }
+
+        expect(find.byType(AppointmentCalendarSkeleton), findsNothing);
+        expect(find.byType(SfCalendar), findsOneWidget);
+        expect(container.read(appointmentCalendarProvider).items, hasLength(1));
+
+        await tester.pump(const Duration(milliseconds: 200));
+
+        final tileSkeletonizersAfterReveal = tester
+            .widgetList<Skeletonizer>(find.descendant(of: find.byType(SfCalendar), matching: find.byType(Skeletonizer)))
+            .where((widget) => widget.enabled)
+            .toList();
+        expect(tileSkeletonizersAfterReveal, isEmpty);
+      });
+
+      testWidgets('CAL-B03: RPC failure shows error and Retry without crashing', (tester) async {
+        final client = AppointmentRpcTestClient()
+          ..rpcResults['list_appointments'] = {
+            'success': false,
+            'error_code': 'INTERNAL',
+            'error_message': 'Database unavailable',
+          };
+
+        await pumpAppointmentCalendarPage(tester, authState: calendarAuthState(), rpcClient: client);
+        await settleCalendarWidgetTest(tester);
+
+        expect(find.textContaining('Could not load appointments'), findsOneWidget);
+        expect(find.text('Retry'), findsOneWidget);
+        expect(find.byType(SfCalendar), findsOneWidget);
+      });
+
+      testWidgets('CAL-B04: Retry refreshes appointments after error', (tester) async {
+        final client = FlakyListAppointmentRpcClient();
+
+        await pumpAppointmentCalendarPage(tester, authState: calendarAuthState(), rpcClient: client);
+        await settleCalendarWidgetTest(tester);
+
+        expect(find.textContaining('Could not load appointments'), findsOneWidget);
+        expect(client.rpcCallCounts['list_appointments'], 1);
+
+        await tester.tap(find.text('Retry'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(find.textContaining('Could not load appointments'), findsNothing);
+        expect(client.rpcCallCounts['list_appointments'], 2);
+        expect(find.byType(SfCalendar), findsOneWidget);
+      });
+
+      testWidgets('CAL-B05: empty branch shows calendar grid without stuck skeleton', (tester) async {
+        final client = AppointmentRpcTestClient()
+          ..rpcResults['list_appointments'] = {
+            'success': true,
+            'data': {'items': <Map<String, dynamic>>[]},
+          };
+
+        await pumpAppointmentCalendarPage(tester, authState: calendarAuthState(), rpcClient: client);
+        await settleCalendarWidgetTest(tester);
+
+        expect(find.byType(AppointmentCalendarSkeleton), findsNothing);
+        expect(find.byType(SfCalendar), findsOneWidget);
+        expect(find.text('Test Patient'), findsNothing);
+      });
+    });
+
+    testWidgets('renders filter popover controls when appointment access granted', (tester) async {
+      await pumpAppointmentCalendarPage(
+        tester,
+        authState: calendarAuthState(permissions: {PermissionKeys.appointmentsRead}),
+      );
+      await settleCalendarWidgetTest(tester);
 
       await tester.tap(find.byIcon(Icons.filter_list_outlined));
       await tester.pump();
@@ -88,33 +206,4 @@ void main() {
       expect(find.text('Clear Filters'), findsOneWidget);
     });
   });
-}
-
-class _StubBranchRepository implements BranchRepository {
-  @override
-  Future<List<BranchListItem>> listBranches({
-    required String organizationId,
-    BranchListFilter filter = BranchListFilter.all,
-  }) async {
-    return [
-      BranchListItem(
-        id: '00000000-0000-4000-8000-000000000001',
-        name: 'Main',
-        code: 'M1',
-        isActive: true,
-        workingSchedule: BranchWorkingSchedule.defaultSchedule(),
-      ),
-    ];
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _StubStaffRepository implements StaffAdminRepository {
-  @override
-  Future<List<StaffListItem>> listStaff({StaffListFilter filter = StaffListFilter.all}) async => const [];
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

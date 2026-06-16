@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/auth_test_support.dart';
+import '../../support/appointment_calendar_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
+import '../../widget/appointments/appointment_calendar_test_support.dart';
 
 class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
   _PresetAuthSessionNotifier(this.initial);
@@ -61,7 +63,7 @@ void main() {
       expect(client.rpcCallCounts['list_appointments'], 1);
     });
 
-    test('refresh without branch shows selection error', () async {
+    test('CAL-A07: refresh without branch shows selection error', () async {
       final container = createContainer(
         const AuthSessionState(
           status: AuthSessionStatus.authenticated,
@@ -187,6 +189,77 @@ void main() {
       final state = await readAfterInit(container);
 
       expect(state.hasActiveFilters(initialBranchId: '00000000-0000-4000-8000-000000000001'), isFalse);
+    });
+
+    test('CAL-B06: branch filter triggers fetch for selected branch data', () async {
+      client = BranchAwareAppointmentRpcClient();
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: calendarTestBranchAId,
+            branchIds: [calendarTestBranchAId, calendarTestBranchBId],
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final initial = await readAfterInit(container);
+      expect(initial.items.single.patientName, 'Branch A Patient');
+
+      await container.read(appointmentCalendarProvider.notifier).applyFilters(branchId: calendarTestBranchBId);
+      await pumpEventQueue();
+
+      final filtered = container.read(appointmentCalendarProvider);
+      expect(filtered.selectedBranchId, calendarTestBranchBId);
+      expect(filtered.items.single.patientName, 'Branch B Patient');
+      expect(client.lastParams?['p_branch_id'], calendarTestBranchBId);
+      expect(client.rpcCallCounts['list_appointments'], greaterThanOrEqualTo(2));
+    });
+
+    test('CAL-B07: activeBranchId change resets filters to new default branch', () async {
+      final authNotifier = MutableAuthSessionNotifier(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: calendarTestBranchAId,
+            branchIds: [calendarTestBranchAId, calendarTestBranchBId, calendarTestBranchCId],
+          ),
+        ),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(() => authNotifier),
+          appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      await container
+          .read(appointmentCalendarProvider.notifier)
+          .applyFilters(branchId: calendarTestBranchBId, doctorId: '00000000-0000-4000-8000-000000000099');
+      await pumpEventQueue();
+
+      authNotifier.replace(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: calendarTestBranchCId,
+            branchIds: [calendarTestBranchAId, calendarTestBranchBId, calendarTestBranchCId],
+          ),
+        ),
+      );
+      await pumpEventQueue();
+
+      final state = container.read(appointmentCalendarProvider);
+      expect(state.selectedBranchId, calendarTestBranchCId);
+      expect(state.selectedDoctorId, isNull);
+      expect(state.hasActiveFilters(initialBranchId: calendarTestBranchCId), isFalse);
     });
   });
 }

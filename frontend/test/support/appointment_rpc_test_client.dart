@@ -2,6 +2,23 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'fake_postgrest_rpc.dart';
 
+Map<String, dynamic> appointmentRpcDefaultListItem({String patientName = 'Test Patient', DateTime? startLocal}) {
+  final now = DateTime.now();
+  final start = startLocal ?? DateTime(now.year, now.month, now.day, 10, 0);
+  final end = start.add(const Duration(minutes: 30));
+  return {
+    'id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'patient_id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'patient_name': patientName,
+    'doctor_id': 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    'doctor_name': 'Dr Test',
+    'start_time': start.toUtc().toIso8601String(),
+    'end_time': end.toUtc().toIso8601String(),
+    'type': 'planned',
+    'status': 'scheduled',
+  };
+}
+
 /// [SupabaseClient] fake for V1-4 appointment repository RPC unit tests.
 class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
   AppointmentRpcTestClient({Map<String, Map<String, dynamic>>? rpcResults}) : rpcResults = rpcResults ?? {};
@@ -58,19 +75,7 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
       'list_appointments' => {
         'success': true,
         'data': {
-          'items': [
-            {
-              'id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-              'patient_id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-              'patient_name': 'Test Patient',
-              'doctor_id': 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-              'doctor_name': 'Dr Test',
-              'start_time': '2026-06-01T09:00:00.000Z',
-              'end_time': '2026-06-01T09:30:00.000Z',
-              'type': 'planned',
-              'status': 'scheduled',
-            },
-          ],
+          'items': [appointmentRpcDefaultListItem()],
         },
       },
       'update_appointment_status' => {
