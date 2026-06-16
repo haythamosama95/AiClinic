@@ -22,11 +22,16 @@ UNIT_RUNNER = TOOL_DIR / "run_unit_tests.py"
 BOUNDARY_RUNNER = TOOL_DIR / "run_boundary_tests.py"
 
 
-def _run(label: str, cmd: list[str], env: dict[str, str] | None = None) -> int:
+def _run(
+    label: str,
+    cmd: list[str],
+    env: dict[str, str] | None = None,
+    cwd: Path | None = None,
+) -> int:
     print("\n" + "=" * 90)
     print(f"▶ {label}")
     print("=" * 90 + "\n")
-    return subprocess.run(cmd, env=env).returncode
+    return subprocess.run(cmd, env=env, cwd=cwd).returncode
 
 
 def _status(exit_code: int) -> str:
@@ -95,6 +100,15 @@ def main() -> None:
             **os.environ,
             CAMPAIGN_ENV: str(campaign_dir.resolve()),
         }
+
+    for label, flutter_cmd in (
+        ("flutter clean", ["flutter", "clean"]),
+        ("flutter pub get", ["flutter", "pub", "get"]),
+    ):
+        code = _run(label, flutter_cmd, cwd=FRONTEND_ROOT)
+        if code != 0:
+            print(f"\n❌ {label} failed (exit {code}); aborting test run.")
+            sys.exit(code)
 
     started_at = utc_now_iso()
     results: list[tuple[str, int]] = []
