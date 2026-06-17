@@ -94,16 +94,13 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
 
     try {
       if (!SupabaseBootstrap.isReady) {
-        state = state.copyWith(status: AuthSessionStatus.loading, clearFailure: true);
-        await SupabaseBootstrap.ensureInitialized(SupabaseConfig.fromDeploymentProfile(profile));
-      }
-
-      if (!SupabaseBootstrap.isReady) {
+        AppLog.warning('auth.session.supabase_not_ready_after_startup');
         return;
       }
 
-      // Run once per process. Concurrent bootstrap + sign-in used to call signOut again
-      // after password sign-in and break the first PostgREST request (PGRST301).
+      state = state.copyWith(status: AuthSessionStatus.loading, clearFailure: true);
+
+      // Run once per process so cold start never restores a prior workstation session.
       if (!_clearedPersistedSessionOnColdStart) {
         await ref.read(authRepositoryProvider).clearPersistedSessionOnColdStart();
         _clearedPersistedSessionOnColdStart = true;

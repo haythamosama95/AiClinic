@@ -124,13 +124,6 @@ class SupabaseBootstrap {
       );
       _initialized = true;
       AppLog.info('supabase.bootstrap.ready');
-
-      // Cold start must not keep a prior workstation session in memory.
-      try {
-        await Supabase.instance.client.auth.signOut();
-      } on Exception catch (error) {
-        AppLog.warning('supabase.bootstrap.cold_sign_out_failed reason=${error.runtimeType}');
-      }
     } catch (error) {
       _initialized = false;
       _pendingInitialization = null;

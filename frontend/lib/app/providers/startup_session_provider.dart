@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/config/deployment_profile.dart';
 import 'package:ai_clinic/core/config/deployment_profile_store.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
+import 'package:ai_clinic/core/config/supabase_initializer.dart';
 import 'package:ai_clinic/core/errors/exceptions.dart';
 import 'package:ai_clinic/core/errors/failures.dart';
 import 'package:ai_clinic/app/services/startup_health_service.dart';
@@ -107,7 +108,7 @@ class StartupSessionNotifier extends Notifier<StartupSessionState> {
     try {
       final profile = await ref.read(deploymentProfileStoreProvider).load();
       final supabaseConfig = SupabaseConfig.fromDeploymentProfile(profile);
-      await SupabaseBootstrap.ensureInitialized(supabaseConfig);
+      await ref.read(supabaseInitializerProvider).initialize(supabaseConfig);
       final healthResult = await ref.read(startupHealthServiceProvider).check(supabaseConfig);
 
       // A valid profile always advances to the startup dashboard, even if health is degraded.
