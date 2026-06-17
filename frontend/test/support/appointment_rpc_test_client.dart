@@ -9,8 +9,7 @@ Map<String, dynamic> appointmentRpcDefaultListItem({
   String doctorId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
   String doctorName = 'Dr Test',
 }) {
-  final now = DateTime.now();
-  final start = startLocal ?? DateTime(now.year, now.month, now.day, 10, 0);
+  final start = startLocal ?? DateTime(2026, 6, 15, 10, 0);
   final end = start.add(const Duration(minutes: 30));
   return {
     'id': id,

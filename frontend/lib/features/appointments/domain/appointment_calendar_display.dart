@@ -132,7 +132,8 @@ class AppointmentCalendarDisplay {
       return const [];
     }
 
-    final dayStart = DateTime(focusDate.year, focusDate.month, focusDate.day);
+    final local = focusDate.toLocal();
+    final dayStart = DateTime(local.year, local.month, local.day);
     final rangeStart = dayStart.add(Duration(minutes: (startHour * 60).round()));
     final rangeEnd = dayStart.add(Duration(minutes: (endHour * 60).round()));
 

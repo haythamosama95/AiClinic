@@ -14,14 +14,14 @@ This branch replaces the appointments calendar placeholder route with a full **S
 
 **Release confidence blockers to verify manually:**
 
-| Area                                     | Risk                                                                                                |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Drag/resize + booking under slow network | Optimistic UI revert paths; shared `_isProcessingDrag` flag                                         |
-| Duration > 240 min after migration       | Stale RPC error strings still mention 240 in exception handlers                                     |
-| `filterVisibleAppointments`              | Appointments outside current branch hours are hidden, not flagged                                   |
-| Syncfusion dependency versions           | `syncfusion_flutter_calendar: ^32.1.23` vs `syncfusion_flutter_core: ^32.2.9` mismatch              |
-| Widget/integration coverage              | No calendar widget/integration suite yet; see [Test implementation plan](#test-implementation-plan) |
-| License key in `main.dart`               | Unused constant committed to source                                                                 |
+| Area                                     | Risk                                                                                                                                                |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Drag/resize + booking under slow network | Optimistic UI revert paths; shared `_isProcessingDrag` flag                                                                                         |
+| Duration > 240 min after migration       | Stale RPC error strings still mention 240 in exception handlers                                                                                     |
+| `filterVisibleAppointments`              | Appointments outside current branch hours are hidden, not flagged                                                                                   |
+| Syncfusion dependency versions           | `syncfusion_flutter_calendar: ^32.1.23` vs `syncfusion_flutter_core: ^32.2.9` mismatch                                                              |
+| Widget/integration coverage              | CAL-* widget, integration, and regression suites added in this PR; run with `--concurrency 1` (see [Verification commands](#verification-commands)) |
+| License key in `main.dart`               | Unused constant committed to source                                                                                                                 |
 
 ---
 
@@ -336,19 +336,17 @@ flowchart TB
 
 ## Missing automated test coverage
 
-| Area                   | Gap                                                                |
-| ---------------------- | ------------------------------------------------------------------ |
-| Calendar page widget   | Permission denied, loading/error states, drag flags, branch errors |
-| Booking sheet          | Sheet validation; calendar entry points (cell tap, header button)  |
-| Drag/resize            | Unit validation exists; widget/E2E gesture coverage needed         |
-| Filter popover         | Branch/doctor apply, clear, badge, empty branch                    |
-| Header                 | View tabs, Today, navigation arrows, Book Appointment              |
-| Integration routing    | `/appointments/calendar` via authenticated app router              |
-| E2E                    | Full flows: book → refresh → tile; drag → confirm → RPC            |
-| Backend migration      | `appointment_calendar_backend_integrity.sql` (Section J)           |
-| `app_clock_time_field` | Post-frame value sync (CAL-L01)                                    |
+| Area                     | Gap                                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| Calendar page edge cases | Concurrent drag/resize flags under flaky network; branch-specific load errors            |
+| E2E                      | Full authenticated flows: book → refresh → tile; drag → confirm → RPC across real router |
+| Month-view booking       | Document-only: month cell tap selects date but does not open booking (by design)         |
 
-**Existing unit tests (extend, do not duplicate):** `appointment_calendar_display_test`, `appointment_calendar_period_test`, `appointment_calendar_provider_test`, `appointment_reschedule_validation_test`, `appointment_calendar_data_source_test`, `appointment_calendar_drag_reschedule_test`, `appointment_calendar_resize_section_h_test`, `appointment_calendar_section_i_test`, `appointment_settings_test`.
+**Existing automated tests (extend, do not duplicate):**
+
+- **Unit:** `appointment_calendar_display_test`, `appointment_calendar_period_test`, `appointment_calendar_provider_test`, `appointment_reschedule_validation_test`, `appointment_calendar_data_source_test`, `appointment_calendar_drag_reschedule_test`, `appointment_calendar_resize_section_h_test`, `appointment_settings_test`, `appointment_repository_test`
+- **Widget / integration / regression:** `appointment_calendar_page_test`, `appointment_calendar_view_modes_test`, `appointment_calendar_filter_test`, `appointment_calendar_booking_test`, `appointment_calendar_drag_test`, `appointment_calendar_resize_test`, `appointment_calendar_detail_sheet_test`, `appointment_calendar_section_i_test`, `appointment_calendar_section_k_test`, `appointment_calendar_section_m_test`, `appointment_booking_sheet_test`, `appointment_reschedule_confirm_dialog_test`, `appointment_calendar_routing_test`, `calendar_section_l_regression_test`
+- **Backend:** `backend/tests/appointment_calendar_backend_integrity.sql` (Section J)
 
 ---
 

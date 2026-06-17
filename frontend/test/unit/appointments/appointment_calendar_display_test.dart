@@ -154,6 +154,26 @@ void main() {
         expect(regions.single.resourceIds, ['doc-2']);
       });
 
+      test('CAL-I04: resourceRowStripeRegions use local calendar day for UTC focusDate', () {
+        final utcFocus = DateTime.utc(2026, 6, 5, 3, 30);
+        final regions = AppointmentCalendarDisplay.resourceRowStripeRegions(
+          resourceIds: const ['doc-1', 'doc-2'],
+          focusDate: utcFocus,
+          startHour: 9,
+          endHour: 17,
+          stripeColor: const Color(0xFFE5E7EB),
+        );
+
+        final local = utcFocus.toLocal();
+        final dayStart = DateTime(local.year, local.month, local.day);
+        final wrongDayStart = DateTime(utcFocus.year, utcFocus.month, utcFocus.day);
+
+        expect(regions.single.startTime, dayStart.add(const Duration(hours: 9)));
+        if (dayStart != wrongDayStart) {
+          expect(regions.single.startTime, isNot(wrongDayStart.add(const Duration(hours: 9))));
+        }
+      });
+
       test('CAL-I07: filterVisibleAppointments hides appointments outside branch hours', () {
         final earlyBird = AppointmentListItem(
           id: 'early',

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
@@ -165,6 +166,66 @@ void main() {
       final items = container.read(appointmentCalendarProvider).items;
       expect(items, hasLength(2));
       expect(items.any((item) => item.patientName == 'Tab B Patient'), isTrue);
+    });
+
+    testWidgets('CAL-K07: refresh updates calendar tile when only patient name changes', (tester) async {
+      final start = appointmentTestStartTime();
+      final client = AppointmentRpcTestClient()
+        ..rpcResults['list_appointments'] = {
+          'success': true,
+          'data': {
+            'items': [appointmentRpcDefaultListItem(startLocal: start)],
+          },
+        };
+
+      await pumpAppointmentCalendarPage(tester, authState: calendarAuthStateWithCreate(), rpcClient: client);
+      final container = await waitForCalendarLoaded(tester);
+
+      var dataSource = calendarWidget(tester).dataSource! as AppointmentCalendarDataSource;
+      expect((dataSource.appointments!.single as Appointment).subject, 'Test Patient');
+
+      client.rpcResults['list_appointments'] = {
+        'success': true,
+        'data': {
+          'items': [appointmentRpcDefaultListItem(patientName: 'Renamed Patient', startLocal: start)],
+        },
+      };
+
+      await container.read(appointmentCalendarProvider.notifier).refresh();
+      await settleCalendarWidgetTest(tester);
+
+      dataSource = calendarWidget(tester).dataSource! as AppointmentCalendarDataSource;
+      expect((dataSource.appointments!.single as Appointment).subject, 'Renamed Patient');
+    });
+
+    testWidgets('CAL-K08: refresh updates calendar tile when only doctor name changes', (tester) async {
+      final start = appointmentTestStartTime();
+      final client = AppointmentRpcTestClient()
+        ..rpcResults['list_appointments'] = {
+          'success': true,
+          'data': {
+            'items': [appointmentRpcDefaultListItem(startLocal: start, doctorName: 'Dr Ada')],
+          },
+        };
+
+      await pumpAppointmentCalendarPage(tester, authState: calendarAuthStateWithCreate(), rpcClient: client);
+      final container = await waitForCalendarLoaded(tester);
+
+      var dataSource = calendarWidget(tester).dataSource! as AppointmentCalendarDataSource;
+      expect((dataSource.appointments!.single as Appointment).notes, 'Dr Ada');
+
+      client.rpcResults['list_appointments'] = {
+        'success': true,
+        'data': {
+          'items': [appointmentRpcDefaultListItem(startLocal: start, doctorName: 'Dr Ben')],
+        },
+      };
+
+      await container.read(appointmentCalendarProvider.notifier).refresh();
+      await settleCalendarWidgetTest(tester);
+
+      dataSource = calendarWidget(tester).dataSource! as AppointmentCalendarDataSource;
+      expect((dataSource.appointments!.single as Appointment).notes, 'Dr Ben');
     });
 
     test('CAL-K06: settings payload without max_duration_minutes parses without crash', () {

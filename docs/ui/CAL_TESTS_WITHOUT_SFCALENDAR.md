@@ -4,7 +4,7 @@ Companion to [QA_REVIEW_ui-008-calendar.md](./QA_REVIEW_ui-008-calendar.md).
 
 These CAL-* tests can be implemented **without** mounting `SfCalendar` or `AppointmentCalendarPage`. Use this document to implement the first wave of the calendar test suite while avoiding Syncfusion widget-harness constraints (`pumpAndSettle`, bounded pumps, `--concurrency 1`).
 
-**Totals:** 52 tests fully implementable without `SfCalendar` · 3 partial (sheet/logic only) · **~55 of 119** in the first wave.
+**Totals:** 50 tests fully implementable without `SfCalendar` · 3 partial (sheet/logic only) · **~53 of 119** in the first wave.
 
 ---
 
@@ -29,36 +29,36 @@ These CAL-* tests can be implemented **without** mounting `SfCalendar` or `Appoi
 
 ## Tier 2 — Dart unit tests (domain / provider / repository)
 
-| Test ID | Section | Priority | Area                 | Suggested target file                                                            | What to test                                              |
-| ------- | ------- | -------- | -------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| CAL-B06 | B       | High     | Refresh              | `frontend/test/unit/appointments/appointment_calendar_provider_test.dart`        | Branch filter change triggers new fetch                   |
-| CAL-B07 | B       | High     | Auth change          | same                                                                             | `activeBranchId` change resets filters                    |
-| CAL-G05 | G       | Critical | Confirmed appt       | `frontend/test/unit/appointments/appointment_reschedule_validation_test.dart`    | `validateMove` rejects confirmed status                   |
-| CAL-G06 | G       | Critical | Overlap              | same                                                                             | Overlap → validation error                                |
-| CAL-G07 | G       | Critical | Outside hours        | same                                                                             | Outside working hours → error                             |
-| CAL-G08 | G       | High     | Same-day patient     | same                                                                             | Same-day patient conflict                                 |
-| CAL-G09 | G       | High     | Doctor resource move | same                                                                             | Cross-doctor move rejected                                |
-| CAL-G15 | G       | Critical | Server conflict      | same + mocked repo                                                               | Client validation passes; RPC returns `SCHEDULE_CONFLICT` |
-| CAL-H03 | H       | Critical | Min 5 min            | `frontend/test/unit/appointments/appointment_reschedule_validation_test.dart`    | Duration < 5 min blocked                                  |
-| CAL-H04 | H       | Critical | Extend into overlap  | same                                                                             | Extend into adjacent appt blocked                         |
-| CAL-H06 | H       | Medium   | No-op resize         | same                                                                             | Resize back to original → no-op                           |
-| CAL-I01 | I       | Medium   | Status colors        | `frontend/test/unit/appointments/appointment_calendar_display_test.dart`         | `statusColor` mapping per status                          |
-| CAL-I02 | I       | Medium   | Doctor name          | same                                                                             | Doctor name in tile notes/subtitle                        |
-| CAL-I07 | I       | High     | Hidden appts         | same or provider test                                                            | `filterVisibleAppointments` hides out-of-hours            |
-| CAL-K06 | K       | High     | Contract settings    | `frontend/test/unit/appointments/appointment_settings_test.dart`                 | JSON without `max_duration_minutes` parses; no crash      |
-| CAL-L04 | L       | High     | Repository boundary  | `frontend/test/unit/appointments/appointment_repository_test.dart` (or existing) | 4 min duration → client `INVALID_INPUT` before RPC        |
-| CAL-M11 | M       | Medium   | Midnight span        | `appointment_reschedule_validation_test.dart` + booking validation               | Hours near midnight handled                               |
-| CAL-M12 | M       | High     | Null doctor overlap  | `appointment_reschedule_validation_test.dart`                                    | Two unassigned appts overlap detected                     |
-| CAL-E17 | E       | High     | Long duration        | booking sheet unit + repo/RPC mock                                               | Create >240 min via sheet succeeds (no 240 cap)           |
+| Test ID | Section | Priority | Area                 | Suggested target file                                                         | What to test                                              |
+| ------- | ------- | -------- | -------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------- |
+| CAL-B06 | B       | High     | Refresh              | `frontend/test/unit/appointments/appointment_calendar_provider_test.dart`     | Branch filter change triggers new fetch                   |
+| CAL-B07 | B       | High     | Auth change          | same                                                                          | `activeBranchId` change resets filters                    |
+| CAL-G05 | G       | Critical | Confirmed appt       | `frontend/test/unit/appointments/appointment_reschedule_validation_test.dart` | `validateMove` rejects confirmed status                   |
+| CAL-G06 | G       | Critical | Overlap              | same                                                                          | Overlap → validation error                                |
+| CAL-G07 | G       | Critical | Outside hours        | same                                                                          | Outside working hours → error                             |
+| CAL-G08 | G       | High     | Same-day patient     | same                                                                          | Same-day patient conflict                                 |
+| CAL-G09 | G       | High     | Doctor resource move | same                                                                          | Cross-doctor move rejected                                |
+| CAL-G15 | G       | Critical | Server conflict      | same + mocked repo                                                            | Client validation passes; RPC returns `SCHEDULE_CONFLICT` |
+| CAL-H03 | H       | Critical | Min 5 min            | `frontend/test/unit/appointments/appointment_reschedule_validation_test.dart` | Duration < 5 min blocked                                  |
+| CAL-H04 | H       | Critical | Extend into overlap  | same                                                                          | Extend into adjacent appt blocked                         |
+| CAL-H06 | H       | Medium   | No-op resize         | same                                                                          | Resize back to original → no-op                           |
+| CAL-I01 | I       | Medium   | Status colors        | `frontend/test/unit/appointments/appointment_calendar_display_test.dart`      | `statusColor` mapping per status                          |
+| CAL-I02 | I       | Medium   | Doctor name          | same                                                                          | Doctor name in tile notes/subtitle                        |
+| CAL-I07 | I       | High     | Hidden appts         | same or provider test                                                         | `filterVisibleAppointments` hides out-of-hours            |
+| CAL-K06 | K       | High     | Contract settings    | `frontend/test/unit/appointments/appointment_settings_test.dart`              | JSON without `max_duration_minutes` parses; no crash      |
+| CAL-L04 | L       | High     | Repository boundary  | `frontend/test/unit/appointments/appointment_repository_test.dart`            | 4 min duration → client `INVALID_INPUT` before RPC        |
+| CAL-M11 | M       | Medium   | Midnight span        | `appointment_reschedule_validation_test.dart` + booking validation            | Hours near midnight handled                               |
+| CAL-M12 | M       | High     | Null doctor overlap  | `appointment_reschedule_validation_test.dart`                                 | Two unassigned appts overlap detected                     |
+| CAL-E17 | E       | High     | Long duration        | booking sheet unit + repo/RPC mock                                            | Create >240 min via sheet succeeds (no 240 cap)           |
 
 ### Extend existing unit files (do not duplicate)
 
-| Existing file                                               | CAL IDs to map here                            |
-| ----------------------------------------------------------- | ---------------------------------------------- |
-| `appointment_calendar_period_test.dart`                     | Period/window helpers (client side of J09/J10) |
-| `appointment_calendar_data_source_test.dart`                | DataSource mapping (supports G/H indirectly)   |
-| `appointment_calendar_drag_reschedule_test.dart` (planned)  | G02 snap-to-grid logic if extracted from page  |
-| `appointment_calendar_resize_section_h_test.dart` (planned) | H05 resize edge logic if unit-testable         |
+| Existing file                                                                     | CAL IDs to map here                            |
+| --------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `appointment_calendar_period_test.dart`                                           | Period/window helpers (client side of J09/J10) |
+| `appointment_calendar_data_source_test.dart`                                      | DataSource mapping (supports G/H indirectly)   |
+| `frontend/test/unit/appointments/appointment_calendar_drag_reschedule_test.dart`  | G02 snap-to-grid logic if extracted from page  |
+| `frontend/test/unit/appointments/appointment_calendar_resize_section_h_test.dart` | H05 resize edge logic if unit-testable         |
 
 ---
 

@@ -499,7 +499,17 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required Color oddResourceRowColor,
   }) {
     final itemsFingerprint = Object.hashAll(
-      items.map((item) => Object.hash(item.id, item.startTime, item.endTime, item.status, item.doctorId)),
+      items.map(
+        (item) => Object.hash(
+          item.id,
+          item.startTime,
+          item.endTime,
+          item.status,
+          item.doctorId,
+          item.patientName,
+          item.doctorName,
+        ),
+      ),
     );
     final resourceFingerprint = Object.hash(
       includeDoctorResources,
