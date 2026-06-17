@@ -17,6 +17,7 @@ import 'package:ai_clinic/features/settings/domain/repositories/branch_repositor
 import 'package:ai_clinic/features/settings/domain/usecases/list_branches.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/list_staff.dart';
 import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -139,6 +140,20 @@ Future<void> tapCalendarViewTab(WidgetTester tester, String label) async {
 
 Finder get calendarFilterButton =>
     find.descendant(of: find.byType(AppointmentCalendarHeaderBar), matching: find.byIcon(Icons.filter_list_outlined));
+
+Finder get calendarColorLegendButton =>
+    find.descendant(of: find.byType(AppointmentCalendarHeaderBar), matching: find.byIcon(Icons.legend_toggle_outlined));
+
+Future<void> hoverCalendarColorLegend(WidgetTester tester) async {
+  final button = calendarColorLegendButton;
+  final center = tester.getCenter(button);
+  final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+  await gesture.addPointer(location: center);
+  await tester.pump();
+  await gesture.moveTo(center);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+}
 
 Future<void> openCalendarFilterPopover(WidgetTester tester) async {
   await tester.tap(calendarFilterButton, warnIfMissed: false);

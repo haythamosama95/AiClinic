@@ -205,5 +205,26 @@ void main() {
       expect(find.text('Apply Filters'), findsOneWidget);
       expect(find.text('Clear Filters'), findsOneWidget);
     });
+
+    testWidgets('hovering color legend button shows appointment status colors', (tester) async {
+      await pumpAppointmentCalendarPage(
+        tester,
+        authState: calendarAuthState(permissions: {PermissionKeys.appointmentsRead}),
+      );
+      await settleCalendarWidgetTest(tester);
+
+      expect(calendarColorLegendButton, findsOneWidget);
+
+      await hoverCalendarColorLegend(tester);
+
+      expect(find.text('Appointment colors'), findsOneWidget);
+      expect(find.text('Scheduled'), findsOneWidget);
+      expect(find.text('Confirmed'), findsOneWidget);
+      expect(find.text('Checked in'), findsOneWidget);
+      expect(find.text('In progress'), findsOneWidget);
+      expect(find.text('Completed'), findsOneWidget);
+      expect(find.text('Cancelled'), findsOneWidget);
+      expect(find.text('No-show'), findsOneWidget);
+    });
   });
 }

@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_color_legend_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_filter_popover.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
@@ -124,6 +125,8 @@ class AppointmentCalendarHeaderBar extends ConsumerWidget {
                     AppButton(label: 'Book Appointment', size: AppFieldSize.sm, onPressed: onBookAppointment),
                     const SizedBox(width: SpacingTokens.sm),
                   ],
+                  const AppointmentCalendarColorLegendButton(),
+                  const SizedBox(width: SpacingTokens.xs),
                   AppointmentCalendarFilterButton(
                     branchesAsync: branchesAsync,
                     doctorsAsync: doctorsAsync,

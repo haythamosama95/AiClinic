@@ -251,15 +251,33 @@ class AppointmentCalendarDisplay {
         .toList(growable: false);
   }
 
+  /// Statuses shown in the calendar color legend (excludes [AppointmentStatus.unknown]).
+  static const List<AppointmentStatus> calendarStatusLegend = [
+    AppointmentStatus.scheduled,
+    AppointmentStatus.confirmed,
+    AppointmentStatus.checkedIn,
+    AppointmentStatus.inProgress,
+    AppointmentStatus.completed,
+    AppointmentStatus.cancelled,
+    AppointmentStatus.noShow,
+  ];
+
   static Color statusColor(AppointmentStatus status) {
     return switch (status) {
-      AppointmentStatus.scheduled => const Color(0xFF2563EB),
-      AppointmentStatus.confirmed => const Color(0xFF0D9488),
-      AppointmentStatus.checkedIn => const Color(0xFF0891B2),
+      // Muted gray / soft slate blue
+      AppointmentStatus.scheduled => const Color(0xFF8B9CB3),
+      // Standard blue
+      AppointmentStatus.confirmed => const Color(0xFF2563EB),
+      // Bright yellow-gold
+      AppointmentStatus.checkedIn => const Color(0xFFEAB308),
+      // Orange
       AppointmentStatus.inProgress => const Color(0xFFEA580C),
+      // Green
       AppointmentStatus.completed => const Color(0xFF16A34A),
+      // Red
       AppointmentStatus.cancelled => const Color(0xFFDC2626),
-      AppointmentStatus.noShow => const Color(0xFF7C3AED),
+      // Desaturated purple / dark charcoal
+      AppointmentStatus.noShow => const Color(0xFF5C5470),
       AppointmentStatus.unknown => const Color(0xFF6B7280),
     };
   }

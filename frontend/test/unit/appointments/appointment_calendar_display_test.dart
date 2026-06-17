@@ -135,10 +135,21 @@ void main() {
 
     group('CAL-I — display (unit)', () {
       test('CAL-I01: statusColor maps each appointment status', () {
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled), const Color(0xFF2563EB));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed), const Color(0xFF0D9488));
+        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled), const Color(0xFF8B9CB3));
+        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed), const Color(0xFF2563EB));
+        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.checkedIn), const Color(0xFFEAB308));
+        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.inProgress), const Color(0xFFEA580C));
         expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.completed), const Color(0xFF16A34A));
         expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.cancelled), const Color(0xFFDC2626));
+        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.noShow), const Color(0xFF5C5470));
+      });
+
+      test('CAL-I02: calendarStatusLegend lists calendar statuses excluding unknown', () {
+        expect(AppointmentCalendarDisplay.calendarStatusLegend, hasLength(7));
+        expect(AppointmentCalendarDisplay.calendarStatusLegend, isNot(contains(AppointmentStatus.unknown)));
+        for (final status in AppointmentCalendarDisplay.calendarStatusLegend) {
+          expect(AppointmentCalendarDisplay.statusColor(status), isNotNull);
+        }
       });
 
       test('CAL-I03: resourceRowStripeRegions stripes odd-indexed doctor rows', () {
