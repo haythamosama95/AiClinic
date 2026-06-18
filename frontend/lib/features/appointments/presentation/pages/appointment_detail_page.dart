@@ -18,6 +18,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
 /// Full appointment profile page loaded via `get_appointment`.
@@ -141,8 +142,11 @@ class _AppointmentHeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final theme = Theme.of(context);
+    final motionDuration = AppointmentStatusMotion.durationOf(context);
 
-    return DecoratedBox(
+    return AnimatedContainer(
+      duration: motionDuration,
+      curve: AppointmentStatusMotion.curve,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(context.shapeTokens.lg),
         gradient: LinearGradient(
@@ -161,14 +165,19 @@ class _AppointmentHeroCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                DecoratedBox(
+                AnimatedContainer(
+                  duration: motionDuration,
+                  curve: AppointmentStatusMotion.curve,
                   decoration: BoxDecoration(
                     color: statusColor.withValues(alpha: 0.16),
                     borderRadius: BorderRadius.circular(context.shapeTokens.md),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(SpacingTokens.md),
-                    child: Icon(Icons.calendar_month_rounded, color: statusColor, size: 28),
+                    child: AnimatedAppointmentStatusColor(
+                      color: statusColor,
+                      builder: (context, color) => Icon(Icons.calendar_month_rounded, color: color, size: 28),
+                    ),
                   ),
                 ),
                 const SizedBox(width: SpacingTokens.md),
@@ -426,7 +435,12 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    final motionDuration = AppointmentStatusMotion.durationOf(context);
+    final labelStyle = Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700);
+
+    return AnimatedContainer(
+      duration: motionDuration,
+      curve: AppointmentStatusMotion.curve,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
@@ -434,9 +448,11 @@ class _StatusChip extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.xs),
-        child: Text(
-          status.label,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(color: color, fontWeight: FontWeight.w700),
+        child: AnimatedDefaultTextStyle(
+          duration: motionDuration,
+          curve: AppointmentStatusMotion.curve,
+          style: labelStyle!.copyWith(color: color),
+          child: Text(status.label),
         ),
       ),
     );
