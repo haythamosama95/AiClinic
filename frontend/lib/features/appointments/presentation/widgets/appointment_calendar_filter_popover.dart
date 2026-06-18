@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
@@ -5,6 +6,8 @@ import 'package:forui/forui.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_select_items.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
@@ -18,8 +21,8 @@ final _filterPopoverMotion = FPopoverStyleDelta.delta(
   ),
 );
 
-/// Applied branch and doctor filters for the appointment calendar.
-typedef AppointmentCalendarFilters = ({String? branchId, String? doctorId});
+/// Applied branch, doctor, and status filters for the appointment calendar.
+typedef AppointmentCalendarFilters = ({String? branchId, String? doctorId, Set<AppointmentStatus> statuses});
 
 /// Filter popover for the appointment calendar header.
 class AppointmentCalendarFilterButton extends ConsumerStatefulWidget {
@@ -28,6 +31,7 @@ class AppointmentCalendarFilterButton extends ConsumerStatefulWidget {
     required this.doctorsAsync,
     required this.appliedBranchId,
     required this.appliedDoctorId,
+    required this.appliedStatuses,
     required this.showDoctorFilter,
     required this.hasActiveFilters,
     required this.onApplyFilters,
@@ -39,6 +43,7 @@ class AppointmentCalendarFilterButton extends ConsumerStatefulWidget {
   final AsyncValue<List<StaffListItem>> doctorsAsync;
   final String? appliedBranchId;
   final String? appliedDoctorId;
+  final Set<AppointmentStatus> appliedStatuses;
   final bool showDoctorFilter;
   final bool hasActiveFilters;
   final ValueChanged<AppointmentCalendarFilters> onApplyFilters;
@@ -79,6 +84,7 @@ class _AppointmentCalendarFilterButtonState extends ConsumerState<AppointmentCal
         doctorsAsync: widget.doctorsAsync,
         appliedBranchId: widget.appliedBranchId,
         appliedDoctorId: widget.appliedDoctorId,
+        appliedStatuses: widget.appliedStatuses,
         showDoctorFilter: widget.showDoctorFilter,
         onApplyFilters: widget.onApplyFilters,
         onClearFilters: widget.onClearFilters,
@@ -128,6 +134,7 @@ class _AppointmentCalendarFilterPanel extends StatefulWidget {
     required this.doctorsAsync,
     required this.appliedBranchId,
     required this.appliedDoctorId,
+    required this.appliedStatuses,
     required this.showDoctorFilter,
     required this.onApplyFilters,
     required this.onClearFilters,
@@ -139,6 +146,7 @@ class _AppointmentCalendarFilterPanel extends StatefulWidget {
   final AsyncValue<List<StaffListItem>> doctorsAsync;
   final String? appliedBranchId;
   final String? appliedDoctorId;
+  final Set<AppointmentStatus> appliedStatuses;
   final bool showDoctorFilter;
   final ValueChanged<AppointmentCalendarFilters> onApplyFilters;
   final VoidCallback onClearFilters;
@@ -150,6 +158,11 @@ class _AppointmentCalendarFilterPanel extends StatefulWidget {
 class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFilterPanel> {
   late String? _draftBranchId;
   late String? _draftDoctorId;
+  late Set<AppointmentStatus> _draftStatuses;
+
+  static final Map<String, AppointmentStatus> _statusItems = {
+    for (final status in AppointmentCalendarDisplay.calendarStatusLegend) status.label: status,
+  };
 
   @override
   void initState() {
@@ -160,7 +173,9 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
   @override
   void didUpdateWidget(covariant _AppointmentCalendarFilterPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.appliedBranchId != widget.appliedBranchId || oldWidget.appliedDoctorId != widget.appliedDoctorId) {
+    if (oldWidget.appliedBranchId != widget.appliedBranchId ||
+        oldWidget.appliedDoctorId != widget.appliedDoctorId ||
+        !setEquals(oldWidget.appliedStatuses, widget.appliedStatuses)) {
       _syncDraftFromApplied();
     }
   }
@@ -168,10 +183,11 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
   void _syncDraftFromApplied() {
     _draftBranchId = widget.appliedBranchId;
     _draftDoctorId = widget.appliedDoctorId;
+    _draftStatuses = Set<AppointmentStatus>.from(widget.appliedStatuses);
   }
 
   void _applyFilters() {
-    widget.onApplyFilters((branchId: _draftBranchId, doctorId: _draftDoctorId));
+    widget.onApplyFilters((branchId: _draftBranchId, doctorId: _draftDoctorId, statuses: _draftStatuses));
     widget.controller.hide();
   }
 
@@ -260,6 +276,23 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
                   ),
                 ),
               ],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
+                child: Divider(height: 1, color: colors.border),
+              ),
+              _FilterSection(
+                title: 'Appointment Status',
+                icon: Icons.event_available_outlined,
+                child: AppMultiSelect<AppointmentStatus>(
+                  items: _statusItems,
+                  values: _draftStatuses,
+                  hintText: 'All statuses',
+                  size: AppFieldSize.sm,
+                  contentGroupId: widget.filterPopoverGroup,
+                  showPopoverCloseButton: true,
+                  onChanged: (values) => setState(() => _draftStatuses = values),
+                ),
+              ),
             ],
           ),
         ),

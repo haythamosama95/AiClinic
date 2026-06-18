@@ -1,9 +1,12 @@
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
 import '../../support/appointment_calendar_test_support.dart';
+import '../../support/appointment_rpc_test_client.dart';
 import 'appointment_calendar_test_support.dart';
 
 void main() {
@@ -22,6 +25,7 @@ void main() {
         expect(find.text('Filter by'), findsOneWidget);
         expect(find.text('Branch'), findsOneWidget);
         expect(find.text('Doctor'), findsOneWidget);
+        expect(find.text('Status'), findsOneWidget);
         expect(find.text('Apply Filters'), findsOneWidget);
         expect(find.text('Clear Filters'), findsOneWidget);
       });
@@ -168,6 +172,45 @@ void main() {
         expect(find.byType(SfCalendar), findsOneWidget);
         expect(await container.read(appointmentCalendarBranchesProvider.future), isEmpty);
         expect(container.read(appointmentCalendarProvider).items, isNotEmpty);
+      });
+      testWidgets('CAL-D09: status filter keeps all appointments and dims non-matching rows', (tester) async {
+        final client = calendarClientWithItems([
+          appointmentRpcDefaultListItem(
+            patientName: 'Scheduled Patient',
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            startLocal: DateTime(2026, 6, 15, 10, 0),
+          )..['status'] = 'scheduled',
+          appointmentRpcDefaultListItem(
+            patientName: 'Confirmed Patient',
+            id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc',
+            startLocal: DateTime(2026, 6, 15, 11, 0),
+          )..['status'] = 'confirmed',
+        ]);
+
+        await pumpAppointmentCalendarPage(tester, authState: calendarAuthState(), rpcClient: client);
+        final container = await waitForCalendarLoaded(tester);
+
+        expect(container.read(appointmentCalendarProvider).items, hasLength(2));
+        final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
+
+        await container
+            .read(appointmentCalendarProvider.notifier)
+            .applyFilters(statuses: {AppointmentStatus.confirmed});
+        await tester.pump();
+        await settleCalendarWidgetTest(tester);
+
+        final state = container.read(appointmentCalendarProvider);
+        expect(state.items, hasLength(2));
+        expect(state.selectedStatuses, {AppointmentStatus.confirmed});
+        expect(calendarFilterBadge(tester).isLabelVisible, isTrue);
+        expect(client.rpcCallCounts['list_appointments'], callsBefore);
+
+        final dataSource = calendarWidget(tester).dataSource! as AppointmentCalendarDataSource;
+        final appointments = dataSource.appointments!.cast<Appointment>();
+        final confirmed = appointments.firstWhere((item) => item.subject == 'Confirmed Patient');
+        final scheduled = appointments.firstWhere((item) => item.subject == 'Scheduled Patient');
+        expect(confirmed.color, AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed));
+        expect(scheduled.color, AppointmentCalendarDisplay.filteredOutStatusColor);
       });
     });
   });

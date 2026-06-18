@@ -3,6 +3,7 @@ import 'package:syncfusion_flutter_calendar/calendar.dart';
 
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 
 /// Resource id for appointments without an assigned doctor.
@@ -10,6 +11,8 @@ const appointmentCalendarUnassignedResourceId = '__unassigned__';
 
 /// Syncfusion data source for branch appointment rows.
 class AppointmentCalendarDataSource extends CalendarDataSource {
+  Set<AppointmentStatus> _highlightedStatuses = const {};
+
   AppointmentCalendarDataSource(List<AppointmentListItem> items, {List<StaffListItem> doctors = const []}) {
     _apply(
       items,
@@ -26,7 +29,11 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
     required bool includeDoctorResources,
     Color evenResourceRowColor = Colors.transparent,
     Color oddResourceRowColor = Colors.transparent,
+    Set<AppointmentStatus>? highlightedStatuses,
   }) {
+    if (highlightedStatuses != null) {
+      _highlightedStatuses = highlightedStatuses;
+    }
     _apply(
       items,
       doctors,
@@ -44,13 +51,21 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
     required Color evenResourceRowColor,
     required Color oddResourceRowColor,
   }) {
-    appointments = _mapAppointments(items, assignResources: includeDoctorResources);
+    appointments = _mapAppointments(
+      items,
+      assignResources: includeDoctorResources,
+      highlightedStatuses: _highlightedStatuses,
+    );
     resources = includeDoctorResources
         ? _mapDoctorResources(doctors, evenRowColor: evenResourceRowColor, oddRowColor: oddResourceRowColor)
         : const [];
   }
 
-  static List<Appointment> _mapAppointments(List<AppointmentListItem> items, {required bool assignResources}) {
+  static List<Appointment> _mapAppointments(
+    List<AppointmentListItem> items, {
+    required bool assignResources,
+    required Set<AppointmentStatus> highlightedStatuses,
+  }) {
     return [
       for (final item in items)
         Appointment(
@@ -59,7 +74,7 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
           endTime: item.endTime.toLocal(),
           subject: item.patientName,
           notes: assignResources ? null : item.doctorDisplayName,
-          color: AppointmentCalendarDisplay.statusColor(item.status),
+          color: AppointmentCalendarDisplay.appointmentTileColor(item.status, highlightedStatuses),
           resourceIds: assignResources ? _resourceIdsFor(item) : null,
         ),
     ];

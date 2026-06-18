@@ -282,6 +282,27 @@ class AppointmentCalendarDisplay {
     };
   }
 
+  /// Gray used for appointments excluded by the status filter.
+  static const Color filteredOutStatusColor = Color(0xFF9CA3AF);
+
+  /// Opacity applied to appointments excluded by the status filter.
+  static const double filteredOutOpacity = 0.4;
+
+  /// Whether [status] stays at full color for the current status filter.
+  ///
+  /// An empty [highlightedStatuses] means no status filter is active.
+  static bool isStatusHighlighted(AppointmentStatus status, Set<AppointmentStatus> highlightedStatuses) {
+    return highlightedStatuses.isEmpty || highlightedStatuses.contains(status);
+  }
+
+  /// Calendar tile color respecting the optional status highlight filter.
+  static Color appointmentTileColor(AppointmentStatus status, Set<AppointmentStatus> highlightedStatuses) {
+    if (isStatusHighlighted(status, highlightedStatuses)) {
+      return statusColor(status);
+    }
+    return filteredOutStatusColor;
+  }
+
   static (double, double) _hourRangeForDay(BranchWorkingSchedule schedule, DateTime date) {
     final dayHours = AppointmentBranchWorkingHours.hoursForDate(schedule, date);
     if (dayHours == null || !dayHours.isWorkingDay) {

@@ -1,3 +1,4 @@
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart' as domain;
@@ -49,6 +50,32 @@ void main() {
       final appointment = dataSource.appointments!.single as Appointment;
       expect(appointment.resourceIds, isNull);
       expect(appointment.notes, 'Unassigned');
+    });
+
+    test('maps dimmed colors when status filter excludes appointment status', () {
+      final dataSource = AppointmentCalendarDataSource(const []);
+      dataSource.updateItems(
+        [sampleItem()],
+        doctors: doctors,
+        includeDoctorResources: false,
+        highlightedStatuses: {AppointmentStatus.confirmed},
+      );
+
+      final appointment = dataSource.appointments!.single as Appointment;
+      expect(appointment.color, AppointmentCalendarDisplay.filteredOutStatusColor);
+    });
+
+    test('keeps status colors when appointment status matches filter', () {
+      final dataSource = AppointmentCalendarDataSource(const []);
+      dataSource.updateItems(
+        [sampleItem()],
+        doctors: doctors,
+        includeDoctorResources: false,
+        highlightedStatuses: {AppointmentStatus.scheduled},
+      );
+
+      final appointment = dataSource.appointments!.single as Appointment;
+      expect(appointment.color, AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled));
     });
 
     test('routes unassigned appointments to unassigned resource', () {

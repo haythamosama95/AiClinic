@@ -7,6 +7,8 @@ import 'package:ai_clinic/features/appointments/domain/appointment_calendar_disp
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_header_bar.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
@@ -179,6 +181,15 @@ Future<void> selectCalendarDoctorFilter(WidgetTester tester, String doctorName) 
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 200));
   await tester.tap(find.text(doctorName).last);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+}
+
+Future<void> selectCalendarStatusFilter(WidgetTester tester, String statusLabel) async {
+  await tester.tap(find.text('All statuses'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+  await tester.tap(find.text(statusLabel).last);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 200));
 }

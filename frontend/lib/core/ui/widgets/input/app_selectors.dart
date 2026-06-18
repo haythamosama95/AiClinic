@@ -247,7 +247,7 @@ class AppSelect<T> extends StatelessWidget {
 /// Application multi select wrapping [FMultiSelect].
 class AppMultiSelect<T> extends StatelessWidget {
   const AppMultiSelect({
-    required this.label,
+    this.label,
     required this.items,
     this.values = const {},
     this.onChanged,
@@ -264,7 +264,7 @@ class AppMultiSelect<T> extends StatelessWidget {
     super.key,
   });
 
-  final String label;
+  final String? label;
   final Map<String, T> items;
   final Set<T> values;
   final ValueChanged<Set<T>>? onChanged;
@@ -289,7 +289,7 @@ class AppMultiSelect<T> extends StatelessWidget {
       items: items,
       control: control ?? FMultiValueControl.lifted(value: values, onChange: onChanged ?? (_) {}),
       size: size.forui,
-      label: Text(label, style: theme.textTheme.labelMedium),
+      label: label == null ? null : Text(label!, style: theme.textTheme.labelMedium),
       description: description == null ? null : Text(description!, style: theme.textTheme.bodySmall),
       hint: hintText == null ? null : Text(hintText!),
       enabled: enabled,

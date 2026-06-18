@@ -152,6 +152,22 @@ void main() {
         }
       });
 
+      test('CAL-I02b: status filter helpers dim non-selected statuses', () {
+        const highlighted = {AppointmentStatus.confirmed};
+
+        expect(AppointmentCalendarDisplay.isStatusHighlighted(AppointmentStatus.confirmed, highlighted), isTrue);
+        expect(AppointmentCalendarDisplay.isStatusHighlighted(AppointmentStatus.scheduled, highlighted), isFalse);
+        expect(AppointmentCalendarDisplay.isStatusHighlighted(AppointmentStatus.scheduled, const {}), isTrue);
+        expect(
+          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.confirmed, highlighted),
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed),
+        );
+        expect(
+          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.scheduled, highlighted),
+          AppointmentCalendarDisplay.filteredOutStatusColor,
+        );
+      });
+
       test('CAL-I03: resourceRowStripeRegions stripes odd-indexed doctor rows', () {
         final regions = AppointmentCalendarDisplay.resourceRowStripeRegions(
           resourceIds: const ['doc-1', 'doc-2', 'doc-3'],

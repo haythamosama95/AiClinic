@@ -1,6 +1,7 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -161,6 +162,7 @@ void main() {
           .applyFilters(
             branchId: '00000000-0000-4000-8000-000000000002',
             doctorId: '00000000-0000-4000-8000-000000000099',
+            statuses: {AppointmentStatus.confirmed},
           );
       await pumpEventQueue();
 
@@ -170,8 +172,33 @@ void main() {
       final state = container.read(appointmentCalendarProvider);
       expect(state.selectedBranchId, '00000000-0000-4000-8000-000000000001');
       expect(state.selectedDoctorId, isNull);
+      expect(state.selectedStatuses, isEmpty);
       expect(client.lastParams?['p_branch_id'], '00000000-0000-4000-8000-000000000001');
       expect(client.lastParams?.containsKey('p_doctor_id'), isFalse);
+    });
+
+    test('status filter updates state without refetching appointments', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      final callsBefore = client.rpcCallCounts['list_appointments'] ?? 0;
+
+      await container.read(appointmentCalendarProvider.notifier).applyFilters(statuses: {AppointmentStatus.confirmed});
+      await pumpEventQueue();
+
+      final state = container.read(appointmentCalendarProvider);
+      expect(state.selectedStatuses, {AppointmentStatus.confirmed});
+      expect(state.hasActiveFilters(initialBranchId: '00000000-0000-4000-8000-000000000001'), isTrue);
+      expect(client.rpcCallCounts['list_appointments'], callsBefore);
     });
 
     test('hasActiveFilters is false for initial branch-only state', () async {

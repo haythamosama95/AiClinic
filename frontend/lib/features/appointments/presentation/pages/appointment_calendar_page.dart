@@ -14,6 +14,7 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
@@ -48,6 +49,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   DateTime? _lastSyncedFocusDate;
   int _itemsFingerprint = 0;
   int _resourceFingerprint = 0;
+  int _statusFilterFingerprint = 0;
   Set<String> _revealedAppointmentIds = {};
   int _revealGeneration = 0;
   int _lastRevealSourceFingerprint = -1;
@@ -98,6 +100,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           includeDoctorResources: _usesDoctorResources(state.mode),
           evenResourceRowColor: colors.background,
           oddResourceRowColor: oddResourceRowColor,
+          highlightedStatuses: state.selectedStatuses,
         );
       }
       _syncCalendarView(state);
@@ -210,9 +213,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           doctorsAsync: doctorsAsync,
           appliedBranchId: state.selectedBranchId,
           appliedDoctorId: state.selectedDoctorId,
+          appliedStatuses: state.selectedStatuses,
           showDoctorFilter: true,
           hasActiveFilters: hasActiveFilters,
-          onApplyFilters: (filters) => controller.applyFilters(branchId: filters.branchId, doctorId: filters.doctorId),
+          onApplyFilters: (filters) => controller.applyFilters(
+            branchId: filters.branchId,
+            doctorId: filters.doctorId,
+            statuses: filters.statuses,
+          ),
           onClearFilters: controller.clearFilters,
           onBookAppointment: canCreate && state.selectedBranchId != null && state.selectedBranchId!.isNotEmpty
               ? () {
@@ -324,6 +332,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                         return const SizedBox.shrink();
                       }
                       final isRevealed = id == null || _revealedAppointmentIds.contains(id);
+                      final item = id == null ? null : state.items.where((entry) => entry.id == id).firstOrNull;
+                      final isDimmed =
+                          item != null &&
+                          !AppointmentCalendarDisplay.isStatusHighlighted(item.status, state.selectedStatuses);
                       return Skeletonizer(
                         enabled: !isRevealed,
                         enableSwitchAnimation: true,
@@ -334,6 +346,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                         containersColor: colors.muted,
                         child: _AppointmentTile(
                           details: details,
+                          isDimmed: isDimmed,
                           onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
                         ),
                       );
@@ -497,6 +510,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required bool includeDoctorResources,
     required Color evenResourceRowColor,
     required Color oddResourceRowColor,
+    required Set<AppointmentStatus> highlightedStatuses,
   }) {
     final itemsFingerprint = Object.hashAll(
       items.map(
@@ -517,17 +531,24 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       evenResourceRowColor,
       oddResourceRowColor,
     );
-    if (itemsFingerprint == _itemsFingerprint && resourceFingerprint == _resourceFingerprint) {
+    final statusFilterFingerprint = Object.hashAll(
+      highlightedStatuses.toList()..sort((a, b) => a.index.compareTo(b.index)),
+    );
+    if (itemsFingerprint == _itemsFingerprint &&
+        resourceFingerprint == _resourceFingerprint &&
+        statusFilterFingerprint == _statusFilterFingerprint) {
       return;
     }
     _itemsFingerprint = itemsFingerprint;
     _resourceFingerprint = resourceFingerprint;
+    _statusFilterFingerprint = statusFilterFingerprint;
     _dataSource.updateItems(
       items,
       doctors: doctors,
       includeDoctorResources: includeDoctorResources,
       evenResourceRowColor: evenResourceRowColor,
       oddResourceRowColor: oddResourceRowColor,
+      highlightedStatuses: highlightedStatuses,
     );
   }
 
@@ -1490,15 +1511,17 @@ class _CalendarResizeSession {
 }
 
 class _AppointmentTile extends StatelessWidget {
-  const _AppointmentTile({required this.details, required this.onTap});
+  const _AppointmentTile({required this.details, required this.isDimmed, required this.onTap});
 
   final CalendarAppointmentDetails details;
+  final bool isDimmed;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final appointment = details.appointments.first;
-    final brightness = ThemeData.estimateBrightnessForColor(appointment.color);
+    final tileColor = appointment.color;
+    final brightness = ThemeData.estimateBrightnessForColor(tileColor);
     final textColor = brightness == Brightness.dark ? Colors.white : Colors.black87;
     final bounds = details.bounds;
 
@@ -1507,21 +1530,24 @@ class _AppointmentTile extends StatelessWidget {
       child: SizedBox(
         width: bounds.width,
         height: bounds.height,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
-          decoration: BoxDecoration(
-            color: appointment.color.withValues(alpha: 0.9),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: appointment.color),
-          ),
-          alignment: Alignment.topLeft,
-          child: Text(
-            appointment.notes == null || appointment.notes!.isEmpty
-                ? appointment.subject
-                : '${appointment.subject}\n${appointment.notes}',
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor),
+        child: Opacity(
+          opacity: isDimmed ? AppointmentCalendarDisplay.filteredOutOpacity : 1,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
+            decoration: BoxDecoration(
+              color: tileColor.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: tileColor),
+            ),
+            alignment: Alignment.topLeft,
+            child: Text(
+              appointment.notes == null || appointment.notes!.isEmpty
+                  ? appointment.subject
+                  : '${appointment.subject}\n${appointment.notes}',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor),
+            ),
           ),
         ),
       ),
