@@ -51,7 +51,7 @@ class _AnimatedAppointmentStatusColorState extends State<AnimatedAppointmentStat
     }
 
     _colorAnimation = ColorTween(
-      begin: _displayColor,
+      begin: _colorAnimation.value ?? _displayColor,
       end: widget.color,
     ).animate(CurvedAnimation(parent: _controller, curve: AppointmentStatusMotion.curve));
     _controller.forward(from: 0).then((_) {
