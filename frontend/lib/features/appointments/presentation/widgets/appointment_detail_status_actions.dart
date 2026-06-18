@@ -33,20 +33,17 @@ extension _AppointmentDetailListItem on AppointmentDetail {
   }
 }
 
-/// Action panel for managing an appointment from the detail page.
-class AppointmentDetailControlsCard extends ConsumerStatefulWidget {
-  const AppointmentDetailControlsCard({required this.detail, this.maxHeight, super.key});
+/// Ghost action buttons for managing an appointment from the status journey card.
+class AppointmentDetailStatusActions extends ConsumerStatefulWidget {
+  const AppointmentDetailStatusActions({required this.detail, super.key});
 
   final AppointmentDetail detail;
 
-  /// When set beside the hero card, caps total card height and scrolls overflow actions.
-  final double? maxHeight;
-
   @override
-  ConsumerState<AppointmentDetailControlsCard> createState() => _AppointmentDetailControlsCardState();
+  ConsumerState<AppointmentDetailStatusActions> createState() => _AppointmentDetailStatusActionsState();
 }
 
-class _AppointmentDetailControlsCardState extends ConsumerState<AppointmentDetailControlsCard> {
+class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDetailStatusActions> {
   String? _busyActionKey;
 
   AppointmentDetail get detail => widget.detail;
@@ -283,256 +280,93 @@ class _AppointmentDetailControlsCardState extends ConsumerState<AppointmentDetai
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-    final actions = _buildActions();
-
-    final card = DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-        border: Border.all(color: colors.border),
-        boxShadow: [
-          BoxShadow(color: colors.foreground.withValues(alpha: 0.04), blurRadius: 16, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: widget.maxHeight != null ? MainAxisSize.max : MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.tune_rounded, size: 18, color: colors.primary),
-                const SizedBox(width: SpacingTokens.sm),
-                Expanded(
-                  child: Text('Manage', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                ),
-              ],
-            ),
-            const SizedBox(height: SpacingTokens.sm),
-            if (widget.maxHeight != null)
-              Expanded(child: _ManageActionList(actions: actions))
-            else
-              _ManageActionList(actions: actions),
-          ],
-        ),
-      ),
-    );
-
-    if (widget.maxHeight == null) {
-      return card;
-    }
-
-    return SizedBox(height: widget.maxHeight, child: card);
-  }
-
-  List<Widget> _buildActions() {
-    final specs = <_ManageActionSpec>[
-      _ManageActionSpec(
+    final specs = <_StatusActionSpec>[
+      _StatusActionSpec(
         key: const Key('appointment_control_advance_status'),
         icon: Icons.play_arrow_rounded,
         label: _advanceStatusLabel(),
-        subtitle: 'Update appointment status',
         disabledReason: _disabledReasonFor('advance', _advanceStatusDisabledReason()),
-        accent: context.semanticColors.primary,
         isLoading: _busyActionKey == 'advance',
         onPressed: _handleAdvanceStatus,
       ),
-      _ManageActionSpec(
+      _StatusActionSpec(
         key: const Key('appointment_control_no_show'),
         icon: Icons.person_off_outlined,
         label: 'Mark no-show',
-        subtitle: 'Patient did not attend',
         disabledReason: _disabledReasonFor('no_show', _markNoShowDisabledReason()),
         isLoading: _busyActionKey == 'no_show',
         onPressed: _handleMarkNoShow,
       ),
-      _ManageActionSpec(
+      _StatusActionSpec(
         key: const Key('appointment_control_cancel'),
         icon: Icons.event_busy_outlined,
         label: 'Cancel appointment',
-        subtitle: 'Remove from schedule',
         disabledReason: _disabledReasonFor('cancel', _cancelDisabledReason()),
-        variant: _AppointmentControlActionVariant.destructive,
         isLoading: _busyActionKey == 'cancel',
         onPressed: _handleCancel,
       ),
     ];
 
-    final indexed = specs.indexed.toList()
-      ..sort((a, b) {
-        final aBlocked = a.$2.disabledReason != null;
-        final bBlocked = b.$2.disabledReason != null;
-        if (aBlocked != bBlocked) {
-          return aBlocked ? 1 : -1;
-        }
-        return a.$1.compareTo(b.$1);
-      });
+    specs.sort((a, b) {
+      final aBlocked = a.disabledReason != null;
+      final bBlocked = b.disabledReason != null;
+      if (aBlocked != bBlocked) {
+        return aBlocked ? 1 : -1;
+      }
+      return 0;
+    });
 
-    return [
-      for (final (_, spec) in indexed)
-        _AppointmentControlAction(
-          key: spec.key,
-          icon: spec.icon,
-          label: spec.label,
-          subtitle: spec.subtitle,
-          disabledReason: spec.disabledReason,
-          accent: spec.accent,
-          variant: spec.variant,
-          isLoading: spec.isLoading,
-          onPressed: spec.onPressed,
-        ),
-    ];
+    return Wrap(
+      spacing: SpacingTokens.xs,
+      runSpacing: SpacingTokens.xs,
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [for (final spec in specs) _StatusActionButton(spec: spec)],
+    );
   }
 }
 
-enum _AppointmentControlActionVariant { normal, destructive }
-
-class _ManageActionSpec {
-  const _ManageActionSpec({
+class _StatusActionSpec {
+  const _StatusActionSpec({
     required this.key,
     required this.icon,
     required this.label,
-    required this.subtitle,
     required this.onPressed,
     this.disabledReason,
-    this.accent,
-    this.variant = _AppointmentControlActionVariant.normal,
     this.isLoading = false,
   });
 
   final Key key;
   final IconData icon;
   final String label;
-  final String subtitle;
   final String? disabledReason;
-  final Color? accent;
-  final _AppointmentControlActionVariant variant;
   final bool isLoading;
   final VoidCallback onPressed;
 }
 
-class _ManageActionList extends StatelessWidget {
-  const _ManageActionList({required this.actions});
+class _StatusActionButton extends StatelessWidget {
+  const _StatusActionButton({required this.spec});
 
-  final List<Widget> actions;
-
-  @override
-  Widget build(BuildContext context) {
-    final list = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < actions.length; i++) ...[if (i > 0) const SizedBox(height: SpacingTokens.xs), actions[i]],
-      ],
-    );
-
-    return SingleChildScrollView(physics: const ClampingScrollPhysics(), child: list);
-  }
-}
-
-class _AppointmentControlAction extends StatelessWidget {
-  const _AppointmentControlAction({
-    required this.icon,
-    required this.label,
-    required this.subtitle,
-    required this.onPressed,
-    this.disabledReason,
-    this.accent,
-    this.variant = _AppointmentControlActionVariant.normal,
-    this.isLoading = false,
-    super.key,
-  });
-
-  final IconData icon;
-  final String label;
-  final String subtitle;
-  final String? disabledReason;
-  final Color? accent;
-  final _AppointmentControlActionVariant variant;
-  final bool isLoading;
-  final VoidCallback onPressed;
-
-  bool get _isInteractive => disabledReason == null && !isLoading;
+  final _StatusActionSpec spec;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-    final isDestructive = variant == _AppointmentControlActionVariant.destructive;
-    final accentColor = accent ?? (isDestructive ? colors.destructive : colors.primary);
-    final iconColor = _isInteractive ? accentColor : colors.mutedForeground;
-    final foreground = _isInteractive
-        ? (isDestructive ? colors.destructive : colors.foreground)
-        : colors.mutedForeground;
-    final borderRadius = BorderRadius.circular(context.shapeTokens.md);
-    final hoverFill = isDestructive ? colors.destructive.withValues(alpha: 0.08) : colors.muted;
+    final isInteractive = spec.disabledReason == null;
 
-    final content = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.sm),
-      child: Row(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: _isInteractive ? 0.12 : 0.06),
-              borderRadius: BorderRadius.circular(context.shapeTokens.sm),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(SpacingTokens.xs),
-              child: isLoading
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: accentColor),
-                    )
-                  : Icon(icon, size: 18, color: iconColor),
-            ),
-          ),
-          const SizedBox(width: SpacingTokens.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: foreground),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  disabledReason ?? subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.mutedForeground,
-                    fontStyle: disabledReason != null ? FontStyle.italic : null,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right_rounded, size: 18, color: colors.mutedForeground),
-        ],
-      ),
+    final button = AppButton(
+      key: spec.key,
+      label: spec.label,
+      variant: AppButtonVariant.ghost,
+      size: AppFieldSize.sm,
+      icon: Icon(spec.icon, size: 18),
+      isLoading: spec.isLoading,
+      onPressed: isInteractive ? spec.onPressed : null,
     );
 
-    if (!_isInteractive) {
-      return ConstrainedBox(constraints: const BoxConstraints(minHeight: 44), child: content);
+    if (!isInteractive) {
+      return Tooltip(message: spec.disabledReason!, child: button);
     }
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        mouseCursor: SystemMouseCursors.click,
-        borderRadius: borderRadius,
-        hoverColor: hoverFill,
-        focusColor: hoverFill,
-        splashColor: hoverFill.withValues(alpha: 0.14),
-        highlightColor: hoverFill.withValues(alpha: 0.1),
-        child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 44), child: content),
-      ),
-    );
+    return button;
   }
 }

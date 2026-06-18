@@ -17,7 +17,6 @@ import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_controls_card.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
@@ -82,10 +81,10 @@ class _AppointmentDetailContentView extends StatelessWidget {
       patientId: detail.patientId,
       headerActions: [AppointmentDetailEditButton(detail: detail)],
       onBack: onBack,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final useSideControls = constraints.maxWidth >= 720;
-          final heroCard = _AppointmentHeroCard(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _AppointmentHeroCard(
             detail: detail,
             statusColor: statusColor,
             dateLabel: _dateFormat.format(detail.startTime.toLocal()),
@@ -93,99 +92,30 @@ class _AppointmentDetailContentView extends StatelessWidget {
                 '${_timeFormat.format(detail.startTime.toLocal())} – ${_timeFormat.format(detail.endTime.toLocal())}',
             durationLabel: '$durationMinutes min',
             auditFormat: _auditFormat,
-          );
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (useSideControls)
-                _AppointmentDetailHeroControlsRow(heroCard: heroCard, detail: detail)
-              else ...[
-                heroCard,
-                const SizedBox(height: SpacingTokens.md),
-                AppointmentDetailControlsCard(detail: detail),
-              ],
-              const SizedBox(height: SpacingTokens.lg),
-              AppointmentStatusTimelineWidget(currentStatus: detail.status),
-              if (detail.notes?.trim().isNotEmpty == true || detail.cancelReason?.trim().isNotEmpty == true) ...[
-                const SizedBox(height: SpacingTokens.lg),
-                if (detail.notes?.trim().isNotEmpty == true)
-                  _AppointmentNotesCard(
-                    title: 'Notes',
-                    body: detail.notes!.trim(),
-                    icon: Icons.sticky_note_2_outlined,
-                    accent: colors.primary,
-                  ),
-                if (detail.cancelReason?.trim().isNotEmpty == true) ...[
-                  if (detail.notes?.trim().isNotEmpty == true) const SizedBox(height: SpacingTokens.md),
-                  _AppointmentNotesCard(
-                    title: 'Cancellation reason',
-                    body: detail.cancelReason!.trim(),
-                    icon: Icons.info_outline_rounded,
-                    accent: colors.destructive,
-                  ),
-                ],
-              ],
+          ),
+          const SizedBox(height: SpacingTokens.lg),
+          AppointmentStatusTimelineWidget(detail: detail),
+          if (detail.notes?.trim().isNotEmpty == true || detail.cancelReason?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: SpacingTokens.lg),
+            if (detail.notes?.trim().isNotEmpty == true)
+              _AppointmentNotesCard(
+                title: 'Notes',
+                body: detail.notes!.trim(),
+                icon: Icons.sticky_note_2_outlined,
+                accent: colors.primary,
+              ),
+            if (detail.cancelReason?.trim().isNotEmpty == true) ...[
+              if (detail.notes?.trim().isNotEmpty == true) const SizedBox(height: SpacingTokens.md),
+              _AppointmentNotesCard(
+                title: 'Cancellation reason',
+                body: detail.cancelReason!.trim(),
+                icon: Icons.info_outline_rounded,
+                accent: colors.destructive,
+              ),
             ],
-          );
-        },
+          ],
+        ],
       ),
-    );
-  }
-}
-
-/// Side-by-side hero and manage cards where manage never exceeds hero height.
-class _AppointmentDetailHeroControlsRow extends StatefulWidget {
-  const _AppointmentDetailHeroControlsRow({required this.heroCard, required this.detail});
-
-  final Widget heroCard;
-  final AppointmentDetail detail;
-
-  @override
-  State<_AppointmentDetailHeroControlsRow> createState() => _AppointmentDetailHeroControlsRowState();
-}
-
-class _AppointmentDetailHeroControlsRowState extends State<_AppointmentDetailHeroControlsRow> {
-  final _heroKey = GlobalKey();
-  double? _heroHeight;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncHeroHeight());
-  }
-
-  @override
-  void didUpdateWidget(covariant _AppointmentDetailHeroControlsRow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncHeroHeight());
-  }
-
-  void _syncHeroHeight() {
-    if (!mounted) {
-      return;
-    }
-
-    final height = _heroKey.currentContext?.size?.height;
-    if (height != null && height > 0 && height != _heroHeight) {
-      setState(() => _heroHeight = height);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: KeyedSubtree(key: _heroKey, child: widget.heroCard),
-        ),
-        const SizedBox(width: SpacingTokens.lg),
-        SizedBox(
-          width: 272,
-          child: AppointmentDetailControlsCard(detail: widget.detail, maxHeight: _heroHeight),
-        ),
-      ],
     );
   }
 }

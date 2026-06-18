@@ -5,14 +5,18 @@ import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_timeline.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_status_actions.dart';
 
 /// Visual timeline of appointment lifecycle statuses with the current step highlighted.
 class AppointmentStatusTimelineWidget extends StatelessWidget {
-  const AppointmentStatusTimelineWidget({required this.currentStatus, super.key});
+  const AppointmentStatusTimelineWidget({required this.detail, super.key});
 
-  final AppointmentStatus currentStatus;
+  final AppointmentDetail detail;
+
+  AppointmentStatus get currentStatus => detail.status;
 
   @override
   Widget build(BuildContext context) {
@@ -41,16 +45,20 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.route_outlined, size: 20, color: colors.primary),
                 const SizedBox(width: SpacingTokens.sm),
-                Expanded(
-                  child: Text(
-                    'Status journey',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                  ),
+                Text(
+                  'Status journey',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
-                if (progressLabel != null) AppBadge(label: progressLabel, variant: AppBadgeVariant.outline),
+                if (progressLabel != null) ...[
+                  const SizedBox(width: SpacingTokens.sm),
+                  AppBadge(label: progressLabel, variant: AppBadgeVariant.outline),
+                ],
+                const Spacer(),
+                AppointmentDetailStatusActions(detail: detail),
               ],
             ),
             const SizedBox(height: SpacingTokens.xs),
