@@ -50,16 +50,23 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
               children: [
                 Icon(Icons.route_outlined, size: 20, color: colors.primary),
                 const SizedBox(width: SpacingTokens.sm),
-                Text(
-                  'Status journey',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                Expanded(
+                  flex: 2,
+                  child: Wrap(
+                    spacing: SpacingTokens.sm,
+                    runSpacing: SpacingTokens.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Status journey',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      if (progressLabel != null) AppBadge(label: progressLabel, variant: AppBadgeVariant.outline),
+                    ],
+                  ),
                 ),
-                if (progressLabel != null) ...[
-                  const SizedBox(width: SpacingTokens.sm),
-                  AppBadge(label: progressLabel, variant: AppBadgeVariant.outline),
-                ],
-                const Spacer(),
-                AppointmentDetailStatusActions(detail: detail),
+                const SizedBox(width: SpacingTokens.sm),
+                Expanded(flex: 3, child: AppointmentDetailStatusActions(detail: detail)),
               ],
             ),
             const SizedBox(height: SpacingTokens.xs),
@@ -69,28 +76,19 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
                   : 'Track where this appointment is in the clinic workflow.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
             ),
-            AnimatedSize(
-              duration: AppointmentStatusMotion.durationOf(context),
-              curve: AppointmentStatusMotion.curve,
-              alignment: Alignment.topCenter,
-              child: isTerminal
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SizedBox(height: SpacingTokens.md),
-                        _TerminalStatusBanner(status: currentStatus),
-                      ],
-                    )
-                  : const SizedBox.shrink(),
-            ),
             const SizedBox(height: SpacingTokens.lg),
             LayoutBuilder(
               builder: (context, constraints) {
                 final useHorizontal = constraints.maxWidth >= 640;
-                return useHorizontal
+                final timeline = useHorizontal
                     ? _HorizontalStatusTimeline(currentStatus: currentStatus, isTerminal: isTerminal)
                     : _VerticalStatusTimeline(currentStatus: currentStatus, isTerminal: isTerminal);
+
+                if (!isTerminal) {
+                  return timeline;
+                }
+
+                return _TerminalTimelineOverlay(status: currentStatus, child: timeline);
               },
             ),
           ],
@@ -100,59 +98,98 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
   }
 }
 
-class _TerminalStatusBanner extends StatelessWidget {
-  const _TerminalStatusBanner({required this.status});
+/// Fades the lifecycle timeline and centers the terminal status on top.
+class _TerminalTimelineOverlay extends StatelessWidget {
+  const _TerminalTimelineOverlay({required this.status, required this.child});
 
   final AppointmentStatus status;
+  final Widget child;
+
+  static const double _timelineOpacity = 0.15;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = AppointmentCalendarDisplay.statusColor(status);
+    final motionDuration = AppointmentStatusMotion.durationOf(context);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        AnimatedOpacity(
+          duration: motionDuration,
+          curve: AppointmentStatusMotion.curve,
+          opacity: _timelineOpacity,
+          child: IgnorePointer(child: child),
+        ),
+        Positioned.fill(
+          child: _TerminalStatusCard(status: status, statusColor: statusColor),
+        ),
+      ],
+    );
+  }
+}
+
+class _TerminalStatusCard extends StatelessWidget {
+  const _TerminalStatusCard({required this.status, required this.statusColor});
+
+  final AppointmentStatus status;
+  final Color statusColor;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final statusColor = AppointmentCalendarDisplay.statusColor(status);
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
     return AnimatedContainer(
       duration: motionDuration,
       curve: AppointmentStatusMotion.curve,
+      width: double.infinity,
+      height: double.infinity,
       decoration: BoxDecoration(
+        color: colors.card.withValues(alpha: 0.94),
         gradient: LinearGradient(
-          colors: [statusColor.withValues(alpha: 0.18), statusColor.withValues(alpha: 0.06)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
+          colors: [statusColor.withValues(alpha: 0.14), statusColor.withValues(alpha: 0.04)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(context.shapeTokens.md),
-        border: Border.all(color: statusColor.withValues(alpha: 0.35)),
+        border: Border.all(color: statusColor.withValues(alpha: 0.4)),
+        boxShadow: [
+          BoxShadow(color: statusColor.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, 8)),
+          BoxShadow(color: colors.foreground.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4)),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
-        child: Row(
-          children: [
-            AnimatedAppointmentStatusColor(
-              color: statusColor,
-              builder: (context, color) => Icon(_iconForStatus(status), color: color, size: 22),
-            ),
-            const SizedBox(width: SpacingTokens.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AnimatedDefaultTextStyle(
-                    duration: motionDuration,
-                    curve: AppointmentStatusMotion.curve,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w700, color: statusColor),
-                    child: Text(status.label),
-                  ),
-                  Text(
-                    AppointmentStatusTimeline.stepDescription(status),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                  ),
-                ],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.md),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              AnimatedAppointmentStatusColor(
+                color: statusColor,
+                builder: (context, color) => Icon(_iconForStatus(status), color: color, size: 32),
               ),
-            ),
-            AppBadge(label: 'Final', variant: AppBadgeVariant.outline),
-          ],
+              const SizedBox(height: SpacingTokens.sm),
+              AnimatedDefaultTextStyle(
+                duration: motionDuration,
+                curve: AppointmentStatusMotion.curve,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700, color: statusColor),
+                textAlign: TextAlign.center,
+                child: Text(status.label, textAlign: TextAlign.center),
+              ),
+              const SizedBox(height: SpacingTokens.xs),
+              Text(
+                AppointmentStatusTimeline.stepDescription(status),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground, height: 1.45),
+              ),
+              const SizedBox(height: SpacingTokens.sm),
+            ],
+          ),
         ),
       ),
     );
