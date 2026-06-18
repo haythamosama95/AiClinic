@@ -239,19 +239,37 @@ class AppointmentCalendarDisplay {
     return offset <= 1 || offset >= slotSize - 1;
   }
 
+  /// Cancelled and no-show appointments free their slot unless explicitly filtered in.
+  static bool isHiddenOnCalendar(AppointmentStatus status) {
+    return status == AppointmentStatus.cancelled || status == AppointmentStatus.noShow;
+  }
+
+  /// Whether [status] should render on the calendar for the current status filter.
+  ///
+  /// Inactive statuses stay hidden by default and only appear when selected in the
+  /// status filter. Active workflow statuses are always eligible to render.
+  static bool isVisibleOnCalendar(AppointmentStatus status, Set<AppointmentStatus> selectedStatuses) {
+    if (!isHiddenOnCalendar(status)) {
+      return true;
+    }
+    return selectedStatuses.contains(status);
+  }
+
   static List<AppointmentListItem> filterVisibleAppointments(
     List<AppointmentListItem> items,
-    BranchWorkingSchedule schedule,
-  ) {
+    BranchWorkingSchedule schedule, {
+    Set<AppointmentStatus> selectedStatuses = const {},
+  }) {
     return items
         .where(
           (item) =>
+              isVisibleOnCalendar(item.status, selectedStatuses) &&
               AppointmentWorkingHours.isWithinSchedule(schedule: schedule, start: item.startTime, end: item.endTime),
         )
         .toList(growable: false);
   }
 
-  /// Statuses shown in the calendar color legend (excludes [AppointmentStatus.unknown]).
+  /// Statuses shown in the calendar color legend and filter (excludes [AppointmentStatus.unknown]).
   static const List<AppointmentStatus> calendarStatusLegend = [
     AppointmentStatus.scheduled,
     AppointmentStatus.confirmed,

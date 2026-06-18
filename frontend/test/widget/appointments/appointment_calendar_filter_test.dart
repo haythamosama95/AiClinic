@@ -25,7 +25,7 @@ void main() {
         expect(find.text('Filter by'), findsOneWidget);
         expect(find.text('Branch'), findsOneWidget);
         expect(find.text('Doctor'), findsOneWidget);
-        expect(find.text('Status'), findsOneWidget);
+        expect(find.text('Appointment Status'), findsOneWidget);
         expect(find.text('Apply Filters'), findsOneWidget);
         expect(find.text('Clear Filters'), findsOneWidget);
       });
@@ -211,6 +211,52 @@ void main() {
         final scheduled = appointments.firstWhere((item) => item.subject == 'Scheduled Patient');
         expect(confirmed.color, AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed));
         expect(scheduled.color, AppointmentCalendarDisplay.filteredOutStatusColor);
+      });
+
+      testWidgets('CAL-D10: cancelled and no-show hidden by default but visible when status filter selects them', (
+        tester,
+      ) async {
+        final client = calendarClientWithItems([
+          appointmentRpcDefaultListItem(
+            patientName: 'Scheduled Patient',
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            startLocal: DateTime(2026, 6, 15, 10, 0),
+          )..['status'] = 'scheduled',
+          appointmentRpcDefaultListItem(
+            patientName: 'Cancelled Patient',
+            id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc',
+            startLocal: DateTime(2026, 6, 15, 11, 0),
+          )..['status'] = 'cancelled',
+          appointmentRpcDefaultListItem(
+            patientName: 'No Show Patient',
+            id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            startLocal: DateTime(2026, 6, 15, 12, 0),
+          )..['status'] = 'no_show',
+        ]);
+
+        await pumpAppointmentCalendarPage(tester, authState: calendarAuthState(), rpcClient: client);
+        final container = await waitForCalendarLoaded(tester);
+        final notifier = container.read(appointmentCalendarProvider.notifier);
+
+        AppointmentCalendarDataSource dataSource() =>
+            calendarWidget(tester).dataSource! as AppointmentCalendarDataSource;
+        List<String> visibleSubjects() =>
+            dataSource().appointments!.cast<Appointment>().map((item) => item.subject).toList();
+
+        expect(visibleSubjects(), ['Scheduled Patient']);
+
+        await notifier.applyFilters(statuses: {AppointmentStatus.cancelled});
+        await settleCalendarWidgetTest(tester);
+
+        expect(visibleSubjects(), containsAll(['Scheduled Patient', 'Cancelled Patient']));
+        expect(visibleSubjects(), isNot(contains('No Show Patient')));
+
+        await notifier.applyFilters(statuses: {AppointmentStatus.confirmed});
+        await settleCalendarWidgetTest(tester);
+
+        expect(visibleSubjects(), contains('Scheduled Patient'));
+        expect(visibleSubjects(), isNot(contains('Cancelled Patient')));
+        expect(visibleSubjects(), isNot(contains('No Show Patient')));
       });
     });
   });

@@ -85,7 +85,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final branches = branchesAsync.maybeWhen(data: (items) => items, orElse: () => const <BranchListItem>[]);
     final selectedBranch = branches.where((item) => item.id == state.selectedBranchId).firstOrNull;
     final schedule = selectedBranch?.workingSchedule ?? BranchWorkingSchedule.defaultSchedule();
-    final visibleItems = AppointmentCalendarDisplay.filterVisibleAppointments(state.items, schedule);
+    final visibleItems = AppointmentCalendarDisplay.filterVisibleAppointments(
+      state.items,
+      schedule,
+      selectedStatuses: state.selectedStatuses,
+    );
     final allDoctors = doctorsAsync.maybeWhen(data: (items) => items, orElse: () => const <StaffListItem>[]);
     final doctors = _filteredDoctors(allDoctors, selectedDoctorId: state.selectedDoctorId, mode: state.mode);
     final hasActiveFilters = state.hasActiveFilters(initialBranchId: authState.context?.activeBranchId);

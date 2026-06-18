@@ -201,6 +201,66 @@ void main() {
         }
       });
 
+      test('CAL-I07b: filterVisibleAppointments hides cancelled and no-show unless status filter selects them', () {
+        final cancelled = AppointmentListItem(
+          id: 'cancelled',
+          patientId: 'p1',
+          patientName: 'Cancelled Patient',
+          startTime: DateTime(2026, 6, 4, 10, 0),
+          endTime: DateTime(2026, 6, 4, 10, 30),
+          type: AppointmentType.planned,
+          status: AppointmentStatus.cancelled,
+        );
+        final noShow = AppointmentListItem(
+          id: 'no-show',
+          patientId: 'p2',
+          patientName: 'No Show Patient',
+          startTime: DateTime(2026, 6, 4, 11, 0),
+          endTime: DateTime(2026, 6, 4, 11, 30),
+          type: AppointmentType.planned,
+          status: AppointmentStatus.noShow,
+        );
+        final scheduled = AppointmentListItem(
+          id: 'scheduled',
+          patientId: 'p3',
+          patientName: 'Scheduled Patient',
+          startTime: DateTime(2026, 6, 4, 12, 0),
+          endTime: DateTime(2026, 6, 4, 12, 30),
+          type: AppointmentType.planned,
+          status: AppointmentStatus.scheduled,
+        );
+        final items = [cancelled, noShow, scheduled];
+
+        expect(
+          AppointmentCalendarDisplay.filterVisibleAppointments(items, schedule),
+          hasLength(1),
+        );
+        expect(
+          AppointmentCalendarDisplay.filterVisibleAppointments(
+            items,
+            schedule,
+            selectedStatuses: {AppointmentStatus.confirmed},
+          ),
+          hasLength(1),
+        );
+        expect(
+          AppointmentCalendarDisplay.filterVisibleAppointments(
+            items,
+            schedule,
+            selectedStatuses: {AppointmentStatus.cancelled},
+          ).map((item) => item.id),
+          ['cancelled', 'scheduled'],
+        );
+        expect(
+          AppointmentCalendarDisplay.filterVisibleAppointments(
+            items,
+            schedule,
+            selectedStatuses: {AppointmentStatus.noShow, AppointmentStatus.cancelled},
+          ).map((item) => item.id),
+          ['cancelled', 'no-show', 'scheduled'],
+        );
+      });
+
       test('CAL-I07: filterVisibleAppointments hides appointments outside branch hours', () {
         final earlyBird = AppointmentListItem(
           id: 'early',
