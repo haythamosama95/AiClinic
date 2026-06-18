@@ -78,6 +78,7 @@ class _AppointmentDetailContentView extends StatelessWidget {
     return _AppointmentDetailScaffold(
       title: detail.patientName,
       subtitle: detail.status.label,
+      patientId: detail.patientId,
       onBack: onBack,
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -104,23 +105,6 @@ class _AppointmentDetailContentView extends StatelessWidget {
               ],
               const SizedBox(height: SpacingTokens.lg),
               AppointmentStatusTimelineWidget(currentStatus: detail.status),
-              const SizedBox(height: SpacingTokens.lg),
-              Row(
-                children: [
-                  Expanded(
-                    child: AppButton(
-                      label: 'Open patient',
-                      variant: AppButtonVariant.outline,
-                      expand: true,
-                      onPressed: () => context.nav.pushPatientDetail(detail.patientId),
-                    ),
-                  ),
-                  const SizedBox(width: SpacingTokens.md),
-                  Expanded(
-                    child: AppButton(label: 'Back to calendar', expand: true, onPressed: onBack),
-                  ),
-                ],
-              ),
               if (detail.notes?.trim().isNotEmpty == true || detail.cancelReason?.trim().isNotEmpty == true) ...[
                 const SizedBox(height: SpacingTokens.lg),
                 if (detail.notes?.trim().isNotEmpty == true)
@@ -598,10 +582,17 @@ class _AppointmentNotesCard extends StatelessWidget {
 }
 
 class _AppointmentDetailScaffold extends StatelessWidget {
-  const _AppointmentDetailScaffold({required this.title, required this.onBack, required this.body, this.subtitle});
+  const _AppointmentDetailScaffold({
+    required this.title,
+    required this.onBack,
+    required this.body,
+    this.subtitle,
+    this.patientId,
+  });
 
   final String title;
   final String? subtitle;
+  final String? patientId;
   final VoidCallback onBack;
   final Widget body;
 
@@ -615,6 +606,7 @@ class _AppointmentDetailScaffold extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               AppIconButton(icon: const Icon(Icons.arrow_back_rounded), tooltip: 'Back', onPressed: onBack),
               const SizedBox(width: SpacingTokens.sm),
@@ -635,6 +627,16 @@ class _AppointmentDetailScaffold extends StatelessWidget {
                   ],
                 ),
               ),
+              if (patientId != null) ...[
+                const SizedBox(width: SpacingTokens.sm),
+                AppButton(
+                  label: 'Patient profile',
+                  variant: AppButtonVariant.ghost,
+                  size: AppFieldSize.sm,
+                  icon: const Icon(Icons.person_outline, size: 18),
+                  onPressed: () => context.nav.pushPatientDetail(patientId!),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: SpacingTokens.md),
@@ -657,6 +659,7 @@ class _AppointmentDetailLoadingView extends StatelessWidget {
     return _AppointmentDetailScaffold(
       title: preview?.patientName ?? 'Loading…',
       subtitle: preview?.status.label,
+      patientId: preview?.patientId,
       onBack: onBack,
       body: Column(
         children: [

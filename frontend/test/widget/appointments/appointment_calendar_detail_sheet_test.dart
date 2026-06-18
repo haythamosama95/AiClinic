@@ -126,7 +126,7 @@ void main() {
         expect(find.text(expectedAppointmentRangeLabel(appointment.startTime, appointment.endTime)), findsNothing);
       });
 
-      testWidgets('CAL-F02: Open patient navigates to patient detail', (tester) async {
+      testWidgets('CAL-F02: Patient profile navigates to patient detail', (tester) async {
         await pumpCalendarWithDetailRoutes(tester);
         await waitForCalendarLoaded(tester);
         await tapCalendarViewTab(tester, 'Day');
@@ -136,8 +136,8 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
 
-        await tester.ensureVisible(find.text('Open patient'));
-        await tester.tap(find.text('Open patient'));
+        await tester.ensureVisible(find.text('Patient profile'));
+        await tester.tap(find.text('Patient profile'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
 
