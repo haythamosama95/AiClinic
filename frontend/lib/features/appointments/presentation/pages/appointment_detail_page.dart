@@ -111,12 +111,13 @@ class _AppointmentDetailContentView extends StatelessWidget {
                     child: AppButton(
                       label: 'Open patient',
                       variant: AppButtonVariant.outline,
+                      expand: true,
                       onPressed: () => context.nav.pushPatientDetail(detail.patientId),
                     ),
                   ),
                   const SizedBox(width: SpacingTokens.md),
                   Expanded(
-                    child: AppButton(label: 'Back to calendar', onPressed: onBack),
+                    child: AppButton(label: 'Back to calendar', expand: true, onPressed: onBack),
                   ),
                 ],
               ),

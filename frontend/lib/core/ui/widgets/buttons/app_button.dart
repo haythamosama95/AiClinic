@@ -37,7 +37,11 @@ class AppButton extends StatelessWidget {
       mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
       onPress: !enabled ? null : (isLoading ? () {} : onPressed),
       prefix: isLoading ? FCircularProgress(size: size.progressSize) : icon,
-      child: Text(label),
+      child: expand
+          ? Flexible(
+              child: Text(label, overflow: TextOverflow.ellipsis, maxLines: 1, textAlign: TextAlign.center),
+            )
+          : Text(label),
     );
   }
 
