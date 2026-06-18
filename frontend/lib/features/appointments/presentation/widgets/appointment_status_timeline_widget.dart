@@ -45,29 +45,67 @@ class AppointmentStatusTimelineWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.route_outlined, size: 20, color: colors.primary),
-                const SizedBox(width: SpacingTokens.sm),
-                Expanded(
-                  flex: 2,
-                  child: Wrap(
-                    spacing: SpacingTokens.sm,
-                    runSpacing: SpacingTokens.xs,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        'Status journey',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isCompact = constraints.maxWidth < 520;
+                final titleSection = Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.route_outlined, size: 20, color: colors.primary),
+                    const SizedBox(width: SpacingTokens.sm),
+                    Expanded(
+                      child: Wrap(
+                        spacing: SpacingTokens.sm,
+                        runSpacing: SpacingTokens.xs,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            'Status journey',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          if (progressLabel != null) AppBadge(label: progressLabel, variant: AppBadgeVariant.outline),
+                        ],
                       ),
-                      if (progressLabel != null) AppBadge(label: progressLabel, variant: AppBadgeVariant.outline),
+                    ),
+                  ],
+                );
+
+                if (isCompact) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      titleSection,
+                      const SizedBox(height: SpacingTokens.sm),
+                      AppointmentDetailStatusActions(detail: detail),
                     ],
-                  ),
-                ),
-                const SizedBox(width: SpacingTokens.sm),
-                Expanded(flex: 3, child: AppointmentDetailStatusActions(detail: detail)),
-              ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.route_outlined, size: 20, color: colors.primary),
+                    const SizedBox(width: SpacingTokens.sm),
+                    Expanded(
+                      flex: 2,
+                      child: Wrap(
+                        spacing: SpacingTokens.sm,
+                        runSpacing: SpacingTokens.xs,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            'Status journey',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          if (progressLabel != null) AppBadge(label: progressLabel, variant: AppBadgeVariant.outline),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: SpacingTokens.sm),
+                    Expanded(flex: 3, child: AppointmentDetailStatusActions(detail: detail)),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: SpacingTokens.xs),
             Text(
@@ -573,16 +611,26 @@ class _TimelineStepContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(status.label, maxLines: compact ? 2 : 1, overflow: TextOverflow.ellipsis, style: labelStyle),
-            ),
-            const SizedBox(width: SpacingTokens.xs),
-            statusIndicator,
-          ],
-        ),
+        if (compact)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(status.label, maxLines: 2, overflow: TextOverflow.ellipsis, style: labelStyle),
+              const SizedBox(height: SpacingTokens.xs),
+              statusIndicator,
+            ],
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(status.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: labelStyle),
+              ),
+              const SizedBox(width: SpacingTokens.xs),
+              statusIndicator,
+            ],
+          ),
         const SizedBox(height: SpacingTokens.xs),
         Text(
           AppointmentStatusTimeline.stepDescription(status),

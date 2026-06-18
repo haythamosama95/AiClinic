@@ -41,7 +41,7 @@ class AppButton extends StatelessWidget {
           ? Flexible(
               child: Text(label, overflow: TextOverflow.ellipsis, maxLines: 1, textAlign: TextAlign.center),
             )
-          : Text(label),
+          : Flexible(child: Text(label, overflow: TextOverflow.ellipsis, maxLines: 1)),
     );
   }
 

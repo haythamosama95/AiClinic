@@ -54,7 +54,9 @@ class AppBadge extends StatelessWidget {
               ),
               const SizedBox(width: SpacingTokens.xs),
             ],
-            Text(label, style: textStyle),
+            Flexible(
+              child: Text(label, style: textStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
           ],
         ),
       ),

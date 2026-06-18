@@ -316,12 +316,30 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       return 0;
     });
 
-    return Wrap(
-      spacing: SpacingTokens.xs,
-      runSpacing: SpacingTokens.xs,
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [for (final spec in specs) _StatusActionButton(spec: spec)],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final useStacked = constraints.maxWidth < 280;
+
+        if (useStacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < specs.length; i++) ...[
+                if (i > 0) const SizedBox(height: SpacingTokens.xs),
+                _StatusActionButton(spec: specs[i], expand: true),
+              ],
+            ],
+          );
+        }
+
+        return Wrap(
+          spacing: SpacingTokens.xs,
+          runSpacing: SpacingTokens.xs,
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [for (final spec in specs) _StatusActionButton(spec: spec)],
+        );
+      },
     );
   }
 }
@@ -345,9 +363,10 @@ class _StatusActionSpec {
 }
 
 class _StatusActionButton extends StatelessWidget {
-  const _StatusActionButton({required this.spec});
+  const _StatusActionButton({required this.spec, this.expand = false});
 
   final _StatusActionSpec spec;
+  final bool expand;
 
   @override
   Widget build(BuildContext context) {
@@ -358,6 +377,7 @@ class _StatusActionButton extends StatelessWidget {
       label: spec.label,
       variant: AppButtonVariant.ghost,
       size: AppFieldSize.sm,
+      expand: expand,
       icon: Icon(spec.icon, size: 18),
       isLoading: spec.isLoading,
       onPressed: isInteractive ? spec.onPressed : null,

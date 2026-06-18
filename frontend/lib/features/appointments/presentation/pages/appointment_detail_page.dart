@@ -162,10 +162,29 @@ class _AppointmentHeroCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AnimatedContainer(
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isCompact = constraints.maxWidth < 420;
+                final nameColumn = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      detail.patientName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: SpacingTokens.xs),
+                    Text(
+                      'with ${detail.doctorDisplayName}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(color: colors.mutedForeground),
+                    ),
+                  ],
+                );
+
+                final icon = AnimatedContainer(
                   duration: motionDuration,
                   curve: AppointmentStatusMotion.curve,
                   decoration: BoxDecoration(
@@ -179,26 +198,37 @@ class _AppointmentHeroCard extends StatelessWidget {
                       builder: (context, color) => Icon(Icons.calendar_month_rounded, color: color, size: 28),
                     ),
                   ),
-                ),
-                const SizedBox(width: SpacingTokens.md),
-                Expanded(
-                  child: Column(
+                );
+
+                if (isCompact) {
+                  return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        detail.patientName,
-                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          icon,
+                          const SizedBox(width: SpacingTokens.md),
+                          Expanded(child: nameColumn),
+                        ],
                       ),
-                      const SizedBox(height: SpacingTokens.xs),
-                      Text(
-                        'with ${detail.doctorDisplayName}',
-                        style: theme.textTheme.titleMedium?.copyWith(color: colors.mutedForeground),
-                      ),
+                      const SizedBox(height: SpacingTokens.sm),
+                      _StatusChip(status: detail.status, color: statusColor),
                     ],
-                  ),
-                ),
-                _StatusChip(status: detail.status, color: statusColor),
-              ],
+                  );
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    icon,
+                    const SizedBox(width: SpacingTokens.md),
+                    Expanded(child: nameColumn),
+                    const SizedBox(width: SpacingTokens.sm),
+                    _StatusChip(status: detail.status, color: statusColor),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: SpacingTokens.lg),
             Wrap(
@@ -452,7 +482,7 @@ class _StatusChip extends StatelessWidget {
           duration: motionDuration,
           curve: AppointmentStatusMotion.curve,
           style: labelStyle!.copyWith(color: color),
-          child: Text(status.label),
+          child: Text(status.label, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
       ),
     );
@@ -482,7 +512,14 @@ class _HeroFactChip extends StatelessWidget {
           children: [
             Icon(icon, size: 16, color: colors.primary),
             const SizedBox(width: SpacingTokens.xs),
-            Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
           ],
         ),
       ),
@@ -555,12 +592,10 @@ class _AppointmentDetailScaffold extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              AppIconButton(icon: const Icon(Icons.arrow_back_rounded), tooltip: 'Back', onPressed: onBack),
-              const SizedBox(width: SpacingTokens.sm),
-              Expanded(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 560;
+              final titleSection = Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -568,34 +603,69 @@ class _AppointmentDetailScaffold extends StatelessWidget {
                       'Appointment',
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colors.mutedForeground),
                     ),
-                    Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                    ),
                     if (subtitle != null)
                       Text(
                         subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
                       ),
                   ],
                 ),
-              ),
-              if (headerActions.isNotEmpty || patientId != null) ...[
-                const SizedBox(width: SpacingTokens.sm),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+              );
+
+              final actions = (headerActions.isNotEmpty || patientId != null)
+                  ? Wrap(
+                      spacing: SpacingTokens.xs,
+                      runSpacing: SpacingTokens.xs,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        ...headerActions,
+                        if (patientId != null)
+                          AppButton(
+                            label: 'Patient profile',
+                            variant: AppButtonVariant.ghost,
+                            size: AppFieldSize.sm,
+                            icon: const Icon(Icons.person_outline, size: 18),
+                            onPressed: () => context.nav.pushPatientDetail(patientId!),
+                          ),
+                      ],
+                    )
+                  : null;
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    ...headerActions,
-                    if (headerActions.isNotEmpty && patientId != null) const SizedBox(width: SpacingTokens.xs),
-                    if (patientId != null)
-                      AppButton(
-                        label: 'Patient profile',
-                        variant: AppButtonVariant.ghost,
-                        size: AppFieldSize.sm,
-                        icon: const Icon(Icons.person_outline, size: 18),
-                        onPressed: () => context.nav.pushPatientDetail(patientId!),
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppIconButton(icon: const Icon(Icons.arrow_back_rounded), tooltip: 'Back', onPressed: onBack),
+                        const SizedBox(width: SpacingTokens.sm),
+                        titleSection,
+                      ],
+                    ),
+                    if (actions != null) ...[const SizedBox(height: SpacingTokens.sm), actions],
                   ],
-                ),
-              ],
-            ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  AppIconButton(icon: const Icon(Icons.arrow_back_rounded), tooltip: 'Back', onPressed: onBack),
+                  const SizedBox(width: SpacingTokens.sm),
+                  titleSection,
+                  if (actions != null) ...[const SizedBox(width: SpacingTokens.sm), actions],
+                ],
+              );
+            },
           ),
           const SizedBox(height: SpacingTokens.md),
           Expanded(child: SingleChildScrollView(child: body)),
