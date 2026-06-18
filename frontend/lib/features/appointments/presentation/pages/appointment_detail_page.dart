@@ -18,6 +18,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_controls_card.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
 /// Full appointment profile page loaded via `get_appointment`.
@@ -79,6 +80,7 @@ class _AppointmentDetailContentView extends StatelessWidget {
       title: detail.patientName,
       subtitle: detail.status.label,
       patientId: detail.patientId,
+      headerActions: [AppointmentDetailEditButton(detail: detail)],
       onBack: onBack,
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -588,11 +590,13 @@ class _AppointmentDetailScaffold extends StatelessWidget {
     required this.body,
     this.subtitle,
     this.patientId,
+    this.headerActions = const [],
   });
 
   final String title;
   final String? subtitle;
   final String? patientId;
+  final List<Widget> headerActions;
   final VoidCallback onBack;
   final Widget body;
 
@@ -627,14 +631,22 @@ class _AppointmentDetailScaffold extends StatelessWidget {
                   ],
                 ),
               ),
-              if (patientId != null) ...[
+              if (headerActions.isNotEmpty || patientId != null) ...[
                 const SizedBox(width: SpacingTokens.sm),
-                AppButton(
-                  label: 'Patient profile',
-                  variant: AppButtonVariant.ghost,
-                  size: AppFieldSize.sm,
-                  icon: const Icon(Icons.person_outline, size: 18),
-                  onPressed: () => context.nav.pushPatientDetail(patientId!),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ...headerActions,
+                    if (headerActions.isNotEmpty && patientId != null) const SizedBox(width: SpacingTokens.xs),
+                    if (patientId != null)
+                      AppButton(
+                        label: 'Patient profile',
+                        variant: AppButtonVariant.ghost,
+                        size: AppFieldSize.sm,
+                        icon: const Icon(Icons.person_outline, size: 18),
+                        onPressed: () => context.nav.pushPatientDetail(patientId!),
+                      ),
+                  ],
                 ),
               ],
             ],

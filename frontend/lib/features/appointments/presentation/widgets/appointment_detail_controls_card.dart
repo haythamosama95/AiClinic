@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-
-import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
@@ -16,13 +13,9 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_reschedule_confirm_dialog.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 
 extension _AppointmentDetailListItem on AppointmentDetail {
   AppointmentListItem toListItem() {
@@ -139,34 +132,6 @@ class _AppointmentDetailControlsCardState extends ConsumerState<AppointmentDetai
     return null;
   }
 
-  String? _rescheduleDisabledReason() {
-    final permission = _permissionDeniedCreateReason();
-    if (permission != null) {
-      return permission;
-    }
-    if (canRescheduleAppointment(_listItem)) {
-      return null;
-    }
-    if (detail.type != AppointmentType.planned) {
-      return 'Only planned appointments can be rescheduled.';
-    }
-    if (detail.status != AppointmentStatus.scheduled) {
-      return 'Only scheduled appointments can be rescheduled. Cancel and re-book to change a confirmed slot.';
-    }
-    return 'This appointment cannot be rescheduled.';
-  }
-
-  String? _editDisabledReason() {
-    final permission = _permissionDeniedCreateReason();
-    if (permission != null) {
-      return permission;
-    }
-    if (!detail.status.isTerminal) {
-      return null;
-    }
-    return 'This appointment is ${detail.status.label.toLowerCase()} and cannot be edited.';
-  }
-
   String? _markNoShowDisabledReason() {
     final permission = _permissionDeniedCancelReason();
     if (permission != null) {
@@ -245,84 +210,6 @@ class _AppointmentDetailControlsCardState extends ConsumerState<AppointmentDetai
         }
       }
     });
-  }
-
-  Future<void> _handleReschedule() async {
-    if (_disabledReasonFor('reschedule', _rescheduleDisabledReason()) != null) {
-      return;
-    }
-
-    await _runAction('reschedule', () async {
-      final branches = await ref.read(appointmentCalendarBranchesProvider.future);
-      BranchListItem? selectedBranch;
-      for (final branch in branches) {
-        if (branch.id == detail.branchId) {
-          selectedBranch = branch;
-          break;
-        }
-      }
-      final schedule = selectedBranch?.workingSchedule ?? BranchWorkingSchedule.defaultSchedule();
-
-      final focusDate = DateTime(
-        detail.startTime.toLocal().year,
-        detail.startTime.toLocal().month,
-        detail.startTime.toLocal().day,
-      );
-      final bounds = appointmentCalendarFetchBounds(focusDate, AppointmentCalendarMode.week);
-      final branchAppointments = await ref
-          .read(appointmentRepositoryProvider)
-          .listAppointments(branchId: detail.branchId, from: bounds.$1, to: bounds.$2);
-
-      if (!mounted) {
-        return;
-      }
-
-      final confirmed = await AppointmentRescheduleConfirmDialog.show(
-        context,
-        appointment: _listItem,
-        newStart: detail.startTime.toLocal(),
-        newEnd: detail.endTime.toLocal(),
-        schedule: schedule,
-        branchAppointments: branchAppointments,
-      );
-      if (confirmed == null || !mounted) {
-        return;
-      }
-
-      try {
-        await ref
-            .read(appointmentRepositoryProvider)
-            .rescheduleAppointment(appointmentId: detail.id, startTime: confirmed.start, endTime: confirmed.end);
-        if (!mounted) {
-          return;
-        }
-        ref.invalidate(appointmentDetailProvider(detail.id));
-        ref.invalidate(appointmentCalendarProvider);
-        AppToast.success(
-          context,
-          message: 'Appointment rescheduled to ${_formatRange(confirmed.start, confirmed.end)}.',
-        );
-      } on RpcFailure catch (error) {
-        if (mounted) {
-          AppToast.error(context, message: appointmentMessageForRpc(error));
-        }
-      } catch (_) {
-        if (mounted) {
-          AppToast.error(context, message: 'Unable to reschedule appointment. Try again.');
-        }
-      }
-    });
-  }
-
-  void _handleEditInCalendar() {
-    if (_disabledReasonFor('edit', _editDisabledReason()) != null || _isBusy) {
-      return;
-    }
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-      return;
-    }
-    context.nav.goAppointmentsCalendar();
   }
 
   Future<void> _handleCancel() async {
@@ -454,23 +341,6 @@ class _AppointmentDetailControlsCardState extends ConsumerState<AppointmentDetai
         onPressed: _handleAdvanceStatus,
       ),
       _ManageActionSpec(
-        key: const Key('appointment_control_reschedule'),
-        icon: Icons.event_repeat_rounded,
-        label: 'Reschedule',
-        subtitle: 'Change date or time',
-        disabledReason: _disabledReasonFor('reschedule', _rescheduleDisabledReason()),
-        isLoading: _busyActionKey == 'reschedule',
-        onPressed: _handleReschedule,
-      ),
-      _ManageActionSpec(
-        key: const Key('appointment_control_edit'),
-        icon: Icons.edit_outlined,
-        label: 'Edit',
-        subtitle: 'Open in calendar',
-        disabledReason: _disabledReasonFor('edit', _editDisabledReason()),
-        onPressed: _handleEditInCalendar,
-      ),
-      _ManageActionSpec(
         key: const Key('appointment_control_no_show'),
         icon: Icons.person_off_outlined,
         label: 'Mark no-show',
@@ -515,15 +385,6 @@ class _AppointmentDetailControlsCardState extends ConsumerState<AppointmentDetai
           onPressed: spec.onPressed,
         ),
     ];
-  }
-
-  static String _formatRange(DateTime start, DateTime end) {
-    final localStart = start.toLocal();
-    final localEnd = end.toLocal();
-    final day = DateFormat.yMMMd().format(localStart);
-    final from = DateFormat.jm().format(localStart);
-    final to = DateFormat.jm().format(localEnd);
-    return '$day · $from – $to';
   }
 }
 

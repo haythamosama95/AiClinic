@@ -117,6 +117,16 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
         'success': true,
         'data': {'appointment_id': lastParams?['p_appointment_id'], 'status': lastParams?['p_new_status']},
       },
+      'update_appointment' => {
+        'success': true,
+        'data': {
+          'appointment_id': lastParams?['p_appointment_id'],
+          'start_time': lastParams?['p_start_time'],
+          'end_time': '2026-06-01T11:00:00.000Z',
+          'status': 'scheduled',
+          'type': 'planned',
+        },
+      },
       'reschedule_appointment' => {
         'success': true,
         'data': {

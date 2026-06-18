@@ -23,6 +23,7 @@ DECLARE
     'auth_internal.set_appointment_default_duration(uuid,integer)'::regprocedure,
     'auth_internal.create_appointment(uuid,uuid,uuid,text,timestamp with time zone,integer,timestamp with time zone,text)'::regprocedure,
     'auth_internal.reschedule_appointment(uuid,timestamp with time zone,integer,timestamp with time zone)'::regprocedure,
+    'auth_internal.update_appointment(uuid,uuid,uuid,timestamp with time zone,integer,timestamp with time zone,text)'::regprocedure,
     'auth_internal.cancel_appointment(uuid,text)'::regprocedure,
     'auth_internal.update_appointment_status(uuid,text)'::regprocedure,
     'auth_internal.list_appointments(uuid,timestamp with time zone,timestamp with time zone,uuid,text[],uuid)'::regprocedure
@@ -84,6 +85,16 @@ BEGIN
     has_function_privilege(
       'authenticated',
       'public.reschedule_appointment(uuid,timestamp with time zone,integer,timestamp with time zone)'::regprocedure,
+      'EXECUTE'
+    ),
+    'public wrapper'
+  );
+
+  INSERT INTO appointment_grant_results VALUES (
+    'public_update_appointment_granted',
+    has_function_privilege(
+      'authenticated',
+      'public.update_appointment(uuid,uuid,uuid,timestamp with time zone,integer,timestamp with time zone,text)'::regprocedure,
       'EXECUTE'
     ),
     'public wrapper'

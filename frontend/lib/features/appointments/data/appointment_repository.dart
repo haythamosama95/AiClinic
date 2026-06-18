@@ -193,6 +193,58 @@ class AppointmentRepository with AppRpcInvoker {
     return status;
   }
 
+  /// Updates a non-terminal planned appointment via `update_appointment`.
+  ///
+  /// Scheduled appointments may change patient, doctor, time, and notes.
+  /// Confirmed or in-progress appointments may only change doctor and notes.
+  Future<CreateAppointmentResult> updateAppointment({
+    required String appointmentId,
+    required String patientId,
+    String? doctorId,
+    required DateTime startTime,
+    int? durationMinutes,
+    DateTime? endTime,
+    String? notes,
+  }) async {
+    _assertNonEmpty('appointmentId', appointmentId);
+    _assertNonEmpty('patientId', patientId);
+
+    if (durationMinutes != null) {
+      _assertDurationMinutes(durationMinutes);
+    }
+
+    if (notes != null && notes.trim().length > 2000) {
+      throw RpcFailure(
+        const RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Notes must be 2000 characters or fewer.',
+        ),
+      );
+    }
+
+    final trimmedDoctorId = doctorId?.trim();
+    final params = <String, dynamic>{
+      'p_appointment_id': appointmentId.trim(),
+      'p_patient_id': patientId.trim(),
+      'p_doctor_id': (trimmedDoctorId != null && trimmedDoctorId.isNotEmpty) ? trimmedDoctorId : null,
+      'p_start_time': startTime.toUtc().toIso8601String(),
+      ...?(durationMinutes != null) ? {'p_duration_minutes': durationMinutes} : null,
+      ...?(endTime != null) ? {'p_end_time': endTime.toUtc().toIso8601String()} : null,
+      ...?(notes != null) ? {'p_notes': notes.trim()} : null,
+    };
+
+    final result = await invokeRpc('update_appointment', params);
+    final updated = CreateAppointmentResult.fromRpcData({
+      ...?result.data,
+      'appointment_id': result.data?['appointment_id'] ?? appointmentId,
+    });
+    if (updated == null) {
+      throw StateError('Update appointment returned an unexpected shape.');
+    }
+    return updated;
+  }
+
   /// Reschedules a `scheduled` planned appointment via `reschedule_appointment` (V1-4 US6).
   ///
   /// Throws [RpcFailure] with `SCHEDULE_CONFLICT` or `INVALID_INPUT` when rejected.
