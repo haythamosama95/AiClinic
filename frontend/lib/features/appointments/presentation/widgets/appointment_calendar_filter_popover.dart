@@ -5,6 +5,7 @@ import 'package:forui/forui.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_select_items.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 
@@ -213,6 +214,7 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
                     hintText: items.isEmpty ? 'No branches' : 'Select branch',
                     enabled: items.isNotEmpty,
                     contentGroupId: widget.filterPopoverGroup,
+                    showPopoverCloseButton: true,
                     onChanged: items.isEmpty ? null : (branchId) => setState(() => _draftBranchId = branchId),
                   ),
                   loading: () => const _FilterPanelPlaceholder(message: 'Loading branches…'),
@@ -228,14 +230,31 @@ class _AppointmentCalendarFilterPanelState extends State<_AppointmentCalendarFil
                   title: 'Doctor',
                   icon: Icons.person_outline,
                   child: widget.doctorsAsync.when(
-                    data: (doctors) => AppFilterSelect<String>(
-                      items: {'All doctors': '', for (final doctor in doctors) doctor.fullName: doctor.id},
-                      value: _draftDoctorId ?? '',
-                      hintText: 'All doctors',
-                      contentGroupId: widget.filterPopoverGroup,
-                      onChanged: (doctorId) =>
-                          setState(() => _draftDoctorId = doctorId == null || doctorId.isEmpty ? null : doctorId),
-                    ),
+                    data: (doctors) {
+                      final branchId = _draftBranchId ?? widget.appliedBranchId;
+
+                      return AppFilterSelect<String>(
+                        richChildren: AppointmentDoctorSelectItems.build(
+                          context: context,
+                          branchId: branchId,
+                          doctors: doctors,
+                          emptyLabel: 'All doctors',
+                        ),
+                        format: (doctorId) {
+                          if (doctorId.isEmpty) {
+                            return 'All doctors';
+                          }
+                          final doctor = doctors.where((entry) => entry.id == doctorId).firstOrNull;
+                          return doctor?.fullName ?? 'All doctors';
+                        },
+                        value: _draftDoctorId ?? '',
+                        hintText: 'All doctors',
+                        contentGroupId: widget.filterPopoverGroup,
+                        showPopoverCloseButton: true,
+                        onChanged: (doctorId) =>
+                            setState(() => _draftDoctorId = doctorId == null || doctorId.isEmpty ? null : doctorId),
+                      );
+                    },
                     loading: () => const _FilterPanelPlaceholder(message: 'Loading doctors…'),
                     error: (_, _) => const _FilterPanelPlaceholder(message: 'Could not load doctors.', error: true),
                   ),

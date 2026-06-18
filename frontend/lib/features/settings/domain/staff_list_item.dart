@@ -50,6 +50,15 @@ class StaffListItem {
     return a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase());
   }
 
+  /// Whether this staff member is assigned to [branchId] (active branch membership).
+  bool isAssignedToBranch(String branchId) {
+    final normalized = branchId.trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    return branches.any((branch) => branch.id == normalized);
+  }
+
   static StaffListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
     final fullName = row['full_name']?.toString().trim();

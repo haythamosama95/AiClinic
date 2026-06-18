@@ -111,11 +111,69 @@ class AppSwitch extends StatelessWidget {
   }
 }
 
+Widget _popoverCloseButton(BuildContext context, FPopoverController popoverController) {
+  final colors = context.semanticColors;
+
+  return Align(
+    alignment: Alignment.centerRight,
+    child: IconButton(
+      onPressed: popoverController.hide,
+      icon: Icon(Icons.close, size: 18, color: colors.mutedForeground),
+      style: IconButton.styleFrom(
+        padding: const EdgeInsets.all(SpacingTokens.xs),
+        minimumSize: const Size(28, 28),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      tooltip: 'Close',
+    ),
+  );
+}
+
+FSelectPopoverBuilder<T> _selectPopoverWithCloseButton<T>() {
+  return (context, _, popoverController, content) {
+    final colors = context.semanticColors;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(SpacingTokens.sm, SpacingTokens.xs, SpacingTokens.xs, 0),
+          child: Align(alignment: Alignment.centerRight, child: _popoverCloseButton(context, popoverController)),
+        ),
+        Divider(height: 1, color: colors.border),
+        content,
+      ],
+    );
+  };
+}
+
+FMultiSelectPopoverBuilder<T> _multiSelectPopoverWithCloseButton<T>() {
+  return (context, _, popoverController, content) {
+    final colors = context.semanticColors;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(SpacingTokens.sm, SpacingTokens.xs, SpacingTokens.xs, 0),
+          child: Align(alignment: Alignment.centerRight, child: _popoverCloseButton(context, popoverController)),
+        ),
+        Divider(height: 1, color: colors.border),
+        content,
+      ],
+    );
+  };
+}
+
 /// Application single select wrapping [FSelect].
 class AppSelect<T> extends StatelessWidget {
   const AppSelect({
     required this.label,
-    required this.items,
+    this.items = const {},
+    this.richChildren,
+    this.format,
     this.value,
     this.onChanged,
     this.hintText,
@@ -124,11 +182,14 @@ class AppSelect<T> extends StatelessWidget {
     this.size = AppFieldSize.md,
     this.validator,
     this.autovalidateMode,
+    this.showPopoverCloseButton = false,
     super.key,
   });
 
   final String label;
   final Map<String, T> items;
+  final List<FSelectItemMixin>? richChildren;
+  final String Function(T value)? format;
   final T? value;
   final ValueChanged<T?>? onChanged;
   final String? hintText;
@@ -137,23 +198,48 @@ class AppSelect<T> extends StatelessWidget {
   final AppFieldSize size;
   final String? Function(T?)? validator;
   final AutovalidateMode? autovalidateMode;
+  final bool showPopoverCloseButton;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final resolvedAutovalidateMode =
         autovalidateMode ?? (validator != null ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled);
+    final popoverBuilder = showPopoverCloseButton ? _selectPopoverWithCloseButton<T>() : FPopover.defaultPopoverBuilder;
+    final control = FSelectControl.lifted(value: value, onChange: onChanged ?? (_) {});
+    final labelWidget = Text(label, style: theme.textTheme.labelMedium);
+    final descriptionWidget = description == null ? null : Text(description!, style: theme.textTheme.bodySmall);
+    final resolvedValidator = validator == null ? (_) => null : (T? v) => validator!(v);
+
+    if (richChildren != null) {
+      assert(format != null, 'format is required when richChildren is provided');
+
+      return FSelect<T>.rich(
+        format: format!,
+        children: richChildren!,
+        control: control,
+        size: size.forui,
+        label: labelWidget,
+        description: descriptionWidget,
+        hint: hintText,
+        enabled: enabled,
+        validator: resolvedValidator,
+        autovalidateMode: resolvedAutovalidateMode,
+        popoverBuilder: popoverBuilder,
+      );
+    }
 
     return FSelect<T>(
       items: items,
-      control: FSelectControl.lifted(value: value, onChange: onChanged ?? (_) {}),
+      control: control,
       size: size.forui,
-      label: Text(label, style: theme.textTheme.labelMedium),
-      description: description == null ? null : Text(description!, style: theme.textTheme.bodySmall),
+      label: labelWidget,
+      description: descriptionWidget,
       hint: hintText,
       enabled: enabled,
-      validator: validator == null ? (_) => null : (v) => validator!(v),
+      validator: resolvedValidator,
       autovalidateMode: resolvedAutovalidateMode,
+      popoverBuilder: popoverBuilder,
     );
   }
 }
@@ -193,33 +279,6 @@ class AppMultiSelect<T> extends StatelessWidget {
   final FPopoverHideRegion? contentHideRegion;
   final bool showPopoverCloseButton;
 
-  static FMultiSelectPopoverBuilder<T> _popoverWithCloseButton<T>() {
-    return (context, _, popoverController, content) {
-      final colors = context.semanticColors;
-
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              onPressed: popoverController.hide,
-              icon: Icon(Icons.close, size: 18, color: colors.mutedForeground),
-              style: IconButton.styleFrom(
-                padding: const EdgeInsets.all(SpacingTokens.xs),
-                minimumSize: const Size(28, 28),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              tooltip: 'Close',
-            ),
-          ),
-          content,
-        ],
-      );
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -238,7 +297,7 @@ class AppMultiSelect<T> extends StatelessWidget {
       autovalidateMode: resolvedAutovalidateMode,
       contentGroupId: contentGroupId,
       contentHideRegion: contentHideRegion ?? FPopoverHideRegion.excludeChild,
-      popoverBuilder: showPopoverCloseButton ? _popoverWithCloseButton<T>() : FPopover.defaultPopoverBuilder,
+      popoverBuilder: showPopoverCloseButton ? _multiSelectPopoverWithCloseButton<T>() : FPopover.defaultPopoverBuilder,
     );
   }
 }
@@ -303,7 +362,9 @@ class AppSelectGroup<T> extends StatelessWidget {
 /// Compact select for toolbar filters — label is optional to save vertical space.
 class AppFilterSelect<T> extends StatelessWidget {
   const AppFilterSelect({
-    required this.items,
+    this.items = const {},
+    this.richChildren,
+    this.format,
     this.label,
     this.value,
     this.onChanged,
@@ -312,11 +373,14 @@ class AppFilterSelect<T> extends StatelessWidget {
     this.size = AppFieldSize.sm,
     this.contentGroupId,
     this.contentHideRegion,
+    this.showPopoverCloseButton = false,
     super.key,
   });
 
   final String? label;
   final Map<String, T> items;
+  final List<FSelectItemMixin>? richChildren;
+  final String Function(T value)? format;
   final T? value;
   final ValueChanged<T?>? onChanged;
   final String? hintText;
@@ -324,20 +388,42 @@ class AppFilterSelect<T> extends StatelessWidget {
   final AppFieldSize size;
   final Object? contentGroupId;
   final FPopoverHideRegion? contentHideRegion;
+  final bool showPopoverCloseButton;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final popoverBuilder = showPopoverCloseButton ? _selectPopoverWithCloseButton<T>() : FPopover.defaultPopoverBuilder;
+    final control = FSelectControl.lifted(value: value, onChange: onChanged ?? (_) {});
+    final labelWidget = label == null ? null : Text(label!, style: theme.textTheme.labelSmall);
+
+    if (richChildren != null) {
+      assert(format != null, 'format is required when richChildren is provided');
+
+      return FSelect<T>.rich(
+        format: format!,
+        children: richChildren!,
+        control: control,
+        size: size.forui,
+        label: labelWidget,
+        hint: hintText,
+        enabled: enabled,
+        contentGroupId: contentGroupId,
+        contentHideRegion: contentHideRegion ?? FPopoverHideRegion.excludeChild,
+        popoverBuilder: popoverBuilder,
+      );
+    }
 
     return FSelect<T>(
       items: items,
-      control: FSelectControl.lifted(value: value, onChange: onChanged ?? (_) {}),
+      control: control,
       size: size.forui,
-      label: label == null ? null : Text(label!, style: theme.textTheme.labelSmall),
+      label: labelWidget,
       hint: hintText,
       enabled: enabled,
       contentGroupId: contentGroupId,
       contentHideRegion: contentHideRegion ?? FPopoverHideRegion.excludeChild,
+      popoverBuilder: popoverBuilder,
     );
   }
 }

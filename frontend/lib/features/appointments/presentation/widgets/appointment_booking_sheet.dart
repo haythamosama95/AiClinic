@@ -21,6 +21,7 @@ import 'package:ai_clinic/features/patients/domain/patient_search_query.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_selector.dart';
 
 abstract final class _AppointmentBookingModalPalette {
   static const modalRadius = 24.0;
@@ -411,10 +412,6 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  Map<String, String> get _doctorItems {
-    return {'No doctor assigned': '', for (final doctor in widget.doctors) doctor.fullName: doctor.id};
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -511,21 +508,24 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                                 separatorBuilder: (_, _) => Divider(height: 1, color: colors.border),
                                 itemBuilder: (context, index) {
                                   final patient = _patientResults[index];
-                                  return ListTile(
-                                    key: Key('patient_picker_result_$index'),
-                                    title: Text(patient.fullName),
-                                    subtitle: Text(patient.phone ?? patient.registeringBranchName),
-                                    onTap: _isSaving
-                                        ? null
-                                        : () {
-                                            setState(() {
-                                              _selectedPatient = patient;
-                                              _patientResults = const [];
-                                              _patientSearchController.clear();
-                                              _lastPatientQuery = '';
-                                              _formError = null;
-                                            });
-                                          },
+                                  return Material(
+                                    color: Colors.transparent,
+                                    child: ListTile(
+                                      key: Key('patient_picker_result_$index'),
+                                      title: Text(patient.fullName),
+                                      subtitle: Text(patient.phone ?? patient.registeringBranchName),
+                                      onTap: _isSaving
+                                          ? null
+                                          : () {
+                                              setState(() {
+                                                _selectedPatient = patient;
+                                                _patientResults = const [];
+                                                _patientSearchController.clear();
+                                                _lastPatientQuery = '';
+                                                _formError = null;
+                                              });
+                                            },
+                                    ),
                                   );
                                 },
                               ),
@@ -533,15 +533,13 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                           ],
                           const SizedBox(height: SpacingTokens.md),
                           if (widget.doctors.isNotEmpty)
-                            AppSelect<String>(
+                            AppointmentDoctorSelector(
                               key: const Key('doctor_selector'),
-                              label: 'Doctor (optional)',
-                              items: _doctorItems,
-                              value: _selectedDoctorId ?? '',
+                              branchId: widget.branchId,
+                              doctors: widget.doctors,
+                              value: _selectedDoctorId,
                               enabled: !_isSaving,
-                              onChanged: (doctorId) => setState(() {
-                                _selectedDoctorId = doctorId == null || doctorId.isEmpty ? null : doctorId;
-                              }),
+                              onChanged: (doctorId) => setState(() => _selectedDoctorId = doctorId),
                             )
                           else
                             Text(

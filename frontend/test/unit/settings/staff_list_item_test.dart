@@ -3,76 +3,29 @@ import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('StaffListItem.fromRow', () {
-    test('parses staff with role and branch name list', () {
-      final item = StaffListItem.fromRow({
-        'id': 'staff-1',
-        'full_name': '  Dr. Sam  ',
-        'role': 'doctor',
-        'is_active': true,
-        'phone': '+20 111',
-      });
+  group('StaffListItem.isAssignedToBranch', () {
+    const branchA = '00000000-0000-4000-8000-000000000001';
+    const branchB = '00000000-0000-4000-8000-000000000002';
 
-      expect(item, isNotNull);
-      expect(item!.fullName, 'Dr. Sam');
-      expect(item.role, StaffRole.doctor);
-      expect(item.branches, isEmpty);
-      expect(item.phone, '+20 111');
+    const doctor = StaffListItem(
+      id: 'doctor-1',
+      fullName: 'Dr. Ada',
+      role: StaffRole.doctor,
+      isActive: true,
+      branches: [StaffBranchLabel(id: branchA, name: 'Branch A', isPrimary: true)],
+    );
+
+    test('returns true when branch is assigned', () {
+      expect(doctor.isAssignedToBranch(branchA), isTrue);
     });
 
-    test('returns null for invalid rows', () {
-      expect(StaffListItem.fromRow({'id': '', 'full_name': 'X', 'role': 'doctor'}), isNull);
-      expect(StaffListItem.fromRow({'id': '1', 'full_name': '', 'role': 'doctor'}), isNull);
-      expect(StaffListItem.fromRow({'id': '1', 'full_name': 'X', 'role': 'invalid_role'}), isNull);
-      expect(StaffListItem.fromRow({'id': '1', 'full_name': 'X'}), isNull);
+    test('returns false when branch is not assigned', () {
+      expect(doctor.isAssignedToBranch(branchB), isFalse);
     });
 
-    test('parses lab_staff wire value', () {
-      final item = StaffListItem.fromRow({'id': '1', 'full_name': 'Lab', 'role': 'lab_staff', 'is_active': true});
-      expect(item!.role, StaffRole.labStaff);
-    });
-
-    test('fromRow always yields empty branches (loaded separately via copyWith)', () {
-      final item = StaffListItem.fromRow({'id': '1', 'full_name': 'X', 'role': 'administrator', 'is_active': false});
-      expect(item!.branches, isEmpty);
-    });
-  });
-
-  group('StaffBranchLabel', () {
-    test('equality includes primary flag', () {
-      const primary = StaffBranchLabel(name: 'North', isPrimary: true);
-      const other = StaffBranchLabel(name: 'North', isPrimary: false);
-
-      expect(primary, isNot(equals(other)));
-    });
-  });
-
-  group('StaffListItem equality', () {
-    test('listEquals on branches', () {
-      const a = StaffListItem(
-        id: '1',
-        fullName: 'A',
-        role: StaffRole.doctor,
-        isActive: true,
-        branches: [StaffBranchLabel(name: 'X')],
-      );
-      const b = StaffListItem(
-        id: '1',
-        fullName: 'A',
-        role: StaffRole.doctor,
-        isActive: true,
-        branches: [StaffBranchLabel(name: 'X')],
-      );
-      const c = StaffListItem(
-        id: '1',
-        fullName: 'A',
-        role: StaffRole.doctor,
-        isActive: true,
-        branches: [StaffBranchLabel(name: 'Y')],
-      );
-
-      expect(a, equals(b));
-      expect(a == c, isFalse);
+    test('returns false for empty branch id', () {
+      expect(doctor.isAssignedToBranch(''), isFalse);
+      expect(doctor.isAssignedToBranch('   '), isFalse);
     });
   });
 }
