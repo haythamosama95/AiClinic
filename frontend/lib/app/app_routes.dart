@@ -71,6 +71,9 @@ abstract final class AppRoutes {
   /// Doctor schedule: `/appointments/schedule/:doctorId`
   static String appointmentsSchedule(String doctorId) => '$appointments/schedule/$doctorId';
 
+  /// Appointment detail: `/appointments/:appointmentId`
+  static String appointmentDetail(String appointmentId) => '$appointments/$appointmentId';
+
   /// Static appointment hub paths (hub, book, queue, calendar).
   static const appointmentStaticPaths = <String>[
     appointments,

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
@@ -112,6 +113,18 @@ class AppointmentRepository with AppRpcInvoker {
       throw StateError('Create appointment returned an unexpected shape.');
     }
     return created;
+  }
+
+  /// Fetches a single appointment via `get_appointment` (V1-4 detail view).
+  Future<AppointmentDetail> getAppointment({required String appointmentId}) async {
+    _assertNonEmpty('appointmentId', appointmentId);
+
+    final result = await invokeRpc('get_appointment', {'p_appointment_id': appointmentId.trim()});
+    final detail = AppointmentDetail.fromRow(result.data ?? const {});
+    if (detail == null) {
+      throw StateError('Get appointment returned an unexpected shape.');
+    }
+    return detail;
   }
 
   Future<List<AppointmentListItem>> listAppointments({

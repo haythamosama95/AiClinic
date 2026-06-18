@@ -5,6 +5,8 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 
 /// Centralized navigation service to avoid scattered `context.go()`/`context.push()` calls.
 ///
@@ -46,6 +48,8 @@ class AppNavigator {
   void goAppointmentsBook() => _context.push(AppRoutes.appointmentsBook);
   void goAppointmentsQueue() => _context.push(AppRoutes.appointmentsQueue);
   void goAppointmentsCalendar() => _context.push(AppRoutes.appointmentsCalendar);
+  void pushAppointmentDetail(String appointmentId, {AppointmentListItem? preview}) =>
+      _context.push(AppRoutes.appointmentDetail(appointmentId), extra: AppointmentDetailRouteExtra(preview: preview));
   void goAppointmentsSchedule(String doctorId) => _context.push(AppRoutes.appointmentsSchedule(doctorId));
 
   // Billing (V1-6)

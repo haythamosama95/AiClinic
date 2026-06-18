@@ -2,6 +2,35 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'fake_postgrest_rpc.dart';
 
+Map<String, dynamic> appointmentRpcDefaultDetailItem({
+  String patientName = 'Test Patient',
+  DateTime? startLocal,
+  String id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  String doctorId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  String doctorName = 'Dr Test',
+}) {
+  final start = startLocal ?? DateTime(2026, 6, 15, 10, 0);
+  final end = start.add(const Duration(minutes: 30));
+  return {
+    'id': id,
+    'branch_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'patient_id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'patient_name': patientName,
+    'doctor_id': doctorId,
+    'doctor_name': doctorName,
+    'start_time': start.toUtc().toIso8601String(),
+    'end_time': end.toUtc().toIso8601String(),
+    'type': 'planned',
+    'status': 'scheduled',
+    'queue_number': null,
+    'notes': null,
+    'cancel_reason': null,
+    'created_at': '2026-06-14T08:00:00.000Z',
+    'updated_at': '2026-06-14T08:00:00.000Z',
+    'created_by_display': 'Reception',
+  };
+}
+
 Map<String, dynamic> appointmentRpcDefaultListItem({
   String patientName = 'Test Patient',
   DateTime? startLocal,
@@ -83,6 +112,7 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
           'items': [appointmentRpcDefaultListItem()],
         },
       },
+      'get_appointment' => {'success': true, 'data': appointmentRpcDefaultDetailItem()},
       'update_appointment_status' => {
         'success': true,
         'data': {'appointment_id': lastParams?['p_appointment_id'], 'status': lastParams?['p_new_status']},

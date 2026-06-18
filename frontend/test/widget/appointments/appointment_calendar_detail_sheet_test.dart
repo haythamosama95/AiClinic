@@ -4,6 +4,7 @@ import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:ai_clinic/features/patients/data/patient_repository.dart';
@@ -33,7 +34,7 @@ PatientDetail calendarDetailPatient() {
   return samplePatientDetail(id: _detailPatientId, fullName: 'Test Patient', branchId: calendarTestBranchAId);
 }
 
-Future<void> pumpCalendarWithPatientRoutes(WidgetTester tester, {AppointmentRpcTestClient? rpcClient}) async {
+Future<void> pumpCalendarWithDetailRoutes(WidgetTester tester, {AppointmentRpcTestClient? rpcClient}) async {
   final client = rpcClient ?? AppointmentRpcTestClient();
   final patientRepo = FakePatientRepository(detail: calendarDetailPatient());
 
@@ -46,6 +47,13 @@ Future<void> pumpCalendarWithPatientRoutes(WidgetTester tester, {AppointmentRpcT
       GoRoute(
         path: AppRoutes.appointmentsCalendar,
         builder: (context, state) => const Scaffold(body: AppointmentCalendarPage()),
+      ),
+      GoRoute(
+        path: '${AppRoutes.appointments}/:appointmentId',
+        builder: (context, state) {
+          final appointmentId = state.pathParameters['appointmentId']!;
+          return Scaffold(body: AppointmentDetailPage(appointmentId: appointmentId));
+        },
       ),
       GoRoute(
         path: '${AppRoutes.patients}/:patientId',
@@ -97,31 +105,38 @@ String expectedAppointmentRangeLabel(DateTime startLocal, DateTime endLocal) {
 }
 
 void main() {
-  group('AppointmentCalendarPage detail sheet', () {
-    group('CAL-F — appointment detail sheet', () {
-      testWidgets('CAL-F01: appointment tile opens detail sheet with patient, doctor, time, status', (tester) async {
-        await pumpAppointmentCalendarPage(tester, authState: calendarAuthState());
+  group('AppointmentCalendarPage detail navigation', () {
+    group('CAL-F — appointment detail page', () {
+      testWidgets('CAL-F01: appointment tile opens detail page with patient, doctor, time, status', (tester) async {
+        await pumpCalendarWithDetailRoutes(tester);
         await waitForCalendarLoaded(tester);
         await tapCalendarViewTab(tester, 'Day');
         await waitForAppointmentTileReveal(tester);
 
         final appointment = _firstMappedAppointment(tester);
         await tapFirstCalendarAppointment(tester);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
 
+        expect(find.byType(AppointmentDetailPage), findsOneWidget);
         expect(find.text('Test Patient'), findsWidgets);
-        expect(find.text('Dr Test'), findsOneWidget);
-        expect(find.text('Scheduled'), findsOneWidget);
-        expect(find.text(expectedAppointmentRangeLabel(appointment.startTime, appointment.endTime)), findsOneWidget);
-        expect(find.text('Open patient'), findsOneWidget);
+        expect(find.textContaining('Dr Test'), findsWidgets);
+        expect(find.text('Scheduled'), findsWidgets);
+        expect(find.text('Status journey'), findsOneWidget);
+        expect(find.text(expectedAppointmentRangeLabel(appointment.startTime, appointment.endTime)), findsNothing);
       });
 
       testWidgets('CAL-F02: Open patient navigates to patient detail', (tester) async {
-        await pumpCalendarWithPatientRoutes(tester);
+        await pumpCalendarWithDetailRoutes(tester);
         await waitForCalendarLoaded(tester);
         await tapCalendarViewTab(tester, 'Day');
         await waitForAppointmentTileReveal(tester);
 
         await tapFirstCalendarAppointment(tester);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await tester.ensureVisible(find.text('Open patient'));
         await tester.tap(find.text('Open patient'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
@@ -130,7 +145,7 @@ void main() {
       });
 
       testWidgets('CAL-F03: appointment detail opens after skeleton reveal delay', (tester) async {
-        await pumpAppointmentCalendarPage(tester, authState: calendarAuthState());
+        await pumpCalendarWithDetailRoutes(tester);
         final container = ProviderScope.containerOf(tester.element(find.byType(AppointmentCalendarPage)));
         for (var i = 0; i < 30; i++) {
           await tester.pump(const Duration(milliseconds: 50));
@@ -143,7 +158,9 @@ void main() {
         await tester.pump(const Duration(milliseconds: 200));
         await tapCalendarViewTab(tester, 'Day');
         await tapFirstCalendarAppointment(tester);
-        expect(find.text('Open patient'), findsOneWidget);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.byType(AppointmentDetailPage), findsOneWidget);
       });
     });
   });

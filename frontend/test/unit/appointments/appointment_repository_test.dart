@@ -16,6 +16,23 @@ void main() {
       repository = AppointmentRepository(client);
     });
 
+    test('trivial: getAppointment calls RPC with appointment id', () async {
+      final detail = await repository.getAppointment(appointmentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+
+      expect(detail.patientName, 'Test Patient');
+      expect(detail.status, AppointmentStatus.scheduled);
+      expect(client.lastFunction, 'get_appointment');
+      expect(client.lastParams?['p_appointment_id'], 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+    });
+
+    test('stupid usage: blank appointment id throws INVALID_INPUT before RPC', () async {
+      expect(
+        () => repository.getAppointment(appointmentId: '  '),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+      );
+      expect(client.lastFunction, isNull);
+    });
+
     test('trivial: getSettings calls RPC with branch id', () async {
       final settings = await repository.getSettings(branchId: '44444444-4444-4444-8444-444444444444');
 
@@ -49,15 +66,9 @@ void main() {
     });
 
     test('regression: setDefaultDuration throws when response omits saved minutes', () async {
-      client.rpcResults['set_appointment_default_duration'] = {
-        'success': true,
-        'data': <String, dynamic>{},
-      };
+      client.rpcResults['set_appointment_default_duration'] = {'success': true, 'data': <String, dynamic>{}};
 
-      expect(
-        () => repository.setDefaultDuration(durationMinutes: 45),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => repository.setDefaultDuration(durationMinutes: 45), throwsA(isA<StateError>()));
     });
 
     test('regression: setDefaultDuration throws when success has null duration field', () async {
@@ -66,10 +77,7 @@ void main() {
         'data': {'default_duration_minutes': null},
       };
 
-      expect(
-        () => repository.setDefaultDuration(durationMinutes: 45),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => repository.setDefaultDuration(durationMinutes: 45), throwsA(isA<StateError>()));
     });
 
     test('trivial: createAppointment planned sends type and start time', () async {

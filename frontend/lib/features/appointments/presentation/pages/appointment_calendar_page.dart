@@ -1370,44 +1370,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     if (item == null) {
       return;
     }
-    unawaited(_showAppointmentSheet(item));
-  }
-
-  Future<void> _showAppointmentSheet(AppointmentListItem item) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final colors = sheetContext.semanticColors;
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.sm, SpacingTokens.lg, SpacingTokens.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(item.patientName, style: Theme.of(sheetContext).textTheme.titleMedium),
-              const SizedBox(height: SpacingTokens.xs),
-              Text(item.doctorDisplayName, style: Theme.of(sheetContext).textTheme.bodyMedium),
-              const SizedBox(height: SpacingTokens.xs),
-              Text(
-                _formatRange(item.startTime, item.endTime),
-                style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-              ),
-              const SizedBox(height: SpacingTokens.xs),
-              Text(item.status.label, style: Theme.of(sheetContext).textTheme.labelLarge),
-              const SizedBox(height: SpacingTokens.lg),
-              AppButton(
-                label: 'Open patient',
-                onPressed: () {
-                  Navigator.of(sheetContext).pop();
-                  AppNavigator(context).pushPatientDetail(item.patientId);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
+    context.nav.pushAppointmentDetail(item.id, preview: item);
   }
 
   static bool _usesDoctorResources(AppointmentCalendarMode mode) {

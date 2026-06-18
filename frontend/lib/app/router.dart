@@ -9,7 +9,9 @@ import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_container_transform_transition.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patient_detail_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
@@ -103,6 +105,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => uiPendingPlaceholder('Appointments', state),
           ),
           GoRoute(path: AppRoutes.appointmentsCalendar, builder: (context, state) => const AppointmentCalendarPage()),
+          GoRoute(
+            path: '${AppRoutes.appointments}/:appointmentId',
+            builder: (context, state) {
+              final appointmentId = state.pathParameters['appointmentId']!;
+              final routeExtra = AppointmentDetailRouteExtra.fromExtra(state.extra);
+              return AppointmentDetailPage(appointmentId: appointmentId, preview: routeExtra.preview);
+            },
+          ),
           GoRoute(
             path: '${AppRoutes.appointments}/schedule/:doctorId',
             builder: (context, state) => uiPendingPlaceholder('Appointments', state),
