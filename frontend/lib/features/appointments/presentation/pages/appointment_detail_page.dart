@@ -17,6 +17,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_controls_card.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
 /// Full appointment profile page loaded via `get_appointment`.
@@ -80,18 +81,27 @@ class _AppointmentDetailContentView extends StatelessWidget {
       onBack: onBack,
       body: LayoutBuilder(
         builder: (context, constraints) {
+          final useSideControls = constraints.maxWidth >= 720;
+          final heroCard = _AppointmentHeroCard(
+            detail: detail,
+            statusColor: statusColor,
+            dateLabel: _dateFormat.format(detail.startTime.toLocal()),
+            timeLabel:
+                '${_timeFormat.format(detail.startTime.toLocal())} – ${_timeFormat.format(detail.endTime.toLocal())}',
+            durationLabel: '$durationMinutes min',
+            auditFormat: _auditFormat,
+          );
+
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _AppointmentHeroCard(
-                detail: detail,
-                statusColor: statusColor,
-                dateLabel: _dateFormat.format(detail.startTime.toLocal()),
-                timeLabel:
-                    '${_timeFormat.format(detail.startTime.toLocal())} – ${_timeFormat.format(detail.endTime.toLocal())}',
-                durationLabel: '$durationMinutes min',
-                auditFormat: _auditFormat,
-              ),
+              if (useSideControls)
+                _AppointmentDetailHeroControlsRow(heroCard: heroCard, detail: detail)
+              else ...[
+                heroCard,
+                const SizedBox(height: SpacingTokens.md),
+                AppointmentDetailControlsCard(detail: detail),
+              ],
               const SizedBox(height: SpacingTokens.lg),
               AppointmentStatusTimelineWidget(currentStatus: detail.status),
               const SizedBox(height: SpacingTokens.lg),
@@ -133,6 +143,62 @@ class _AppointmentDetailContentView extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+/// Side-by-side hero and manage cards where manage never exceeds hero height.
+class _AppointmentDetailHeroControlsRow extends StatefulWidget {
+  const _AppointmentDetailHeroControlsRow({required this.heroCard, required this.detail});
+
+  final Widget heroCard;
+  final AppointmentDetail detail;
+
+  @override
+  State<_AppointmentDetailHeroControlsRow> createState() => _AppointmentDetailHeroControlsRowState();
+}
+
+class _AppointmentDetailHeroControlsRowState extends State<_AppointmentDetailHeroControlsRow> {
+  final _heroKey = GlobalKey();
+  double? _heroHeight;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncHeroHeight());
+  }
+
+  @override
+  void didUpdateWidget(covariant _AppointmentDetailHeroControlsRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncHeroHeight());
+  }
+
+  void _syncHeroHeight() {
+    if (!mounted) {
+      return;
+    }
+
+    final height = _heroKey.currentContext?.size?.height;
+    if (height != null && height > 0 && height != _heroHeight) {
+      setState(() => _heroHeight = height);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: KeyedSubtree(key: _heroKey, child: widget.heroCard),
+        ),
+        const SizedBox(width: SpacingTokens.lg),
+        SizedBox(
+          width: 272,
+          child: AppointmentDetailControlsCard(detail: widget.detail, maxHeight: _heroHeight),
+        ),
+      ],
     );
   }
 }
