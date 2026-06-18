@@ -243,6 +243,7 @@ class _HorizontalStatusTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final steps = AppointmentStatusTimeline.mainFlow;
+    final currentIndex = isTerminal ? -1 : steps.indexOf(currentStatus);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -257,10 +258,8 @@ class _HorizontalStatusTimeline extends StatelessWidget {
                   isTerminalContext: isTerminal,
                   isFirst: index == 0,
                   isLast: index == steps.length - 1,
-                  previousStepCompleted: index > 0
-                      ? AppointmentStatusTimeline.stepState(current: currentStatus, step: steps[index - 1]) ==
-                            AppointmentTimelineStepState.completed
-                      : false,
+                  stepIndex: index,
+                  currentIndex: currentIndex,
                 ),
               ),
           ],
@@ -300,7 +299,8 @@ class _HorizontalTimelineTrackSegment extends StatelessWidget {
     required this.isTerminalContext,
     required this.isFirst,
     required this.isLast,
-    required this.previousStepCompleted,
+    required this.stepIndex,
+    required this.currentIndex,
   });
 
   final AppointmentStatus status;
@@ -308,7 +308,8 @@ class _HorizontalTimelineTrackSegment extends StatelessWidget {
   final bool isTerminalContext;
   final bool isFirst;
   final bool isLast;
-  final bool previousStepCompleted;
+  final int stepIndex;
+  final int currentIndex;
 
   static const double _trackHeight = 44;
   static const double _nodeSize = 36;
@@ -328,53 +329,59 @@ class _HorizontalTimelineTrackSegment extends StatelessWidget {
         ? statusColor
         : colors.mutedForeground.withValues(alpha: 0.45);
 
-    final connectorBeforeActive = !isTerminalContext && previousStepCompleted;
-    final connectorAfterActive = !isTerminalContext && isCompleted;
+    final connectorBeforeActive = !isTerminalContext && stepIndex > 0 && currentIndex >= stepIndex;
+    final connectorAfterActive = !isTerminalContext && !isLast && currentIndex > stepIndex;
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
     return SizedBox(
       height: _trackHeight,
-      child: Stack(
-        alignment: Alignment.center,
-        clipBehavior: Clip.none,
-        children: [
-          if (!isFirst)
-            Positioned(
-              left: 0,
-              right: _nodeSize / 2,
-              top: _connectorTop,
-              child: AnimatedContainer(
-                duration: motionDuration,
-                curve: AppointmentStatusMotion.curve,
-                height: 2,
-                color: connectorBeforeActive ? colors.primary : colors.border,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final halfWidth = constraints.maxWidth / 2;
+
+          return Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              if (!isFirst)
+                Positioned(
+                  left: 0,
+                  width: halfWidth,
+                  top: _connectorTop,
+                  child: AnimatedContainer(
+                    duration: motionDuration,
+                    curve: AppointmentStatusMotion.curve,
+                    height: 2,
+                    color: connectorBeforeActive ? colors.primary : colors.border,
+                  ),
+                ),
+              if (!isLast)
+                Positioned(
+                  left: halfWidth,
+                  width: halfWidth,
+                  top: _connectorTop,
+                  child: AnimatedContainer(
+                    duration: motionDuration,
+                    curve: AppointmentStatusMotion.curve,
+                    height: 2,
+                    color: connectorAfterActive ? colors.primary : colors.border,
+                  ),
+                ),
+              Positioned.fill(
+                child: Center(
+                  child: _TimelineNode(
+                    icon: isCompleted ? Icons.check_rounded : _iconForStatus(status),
+                    color: nodeColor,
+                    isCurrent: isCurrent,
+                    isCompleted: isCompleted,
+                    isSkipped: isSkipped,
+                    fixedSize: _nodeSize,
+                  ),
+                ),
               ),
-            ),
-          if (!isLast)
-            Positioned(
-              left: _nodeSize / 2,
-              right: 0,
-              top: _connectorTop,
-              child: AnimatedContainer(
-                duration: motionDuration,
-                curve: AppointmentStatusMotion.curve,
-                height: 2,
-                color: connectorAfterActive ? colors.primary : colors.border,
-              ),
-            ),
-          Positioned.fill(
-            child: Center(
-              child: _TimelineNode(
-                icon: isCompleted ? Icons.check_rounded : _iconForStatus(status),
-                color: nodeColor,
-                isCurrent: isCurrent,
-                isCompleted: isCompleted,
-                isSkipped: isSkipped,
-                fixedSize: _nodeSize,
-              ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -444,6 +451,7 @@ class _VerticalStatusTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final steps = AppointmentStatusTimeline.mainFlow;
+    final currentIndex = isTerminal ? -1 : steps.indexOf(currentStatus);
 
     return Column(
       children: [
@@ -454,6 +462,8 @@ class _VerticalStatusTimeline extends StatelessWidget {
             isTerminalContext: isTerminal,
             isLast: index == steps.length - 1,
             stepNumber: index + 1,
+            stepIndex: index,
+            currentIndex: currentIndex,
           ),
       ],
     );
@@ -467,6 +477,8 @@ class _TimelineStepRow extends StatelessWidget {
     required this.isTerminalContext,
     required this.isLast,
     required this.stepNumber,
+    required this.stepIndex,
+    required this.currentIndex,
   });
 
   final AppointmentStatus status;
@@ -474,6 +486,8 @@ class _TimelineStepRow extends StatelessWidget {
   final bool isTerminalContext;
   final bool isLast;
   final int stepNumber;
+  final int stepIndex;
+  final int currentIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -490,7 +504,7 @@ class _TimelineStepRow extends StatelessWidget {
         ? statusColor
         : colors.mutedForeground.withValues(alpha: 0.45);
 
-    final connectorActive = !isTerminalContext && isCompleted;
+    final connectorActive = !isTerminalContext && !isLast && currentIndex > stepIndex;
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
     return IntrinsicHeight(
@@ -510,14 +524,11 @@ class _TimelineStepRow extends StatelessWidget {
                 ),
                 if (!isLast)
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: AnimatedContainer(
-                        duration: motionDuration,
-                        curve: AppointmentStatusMotion.curve,
-                        width: 2,
-                        color: connectorActive ? colors.primary : colors.border,
-                      ),
+                    child: AnimatedContainer(
+                      duration: motionDuration,
+                      curve: AppointmentStatusMotion.curve,
+                      width: 2,
+                      color: connectorActive ? colors.primary : colors.border,
                     ),
                   ),
               ],
