@@ -30,15 +30,68 @@ void main() {
       expect(soap.specialtyFormJson, isEmpty);
     });
 
-    test('today includes every appointment status while future days stay pre-visit', () {
+    test('appointment statuses follow calendar-day rules in org timezone', () {
+      const timezone = 'Africa/Cairo';
+      final referenceUtc = DateTime.utc(2026, 6, 13, 12);
+
+      final pastStatuses = <AppointmentStatus>{};
+      for (var patientIndex = 1; patientIndex <= DevClinicSeedSpec.patientsPerBranch; patientIndex++) {
+        for (final dayOffset in [-2, -1]) {
+          final seedKey = patientIndex + dayOffset;
+          final startTime = DevClinicSeedSchedule.appointmentStartUtc(
+            timezone: timezone,
+            dayOffset: dayOffset,
+            patientIndex: patientIndex,
+            referenceUtc: referenceUtc,
+          );
+          pastStatuses.add(
+            DevClinicSeedSchedule.appointmentStatusFor(
+              startTimeUtc: startTime,
+              timezone: timezone,
+              seedKey: seedKey,
+              referenceUtc: referenceUtc,
+            ),
+          );
+        }
+      }
+      expect(pastStatuses, {AppointmentStatus.completed, AppointmentStatus.cancelled, AppointmentStatus.noShow});
+      expect(pastStatuses, isNot(contains(AppointmentStatus.scheduled)));
+      expect(pastStatuses, isNot(contains(AppointmentStatus.confirmed)));
+      expect(pastStatuses, isNot(contains(AppointmentStatus.checkedIn)));
+      expect(pastStatuses, isNot(contains(AppointmentStatus.inProgress)));
+
       final todayStatuses = <AppointmentStatus>{};
       for (var seedKey = 0; seedKey < 20; seedKey++) {
-        todayStatuses.add(DevClinicSeedSchedule.appointmentStatusFor(dayOffset: 0, seedKey: seedKey));
+        final startTime = DevClinicSeedSchedule.appointmentStartUtc(
+          timezone: timezone,
+          dayOffset: 0,
+          patientIndex: 1,
+          referenceUtc: referenceUtc,
+        );
+        todayStatuses.add(
+          DevClinicSeedSchedule.appointmentStatusFor(
+            startTimeUtc: startTime,
+            timezone: timezone,
+            seedKey: seedKey,
+            referenceUtc: referenceUtc,
+          ),
+        );
       }
       expect(todayStatuses, containsAll(DevClinicSeedSchedule.seedableAppointmentStatuses));
 
       for (final dayOffset in [1, 2, 3, 4, 5]) {
-        final allowed = DevClinicSeedSchedule.allowedStatusesForDayOffset(dayOffset);
+        final startTime = DevClinicSeedSchedule.appointmentStartUtc(
+          timezone: timezone,
+          dayOffset: dayOffset,
+          patientIndex: 1,
+          referenceUtc: referenceUtc,
+        );
+        final allowed = DevClinicSeedSchedule.allowedStatusesForStartTime(
+          startTimeUtc: startTime,
+          timezone: timezone,
+          referenceUtc: referenceUtc,
+        );
+        expect(allowed, DevClinicSeedSchedule.allowedStatusesForDayOffset(dayOffset));
         expect(allowed, isNot(contains(AppointmentStatus.checkedIn)));
         expect(allowed, isNot(contains(AppointmentStatus.inProgress)));
         expect(allowed, isNot(contains(AppointmentStatus.completed)));

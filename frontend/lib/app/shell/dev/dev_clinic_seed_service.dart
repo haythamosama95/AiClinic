@@ -258,11 +258,16 @@ class DevClinicSeedService {
           }
 
           final seedKey = patientIndex + dayOffset;
-          final targetStatus = DevClinicSeedSchedule.appointmentStatusFor(dayOffset: dayOffset, seedKey: seedKey);
           final startTime = DevClinicSeedSchedule.appointmentStartUtc(
             timezone: DevClinicSeedSpec.timezone,
             dayOffset: dayOffset,
             patientIndex: patientIndex,
+            referenceUtc: referenceUtc,
+          );
+          final targetStatus = DevClinicSeedSchedule.appointmentStatusFor(
+            startTimeUtc: startTime,
+            timezone: DevClinicSeedSpec.timezone,
+            seedKey: seedKey,
             referenceUtc: referenceUtc,
           );
 

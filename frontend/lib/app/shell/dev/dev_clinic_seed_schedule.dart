@@ -47,19 +47,79 @@ abstract final class DevClinicSeedSchedule {
     return 'Dev seed patient $branchCode #$patientIndex — allergies reviewed, emergency contact on file.';
   }
 
-  static List<AppointmentStatus> allowedStatusesForDayOffset(int dayOffset) {
-    if (dayOffset < 0) {
-      return const [AppointmentStatus.completed, AppointmentStatus.cancelled, AppointmentStatus.noShow];
-    }
-    if (dayOffset == 0) {
-      return seedableAppointmentStatuses;
-    }
-    return const [AppointmentStatus.scheduled, AppointmentStatus.confirmed, AppointmentStatus.cancelled];
+  /// Statuses allowed for appointments on a calendar day relative to "today" in [timezone].
+  ///
+  /// - Before today: completed, cancelled, or no-show only.
+  /// - Today: any seedable status.
+  /// - After today: scheduled, confirmed, or cancelled only.
+  static List<AppointmentStatus> allowedStatusesForCalendarDayRelation(DevClinicSeedCalendarDayRelation relation) {
+    return switch (relation) {
+      DevClinicSeedCalendarDayRelation.past => const [
+        AppointmentStatus.completed,
+        AppointmentStatus.cancelled,
+        AppointmentStatus.noShow,
+      ],
+      DevClinicSeedCalendarDayRelation.today => seedableAppointmentStatuses,
+      DevClinicSeedCalendarDayRelation.future => const [
+        AppointmentStatus.scheduled,
+        AppointmentStatus.confirmed,
+        AppointmentStatus.cancelled,
+      ],
+    };
   }
 
-  static AppointmentStatus appointmentStatusFor({required int dayOffset, required int seedKey}) {
-    final allowed = allowedStatusesForDayOffset(dayOffset);
-    return allowed[seedKey % allowed.length];
+  static DevClinicSeedCalendarDayRelation calendarDayRelationFor({
+    required DateTime startTimeUtc,
+    required String timezone,
+    DateTime? referenceUtc,
+  }) {
+    ensureAppointmentTimezonesInitialized();
+    final ref = (referenceUtc ?? DateTime.now()).toUtc();
+    final location = tz.getLocation(timezone);
+    final apptLocal = tz.TZDateTime.from(startTimeUtc.toUtc(), location);
+    final todayLocal = tz.TZDateTime.from(ref, location);
+    final apptDay = DateTime(apptLocal.year, apptLocal.month, apptLocal.day);
+    final today = DateTime(todayLocal.year, todayLocal.month, todayLocal.day);
+    if (apptDay.isBefore(today)) {
+      return DevClinicSeedCalendarDayRelation.past;
+    }
+    if (apptDay.isAtSameMomentAs(today)) {
+      return DevClinicSeedCalendarDayRelation.today;
+    }
+    return DevClinicSeedCalendarDayRelation.future;
+  }
+
+  static List<AppointmentStatus> allowedStatusesForDayOffset(int dayOffset) {
+    final relation = switch (dayOffset) {
+      < 0 => DevClinicSeedCalendarDayRelation.past,
+      0 => DevClinicSeedCalendarDayRelation.today,
+      _ => DevClinicSeedCalendarDayRelation.future,
+    };
+    return allowedStatusesForCalendarDayRelation(relation);
+  }
+
+  static List<AppointmentStatus> allowedStatusesForStartTime({
+    required DateTime startTimeUtc,
+    required String timezone,
+    DateTime? referenceUtc,
+  }) {
+    final relation = calendarDayRelationFor(startTimeUtc: startTimeUtc, timezone: timezone, referenceUtc: referenceUtc);
+    return allowedStatusesForCalendarDayRelation(relation);
+  }
+
+  static AppointmentStatus appointmentStatusFor({
+    required DateTime startTimeUtc,
+    required String timezone,
+    required int seedKey,
+    DateTime? referenceUtc,
+  }) {
+    final allowed = allowedStatusesForStartTime(
+      startTimeUtc: startTimeUtc,
+      timezone: timezone,
+      referenceUtc: referenceUtc,
+    );
+    final index = seedKey % allowed.length;
+    return allowed[index < 0 ? index + allowed.length : index];
   }
 
   /// Deterministic appointment length in [minAppointmentDurationMinutes, maxAppointmentDurationMinutes].
@@ -224,5 +284,7 @@ abstract final class DevClinicSeedSchedule {
     };
   }
 }
+
+enum DevClinicSeedCalendarDayRelation { past, today, future }
 
 enum DevClinicVisitDocumentationKind { none, partialSoap, fullSoap, completedWithTreatment }
