@@ -8,11 +8,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 
 /// Realtime postgres change forwarded from the queue subscription.
 class AppointmentQueueRealtimeChange {
-  const AppointmentQueueRealtimeChange({
-    required this.eventType,
-    this.oldRecord,
-    this.newRecord,
-  });
+  const AppointmentQueueRealtimeChange({required this.eventType, this.oldRecord, this.newRecord});
 
   final PostgresChangeEvent eventType;
   final Map<String, dynamic>? oldRecord;
@@ -49,11 +45,7 @@ bool _removeByRecord(List<AppointmentListItem> items, Map<String, dynamic>? reco
   return items.length != before;
 }
 
-bool _applyUpdate(
-  List<AppointmentListItem> items,
-  Map<String, dynamic>? record,
-  AppointmentTodayRange todayRange,
-) {
+bool _applyUpdate(List<AppointmentListItem> items, Map<String, dynamic>? record, AppointmentTodayRange todayRange) {
   if (record == null) {
     return false;
   }
@@ -68,6 +60,7 @@ bool _applyUpdate(
   final startTime = parseAppointmentDateTime(record['start_time']);
   final endTime = parseAppointmentDateTime(record['end_time']);
   final type = AppointmentType.tryParse(record['type']?.toString());
+  final updatedAt = parseAppointmentDateTime(record['updated_at']);
 
   if (isDeleted || status == AppointmentStatus.cancelled || status == AppointmentStatus.noShow) {
     return _removeByRecord(items, record);
@@ -92,6 +85,7 @@ bool _applyUpdate(
     endTime: endTime,
     status: status ?? existing.status,
     type: type ?? existing.type,
+    updatedAt: updatedAt ?? existing.updatedAt,
   );
   return true;
 }

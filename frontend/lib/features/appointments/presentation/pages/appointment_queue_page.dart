@@ -12,9 +12,8 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_schedule_column.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_session_column.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_stats_banner.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_waiting_column.dart';
 
-/// Three-column clinic queue dashboard for front-desk flow management.
+/// Clinic queue dashboard for front-desk flow management.
 class AppointmentQueuePage extends ConsumerStatefulWidget {
   const AppointmentQueuePage({super.key});
 
@@ -29,7 +28,7 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
   @override
   void initState() {
     super.initState();
-    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         setState(() => _now = DateTime.now());
       }
@@ -108,7 +107,7 @@ class _QueueHeader extends StatelessWidget {
           ),
           const SizedBox(height: SpacingTokens.xs),
           Text(
-            "Today's patient flow — scheduled, waiting, and in session",
+            "Today's patient flow — scheduled and in session",
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
           ),
         ],
@@ -136,17 +135,15 @@ class _QueueBody extends StatelessWidget {
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(flex: 4, child: AppointmentQueueScheduleColumn(items: partition.schedule)),
-                  const SizedBox(width: SpacingTokens.md),
                   Expanded(
-                    flex: 4,
-                    child: AppointmentQueueWaitingColumn(items: partition.waiting, now: now),
+                    flex: 3,
+                    child: AppointmentQueueScheduleColumn(items: partition.schedule, now: now),
                   ),
                   const SizedBox(width: SpacingTokens.md),
                   Expanded(
-                    flex: 3,
+                    flex: 2,
                     child: AppointmentQueueSessionColumn(
-                      activeSession: partition.activeSession,
+                      activeSessions: partition.activeSessions,
                       nextUp: partition.nextUp,
                       now: now,
                     ),
@@ -156,17 +153,15 @@ class _QueueBody extends StatelessWidget {
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(height: 280, child: AppointmentQueueScheduleColumn(items: partition.schedule)),
-                  const SizedBox(height: SpacingTokens.md),
-                  SizedBox(
-                    height: 280,
-                    child: AppointmentQueueWaitingColumn(items: partition.waiting, now: now),
+                  Expanded(
+                    flex: 3,
+                    child: AppointmentQueueScheduleColumn(items: partition.schedule, now: now),
                   ),
                   const SizedBox(height: SpacingTokens.md),
-                  SizedBox(
-                    height: 320,
+                  Expanded(
+                    flex: 2,
                     child: AppointmentQueueSessionColumn(
-                      activeSession: partition.activeSession,
+                      activeSessions: partition.activeSessions,
                       nextUp: partition.nextUp,
                       now: now,
                     ),

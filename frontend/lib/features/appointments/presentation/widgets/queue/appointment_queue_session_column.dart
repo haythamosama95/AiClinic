@@ -6,16 +6,16 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 
-/// Column 3 — active session hero card and next-up preview.
+/// Column 3 — active session cards (one per doctor) and next-up preview.
 class AppointmentQueueSessionColumn extends StatelessWidget {
   const AppointmentQueueSessionColumn({
-    required this.activeSession,
+    required this.activeSessions,
     required this.nextUp,
     required this.now,
     super.key,
   });
 
-  final AppointmentListItem? activeSession;
+  final List<AppointmentListItem> activeSessions;
   final AppointmentListItem? nextUp;
   final DateTime now;
 
@@ -38,12 +38,14 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Active session',
+                  'Active sessions',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: SpacingTokens.xs / 2),
                 Text(
-                  'Who is currently with the doctor',
+                  activeSessions.length <= 1
+                      ? 'Who is currently with the doctor'
+                      : 'Patients currently in consultation by doctor',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
                 ),
               ],
@@ -57,9 +59,17 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
-                    child: activeSession == null
+                    child: activeSessions.isEmpty
                         ? const _NoActiveSessionPlaceholder()
-                        : _ActiveSessionHeroCard(item: activeSession!, now: now),
+                        : activeSessions.length == 1
+                        ? _ActiveSessionHeroCard(item: activeSessions.first, now: now)
+                        : ListView.separated(
+                            itemCount: activeSessions.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
+                            itemBuilder: (context, index) {
+                              return _ActiveSessionCompactCard(item: activeSessions[index], now: now);
+                            },
+                          ),
                   ),
                   if (nextUp != null) ...[const SizedBox(height: SpacingTokens.md), _NextUpPreview(item: nextUp!)],
                 ],
@@ -153,6 +163,70 @@ class _ActiveSessionHeroCard extends StatelessWidget {
   }
 }
 
+class _ActiveSessionCompactCard extends StatelessWidget {
+  const _ActiveSessionCompactCard({required this.item, required this.now});
+
+  final AppointmentListItem item;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    final sessionLabel = AppointmentQueueDisplay.formatSessionLabel(
+      AppointmentQueueDisplay.estimateSessionDuration(item, now: now),
+    );
+
+    return Material(
+      color: colors.primary.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(SpacingTokens.md),
+      child: InkWell(
+        onTap: () => AppNavigator(context).pushAppointmentDetail(item.id, preview: item),
+        borderRadius: BorderRadius.circular(SpacingTokens.md),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(SpacingTokens.md),
+            border: Border.all(color: colors.primary.withValues(alpha: 0.35)),
+          ),
+          padding: const EdgeInsets.all(SpacingTokens.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item.doctorDisplayName,
+                style: Theme.of(
+                  context,
+                ).textTheme.labelMedium?.copyWith(color: colors.primary, fontWeight: FontWeight.w700),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: SpacingTokens.xs),
+              Text(
+                item.patientName,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: SpacingTokens.xs),
+              Row(
+                children: [
+                  Icon(Icons.timer_outlined, size: 16, color: colors.primary),
+                  const SizedBox(width: SpacingTokens.xs),
+                  Text(
+                    sessionLabel,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: colors.primary, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _NoActiveSessionPlaceholder extends StatelessWidget {
   const _NoActiveSessionPlaceholder();
 
@@ -175,7 +249,7 @@ class _NoActiveSessionPlaceholder extends StatelessWidget {
               Icon(Icons.meeting_room_outlined, size: 48, color: colors.mutedForeground),
               const SizedBox(height: SpacingTokens.md),
               Text(
-                'No active session',
+                'No active sessions',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: SpacingTokens.sm),

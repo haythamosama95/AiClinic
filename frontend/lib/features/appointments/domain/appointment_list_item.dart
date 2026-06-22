@@ -16,6 +16,7 @@ class AppointmentListItem {
     required this.endTime,
     required this.type,
     required this.status,
+    this.updatedAt,
   });
 
   final String id;
@@ -30,6 +31,7 @@ class AppointmentListItem {
   final DateTime endTime;
   final AppointmentType type;
   final AppointmentStatus status;
+  final DateTime? updatedAt;
 
   static AppointmentListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
@@ -45,6 +47,7 @@ class AppointmentListItem {
     final statusRaw = row['status']?.toString();
     final type = AppointmentType.tryParse(typeRaw) ?? AppointmentType.unknown;
     final status = AppointmentStatus.tryParse(statusRaw) ?? AppointmentStatus.unknown;
+    final updatedAt = parseAppointmentDateTime(row['updated_at']);
 
     if (type == AppointmentType.unknown) {
       debugPrint('AppointmentListItem: unrecognized type "$typeRaw" for appointment $id');
@@ -74,6 +77,7 @@ class AppointmentListItem {
       endTime: endTime,
       type: type,
       status: status,
+      updatedAt: updatedAt,
     );
   }
 
@@ -87,6 +91,7 @@ class AppointmentListItem {
     DateTime? endTime,
     AppointmentType? type,
     AppointmentStatus? status,
+    DateTime? updatedAt,
   }) {
     return AppointmentListItem(
       id: id ?? this.id,
@@ -98,6 +103,7 @@ class AppointmentListItem {
       endTime: endTime ?? this.endTime,
       type: type ?? this.type,
       status: status ?? this.status,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -114,9 +120,11 @@ class AppointmentListItem {
             startTime == other.startTime &&
             endTime == other.endTime &&
             type == other.type &&
-            status == other.status;
+            status == other.status &&
+            updatedAt == other.updatedAt;
   }
 
   @override
-  int get hashCode => Object.hash(id, patientId, patientName, doctorId, doctorName, startTime, endTime, type, status);
+  int get hashCode =>
+      Object.hash(id, patientId, patientName, doctorId, doctorName, startTime, endTime, type, status, updatedAt);
 }

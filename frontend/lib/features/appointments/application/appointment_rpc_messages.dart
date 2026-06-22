@@ -6,6 +6,8 @@ String appointmentMessageForRpc(RpcFailure failure) {
     'SCHEDULE_CONFLICT' => 'This time overlaps another booked slot. Choose a different slot.',
     'PATIENT_ALREADY_BOOKED_SAME_DAY' =>
       'This patient already has an appointment on the same day. Update the existing appointment instead.',
+    'DOCTOR_ALREADY_IN_PROGRESS' =>
+      'This doctor already has a patient in progress. Complete that visit before starting another.',
     'INVALID_TRANSITION' => switch (failure.message.toLowerCase()) {
       final message when message.contains('appointment day') =>
         'This status change is only allowed on or after the appointment day.',

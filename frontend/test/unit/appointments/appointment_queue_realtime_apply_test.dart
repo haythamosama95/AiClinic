@@ -8,10 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   group('applyAppointmentQueueRealtimeChange', () {
-    final range = AppointmentTodayRange(
-      from: DateTime.utc(2026, 6, 4, 0),
-      to: DateTime.utc(2026, 6, 5, 0),
-    );
+    final range = AppointmentTodayRange(from: DateTime.utc(2026, 6, 4, 0), to: DateTime.utc(2026, 6, 5, 0));
 
     AppointmentListItem item({
       String id = 'a1',
@@ -43,6 +40,7 @@ void main() {
             'end_time': DateTime.utc(2026, 6, 4, 11, 30).toIso8601String(),
             'status': 'confirmed',
             'type': 'planned',
+            'updated_at': DateTime.utc(2026, 6, 4, 10, 30).toIso8601String(),
           },
         ),
         todayRange: range,
@@ -51,6 +49,32 @@ void main() {
       expect(applied, isTrue);
       expect(items.single.startTime, DateTime.utc(2026, 6, 4, 11));
       expect(items.single.status, AppointmentStatus.confirmed);
+      expect(items.single.updatedAt, DateTime.utc(2026, 6, 4, 10, 30));
+    });
+
+    test('update patches checked_in status with updated_at for wait tracking', () {
+      final items = [item(status: AppointmentStatus.confirmed)];
+      final checkedInAt = DateTime.utc(2026, 6, 4, 9, 45);
+
+      final applied = applyAppointmentQueueRealtimeChange(
+        items: items,
+        change: AppointmentQueueRealtimeChange(
+          eventType: PostgresChangeEvent.update,
+          newRecord: {
+            'id': 'a1',
+            'start_time': DateTime.utc(2026, 6, 4, 10).toIso8601String(),
+            'end_time': DateTime.utc(2026, 6, 4, 10, 30).toIso8601String(),
+            'status': 'checked_in',
+            'type': 'planned',
+            'updated_at': checkedInAt.toIso8601String(),
+          },
+        ),
+        todayRange: range,
+      );
+
+      expect(applied, isTrue);
+      expect(items.single.status, AppointmentStatus.checkedIn);
+      expect(items.single.updatedAt, checkedInAt);
     });
 
     test('update removes cancelled appointment from queue', () {
@@ -80,10 +104,7 @@ void main() {
 
       final applied = applyAppointmentQueueRealtimeChange(
         items: items,
-        change: AppointmentQueueRealtimeChange(
-          eventType: PostgresChangeEvent.delete,
-          oldRecord: {'id': 'a1'},
-        ),
+        change: AppointmentQueueRealtimeChange(eventType: PostgresChangeEvent.delete, oldRecord: {'id': 'a1'}),
         todayRange: range,
       );
 

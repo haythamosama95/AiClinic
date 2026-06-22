@@ -28,6 +28,17 @@ void main() {
       expect(item.endTime, DateTime.parse('2026-05-27T09:20:00.000Z'));
     });
 
+    test('parses updated_at when present', () {
+      final item = AppointmentListItem.fromRow({
+        ..._listRow(status: 'checked_in'),
+        'updated_at': '2026-05-27T08:45:00.000Z',
+      });
+
+      expect(item, isNotNull);
+      expect(item!.status, AppointmentStatus.checkedIn);
+      expect(item.updatedAt, DateTime.parse('2026-05-27T08:45:00.000Z'));
+    });
+
     test('parses confirmed status row', () {
       final item = AppointmentListItem.fromRow(_listRow(status: 'confirmed'));
 

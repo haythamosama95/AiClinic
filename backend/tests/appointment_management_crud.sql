@@ -453,6 +453,47 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Second in_progress for the same doctor is rejected while another is active.
+  v_start := pg_temp.test_appointment_same_day_slot(8);
+  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 8;
+  v_result := public.create_appointment(
+    v_main_branch_id, v_sd_patient, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.update_appointment_status(v_appt_second, 'confirmed');
+  v_result := public.update_appointment_status(v_appt_second, 'checked_in');
+  v_result := public.update_appointment_status(v_appt_second, 'in_progress');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_rejects_second_in_progress_same_doctor',
+    NOT v_result.success AND v_result.error_code = 'DOCTOR_ALREADY_IN_PROGRESS',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.cancel_appointment(v_appt_second, 'Cleanup after in-progress guard test');
+
+  -- Complete the first in_progress appointment so later same-doctor tests can proceed.
+  v_result := public.create_visit(v_appt_planned, NULL);
+  v_visit_id := (v_result.data ->> 'visit_id')::uuid;
+  SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
+  v_result := public.save_soap_note(
+    v_visit_id,
+    v_visit_updated_at,
+    'Lifecycle completion note.',
+    NULL,
+    NULL,
+    NULL,
+    NULL
+  );
+  v_result := public.complete_visit(v_visit_id, NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'status_complete_first_in_progress_for_lifecycle',
+    v_result.success AND (v_result.data ->> 'appointment_status') = 'completed',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
   -- Invalid skip: completed -> checked_in.
   v_result := public.update_appointment_status(v_appt_planned, 'checked_in');
   PERFORM set_config('role', 'postgres', true);

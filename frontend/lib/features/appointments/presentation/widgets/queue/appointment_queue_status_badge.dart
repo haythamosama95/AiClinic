@@ -25,7 +25,7 @@ class AppointmentQueueStatusBadge extends StatelessWidget {
     };
 
     return DecoratedBox(
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(SpacingTokens.sm)),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(999)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs / 2),
         child: Text(

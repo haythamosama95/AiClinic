@@ -22,11 +22,16 @@ class AppointmentQueueStats {
 
 /// Three-column partition of today's queue.
 class AppointmentQueuePartition {
-  const AppointmentQueuePartition({required this.schedule, required this.waiting, this.activeSession, this.nextUp});
+  const AppointmentQueuePartition({
+    required this.schedule,
+    required this.waiting,
+    required this.activeSessions,
+    this.nextUp,
+  });
 
   final List<AppointmentListItem> schedule;
   final List<AppointmentListItem> waiting;
-  final AppointmentListItem? activeSession;
+  final List<AppointmentListItem> activeSessions;
   final AppointmentListItem? nextUp;
 }
 
@@ -57,8 +62,7 @@ abstract final class AppointmentQueueDisplay {
     final sorted = sortAppointmentsByStartTime(_activeToday(items));
     final waiting = sorted.where((item) => item.status == AppointmentStatus.checkedIn).toList(growable: false)
       ..sort((a, b) => estimateWaitDuration(b, now: reference).compareTo(estimateWaitDuration(a, now: reference)));
-    final inProgress = sorted.where((item) => item.status == AppointmentStatus.inProgress).toList(growable: false);
-    final activeSession = inProgress.isEmpty ? null : inProgress.first;
+    final activeSessions = activeSessionsFor(sorted);
     AppointmentListItem? nextUp;
     if (waiting.isNotEmpty) {
       nextUp = waiting.first;
@@ -71,7 +75,40 @@ abstract final class AppointmentQueueDisplay {
       }
     }
 
-    return AppointmentQueuePartition(schedule: sorted, waiting: waiting, activeSession: activeSession, nextUp: nextUp);
+    return AppointmentQueuePartition(
+      schedule: sorted,
+      waiting: waiting,
+      activeSessions: activeSessions,
+      nextUp: nextUp,
+    );
+  }
+
+  /// One active session per doctor (earliest in-progress slot when duplicates exist).
+  static List<AppointmentListItem> activeSessionsFor(List<AppointmentListItem> items) {
+    final inProgress = items.where((item) => item.status == AppointmentStatus.inProgress).toList(growable: false);
+    final byDoctor = <String, AppointmentListItem>{};
+    for (final item in inProgress) {
+      final doctorKey = item.doctorId ?? '';
+      byDoctor.putIfAbsent(doctorKey, () => item);
+    }
+    final sessions = byDoctor.values.toList(growable: false)..sort((a, b) => a.startTime.compareTo(b.startTime));
+    return sessions;
+  }
+
+  /// Whether [item] can start because its doctor has no other in-progress appointment.
+  static String? doctorInProgressBlockReason(AppointmentListItem item, Iterable<AppointmentListItem> items) {
+    if (item.status != AppointmentStatus.checkedIn) {
+      return null;
+    }
+    final doctorKey = item.doctorId ?? '';
+    final conflict = items.where(
+      (other) =>
+          other.id != item.id && other.status == AppointmentStatus.inProgress && (other.doctorId ?? '') == doctorKey,
+    );
+    if (conflict.isEmpty) {
+      return null;
+    }
+    return '${item.doctorDisplayName} already has a patient in progress. Complete that visit before starting another.';
   }
 
   static bool isScheduleRowDimmed(AppointmentListItem item) {
@@ -80,8 +117,16 @@ abstract final class AppointmentQueueDisplay {
         item.status == AppointmentStatus.noShow;
   }
 
-  /// Approximates wait time from appointment start when check-in timestamp is unavailable.
+  /// Wait time since check-in when [updatedAt] is known; otherwise falls back to slot start.
   static Duration estimateWaitDuration(AppointmentListItem item, {required DateTime now}) {
+    if (item.status == AppointmentStatus.checkedIn) {
+      final checkedInAt = item.updatedAt;
+      if (checkedInAt != null) {
+        final wait = now.difference(checkedInAt);
+        return wait.isNegative ? Duration.zero : wait;
+      }
+    }
+
     final anchor = item.startTime.isAfter(now) ? now : item.startTime;
     return now.difference(anchor).isNegative ? Duration.zero : now.difference(anchor);
   }
@@ -113,6 +158,14 @@ abstract final class AppointmentQueueDisplay {
 
   static String formatWaitLabel(Duration wait) => 'Waiting: ${formatDurationLabel(wait)}';
 
+  static String formatWaitedLabel(Duration wait) {
+    final totalMinutes = wait.inMinutes;
+    if (totalMinutes < 60) {
+      return 'Waited: $totalMinutes mins';
+    }
+    return 'Waited: ${formatDurationLabel(wait)}';
+  }
+
   static String formatSessionLabel(Duration session) => 'In session: ${formatDurationLabel(session)}';
 
   static (String, AppointmentQueueWaitTier) waitPresentation(AppointmentListItem item, {required DateTime now}) {
@@ -132,18 +185,7 @@ abstract final class AppointmentQueueDisplay {
     };
   }
 
-  static String scheduleBadgeLabel(AppointmentStatus status) {
-    return switch (status) {
-      AppointmentStatus.scheduled => 'Scheduled',
-      AppointmentStatus.confirmed => 'Confirmed',
-      AppointmentStatus.checkedIn => 'Arrived',
-      AppointmentStatus.inProgress => 'In session',
-      AppointmentStatus.completed => 'Completed',
-      AppointmentStatus.noShow => 'No show',
-      AppointmentStatus.cancelled => 'Cancelled',
-      AppointmentStatus.unknown => status.label,
-    };
-  }
+  static String scheduleBadgeLabel(AppointmentStatus status) => status.label;
 
   static List<AppointmentListItem> _activeToday(List<AppointmentListItem> items) {
     return items

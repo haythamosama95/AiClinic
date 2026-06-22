@@ -10,11 +10,13 @@ import 'package:ai_clinic/features/appointments/application/appointment_rpc_mess
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
 
 extension _AppointmentDetailListItem on AppointmentDetail {
@@ -59,6 +61,14 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
 
   AppointmentListItem get _listItem => detail.toListItem();
 
+  List<AppointmentListItem> get _siblingAppointments {
+    final queueItems = ref.read(appointmentQueueProvider).items;
+    if (queueItems.isNotEmpty) {
+      return queueItems;
+    }
+    return ref.read(appointmentCalendarProvider).items;
+  }
+
   bool get _canCreateAppointments => _permissions.canCreateAppointments();
 
   bool get _canCancelAppointments => AuthRouteGuard.canAccessAppointmentCancelActions(ref.read(authSessionProvider));
@@ -85,7 +95,11 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   }
 
   String _advanceStatusLabel() {
-    final activeLabel = forwardStatusActionLabelFor(_listItem, organizationTimezone: _organizationTimezone);
+    final activeLabel = forwardStatusActionLabelFor(
+      _listItem,
+      organizationTimezone: _organizationTimezone,
+      siblingAppointments: _siblingAppointments,
+    );
     if (activeLabel.isNotEmpty) {
       return activeLabel;
     }
@@ -125,6 +139,9 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         AppointmentStatus.inProgress => 'Starting is only available on the appointment day.',
         _ => 'This status change is only available on the appointment day.',
       };
+    }
+    if (target == AppointmentStatus.inProgress) {
+      return AppointmentQueueDisplay.doctorInProgressBlockReason(_listItem, _siblingAppointments);
     }
     return null;
   }
@@ -181,7 +198,11 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       return;
     }
 
-    final target = forwardStatusTargetFor(_listItem, organizationTimezone: _organizationTimezone);
+    final target = forwardStatusTargetFor(
+      _listItem,
+      organizationTimezone: _organizationTimezone,
+      siblingAppointments: _siblingAppointments,
+    );
     if (target == null) {
       return;
     }
@@ -196,6 +217,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         }
         ref.invalidate(appointmentDetailProvider(detail.id));
         ref.invalidate(appointmentCalendarProvider);
+        ref.invalidate(appointmentQueueProvider);
         AppToast.success(context, message: 'Appointment marked as ${target.label.toLowerCase()}.');
       } on RpcFailure catch (error) {
         if (mounted) {
@@ -229,6 +251,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         }
         ref.invalidate(appointmentDetailProvider(detail.id));
         ref.invalidate(appointmentCalendarProvider);
+        ref.invalidate(appointmentQueueProvider);
         AppToast.success(context, message: 'Appointment cancelled.');
       } on RpcFailure catch (error) {
         if (mounted) {
@@ -263,6 +286,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
             }
             ref.invalidate(appointmentDetailProvider(detail.id));
             ref.invalidate(appointmentCalendarProvider);
+            ref.invalidate(appointmentQueueProvider);
             AppToast.success(context, message: 'Appointment marked as no-show.');
           } on RpcFailure catch (error) {
             if (mounted) {

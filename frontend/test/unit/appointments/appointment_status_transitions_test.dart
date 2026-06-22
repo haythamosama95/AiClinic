@@ -8,12 +8,18 @@ void main() {
   group('appointment status transitions', () {
     final referenceUtc = DateTime.utc(2026, 6, 2);
 
-    AppointmentListItem item({AppointmentStatus status = AppointmentStatus.scheduled, DateTime? startTime}) {
+    AppointmentListItem item({
+      AppointmentStatus status = AppointmentStatus.scheduled,
+      DateTime? startTime,
+      String? doctorId,
+      String id = 'a',
+    }) {
       final start = startTime ?? DateTime.utc(2026, 6, 1, 9);
       return AppointmentListItem(
-        id: 'a',
+        id: id,
         patientId: 'p',
         patientName: 'Pat',
+        doctorId: doctorId,
         startTime: start,
         endTime: start.add(const Duration(minutes: 30)),
         type: AppointmentType.planned,
@@ -38,10 +44,28 @@ void main() {
       expect(forwardStatusTargetFor(row, referenceUtc: DateTime.utc(2026, 5, 31)), isNull);
     });
 
-    test('checked_in offers start', () {
-      final row = item(status: AppointmentStatus.checkedIn);
-      expect(forwardStatusTargetFor(row, referenceUtc: referenceUtc), AppointmentStatus.inProgress);
-      expect(forwardStatusActionLabelFor(row, referenceUtc: referenceUtc), 'Start');
+    test('checked_in offers start when doctor is free', () {
+      final row = item(status: AppointmentStatus.checkedIn, doctorId: 'doc-a');
+      expect(
+        forwardStatusTargetFor(row, referenceUtc: referenceUtc, siblingAppointments: [row]),
+        AppointmentStatus.inProgress,
+      );
+      expect(forwardStatusActionLabelFor(row, referenceUtc: referenceUtc, siblingAppointments: [row]), 'Start');
+    });
+
+    test('checked_in hides start when doctor already has in-progress patient', () {
+      final start = DateTime.utc(2026, 6, 1, 9);
+      final active = item(status: AppointmentStatus.inProgress, startTime: start, doctorId: 'doc-a', id: 'active');
+      final waiting = item(
+        status: AppointmentStatus.checkedIn,
+        startTime: start.add(const Duration(minutes: 30)),
+        doctorId: 'doc-a',
+        id: 'waiting',
+      );
+      expect(
+        forwardStatusTargetFor(waiting, referenceUtc: referenceUtc, siblingAppointments: [active, waiting]),
+        isNull,
+      );
     });
 
     test('in_progress does not offer complete (visit submit required)', () {

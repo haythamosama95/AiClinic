@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
@@ -8,6 +9,7 @@ AppointmentStatus? forwardStatusTargetFor(
   AppointmentListItem item, {
   String organizationTimezone = 'UTC',
   DateTime? referenceUtc,
+  Iterable<AppointmentListItem> siblingAppointments = const [],
 }) {
   final target = switch (item.status) {
     AppointmentStatus.scheduled => AppointmentStatus.confirmed,
@@ -22,6 +24,10 @@ AppointmentStatus? forwardStatusTargetFor(
         organizationTimezone: organizationTimezone,
         referenceUtc: referenceUtc,
       )) {
+    return null;
+  }
+  if (target == AppointmentStatus.inProgress &&
+      AppointmentQueueDisplay.doctorInProgressBlockReason(item, siblingAppointments) != null) {
     return null;
   }
   return target;
@@ -68,8 +74,14 @@ String forwardStatusActionLabelFor(
   AppointmentListItem item, {
   String organizationTimezone = 'UTC',
   DateTime? referenceUtc,
+  Iterable<AppointmentListItem> siblingAppointments = const [],
 }) {
-  return switch (forwardStatusTargetFor(item, organizationTimezone: organizationTimezone, referenceUtc: referenceUtc)) {
+  return switch (forwardStatusTargetFor(
+    item,
+    organizationTimezone: organizationTimezone,
+    referenceUtc: referenceUtc,
+    siblingAppointments: siblingAppointments,
+  )) {
     AppointmentStatus.confirmed => 'Confirm',
     AppointmentStatus.checkedIn => 'Check in',
     AppointmentStatus.inProgress => 'Start',
