@@ -128,6 +128,48 @@ abstract final class DevClinicSeedSchedule {
     return minAppointmentDurationMinutes + (seedKey % span);
   }
 
+  /// Roughly one in six seeded appointments have no assigned doctor (for unassigned UI/testing).
+  static bool shouldAssignDoctorForAppointment(int seedKey) {
+    return seedKey % 6 != 0;
+  }
+
+  /// Day offsets for shift seeding (today through five days ahead; past dates are read-only).
+  static List<int> get shiftDayOffsets => appointmentDayOffsets.where((offset) => offset >= 0).toList(growable: false);
+
+  static DateTime shiftDateLocal({required String timezone, required int dayOffset, DateTime? referenceUtc}) {
+    ensureAppointmentTimezonesInitialized();
+    final ref = (referenceUtc ?? DateTime.now()).toUtc();
+    final location = tz.getLocation(timezone);
+    final localNow = tz.TZDateTime.from(ref, location);
+    final day = tz.TZDateTime(location, localNow.year, localNow.month, localNow.day).add(Duration(days: dayOffset));
+    return DateTime(day.year, day.month, day.day);
+  }
+
+  /// Doctors staffed on a branch shift — matches appointment doctor assignment options.
+  static List<String> shiftDoctorIdsForBranch({required String primaryDoctorId, required String? secondaryDoctorId}) {
+    final primary = primaryDoctorId.trim();
+    final ids = <String>[primary];
+    final secondary = secondaryDoctorId?.trim();
+    if (secondary != null && secondary.isNotEmpty && secondary != primary) {
+      ids.add(secondary);
+    }
+    return ids;
+  }
+
+  static String shiftNotes({required String branchCode, required int dayOffset}) {
+    return 'Dev seed shift for $branchCode (day $dayOffset).';
+  }
+
+  /// Visit-eligible statuses require a doctor; keep unassigned appointments bookable only.
+  static AppointmentStatus appointmentTargetWithoutDoctor(AppointmentStatus target) {
+    return switch (target) {
+      AppointmentStatus.checkedIn ||
+      AppointmentStatus.inProgress ||
+      AppointmentStatus.completed => AppointmentStatus.confirmed,
+      _ => target,
+    };
+  }
+
   /// Cumulative minutes before [patientIndex] on a single branch-day timeline.
   ///
   /// The backend rejects any overlapping slot in the same branch (regardless of doctor),
@@ -163,6 +205,9 @@ abstract final class DevClinicSeedSchedule {
     }
     if (status == AppointmentStatus.completed) {
       return DevClinicVisitDocumentationKind.completedWithTreatment;
+    }
+    if (status == AppointmentStatus.inProgress) {
+      return seedKey.isEven ? DevClinicVisitDocumentationKind.fullSoap : DevClinicVisitDocumentationKind.partialSoap;
     }
 
     return switch (seedKey % 3) {
@@ -260,6 +305,42 @@ abstract final class DevClinicSeedSchedule {
       duration: '${7 + (patientIndex % 4)} days',
       notes: 'Take with food. Dev seed treatment plan for patient #$patientIndex.',
     );
+  }
+
+  /// Whether advancing to [target] must pass through `in_progress` via status RPC.
+  static bool requiresInProgressTransition(AppointmentStatus target) {
+    return advancementPathTo(target).contains(AppointmentStatus.inProgress);
+  }
+
+  /// Whether seeding [status] for [seedKey] ends with the doctor still in an
+  /// in-progress appointment (without completing the visit).
+  static bool leavesDoctorInProgress({required AppointmentStatus status, required int seedKey}) {
+    if (status == AppointmentStatus.completed) {
+      return false;
+    }
+    if (status == AppointmentStatus.inProgress) {
+      return true;
+    }
+    if (status == AppointmentStatus.checkedIn) {
+      final documentation = visitDocumentationFor(status: status, seedKey: seedKey);
+      return shouldSeedVisit(status) && documentation != DevClinicVisitDocumentationKind.none;
+    }
+    return false;
+  }
+
+  /// Downgrade visit-eligible targets when the doctor already has an active visit.
+  static AppointmentStatus resolveTargetForDoctorAvailability({
+    required AppointmentStatus target,
+    required int seedKey,
+    required bool doctorAlreadyInProgress,
+  }) {
+    if (!doctorAlreadyInProgress) {
+      return target;
+    }
+    if (!leavesDoctorInProgress(status: target, seedKey: seedKey)) {
+      return target;
+    }
+    return AppointmentStatus.confirmed;
   }
 
   /// Statuses to apply in order after `create_appointment` (starts at scheduled).

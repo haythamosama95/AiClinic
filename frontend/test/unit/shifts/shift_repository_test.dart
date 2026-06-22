@@ -60,6 +60,19 @@ void main() {
       );
     });
 
+    test('createShift parses list-wrapped shift id responses', () async {
+      client.rpcResults['create_shift'] = [ShiftRpcTestClient.defaultShiftId];
+
+      final shiftId = await repository.createShift(
+        branchId: client.branchId,
+        shiftDate: DateTime(2026, 6, 10),
+        startTime: '09:00',
+        endTime: '17:00',
+      );
+
+      expect(shiftId, ShiftRpcTestClient.defaultShiftId);
+    });
+
     test('createShift does not misclassify shift_overlap_unresolved as shift_overlap (#7)', () async {
       client.rpcException = PostgrestException(message: 'shift_overlap_unresolved for staff', code: 'P0001');
 

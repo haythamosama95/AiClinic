@@ -89,11 +89,36 @@ class ShiftRepository {
       'p_staff_ids': dedupedStaffIds,
     });
 
-    final shiftId = raw?.toString().trim();
+    final shiftId = _parseShiftId(raw);
     if (shiftId == null || shiftId.isEmpty) {
       throw StateError('Shift was created but no shift id was returned.');
     }
     return shiftId;
+  }
+
+  /// Parses `create_shift` RPC payloads (uuid scalar, list-wrapped scalar, or map).
+  static String? _parseShiftId(dynamic raw) {
+    if (raw == null) {
+      return null;
+    }
+    if (raw is String) {
+      final id = raw.trim();
+      return id.isEmpty ? null : id;
+    }
+    if (raw is List && raw.isNotEmpty) {
+      return _parseShiftId(raw.first);
+    }
+    if (raw is Map) {
+      final id = raw['shift_id'] ?? raw['id'];
+      if (id != null) {
+        return _parseShiftId(id);
+      }
+    }
+    final fallback = raw.toString().trim();
+    if (fallback.isEmpty || fallback.startsWith('[') || fallback.startsWith('{')) {
+      return null;
+    }
+    return fallback;
   }
 
   static List<ShiftOverlapConflict> parseOverlapConflicts(String message, {Object? details}) {
@@ -219,7 +244,7 @@ class ShiftRepository {
     AppLog.fine('$_logDomain.rpc.invoke fn=$functionName params=${params.keys.join(',')}');
 
     try {
-      return await _client.rpc(functionName, params: params);
+      return await _client.rpc<dynamic>(functionName, params: params);
     } on AuthException catch (error) {
       throw RpcFailure(RpcResult(success: false, errorCode: 'AUTH_ERROR', errorMessage: error.message));
     } on PostgrestException catch (error) {
@@ -293,7 +318,7 @@ class ShiftRepository {
     final seen = <String>{};
     final result = <String>[];
     for (final raw in staffIds) {
-      final id = raw.trim();
+      final id = raw.toString().trim();
       if (id.isEmpty || !seen.add(id)) {
         continue;
       }

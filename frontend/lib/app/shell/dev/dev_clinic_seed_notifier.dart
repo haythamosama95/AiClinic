@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/settings/data/branch_repository.dart';
 import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
+import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 
@@ -46,6 +47,7 @@ final devClinicSeedServiceProvider = Provider<DevClinicSeedService>((ref) {
     patients: ref.watch(patientRepositoryProvider),
     appointments: ref.watch(appointmentRepositoryProvider),
     visits: ref.watch(visitRepositoryProvider),
+    shiftRepository: ref.watch(shiftRepositoryProvider),
   );
 });
 
@@ -101,7 +103,11 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
       AppLog.fine('dev_clinic_seed.stack $stack');
       state = DevClinicSeedState(
         inProgress: false,
-        errorMessage: error is StateError ? error.message : 'Unable to fill dummy clinic data. Try again.',
+        errorMessage: error is StateError
+            ? error.message
+            : error is TypeError
+            ? error.toString()
+            : 'Unable to fill dummy clinic data. Try again.',
       );
       return false;
     }
