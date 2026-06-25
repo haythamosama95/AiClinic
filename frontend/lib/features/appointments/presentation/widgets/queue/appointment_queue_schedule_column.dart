@@ -6,15 +6,22 @@ import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_status_badge.dart';
 
 /// Column 1 — today's appointment schedule in a clean list layout.
 class AppointmentQueueScheduleColumn extends StatelessWidget {
-  const AppointmentQueueScheduleColumn({required this.items, required this.now, super.key});
+  const AppointmentQueueScheduleColumn({
+    required this.items,
+    required this.now,
+    this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
+    super.key,
+  });
 
   final List<AppointmentListItem> items;
   final DateTime now;
+  final AppointmentQueueShiftDoctorLookup shiftLookup;
 
   static final _timeFormat = DateFormat('hh:mm a');
   static final _dateFormat = DateFormat('MMM d, yyyy');
@@ -50,6 +57,7 @@ class AppointmentQueueScheduleColumn extends StatelessWidget {
                       return _AppointmentRow(
                         key: ValueKey(item.id),
                         item: item,
+                        shiftLookup: shiftLookup,
                         timeLabel: _timeFormat.format(item.startTime.toLocal()),
                         dimmed: dimmed,
                         now: now,
@@ -122,6 +130,7 @@ class _HeaderIconButton extends StatelessWidget {
 class _AppointmentRow extends StatelessWidget {
   const _AppointmentRow({
     required this.item,
+    required this.shiftLookup,
     required this.timeLabel,
     required this.dimmed,
     required this.now,
@@ -130,6 +139,7 @@ class _AppointmentRow extends StatelessWidget {
   });
 
   final AppointmentListItem item;
+  final AppointmentQueueShiftDoctorLookup shiftLookup;
   final String timeLabel;
   final bool dimmed;
   final DateTime now;
@@ -143,6 +153,9 @@ class _AppointmentRow extends StatelessWidget {
     final waitLabel = showWait
         ? AppointmentQueueDisplay.formatWaitedLabel(AppointmentQueueDisplay.estimateWaitDuration(item, now: now))
         : null;
+
+    final doctorPresentation = AppointmentQueueDisplay.queueDoctorPresentation(item, shiftLookup: shiftLookup);
+    final visitLabel = _doctorVisitLabel(item);
 
     return Opacity(
       opacity: opacity,
@@ -169,10 +182,10 @@ class _AppointmentRow extends StatelessWidget {
                 const SizedBox(width: SpacingTokens.md),
                 Expanded(
                   flex: 3,
-                  child: _PersonColumn(
-                    name: item.doctorDisplayName,
-                    subtitle: _doctorVisitLabel(item),
-                    leading: _PersonAvatar(name: item.doctorDisplayName, tint: colors.primary.withValues(alpha: 0.12)),
+                  child: _QueueDoctorColumn(
+                    presentation: doctorPresentation,
+                    visitLabel: visitLabel,
+                    leadingTint: colors.primary.withValues(alpha: 0.12),
                   ),
                 ),
                 const SizedBox(width: SpacingTokens.sm),
@@ -210,6 +223,62 @@ class _AppointmentRow extends StatelessWidget {
       AppointmentStatus.completed => 'Completed visit',
       _ => 'Consultation',
     };
+  }
+}
+
+class _QueueDoctorColumn extends StatelessWidget {
+  const _QueueDoctorColumn({required this.presentation, required this.visitLabel, required this.leadingTint});
+
+  final QueueAppointmentDoctorPresentation presentation;
+  final String visitLabel;
+  final Color leadingTint;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    final names = presentation.displayNames;
+    final subtitle = presentation.hasPatientChoice
+        ? "Patient's choice · $visitLabel"
+        : presentation.entries.length > 1
+        ? 'On shift · $visitLabel'
+        : visitLabel;
+
+    return Row(
+      children: [
+        _PersonAvatar(name: presentation.avatarName, tint: leadingTint),
+        const SizedBox(width: SpacingTokens.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (presentation.hasPatientChoice) ...[
+                    Icon(Icons.star_rounded, size: 16, color: colors.primary),
+                    const SizedBox(width: SpacingTokens.xs / 2),
+                  ],
+                  Expanded(
+                    child: Text(
+                      names,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 

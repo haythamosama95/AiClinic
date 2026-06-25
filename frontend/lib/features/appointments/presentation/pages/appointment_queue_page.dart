@@ -8,7 +8,9 @@ import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_schedule_column.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_session_column.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_stats_banner.dart';
@@ -116,14 +118,16 @@ class _QueueHeader extends StatelessWidget {
   }
 }
 
-class _QueueBody extends StatelessWidget {
+class _QueueBody extends ConsumerWidget {
   const _QueueBody({required this.state, required this.now});
 
   final AppointmentQueueState state;
   final DateTime now;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final shiftLookup =
+        ref.watch(appointmentQueueShiftDoctorLookupProvider).value ?? AppointmentQueueShiftDoctorLookup.empty;
     final stats = AppointmentQueueDisplay.computeStats(state.items, now: now);
     final partition = AppointmentQueueDisplay.partition(state.items, now: now);
 
@@ -137,7 +141,11 @@ class _QueueBody extends StatelessWidget {
                 children: [
                   Expanded(
                     flex: 3,
-                    child: AppointmentQueueScheduleColumn(items: partition.schedule, now: now),
+                    child: AppointmentQueueScheduleColumn(
+                      items: partition.schedule,
+                      now: now,
+                      shiftLookup: shiftLookup,
+                    ),
                   ),
                   const SizedBox(width: SpacingTokens.md),
                   Expanded(
@@ -146,6 +154,7 @@ class _QueueBody extends StatelessWidget {
                       activeSessions: partition.activeSessions,
                       nextUp: partition.nextUp,
                       now: now,
+                      shiftLookup: shiftLookup,
                     ),
                   ),
                 ],
@@ -155,7 +164,11 @@ class _QueueBody extends StatelessWidget {
                 children: [
                   Expanded(
                     flex: 3,
-                    child: AppointmentQueueScheduleColumn(items: partition.schedule, now: now),
+                    child: AppointmentQueueScheduleColumn(
+                      items: partition.schedule,
+                      now: now,
+                      shiftLookup: shiftLookup,
+                    ),
                   ),
                   const SizedBox(height: SpacingTokens.md),
                   Expanded(
@@ -164,6 +177,7 @@ class _QueueBody extends StatelessWidget {
                       activeSessions: partition.activeSessions,
                       nextUp: partition.nextUp,
                       now: now,
+                      shiftLookup: shiftLookup,
                     ),
                   ),
                 ],

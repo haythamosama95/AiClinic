@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 
@@ -39,6 +40,9 @@ class AppointmentQueuePartition {
 abstract final class AppointmentQueueDisplay {
   static const waitWarningMinutes = 15;
   static const waitCriticalMinutes = 30;
+
+  /// Fallback label when no shift doctors could be resolved.
+  static const noShiftDoctorLabel = 'No doctor on shift';
 
   static AppointmentQueueStats computeStats(List<AppointmentListItem> items, {required DateTime now}) {
     final active = _activeToday(items);
@@ -83,6 +87,22 @@ abstract final class AppointmentQueueDisplay {
     );
   }
 
+  /// Doctor column content for the queue appointments card.
+  static QueueAppointmentDoctorPresentation queueDoctorPresentation(
+    AppointmentListItem item, {
+    AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
+  }) {
+    return shiftLookup.presentationFor(item);
+  }
+
+  /// Compact doctor label for session / next-up summaries.
+  static String queueDoctorLabel(
+    AppointmentListItem item, {
+    AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
+  }) {
+    return queueDoctorPresentation(item, shiftLookup: shiftLookup).displayNames;
+  }
+
   /// One active session per doctor (earliest in-progress slot when duplicates exist).
   static List<AppointmentListItem> activeSessionsFor(List<AppointmentListItem> items) {
     final inProgress = items.where((item) => item.status == AppointmentStatus.inProgress).toList(growable: false);
@@ -96,7 +116,11 @@ abstract final class AppointmentQueueDisplay {
   }
 
   /// Whether [item] can start because its doctor has no other in-progress appointment.
-  static String? doctorInProgressBlockReason(AppointmentListItem item, Iterable<AppointmentListItem> items) {
+  static String? doctorInProgressBlockReason(
+    AppointmentListItem item,
+    Iterable<AppointmentListItem> items, {
+    AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
+  }) {
     if (item.status != AppointmentStatus.checkedIn) {
       return null;
     }
@@ -108,7 +132,11 @@ abstract final class AppointmentQueueDisplay {
     if (conflict.isEmpty) {
       return null;
     }
-    return '${item.doctorDisplayName} already has a patient in progress. Complete that visit before starting another.';
+    final doctorLabel = queueDoctorLabel(item, shiftLookup: shiftLookup);
+    if (item.doctorId == null) {
+      return 'A doctor on shift already has a patient in progress. Complete that visit before starting another.';
+    }
+    return '$doctorLabel already has a patient in progress. Complete that visit before starting another.';
   }
 
   static bool isScheduleRowDimmed(AppointmentListItem item) {

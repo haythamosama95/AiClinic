@@ -2,6 +2,11 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
+import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -58,6 +63,65 @@ void main() {
       final sessions = AppointmentQueueDisplay.activeSessionsFor(items);
       expect(sessions, hasLength(2));
       expect(sessions.map((session) => session.id), containsAll(['a1', 'a2']));
+    });
+
+    test('queueDoctorLabel shows fallback when doctor is unassigned and no shift data', () {
+      final unassigned = item(doctorId: null, doctorName: null);
+      expect(AppointmentQueueDisplay.queueDoctorLabel(unassigned), 'No doctor on shift');
+    });
+
+    test('queueDoctorLabel shows shift doctors when unassigned', () {
+      final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
+        organizationTimezone: 'UTC',
+        shifts: [
+          ShiftListItem(
+            id: 's1',
+            branchId: 'b1',
+            shiftDate: DateTime(2026, 6, 4),
+            startTime: '09:00',
+            endTime: '17:00',
+            status: ShiftStatus.active,
+            isUnassigned: false,
+            assigneeNames: const ['Dr Alpha', 'Dr Beta'],
+            assigneeCount: 2,
+          ),
+        ],
+        doctors: const [
+          StaffListItem(id: 'd1', fullName: 'Dr Alpha', role: StaffRole.doctor, isActive: true),
+          StaffListItem(id: 'd2', fullName: 'Dr Beta', role: StaffRole.doctor, isActive: true),
+        ],
+      );
+      final unassigned = item(doctorId: null, doctorName: null, startTime: DateTime.utc(2026, 6, 4, 10));
+
+      expect(AppointmentQueueDisplay.queueDoctorLabel(unassigned, shiftLookup: lookup), 'Dr Alpha, Dr Beta');
+    });
+
+    test('queueDoctorLabel shows assigned doctor name when present', () {
+      final assigned = item(doctorId: 'doctor-a', doctorName: 'Dr Alpha');
+      expect(AppointmentQueueDisplay.queueDoctorLabel(assigned), 'Dr Alpha');
+    });
+
+    test('doctorInProgressBlockReason uses queue doctor label for unassigned appointments', () {
+      final start = DateTime.utc(2026, 6, 4, 11);
+      final active = item(
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: null,
+        doctorName: null,
+        id: 'active',
+      );
+      final waiting = item(
+        status: AppointmentStatus.checkedIn,
+        startTime: start.add(const Duration(minutes: 30)),
+        doctorId: null,
+        doctorName: null,
+        id: 'waiting',
+      );
+
+      expect(
+        AppointmentQueueDisplay.doctorInProgressBlockReason(waiting, [active, waiting]),
+        contains('A doctor on shift already has a patient in progress'),
+      );
     });
 
     test('doctorInProgressBlockReason blocks start when doctor already in session', () {

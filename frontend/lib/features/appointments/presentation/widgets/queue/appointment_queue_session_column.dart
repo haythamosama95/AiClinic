@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 
 /// Column 3 — active session cards (one per doctor) and next-up preview.
 class AppointmentQueueSessionColumn extends StatelessWidget {
@@ -12,12 +13,14 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
     required this.activeSessions,
     required this.nextUp,
     required this.now,
+    this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
     super.key,
   });
 
   final List<AppointmentListItem> activeSessions;
   final AppointmentListItem? nextUp;
   final DateTime now;
+  final AppointmentQueueShiftDoctorLookup shiftLookup;
 
   @override
   Widget build(BuildContext context) {
@@ -62,16 +65,23 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
                     child: activeSessions.isEmpty
                         ? const _NoActiveSessionPlaceholder()
                         : activeSessions.length == 1
-                        ? _ActiveSessionHeroCard(item: activeSessions.first, now: now)
+                        ? _ActiveSessionHeroCard(item: activeSessions.first, now: now, shiftLookup: shiftLookup)
                         : ListView.separated(
                             itemCount: activeSessions.length,
                             separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
                             itemBuilder: (context, index) {
-                              return _ActiveSessionCompactCard(item: activeSessions[index], now: now);
+                              return _ActiveSessionCompactCard(
+                                item: activeSessions[index],
+                                now: now,
+                                shiftLookup: shiftLookup,
+                              );
                             },
                           ),
                   ),
-                  if (nextUp != null) ...[const SizedBox(height: SpacingTokens.md), _NextUpPreview(item: nextUp!)],
+                  if (nextUp != null) ...[
+                    const SizedBox(height: SpacingTokens.md),
+                    _NextUpPreview(item: nextUp!, shiftLookup: shiftLookup),
+                  ],
                 ],
               ),
             ),
@@ -83,10 +93,11 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
 }
 
 class _ActiveSessionHeroCard extends StatelessWidget {
-  const _ActiveSessionHeroCard({required this.item, required this.now});
+  const _ActiveSessionHeroCard({required this.item, required this.now, required this.shiftLookup});
 
   final AppointmentListItem item;
   final DateTime now;
+  final AppointmentQueueShiftDoctorLookup shiftLookup;
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +105,7 @@ class _ActiveSessionHeroCard extends StatelessWidget {
     final sessionLabel = AppointmentQueueDisplay.formatSessionLabel(
       AppointmentQueueDisplay.estimateSessionDuration(item, now: now),
     );
+    final doctorLabel = AppointmentQueueDisplay.queueDoctorLabel(item, shiftLookup: shiftLookup);
 
     return Material(
       color: colors.primary.withValues(alpha: 0.06),
@@ -147,7 +159,7 @@ class _ActiveSessionHeroCard extends StatelessWidget {
                   const SizedBox(width: SpacingTokens.xs),
                   Expanded(
                     child: Text(
-                      item.doctorDisplayName,
+                      doctorLabel,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: colors.mutedForeground),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -164,10 +176,11 @@ class _ActiveSessionHeroCard extends StatelessWidget {
 }
 
 class _ActiveSessionCompactCard extends StatelessWidget {
-  const _ActiveSessionCompactCard({required this.item, required this.now});
+  const _ActiveSessionCompactCard({required this.item, required this.now, required this.shiftLookup});
 
   final AppointmentListItem item;
   final DateTime now;
+  final AppointmentQueueShiftDoctorLookup shiftLookup;
 
   @override
   Widget build(BuildContext context) {
@@ -175,6 +188,7 @@ class _ActiveSessionCompactCard extends StatelessWidget {
     final sessionLabel = AppointmentQueueDisplay.formatSessionLabel(
       AppointmentQueueDisplay.estimateSessionDuration(item, now: now),
     );
+    final doctorLabel = AppointmentQueueDisplay.queueDoctorLabel(item, shiftLookup: shiftLookup);
 
     return Material(
       color: colors.primary.withValues(alpha: 0.06),
@@ -192,7 +206,7 @@ class _ActiveSessionCompactCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                item.doctorDisplayName,
+                doctorLabel,
                 style: Theme.of(
                   context,
                 ).textTheme.labelMedium?.copyWith(color: colors.primary, fontWeight: FontWeight.w700),
@@ -267,13 +281,15 @@ class _NoActiveSessionPlaceholder extends StatelessWidget {
 }
 
 class _NextUpPreview extends StatelessWidget {
-  const _NextUpPreview({required this.item});
+  const _NextUpPreview({required this.item, required this.shiftLookup});
 
   final AppointmentListItem item;
+  final AppointmentQueueShiftDoctorLookup shiftLookup;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
+    final doctorLabel = AppointmentQueueDisplay.queueDoctorLabel(item, shiftLookup: shiftLookup);
 
     return Material(
       color: colors.background,
@@ -310,10 +326,7 @@ class _NextUpPreview extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(
-                item.doctorDisplayName,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-              ),
+              Text(doctorLabel, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground)),
             ],
           ),
         ),
