@@ -98,7 +98,7 @@ void main() {
                   .clipper!
               as NotchedCardClipper;
       final actionShell = tester.getRect(
-        find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(DecoratedBox)).first,
+        find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(InkWell)).first,
       );
       final notchWidth = computeNotchWidth(
         cardWidth: cardRect.width,
@@ -165,7 +165,7 @@ void main() {
         ],
       );
 
-      final shells = find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(DecoratedBox));
+      final shells = find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(InkWell));
       final editShell = tester.getRect(shells.at(0));
       final deleteShell = tester.getRect(shells.at(1));
 
@@ -201,7 +201,7 @@ void main() {
       );
 
       final multiCardRect = tester.getRect(find.byType(AppNotchedCard));
-      final shells = find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(DecoratedBox));
+      final shells = find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(InkWell));
       final firstShell = tester.getRect(shells.at(0));
       final lastShell = tester.getRect(shells.at(2));
       final actionsRowWidth = lastShell.right - firstShell.left;
@@ -246,7 +246,7 @@ void main() {
                   .widget<ClipPath>(find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(ClipPath)))
                   .clipper!
               as NotchedCardClipper;
-      final shells = find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(DecoratedBox));
+      final shells = find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(InkWell));
       final firstShell = tester.getRect(shells.first);
       final lastShell = tester.getRect(shells.last);
 

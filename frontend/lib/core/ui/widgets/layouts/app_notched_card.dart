@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 
 import 'package:ai_clinic/core/ui/theme/theme.dart';
+import 'package:ai_clinic/core/ui/widgets/buttons/app_button.dart';
+import 'package:ai_clinic/core/ui/widgets/buttons/app_icon_button.dart';
+import 'package:ai_clinic/core/ui/widgets/input/app_field_size.dart';
 import 'package:ai_clinic/core/ui/widgets/layouts/notched_card_path.dart';
 
 /// Dashboard panel with a top-trailing step-down cut-out for floating actions.
@@ -270,6 +273,10 @@ class _NotchedCardActionsRow extends StatelessWidget {
 }
 
 /// Card-colored stadium shell for a single caller action.
+///
+/// Hover and press are handled on the shell [InkWell] so feedback covers the
+/// full stadium (including padding). Caller actions are display-only here to
+/// avoid nested pointer/hover regions on [IconButton] and forui controls.
 class _NotchedCardActionShell extends StatelessWidget {
   const _NotchedCardActionShell({required this.backgroundColor, required this.borderColor, required this.child});
 
@@ -279,15 +286,145 @@ class _NotchedCardActionShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: ShapeDecoration(
-        color: backgroundColor,
-        shape: StadiumBorder(side: BorderSide(color: borderColor)),
+    final onPressed = _actionOnPressed(child);
+    if (onPressed == null && child is! AppIconButton && child is! AppButton) {
+      return DecoratedBox(
+        decoration: ShapeDecoration(
+          color: backgroundColor,
+          shape: StadiumBorder(side: BorderSide(color: borderColor)),
+        ),
+        child: Padding(padding: const EdgeInsets.all(kNotchActionContainerPadding), child: child),
+      );
+    }
+
+    final colors = context.semanticColors;
+    final usesAccentHover = child is AppButton && (child as AppButton).variant == AppButtonVariant.ghost;
+    final tooltip = child is AppIconButton ? (child as AppIconButton).tooltip : null;
+
+    final shell = Material(
+      color: backgroundColor,
+      shape: StadiumBorder(side: BorderSide(color: borderColor)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        customBorder: const StadiumBorder(),
+        overlayColor: WidgetStateProperty.resolveWith((states) {
+          if (!states.contains(WidgetState.hovered) && !states.contains(WidgetState.pressed)) {
+            return null;
+          }
+
+          if (usesAccentHover) {
+            return colors.accent;
+          }
+
+          return colors.foreground.withValues(alpha: 0.08);
+        }),
+        child: Padding(
+          padding: const EdgeInsets.all(kNotchActionContainerPadding),
+          child: _NotchedCardActionDisplay(action: child),
+        ),
       ),
-      child: Padding(padding: const EdgeInsets.all(kNotchActionContainerPadding), child: child),
+    );
+
+    if (tooltip == null) {
+      return shell;
+    }
+
+    return Tooltip(message: tooltip, child: shell);
+  }
+}
+
+/// Visual-only rendering of supported caller actions inside the notch shell.
+class _NotchedCardActionDisplay extends StatelessWidget {
+  const _NotchedCardActionDisplay({required this.action});
+
+  final Widget action;
+
+  @override
+  Widget build(BuildContext context) {
+    if (action is AppIconButton) {
+      final button = action as AppIconButton;
+      final colors = context.semanticColors;
+      final foreground = switch (button.variant) {
+        AppIconButtonVariant.ghost => colors.foreground,
+        AppIconButtonVariant.outline => colors.foreground,
+        AppIconButtonVariant.muted => colors.mutedForeground,
+      };
+
+      return SizedBox(
+        width: button.size,
+        height: button.size,
+        child: IconTheme.merge(
+          data: IconThemeData(color: foreground),
+          child: button.icon,
+        ),
+      );
+    }
+
+    if (action is AppButton) {
+      return _NotchedCardButtonDisplay(button: action as AppButton);
+    }
+
+    return IgnorePointer(child: action);
+  }
+}
+
+class _NotchedCardButtonDisplay extends StatelessWidget {
+  const _NotchedCardButtonDisplay({required this.button});
+
+  final AppButton button;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = const FButtonStyleDelta.context()(
+      context.theme.buttonStyles.resolve({_mapFButtonVariant(button.variant), context.platformVariant}).resolve({
+        button.size.buttonSize,
+        context.platformVariant,
+      }),
+    );
+    final contentStyle = style.contentStyle;
+    final variants = button.onPressed == null ? {FTappableVariant.disabled} : const <FTappableVariant>{};
+    final textStyle = contentStyle.textStyle.resolve(variants);
+    final iconStyle = contentStyle.iconStyle.resolve(variants);
+
+    return ConstrainedBox(
+      constraints: contentStyle.constraints,
+      child: Padding(
+        padding: contentStyle.padding,
+        child: DefaultTextStyle.merge(
+          style: textStyle,
+          child: IconTheme(
+            data: iconStyle,
+            child: button.isLoading
+                ? FCircularProgress(size: button.size.progressSize)
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: contentStyle.spacing,
+                    children: [
+                      if (button.icon != null) button.icon!,
+                      Text(button.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+          ),
+        ),
+      ),
     );
   }
 }
+
+FButtonVariant _mapFButtonVariant(AppButtonVariant variant) => switch (variant) {
+  AppButtonVariant.primary => FButtonVariant.primary,
+  AppButtonVariant.secondary => FButtonVariant.secondary,
+  AppButtonVariant.destructive => FButtonVariant.destructive,
+  AppButtonVariant.outline => FButtonVariant.outline,
+  AppButtonVariant.ghost => FButtonVariant.ghost,
+};
+
+VoidCallback? _actionOnPressed(Widget action) => switch (action) {
+  AppIconButton(:final onPressed) => onPressed,
+  AppButton(:final onPressed) => onPressed,
+  _ => null,
+};
 
 bool _listEquals(List<Widget>? a, List<Widget>? b) {
   if (identical(a, b)) {
