@@ -1,5 +1,6 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 
@@ -43,6 +44,9 @@ abstract final class AppointmentQueueDisplay {
 
   /// Fallback label when no shift doctors could be resolved.
   static const noShiftDoctorLabel = 'No doctor on shift';
+
+  /// Label for unassigned appointments in the queue schedule card.
+  static const noPreferredDoctorLabel = 'No preferred doctor';
 
   static AppointmentQueueStats computeStats(List<AppointmentListItem> items, {required DateTime now}) {
     final active = _activeToday(items);
@@ -121,28 +125,48 @@ abstract final class AppointmentQueueDisplay {
     Iterable<AppointmentListItem> items, {
     AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
   }) {
-    if (item.status != AppointmentStatus.checkedIn) {
-      return null;
-    }
-    final doctorKey = item.doctorId ?? '';
-    final conflict = items.where(
-      (other) =>
-          other.id != item.id && other.status == AppointmentStatus.inProgress && (other.doctorId ?? '') == doctorKey,
+    return AppointmentQueueStartDoctor.blockReasonForStart(
+      item: item,
+      siblingAppointments: items,
+      shiftLookup: shiftLookup,
     );
-    if (conflict.isEmpty) {
-      return null;
-    }
-    final doctorLabel = queueDoctorLabel(item, shiftLookup: shiftLookup);
-    if (item.doctorId == null) {
-      return 'A doctor on shift already has a patient in progress. Complete that visit before starting another.';
-    }
-    return '$doctorLabel already has a patient in progress. Complete that visit before starting another.';
   }
 
   static bool isScheduleRowDimmed(AppointmentListItem item) {
     return item.status == AppointmentStatus.completed ||
         item.status == AppointmentStatus.cancelled ||
         item.status == AppointmentStatus.noShow;
+  }
+
+  /// Index of the schedule row whose time slot is nearest to [now].
+  ///
+  /// Returns 0 when [items] is empty. An in-progress slot (now within
+  /// [startTime, endTime)) wins over adjacent slots.
+  static int indexClosestToNow(List<AppointmentListItem> items, {required DateTime now}) {
+    if (items.isEmpty) {
+      return 0;
+    }
+
+    var bestIndex = 0;
+    var bestDistance = _scheduleTimeDistance(items.first, now);
+    for (var i = 1; i < items.length; i++) {
+      final distance = _scheduleTimeDistance(items[i], now);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = i;
+      }
+    }
+    return bestIndex;
+  }
+
+  static Duration _scheduleTimeDistance(AppointmentListItem item, DateTime now) {
+    if (!now.isBefore(item.startTime) && now.isBefore(item.endTime)) {
+      return Duration.zero;
+    }
+    if (now.isBefore(item.startTime)) {
+      return item.startTime.difference(now);
+    }
+    return now.difference(item.endTime);
   }
 
   /// Wait time since check-in when [updatedAt] is known; otherwise falls back to slot start.

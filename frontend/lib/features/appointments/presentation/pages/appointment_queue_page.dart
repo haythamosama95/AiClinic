@@ -26,15 +26,39 @@ class AppointmentQueuePage extends ConsumerStatefulWidget {
 class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
+  int _scheduleScrollNonce = 0;
+  bool _routeScrollPrimed = false;
+  bool _wasCurrentRoute = false;
 
   @override
   void initState() {
     super.initState();
+    _bumpScheduleScroll();
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         setState(() => _now = DateTime.now());
       }
     });
+  }
+
+  void _bumpScheduleScroll() {
+    _scheduleScrollNonce = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isCurrent = ModalRoute.of(context)?.isCurrent ?? false;
+    if (isCurrent && !_wasCurrentRoute) {
+      if (_routeScrollPrimed) {
+        setState(_bumpScheduleScroll);
+      } else {
+        _routeScrollPrimed = true;
+      }
+      _wasCurrentRoute = true;
+    } else if (!isCurrent) {
+      _wasCurrentRoute = false;
+    }
   }
 
   @override
@@ -82,7 +106,7 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
                       SpacingTokens.lg,
                       SpacingTokens.lg,
                     ),
-                    child: _QueueBody(state: state, now: _now),
+                    child: _QueueBody(state: state, now: _now, scrollNonce: _scheduleScrollNonce),
                   ),
                 ),
               ],
@@ -119,10 +143,11 @@ class _QueueHeader extends StatelessWidget {
 }
 
 class _QueueBody extends ConsumerWidget {
-  const _QueueBody({required this.state, required this.now});
+  const _QueueBody({required this.state, required this.now, required this.scrollNonce});
 
   final AppointmentQueueState state;
   final DateTime now;
+  final int scrollNonce;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -145,6 +170,7 @@ class _QueueBody extends ConsumerWidget {
                       items: partition.schedule,
                       now: now,
                       shiftLookup: shiftLookup,
+                      scrollNonce: scrollNonce,
                     ),
                   ),
                   const SizedBox(width: SpacingTokens.md),
@@ -168,6 +194,7 @@ class _QueueBody extends ConsumerWidget {
                       items: partition.schedule,
                       now: now,
                       shiftLookup: shiftLookup,
+                      scrollNonce: scrollNonce,
                     ),
                   ),
                   const SizedBox(height: SpacingTokens.md),

@@ -10,26 +10,35 @@ import 'package:ai_clinic/features/appointments/application/appointment_rpc_mess
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/queue_shift_doctor_picker_dialog.dart';
 
 /// Compact forward-action control for a queue schedule row (V1-4 US5).
 class AppointmentQueueRowAdvanceButton extends ConsumerStatefulWidget {
-  const AppointmentQueueRowAdvanceButton({required this.item, required this.siblingAppointments, super.key});
+  const AppointmentQueueRowAdvanceButton({
+    required this.item,
+    required this.siblingAppointments,
+    this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
+    super.key,
+  });
 
   final AppointmentListItem item;
   final List<AppointmentListItem> siblingAppointments;
+  final AppointmentQueueShiftDoctorLookup shiftLookup;
 
   @override
   ConsumerState<AppointmentQueueRowAdvanceButton> createState() => _AppointmentQueueRowAdvanceButtonState();
 }
 
 class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQueueRowAdvanceButton> {
-  static const _buttonSize = 40.0;
+  static const _buttonSize = 32.0;
 
   bool _isLoading = false;
 
@@ -79,7 +88,11 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
       };
     }
     if (target == AppointmentStatus.inProgress) {
-      return AppointmentQueueDisplay.doctorInProgressBlockReason(item, widget.siblingAppointments);
+      return AppointmentQueueDisplay.doctorInProgressBlockReason(
+        item,
+        widget.siblingAppointments,
+        shiftLookup: widget.shiftLookup,
+      );
     }
     return null;
   }
@@ -94,6 +107,44 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
     return transitionLabel;
   }
 
+  Future<String?> _resolveDoctorForStart() async {
+    final autoSelected = AppointmentQueueStartDoctor.autoSelectedDoctorId(item: item, shiftLookup: widget.shiftLookup);
+    if (autoSelected != null) {
+      return autoSelected;
+    }
+
+    if (!AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: widget.shiftLookup)) {
+      return null;
+    }
+
+    final options = AppointmentQueueStartDoctor.shiftOptionsFor(
+      item: item,
+      siblingAppointments: widget.siblingAppointments,
+      shiftLookup: widget.shiftLookup,
+    );
+    if (!mounted) {
+      return null;
+    }
+    return QueueShiftDoctorPickerDialog.show(context, options: options);
+  }
+
+  Future<void> _assignDoctorIfNeeded(String doctorId) async {
+    final currentDoctorId = item.doctorId?.trim();
+    if (currentDoctorId != null && currentDoctorId.isNotEmpty && currentDoctorId == doctorId) {
+      return;
+    }
+
+    await ref
+        .read(appointmentRepositoryProvider)
+        .updateAppointment(
+          appointmentId: item.id,
+          patientId: item.patientId,
+          doctorId: doctorId,
+          startTime: item.startTime,
+          endTime: item.endTime,
+        );
+  }
+
   Future<void> _handleAdvance() async {
     if (_isLoading || _disabledReason() != null) {
       return;
@@ -103,13 +154,25 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
       item,
       organizationTimezone: _organizationTimezone,
       siblingAppointments: widget.siblingAppointments,
+      shiftLookup: widget.shiftLookup,
     );
     if (target == null) {
       return;
     }
 
+    String? doctorIdForStart;
+    if (target == AppointmentStatus.inProgress) {
+      doctorIdForStart = await _resolveDoctorForStart();
+      if (doctorIdForStart == null) {
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
     try {
+      if (doctorIdForStart != null) {
+        await _assignDoctorIfNeeded(doctorIdForStart);
+      }
       await ref.read(appointmentRepositoryProvider).updateAppointmentStatus(appointmentId: item.id, newStatus: target);
       if (!mounted) {
         return;
@@ -144,11 +207,16 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
     final isInteractive = disabledReason == null && !_isLoading;
 
     final button = Material(
-      color: isInteractive ? colors.primary.withValues(alpha: 0.1) : colors.muted,
+      color: isInteractive ? colors.primary : colors.destructive,
       shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: isInteractive ? _handleAdvance : null,
+        onTap: () {
+          if (isInteractive) {
+            _handleAdvance();
+          }
+        },
+        splashFactory: isInteractive ? null : NoSplash.splashFactory,
         customBorder: const CircleBorder(),
         child: SizedBox(
           width: _buttonSize,
@@ -156,17 +224,17 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
           child: Center(
             child: _isLoading
                 ? SizedBox(
-                    width: 18,
-                    height: 18,
+                    width: 14,
+                    height: 14,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: isInteractive ? colors.primary : colors.mutedForeground,
+                      color: isInteractive ? colors.primaryForeground : colors.destructiveForeground,
                     ),
                   )
                 : Icon(
                     Icons.play_arrow_rounded,
-                    size: 22,
-                    color: isInteractive ? colors.primary : colors.mutedForeground,
+                    size: 18,
+                    color: isInteractive ? colors.primaryForeground : colors.destructiveForeground,
                   ),
           ),
         ),

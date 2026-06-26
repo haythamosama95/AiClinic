@@ -11,12 +11,16 @@ import 'package:ai_clinic/features/appointments/data/appointment_repository.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/queue_shift_doctor_picker_dialog.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
 
 extension _AppointmentDetailListItem on AppointmentDetail {
@@ -69,6 +73,9 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     return ref.read(appointmentCalendarProvider).items;
   }
 
+  AppointmentQueueShiftDoctorLookup get _shiftLookup =>
+      ref.read(appointmentQueueShiftDoctorLookupProvider).value ?? AppointmentQueueShiftDoctorLookup.empty;
+
   bool get _canCreateAppointments => _permissions.canCreateAppointments();
 
   bool get _canCancelAppointments => AuthRouteGuard.canAccessAppointmentCancelActions(ref.read(authSessionProvider));
@@ -99,6 +106,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       _listItem,
       organizationTimezone: _organizationTimezone,
       siblingAppointments: _siblingAppointments,
+      shiftLookup: _shiftLookup,
     );
     if (activeLabel.isNotEmpty) {
       return activeLabel;
@@ -141,7 +149,11 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       };
     }
     if (target == AppointmentStatus.inProgress) {
-      return AppointmentQueueDisplay.doctorInProgressBlockReason(_listItem, _siblingAppointments);
+      return AppointmentQueueDisplay.doctorInProgressBlockReason(
+        _listItem,
+        _siblingAppointments,
+        shiftLookup: _shiftLookup,
+      );
     }
     return null;
   }
@@ -193,6 +205,44 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     }
   }
 
+  Future<String?> _resolveDoctorForStart() async {
+    final autoSelected = AppointmentQueueStartDoctor.autoSelectedDoctorId(item: _listItem, shiftLookup: _shiftLookup);
+    if (autoSelected != null) {
+      return autoSelected;
+    }
+
+    if (!AppointmentQueueStartDoctor.requiresDoctorPicker(item: _listItem, shiftLookup: _shiftLookup)) {
+      return null;
+    }
+
+    final options = AppointmentQueueStartDoctor.shiftOptionsFor(
+      item: _listItem,
+      siblingAppointments: _siblingAppointments,
+      shiftLookup: _shiftLookup,
+    );
+    if (!mounted) {
+      return null;
+    }
+    return QueueShiftDoctorPickerDialog.show(context, options: options);
+  }
+
+  Future<void> _assignDoctorIfNeeded(String doctorId) async {
+    final currentDoctorId = detail.doctorId?.trim();
+    if (currentDoctorId != null && currentDoctorId.isNotEmpty && currentDoctorId == doctorId) {
+      return;
+    }
+
+    await ref
+        .read(appointmentRepositoryProvider)
+        .updateAppointment(
+          appointmentId: detail.id,
+          patientId: detail.patientId,
+          doctorId: doctorId,
+          startTime: detail.startTime,
+          endTime: detail.endTime,
+        );
+  }
+
   Future<void> _handleAdvanceStatus() async {
     if (_disabledReasonFor('advance', _advanceStatusDisabledReason()) != null) {
       return;
@@ -202,13 +252,25 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       _listItem,
       organizationTimezone: _organizationTimezone,
       siblingAppointments: _siblingAppointments,
+      shiftLookup: _shiftLookup,
     );
     if (target == null) {
       return;
     }
 
+    String? doctorIdForStart;
+    if (target == AppointmentStatus.inProgress) {
+      doctorIdForStart = await _resolveDoctorForStart();
+      if (doctorIdForStart == null) {
+        return;
+      }
+    }
+
     await _runAction('advance', () async {
       try {
+        if (doctorIdForStart != null) {
+          await _assignDoctorIfNeeded(doctorIdForStart);
+        }
         await ref
             .read(appointmentRepositoryProvider)
             .updateAppointmentStatus(appointmentId: detail.id, newStatus: target);

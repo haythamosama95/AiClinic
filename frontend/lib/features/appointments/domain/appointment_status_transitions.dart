@@ -1,5 +1,6 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
@@ -10,6 +11,7 @@ AppointmentStatus? forwardStatusTargetFor(
   String organizationTimezone = 'UTC',
   DateTime? referenceUtc,
   Iterable<AppointmentListItem> siblingAppointments = const [],
+  AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
 }) {
   final target = switch (item.status) {
     AppointmentStatus.scheduled => AppointmentStatus.confirmed,
@@ -27,7 +29,8 @@ AppointmentStatus? forwardStatusTargetFor(
     return null;
   }
   if (target == AppointmentStatus.inProgress &&
-      AppointmentQueueDisplay.doctorInProgressBlockReason(item, siblingAppointments) != null) {
+      AppointmentQueueDisplay.doctorInProgressBlockReason(item, siblingAppointments, shiftLookup: shiftLookup) !=
+          null) {
     return null;
   }
   return target;
@@ -75,12 +78,14 @@ String forwardStatusActionLabelFor(
   String organizationTimezone = 'UTC',
   DateTime? referenceUtc,
   Iterable<AppointmentListItem> siblingAppointments = const [],
+  AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
 }) {
   return switch (forwardStatusTargetFor(
     item,
     organizationTimezone: organizationTimezone,
     referenceUtc: referenceUtc,
     siblingAppointments: siblingAppointments,
+    shiftLookup: shiftLookup,
   )) {
     AppointmentStatus.confirmed => 'Confirm',
     AppointmentStatus.checkedIn => 'Check in',

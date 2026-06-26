@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
 
 /// Column 3 — active session cards (one per doctor) and next-up preview.
 class AppointmentQueueSessionColumn extends StatelessWidget {
@@ -131,13 +132,11 @@ class _ActiveSessionHeroCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              Text(
-                item.patientName,
+              AppointmentScaleDownText(
+                text: item.patientName,
                 style: Theme.of(
                   context,
                 ).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w800, color: colors.foreground, height: 1.05),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: SpacingTokens.md),
               Row(
@@ -158,11 +157,9 @@ class _ActiveSessionHeroCard extends StatelessWidget {
                   Icon(Icons.medical_services_outlined, size: 18, color: colors.mutedForeground),
                   const SizedBox(width: SpacingTokens.xs),
                   Expanded(
-                    child: Text(
-                      doctorLabel,
+                    child: AppointmentScaleDownText(
+                      text: doctorLabel,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: colors.mutedForeground),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -205,20 +202,16 @@ class _ActiveSessionCompactCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                doctorLabel,
+              AppointmentScaleDownText(
+                text: doctorLabel,
                 style: Theme.of(
                   context,
                 ).textTheme.labelMedium?.copyWith(color: colors.primary, fontWeight: FontWeight.w700),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: SpacingTokens.xs),
-              Text(
-                item.patientName,
+              AppointmentScaleDownText(
+                text: item.patientName,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: SpacingTokens.xs),
               Row(
@@ -317,16 +310,20 @@ class _NextUpPreview extends StatelessWidget {
                         context,
                       ).textTheme.labelSmall?.copyWith(color: colors.mutedForeground, fontWeight: FontWeight.w600),
                     ),
-                    Text(
-                      item.patientName,
+                    AppointmentScaleDownText(
+                      text: item.patientName,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              Text(doctorLabel, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground)),
+              Flexible(
+                child: AppointmentScaleDownText(
+                  text: doctorLabel,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                  alignment: Alignment.centerRight,
+                ),
+              ),
             ],
           ),
         ),

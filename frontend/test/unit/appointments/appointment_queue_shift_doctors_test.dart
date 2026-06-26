@@ -34,8 +34,9 @@ void main() {
         doctors: doctors,
       );
 
-      final names = lookup.doctorsOnShiftAt(DateTime.utc(2026, 6, 4, 10, 30));
-      expect(names, ['Dr Alpha', 'Dr Beta']);
+      final onShift = lookup.doctorsOnShiftAt(DateTime.utc(2026, 6, 4, 10, 30));
+      expect(onShift.map((doctor) => doctor.name), ['Dr Alpha', 'Dr Beta']);
+      expect(onShift.map((doctor) => doctor.id), ['d1', 'd2']);
     });
 
     test('doctorsOnShiftAt excludes shifts outside appointment time', () {
@@ -58,7 +59,7 @@ void main() {
       expect(presentation.entries.first.isPatientChoice, isTrue);
     });
 
-    test('presentationFor lists shift doctors when appointment is unassigned', () {
+    test('presentationFor shows no preferred doctor when appointment is unassigned', () {
       final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
         organizationTimezone: 'UTC',
         shifts: [morningShift],
@@ -67,7 +68,8 @@ void main() {
       final item = _item(startTime: DateTime.utc(2026, 6, 4, 10));
 
       final presentation = lookup.presentationFor(item);
-      expect(presentation.entries.map((entry) => entry.name), ['Dr Alpha', 'Dr Beta']);
+      expect(presentation.entries, hasLength(1));
+      expect(presentation.entries.first.name, 'No preferred doctor');
       expect(presentation.hasPatientChoice, isFalse);
     });
 

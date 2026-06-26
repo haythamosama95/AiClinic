@@ -77,7 +77,7 @@ void main() {
           ),
         );
       }
-      expect(todayStatuses, containsAll(DevClinicSeedSchedule.seedableAppointmentStatuses));
+      expect(todayStatuses, {AppointmentStatus.confirmed});
 
       for (final dayOffset in [1, 2, 3, 4, 5]) {
         final startTime = DevClinicSeedSchedule.appointmentStartUtc(
@@ -125,15 +125,36 @@ void main() {
       }
     });
 
-    test('roughly one in six seeded appointments omit doctor assignment', () {
+    test('roughly one in six non-today seeded appointments omit doctor assignment', () {
       final unassigned = <int>[];
       for (var seedKey = 0; seedKey < 60; seedKey++) {
-        if (!DevClinicSeedSchedule.shouldAssignDoctorForAppointment(seedKey)) {
+        if (!DevClinicSeedSchedule.shouldAssignDoctorForAppointment(dayOffset: 1, patientIndex: 1, seedKey: seedKey)) {
           unassigned.add(seedKey);
         }
       }
       expect(unassigned, [0, 6, 12, 18, 24, 30, 36, 42, 48, 54]);
-      expect(DevClinicSeedSchedule.shouldAssignDoctorForAppointment(1), isTrue);
+      expect(DevClinicSeedSchedule.shouldAssignDoctorForAppointment(dayOffset: 1, patientIndex: 1, seedKey: 1), isTrue);
+    });
+
+    test('today seeded appointments split preferred doctors evenly', () {
+      final withDoctor = <int>[];
+      final withoutDoctor = <int>[];
+      for (var patientIndex = 1; patientIndex <= DevClinicSeedSpec.patientsPerBranch; patientIndex++) {
+        final assigned = DevClinicSeedSchedule.shouldAssignDoctorForAppointment(
+          dayOffset: 0,
+          patientIndex: patientIndex,
+          seedKey: patientIndex,
+        );
+        if (assigned) {
+          withDoctor.add(patientIndex);
+        } else {
+          withoutDoctor.add(patientIndex);
+        }
+      }
+      expect(withDoctor.length, DevClinicSeedSpec.patientsPerBranch ~/ 2);
+      expect(withoutDoctor.length, DevClinicSeedSpec.patientsPerBranch ~/ 2);
+      expect(withDoctor, [1, 3, 5, 7, 9, 11, 13, 15]);
+      expect(withoutDoctor, [2, 4, 6, 8, 10, 12, 14, 16]);
     });
 
     test('shift seeding covers today through five days ahead only', () {

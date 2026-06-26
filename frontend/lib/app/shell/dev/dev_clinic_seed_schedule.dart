@@ -50,7 +50,7 @@ abstract final class DevClinicSeedSchedule {
   /// Statuses allowed for appointments on a calendar day relative to "today" in [timezone].
   ///
   /// - Before today: completed, cancelled, or no-show only.
-  /// - Today: any seedable status.
+  /// - Today: confirmed only.
   /// - After today: scheduled, confirmed, or cancelled only.
   static List<AppointmentStatus> allowedStatusesForCalendarDayRelation(DevClinicSeedCalendarDayRelation relation) {
     return switch (relation) {
@@ -59,7 +59,7 @@ abstract final class DevClinicSeedSchedule {
         AppointmentStatus.cancelled,
         AppointmentStatus.noShow,
       ],
-      DevClinicSeedCalendarDayRelation.today => seedableAppointmentStatuses,
+      DevClinicSeedCalendarDayRelation.today => const [AppointmentStatus.confirmed],
       DevClinicSeedCalendarDayRelation.future => const [
         AppointmentStatus.scheduled,
         AppointmentStatus.confirmed,
@@ -128,8 +128,18 @@ abstract final class DevClinicSeedSchedule {
     return minAppointmentDurationMinutes + (seedKey % span);
   }
 
-  /// Roughly one in six seeded appointments have no assigned doctor (for unassigned UI/testing).
-  static bool shouldAssignDoctorForAppointment(int seedKey) {
+  /// Whether a seeded appointment gets a preferred doctor.
+  ///
+  /// - Today: odd [patientIndex] values are assigned; even values are unassigned (50/50).
+  /// - Other days: roughly one in six omit doctor assignment (for unassigned UI/testing).
+  static bool shouldAssignDoctorForAppointment({
+    required int dayOffset,
+    required int patientIndex,
+    required int seedKey,
+  }) {
+    if (dayOffset == 0) {
+      return patientIndex.isOdd;
+    }
     return seedKey % 6 != 0;
   }
 

@@ -32,6 +32,30 @@ void main() {
       expect(AppointmentQueueDisplay.formatWaitedLabel(const Duration(minutes: 15)), 'Waited: 15 mins');
     });
 
+    test('indexClosestToNow prefers the slot containing now', () {
+      final start = DateTime.utc(2026, 6, 4, 10);
+      final items = [
+        item(id: 'early', startTime: start),
+        item(id: 'current', startTime: start.add(const Duration(hours: 1))),
+        item(id: 'later', startTime: start.add(const Duration(hours: 2))),
+      ];
+      final now = start.add(const Duration(hours: 1, minutes: 10));
+
+      expect(AppointmentQueueDisplay.indexClosestToNow(items, now: now), 1);
+    });
+
+    test('indexClosestToNow picks nearest edge when now is outside all slots', () {
+      final start = DateTime.utc(2026, 6, 4, 10);
+      final items = [
+        item(id: 'first', startTime: start),
+        item(id: 'second', startTime: start.add(const Duration(hours: 2))),
+      ];
+      final between = start.add(const Duration(hours: 1));
+
+      expect(AppointmentQueueDisplay.indexClosestToNow(items, now: between), 0);
+      expect(AppointmentQueueDisplay.indexClosestToNow(items, now: start.add(const Duration(hours: 5))), 1);
+    });
+
     test('activeSessionsFor returns one session per doctor', () {
       final doctorA = 'doc-a';
       final doctorB = 'doc-b';
@@ -65,12 +89,12 @@ void main() {
       expect(sessions.map((session) => session.id), containsAll(['a1', 'a2']));
     });
 
-    test('queueDoctorLabel shows fallback when doctor is unassigned and no shift data', () {
+    test('queueDoctorLabel shows no preferred doctor when unassigned', () {
       final unassigned = item(doctorId: null, doctorName: null);
-      expect(AppointmentQueueDisplay.queueDoctorLabel(unassigned), 'No doctor on shift');
+      expect(AppointmentQueueDisplay.queueDoctorLabel(unassigned), 'No preferred doctor');
     });
 
-    test('queueDoctorLabel shows shift doctors when unassigned', () {
+    test('queueDoctorLabel shows no preferred doctor even when shift doctors exist', () {
       final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
         organizationTimezone: 'UTC',
         shifts: [
@@ -93,7 +117,7 @@ void main() {
       );
       final unassigned = item(doctorId: null, doctorName: null, startTime: DateTime.utc(2026, 6, 4, 10));
 
-      expect(AppointmentQueueDisplay.queueDoctorLabel(unassigned, shiftLookup: lookup), 'Dr Alpha, Dr Beta');
+      expect(AppointmentQueueDisplay.queueDoctorLabel(unassigned, shiftLookup: lookup), 'No preferred doctor');
     });
 
     test('queueDoctorLabel shows assigned doctor name when present', () {
@@ -101,14 +125,41 @@ void main() {
       expect(AppointmentQueueDisplay.queueDoctorLabel(assigned), 'Dr Alpha');
     });
 
-    test('doctorInProgressBlockReason uses queue doctor label for unassigned appointments', () {
+    test('doctorInProgressBlockReason blocks start when all shift doctors are busy', () {
+      final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
+        organizationTimezone: 'UTC',
+        shifts: [
+          ShiftListItem(
+            id: 's1',
+            branchId: 'b1',
+            shiftDate: DateTime(2026, 6, 4),
+            startTime: '09:00',
+            endTime: '17:00',
+            status: ShiftStatus.active,
+            isUnassigned: false,
+            assigneeNames: const ['Dr Alpha', 'Dr Beta'],
+            assigneeCount: 2,
+          ),
+        ],
+        doctors: const [
+          StaffListItem(id: 'd1', fullName: 'Dr Alpha', role: StaffRole.doctor, isActive: true),
+          StaffListItem(id: 'd2', fullName: 'Dr Beta', role: StaffRole.doctor, isActive: true),
+        ],
+      );
       final start = DateTime.utc(2026, 6, 4, 11);
-      final active = item(
+      final activeAlpha = item(
         status: AppointmentStatus.inProgress,
         startTime: start,
-        doctorId: null,
-        doctorName: null,
-        id: 'active',
+        doctorId: 'd1',
+        doctorName: 'Dr Alpha',
+        id: 'active-alpha',
+      );
+      final activeBeta = item(
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: 'd2',
+        doctorName: 'Dr Beta',
+        id: 'active-beta',
       );
       final waiting = item(
         status: AppointmentStatus.checkedIn,
@@ -119,8 +170,12 @@ void main() {
       );
 
       expect(
-        AppointmentQueueDisplay.doctorInProgressBlockReason(waiting, [active, waiting]),
-        contains('A doctor on shift already has a patient in progress'),
+        AppointmentQueueDisplay.doctorInProgressBlockReason(waiting, [
+          activeAlpha,
+          activeBeta,
+          waiting,
+        ], shiftLookup: lookup),
+        contains('All doctors on shift already have patients in progress'),
       );
     });
 

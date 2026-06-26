@@ -23,6 +23,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_reschedule_va
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_header_bar.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_skeleton.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_reschedule_confirm_dialog.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
@@ -1491,6 +1492,8 @@ class _AppointmentTile extends StatelessWidget {
     final brightness = ThemeData.estimateBrightnessForColor(tileColor);
     final textColor = brightness == Brightness.dark ? Colors.white : Colors.black87;
     final bounds = details.bounds;
+    final doctorName = appointment.notes?.trim();
+    final nameStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor);
 
     return GestureDetector(
       onTap: onTap,
@@ -1507,13 +1510,19 @@ class _AppointmentTile extends StatelessWidget {
               border: Border.all(color: tileColor),
             ),
             alignment: Alignment.topLeft,
-            child: Text(
-              appointment.notes == null || appointment.notes!.isEmpty
-                  ? appointment.subject
-                  : '${appointment.subject}\n${appointment.notes}',
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppointmentScaleDownText(text: appointment.subject, style: nameStyle),
+                if (doctorName != null && doctorName.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  AppointmentScaleDownText(
+                    text: doctorName,
+                    style: nameStyle.copyWith(fontWeight: FontWeight.w500, fontSize: 11),
+                  ),
+                ],
+              ],
             ),
           ),
         ),

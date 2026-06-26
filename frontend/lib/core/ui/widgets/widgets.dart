@@ -18,6 +18,7 @@ export 'input/app_label.dart';
 export 'input/app_selectors.dart';
 export 'input/app_text_field.dart';
 export 'layouts/app_card.dart';
+export 'layouts/tilted_background_icon_stack.dart';
 export 'overlays/app_dialog.dart';
 export 'overlays/app_popover.dart';
 export 'overlays/app_sheets.dart';

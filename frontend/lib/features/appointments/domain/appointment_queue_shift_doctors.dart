@@ -8,6 +8,15 @@ import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
 import 'package:flutter/foundation.dart';
 import 'package:timezone/timezone.dart' as tz;
 
+/// Doctor staffed on a shift at a given appointment time.
+@immutable
+class QueueShiftDoctor {
+  const QueueShiftDoctor({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
 /// One doctor row in the queue appointments card.
 @immutable
 class QueueAppointmentDoctorEntry {
@@ -38,16 +47,19 @@ class AppointmentQueueShiftDoctorLookup {
     required this.organizationTimezone,
     required this.shifts,
     required this.doctorNamesByNormalizedName,
+    required this.doctorIdsByNormalizedName,
   });
 
   final String organizationTimezone;
   final List<ShiftListItem> shifts;
   final Map<String, String> doctorNamesByNormalizedName;
+  final Map<String, String> doctorIdsByNormalizedName;
 
   static const empty = AppointmentQueueShiftDoctorLookup(
     organizationTimezone: 'UTC',
     shifts: [],
     doctorNamesByNormalizedName: {},
+    doctorIdsByNormalizedName: {},
   );
 
   factory AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors({
@@ -56,6 +68,7 @@ class AppointmentQueueShiftDoctorLookup {
     required List<StaffListItem> doctors,
   }) {
     final namesByKey = <String, String>{};
+    final idsByKey = <String, String>{};
     for (final doctor in doctors) {
       if (doctor.role != StaffRole.doctor) {
         continue;
@@ -64,7 +77,9 @@ class AppointmentQueueShiftDoctorLookup {
       if (name.isEmpty) {
         continue;
       }
-      namesByKey[name.toLowerCase()] = name;
+      final key = name.toLowerCase();
+      namesByKey[key] = name;
+      idsByKey[key] = doctor.id;
     }
 
     final activeShifts = shifts
@@ -75,11 +90,25 @@ class AppointmentQueueShiftDoctorLookup {
       organizationTimezone: organizationTimezone,
       shifts: activeShifts,
       doctorNamesByNormalizedName: namesByKey,
+      doctorIdsByNormalizedName: idsByKey,
     );
   }
 
+  /// Doctors on an active shift covering [appointmentStartUtc] in org local time.
+  List<QueueShiftDoctor> doctorsOnShiftAt(DateTime appointmentStartUtc) {
+    final names = _doctorNamesOnShiftAt(appointmentStartUtc);
+    return [
+      for (final name in names)
+        if (_resolveDoctorId(name) case final id?) QueueShiftDoctor(id: id, name: name),
+    ];
+  }
+
   /// Doctor names on an active shift covering [appointmentStartUtc] in org local time.
-  List<String> doctorsOnShiftAt(DateTime appointmentStartUtc) {
+  List<String> doctorNamesOnShiftAt(DateTime appointmentStartUtc) {
+    return _doctorNamesOnShiftAt(appointmentStartUtc);
+  }
+
+  List<String> _doctorNamesOnShiftAt(DateTime appointmentStartUtc) {
     ensureAppointmentTimezonesInitialized();
     final location = tz.getLocation(organizationTimezone);
     final localStart = tz.TZDateTime.from(appointmentStartUtc.toUtc(), location);
@@ -120,15 +149,8 @@ class AppointmentQueueShiftDoctorLookup {
       );
     }
 
-    final onShift = doctorsOnShiftAt(item.startTime);
-    if (onShift.isEmpty) {
-      return const QueueAppointmentDoctorPresentation(
-        entries: [QueueAppointmentDoctorEntry(name: 'No doctor on shift', isPatientChoice: false)],
-      );
-    }
-
-    return QueueAppointmentDoctorPresentation(
-      entries: [for (final name in onShift) QueueAppointmentDoctorEntry(name: name, isPatientChoice: false)],
+    return const QueueAppointmentDoctorPresentation(
+      entries: [QueueAppointmentDoctorEntry(name: 'No preferred doctor', isPatientChoice: false)],
     );
   }
 
@@ -144,6 +166,10 @@ class AppointmentQueueShiftDoctorLookup {
 
   String? _resolveDoctorName(String assigneeName) {
     return doctorNamesByNormalizedName[assigneeName.trim().toLowerCase()];
+  }
+
+  String? _resolveDoctorId(String doctorName) {
+    return doctorIdsByNormalizedName[doctorName.trim().toLowerCase()];
   }
 
   static bool _isSameCalendarDay(DateTime a, DateTime b) {

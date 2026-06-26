@@ -301,6 +301,7 @@ class DevClinicSeedService {
           final doctorId = _doctorForAppointment(
             primaryDoctorId: branch.primaryDoctorId,
             secondaryDoctorId: branch.secondaryDoctorId,
+            dayOffset: dayOffset,
             patientIndex: patientIndex,
             seedKey: seedKey,
           );
@@ -536,10 +537,15 @@ class DevClinicSeedService {
   static String? _doctorForAppointment({
     required String primaryDoctorId,
     required String? secondaryDoctorId,
+    required int dayOffset,
     required int patientIndex,
     required int seedKey,
   }) {
-    if (!DevClinicSeedSchedule.shouldAssignDoctorForAppointment(seedKey)) {
+    if (!DevClinicSeedSchedule.shouldAssignDoctorForAppointment(
+      dayOffset: dayOffset,
+      patientIndex: patientIndex,
+      seedKey: seedKey,
+    )) {
       return null;
     }
     if (secondaryDoctorId == null || patientIndex.isEven) {
