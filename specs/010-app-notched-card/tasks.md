@@ -32,8 +32,8 @@ description: "Task list for App Notched Card (010) feature implementation"
 
 **Purpose**: Prepare directories and confirm `AppCard` baseline for visual parity.
 
-- [ ] T001 Create widget test directory `frontend/test/widget/core/ui/` and unit test directory `frontend/test/unit/core/ui/`
-- [ ] T002 [P] Review `frontend/lib/core/ui/widgets/layouts/app_card.dart` and forui `FCard` header/body padding to record parity targets for title, description, and body insets
+- [X] T001 Create widget test directory `frontend/test/widget/core/ui/` and unit test directory `frontend/test/unit/core/ui/`
+- [X] T002 [P] Review `frontend/lib/core/ui/widgets/layouts/app_card.dart` and forui `FCard` header/body padding to record parity targets for title, description, and body insets
 
 ---
 
@@ -43,10 +43,10 @@ description: "Task list for App Notched Card (010) feature implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T003 Implement `NotchedCardPath.build(...)` with step-down profile (entry/exit fillets downward, open top-trailing corner) per FR-004 in `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
-- [ ] T004 Add `NotchedCardClipper` reusing `NotchedCardPath.build` in `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
-- [ ] T005 [P] Add `NotchedCardBorderPainter` stroking the same path with `semanticColors.border` in `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
-- [ ] T006 [P] Add path unit tests (closed path, bounds, LTR notch on trailing side) in `frontend/test/unit/core/ui/notched_card_path_test.dart`
+- [X] T003 Implement `NotchedCardPath.build(...)` with step-down profile (entry/exit fillets downward, open top-trailing corner) per FR-004 in `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
+- [X] T004 Add `NotchedCardClipper` reusing `NotchedCardPath.build` in `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
+- [X] T005 [P] Add `NotchedCardBorderPainter` stroking the same path with `semanticColors.border` in `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
+- [X] T006 [P] Add path unit tests (closed path, bounds, LTR notch on trailing side) in `frontend/test/unit/core/ui/notched_card_path_test.dart`
 
 **Checkpoint**: Path builder, clipper, and painter ready — user story implementation can begin.
 
