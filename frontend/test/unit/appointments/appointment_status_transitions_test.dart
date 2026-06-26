@@ -1,7 +1,12 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_transitions.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/shifts/domain/shift_list_item.dart';
+import 'package:ai_clinic/features/shifts/domain/shift_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -53,7 +58,7 @@ void main() {
       expect(forwardStatusActionLabelFor(row, referenceUtc: referenceUtc, siblingAppointments: [row]), 'Start');
     });
 
-    test('checked_in hides start when doctor already has in-progress patient', () {
+    test('checked_in hides start when doctor already has in-progress patient and no alternatives', () {
       final start = DateTime.utc(2026, 6, 1, 9);
       final active = item(status: AppointmentStatus.inProgress, startTime: start, doctorId: 'doc-a', id: 'active');
       final waiting = item(
@@ -65,6 +70,46 @@ void main() {
       expect(
         forwardStatusTargetFor(waiting, referenceUtc: referenceUtc, siblingAppointments: [active, waiting]),
         isNull,
+      );
+    });
+
+    test('checked_in offers start when preferred doctor is busy but another shift doctor is free', () {
+      final shiftLookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
+        organizationTimezone: 'UTC',
+        shifts: [
+          ShiftListItem(
+            id: 's1',
+            branchId: 'b1',
+            shiftDate: DateTime(2026, 6, 1),
+            startTime: '09:00',
+            endTime: '17:00',
+            status: ShiftStatus.active,
+            isUnassigned: false,
+            assigneeNames: const ['Dr Alpha', 'Dr Beta'],
+            assigneeCount: 2,
+          ),
+        ],
+        doctors: const [
+          StaffListItem(id: 'doc-a', fullName: 'Dr Alpha', role: StaffRole.doctor, isActive: true),
+          StaffListItem(id: 'doc-b', fullName: 'Dr Beta', role: StaffRole.doctor, isActive: true),
+        ],
+      );
+      final start = DateTime.utc(2026, 6, 1, 9);
+      final active = item(status: AppointmentStatus.inProgress, startTime: start, doctorId: 'doc-a', id: 'active');
+      final waiting = item(
+        status: AppointmentStatus.checkedIn,
+        startTime: start.add(const Duration(minutes: 30)),
+        doctorId: 'doc-a',
+        id: 'waiting',
+      );
+      expect(
+        forwardStatusTargetFor(
+          waiting,
+          referenceUtc: referenceUtc,
+          siblingAppointments: [active, waiting],
+          shiftLookup: shiftLookup,
+        ),
+        AppointmentStatus.inProgress,
       );
     });
 

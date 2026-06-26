@@ -82,5 +82,45 @@ void main() {
 
       expect(selectedDoctorId, 'doc-a');
     });
+
+    testWidgets('shows preferred doctor unavailable copy when requested', (tester) async {
+      const singleAvailable = [
+        QueueStartDoctorOption(id: 'doc-a', name: 'Dr Alpha', isBusy: true),
+        QueueStartDoctorOption(id: 'doc-b', name: 'Dr Beta', isBusy: false),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          builder: (context, child) => ForuiAppScope(child: child!),
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: AppButton(
+                  label: 'Open dialog',
+                  onPressed: () => QueueShiftDoctorPickerDialog.show(
+                    context,
+                    options: singleAvailable,
+                    preferredDoctorUnavailable: true,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open dialog'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Preferred doctor unavailable'), findsOneWidget);
+      expect(
+        find.text(
+          'The preferred doctor is currently busy. Another doctor is available — select who will see this patient.',
+        ),
+        findsOneWidget,
+      );
+    });
   });
 }

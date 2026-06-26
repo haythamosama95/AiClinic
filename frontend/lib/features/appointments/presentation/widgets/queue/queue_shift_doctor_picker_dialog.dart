@@ -8,27 +8,39 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_d
 
 /// Prompts staff to choose which on-shift doctor will take the appointment.
 class QueueShiftDoctorPickerDialog extends StatefulWidget {
-  const QueueShiftDoctorPickerDialog({required this.options, super.key});
-
-  final List<QueueStartDoctorOption> options;
-
-  static Future<String?> show(BuildContext context, {required List<QueueStartDoctorOption> options}) {
+  static Future<String?> show(
+    BuildContext context, {
+    required List<QueueStartDoctorOption> options,
+    bool preferredDoctorUnavailable = false,
+  }) {
     final available = options.where((option) => !option.isBusy).toList(growable: false);
     if (available.isEmpty) {
       return Future.value();
     }
-    if (available.length == 1) {
+    if (available.length == 1 && !preferredDoctorUnavailable) {
       return Future.value(available.first.id);
     }
 
+    final title = preferredDoctorUnavailable ? 'Preferred doctor unavailable' : 'Choose doctor';
+    final message = preferredDoctorUnavailable
+        ? available.length == 1
+              ? 'The preferred doctor is currently busy. Another doctor is available — select who will see this patient.'
+              : 'The preferred doctor is currently busy. Other doctors are available — select who will see this patient.'
+        : 'Multiple doctors are on shift. Select who will see this patient.';
+
     return AppDialog.show<String>(
       context: context,
-      title: 'Choose doctor',
+      title: title,
       barrierDismissible: false,
-      body: QueueShiftDoctorPickerDialog(options: options),
+      body: QueueShiftDoctorPickerDialog(options: options, message: message),
       actions: const [],
     );
   }
+
+  final List<QueueStartDoctorOption> options;
+  final String? message;
+
+  const QueueShiftDoctorPickerDialog({required this.options, this.message, super.key});
 
   @override
   State<QueueShiftDoctorPickerDialog> createState() => _QueueShiftDoctorPickerDialogState();
@@ -58,7 +70,10 @@ class _QueueShiftDoctorPickerDialogState extends State<QueueShiftDoctorPickerDia
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Multiple doctors are on shift. Select who will see this patient.', style: theme.textTheme.bodyMedium),
+        Text(
+          widget.message ?? 'Multiple doctors are on shift. Select who will see this patient.',
+          style: theme.textTheme.bodyMedium,
+        ),
         const SizedBox(height: SpacingTokens.md),
         ...[
           for (final option in widget.options) ...[

@@ -46,6 +46,31 @@ abstract final class AppointmentQueueStartDoctor {
     ];
   }
 
+  /// Whether [item]'s assigned preferred doctor already has another in-progress patient.
+  static bool isPreferredDoctorBusy({
+    required AppointmentListItem item,
+    required Iterable<AppointmentListItem> siblingAppointments,
+  }) {
+    final assignedDoctorId = item.doctorId?.trim();
+    if (assignedDoctorId == null || assignedDoctorId.isEmpty) {
+      return false;
+    }
+    return isDoctorBusy(doctorId: assignedDoctorId, excludeAppointmentId: item.id, items: siblingAppointments);
+  }
+
+  /// Free doctors on shift when starting [item].
+  static List<QueueStartDoctorOption> availableShiftOptionsFor({
+    required AppointmentListItem item,
+    required Iterable<AppointmentListItem> siblingAppointments,
+    required AppointmentQueueShiftDoctorLookup shiftLookup,
+  }) {
+    return shiftOptionsFor(
+      item: item,
+      siblingAppointments: siblingAppointments,
+      shiftLookup: shiftLookup,
+    ).where((option) => !option.isBusy).toList(growable: false);
+  }
+
   /// Tooltip / disabled reason before starting a checked-in appointment.
   static String? blockReasonForStart({
     required AppointmentListItem item,
@@ -58,7 +83,15 @@ abstract final class AppointmentQueueStartDoctor {
 
     final assignedDoctorId = item.doctorId?.trim();
     if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
-      if (isDoctorBusy(doctorId: assignedDoctorId, excludeAppointmentId: item.id, items: siblingAppointments)) {
+      if (isPreferredDoctorBusy(item: item, siblingAppointments: siblingAppointments)) {
+        final freeAlternatives = availableShiftOptionsFor(
+          item: item,
+          siblingAppointments: siblingAppointments,
+          shiftLookup: shiftLookup,
+        );
+        if (freeAlternatives.isNotEmpty) {
+          return null;
+        }
         final doctorLabel = item.doctorName?.trim().isNotEmpty == true ? item.doctorName!.trim() : 'This doctor';
         return '$doctorLabel already has a patient in progress. Complete that visit before starting another.';
       }
@@ -85,15 +118,20 @@ abstract final class AppointmentQueueStartDoctor {
 
   /// Doctor to assign before advancing to in progress.
   ///
-  /// Returns the assigned doctor id when [item] already has one, the only shift
-  /// doctor when exactly one is staffed, or `null` when the caller must prompt.
+  /// Returns the assigned doctor id when [item] already has one and they are free,
+  /// the only shift doctor when exactly one is staffed, or `null` when the caller
+  /// must prompt.
   static String? autoSelectedDoctorId({
     required AppointmentListItem item,
     required AppointmentQueueShiftDoctorLookup shiftLookup,
+    Iterable<AppointmentListItem> siblingAppointments = const [],
   }) {
     final assignedDoctorId = item.doctorId?.trim();
     if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
-      return assignedDoctorId;
+      if (!isPreferredDoctorBusy(item: item, siblingAppointments: siblingAppointments)) {
+        return assignedDoctorId;
+      }
+      return null;
     }
 
     final onShift = shiftLookup.doctorsOnShiftAt(item.startTime);
@@ -107,9 +145,17 @@ abstract final class AppointmentQueueStartDoctor {
   static bool requiresDoctorPicker({
     required AppointmentListItem item,
     required AppointmentQueueShiftDoctorLookup shiftLookup,
+    Iterable<AppointmentListItem> siblingAppointments = const [],
   }) {
     final assignedDoctorId = item.doctorId?.trim();
     if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
+      if (isPreferredDoctorBusy(item: item, siblingAppointments: siblingAppointments)) {
+        return availableShiftOptionsFor(
+          item: item,
+          siblingAppointments: siblingAppointments,
+          shiftLookup: shiftLookup,
+        ).isNotEmpty;
+      }
       return false;
     }
     return shiftLookup.doctorsOnShiftAt(item.startTime).length > 1;

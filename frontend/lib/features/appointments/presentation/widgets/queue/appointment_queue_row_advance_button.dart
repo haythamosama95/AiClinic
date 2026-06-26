@@ -108,12 +108,20 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
   }
 
   Future<String?> _resolveDoctorForStart() async {
-    final autoSelected = AppointmentQueueStartDoctor.autoSelectedDoctorId(item: item, shiftLookup: widget.shiftLookup);
+    final autoSelected = AppointmentQueueStartDoctor.autoSelectedDoctorId(
+      item: item,
+      shiftLookup: widget.shiftLookup,
+      siblingAppointments: widget.siblingAppointments,
+    );
     if (autoSelected != null) {
       return autoSelected;
     }
 
-    if (!AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: widget.shiftLookup)) {
+    if (!AppointmentQueueStartDoctor.requiresDoctorPicker(
+      item: item,
+      shiftLookup: widget.shiftLookup,
+      siblingAppointments: widget.siblingAppointments,
+    )) {
       return null;
     }
 
@@ -125,7 +133,15 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
     if (!mounted) {
       return null;
     }
-    return QueueShiftDoctorPickerDialog.show(context, options: options);
+    final preferredDoctorUnavailable = AppointmentQueueStartDoctor.isPreferredDoctorBusy(
+      item: item,
+      siblingAppointments: widget.siblingAppointments,
+    );
+    return QueueShiftDoctorPickerDialog.show(
+      context,
+      options: options,
+      preferredDoctorUnavailable: preferredDoctorUnavailable,
+    );
   }
 
   Future<void> _assignDoctorIfNeeded(String doctorId) async {

@@ -111,6 +111,102 @@ void main() {
         isNull,
       );
     });
+
+    test('blockReasonForStart allows start when preferred doctor is busy but another shift doctor is free', () {
+      final start = DateTime.utc(2026, 6, 4, 11);
+      final active = _item(
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: 'd1',
+        doctorName: 'Dr Alpha',
+        id: 'active',
+      );
+      final waiting = _item(
+        status: AppointmentStatus.checkedIn,
+        startTime: start.add(const Duration(minutes: 30)),
+        doctorId: 'd1',
+        doctorName: 'Dr Alpha',
+        id: 'waiting',
+      );
+
+      expect(
+        AppointmentQueueStartDoctor.blockReasonForStart(
+          item: waiting,
+          siblingAppointments: [active, waiting],
+          shiftLookup: lookup,
+        ),
+        isNull,
+      );
+    });
+
+    test('blockReasonForStart blocks when preferred doctor is busy and no shift doctor is free', () {
+      final start = DateTime.utc(2026, 6, 4, 11);
+      final activeAlpha = _item(
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: 'd1',
+        doctorName: 'Dr Alpha',
+        id: 'active-alpha',
+      );
+      final activeBeta = _item(
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: 'd2',
+        doctorName: 'Dr Beta',
+        id: 'active-beta',
+      );
+      final waiting = _item(
+        status: AppointmentStatus.checkedIn,
+        startTime: start.add(const Duration(minutes: 30)),
+        doctorId: 'd1',
+        doctorName: 'Dr Alpha',
+        id: 'waiting',
+      );
+
+      expect(
+        AppointmentQueueStartDoctor.blockReasonForStart(
+          item: waiting,
+          siblingAppointments: [activeAlpha, activeBeta, waiting],
+          shiftLookup: lookup,
+        ),
+        'Dr Alpha already has a patient in progress. Complete that visit before starting another.',
+      );
+    });
+
+    test('requiresDoctorPicker when preferred doctor is busy and another shift doctor is free', () {
+      final start = DateTime.utc(2026, 6, 4, 11);
+      final active = _item(
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: 'd1',
+        doctorName: 'Dr Alpha',
+        id: 'active',
+      );
+      final waiting = _item(
+        status: AppointmentStatus.checkedIn,
+        startTime: start.add(const Duration(minutes: 30)),
+        doctorId: 'd1',
+        doctorName: 'Dr Alpha',
+        id: 'waiting',
+      );
+
+      expect(
+        AppointmentQueueStartDoctor.requiresDoctorPicker(
+          item: waiting,
+          shiftLookup: lookup,
+          siblingAppointments: [active, waiting],
+        ),
+        isTrue,
+      );
+      expect(
+        AppointmentQueueStartDoctor.autoSelectedDoctorId(
+          item: waiting,
+          shiftLookup: lookup,
+          siblingAppointments: [active, waiting],
+        ),
+        isNull,
+      );
+    });
   });
 }
 
