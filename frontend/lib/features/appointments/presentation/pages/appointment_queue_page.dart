@@ -86,7 +86,6 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _QueueHeader(),
                 if (state.error != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, 0, SpacingTokens.lg, SpacingTokens.sm),
@@ -103,7 +102,7 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(
                       SpacingTokens.lg,
-                      SpacingTokens.sm,
+                      SpacingTokens.lg,
                       SpacingTokens.lg,
                       SpacingTokens.lg,
                     ),
@@ -112,33 +111,6 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
                 ),
               ],
             ),
-    );
-  }
-}
-
-class _QueueHeader extends StatelessWidget {
-  const _QueueHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.lg, SpacingTokens.sm),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Clinic queue management',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: SpacingTokens.xs),
-          Text(
-            "Today's patient flow — scheduled and in session",
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-          ),
-        ],
-      ),
     );
   }
 }
