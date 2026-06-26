@@ -92,7 +92,7 @@ void main() {
 
       final _ = container.read(appointmentQueueProvider);
       await pumpEventQueue();
-      expect(client.rpcCallCounts['list_appointments'], 1);
+      expect(client.rpcCallCounts['list_appointments'], 2);
 
       authNotifier.replace(
         AuthSessionState(
@@ -105,7 +105,7 @@ void main() {
       );
       await pumpEventQueue();
 
-      expect(client.rpcCallCounts['list_appointments'], 2);
+      expect(client.rpcCallCounts['list_appointments'], 4);
     });
   });
 }

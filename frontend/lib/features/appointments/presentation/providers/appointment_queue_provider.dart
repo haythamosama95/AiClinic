@@ -7,23 +7,45 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
 
 @immutable
 class AppointmentQueueState {
-  const AppointmentQueueState({required this.items, this.loading = false, this.error});
+  const AppointmentQueueState({
+    required this.items,
+    this.comparisonItems,
+    this.comparisonNow,
+    this.loading = false,
+    this.error,
+  });
 
   final List<AppointmentListItem> items;
+  final List<AppointmentListItem>? comparisonItems;
+  final DateTime? comparisonNow;
   final bool loading;
   final String? error;
 
-  AppointmentQueueState copyWith({List<AppointmentListItem>? items, bool? loading, Object? error = _sentinel}) {
+  AppointmentQueueState copyWith({
+    List<AppointmentListItem>? items,
+    Object? comparisonItems = _sentinel,
+    Object? comparisonNow = _sentinel,
+    bool? loading,
+    Object? error = _sentinel,
+  }) {
     return AppointmentQueueState(
       items: items ?? this.items,
+      comparisonItems: identical(comparisonItems, _sentinel)
+          ? this.comparisonItems
+          : comparisonItems as List<AppointmentListItem>?,
+      comparisonNow: identical(comparisonNow, _sentinel) ? this.comparisonNow : comparisonNow as DateTime?,
       loading: loading ?? this.loading,
       error: identical(error, _sentinel) ? this.error : error as String?,
     );
@@ -87,14 +109,76 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
     state = state.copyWith(loading: true, error: null);
     try {
       final range = _todayRange;
-      final items = await ref
-          .read(appointmentRepositoryProvider)
-          .listAppointments(branchId: branchId, from: range.from, to: range.to);
-      state = state.copyWith(loading: false, items: sortAppointmentsByStartTime(items), error: null);
+      final repository = ref.read(appointmentRepositoryProvider);
+      final items = await repository.listAppointments(branchId: branchId, from: range.from, to: range.to);
+      final comparison = await _fetchComparisonItems(
+        branchId: branchId,
+        repository: repository,
+      );
+      state = state.copyWith(
+        loading: false,
+        items: sortAppointmentsByStartTime(items),
+        comparisonItems: comparison?.items,
+        comparisonNow: comparison?.referenceNow,
+        error: null,
+      );
     } catch (error) {
       state = state.copyWith(loading: false, error: 'Unable to load today\'s queue. Try again.');
       debugPrint('AppointmentQueueController.refresh failed: $error');
     }
+  }
+
+  Future<({List<AppointmentListItem> items, DateTime referenceNow})?> _fetchComparisonItems({
+    required String branchId,
+    required AppointmentRepository repository,
+  }) async {
+    try {
+      final schedule = await _resolveBranchSchedule();
+      final timezone = _organizationTimezone;
+      final todayLocal = calendarDayInOrganizationTimezone(timezone, DateTime.now().toUtc());
+      final previousDay = AppointmentBranchWorkingHours.previousWorkingDay(schedule, todayLocal);
+      if (previousDay == null) {
+        return null;
+      }
+
+      final dayOffset = todayLocal.difference(previousDay).inDays;
+      final comparisonNow = DateTime.now().subtract(Duration(days: dayOffset));
+      final comparisonRange = appointmentTodayRangeInTimezone(
+        timezone,
+        comparisonNow.toUtc(),
+      );
+      final items = await repository.listAppointments(
+        branchId: branchId,
+        from: comparisonRange.from,
+        to: comparisonRange.to,
+      );
+      return (items: sortAppointmentsByStartTime(items), referenceNow: comparisonNow);
+    } catch (error) {
+      debugPrint('AppointmentQueueController._fetchComparisonItems failed: $error');
+      return null;
+    }
+  }
+
+  Future<BranchWorkingSchedule> _resolveBranchSchedule() async {
+    final auth = ref.read(authSessionProvider).context;
+    final orgId = auth?.organizationId?.trim();
+    final branchId = _branchId;
+    if (orgId != null && orgId.isNotEmpty && branchId != null) {
+      try {
+        final branches = await ref.read(listBranchesUseCaseProvider)(
+          organizationId: orgId,
+          filter: BranchListFilter.active,
+        );
+        for (final branch in branches) {
+          if (branch.id == branchId && branch.workingSchedule != null) {
+            return branch.workingSchedule!;
+          }
+        }
+      } catch (error) {
+        debugPrint('AppointmentQueueController._resolveBranchSchedule failed: $error');
+      }
+    }
+    return BranchWorkingSchedule.defaultSchedule();
   }
 
   void _subscribeRealtime() {

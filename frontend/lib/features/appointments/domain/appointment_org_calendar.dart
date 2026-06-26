@@ -30,6 +30,11 @@ DateTime _calendarDayInTimezone(DateTime instantUtc, String timezoneId) {
   return DateTime(local.year, local.month, local.day);
 }
 
+/// Calendar date (year/month/day) for [referenceUtc] in [organizationTimezone].
+DateTime calendarDayInOrganizationTimezone(String organizationTimezone, DateTime referenceUtc) {
+  return _calendarDayInTimezone(referenceUtc, organizationTimezone);
+}
+
 /// Whether [startTime]'s calendar day in [organizationTimezone] is today or in the past.
 bool appointmentCalendarDayHasArrivedInTimezone(
   DateTime startTime, {

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 
-/// Top stats banner with value cards for queue pulse metrics.
+/// Top stats banner with executive KPI cards for queue pulse metrics.
 class AppointmentQueueStatsBanner extends StatelessWidget {
   const AppointmentQueueStatsBanner({required this.stats, super.key});
 
@@ -12,19 +12,33 @@ class AppointmentQueueStatsBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 720;
         final children = [
-          _StatCard(label: 'Total appointments', value: '${stats.total}', accent: colors.primary),
-          _StatCard(label: 'Completed', value: '${stats.completed}', accent: const Color(0xFF059669)),
-          _StatCard(label: 'Currently waiting', value: '${stats.waiting}', accent: const Color(0xFFEAB308)),
-          _StatCard(
+          AppMetricStatCard(
+            label: 'Total appointments',
+            value: '${stats.total}',
+            icon: Icons.event_note_outlined,
+            percentChange: stats.totalTrend?.percentChange,
+          ),
+          AppMetricStatCard(
+            label: 'Completed',
+            value: '${stats.completed}',
+            icon: Icons.task_alt_outlined,
+            percentChange: stats.completedTrend?.percentChange,
+          ),
+          AppMetricStatCard(
+            label: 'Currently waiting',
+            value: '${stats.waiting}',
+            icon: Icons.hourglass_top_outlined,
+            percentChange: stats.waitingTrend?.percentChange,
+          ),
+          AppMetricStatCard(
             label: 'Avg. wait time',
             value: stats.avgWaitMinutes == null ? '—' : '${stats.avgWaitMinutes} mins',
-            accent: colors.foreground,
+            icon: Icons.timer_outlined,
+            percentChange: stats.avgWaitTrend?.percentChange,
           ),
         ];
 
@@ -47,43 +61,6 @@ class AppointmentQueueStatsBanner extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, required this.accent});
-
-  final String label;
-  final String value;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(SpacingTokens.md),
-        border: Border.all(color: colors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colors.mutedForeground)),
-            const SizedBox(height: SpacingTokens.xs),
-            Text(
-              value,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(color: accent, fontWeight: FontWeight.w700, height: 1.1),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

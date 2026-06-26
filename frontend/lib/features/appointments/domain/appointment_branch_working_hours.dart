@@ -31,6 +31,20 @@ class AppointmentBranchWorkingHours {
     return day?.isWorkingDay ?? false;
   }
 
+  /// Calendar date of the most recent working day strictly before [date].
+  ///
+  /// Walks backward up to 14 days to skip weekends and configured closures.
+  static DateTime? previousWorkingDay(BranchWorkingSchedule schedule, DateTime date) {
+    var candidate = DateTime(date.year, date.month, date.day).subtract(const Duration(days: 1));
+    for (var i = 0; i < 14; i++) {
+      if (isWorkingDay(schedule, candidate)) {
+        return candidate;
+      }
+      candidate = candidate.subtract(const Duration(days: 1));
+    }
+    return null;
+  }
+
   static int? parseHm(String? value) {
     final text = value?.trim();
     if (text == null || text.isEmpty) {
