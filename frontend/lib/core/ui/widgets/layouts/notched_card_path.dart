@@ -1,12 +1,14 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 
 /// Default notch fillet radius tuned against the reference screenshot.
-const double kNotchFilletRadius = 8.0;
+const double kNotchFilletRadius = 35.0;
 
 /// Vertical drop from the main top edge to the notch shelf.
-const double kNotchShelfDepth = 28.0;
+const double kNotchShelfDepth = 40.0;
 
 /// Minimum horizontal shelf length when no actions are supplied.
 const double kNotchMinWidth = 56.0;
@@ -33,19 +35,31 @@ abstract final class NotchedCardPath {
     final width = size.width;
     final height = size.height;
     final radius = borderRadius.clamp(0.0, width / 2).clamp(0.0, height / 2);
-    final fillet = filletRadius.clamp(0.0, shelfDepth);
+    final fillet = filletRadius.clamp(0.0, shelfDepth / 2);
     final shelfWidth = notchWidth.clamp(0.0, width - radius - fillet * 2);
 
     final shelfEndX = width - fillet;
-    final shelfStartX = shelfEndX - shelfWidth;
-    final mainTopEndX = shelfStartX - fillet;
+    final shelfLeftX = shelfEndX - shelfWidth;
+    final mainTopEndX = shelfLeftX - fillet;
 
     final path = Path()
       ..moveTo(radius, 0)
+      // Main top edge (leading → cut-out entry).
       ..lineTo(mainTopEndX, 0)
-      ..quadraticBezierTo(shelfStartX, 0, shelfStartX, shelfDepth)
+      // Entry upper fillet: main top curves downward.
+      ..arcToPoint(Offset(shelfLeftX, fillet), radius: Radius.circular(fillet), clockwise: true)
+      ..lineTo(shelfLeftX, shelfDepth - fillet)
+      // Entry lower fillet: bottom-left quarter-arc (π → π/2, counter-clockwise).
+      ..arcTo(
+        Rect.fromCircle(center: Offset(shelfLeftX + fillet, shelfDepth - fillet), radius: fillet),
+        math.pi,
+        -math.pi / 2,
+        false,
+      )
+      // Notch shelf (actions float here).
       ..lineTo(shelfEndX, shelfDepth)
-      ..quadraticBezierTo(shelfEndX, shelfDepth + fillet, width, shelfDepth + fillet)
+      // Exit fillet: quarter-arc down onto trailing edge; top-trailing corner stays open.
+      ..arcToPoint(Offset(width, shelfDepth + fillet), radius: Radius.circular(fillet), clockwise: true)
       ..lineTo(width, height - radius)
       ..arcToPoint(Offset(width - radius, height), radius: Radius.circular(radius))
       ..lineTo(radius, height)
@@ -75,12 +89,12 @@ abstract final class NotchedCardPath {
   }) {
     final width = size.width;
     final radius = borderRadius.clamp(0.0, width / 2);
-    final fillet = filletRadius.clamp(0.0, shelfDepth);
+    final fillet = filletRadius.clamp(0.0, shelfDepth / 2);
     final shelfWidth = notchWidth.clamp(0.0, width - radius - fillet * 2);
     final shelfEndX = width - fillet;
-    final shelfStartX = shelfEndX - shelfWidth;
+    final shelfLeftX = shelfEndX - shelfWidth;
 
-    final rect = Rect.fromLTRB(shelfStartX, 0, shelfEndX, shelfDepth);
+    final rect = Rect.fromLTRB(shelfLeftX, 0, shelfEndX, shelfDepth);
 
     if (textDirection == TextDirection.rtl) {
       return Rect.fromLTRB(width - rect.right, rect.top, width - rect.left, rect.bottom);

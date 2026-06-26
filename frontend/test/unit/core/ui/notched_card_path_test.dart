@@ -48,6 +48,24 @@ void main() {
       expect(path.contains(bodyPoint), isTrue);
     });
 
+    test('entry lower fillet uses bottom-left quarter arc onto shelf', () {
+      final path = buildPath();
+      final fillet = kNotchFilletRadius.clamp(0.0, kNotchShelfDepth / 2);
+      final shelfLeftX = cardSize.width - fillet - notchWidth;
+      final center = Offset(shelfLeftX + fillet, kNotchShelfDepth - fillet);
+
+      // Notch void sits upper-right of the lower fillet center (concave cut-out).
+      expect(path.contains(Offset(center.dx + fillet / 2, center.dy - fillet / 2)), isFalse);
+      expect(path.contains(Offset(shelfLeftX + fillet + 1, kNotchShelfDepth)), isTrue);
+    });
+
+    test('top-trailing corner stays open above exit fillet', () {
+      final path = buildPath();
+
+      expect(path.contains(Offset(cardSize.width - 1, 1)), isFalse);
+      expect(path.contains(Offset(cardSize.width, kNotchShelfDepth + kNotchFilletRadius)), isTrue);
+    });
+
     test('RTL mirrors notch to the leading side', () {
       final rtlShelf = NotchedCardPath.shelfRect(
         size: cardSize,

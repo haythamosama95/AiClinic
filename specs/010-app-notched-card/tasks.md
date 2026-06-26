@@ -60,13 +60,13 @@ description: "Task list for App Notched Card (010) feature implementation"
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Create `AppNotchedCard` public constructor (`required body`, optional `title`, `description`, `actions`) in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart` per `specs/010-app-notched-card/contracts/app-notched-card-widget.md`
-- [ ] T008 [US1] Wire `ClipPath` + `NotchedCardBorderPainter` + card fill using `semanticColors.card` and `shapeTokens.lg` on three standard corners in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
-- [ ] T009 [US1] Implement title, optional description, and body column with `AppCard`-equivalent typography and trailing horizontal inset reserving minimum notch width (FR-009) in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
+- [X] T007 [US1] Create `AppNotchedCard` public constructor (`required body`, optional `title`, `description`, `actions`) in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart` per `specs/010-app-notched-card/contracts/app-notched-card-widget.md`
+- [X] T008 [US1] Wire `ClipPath` + `NotchedCardBorderPainter` + card fill using `semanticColors.card` and `shapeTokens.lg` on three standard corners in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
+- [X] T009 [US1] Implement title, optional description, and body column with `AppCard`-equivalent typography and trailing horizontal inset reserving minimum notch width (FR-009) in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
 
 ### Tests for User Story 1
 
-- [ ] T010 [P] [US1] Add widget tests for title/description/body layout and minimum notch without actions in `frontend/test/widget/core/ui/app_notched_card_test.dart`
+- [X] T010 [P] [US1] Add widget tests for title/description/body layout and minimum notch without actions in `frontend/test/widget/core/ui/app_notched_card_test.dart`
 
 **Checkpoint**: US1 independently demonstrable — card renders with header/body and static min notch.
 
