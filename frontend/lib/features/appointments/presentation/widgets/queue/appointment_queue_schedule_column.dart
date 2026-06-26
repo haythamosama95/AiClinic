@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dar
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_advance_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_status_badge.dart';
 
 /// Column 1 — today's appointment schedule in a clean list layout.
@@ -58,6 +59,7 @@ class AppointmentQueueScheduleColumn extends StatelessWidget {
                         key: ValueKey(item.id),
                         item: item,
                         shiftLookup: shiftLookup,
+                        siblingAppointments: items,
                         timeLabel: _timeFormat.format(item.startTime.toLocal()),
                         dimmed: dimmed,
                         now: now,
@@ -131,6 +133,7 @@ class _AppointmentRow extends StatelessWidget {
   const _AppointmentRow({
     required this.item,
     required this.shiftLookup,
+    required this.siblingAppointments,
     required this.timeLabel,
     required this.dimmed,
     required this.now,
@@ -140,6 +143,7 @@ class _AppointmentRow extends StatelessWidget {
 
   final AppointmentListItem item;
   final AppointmentQueueShiftDoctorLookup shiftLookup;
+  final List<AppointmentListItem> siblingAppointments;
   final String timeLabel;
   final bool dimmed;
   final DateTime now;
@@ -209,6 +213,7 @@ class _AppointmentRow extends StatelessWidget {
                     ],
                   ],
                 ),
+                AppointmentQueueRowAdvanceButton(item: item, siblingAppointments: siblingAppointments),
               ],
             ),
           ),
