@@ -28,17 +28,18 @@ class AppointmentQueueStatsBanner extends StatelessWidget {
             icon: Icons.task_alt_outlined,
             percentChange: stats.completedTrend?.percentChange,
           ),
+          AppMetricStatCard(label: 'Currently waiting', value: '${stats.waiting}', icon: Icons.hourglass_top_outlined),
           AppMetricStatCard(
-            label: 'Currently waiting',
-            value: '${stats.waiting}',
-            icon: Icons.hourglass_top_outlined,
-            percentChange: stats.waitingTrend?.percentChange,
-          ),
-          AppMetricStatCard(
-            label: 'Avg. wait time',
+            label: 'Avg. waited time',
             value: stats.avgWaitMinutes == null ? '—' : '${stats.avgWaitMinutes} mins',
             icon: Icons.timer_outlined,
             percentChange: stats.avgWaitTrend?.percentChange,
+          ),
+          AppMetricStatCard(
+            label: 'No-show',
+            value: '${stats.noShow}',
+            icon: Icons.person_off_outlined,
+            percentChange: stats.noShowTrend?.percentChange,
           ),
         ];
 

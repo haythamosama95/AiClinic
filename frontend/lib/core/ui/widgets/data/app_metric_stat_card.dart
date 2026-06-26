@@ -40,11 +40,6 @@ class AppMetricStatCard extends StatelessWidget {
         : trendDown
         ? _trendDownColor
         : colors.mutedForeground;
-    final hueColor = trendUp
-        ? _trendUpColor
-        : trendDown
-        ? _trendDownColor
-        : colors.mutedForeground;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -65,35 +60,23 @@ class AppMetricStatCard extends StatelessWidget {
               clipBehavior: Clip.hardEdge,
               children: [
                 if (percentChange != null)
-                  Positioned(
-                    right: -watermarkSize * 0.15,
-                    bottom: -watermarkSize * 0.2,
-                    width: watermarkSize * 0.9,
-                    height: watermarkSize * 0.9,
+                  Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            hueColor.withValues(alpha: 0.22),
-                            hueColor.withValues(alpha: 0.08),
-                            hueColor.withValues(alpha: 0),
-                          ],
-                          stops: const [0, 0.55, 1],
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomRight,
+                          end: Alignment.topLeft,
+                          colors: [trendColor.withValues(alpha: 0.15), trendColor.withValues(alpha: 0)],
                         ),
                       ),
                     ),
                   ),
                 Positioned(
-                  top: -watermarkSize * 0.42,
+                  top: -watermarkSize * 0.28,
                   right: -watermarkSize * 0.08,
                   child: Transform.rotate(
                     angle: _iconRotation,
-                    child: Icon(
-                      icon,
-                      size: watermarkSize,
-                      color: colors.mutedForeground.withValues(alpha: 0.07),
-                    ),
+                    child: Icon(icon, size: watermarkSize, color: colors.mutedForeground.withValues(alpha: 0.07)),
                   ),
                 ),
                 Padding(
@@ -109,17 +92,7 @@ class AppMetricStatCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: colors.muted,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: colors.border.withValues(alpha: 0.6)),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(SpacingTokens.sm),
-                              child: Icon(icon, size: 16, color: colors.foreground),
-                            ),
-                          ),
+                          Icon(icon, size: 16, color: colors.foreground),
                           const SizedBox(width: SpacingTokens.sm),
                           Expanded(
                             child: Text(
@@ -153,10 +126,7 @@ class AppMetricStatCard extends StatelessWidget {
                           ),
                           if (percentChange != null) ...[
                             const SizedBox(width: SpacingTokens.sm),
-                            _TrendBadge(
-                              percentChange: percentChange!,
-                              color: trendColor,
-                            ),
+                            _TrendBadge(percentChange: percentChange!, color: trendColor),
                           ],
                         ],
                       ),
@@ -185,10 +155,7 @@ class _TrendBadge extends StatelessWidget {
     final label = '${percentChange.abs().toStringAsFixed(1)}%';
 
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs),
         child: Row(
@@ -196,19 +163,13 @@ class _TrendBadge extends StatelessWidget {
           children: [
             Text(
               label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
-                height: 1.1,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w600, height: 1.1),
             ),
             if (isUp || isDown) ...[
               const SizedBox(width: 2),
-              Icon(
-                isUp ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                size: 14,
-                color: color,
-              ),
+              Icon(isUp ? Icons.trending_up_rounded : Icons.trending_down_rounded, size: 14, color: color),
             ],
           ],
         ),

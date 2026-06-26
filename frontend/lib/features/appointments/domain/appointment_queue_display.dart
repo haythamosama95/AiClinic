@@ -20,20 +20,22 @@ class AppointmentQueueStats {
     required this.total,
     required this.completed,
     required this.waiting,
+    required this.noShow,
     required this.avgWaitMinutes,
     this.totalTrend,
     this.completedTrend,
-    this.waitingTrend,
+    this.noShowTrend,
     this.avgWaitTrend,
   });
 
   final int total;
   final int completed;
   final int waiting;
+  final int noShow;
   final int? avgWaitMinutes;
   final AppointmentQueueStatTrend? totalTrend;
   final AppointmentQueueStatTrend? completedTrend;
-  final AppointmentQueueStatTrend? waitingTrend;
+  final AppointmentQueueStatTrend? noShowTrend;
   final AppointmentQueueStatTrend? avgWaitTrend;
 }
 
@@ -75,6 +77,7 @@ abstract final class AppointmentQueueDisplay {
         total: current.total,
         completed: current.completed,
         waiting: current.waiting,
+        noShow: current.noShow,
         avgWaitMinutes: current.avgWaitMinutes,
       );
     }
@@ -84,29 +87,65 @@ abstract final class AppointmentQueueDisplay {
       total: current.total,
       completed: current.completed,
       waiting: current.waiting,
+      noShow: current.noShow,
       avgWaitMinutes: current.avgWaitMinutes,
       totalTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.total, previous.total)),
       completedTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.completed, previous.completed)),
-      waitingTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.waiting, previous.waiting)),
+      noShowTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.noShow, previous.noShow)),
       avgWaitTrend: AppointmentQueueStatTrend(
         percentChange: _percentChangeNullable(current.avgWaitMinutes, previous.avgWaitMinutes),
       ),
     );
   }
 
-  static ({int total, int completed, int waiting, int? avgWaitMinutes}) _rawStats(
+  static ({int total, int completed, int waiting, int noShow, int? avgWaitMinutes}) _rawStats(
     List<AppointmentListItem> items, {
     required DateTime now,
   }) {
     final active = _activeToday(items);
     final completed = active.where((item) => item.status == AppointmentStatus.completed).length;
     final waiting = active.where((item) => item.status == AppointmentStatus.checkedIn).toList(growable: false);
-    final waitDurations = waiting.map((item) => estimateWaitDuration(item, now: now)).toList(growable: false);
-    final avgWaitMinutes = waitDurations.isEmpty
-        ? null
-        : (waitDurations.map((d) => d.inMinutes).reduce((a, b) => a + b) / waitDurations.length).round();
+    final noShow = items.where((item) => item.status == AppointmentStatus.noShow).length;
+    final avgWaitMinutes = _averageWaitMinutesAt(active, now);
 
-    return (total: active.length, completed: completed, waiting: waiting.length, avgWaitMinutes: avgWaitMinutes);
+    return (
+      total: active.length,
+      completed: completed,
+      waiting: waiting.length,
+      noShow: noShow,
+      avgWaitMinutes: avgWaitMinutes,
+    );
+  }
+
+  /// Average wait among patients in the waiting room at [referenceNow].
+  static int? _averageWaitMinutesAt(List<AppointmentListItem> items, DateTime referenceNow) {
+    final waits = <Duration>[];
+    for (final item in items) {
+      final wait = _waitDurationAt(item, referenceNow);
+      if (wait != null) {
+        waits.add(wait);
+      }
+    }
+    if (waits.isEmpty) {
+      return null;
+    }
+    return (waits.map((d) => d.inMinutes).reduce((a, b) => a + b) / waits.length).round();
+  }
+
+  /// Wait duration for [item] at [referenceNow], or null when not in the waiting room then.
+  static Duration? _waitDurationAt(AppointmentListItem item, DateTime referenceNow) {
+    final checkedInAt = item.checkedInAt ?? (item.status == AppointmentStatus.checkedIn ? item.updatedAt : null);
+    if (checkedInAt == null || referenceNow.isBefore(checkedInAt)) {
+      return null;
+    }
+
+    final inProgressAt = item.inProgressAt;
+    if (inProgressAt != null && !referenceNow.isBefore(inProgressAt)) {
+      return null;
+    }
+
+    final wait = referenceNow.difference(checkedInAt);
+    return wait.isNegative ? Duration.zero : wait;
   }
 
   static double? _percentChange(int current, int previous) {
@@ -119,11 +158,9 @@ abstract final class AppointmentQueueDisplay {
     return ((current - previous) / previous) * 100;
   }
 
+  /// Like [_percentChange], but treats a missing average as zero waiters.
   static double? _percentChangeNullable(int? current, int? previous) {
-    if (current == null || previous == null) {
-      return null;
-    }
-    return _percentChange(current, previous);
+    return _percentChange(current ?? 0, previous ?? 0);
   }
 
   static AppointmentQueuePartition partition(List<AppointmentListItem> items, {DateTime? now}) {
@@ -230,10 +267,10 @@ abstract final class AppointmentQueueDisplay {
     return now.difference(item.endTime);
   }
 
-  /// Wait time since check-in when [updatedAt] is known; otherwise falls back to slot start.
+  /// Wait time since check-in when [checkedInAt] is known; otherwise falls back to slot start.
   static Duration estimateWaitDuration(AppointmentListItem item, {required DateTime now}) {
     if (item.status == AppointmentStatus.checkedIn) {
-      final checkedInAt = item.updatedAt;
+      final checkedInAt = item.checkedInAt ?? item.updatedAt;
       if (checkedInAt != null) {
         final wait = now.difference(checkedInAt);
         return wait.isNegative ? Duration.zero : wait;

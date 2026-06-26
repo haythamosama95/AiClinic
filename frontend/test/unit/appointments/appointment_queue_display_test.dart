@@ -16,12 +16,12 @@ void main() {
       expect(AppointmentQueueDisplay.scheduleBadgeLabel(AppointmentStatus.checkedIn), 'Checked in');
     });
 
-    test('estimateWaitDuration uses updatedAt for checked-in patients', () {
+    test('estimateWaitDuration uses checkedInAt for checked-in patients', () {
       final checkedInAt = DateTime.utc(2026, 6, 4, 9, 30);
       final now = DateTime.utc(2026, 6, 4, 10);
 
       final wait = AppointmentQueueDisplay.estimateWaitDuration(
-        item(status: AppointmentStatus.checkedIn, startTime: DateTime.utc(2026, 6, 4, 11), updatedAt: checkedInAt),
+        item(status: AppointmentStatus.checkedIn, startTime: DateTime.utc(2026, 6, 4, 11), checkedInAt: checkedInAt),
         now: now,
       );
 
@@ -183,7 +183,7 @@ void main() {
       final now = DateTime.utc(2026, 6, 4, 12);
       final todayItems = [
         item(status: AppointmentStatus.completed, id: 'c1'),
-        item(status: AppointmentStatus.checkedIn, id: 'w1'),
+        item(status: AppointmentStatus.checkedIn, id: 'w1', checkedInAt: now.subtract(const Duration(minutes: 30))),
         item(status: AppointmentStatus.scheduled, id: 's1'),
       ];
       final previousItems = [
@@ -202,9 +202,60 @@ void main() {
       expect(stats.total, 3);
       expect(stats.completed, 1);
       expect(stats.waiting, 1);
+      expect(stats.noShow, 0);
       expect(stats.totalTrend?.percentChange, closeTo(0, 0.01));
       expect(stats.completedTrend?.percentChange, closeTo(0, 0.01));
-      expect(stats.waitingTrend?.percentChange, closeTo(100, 0.01));
+      expect(stats.noShowTrend?.percentChange, closeTo(0, 0.01));
+      expect(stats.avgWaitTrend?.percentChange, closeTo(100, 0.01));
+    });
+
+    test('computeStats counts no-shows and compares against previous working day', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final todayItems = [
+        item(status: AppointmentStatus.noShow, id: 'ns1'),
+        item(status: AppointmentStatus.noShow, id: 'ns2'),
+        item(status: AppointmentStatus.scheduled, id: 's1'),
+      ];
+      final previousItems = [
+        item(status: AppointmentStatus.noShow, id: 'pns1'),
+        item(status: AppointmentStatus.scheduled, id: 'ps1'),
+      ];
+
+      final stats = AppointmentQueueDisplay.computeStats(
+        todayItems,
+        now: now,
+        comparisonItems: previousItems,
+        comparisonNow: now,
+      );
+
+      expect(stats.noShow, 2);
+      expect(stats.noShowTrend?.percentChange, closeTo(100, 0.01));
+    });
+
+    test('computeStats compares average waited time using stored check-in timestamps', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final todayItems = [
+        item(status: AppointmentStatus.checkedIn, id: 'w1', checkedInAt: now.subtract(const Duration(minutes: 20))),
+        item(status: AppointmentStatus.checkedIn, id: 'w2', checkedInAt: now.subtract(const Duration(minutes: 40))),
+      ];
+      final comparisonNow = now.subtract(const Duration(days: 1));
+      final previousItems = [
+        item(
+          status: AppointmentStatus.checkedIn,
+          id: 'pw1',
+          checkedInAt: comparisonNow.subtract(const Duration(minutes: 60)),
+        ),
+      ];
+
+      final stats = AppointmentQueueDisplay.computeStats(
+        todayItems,
+        now: now,
+        comparisonItems: previousItems,
+        comparisonNow: comparisonNow,
+      );
+
+      expect(stats.avgWaitMinutes, 30);
+      expect(stats.avgWaitTrend?.percentChange, closeTo(-50, 0.01));
     });
 
     test('doctorInProgressBlockReason blocks start when doctor already in session', () {
@@ -238,6 +289,8 @@ AppointmentListItem item({
   AppointmentStatus status = AppointmentStatus.scheduled,
   DateTime? startTime,
   DateTime? updatedAt,
+  DateTime? checkedInAt,
+  DateTime? inProgressAt,
   String? doctorId,
   String? doctorName,
   String id = 'a1',
@@ -254,5 +307,7 @@ AppointmentListItem item({
     type: AppointmentType.planned,
     status: status,
     updatedAt: updatedAt,
+    checkedInAt: checkedInAt,
+    inProgressAt: inProgressAt,
   );
 }

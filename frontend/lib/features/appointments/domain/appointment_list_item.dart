@@ -17,6 +17,8 @@ class AppointmentListItem {
     required this.type,
     required this.status,
     this.updatedAt,
+    this.checkedInAt,
+    this.inProgressAt,
   });
 
   final String id;
@@ -32,6 +34,8 @@ class AppointmentListItem {
   final AppointmentType type;
   final AppointmentStatus status;
   final DateTime? updatedAt;
+  final DateTime? checkedInAt;
+  final DateTime? inProgressAt;
 
   static AppointmentListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
@@ -48,6 +52,8 @@ class AppointmentListItem {
     final type = AppointmentType.tryParse(typeRaw) ?? AppointmentType.unknown;
     final status = AppointmentStatus.tryParse(statusRaw) ?? AppointmentStatus.unknown;
     final updatedAt = parseAppointmentDateTime(row['updated_at']);
+    final checkedInAt = parseAppointmentDateTime(row['checked_in_at']);
+    final inProgressAt = parseAppointmentDateTime(row['in_progress_at']);
 
     if (type == AppointmentType.unknown) {
       debugPrint('AppointmentListItem: unrecognized type "$typeRaw" for appointment $id');
@@ -78,6 +84,8 @@ class AppointmentListItem {
       type: type,
       status: status,
       updatedAt: updatedAt,
+      checkedInAt: checkedInAt,
+      inProgressAt: inProgressAt,
     );
   }
 
@@ -92,6 +100,8 @@ class AppointmentListItem {
     AppointmentType? type,
     AppointmentStatus? status,
     DateTime? updatedAt,
+    DateTime? checkedInAt,
+    DateTime? inProgressAt,
   }) {
     return AppointmentListItem(
       id: id ?? this.id,
@@ -104,6 +114,8 @@ class AppointmentListItem {
       type: type ?? this.type,
       status: status ?? this.status,
       updatedAt: updatedAt ?? this.updatedAt,
+      checkedInAt: checkedInAt ?? this.checkedInAt,
+      inProgressAt: inProgressAt ?? this.inProgressAt,
     );
   }
 
@@ -121,10 +133,24 @@ class AppointmentListItem {
             endTime == other.endTime &&
             type == other.type &&
             status == other.status &&
-            updatedAt == other.updatedAt;
+            updatedAt == other.updatedAt &&
+            checkedInAt == other.checkedInAt &&
+            inProgressAt == other.inProgressAt;
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, patientId, patientName, doctorId, doctorName, startTime, endTime, type, status, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    patientId,
+    patientName,
+    doctorId,
+    doctorName,
+    startTime,
+    endTime,
+    type,
+    status,
+    updatedAt,
+    checkedInAt,
+    inProgressAt,
+  );
 }

@@ -418,6 +418,14 @@ BEGIN
     v_result.success AND (v_result.data ->> 'status') = 'checked_in',
     COALESCE(v_result.error_code, '<null>')
   );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results
+  SELECT
+    'status_checked_in_sets_checked_in_at',
+    a.checked_in_at IS NOT NULL AND a.in_progress_at IS NULL,
+    COALESCE(a.checked_in_at::text, '<null>')
+  FROM public.appointments a
+  WHERE a.id = v_appt_planned;
   PERFORM set_config('role', 'authenticated', true);
 
   -- Invalid skip: scheduled -> checked_in (must confirm first).
@@ -442,6 +450,14 @@ BEGIN
     v_result.success AND (v_result.data ->> 'status') = 'in_progress',
     COALESCE(v_result.error_code, '<null>')
   );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results
+  SELECT
+    'status_in_progress_sets_in_progress_at',
+    a.checked_in_at IS NOT NULL AND a.in_progress_at IS NOT NULL,
+    COALESCE(a.in_progress_at::text, '<null>')
+  FROM public.appointments a
+  WHERE a.id = v_appt_planned;
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.update_appointment_status(v_appt_planned, 'completed');

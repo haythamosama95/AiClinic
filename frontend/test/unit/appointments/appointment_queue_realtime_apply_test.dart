@@ -52,7 +52,7 @@ void main() {
       expect(items.single.updatedAt, DateTime.utc(2026, 6, 4, 10, 30));
     });
 
-    test('update patches checked_in status with updated_at for wait tracking', () {
+    test('update patches checked_in status with wait timestamps', () {
       final items = [item(status: AppointmentStatus.confirmed)];
       final checkedInAt = DateTime.utc(2026, 6, 4, 9, 45);
 
@@ -67,6 +67,7 @@ void main() {
             'status': 'checked_in',
             'type': 'planned',
             'updated_at': checkedInAt.toIso8601String(),
+            'checked_in_at': checkedInAt.toIso8601String(),
           },
         ),
         todayRange: range,
@@ -75,6 +76,7 @@ void main() {
       expect(applied, isTrue);
       expect(items.single.status, AppointmentStatus.checkedIn);
       expect(items.single.updatedAt, checkedInAt);
+      expect(items.single.checkedInAt, checkedInAt);
     });
 
     test('update removes cancelled appointment from queue', () {

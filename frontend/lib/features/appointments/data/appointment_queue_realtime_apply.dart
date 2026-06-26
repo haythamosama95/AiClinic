@@ -61,6 +61,8 @@ bool _applyUpdate(List<AppointmentListItem> items, Map<String, dynamic>? record,
   final endTime = parseAppointmentDateTime(record['end_time']);
   final type = AppointmentType.tryParse(record['type']?.toString());
   final updatedAt = parseAppointmentDateTime(record['updated_at']);
+  final checkedInAt = parseAppointmentDateTime(record['checked_in_at']);
+  final inProgressAt = parseAppointmentDateTime(record['in_progress_at']);
 
   if (isDeleted || status == AppointmentStatus.cancelled || status == AppointmentStatus.noShow) {
     return _removeByRecord(items, record);
@@ -86,6 +88,8 @@ bool _applyUpdate(List<AppointmentListItem> items, Map<String, dynamic>? record,
     status: status ?? existing.status,
     type: type ?? existing.type,
     updatedAt: updatedAt ?? existing.updatedAt,
+    checkedInAt: checkedInAt ?? existing.checkedInAt,
+    inProgressAt: inProgressAt ?? existing.inProgressAt,
   );
   return true;
 }
