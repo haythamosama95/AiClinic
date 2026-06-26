@@ -19,16 +19,20 @@ void main() {
     Widget? description,
     required Widget body,
     List<Widget>? actions,
+    TextDirection textDirection = TextDirection.ltr,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
         builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: cardWidth,
-              child: AppNotchedCard(title: title, description: description, actions: actions, body: body),
+        home: Directionality(
+          textDirection: textDirection,
+          child: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: cardWidth,
+                child: AppNotchedCard(title: title, description: description, actions: actions, body: body),
+              ),
             ),
           ),
         ),
@@ -288,6 +292,91 @@ void main() {
 
       expect(shareRect.right, greaterThan(cardRect.right - 1));
       expect(shareRect.left, lessThan(cardRect.right));
+    });
+
+    testWidgets('mirrors notch shelf to leading top in RTL', (tester) async {
+      await pumpCard(
+        tester,
+        textDirection: TextDirection.rtl,
+        title: const Text('RTL panel title'),
+        body: const Text('Body'),
+      );
+
+      final cardRect = tester.getRect(find.byType(AppNotchedCard));
+      final clipper =
+          tester
+                  .widget<ClipPath>(find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(ClipPath)))
+                  .clipper!
+              as NotchedCardClipper;
+      final shelf = NotchedCardPath.shelfRect(
+        size: cardRect.size,
+        borderRadius: 8,
+        notchWidth: kNotchMinWidth,
+        textDirection: TextDirection.rtl,
+      );
+
+      expect(clipper.textDirection, TextDirection.rtl);
+      expect(shelf.center.dx, lessThan(cardRect.width / 2));
+    });
+
+    testWidgets('positions actions in mirrored RTL shelf', (tester) async {
+      await pumpCard(
+        tester,
+        textDirection: TextDirection.rtl,
+        body: const Text('Body'),
+        actions: [AppIconButton(icon: const Icon(Icons.edit), tooltip: 'Edit', onPressed: () {})],
+      );
+
+      final cardRect = tester.getRect(find.byType(AppNotchedCard));
+      final cardTopLeft = tester.getTopLeft(find.byType(AppNotchedCard));
+      final clipper =
+          tester
+                  .widget<ClipPath>(find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(ClipPath)))
+                  .clipper!
+              as NotchedCardClipper;
+      final actionShell = tester.getRect(
+        find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(InkWell)).first,
+      );
+      final notchWidth = computeNotchWidth(
+        cardWidth: cardRect.width,
+        borderRadius: 8,
+        actionsRowWidth: actionShell.width,
+        shelfDepth: clipper.shelfDepth,
+      );
+      final shelf = NotchedCardPath.shelfRect(
+        size: cardRect.size,
+        borderRadius: 8,
+        notchWidth: notchWidth,
+        shelfDepth: clipper.shelfDepth,
+        textDirection: TextDirection.rtl,
+      );
+
+      expect(find.byType(PositionedDirectional), findsWidgets);
+      expect(actionShell.center.dx - cardTopLeft.dx, closeTo(shelf.left + shelf.width / 2, 4));
+      expect(actionShell.top - cardTopLeft.dy, greaterThanOrEqualTo(shelf.top - 1));
+      expect(actionShell.bottom - cardTopLeft.dy, lessThanOrEqualTo(shelf.bottom + 1));
+    });
+
+    testWidgets('reserves trailing header space in RTL so title avoids notch shelf', (tester) async {
+      await pumpCard(
+        tester,
+        textDirection: TextDirection.rtl,
+        title: const Text('A very long dashboard panel title that should wrap within the leading width'),
+        body: const Text('Body'),
+      );
+
+      final cardRect = tester.getRect(find.byType(AppNotchedCard));
+      final cardTopLeft = tester.getTopLeft(find.byType(AppNotchedCard));
+      final titleBottomLeft = tester.getBottomLeft(find.textContaining('very long dashboard'));
+      final titleLeftLocal = titleBottomLeft.dx - cardTopLeft.dx;
+      final shelf = NotchedCardPath.shelfRect(
+        size: cardRect.size,
+        borderRadius: 8,
+        notchWidth: kNotchMinWidth,
+        textDirection: TextDirection.rtl,
+      );
+
+      expect(titleLeftLocal, greaterThanOrEqualTo(shelf.right - 8));
     });
   });
 }

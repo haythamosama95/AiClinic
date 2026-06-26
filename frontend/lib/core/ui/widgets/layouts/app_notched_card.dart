@@ -214,8 +214,15 @@ class _AppNotchedCardLayoutState extends State<_AppNotchedCardLayout> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  Positioned(
-                    left: _actionsRowWidth == null ? -10000 : shelf.left + (shelf.width - _actionsRowWidth!) / 2,
+                  PositionedDirectional(
+                    start: _actionsRowWidth == null
+                        ? -10000
+                        : _shelfActionStart(
+                            shelf: shelf,
+                            cardWidth: cardWidth,
+                            actionsRowWidth: _actionsRowWidth!,
+                            textDirection: textDirection,
+                          ),
                     top: shelf.top,
                     child: _buildActionsRow(
                       key: _actionsMeasureKey,
@@ -425,6 +432,21 @@ VoidCallback? _actionOnPressed(Widget action) => switch (action) {
   AppButton(:final onPressed) => onPressed,
   _ => null,
 };
+
+/// Horizontal [PositionedDirectional.start] offset to center actions in the shelf.
+double _shelfActionStart({
+  required Rect shelf,
+  required double cardWidth,
+  required double actionsRowWidth,
+  required TextDirection textDirection,
+}) {
+  final centerX = shelf.left + shelf.width / 2;
+
+  return switch (textDirection) {
+    TextDirection.ltr => centerX - actionsRowWidth / 2,
+    TextDirection.rtl => cardWidth - centerX - actionsRowWidth / 2,
+  };
+}
 
 bool _listEquals(List<Widget>? a, List<Widget>? b) {
   if (identical(a, b)) {

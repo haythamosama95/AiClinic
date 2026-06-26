@@ -102,12 +102,12 @@ description: "Task list for App Notched Card (010) feature implementation"
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] Add RTL horizontal mirroring to `NotchedCardPath.build` via `textDirection` parameter in `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
-- [ ] T018 [US3] Mirror trailing inset and `PositionedDirectional` shelf positioning for RTL in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
+- [X] T017 [US3] Add RTL horizontal mirroring to `NotchedCardPath.build` via `textDirection` parameter in `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
+- [X] T018 [US3] Mirror trailing inset and `PositionedDirectional` shelf positioning for RTL in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
 
 ### Tests for User Story 3
 
-- [ ] T019 [P] [US3] Add RTL mirror widget tests (cut-out on leading top, actions positioned correctly) in `frontend/test/widget/core/ui/app_notched_card_test.dart`
+- [X] T019 [P] [US3] Add RTL mirror widget tests (cut-out on leading top, actions positioned correctly) in `frontend/test/widget/core/ui/app_notched_card_test.dart`
 
 **Checkpoint**: US3 independently verifiable via directionality tests.
 
@@ -121,9 +121,9 @@ description: "Task list for App Notched Card (010) feature implementation"
 
 ### Implementation for User Story 4
 
-- [ ] T020 [P] [US4] Export `AppNotchedCard` from `frontend/lib/core/ui/widgets/widgets.dart`
-- [ ] T021 [US4] Add **Notched card** `_Section` beside existing `AppCard` demo with title, description, body, and 1–3 representative actions in `frontend/lib/core/ui/demo/theme_showcase_page.dart`
-- [ ] T022 [P] [US4] Append `AppNotchedCard` API summary to `docs/ui/forui-wrappers.md`
+- [X] T020 [P] [US4] Export `AppNotchedCard` from `frontend/lib/core/ui/widgets/widgets.dart`
+- [X] T021 [US4] Add **Notched card** `_Section` beside existing `AppCard` demo with title, description, body, and 1–3 representative actions in `frontend/lib/core/ui/demo/theme_showcase_page.dart`
+- [X] T022 [P] [US4] Append `AppNotchedCard` API summary to `docs/ui/forui-wrappers.md`
 
 **Checkpoint**: US4 complete — component discoverable and documented for feature teams.
 

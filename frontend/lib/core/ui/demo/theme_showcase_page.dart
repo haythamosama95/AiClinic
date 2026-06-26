@@ -418,6 +418,32 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
             child: Text('Card body content for metrics, lists, or forms.', style: theme.textTheme.bodyMedium),
           ),
         ),
+        const SizedBox(height: SpacingTokens.lg),
+        _Section(
+          title: 'Notched card',
+          child: AppNotchedCard(
+            title: Text('Billing overview', style: theme.textTheme.titleMedium),
+            description: Text(
+              'Collections and adjustments with floating shelf actions.',
+              style: theme.textTheme.bodyMedium,
+            ),
+            actions: [
+              AppButton(
+                label: 'Last 6 months',
+                icon: const Icon(Icons.expand_more, size: 18),
+                variant: AppButtonVariant.ghost,
+                size: AppFieldSize.sm,
+                onPressed: () {},
+              ),
+              AppIconButton(icon: const Icon(Icons.filter_list_outlined), tooltip: 'Filter billing', onPressed: () {}),
+              AppIconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Export report', onPressed: () {}),
+            ],
+            body: Text(
+              'Metric tiles, charts, or tabular data render in the card body.',
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ),
       ],
     );
 

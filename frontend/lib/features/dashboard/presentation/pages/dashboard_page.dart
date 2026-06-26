@@ -152,6 +152,26 @@ class DashboardPage extends StatelessWidget {
               ],
               body: _BillingOverview(colors: colors, theme: theme),
             ),
+            const SizedBox(height: SpacingTokens.lg),
+            Directionality(
+              textDirection: TextDirection.rtl,
+              child: AppNotchedCard(
+                title: Text('جدول الموظفين', style: theme.textTheme.titleMedium),
+                description: Text(
+                  'ورديات اليوم',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
+                ),
+                actions: [
+                  AppIconButton(
+                    icon: const Icon(Icons.calendar_month_outlined),
+                    tooltip: 'فتح التقويم',
+                    onPressed: () {},
+                  ),
+                  AppIconButton(icon: const Icon(Icons.groups_outlined), tooltip: 'عرض الفريق', onPressed: () {}),
+                ],
+                body: _RtlStaffSchedule(theme: theme),
+              ),
+            ),
           ],
         ),
       ),
@@ -384,6 +404,38 @@ class _InventorySummary extends StatelessWidget {
         Text('5 items need reorder', style: theme.textTheme.bodyMedium),
         const SizedBox(height: SpacingTokens.xs),
         Text('Last restock: 4 days ago', style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground)),
+      ],
+    );
+  }
+}
+
+class _RtlStaffSchedule extends StatelessWidget {
+  const _RtlStaffSchedule({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppTileGroup(
+      tiles: [
+        AppTileSpec(
+          title: 'د. ناصر — عيادة عامة',
+          subtitle: '08:00 – 14:00',
+          details: '6 مواعيد',
+          prefix: const Icon(Icons.person_outline, size: 20),
+        ),
+        AppTileSpec(
+          title: 'د. ليلى — طب الأطفال',
+          subtitle: '09:00 – 15:00',
+          details: '4 مواعيد',
+          prefix: const Icon(Icons.person_outline, size: 20),
+        ),
+        AppTileSpec(
+          title: 'الممرضة سارة — الاستقبال',
+          subtitle: '07:30 – 15:30',
+          details: 'متاحة',
+          prefix: const Icon(Icons.person_outline, size: 20),
+        ),
       ],
     );
   }
