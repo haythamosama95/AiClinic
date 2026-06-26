@@ -64,7 +64,7 @@ bool _applyUpdate(List<AppointmentListItem> items, Map<String, dynamic>? record,
   final checkedInAt = parseAppointmentDateTime(record['checked_in_at']);
   final inProgressAt = parseAppointmentDateTime(record['in_progress_at']);
 
-  if (isDeleted || status == AppointmentStatus.cancelled || status == AppointmentStatus.noShow) {
+  if (isDeleted || status == AppointmentStatus.cancelled) {
     return _removeByRecord(items, record);
   }
 

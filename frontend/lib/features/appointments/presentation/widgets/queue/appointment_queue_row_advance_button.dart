@@ -56,6 +56,7 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
     AppointmentStatus.confirmed => true,
     AppointmentStatus.checkedIn => true,
     AppointmentStatus.inProgress => true,
+    AppointmentStatus.noShow => true,
     _ => false,
   };
 
@@ -68,6 +69,10 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
   };
 
   String? _disabledReason() {
+    if (item.status == AppointmentStatus.noShow) {
+      return 'This appointment is marked as no-show.';
+    }
+
     if (!_canCreateAppointments) {
       return 'You do not have permission to manage appointments.';
     }
@@ -221,9 +226,14 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
     final colors = context.semanticColors;
     final disabledReason = _disabledReason();
     final isInteractive = disabledReason == null && !_isLoading;
+    final isNoShow = item.status == AppointmentStatus.noShow;
+    final buttonColor = isInteractive ? colors.primary : (isNoShow ? colors.muted : colors.destructive);
+    final foregroundColor = isInteractive
+        ? colors.primaryForeground
+        : (isNoShow ? colors.mutedForeground : colors.destructiveForeground);
 
     final button = Material(
-      color: isInteractive ? colors.primary : colors.destructive,
+      color: buttonColor,
       shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -242,16 +252,9 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
                 ? SizedBox(
                     width: 14,
                     height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: isInteractive ? colors.primaryForeground : colors.destructiveForeground,
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: foregroundColor),
                   )
-                : Icon(
-                    Icons.play_arrow_rounded,
-                    size: 18,
-                    color: isInteractive ? colors.primaryForeground : colors.destructiveForeground,
-                  ),
+                : Icon(Icons.play_arrow_rounded, size: 18, color: foregroundColor),
           ),
         ),
       ),

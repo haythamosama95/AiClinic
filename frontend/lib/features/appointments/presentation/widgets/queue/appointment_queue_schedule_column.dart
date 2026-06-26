@@ -14,6 +14,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_d
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_advance_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_no_show_button.dart';
 
 /// Column 1 — today's appointment schedule with a focus timeline.
 class AppointmentQueueScheduleColumn extends StatefulWidget {
@@ -275,7 +276,9 @@ class _AppointmentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final textTheme = Theme.of(context).textTheme;
-    final statusColor = AppointmentCalendarDisplay.statusColor(item.status);
+    final statusColor = item.status == AppointmentStatus.noShow
+        ? colors.destructive
+        : AppointmentCalendarDisplay.statusColor(item.status);
     final opacity = statusDimmed ? 0.5 : 1.0;
     final primaryTextColor = isFocused ? colors.foreground : colors.mutedForeground;
     final primaryWeight = isFocused ? FontWeight.w700 : FontWeight.w500;
@@ -374,10 +377,16 @@ class _AppointmentRow extends StatelessWidget {
                       ),
                       Padding(
                         padding: const EdgeInsets.only(top: SpacingTokens.xs),
-                        child: AppointmentQueueRowAdvanceButton(
-                          item: item,
-                          siblingAppointments: siblingAppointments,
-                          shiftLookup: shiftLookup,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AppointmentQueueRowNoShowButton(item: item),
+                            AppointmentQueueRowAdvanceButton(
+                              item: item,
+                              siblingAppointments: siblingAppointments,
+                              shiftLookup: shiftLookup,
+                            ),
+                          ],
                         ),
                       ),
                     ],

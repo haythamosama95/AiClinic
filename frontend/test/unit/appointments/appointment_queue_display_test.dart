@@ -228,8 +228,18 @@ void main() {
         comparisonNow: now,
       );
 
+      expect(stats.total, 3);
       expect(stats.noShow, 2);
       expect(stats.noShowTrend?.percentChange, closeTo(100, 0.01));
+    });
+
+    test('partition keeps no-show appointments in the schedule column', () {
+      final noShow = item(status: AppointmentStatus.noShow, id: 'ns1', startTime: DateTime.utc(2026, 6, 4, 9));
+      final scheduled = item(status: AppointmentStatus.scheduled, id: 's1', startTime: DateTime.utc(2026, 6, 4, 11));
+      final partition = AppointmentQueueDisplay.partition([scheduled, noShow]);
+
+      expect(partition.schedule.map((item) => item.id), ['ns1', 's1']);
+      expect(AppointmentQueueDisplay.isScheduleRowDimmed(noShow), isFalse);
     });
 
     test('computeStats compares average waited time using stored check-in timestamps', () {

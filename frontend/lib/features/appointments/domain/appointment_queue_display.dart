@@ -231,9 +231,7 @@ abstract final class AppointmentQueueDisplay {
   }
 
   static bool isScheduleRowDimmed(AppointmentListItem item) {
-    return item.status == AppointmentStatus.completed ||
-        item.status == AppointmentStatus.cancelled ||
-        item.status == AppointmentStatus.noShow;
+    return item.status == AppointmentStatus.completed || item.status == AppointmentStatus.cancelled;
   }
 
   /// Index of the schedule row whose time slot is nearest to [now].
@@ -339,12 +337,7 @@ abstract final class AppointmentQueueDisplay {
 
   static List<AppointmentListItem> _activeToday(List<AppointmentListItem> items) {
     return items
-        .where(
-          (item) =>
-              item.status != AppointmentStatus.cancelled &&
-              item.status != AppointmentStatus.noShow &&
-              item.status != AppointmentStatus.unknown,
-        )
+        .where((item) => item.status != AppointmentStatus.cancelled && item.status != AppointmentStatus.unknown)
         .toList(growable: false);
   }
 }

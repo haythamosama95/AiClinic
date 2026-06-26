@@ -101,6 +101,30 @@ void main() {
       expect(items, isEmpty);
     });
 
+    test('update keeps no-show appointment in queue with updated status', () {
+      final items = [item(status: AppointmentStatus.confirmed)];
+
+      final applied = applyAppointmentQueueRealtimeChange(
+        items: items,
+        change: AppointmentQueueRealtimeChange(
+          eventType: PostgresChangeEvent.update,
+          newRecord: {
+            'id': 'a1',
+            'start_time': DateTime.utc(2026, 6, 4, 10).toIso8601String(),
+            'end_time': DateTime.utc(2026, 6, 4, 10, 30).toIso8601String(),
+            'status': 'no_show',
+            'type': 'planned',
+            'updated_at': DateTime.utc(2026, 6, 4, 10, 30).toIso8601String(),
+          },
+        ),
+        todayRange: range,
+      );
+
+      expect(applied, isTrue);
+      expect(items, hasLength(1));
+      expect(items.single.status, AppointmentStatus.noShow);
+    });
+
     test('delete removes row by id', () {
       final items = [item(), item(id: 'a2')];
 
