@@ -288,5 +288,41 @@ void main() {
       expect(state.selectedDoctorId, isNull);
       expect(state.hasActiveFilters(initialBranchId: calendarTestBranchCId), isFalse);
     });
+    test('refresh runs when organization timezone changes without branch change', () async {
+      const branchId = calendarTestBranchAId;
+      final authNotifier = MutableAuthSessionNotifier(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: branchId,
+          ).copyWith(organizationTimezone: 'UTC'),
+        ),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(() => authNotifier),
+          appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await readAfterInit(container);
+      expect(client.rpcCallCounts['list_appointments'], 1);
+
+      authNotifier.replace(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: branchId,
+          ).copyWith(organizationTimezone: 'Africa/Cairo'),
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(client.rpcCallCounts['list_appointments'], 2);
+    });
   });
 }

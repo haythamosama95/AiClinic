@@ -7,6 +7,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
@@ -39,10 +40,15 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
     ref.onDispose(_unsubscribeRealtime);
 
     ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
-      final prevBranch = previous?.context?.activeBranchId;
-      final nextBranch = next.context?.activeBranchId;
-      if (prevBranch != nextBranch) {
-        unawaited(refresh());
+      final prevScope = AppointmentFetchScope.fromContext(previous?.context);
+      final nextScope = AppointmentFetchScope.fromContext(next.context);
+      if (prevScope == nextScope) {
+        return;
+      }
+
+      unawaited(refresh());
+      if (prevScope.activeBranchId != nextScope.activeBranchId) {
+        _subscribeRealtime();
       }
     });
 

@@ -14,6 +14,7 @@ import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dar
 import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
 import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 
@@ -381,6 +382,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
         'setup.dev_reset.session_refreshed setup_required=${ref.read(authSessionProvider).context?.setupRequired}',
       );
 
+      invalidateAppointmentSurfaceProviders(ref);
       resetWizardState();
       state = state.copyWith(isSubmitting: false);
       return true;
@@ -467,6 +469,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
 
       await ref.read(authSessionProvider.notifier).refreshSessionContext();
 
+      invalidateAppointmentSurfaceProviders(ref);
       state = state.copyWith(
         isSubmitting: false,
         organizationId: result.organizationId,
