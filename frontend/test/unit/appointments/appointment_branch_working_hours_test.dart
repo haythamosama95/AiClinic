@@ -68,5 +68,18 @@ void main() {
       expect(AppointmentBranchWorkingHours.isWorkingDay(schedule, DateTime(2026, 6, 4)), isTrue);
       expect(AppointmentBranchWorkingHours.isWorkingDay(schedule, DateTime(2026, 6, 7)), isFalse);
     });
+
+    test('previousWorkingDay skips closures', () {
+      final monday = DateTime(2026, 6, 8); // Monday
+
+      expect(
+        AppointmentBranchWorkingHours.previousWorkingDay(schedule, monday),
+        DateTime(2026, 6, 6), // Saturday (Sunday is closed in default schedule)
+      );
+      expect(
+        AppointmentBranchWorkingHours.previousWorkingDay(schedule, DateTime(2026, 6, 9)),
+        DateTime(2026, 6, 8), // Tuesday -> Monday
+      );
+    });
   });
 }

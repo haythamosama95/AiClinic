@@ -126,7 +126,12 @@ class _QueueBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final shiftLookup =
         ref.watch(appointmentQueueShiftDoctorLookupProvider).value ?? AppointmentQueueShiftDoctorLookup.empty;
-    final stats = AppointmentQueueDisplay.computeStats(state.items, now: now);
+    final stats = AppointmentQueueDisplay.computeStats(
+      state.items,
+      now: now,
+      comparisonItems: state.comparisonItems,
+      comparisonNow: state.comparisonNow,
+    );
     final partition = AppointmentQueueDisplay.partition(state.items, now: now);
 
     return LayoutBuilder(

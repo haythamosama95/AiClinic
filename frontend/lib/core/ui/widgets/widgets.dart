@@ -4,6 +4,7 @@ library;
 export 'buttons/app_button.dart';
 export 'buttons/app_icon_button.dart';
 export 'data/app_badge.dart';
+export 'data/app_metric_stat_card.dart';
 export 'data/app_data_table.dart';
 export 'feedback/app_deferred_loading.dart';
 export 'feedback/app_fade_panel.dart';

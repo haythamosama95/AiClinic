@@ -179,6 +179,34 @@ void main() {
       );
     });
 
+    test('computeStats compares against previous working day snapshot', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final todayItems = [
+        item(status: AppointmentStatus.completed, id: 'c1'),
+        item(status: AppointmentStatus.checkedIn, id: 'w1'),
+        item(status: AppointmentStatus.scheduled, id: 's1'),
+      ];
+      final previousItems = [
+        item(status: AppointmentStatus.completed, id: 'pc1'),
+        item(status: AppointmentStatus.scheduled, id: 'ps1'),
+        item(status: AppointmentStatus.scheduled, id: 'ps2'),
+      ];
+
+      final stats = AppointmentQueueDisplay.computeStats(
+        todayItems,
+        now: now,
+        comparisonItems: previousItems,
+        comparisonNow: now,
+      );
+
+      expect(stats.total, 3);
+      expect(stats.completed, 1);
+      expect(stats.waiting, 1);
+      expect(stats.totalTrend?.percentChange, closeTo(0, 0.01));
+      expect(stats.completedTrend?.percentChange, closeTo(0, 0.01));
+      expect(stats.waitingTrend?.percentChange, closeTo(100, 0.01));
+    });
+
     test('doctorInProgressBlockReason blocks start when doctor already in session', () {
       final doctorId = 'doc-a';
       final start = DateTime.utc(2026, 6, 4, 11);

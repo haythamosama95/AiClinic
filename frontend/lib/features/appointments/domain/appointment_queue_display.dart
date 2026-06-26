@@ -7,6 +7,13 @@ import 'package:ai_clinic/features/appointments/domain/appointment_today_range.d
 /// Wait-time urgency tiers for the checked-in column.
 enum AppointmentQueueWaitTier { normal, warning, critical }
 
+/// Day-over-day percent change for a queue metric (positive = up, negative = down).
+class AppointmentQueueStatTrend {
+  const AppointmentQueueStatTrend({this.percentChange});
+
+  final double? percentChange;
+}
+
 /// Summary metrics for the top stats banner.
 class AppointmentQueueStats {
   const AppointmentQueueStats({
@@ -14,12 +21,20 @@ class AppointmentQueueStats {
     required this.completed,
     required this.waiting,
     required this.avgWaitMinutes,
+    this.totalTrend,
+    this.completedTrend,
+    this.waitingTrend,
+    this.avgWaitTrend,
   });
 
   final int total;
   final int completed;
   final int waiting;
   final int? avgWaitMinutes;
+  final AppointmentQueueStatTrend? totalTrend;
+  final AppointmentQueueStatTrend? completedTrend;
+  final AppointmentQueueStatTrend? waitingTrend;
+  final AppointmentQueueStatTrend? avgWaitTrend;
 }
 
 /// Three-column partition of today's queue.
@@ -48,7 +63,41 @@ abstract final class AppointmentQueueDisplay {
   /// Label for unassigned appointments in the queue schedule card.
   static const noPreferredDoctorLabel = 'No preferred doctor';
 
-  static AppointmentQueueStats computeStats(List<AppointmentListItem> items, {required DateTime now}) {
+  static AppointmentQueueStats computeStats(
+    List<AppointmentListItem> items, {
+    required DateTime now,
+    List<AppointmentListItem>? comparisonItems,
+    DateTime? comparisonNow,
+  }) {
+    final current = _rawStats(items, now: now);
+    if (comparisonItems == null) {
+      return AppointmentQueueStats(
+        total: current.total,
+        completed: current.completed,
+        waiting: current.waiting,
+        avgWaitMinutes: current.avgWaitMinutes,
+      );
+    }
+
+    final previous = _rawStats(comparisonItems, now: comparisonNow ?? now);
+    return AppointmentQueueStats(
+      total: current.total,
+      completed: current.completed,
+      waiting: current.waiting,
+      avgWaitMinutes: current.avgWaitMinutes,
+      totalTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.total, previous.total)),
+      completedTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.completed, previous.completed)),
+      waitingTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.waiting, previous.waiting)),
+      avgWaitTrend: AppointmentQueueStatTrend(
+        percentChange: _percentChangeNullable(current.avgWaitMinutes, previous.avgWaitMinutes),
+      ),
+    );
+  }
+
+  static ({int total, int completed, int waiting, int? avgWaitMinutes}) _rawStats(
+    List<AppointmentListItem> items, {
+    required DateTime now,
+  }) {
     final active = _activeToday(items);
     final completed = active.where((item) => item.status == AppointmentStatus.completed).length;
     final waiting = active.where((item) => item.status == AppointmentStatus.checkedIn).toList(growable: false);
@@ -57,12 +106,24 @@ abstract final class AppointmentQueueDisplay {
         ? null
         : (waitDurations.map((d) => d.inMinutes).reduce((a, b) => a + b) / waitDurations.length).round();
 
-    return AppointmentQueueStats(
-      total: active.length,
-      completed: completed,
-      waiting: waiting.length,
-      avgWaitMinutes: avgWaitMinutes,
-    );
+    return (total: active.length, completed: completed, waiting: waiting.length, avgWaitMinutes: avgWaitMinutes);
+  }
+
+  static double? _percentChange(int current, int previous) {
+    if (previous == 0) {
+      if (current == 0) {
+        return 0;
+      }
+      return 100;
+    }
+    return ((current - previous) / previous) * 100;
+  }
+
+  static double? _percentChangeNullable(int? current, int? previous) {
+    if (current == null || previous == null) {
+      return null;
+    }
+    return _percentChange(current, previous);
   }
 
   static AppointmentQueuePartition partition(List<AppointmentListItem> items, {DateTime? now}) {
