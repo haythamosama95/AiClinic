@@ -6,9 +6,9 @@ import 'package:ai_clinic/core/ui/widgets/layouts/notched_card_path.dart';
 
 /// Dashboard panel with a top-trailing step-down cut-out for floating actions.
 ///
-/// Mirrors [AppCard] chrome on three corners; actions render in the notch shelf
-/// when supplied (see phase-4 wiring). Only the title reserves trailing space
-/// so it does not overlap the cut-out.
+/// Mirrors [AppCard] chrome on three corners; caller-supplied [actions] float
+/// centered in the notch shelf. Only the title reserves trailing space so it
+/// does not overlap the cut-out.
 class AppNotchedCard extends StatelessWidget {
   const AppNotchedCard({required this.body, this.title, this.description, this.actions, super.key});
 
@@ -19,28 +19,150 @@ class AppNotchedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return _AppNotchedCardLayout(
+          constraints: constraints,
+          body: body,
+          title: title,
+          description: description,
+          actions: actions,
+        );
+      },
+    );
+  }
+}
+
+/// Computes notch shelf width from measured action row width and card bounds.
+double computeNotchWidth({
+  required double cardWidth,
+  required double borderRadius,
+  double? actionsRowWidth,
+  double shelfDepth = kNotchShelfDepth,
+}) {
+  final fillet = kNotchFilletRadius.clamp(0.0, shelfDepth / 2);
+  final maxNotchWidth = (cardWidth - borderRadius - fillet * 2).clamp(0.0, double.infinity);
+
+  final desiredWidth = actionsRowWidth == null ? kNotchMinWidth : actionsRowWidth + 2 * kNotchHorizontalPadding;
+
+  if (maxNotchWidth < kNotchMinWidth) {
+    return desiredWidth.clamp(0.0, maxNotchWidth);
+  }
+
+  return desiredWidth.clamp(kNotchMinWidth, maxNotchWidth);
+}
+
+/// Computes notch shelf depth from measured action row height.
+double computeShelfDepth({double? actionsRowHeight}) {
+  if (actionsRowHeight == null) {
+    return kNotchShelfDepth;
+  }
+
+  // Ceil so fractional layout sizes never clip the action chrome by a sub-pixel.
+  return actionsRowHeight.clamp(kNotchShelfDepth, double.infinity).ceilToDouble();
+}
+
+class _AppNotchedCardLayout extends StatefulWidget {
+  const _AppNotchedCardLayout({
+    required this.constraints,
+    required this.body,
+    this.title,
+    this.description,
+    this.actions,
+  });
+
+  final BoxConstraints constraints;
+  final Widget body;
+  final Widget? title;
+  final Widget? description;
+  final List<Widget>? actions;
+
+  @override
+  State<_AppNotchedCardLayout> createState() => _AppNotchedCardLayoutState();
+}
+
+class _AppNotchedCardLayoutState extends State<_AppNotchedCardLayout> {
+  final GlobalKey _actionsMeasureKey = GlobalKey();
+  double? _actionsRowWidth;
+  double? _actionsRowHeight;
+
+  bool get _hasActions => widget.actions != null && widget.actions!.isNotEmpty;
+
+  @override
+  void didUpdateWidget(covariant _AppNotchedCardLayout oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_listEquals(oldWidget.actions, widget.actions)) {
+      _actionsRowWidth = null;
+      _actionsRowHeight = null;
+    }
+  }
+
+  void _scheduleActionsMeasure() {
+    if (!_hasActions) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      final renderBox = _actionsMeasureKey.currentContext?.findRenderObject() as RenderBox?;
+      final size = renderBox?.hasSize == true ? renderBox!.size : null;
+      if (size != null && (size.width != _actionsRowWidth || size.height != _actionsRowHeight)) {
+        setState(() {
+          _actionsRowWidth = size.width;
+          _actionsRowHeight = size.height;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _scheduleActionsMeasure();
+
     final colors = context.semanticColors;
     final borderRadius = context.shapeTokens.lg;
     final contentStyle = context.theme.cardStyle.contentStyle;
     final textDirection = Directionality.of(context);
+    final cardWidth = widget.constraints.maxWidth;
 
-    // US1: static minimum notch; action-driven width lands in a later phase.
-    final notchWidth = kNotchMinWidth;
+    final shelfDepth = computeShelfDepth(actionsRowHeight: _hasActions ? _actionsRowHeight : null);
+
+    final notchWidth = computeNotchWidth(
+      cardWidth: cardWidth,
+      borderRadius: borderRadius,
+      actionsRowWidth: _hasActions ? _actionsRowWidth : null,
+      shelfDepth: shelfDepth,
+    );
     final trailingInset = notchWidth;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return CustomPaint(
+    final shelf = NotchedCardPath.shelfRect(
+      size: Size(cardWidth, widget.constraints.maxHeight),
+      borderRadius: borderRadius,
+      notchWidth: notchWidth,
+      shelfDepth: shelfDepth,
+      textDirection: textDirection,
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      fit: StackFit.passthrough,
+      children: [
+        CustomPaint(
           foregroundPainter: NotchedCardBorderPainter(
             borderColor: colors.border,
             borderRadius: borderRadius,
             notchWidth: notchWidth,
+            shelfDepth: shelfDepth,
             textDirection: textDirection,
           ),
           child: ClipPath(
             clipper: NotchedCardClipper(
               borderRadius: borderRadius,
               notchWidth: notchWidth,
+              shelfDepth: shelfDepth,
               textDirection: textDirection,
             ),
             child: ColoredBox(
@@ -51,7 +173,7 @@ class AppNotchedCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (title != null)
+                    if (widget.title != null)
                       Padding(
                         padding: EdgeInsetsDirectional.only(end: trailingInset),
                         child: DefaultTextStyle.merge(
@@ -60,28 +182,124 @@ class AppNotchedCard extends StatelessWidget {
                             applyHeightToLastDescent: false,
                           ),
                           style: contentStyle.titleTextStyle,
-                          child: title!,
+                          child: widget.title!,
                         ),
                       ),
-                    if (title != null && description != null) SizedBox(height: contentStyle.titleSpacing),
-                    if (description != null)
+                    if (widget.title != null && widget.description != null) SizedBox(height: contentStyle.titleSpacing),
+                    if (widget.description != null)
                       DefaultTextStyle.merge(
                         textHeightBehavior: const TextHeightBehavior(
                           applyHeightToFirstAscent: false,
                           applyHeightToLastDescent: false,
                         ),
                         style: contentStyle.subtitleTextStyle,
-                        child: description!,
+                        child: widget.description!,
                       ),
-                    if (title != null && description != null) SizedBox(height: contentStyle.subtitleSpacing),
-                    body,
+                    if (widget.title != null && widget.description != null)
+                      SizedBox(height: contentStyle.subtitleSpacing),
+                    if (_hasActions) SizedBox(height: kNotchActionBottomMargin),
+                    widget.body,
                   ],
                 ),
               ),
             ),
           ),
-        );
-      },
+        ),
+        if (_hasActions)
+          Positioned.fill(
+            child: ClipRect(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: _actionsRowWidth == null ? -10000 : shelf.left + (shelf.width - _actionsRowWidth!) / 2,
+                    top: shelf.top,
+                    child: _buildActionsRow(
+                      key: _actionsMeasureKey,
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      actions: widget.actions!,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
+}
+
+Widget _buildActionsRow({
+  required Color backgroundColor,
+  required Color borderColor,
+  required List<Widget> actions,
+  Key? key,
+}) {
+  return Padding(
+    key: key,
+    padding: const EdgeInsets.only(bottom: kNotchActionBottomMargin),
+    child: _NotchedCardActionsRow(backgroundColor: backgroundColor, borderColor: borderColor, actions: actions),
+  );
+}
+
+/// Card-colored row of per-action shells in the notch shelf.
+class _NotchedCardActionsRow extends StatelessWidget {
+  const _NotchedCardActionsRow({
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.actions,
+    super.key,
+  });
+
+  final Color backgroundColor;
+  final Color borderColor;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: SpacingTokens.sm,
+      children: [
+        for (final action in actions)
+          _NotchedCardActionShell(backgroundColor: backgroundColor, borderColor: borderColor, child: action),
+      ],
+    );
+  }
+}
+
+/// Card-colored stadium shell for a single caller action.
+class _NotchedCardActionShell extends StatelessWidget {
+  const _NotchedCardActionShell({required this.backgroundColor, required this.borderColor, required this.child});
+
+  final Color backgroundColor;
+  final Color borderColor;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: backgroundColor,
+        shape: StadiumBorder(side: BorderSide(color: borderColor)),
+      ),
+      child: Padding(padding: const EdgeInsets.all(kNotchActionContainerPadding), child: child),
+    );
+  }
+}
+
+bool _listEquals(List<Widget>? a, List<Widget>? b) {
+  if (identical(a, b)) {
+    return true;
+  }
+  if (a == null || b == null || a.length != b.length) {
+    return false;
+  }
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].key != b[i].key || a[i].runtimeType != b[i].runtimeType) {
+      return false;
+    }
+  }
+  return true;
 }

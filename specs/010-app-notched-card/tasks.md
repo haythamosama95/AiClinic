@@ -80,15 +80,15 @@ description: "Task list for App Notched Card (010) feature implementation"
 
 ### Implementation for User Story 2
 
-- [ ] T011 [US2] Add action row intrinsic width measurement (`Row` + `SpacingTokens.sm`) inside `LayoutBuilder` in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
-- [ ] T012 [US2] Compute `notchWidth` clamp (min constant, actions + padding, max trailing available) and derive shelf rect in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
-- [ ] T013 [US2] Add root `Stack` with `PositionedDirectional` action row centered in shelf; render actions without re-theming (FR-007) in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
-- [ ] T014 [US2] Clip overflowing action row at card boundary with `ClipRect` (FR-015) in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
-- [ ] T015 [US2] Tune internal constants (`_kNotchFilletRadius`, `_kNotchShelfDepth`, `_kNotchMinWidth`, `_kNotchHorizontalPadding`) against `docs/ui/assets/notch_card_reference.png` in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart` and `notched_card_path.dart`
+- [X] T011 [US2] Add action row intrinsic width measurement (`Row` + `SpacingTokens.sm`) inside `LayoutBuilder` in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
+- [X] T012 [US2] Compute `notchWidth` clamp (min constant, actions + padding, max trailing available) and derive shelf rect in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
+- [X] T013 [US2] Add root `Stack` with `PositionedDirectional` action row centered in shelf; render actions without re-theming (FR-007) in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
+- [X] T014 [US2] Clip overflowing action row at card boundary with `ClipRect` (FR-015) in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart`
+- [X] T015 [US2] Tune internal constants (`_kNotchFilletRadius`, `_kNotchShelfDepth`, `_kNotchMinWidth`, `_kNotchHorizontalPadding`) against `docs/ui/assets/notch_card_reference.png` in `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart` and `notched_card_path.dart`
 
 ### Tests for User Story 2
 
-- [ ] T016 [P] [US2] Extend widget tests for single/multiple actions, spacing, and overflow clipping in `frontend/test/widget/core/ui/app_notched_card_test.dart`
+- [X] T016 [P] [US2] Extend widget tests for single/multiple actions, spacing, and overflow clipping in `frontend/test/widget/core/ui/app_notched_card_test.dart`
 
 **Checkpoint**: US1 + US2 complete — distinguishing notched card with floating actions works in LTR.
 

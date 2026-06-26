@@ -7,7 +7,7 @@ import 'package:ai_clinic/core/ui/theme/theme.dart';
 /// Default notch fillet radius tuned against the reference screenshot.
 const double kNotchFilletRadius = 35.0;
 
-/// Vertical drop from the main top edge to the notch shelf.
+/// Minimum vertical shelf depth when no actions are supplied or before measure.
 const double kNotchShelfDepth = 40.0;
 
 /// Minimum horizontal shelf length when no actions are supplied.
@@ -15,6 +15,12 @@ const double kNotchMinWidth = 56.0;
 
 /// Horizontal padding around the action row inside the notch shelf.
 const double kNotchHorizontalPadding = SpacingTokens.sm;
+
+/// Internal padding around caller actions inside the card-colored shell.
+const double kNotchActionContainerPadding = SpacingTokens.xs;
+
+/// Vertical gap below floating actions before card body content.
+const double kNotchActionBottomMargin = SpacingTokens.sm;
 
 /// Builds the closed outline path for the notched card shape.
 ///
