@@ -6,6 +6,8 @@ import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 
 /// Static clinic navigation tree and route bindings for the authenticated shell.
 abstract final class ShellNavConfig {
+  static const queueNavItemId = 'appointments-queue';
+
   static const Map<String, String> _routesByItemId = {
     'dashboard': AppRoutes.home,
     'patients': AppRoutes.patients,
@@ -25,10 +27,9 @@ abstract final class ShellNavConfig {
         ShellNavSingle(id: 'appointments-calendar', label: 'Calendar', icon: Icons.calendar_view_month_outlined),
         ShellNavSingle(id: 'appointments-book', label: 'Book appointment', icon: Icons.event_available_outlined),
         ShellNavSingle(
-          id: 'appointments-queue',
+          id: queueNavItemId,
           label: 'Queue',
           icon: Icons.queue_outlined,
-          badgeCount: 8,
           badgeTone: ShellNavBadgeTone.success,
         ),
       ],

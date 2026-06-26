@@ -1,4 +1,5 @@
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav.dart';
@@ -6,12 +7,28 @@ import 'package:ai_clinic/app/shell/widgets/shell_nav_item_row.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_metrics.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../helpers/auth_test_support.dart';
+
 const shellSurfaceSize = Size(1280, 900);
+
+/// Idle queue state for shell widget tests (avoids network + realtime side effects).
+class ShellTestIdleQueueNotifier extends AppointmentQueueController {
+  @override
+  AppointmentQueueState build() => const AppointmentQueueState(items: []);
+}
+
+/// Provider overrides that keep shell widget tests isolated from live backend I/O.
+List<Override> shellTestProviderOverrides({bool stubQueue = false}) => [
+  authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
+  if (stubQueue) appointmentQueueProvider.overrideWith(ShellTestIdleQueueNotifier.new),
+];
 
 /// Pumps [child] inside the app theme shell at [size].
 Future<void> pumpShellWidget(
@@ -19,12 +36,18 @@ Future<void> pumpShellWidget(
   required Widget child,
   Size size = shellSurfaceSize,
   bool settle = true,
+  List<Override> overrides = const [],
+  bool stubQueue = false,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
     ProviderScope(
+      overrides: [
+        ...shellTestProviderOverrides(stubQueue: stubQueue),
+        ...overrides,
+      ],
       child: MaterialApp(
         theme: AppTheme.light(),
         builder: (context, appChild) => ForuiAppScope(child: appChild ?? const SizedBox.shrink()),
@@ -50,6 +73,7 @@ Future<void> pumpShellNav(
   return pumpShellWidget(
     tester,
     settle: settle,
+    stubQueue: true,
     child: ShellNav(
       selectedItemId: selectedItemId,
       expandedGroupIds: expandedGroupIds,
@@ -140,6 +164,7 @@ Future<void> pumpAuthenticatedShell(
 
   await tester.pumpWidget(
     ProviderScope(
+      overrides: shellTestProviderOverrides(stubQueue: true),
       child: MaterialApp.router(
         theme: AppTheme.light(),
         builder: (context, child) => ForuiAppScope(child: child ?? const SizedBox.shrink()),

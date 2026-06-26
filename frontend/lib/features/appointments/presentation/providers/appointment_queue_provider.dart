@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 
 @immutable
@@ -121,3 +122,9 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
 final appointmentQueueProvider = NotifierProvider<AppointmentQueueController, AppointmentQueueState>(
   AppointmentQueueController.new,
 );
+
+/// Checked-in patient count for the shell queue nav badge.
+final appointmentQueueCheckedInCountProvider = Provider<int>((ref) {
+  final items = ref.watch(appointmentQueueProvider).items;
+  return AppointmentQueueDisplay.computeStats(items, now: DateTime.now()).waiting;
+});

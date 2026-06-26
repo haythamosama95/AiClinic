@@ -357,7 +357,6 @@ class _AppointmentRow extends StatelessWidget {
                             subtitle: item.type.label,
                             waitLabel: waitLabel,
                             primaryTextColor: primaryTextColor,
-                            primaryWeight: primaryWeight,
                           ),
                         ),
                       ),
@@ -370,7 +369,6 @@ class _AppointmentRow extends StatelessWidget {
                             presentation: doctorPresentation,
                             visitLabel: visitLabel,
                             primaryTextColor: primaryTextColor,
-                            primaryWeight: primaryWeight,
                           ),
                         ),
                       ),
@@ -403,17 +401,11 @@ class _AppointmentRow extends StatelessWidget {
 }
 
 class _QueueDoctorColumn extends StatelessWidget {
-  const _QueueDoctorColumn({
-    required this.presentation,
-    required this.visitLabel,
-    required this.primaryTextColor,
-    required this.primaryWeight,
-  });
+  const _QueueDoctorColumn({required this.presentation, required this.visitLabel, required this.primaryTextColor});
 
   final QueueAppointmentDoctorPresentation presentation;
   final String visitLabel;
   final Color primaryTextColor;
-  final FontWeight primaryWeight;
 
   @override
   Widget build(BuildContext context) {
@@ -426,7 +418,7 @@ class _QueueDoctorColumn extends StatelessWidget {
       children: [
         AppointmentScaleDownText(
           text: names,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: primaryTextColor, fontWeight: primaryWeight),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: primaryTextColor, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 2),
         Text(
@@ -441,19 +433,12 @@ class _QueueDoctorColumn extends StatelessWidget {
 }
 
 class _PersonColumn extends StatelessWidget {
-  const _PersonColumn({
-    required this.name,
-    required this.subtitle,
-    required this.primaryTextColor,
-    required this.primaryWeight,
-    this.waitLabel,
-  });
+  const _PersonColumn({required this.name, required this.subtitle, required this.primaryTextColor, this.waitLabel});
 
   final String name;
   final String subtitle;
   final String? waitLabel;
   final Color primaryTextColor;
-  final FontWeight primaryWeight;
 
   @override
   Widget build(BuildContext context) {
@@ -466,7 +451,7 @@ class _PersonColumn extends StatelessWidget {
       children: [
         AppointmentScaleDownText(
           text: name,
-          style: textTheme.bodyMedium?.copyWith(color: primaryTextColor, fontWeight: primaryWeight),
+          style: textTheme.bodyMedium?.copyWith(color: primaryTextColor, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 2),
         Row(
