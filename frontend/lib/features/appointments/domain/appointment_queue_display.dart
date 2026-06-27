@@ -25,6 +25,7 @@ class AppointmentQueueStats {
     this.totalTrend,
     this.completedTrend,
     this.noShowTrend,
+    this.waitingTrend,
     this.avgWaitTrend,
   });
 
@@ -36,6 +37,7 @@ class AppointmentQueueStats {
   final AppointmentQueueStatTrend? totalTrend;
   final AppointmentQueueStatTrend? completedTrend;
   final AppointmentQueueStatTrend? noShowTrend;
+  final AppointmentQueueStatTrend? waitingTrend;
   final AppointmentQueueStatTrend? avgWaitTrend;
 }
 
@@ -86,6 +88,7 @@ abstract final class AppointmentQueueDisplay {
       totalTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.total, previous.total)),
       completedTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.completed, previous.completed)),
       noShowTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.noShow, previous.noShow)),
+      waitingTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.waiting, previous.waiting)),
       avgWaitTrend: AppointmentQueueStatTrend(
         percentChange: _percentChangeNullable(current.avgWaitMinutes, previous.avgWaitMinutes),
       ),

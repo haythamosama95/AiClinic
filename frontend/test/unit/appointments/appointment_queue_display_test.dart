@@ -173,6 +173,7 @@ void main() {
       expect(stats.totalTrend?.percentChange, closeTo(0, 0.01));
       expect(stats.completedTrend?.percentChange, closeTo(0, 0.01));
       expect(stats.noShowTrend?.percentChange, closeTo(0, 0.01));
+      expect(stats.waitingTrend?.percentChange, closeTo(100, 0.01));
       expect(stats.avgWaitTrend?.percentChange, closeTo(100, 0.01));
     });
 
