@@ -80,7 +80,10 @@ class DevClinicSeedService {
     }
 
     report('Wiping all clinic data from the server…');
-    await _bootstrap.resetInstallationForDevelopment();
+    final resetResult = await _bootstrap.resetInstallationForDevelopment();
+    if (!resetResult.success) {
+      throw RpcFailure(resetResult);
+    }
     await refreshSession();
 
     final doctorIdsByBranch = <String, String>{};
@@ -263,6 +266,7 @@ class DevClinicSeedService {
             timezone: DevClinicSeedSpec.timezone,
             dayOffset: dayOffset,
             patientIndex: patientIndex,
+            hasSecondaryDoctor: branch.secondaryDoctorId != null,
             referenceUtc: referenceUtc,
           );
 
@@ -419,10 +423,10 @@ class DevClinicSeedService {
     required String? secondaryDoctorId,
     required int patientIndex,
   }) {
-    if (secondaryDoctorId == null || patientIndex.isEven) {
-      return primaryDoctorId;
+    if (secondaryDoctorId != null && patientIndex.isEven) {
+      return secondaryDoctorId;
     }
-    return secondaryDoctorId;
+    return primaryDoctorId;
   }
 
   static StaffRole _staffRole(DevClinicStaffRole role) {

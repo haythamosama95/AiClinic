@@ -61,10 +61,7 @@ class SettingsRpcTestClient extends RpcCaptureSupabaseClient {
       },
       'admin_update_staff_username' => {
         'success': true,
-        'data': {
-          'staff_member_id': paramsId('p_staff_member_id'),
-          'username': lastParams?['p_new_username'],
-        },
+        'data': {'staff_member_id': paramsId('p_staff_member_id'), 'username': lastParams?['p_new_username']},
       },
       'update_role_permission' => {
         'success': true,
@@ -76,11 +73,11 @@ class SettingsRpcTestClient extends RpcCaptureSupabaseClient {
       },
       'get_appointment_settings' => {
         'success': true,
-        'data': {'default_duration_minutes': 20, 'min_duration_minutes': 5, 'max_duration_minutes': 240},
+        'data': {'default_duration_minutes': 30, 'min_duration_minutes': 5, 'max_duration_minutes': 240},
       },
       'set_appointment_default_duration' => {
         'success': true,
-        'data': {'default_duration_minutes': lastParams?['p_duration_minutes'] ?? 20},
+        'data': {'default_duration_minutes': lastParams?['p_duration_minutes'] ?? 30},
       },
       _ => {'success': true, 'data': {}},
     };

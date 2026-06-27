@@ -68,14 +68,26 @@ abstract final class DevClinicSeedSchedule {
     return minAppointmentDurationMinutes + (seedKey % span);
   }
 
-  /// Cumulative minutes before [patientIndex] on a single branch-day timeline.
+  /// Whether [patientIndex] books the shared multi-branch doctor when one exists.
+  static bool assignsSecondaryDoctor({required int patientIndex, required bool hasSecondaryDoctor}) {
+    return hasSecondaryDoctor && patientIndex.isEven;
+  }
+
+  /// Cumulative minutes before [patientIndex] on the same doctor's branch-day track.
   ///
-  /// The backend rejects any overlapping slot in the same branch (regardless of doctor),
-  /// so appointments must be packed sequentially rather than on parallel doctor tracks.
-  static int minutesBeforePatient({required int dayOffset, required int patientIndex}) {
+  /// Per-doctor overlap (011) allows parallel tracks: odd patients on the branch doctor,
+  /// even patients on the shared multi-branch doctor when present.
+  static int minutesBeforePatient({
+    required int dayOffset,
+    required int patientIndex,
+    required bool hasSecondaryDoctor,
+  }) {
+    final onSecondary = assignsSecondaryDoctor(patientIndex: patientIndex, hasSecondaryDoctor: hasSecondaryDoctor);
     var total = 0;
     for (var i = 1; i < patientIndex; i++) {
-      total += appointmentDurationMinutesFor(i + dayOffset);
+      if (assignsSecondaryDoctor(patientIndex: i, hasSecondaryDoctor: hasSecondaryDoctor) == onSecondary) {
+        total += appointmentDurationMinutesFor(i + dayOffset);
+      }
     }
     return total;
   }
@@ -116,6 +128,7 @@ abstract final class DevClinicSeedSchedule {
     required String timezone,
     required int dayOffset,
     required int patientIndex,
+    required bool hasSecondaryDoctor,
     DateTime? referenceUtc,
   }) {
     ensureAppointmentTimezonesInitialized();
@@ -124,7 +137,11 @@ abstract final class DevClinicSeedSchedule {
     final localNow = tz.TZDateTime.from(ref, location);
     final day = tz.TZDateTime(location, localNow.year, localNow.month, localNow.day).add(Duration(days: dayOffset));
     final durationMinutes = appointmentDurationMinutesFor(patientIndex + dayOffset);
-    final trackOffsetMinutes = minutesBeforePatient(dayOffset: dayOffset, patientIndex: patientIndex);
+    final trackOffsetMinutes = minutesBeforePatient(
+      dayOffset: dayOffset,
+      patientIndex: patientIndex,
+      hasSecondaryDoctor: hasSecondaryDoctor,
+    );
     final startMinutes = firstSlotLocalHour * 60 + firstSlotLocalMinute + trackOffsetMinutes;
     final endMinutes = startMinutes + durationMinutes;
     final closeMinutes = branchCloseLocalHour * 60;

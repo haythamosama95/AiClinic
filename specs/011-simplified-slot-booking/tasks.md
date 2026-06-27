@@ -63,10 +63,10 @@ description: "Task list for Simplified Slot Booking (011) feature implementation
 
 ### Implementation for User Story 1
 
-- [ ] T011 [P] [US1] Create `AppointmentDurationSettingsSection` with numeric duration field, branch scope label, and save action in `frontend/lib/features/settings/presentation/widgets/appointment_duration_settings_section.dart`
-- [ ] T012 [US1] Wire `AppointmentRepository.getSettings` / `setDefaultDuration` with permission gate matching `set_appointment_default_duration` grants in `frontend/lib/features/settings/presentation/widgets/appointment_duration_settings_section.dart`
-- [ ] T013 [US1] Add client validation (≥ `min_duration_minutes`, empty/invalid feedback, preserve previous value on failure) in `frontend/lib/features/settings/presentation/widgets/appointment_duration_settings_section.dart`
-- [ ] T014 [US1] Embed `AppointmentDurationSettingsSection` in clinic setup tab (branch settings card or dedicated row) in `frontend/lib/features/settings/presentation/widgets/clinic_setup_settings_tab.dart` and/or `frontend/lib/features/settings/presentation/widgets/branch_settings_section.dart`
+- [X] T011 [P] [US1] Create `AppointmentDurationSettingsSection` with numeric duration field, branch scope label, and save action in `frontend/lib/features/settings/presentation/widgets/appointment_duration_settings_section.dart`
+- [X] T012 [US1] Wire `AppointmentRepository.getSettings` / `setDefaultDuration` with permission gate matching `set_appointment_default_duration` grants in `frontend/lib/features/settings/presentation/widgets/appointment_duration_settings_section.dart`
+- [X] T013 [US1] Add client validation (≥ `min_duration_minutes`, empty/invalid feedback, preserve previous value on failure) in `frontend/lib/features/settings/presentation/widgets/appointment_duration_settings_section.dart`
+- [X] T014 [US1] Embed `AppointmentDurationSettingsSection` in clinic setup tab (branch settings card or dedicated row) in `frontend/lib/features/settings/presentation/widgets/clinic_setup_settings_tab.dart` and/or `frontend/lib/features/settings/presentation/widgets/branch_settings_section.dart`
 
 **Checkpoint**: US1 independently testable via settings UI — duration save/load works without simplified booking flow.
 

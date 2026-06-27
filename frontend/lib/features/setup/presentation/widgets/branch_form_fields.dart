@@ -4,6 +4,7 @@ import 'package:forui/forui.dart';
 
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_duration_options.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/setup/domain/branch_field_validation.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/clinic_form_read_only_field.dart';
@@ -24,7 +25,15 @@ enum BranchFormFieldsMode {
 /// Existing branch values for [BranchFormFieldsMode.edit] and [BranchFormFieldsMode.readOnly].
 @immutable
 class BranchFormExistingData {
-  const BranchFormExistingData({this.name, this.code, this.address, this.phone, this.mapsUrl, this.workingSchedule});
+  const BranchFormExistingData({
+    this.name,
+    this.code,
+    this.address,
+    this.phone,
+    this.mapsUrl,
+    this.workingSchedule,
+    this.defaultDurationMinutes,
+  });
 
   final String? name;
   final String? code;
@@ -32,6 +41,7 @@ class BranchFormExistingData {
   final String? phone;
   final String? mapsUrl;
   final BranchWorkingSchedule? workingSchedule;
+  final int? defaultDurationMinutes;
 }
 
 /// Shared branch name, code, address, phone, and maps URL inputs.
@@ -48,6 +58,12 @@ class BranchFormFields extends StatelessWidget {
     this.existing,
     this.onWorkingHours,
     this.workingHoursConfigured = false,
+    this.defaultDurationMinutes,
+    this.selectedDurationMinutes,
+    this.onDurationChanged,
+    this.durationEnabled = true,
+    this.isLoadingDuration = false,
+    this.durationLoadError,
     super.key,
   });
 
@@ -66,6 +82,14 @@ class BranchFormFields extends StatelessWidget {
 
   /// Setup create mode only: shows a check mark when working hours are configured.
   final bool workingHoursConfigured;
+
+  /// Settings edit/read-only: branch default appointment duration in minutes.
+  final int? defaultDurationMinutes;
+  final int? selectedDurationMinutes;
+  final ValueChanged<int?>? onDurationChanged;
+  final bool durationEnabled;
+  final bool isLoadingDuration;
+  final String? durationLoadError;
 
   bool get _showEditableFields => mode == BranchFormFieldsMode.create || isEditing;
 
@@ -193,6 +217,7 @@ class BranchFormFields extends StatelessWidget {
         keyboardType: TextInputType.url,
         validator: BranchFieldValidation.validateMapsUrl,
       ),
+      _durationField(editable: true),
     ];
   }
 
@@ -203,7 +228,34 @@ class BranchFormFields extends StatelessWidget {
       ClinicFormReadOnlyField(label: 'Address', value: existing?.address),
       ClinicFormReadOnlyField(label: 'Phone', value: existing?.phone),
       ClinicFormReadOnlyField(label: 'Maps URL', value: existing?.mapsUrl),
+      _durationField(editable: false),
     ];
+  }
+
+  Widget _durationField({required bool editable}) {
+    if (durationLoadError != null) {
+      return ClinicFormReadOnlyField(label: 'Default appointment duration', value: durationLoadError);
+    }
+
+    if (isLoadingDuration) {
+      return const ClinicFormReadOnlyField(label: 'Default appointment duration', value: 'Loading…');
+    }
+
+    final savedMinutes = defaultDurationMinutes ?? existing?.defaultDurationMinutes;
+    final displayMinutes = editable ? (selectedDurationMinutes ?? savedMinutes) : savedMinutes;
+
+    if (editable && durationEnabled && onDurationChanged != null) {
+      return AppSelect<int>(
+        label: 'Default appointment duration',
+        items: AppointmentDurationOptions.selectItems(includeMinutes: displayMinutes),
+        value: displayMinutes,
+        enabled: enabled,
+        onChanged: enabled ? onDurationChanged : null,
+      );
+    }
+
+    final display = displayMinutes == null ? null : AppointmentDurationOptions.formatMinutes(displayMinutes);
+    return ClinicFormReadOnlyField(label: 'Default appointment duration', value: display);
   }
 
   static String? Function(String?) _requiredValidator(String fieldName) {

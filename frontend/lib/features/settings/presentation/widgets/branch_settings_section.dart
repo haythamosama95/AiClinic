@@ -6,6 +6,8 @@ import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
+import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/settings/application/settings_rpc_messages.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
@@ -39,6 +41,10 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
   var _isTogglingActive = false;
   var _isDeletingBranch = false;
   String? _errorMessage;
+  int? _savedDurationMinutes;
+  int? _selectedDurationMinutes;
+  var _isLoadingDuration = true;
+  String? _durationLoadError;
 
   @override
   void initState() {
@@ -49,6 +55,7 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
     _phoneController = TextEditingController();
     _mapsUrlController = TextEditingController();
     _applyBranch(widget.branch);
+    _loadDuration();
   }
 
   @override
@@ -56,6 +63,9 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.branch != widget.branch && !_isEditing) {
       _applyBranch(widget.branch);
+    }
+    if (oldWidget.branch.id != widget.branch.id && !_isEditing) {
+      _loadDuration();
     }
   }
 
@@ -78,6 +88,45 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
     _addressController.text = branch.address ?? '';
     _phoneController.text = branch.phone ?? '';
     _mapsUrlController.text = branch.mapsUrl ?? '';
+    if (_savedDurationMinutes != null) {
+      _selectedDurationMinutes = _savedDurationMinutes;
+    }
+  }
+
+  Future<void> _loadDuration() async {
+    setState(() {
+      _isLoadingDuration = true;
+      _durationLoadError = null;
+    });
+
+    try {
+      final settings = await ref.read(appointmentRepositoryProvider).getSettings(branchId: widget.branch.id);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _savedDurationMinutes = settings.defaultDurationMinutes;
+        _selectedDurationMinutes = settings.defaultDurationMinutes;
+        _isLoadingDuration = false;
+      });
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoadingDuration = false;
+        _durationLoadError = appointmentMessageForRpc(error);
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoadingDuration = false;
+        _durationLoadError = 'Unable to load appointment duration.';
+      });
+    }
   }
 
   BranchFormExistingData get _existingData => BranchFormExistingData(
@@ -87,6 +136,7 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
     phone: widget.branch.phone,
     mapsUrl: widget.branch.mapsUrl,
     workingSchedule: _persistedWorkingSchedule,
+    defaultDurationMinutes: _savedDurationMinutes,
   );
 
   void _startEditing() {
@@ -291,6 +341,27 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
         ),
       );
 
+      final durationMinutes = _selectedDurationMinutes;
+      final durationChanged = durationMinutes != null && durationMinutes != _savedDurationMinutes;
+      if (widget.canManage && durationChanged) {
+        try {
+          final savedMinutes = await ref
+              .read(appointmentRepositoryProvider)
+              .setDefaultDuration(durationMinutes: durationMinutes, branchId: widget.branch.id);
+          _savedDurationMinutes = savedMinutes;
+          _selectedDurationMinutes = savedMinutes;
+        } on RpcFailure catch (error) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _isSaving = false;
+            _errorMessage = appointmentMessageForRpc(error);
+          });
+          return;
+        }
+      }
+
       ref.invalidate(clinicSetupBranchesProvider);
 
       if (!mounted) {
@@ -377,6 +448,14 @@ class _BranchSettingsSectionState extends ConsumerState<BranchSettingsSection> {
                     phoneController: _phoneController,
                     mapsUrlController: _mapsUrlController,
                     enabled: !_isSaving && !_isSavingWorkingHours,
+                    defaultDurationMinutes: _savedDurationMinutes,
+                    selectedDurationMinutes: _selectedDurationMinutes,
+                    onDurationChanged: widget.canManage
+                        ? (minutes) => setState(() => _selectedDurationMinutes = minutes)
+                        : null,
+                    durationEnabled: widget.canManage,
+                    isLoadingDuration: _isLoadingDuration,
+                    durationLoadError: _durationLoadError,
                   ),
                 ],
               ),

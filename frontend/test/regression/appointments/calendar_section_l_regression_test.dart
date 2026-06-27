@@ -79,6 +79,7 @@ void main() {
             timezone: 'Africa/Cairo',
             dayOffset: dayOffset,
             patientIndex: patientIndex,
+            hasSecondaryDoctor: true,
             referenceUtc: referenceUtc,
           );
           final duration = DevClinicSeedSchedule.appointmentDurationMinutesFor(patientIndex + dayOffset);

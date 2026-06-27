@@ -72,26 +72,88 @@ void main() {
       }
     });
 
-    test('appointments on the same branch day do not overlap', () {
+    test('same-doctor appointments on a branch day are packed back-to-back', () {
       for (final dayOffset in DevClinicSeedSchedule.appointmentDayOffsets) {
         final referenceUtc = DateTime.utc(2026, 6, 13, 12);
 
-        for (var patientIndex = 2; patientIndex <= DevClinicSeedSpec.patientsPerBranch; patientIndex++) {
-          final previousStart = DevClinicSeedSchedule.appointmentStartUtc(
-            timezone: 'Africa/Cairo',
-            dayOffset: dayOffset,
-            patientIndex: patientIndex - 1,
-            referenceUtc: referenceUtc,
-          );
-          final currentStart = DevClinicSeedSchedule.appointmentStartUtc(
+        for (final trackStart in [1, 2]) {
+          for (
+            var patientIndex = trackStart + 2;
+            patientIndex <= DevClinicSeedSpec.patientsPerBranch;
+            patientIndex += 2
+          ) {
+            final previousStart = DevClinicSeedSchedule.appointmentStartUtc(
+              timezone: 'Africa/Cairo',
+              dayOffset: dayOffset,
+              patientIndex: patientIndex - 2,
+              hasSecondaryDoctor: true,
+              referenceUtc: referenceUtc,
+            );
+            final currentStart = DevClinicSeedSchedule.appointmentStartUtc(
+              timezone: 'Africa/Cairo',
+              dayOffset: dayOffset,
+              patientIndex: patientIndex,
+              hasSecondaryDoctor: true,
+              referenceUtc: referenceUtc,
+            );
+            final previousDuration = DevClinicSeedSchedule.appointmentDurationMinutesFor(patientIndex - 2 + dayOffset);
+
+            expect(currentStart, previousStart.add(Duration(minutes: previousDuration)));
+          }
+        }
+      }
+    });
+
+    test('primary and secondary doctor tracks may start in parallel', () {
+      final referenceUtc = DateTime.utc(2026, 6, 13, 12);
+      final primaryStart = DevClinicSeedSchedule.appointmentStartUtc(
+        timezone: 'Africa/Cairo',
+        dayOffset: 0,
+        patientIndex: 1,
+        hasSecondaryDoctor: true,
+        referenceUtc: referenceUtc,
+      );
+      final secondaryStart = DevClinicSeedSchedule.appointmentStartUtc(
+        timezone: 'Africa/Cairo',
+        dayOffset: 0,
+        patientIndex: 2,
+        hasSecondaryDoctor: true,
+        referenceUtc: referenceUtc,
+      );
+
+      expect(primaryStart, secondaryStart);
+    });
+
+    test('per-doctor appointment tracks on the same branch day do not overlap', () {
+      for (final dayOffset in DevClinicSeedSchedule.appointmentDayOffsets) {
+        final referenceUtc = DateTime.utc(2026, 6, 13, 12);
+        final byDoctor = <String, List<(DateTime start, DateTime end)>>{};
+
+        for (var patientIndex = 1; patientIndex <= DevClinicSeedSpec.patientsPerBranch; patientIndex++) {
+          final doctor =
+              DevClinicSeedSchedule.assignsSecondaryDoctor(patientIndex: patientIndex, hasSecondaryDoctor: true)
+              ? 'secondary'
+              : 'primary';
+          final start = DevClinicSeedSchedule.appointmentStartUtc(
             timezone: 'Africa/Cairo',
             dayOffset: dayOffset,
             patientIndex: patientIndex,
+            hasSecondaryDoctor: true,
             referenceUtc: referenceUtc,
           );
-          final previousDuration = DevClinicSeedSchedule.appointmentDurationMinutesFor(patientIndex - 1 + dayOffset);
+          final duration = DevClinicSeedSchedule.appointmentDurationMinutesFor(patientIndex + dayOffset);
+          byDoctor.putIfAbsent(doctor, () => []).add((start, start.add(Duration(minutes: duration))));
+        }
 
-          expect(currentStart, previousStart.add(Duration(minutes: previousDuration)));
+        for (final slots in byDoctor.values) {
+          slots.sort((a, b) => a.$1.compareTo(b.$1));
+          for (var i = 1; i < slots.length; i++) {
+            expect(
+              slots[i].$1.isBefore(slots[i - 1].$2),
+              isFalse,
+              reason: 'doctor track overlap on day offset $dayOffset',
+            );
+          }
         }
       }
     });
@@ -101,12 +163,14 @@ void main() {
         timezone: 'Africa/Cairo',
         dayOffset: 0,
         patientIndex: 1,
+        hasSecondaryDoctor: true,
         referenceUtc: DateTime.utc(2026, 6, 13, 12),
       );
       final last = DevClinicSeedSchedule.appointmentStartUtc(
         timezone: 'Africa/Cairo',
         dayOffset: 0,
         patientIndex: DevClinicSeedSpec.patientsPerBranch,
+        hasSecondaryDoctor: true,
         referenceUtc: DateTime.utc(2026, 6, 13, 12),
       );
 

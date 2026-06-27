@@ -36,7 +36,7 @@ void main() {
     test('trivial: getSettings calls RPC with branch id', () async {
       final settings = await repository.getSettings(branchId: '44444444-4444-4444-8444-444444444444');
 
-      expect(settings.defaultDurationMinutes, 20);
+      expect(settings.defaultDurationMinutes, 30);
       expect(client.lastFunction, 'get_appointment_settings');
       expect(client.lastParams?['p_branch_id'], '44444444-4444-4444-8444-444444444444');
     });

@@ -12,6 +12,7 @@ import 'package:ai_clinic/features/settings/data/staff_admin_repository.dart';
 import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 
 @immutable
@@ -91,10 +92,8 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
       return true;
     } on RpcFailure catch (error) {
       AppLog.warning('dev_clinic_seed.rpc_failed code=${error.code}');
-      state = DevClinicSeedState(
-        inProgress: false,
-        errorMessage: error.result.errorMessage ?? setupMessageForRpc(error),
-      );
+      final message = error.result.errorMessage ?? appointmentMessageForRpc(error);
+      state = DevClinicSeedState(inProgress: false, errorMessage: message);
       return false;
     } catch (error, stack) {
       AppLog.warning('dev_clinic_seed.failed reason=${error.runtimeType}');

@@ -146,13 +146,13 @@ BEGIN
   v_result := public.create_patient(v_main_branch_id, 'Appt Patient 2', '201000000144', NULL, NULL, NULL, NULL, false);
   v_patient2_id := (v_result.data ->> 'patient_id')::uuid;
 
-  -- Trivial: settings default fallback 20.
+  -- Trivial: settings default fallback 30.
   v_result := public.get_appointment_settings(v_main_branch_id);
   v_default := (v_result.data ->> 'default_duration_minutes')::int;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'settings_default_fallback_20',
-    v_result.success AND v_default = 20,
+    'settings_default_fallback_30',
+    v_result.success AND v_default = 30,
     'default=' || COALESCE(v_default::text, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

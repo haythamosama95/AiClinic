@@ -81,7 +81,7 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
       'get_appointment_settings' => {
         'success': true,
         'data': {
-          'default_duration_minutes': 20,
+          'default_duration_minutes': 30,
           'min_duration_minutes': 5,
           'max_duration_minutes': 240,
           'working_schedule': {
@@ -94,7 +94,7 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
       },
       'set_appointment_default_duration' => {
         'success': true,
-        'data': {'default_duration_minutes': lastParams?['p_duration_minutes'] ?? 20},
+        'data': {'default_duration_minutes': lastParams?['p_duration_minutes'] ?? 30},
       },
       'create_appointment' => {
         'success': true,
