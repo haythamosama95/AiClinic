@@ -129,16 +129,16 @@ description: "Task list for Simplified Slot Booking (011) feature implementation
 
 ### Implementation for User Story 4
 
-- [ ] T029 [P] [US4] Add `SimplifiedBookingSession` in-memory state model (patient, preferred/effective doctor, selected date/slot, frozen duration) in `frontend/lib/features/appointments/domain/simplified_booking_session.dart`
-- [ ] T030 [P] [US4] Implement `SimplifiedBookingStepOne` reusing patient search and `AppointmentDoctorSelector` with validation in `frontend/lib/features/appointments/presentation/widgets/simplified_booking_step_one.dart`
-- [ ] T031 [US4] Implement `SimplifiedBookingStepTwo` hosting day strip, block grid, alternate dialog orchestration, summary card, slot RPC load on date/doctor change, and degraded/retry UI when slot RPC fails (FR-014) in `frontend/lib/features/appointments/presentation/widgets/simplified_booking_step_two.dart`
-- [ ] T032 [US4] Implement `SimplifiedBookingFlow.show` modal shell (scrim, step indicator, back from step two clears slot, step navigation) in `frontend/lib/features/appointments/presentation/widgets/simplified_booking_flow.dart`
-- [ ] T033 [US4] Wire calendar header **Book Appointment** to `SimplifiedBookingFlow.show` with `canCreateAppointments` gate in `frontend/lib/features/appointments/presentation/pages/appointment_calendar_page.dart`
-- [ ] T034 [US4] Load `defaultDurationMinutes` from `getSettings` at step-two open and omit duration override controls throughout flow in `frontend/lib/features/appointments/presentation/widgets/simplified_booking_flow.dart`
+- [X] T029 [P] [US4] Add `SimplifiedBookingSession` in-memory state model (patient, preferred/effective doctor, selected date/slot, frozen duration) in `frontend/lib/features/appointments/domain/simplified_booking_session.dart`
+- [X] T030 [P] [US4] Implement `SimplifiedBookingStepOne` reusing patient search and `AppointmentDoctorSelector` with validation in `frontend/lib/features/appointments/presentation/widgets/simplified_booking_step_one.dart`
+- [X] T031 [US4] Implement `SimplifiedBookingStepTwo` hosting day strip, block grid, alternate dialog orchestration, summary card, slot RPC load on date/doctor change, and degraded/retry UI when slot RPC fails (FR-014) in `frontend/lib/features/appointments/presentation/widgets/simplified_booking_step_two.dart`
+- [X] T032 [US4] Implement `SimplifiedBookingFlow.show` modal shell (scrim, step indicator, back from step two clears slot, step navigation) in `frontend/lib/features/appointments/presentation/widgets/simplified_booking_flow.dart`
+- [X] T033 [US4] Wire calendar header **Book Appointment** to `SimplifiedBookingFlow.show` with `canCreateAppointments` gate in `frontend/lib/features/appointments/presentation/pages/appointment_calendar_page.dart`
+- [X] T034 [US4] Load `defaultDurationMinutes` from `getSettings` at step-two open and omit duration override controls throughout flow in `frontend/lib/features/appointments/presentation/widgets/simplified_booking_flow.dart`
 
 ### Tests for User Story 4
 
-- [ ] T035 [P] [US4] Add widget/integration test for header-button two-step booking (step one → step two → confirm) in `frontend/test/widget/appointments/simplified_booking_flow_test.dart`
+- [X] T035 [P] [US4] Add widget/integration test for header-button two-step booking (step one → step two → confirm) in `frontend/test/widget/appointments/simplified_booking_flow_test.dart`
 
 **Checkpoint**: Full simplified two-step booking path works from calendar header.
 

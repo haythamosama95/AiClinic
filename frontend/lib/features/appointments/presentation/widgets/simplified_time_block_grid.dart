@@ -4,91 +4,64 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 /// Duration-sized time block grid for simplified booking (011).
-class SimplifiedTimeBlockGrid extends StatefulWidget {
+class SimplifiedTimeBlockGrid extends StatelessWidget {
   const SimplifiedTimeBlockGrid({
     required this.slots,
     required this.onSlotTap,
     this.selectedStart,
     this.onAlternateSlotTap,
     this.collapsedSlotCount = 8,
+    this.crossAxisCount = 4,
     super.key,
   });
+
+  static const _rowExtent = 40.0;
 
   final List<SimplifiedBookingSlot> slots;
   final DateTime? selectedStart;
   final ValueChanged<SimplifiedBookingSlot> onSlotTap;
   final ValueChanged<SimplifiedBookingSlot>? onAlternateSlotTap;
   final int collapsedSlotCount;
-
-  @override
-  State<SimplifiedTimeBlockGrid> createState() => _SimplifiedTimeBlockGridState();
-}
-
-class _SimplifiedTimeBlockGridState extends State<SimplifiedTimeBlockGrid> {
-  bool _expanded = false;
-
-  @override
-  void didUpdateWidget(covariant SimplifiedTimeBlockGrid oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.slots != widget.slots) {
-      _expanded = false;
-    }
-  }
+  final int crossAxisCount;
 
   @override
   Widget build(BuildContext context) {
-    final slots = widget.slots;
+    final slots = this.slots;
     if (slots.isEmpty) {
       return Text('No slots available for this day.', style: Theme.of(context).textTheme.bodyMedium);
     }
 
-    final visibleSlots = _expanded ? slots : slots.take(widget.collapsedSlotCount).toList();
-    final hiddenCount = slots.length - visibleSlots.length;
-    final availableCount = slots.where((slot) => slot.state == SlotAvailabilityState.available).length;
+    final rowCount = (slots.length / crossAxisCount).ceil();
+    final maxRows = (collapsedSlotCount / crossAxisCount).ceil();
+    final viewportRows = rowCount > maxRows ? maxRows : rowCount;
+    final gridHeight = viewportRows * _rowExtent + (viewportRows - 1) * SpacingTokens.sm;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Wrap(
-          spacing: SpacingTokens.sm,
-          runSpacing: SpacingTokens.sm,
-          children: [
-            for (final slot in visibleSlots)
-              _TimeBlockChip(slot: slot, isSelected: _isSelected(slot), onTap: () => _handleTap(slot)),
-          ],
+    return SizedBox(
+      height: gridHeight,
+      child: GridView.builder(
+        key: const Key('simplified_time_block_grid'),
+        physics: rowCount > maxRows ? const ClampingScrollPhysics() : const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: SpacingTokens.sm,
+          mainAxisSpacing: SpacingTokens.sm,
+          mainAxisExtent: _rowExtent,
         ),
-        if (!_expanded && hiddenCount > 0) ...[
-          const SizedBox(height: SpacingTokens.md),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              key: const Key('simplified_time_block_show_more'),
-              onPressed: () => setState(() => _expanded = true),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Show more slots'),
-                  Text(
-                    '$availableCount available',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: context.semanticColors.mutedForeground),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ],
+        itemCount: slots.length,
+        itemBuilder: (context, index) {
+          final slot = slots[index];
+          return _TimeBlockChip(slot: slot, isSelected: _isSelected(slot), onTap: () => _handleTap(slot));
+        },
+      ),
     );
   }
 
   void _handleTap(SimplifiedBookingSlot slot) {
     switch (slot.state) {
       case SlotAvailabilityState.available:
-        widget.onSlotTap(slot);
+        onSlotTap(slot);
       case SlotAvailabilityState.alternateDoctorsAvailable:
-        widget.onAlternateSlotTap?.call(slot);
+        onAlternateSlotTap?.call(slot);
       case SlotAvailabilityState.fullyUnavailable:
       case SlotAvailabilityState.past:
         break;
@@ -96,7 +69,7 @@ class _SimplifiedTimeBlockGridState extends State<SimplifiedTimeBlockGrid> {
   }
 
   bool _isSelected(SimplifiedBookingSlot slot) {
-    final selected = widget.selectedStart;
+    final selected = selectedStart;
     if (selected == null) {
       return false;
     }
@@ -115,7 +88,7 @@ class _TimeBlockChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final theme = Theme.of(context);
-    final timeLabel = DateFormat.Hm().format(slot.startTime.toLocal());
+    final timeLabel = DateFormat.jm().format(slot.startTime.toLocal());
     final semanticsLabel = _semanticsLabel(timeLabel, slot.state, isSelected);
     final style = _chipStyle(colors, slot.state, isSelected);
 
@@ -130,23 +103,28 @@ class _TimeBlockChip extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(context.shapeTokens.md),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.sm),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(context.shapeTokens.md),
               border: Border.all(color: style.border),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (style.showLock) ...[
-                  Icon(Icons.lock_outline, size: 14, color: style.foreground),
-                  const SizedBox(width: SpacingTokens.xs),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (style.showLock) ...[
+                    Icon(Icons.lock_outline, size: 14, color: style.foreground),
+                    const SizedBox(width: SpacingTokens.xs),
+                  ],
+                  Text(
+                    timeLabel,
+                    style: theme.textTheme.labelLarge?.copyWith(color: style.foreground, fontWeight: FontWeight.w600),
+                  ),
                 ],
-                Text(
-                  timeLabel,
-                  style: theme.textTheme.labelLarge?.copyWith(color: style.foreground, fontWeight: FontWeight.w600),
-                ),
-              ],
+              ),
             ),
           ),
         ),

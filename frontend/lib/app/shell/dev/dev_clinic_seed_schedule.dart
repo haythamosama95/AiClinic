@@ -73,10 +73,11 @@ abstract final class DevClinicSeedSchedule {
     return hasSecondaryDoctor && patientIndex.isEven;
   }
 
-  /// Cumulative minutes before [patientIndex] on the same doctor's branch-day track.
+  /// Cumulative minutes before [patientIndex] on a branch-day timeline.
   ///
-  /// Per-doctor overlap (011) allows parallel tracks: odd patients on the branch doctor,
-  /// even patients on the shared multi-branch doctor when present.
+  /// When [hasSecondaryDoctor] is true, odd/even patients use parallel per-doctor
+  /// tracks (valid once overlap is per-doctor). Dev seed passes false so every slot
+  /// is sequential on the branch timeline and avoids SCHEDULE_CONFLICT on older backends.
   static int minutesBeforePatient({
     required int dayOffset,
     required int patientIndex,

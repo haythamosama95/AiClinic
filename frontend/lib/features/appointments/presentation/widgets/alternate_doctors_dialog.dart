@@ -57,7 +57,7 @@ class AlternateDoctorsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
-    final timeLabel = DateFormat.Hm().format(slot.startTime.toLocal());
+    final timeLabel = DateFormat.jm().format(slot.startTime.toLocal());
 
     return FDialog(
       style: dialogStyle,

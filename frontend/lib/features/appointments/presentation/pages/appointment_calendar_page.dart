@@ -21,6 +21,7 @@ import 'package:ai_clinic/features/appointments/application/appointment_rpc_mess
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_reschedule_validation.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/simplified_booking_flow.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_header_bar.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_skeleton.dart';
@@ -228,21 +229,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           onClearFilters: controller.clearFilters,
           onBookAppointment: canCreate && state.selectedBranchId != null && state.selectedBranchId!.isNotEmpty
               ? () {
-                  final slotRange = AppointmentCalendarDisplay.slotRangeFromTap(
-                    tappedDate: state.focusDate,
-                    schedule: schedule,
-                    mode: state.mode,
-                    slotMinutes: slotLayout.timeIntervalMinutes,
-                  );
                   unawaited(
-                    _showBookingSheet(
-                      branchId: state.selectedBranchId!,
-                      schedule: schedule,
-                      slotStart: slotRange.start,
-                      slotEnd: slotRange.end,
-                      initialDoctorId: state.selectedDoctorId,
-                      doctors: doctors,
-                    ),
+                    _showSimplifiedBookingFlow(branchId: state.selectedBranchId!, schedule: schedule, doctors: doctors),
                   );
                 }
               : null,
@@ -1338,6 +1326,17 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         doctors: doctors,
       ),
     );
+  }
+
+  Future<void> _showSimplifiedBookingFlow({
+    required String branchId,
+    required BranchWorkingSchedule schedule,
+    required List<StaffListItem> doctors,
+  }) async {
+    final booked = await SimplifiedBookingFlow.show(context, branchId: branchId, schedule: schedule, doctors: doctors);
+    if (booked == true && mounted) {
+      await ref.read(appointmentCalendarProvider.notifier).refresh();
+    }
   }
 
   Future<void> _showBookingSheet({

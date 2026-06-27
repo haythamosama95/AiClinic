@@ -51,7 +51,8 @@ class _SimplifiedSlotSummaryCardState extends ConsumerState<SimplifiedSlotSummar
 
   bool get _hasSelection => widget.selectedSlot != null;
 
-  bool get _canConfirm => _hasSelection && widget.slotsAvailable && !_isSaving;
+  bool get _canConfirm =>
+      _hasSelection && widget.slotsAvailable && !_isSaving && widget.effectiveDoctorId.trim().isNotEmpty;
 
   Future<void> _confirm() async {
     final slot = widget.selectedSlot;
@@ -125,19 +126,19 @@ class _SimplifiedSlotSummaryCardState extends ConsumerState<SimplifiedSlotSummar
         border: Border.all(color: colors.primary.withValues(alpha: 0.24)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
+        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Currently Selected:', style: theme.textTheme.labelLarge?.copyWith(color: colors.mutedForeground)),
+            Text('Currently Selected:', style: theme.textTheme.labelMedium?.copyWith(color: colors.mutedForeground)),
             const SizedBox(height: SpacingTokens.xs),
-            Text(summaryLabel, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            if (_hasSelection) ...[
+            Text(summaryLabel, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            if (_hasSelection && widget.doctorName.trim().isNotEmpty) ...[
               const SizedBox(height: SpacingTokens.xs),
-              Text(widget.doctorName, style: theme.textTheme.bodyMedium),
+              Text(widget.doctorName, style: theme.textTheme.bodySmall),
             ],
             if (!widget.slotsAvailable) ...[
-              const SizedBox(height: SpacingTokens.md),
+              const SizedBox(height: SpacingTokens.sm),
               AppAlert(
                 title: 'Could not load available slots. Try again before confirming.',
                 variant: AppAlertVariant.destructive,
@@ -148,10 +149,10 @@ class _SimplifiedSlotSummaryCardState extends ConsumerState<SimplifiedSlotSummar
               ],
             ],
             if (_errorMessage != null) ...[
-              const SizedBox(height: SpacingTokens.md),
+              const SizedBox(height: SpacingTokens.sm),
               AppAlert(title: _errorMessage!, variant: AppAlertVariant.destructive),
             ],
-            const SizedBox(height: SpacingTokens.md),
+            const SizedBox(height: SpacingTokens.sm),
             AppButton(
               key: const Key('simplified_slot_confirm'),
               label: 'Confirm appointment',
@@ -170,8 +171,8 @@ class _SimplifiedSlotSummaryCardState extends ConsumerState<SimplifiedSlotSummar
     final localEnd = localStart.add(Duration(minutes: widget.defaultDurationMinutes));
     final weekday = DateFormat.EEEE().format(widget.selectedDate);
     final monthDay = DateFormat.MMMd().format(widget.selectedDate);
-    final from = DateFormat.Hm().format(localStart);
-    final to = DateFormat.Hm().format(localEnd);
+    final from = DateFormat.jm().format(localStart);
+    final to = DateFormat.jm().format(localEnd);
     return '$weekday, $monthDay, $from – $to';
   }
 }

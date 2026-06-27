@@ -262,11 +262,13 @@ class DevClinicSeedService {
 
           final seedKey = patientIndex + dayOffset;
           final targetStatus = DevClinicSeedSchedule.appointmentStatusFor(dayOffset: dayOffset, seedKey: seedKey);
+          // Pack every appointment on one branch-day timeline so seeding works
+          // whether overlap is enforced per doctor or across the whole branch.
           final startTime = DevClinicSeedSchedule.appointmentStartUtc(
             timezone: DevClinicSeedSpec.timezone,
             dayOffset: dayOffset,
             patientIndex: patientIndex,
-            hasSecondaryDoctor: branch.secondaryDoctorId != null,
+            hasSecondaryDoctor: false,
             referenceUtc: referenceUtc,
           );
 

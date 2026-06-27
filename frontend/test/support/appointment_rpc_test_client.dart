@@ -139,6 +139,20 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
         'success': true,
         'data': {'appointment_id': lastParams?['p_appointment_id'], 'status': 'cancelled'},
       },
+      'get_simplified_booking_slots' => {
+        'success': true,
+        'data': {
+          'default_duration_minutes': 30,
+          'blocks': [
+            {
+              'start_time': '2026-06-27T10:00:00.000',
+              'end_time': '2026-06-27T10:30:00.000',
+              'state': 'available',
+              'available_doctor_ids': [lastParams?['p_preferred_doctor_id'] ?? 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'],
+            },
+          ],
+        },
+      },
       _ => {'success': false, 'error_code': 'UNKNOWN', 'error_message': 'Unhandled RPC $fn'},
     };
   }

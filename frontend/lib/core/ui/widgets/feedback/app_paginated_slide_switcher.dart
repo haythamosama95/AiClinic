@@ -97,7 +97,7 @@ class _AppPaginatedSlideSwitcherState extends State<AppPaginatedSlideSwitcher> w
 
     return ClipRect(
       child: Stack(
-        fit: StackFit.expand,
+        alignment: Alignment.topCenter,
         clipBehavior: Clip.hardEdge,
         children: [
           SlideTransition(

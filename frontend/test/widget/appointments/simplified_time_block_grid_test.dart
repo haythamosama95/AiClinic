@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 
 void main() {
-  String slotLabel(int hour) => DateFormat.Hm().format(DateTime(2026, 6, 27, hour));
+  String slotLabel(int hour) => DateFormat.jm().format(DateTime(2026, 6, 27, hour));
 
   SimplifiedBookingSlot slot({
     required int hour,
@@ -104,7 +104,7 @@ void main() {
       expect(alternateTapped, alternate);
     });
 
-    testWidgets('show more expands hidden slots with available count', (tester) async {
+    testWidgets('scroll reveals hidden slots when grid overflows', (tester) async {
       await pumpGrid(
         tester,
         slots: [
@@ -116,15 +116,13 @@ void main() {
         ],
       );
 
-      expect(find.text('Show more slots'), findsOneWidget);
-      expect(find.text('4 available'), findsOneWidget);
       expect(find.text(slotLabel(12)), findsNothing);
 
-      await tester.tap(find.byKey(const Key('simplified_time_block_show_more')));
+      final grid = find.byKey(const Key('simplified_time_block_grid'));
+      await tester.drag(grid, const Offset(0, -120));
       await tester.pumpAndSettle();
 
       expect(find.text(slotLabel(12)), findsOneWidget);
-      expect(find.text('Show more slots'), findsNothing);
     });
   });
 }
