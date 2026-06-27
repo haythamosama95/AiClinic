@@ -74,7 +74,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   }
 
   AppointmentQueueShiftDoctorLookup get _shiftLookup =>
-      ref.read(appointmentQueueShiftDoctorLookupProvider).value ?? AppointmentQueueShiftDoctorLookup.empty;
+      ref.watch(appointmentQueueShiftDoctorLookupProvider).value ?? AppointmentQueueShiftDoctorLookup.empty;
 
   bool get _canCreateAppointments => _permissions.canCreateAppointments();
 

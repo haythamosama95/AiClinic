@@ -285,6 +285,26 @@ class _QueueBody extends ConsumerWidget {
     return child;
   }
 
+  /// Row children always need horizontal flex even when the page scrolls vertically.
+  static Widget _wideRowPanel({
+    required bool fillsViewport,
+    required double minHeight,
+    required Widget child,
+    int flex = 1,
+  }) {
+    if (fillsViewport) {
+      return Expanded(
+        flex: flex,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: minHeight),
+          child: child,
+        ),
+      );
+    }
+
+    return Expanded(flex: flex, child: child);
+  }
+
   static Widget _buildWideColumns({
     required bool fillsViewport,
     required Widget scheduleColumn,
@@ -303,7 +323,7 @@ class _QueueBody extends ConsumerWidget {
     return Row(
       crossAxisAlignment: fillsViewport ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
       children: [
-        _queuePanel(
+        _wideRowPanel(
           fillsViewport: fillsViewport,
           minHeight: _QueuePanelHeights.schedule,
           flex: 3,
