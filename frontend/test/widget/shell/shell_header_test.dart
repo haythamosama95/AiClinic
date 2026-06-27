@@ -28,12 +28,16 @@ void main() {
       expect(find.text('Dashboard'), findsNothing);
     });
 
-    testWidgets('renders ShellHeaderProfile', (tester) async {
-      await pumpShellWidget(tester, child: const ShellHeader(pageTitle: 'Dashboard'));
+    testWidgets('renders ShellHeaderProfile from authenticated session', (tester) async {
+      await pumpShellWidget(
+        tester,
+        overrides: [shellAuthenticatedSessionOverride()],
+        child: const ShellHeader(pageTitle: 'Dashboard'),
+      );
 
       expect(find.byType(ShellHeaderProfile), findsOneWidget);
-      expect(find.text('Alex Morgan'), findsOneWidget);
-      expect(find.text('Clinic Administrator'), findsOneWidget);
+      expect(find.text('Test Staff'), findsOneWidget);
+      expect(find.text('Administrator'), findsOneWidget);
     });
 
     testWidgets('renders notifications and settings icon buttons', (tester) async {

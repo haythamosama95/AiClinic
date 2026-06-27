@@ -1,5 +1,8 @@
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import '../../helpers/auth_test_support.dart';
 import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_item_row.dart';
@@ -8,10 +11,29 @@ import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 const shellSurfaceSize = Size(1280, 900);
+
+Override shellAuthenticatedSessionOverride({AuthSessionContext? context}) {
+  final sessionContext = context ?? sampleAuthSessionContext();
+  return authSessionProvider.overrideWith(
+    () => _ShellTestAuthSessionNotifier(
+      AuthSessionState(status: AuthSessionStatus.authenticated, context: sessionContext),
+    ),
+  );
+}
+
+class _ShellTestAuthSessionNotifier extends TestAuthSessionNotifier {
+  _ShellTestAuthSessionNotifier(this.initial);
+
+  final AuthSessionState initial;
+
+  @override
+  AuthSessionState build() => initial;
+}
 
 /// Pumps [child] inside the app theme shell at [size].
 Future<void> pumpShellWidget(
@@ -19,12 +41,14 @@ Future<void> pumpShellWidget(
   required Widget child,
   Size size = shellSurfaceSize,
   bool settle = true,
+  List<Override> overrides = const [],
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   await tester.pumpWidget(
     ProviderScope(
+      overrides: overrides,
       child: MaterialApp(
         theme: AppTheme.light(),
         builder: (context, appChild) => ForuiAppScope(child: appChild ?? const SizedBox.shrink()),

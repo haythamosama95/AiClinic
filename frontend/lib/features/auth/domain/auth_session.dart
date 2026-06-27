@@ -29,6 +29,13 @@ enum StaffRole {
     StaffRole.receptionist => 'receptionist',
     StaffRole.labStaff => 'lab_staff',
   };
+
+  String get displayLabel => switch (this) {
+    StaffRole.administrator => 'Administrator',
+    StaffRole.doctor => 'Doctor',
+    StaffRole.receptionist => 'Receptionist',
+    StaffRole.labStaff => 'Lab staff',
+  };
 }
 
 @immutable
