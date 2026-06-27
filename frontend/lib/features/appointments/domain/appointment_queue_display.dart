@@ -165,7 +165,11 @@ abstract final class AppointmentQueueDisplay {
       if (endedAt == null || endedAt.isBefore(startedAt)) {
         return null;
       }
-      final elapsed = endedAt.difference(startedAt);
+      final effectiveEnd = endedAt.isAfter(referenceNow) ? referenceNow : endedAt;
+      if (effectiveEnd.isBefore(startedAt)) {
+        return null;
+      }
+      final elapsed = effectiveEnd.difference(startedAt);
       return elapsed.isNegative ? Duration.zero : elapsed;
     }
 

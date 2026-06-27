@@ -14,7 +14,7 @@ Walkthrough to verify the notched card component and showcase integration after 
 
 ```bash
 cd frontend
-flutter test test/widget/core/ui/app_notched_card_test.dart
+flutter test test/widget/core/ui/app_notched_card_test.dart test/unit/core/ui/notched_card_path_test.dart
 ```
 
 **Expect**: all tests pass — no title/notch overlap, RTL positions actions on leading top, empty actions preserves layout, wide actions clip at card boundary.

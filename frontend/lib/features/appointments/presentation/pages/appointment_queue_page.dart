@@ -10,6 +10,7 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
@@ -179,6 +180,9 @@ class _QueueBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final shiftLookupAsync = ref.watch(appointmentQueueShiftDoctorLookupProvider);
+    final organizationTimezone = effectiveOrganizationTimezone(
+      ref.watch(authSessionProvider).context?.organizationTimezone,
+    );
     final shiftLookup = shiftLookupAsync.value ?? AppointmentQueueShiftDoctorLookup.empty;
     final doctorsLoading = shiftLookupAsync.isLoading && !shiftLookupAsync.hasValue;
     final stats = AppointmentQueueDisplay.computeStats(
@@ -220,6 +224,7 @@ class _QueueBody extends ConsumerWidget {
           items: partition.waiting,
           now: now,
           shiftLookup: shiftLookup,
+          organizationTimezone: organizationTimezone,
           onPatientTap: (item) => onCheckedInPatientTap(item.id),
           bodyScrollable: fillsViewport,
         );

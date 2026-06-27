@@ -63,7 +63,7 @@ void main() {
       final path = buildPath();
 
       expect(path.contains(Offset(cardSize.width - 1, 1)), isFalse);
-      expect(path.contains(Offset(cardSize.width, kNotchShelfDepth + kNotchFilletRadius)), isTrue);
+      expect(path.contains(Offset(cardSize.width - 0.5, kNotchShelfDepth + kNotchFilletRadius)), isTrue);
     });
 
     test('RTL mirrors notch to the leading side', () {

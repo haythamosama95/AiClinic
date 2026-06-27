@@ -129,6 +129,14 @@ This document analyzes every commit and functional change between `<base-branch>
 
 ---
 
+### End-to-end tests
+
+#### E2E-001 — <title>
+
+(same table format)
+
+---
+
 ### User abuse tests
 
 #### ABUSE-001 — <title>

@@ -5,27 +5,18 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
+import 'package:forui/forui.dart';
 
-import '../../helpers/appointment_queue_test_support.dart' show tapWaitingColumnPatient;
+import '../../helpers/appointment_queue_test_support.dart' show queueTwoDoctorShiftLookup, tapWaitingColumnPatient;
 import 'appointment_queue_abuse_test_support.dart';
 
 void main() {
   group('ABUSE-001 — Double tap Start in journey dialog', () {
     testWidgets('single status RPC and busy state block duplicate Start', (tester) async {
-      final listItems = [
-        queueListRpcItem(
-          id: queueCheckedInAppointmentId,
-          patientName: 'Checked In Patient',
-          doctorId: queueDoctorAId,
-          doctorName: 'Dr. Ada',
-        ),
-      ];
-      final client = QueueScenarioRpcClient(
-        listItems: listItems,
-        statusUpdateDelay: const Duration(milliseconds: 500),
-      );
+      final listItems = [queueListRpcItem(id: queueCheckedInAppointmentId, patientName: 'Checked In Patient')];
+      final client = QueueScenarioRpcClient(listItems: listItems, statusUpdateDelay: const Duration(milliseconds: 500));
 
-      await pumpAppointmentQueueRoutes(tester, client: client);
+      await pumpAppointmentQueueRoutes(tester, client: client, shiftLookup: queueTwoDoctorShiftLookup());
       final container = await waitForQueueLoaded(tester);
 
       await openQueueJourneyDialog(tester, queueCheckedInAppointmentId);
@@ -36,6 +27,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(find.text('Confirm doctor'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FTile, 'Dr Alpha'));
+      await tester.pump();
 
       await tester.tap(find.text('Start visit'));
       await tester.tap(find.text('Start visit'));
@@ -80,7 +73,11 @@ void main() {
       await pumpAppointmentQueueRoutes(tester, client: client);
       await waitForQueueLoaded(tester);
 
-      for (final appointmentId in [queueCheckedInAppointmentId, queueSecondAppointmentId, queueCheckedInAppointmentId]) {
+      for (final appointmentId in [
+        queueCheckedInAppointmentId,
+        queueSecondAppointmentId,
+        queueCheckedInAppointmentId,
+      ]) {
         await openQueueJourneyDialog(tester, appointmentId);
         await closeQueueJourneyDialog(tester);
         await tester.pump(const Duration(milliseconds: 30));
@@ -104,10 +101,7 @@ void main() {
           doctorName: 'Dr. Ada',
         ),
       ];
-      final client = QueueScenarioRpcClient(
-        listItems: listItems,
-        statusUpdateDelay: const Duration(milliseconds: 600),
-      );
+      final client = QueueScenarioRpcClient(listItems: listItems, statusUpdateDelay: const Duration(milliseconds: 600));
 
       await pumpAppointmentQueueRoutes(tester, client: client);
       final container = await waitForQueueLoaded(tester);
@@ -182,19 +176,10 @@ void main() {
 
   group('ABUSE-005 — Dismiss doctor picker', () {
     testWidgets('escape and back leave status unchanged with no doctor assign RPC', (tester) async {
-      final listItems = [
-        queueListRpcItem(
-          id: queueCheckedInAppointmentId,
-          patientName: 'Unassigned Patient',
-        ),
-      ];
+      final listItems = [queueListRpcItem(id: queueCheckedInAppointmentId, patientName: 'Unassigned Patient')];
       final client = QueueScenarioRpcClient(listItems: listItems);
 
-      await pumpAppointmentQueueRoutes(
-        tester,
-        client: client,
-        shiftLookup: queueMultiDoctorShiftLookup(),
-      );
+      await pumpAppointmentQueueRoutes(tester, client: client, shiftLookup: queueMultiDoctorShiftLookup());
       final container = await waitForQueueLoaded(tester);
 
       await openQueueJourneyDialog(tester, queueCheckedInAppointmentId);
@@ -218,7 +203,10 @@ void main() {
       expect(client.rpcCallCounts['update_appointment'], isNull);
       expect(client.rpcCallCounts['update_appointment_status'], isNull);
 
-      final item = container.read(appointmentQueueProvider).items.firstWhere((row) => row.id == queueCheckedInAppointmentId);
+      final item = container
+          .read(appointmentQueueProvider)
+          .items
+          .firstWhere((row) => row.id == queueCheckedInAppointmentId);
       expect(item.status, AppointmentStatus.checkedIn);
       expect(tester.takeException(), isNull);
     });

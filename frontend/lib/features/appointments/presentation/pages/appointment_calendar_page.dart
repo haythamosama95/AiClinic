@@ -1515,7 +1515,7 @@ class _AppointmentTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 AppointmentScaleDownText(text: appointment.subject, style: nameStyle),
-                if (doctorName != null && doctorName.isNotEmpty) ...[
+                if (doctorName != null && doctorName.isNotEmpty && bounds.height >= 44) ...[
                   const SizedBox(height: 2),
                   AppointmentScaleDownText(
                     text: doctorName,

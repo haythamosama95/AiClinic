@@ -33,9 +33,10 @@ List<Override> shellTestProviderOverrides({bool stubQueue = false}) => [
 
 List<Override> _shellWidgetProviderOverrides({bool stubQueue = false, List<Override> overrides = const []}) {
   final hasAuthOverride = overrides.any((override) => override.origin == authSessionProvider);
+  final hasQueueOverride = overrides.any((override) => override.origin == appointmentQueueProvider);
   return [
     if (!hasAuthOverride) authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
-    if (stubQueue) appointmentQueueProvider.overrideWith(ShellTestIdleQueueNotifier.new),
+    if (stubQueue && !hasQueueOverride) appointmentQueueProvider.overrideWith(ShellTestIdleQueueNotifier.new),
     ...overrides,
   ];
 }

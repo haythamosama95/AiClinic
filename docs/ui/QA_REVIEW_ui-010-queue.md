@@ -1390,6 +1390,18 @@ Full appointments unit suite (regression):
 cd frontend && flutter test test/unit/appointments/ --concurrency 1
 ```
 
+Integration, regression, abuse, and shell/widget coverage:
+
+```bash
+cd frontend && flutter test \
+  test/integration/appointments/appointment_queue_int_test.dart \
+  test/regression/appointments/appointment_queue_regression_test.dart \
+  test/widget/appointments/appointment_queue_abuse_test.dart \
+  test/widget/appointments/appointment_queue_func_test.dart \
+  test/widget/appointments/appointment_queue_fe_test.dart \
+  test/widget/shell/shell_nav_single_item_test.dart
+```
+
 ---
 
 ## Coverage matrix

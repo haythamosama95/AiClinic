@@ -6,6 +6,6 @@ class DashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox.expand();
+    return const Center(child: Text('Dashboard coming soon'));
   }
 }

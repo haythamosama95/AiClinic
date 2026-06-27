@@ -38,22 +38,28 @@ class AppointmentStatusJourneyDialog extends ConsumerWidget {
               skipLoadingOnReload: true,
               loading: () =>
                   SingleChildScrollView(child: AppointmentStatusTimelineWidget(detail: _previewAsDetail(item))),
-              error: (error, _) => Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(error.toString(), style: Theme.of(context).textTheme.bodyMedium),
-                  const SizedBox(height: SpacingTokens.md),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: AppButton(
-                      label: 'Retry',
-                      expand: false,
-                      onPressed: () => ref.invalidate(appointmentDetailProvider(item.id)),
+              error: (error, _) {
+                debugPrint('AppointmentStatusJourneyDialog detail load failed: $error');
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Unable to load appointment details. Try again.',
+                      style: Theme.of(context).textTheme.bodyMedium,
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(height: SpacingTokens.md),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: AppButton(
+                        label: 'Retry',
+                        expand: false,
+                        onPressed: () => ref.invalidate(appointmentDetailProvider(item.id)),
+                      ),
+                    ),
+                  ],
+                );
+              },
               data: (detail) => SingleChildScrollView(child: AppointmentStatusTimelineWidget(detail: detail)),
             ),
           ),
@@ -74,7 +80,7 @@ class AppointmentStatusJourneyDialog extends ConsumerWidget {
 }
 
 AppointmentDetail _previewAsDetail(AppointmentListItem preview) {
-  final now = DateTime.now().toUtc();
+  final referenceTime = preview.updatedAt ?? preview.startTime;
   return AppointmentDetail(
     id: preview.id,
     branchId: '',
@@ -86,7 +92,7 @@ AppointmentDetail _previewAsDetail(AppointmentListItem preview) {
     endTime: preview.endTime,
     type: preview.type,
     status: preview.status,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: referenceTime,
+    updatedAt: referenceTime,
   );
 }

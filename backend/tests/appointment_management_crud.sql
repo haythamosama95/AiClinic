@@ -419,13 +419,21 @@ BEGIN
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results
-  SELECT
+  INSERT INTO appointment_crud_results VALUES (
     'status_checked_in_sets_checked_in_at',
-    a.checked_in_at IS NOT NULL AND a.in_progress_at IS NULL,
-    COALESCE(a.checked_in_at::text, '<null>')
-  FROM public.appointments a
-  WHERE a.id = v_appt_planned;
+    COALESCE(
+      (
+        SELECT a.checked_in_at IS NOT NULL AND a.in_progress_at IS NULL
+        FROM public.appointments a
+        WHERE a.id = v_appt_planned
+      ),
+      false
+    ),
+    COALESCE(
+      (SELECT a.checked_in_at::text FROM public.appointments a WHERE a.id = v_appt_planned),
+      '<missing>'
+    )
+  );
   PERFORM set_config('role', 'authenticated', true);
 
   -- Invalid skip: scheduled -> checked_in (must confirm first).
@@ -451,13 +459,21 @@ BEGIN
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'postgres', true);
-  INSERT INTO appointment_crud_results
-  SELECT
+  INSERT INTO appointment_crud_results VALUES (
     'status_in_progress_sets_in_progress_at',
-    a.checked_in_at IS NOT NULL AND a.in_progress_at IS NOT NULL,
-    COALESCE(a.in_progress_at::text, '<null>')
-  FROM public.appointments a
-  WHERE a.id = v_appt_planned;
+    COALESCE(
+      (
+        SELECT a.checked_in_at IS NOT NULL AND a.in_progress_at IS NOT NULL
+        FROM public.appointments a
+        WHERE a.id = v_appt_planned
+      ),
+      false
+    ),
+    COALESCE(
+      (SELECT a.in_progress_at::text FROM public.appointments a WHERE a.id = v_appt_planned),
+      '<missing>'
+    )
+  );
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.update_appointment_status(v_appt_planned, 'completed');
@@ -487,6 +503,9 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
   v_result := public.cancel_appointment(v_appt_second, 'Cleanup after in-progress guard test');
+  IF NOT v_result.success THEN
+    RAISE EXCEPTION 'Cleanup cancel failed: %', COALESCE(v_result.error_code, '?');
+  END IF;
 
   -- Complete the first in_progress appointment so later same-doctor tests can proceed.
   v_result := public.create_visit(v_appt_planned, NULL);

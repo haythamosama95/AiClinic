@@ -542,12 +542,11 @@ void main() {
           tester,
           detail: _detail(id: 'checked-in', status: AppointmentStatus.checkedIn, startTime: start),
           calendarItems: [checkedIn],
-          shiftLookup: _twoDoctorShiftLookup(shiftDate: DateTime(today.year, today.month, today.day)),
+          shiftLookup: _twoDoctorShiftLookup(shiftDate: DateTime.utc(today.year, today.month, today.day)),
         );
 
         await tester.tap(find.byKey(const Key('appointment_control_advance_status')));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
 
         expect(find.text('Confirm doctor'), findsOneWidget);
         expect(find.text('Dr Alpha'), findsOneWidget);

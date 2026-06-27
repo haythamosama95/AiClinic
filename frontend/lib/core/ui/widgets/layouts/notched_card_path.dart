@@ -42,7 +42,7 @@ abstract final class NotchedCardPath {
     final height = size.height;
     final radius = borderRadius.clamp(0.0, width / 2).clamp(0.0, height / 2);
     final fillet = filletRadius.clamp(0.0, shelfDepth / 2);
-    final shelfWidth = notchWidth.clamp(0.0, width - radius - fillet * 2);
+    final shelfWidth = notchWidth.clamp(0.0, math.max(0.0, width - radius - fillet * 2));
 
     final shelfEndX = width - fillet;
     final shelfLeftX = shelfEndX - shelfWidth;
@@ -94,9 +94,10 @@ abstract final class NotchedCardPath {
     TextDirection textDirection = TextDirection.ltr,
   }) {
     final width = size.width;
-    final radius = borderRadius.clamp(0.0, width / 2);
+    final height = size.height;
+    final radius = borderRadius.clamp(0.0, width / 2).clamp(0.0, height / 2);
     final fillet = filletRadius.clamp(0.0, shelfDepth / 2);
-    final shelfWidth = notchWidth.clamp(0.0, width - radius - fillet * 2);
+    final shelfWidth = notchWidth.clamp(0.0, math.max(0.0, width - radius - fillet * 2));
     final shelfEndX = width - fillet;
     final shelfLeftX = shelfEndX - shelfWidth;
 

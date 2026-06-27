@@ -12,7 +12,7 @@ class TiltedBackgroundIconStack extends StatelessWidget {
   const TiltedBackgroundIconStack({
     required this.icon,
     required this.child,
-    this.alignment = Alignment.centerLeft,
+    this.alignment = AlignmentDirectional.centerStart,
     this.iconRotation = defaultIconRotation,
     this.minIconSize = 76,
     this.iconColor,
@@ -21,7 +21,7 @@ class TiltedBackgroundIconStack extends StatelessWidget {
 
   final IconData icon;
   final Widget child;
-  final Alignment alignment;
+  final AlignmentGeometry alignment;
   final double iconRotation;
   final double minIconSize;
   final Color? iconColor;
@@ -44,8 +44,8 @@ class TiltedBackgroundIconStack extends StatelessWidget {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            Positioned(
-              right: -iconSize * 0.12,
+            PositionedDirectional(
+              end: -iconSize * 0.12,
               top: 0,
               bottom: 0,
               child: Center(

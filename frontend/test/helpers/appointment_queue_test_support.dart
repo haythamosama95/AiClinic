@@ -138,17 +138,16 @@ class StatefulQueueRpcClient extends AppointmentRpcTestClient {
     if (fn == 'list_appointments') {
       _recordRpc(fn, params);
       return FakePostgrestRpc({
-        'success': true,
-        'data': {'items': _items.map(_cloneRow).toList()},
-      }) as PostgrestFilterBuilder<T>;
+            'success': true,
+            'data': {'items': _items.map(_cloneRow).toList()},
+          })
+          as PostgrestFilterBuilder<T>;
     }
 
     if (fn == 'get_appointment') {
       _recordRpc(fn, params);
-      return FakePostgrestRpc({
-        'success': true,
-        'data': _detailForId(params?['p_appointment_id']?.toString()),
-      }) as PostgrestFilterBuilder<T>;
+      return FakePostgrestRpc({'success': true, 'data': _detailForId(params?['p_appointment_id']?.toString())})
+          as PostgrestFilterBuilder<T>;
     }
 
     if (fn == 'update_appointment_status') {
@@ -160,22 +159,27 @@ class StatefulQueueRpcClient extends AppointmentRpcTestClient {
           row['status'] = newStatus;
           if (newStatus == 'checked_in') {
             row['checked_in_at'] = '2026-06-04T09:45:00.000Z';
-          }
-          if (newStatus == 'in_progress') {
+            row['in_progress_at'] = null;
+          } else if (newStatus == 'in_progress') {
             row['in_progress_at'] = '2026-06-04T10:00:00.000Z';
+          } else {
+            row['checked_in_at'] = null;
+            row['in_progress_at'] = null;
           }
         });
       }
+      final status = newStatus;
       return FakePostgrestRpc({
-        'success': true,
-        'data': {
-          'appointment_id': appointmentId,
-          'status': newStatus,
-          'updated_at': '2026-06-04T10:00:00.000Z',
-          'checked_in_at': newStatus == 'checked_in' ? '2026-06-04T09:45:00.000Z' : null,
-          'in_progress_at': newStatus == 'in_progress' ? '2026-06-04T10:00:00.000Z' : null,
-        },
-      }) as PostgrestFilterBuilder<T>;
+            'success': true,
+            'data': {
+              'appointment_id': appointmentId,
+              'status': status,
+              'updated_at': '2026-06-04T10:00:00.000Z',
+              'checked_in_at': status == 'checked_in' || status == 'in_progress' ? '2026-06-04T09:45:00.000Z' : null,
+              'in_progress_at': status == 'in_progress' ? '2026-06-04T10:00:00.000Z' : null,
+            },
+          })
+          as PostgrestFilterBuilder<T>;
     }
 
     if (fn == 'update_appointment') {
@@ -193,15 +197,16 @@ class StatefulQueueRpcClient extends AppointmentRpcTestClient {
         });
       }
       return FakePostgrestRpc({
-        'success': true,
-        'data': {
-          'appointment_id': appointmentId,
-          'start_time': params?['p_start_time'],
-          'end_time': '2026-06-01T11:00:00.000Z',
-          'status': 'scheduled',
-          'type': 'planned',
-        },
-      }) as PostgrestFilterBuilder<T>;
+            'success': true,
+            'data': {
+              'appointment_id': appointmentId,
+              'start_time': params?['p_start_time'],
+              'end_time': '2026-06-01T11:00:00.000Z',
+              'status': 'scheduled',
+              'type': 'planned',
+            },
+          })
+          as PostgrestFilterBuilder<T>;
     }
 
     if (fn == 'cancel_appointment') {
@@ -211,9 +216,10 @@ class StatefulQueueRpcClient extends AppointmentRpcTestClient {
         _mutateItem(appointmentId, (row) => row['status'] = 'cancelled');
       }
       return FakePostgrestRpc({
-        'success': true,
-        'data': {'appointment_id': appointmentId, 'status': 'cancelled'},
-      }) as PostgrestFilterBuilder<T>;
+            'success': true,
+            'data': {'appointment_id': appointmentId, 'status': 'cancelled'},
+          })
+          as PostgrestFilterBuilder<T>;
     }
 
     if (fn == 'create_appointment') {
@@ -232,15 +238,16 @@ class StatefulQueueRpcClient extends AppointmentRpcTestClient {
       );
       _items.add(newRow);
       return FakePostgrestRpc({
-        'success': true,
-        'data': {
-          'appointment_id': queueApptNewBookingId,
-          'start_time': start.toUtc().toIso8601String(),
-          'end_time': end.toUtc().toIso8601String(),
-          'status': 'scheduled',
-          'type': params?['p_type'] ?? 'planned',
-        },
-      }) as PostgrestFilterBuilder<T>;
+            'success': true,
+            'data': {
+              'appointment_id': queueApptNewBookingId,
+              'start_time': start.toUtc().toIso8601String(),
+              'end_time': end.toUtc().toIso8601String(),
+              'status': 'scheduled',
+              'type': params?['p_type'] ?? 'planned',
+            },
+          })
+          as PostgrestFilterBuilder<T>;
     }
 
     return super.rpc<T>(fn, params: params, get: get);
@@ -257,19 +264,18 @@ List<Override> appointmentQueueTestOverrides() => [
 /// Realtime + optional shift lookup overrides without replacing the queue controller.
 List<Override> queueRealtimeOverrides({AppointmentQueueShiftDoctorLookup? shiftLookup}) => [
   appointmentQueueRealtimeClientProvider.overrideWithValue(FakeAppointmentQueueRealtimeClient()),
-  if (shiftLookup != null)
-    appointmentQueueShiftDoctorLookupProvider.overrideWith((ref) async => shiftLookup),
+  if (shiftLookup != null) appointmentQueueShiftDoctorLookupProvider.overrideWith((ref) async => shiftLookup),
 ];
 
 DateTime queueTodayDate() {
-  final now = DateTime.now();
-  return DateTime(now.year, now.month, now.day);
+  final now = DateTime.now().toUtc();
+  return DateTime.utc(now.year, now.month, now.day);
 }
 
 /// Local calendar time on today's date (used for RPC rows and shift coverage).
 DateTime queueTodayLocal({int hour = 10, int minute = 0}) {
   final today = queueTodayDate();
-  return DateTime(today.year, today.month, today.day, hour, minute);
+  return DateTime.utc(today.year, today.month, today.day, hour, minute);
 }
 
 Map<String, dynamic> queueRpcListItem({
@@ -387,7 +393,8 @@ List<Override> queuePageOverrides({
   FakePatientRepository? patientRepository,
   List<Override> extraOverrides = const [],
 }) {
-  final patients = patientRepository ?? FakePatientRepository(patients: [samplePatientListItem(fullName: 'Booked Patient')]);
+  final patients =
+      patientRepository ?? FakePatientRepository(patients: [samplePatientListItem(fullName: 'Booked Patient')]);
   return [
     authSessionProvider.overrideWith(() => PresetAuthSessionNotifier(authState)),
     appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(rpcClient)),
@@ -411,7 +418,8 @@ Future<ProviderContainer> pumpQueuePage(
   List<Override> extraOverrides = const [],
   Size surfaceSize = queueWidgetSurfaceSize,
 }) async {
-  final client = rpcClient ??
+  final client =
+      rpcClient ??
       StatefulQueueRpcClient(
         items: [
           queueRpcListItem(id: queueApptScheduledId, patientName: 'Queue Patient', startLocal: queueTodayLocal()),
@@ -514,9 +522,7 @@ Future<void> selectDoctorInPicker(WidgetTester tester, String doctorName) async 
 }
 
 Future<void> tapWaitingColumnPatient(WidgetTester tester, String patientName) async {
-  await tester.tap(
-    find.descendant(of: find.byType(AppointmentQueueWaitingColumn), matching: find.text(patientName)),
-  );
+  await tester.tap(find.descendant(of: find.byType(AppointmentQueueWaitingColumn), matching: find.text(patientName)));
   await tester.pump();
 }
 

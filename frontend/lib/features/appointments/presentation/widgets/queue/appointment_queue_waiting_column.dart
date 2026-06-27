@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
@@ -19,6 +20,7 @@ class AppointmentQueueWaitingColumn extends StatelessWidget {
     required this.items,
     required this.now,
     this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
+    this.organizationTimezone = 'UTC',
     this.onPatientTap,
     this.bodyScrollable = true,
     super.key,
@@ -27,6 +29,7 @@ class AppointmentQueueWaitingColumn extends StatelessWidget {
   final List<AppointmentListItem> items;
   final DateTime now;
   final AppointmentQueueShiftDoctorLookup shiftLookup;
+  final String organizationTimezone;
   final ValueChanged<AppointmentListItem>? onPatientTap;
 
   /// When false, the list expands to show every row and defers scrolling to the page.
@@ -65,7 +68,9 @@ class AppointmentQueueWaitingColumn extends StatelessWidget {
                 return _CheckedInPatientRow(
                   item: item,
                   preferredDoctorLabel: _preferredDoctorLabel(item),
-                  timeLabel: _timeFormat.format(item.startTime.toLocal()),
+                  timeLabel: _timeFormat.format(
+                    appointmentWallClockInOrganizationTimezone(organizationTimezone, item.startTime),
+                  ),
                   waitLabel: AppointmentQueueDisplay.formatWaitedLabel(
                     AppointmentQueueDisplay.estimateWaitDuration(item, now: now),
                   ),

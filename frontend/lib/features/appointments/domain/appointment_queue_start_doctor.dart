@@ -180,6 +180,15 @@ abstract final class AppointmentQueueStartDoctor {
     if (blockReasonForStart(item: item, siblingAppointments: siblingAppointments, shiftLookup: shiftLookup) != null) {
       return false;
     }
+    final assignedDoctorId = item.doctorId?.trim();
+    if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
+      return isPreferredDoctorBusy(item: item, siblingAppointments: siblingAppointments) &&
+          availableShiftOptionsFor(
+            item: item,
+            siblingAppointments: siblingAppointments,
+            shiftLookup: shiftLookup,
+          ).isNotEmpty;
+    }
     return optionsForStart(
       item: item,
       siblingAppointments: siblingAppointments,

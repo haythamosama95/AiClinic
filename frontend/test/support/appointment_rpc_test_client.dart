@@ -119,7 +119,9 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
           'appointment_id': lastParams?['p_appointment_id'],
           'status': lastParams?['p_new_status'],
           'updated_at': '2026-06-04T10:00:00.000Z',
-          'checked_in_at': lastParams?['p_new_status'] == 'checked_in' ? '2026-06-04T09:45:00.000Z' : null,
+          'checked_in_at': lastParams?['p_new_status'] == 'checked_in' || lastParams?['p_new_status'] == 'in_progress'
+              ? '2026-06-04T09:45:00.000Z'
+              : null,
           'in_progress_at': lastParams?['p_new_status'] == 'in_progress' ? '2026-06-04T10:00:00.000Z' : null,
         },
       },

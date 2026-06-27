@@ -1,6 +1,6 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
@@ -28,10 +28,28 @@ AppointmentStatus? forwardStatusTargetFor(
       )) {
     return null;
   }
-  if (target == AppointmentStatus.inProgress &&
-      AppointmentQueueDisplay.doctorInProgressBlockReason(item, siblingAppointments, shiftLookup: shiftLookup) !=
-          null) {
-    return null;
+  if (target == AppointmentStatus.inProgress) {
+    final assignedDoctorId = item.doctorId?.trim();
+    if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
+      if (AppointmentQueueStartDoctor.isPreferredDoctorBusy(item: item, siblingAppointments: siblingAppointments) &&
+          AppointmentQueueStartDoctor.availableShiftOptionsFor(
+            item: item,
+            siblingAppointments: siblingAppointments,
+            shiftLookup: shiftLookup,
+          ).isEmpty) {
+        return null;
+      }
+    } else {
+      final hasUnassignedInProgress = siblingAppointments.any(
+        (other) =>
+            other.id != item.id &&
+            other.status == AppointmentStatus.inProgress &&
+            (other.doctorId == null || other.doctorId!.trim().isEmpty),
+      );
+      if (hasUnassignedInProgress) {
+        return null;
+      }
+    }
   }
   return target;
 }

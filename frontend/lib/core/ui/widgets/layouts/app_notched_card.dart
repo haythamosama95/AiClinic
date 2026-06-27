@@ -60,16 +60,16 @@ double computeNotchWidth({
   double? actionsRowWidth,
   double shelfDepth = kNotchShelfDepth,
 }) {
-  final fillet = kNotchFilletRadius.clamp(0.0, shelfDepth / 2);
-  final maxNotchWidth = (cardWidth - borderRadius - fillet * 2).clamp(0.0, double.infinity);
+  final fillet = kNotchFilletRadius.clamp(0.0, shelfDepth / 2).toDouble();
+  final maxNotchWidth = (cardWidth - borderRadius - fillet * 2).clamp(0.0, double.infinity).toDouble();
 
   final desiredWidth = actionsRowWidth == null ? kNotchMinWidth : actionsRowWidth + 2 * kNotchHorizontalPadding;
 
   if (maxNotchWidth < kNotchMinWidth) {
-    return desiredWidth.clamp(0.0, maxNotchWidth);
+    return desiredWidth.clamp(0.0, maxNotchWidth).toDouble();
   }
 
-  return desiredWidth.clamp(kNotchMinWidth, maxNotchWidth);
+  return desiredWidth.clamp(kNotchMinWidth, maxNotchWidth).toDouble();
 }
 
 /// Computes notch shelf depth from measured action row height.
@@ -502,11 +502,17 @@ FButtonVariant _mapFButtonVariant(AppButtonVariant variant) => switch (variant) 
   return (action: widget, providesOwnBackground: false);
 }
 
-VoidCallback? _actionOnPressed(Widget action) => switch (action) {
-  AppIconButton(:final onPressed) => onPressed,
-  AppButton(:final onPressed) => onPressed,
-  _ => null,
-};
+VoidCallback? _actionOnPressed(Widget action) {
+  if (action is AppButton && action.isLoading) {
+    return null;
+  }
+
+  return switch (action) {
+    AppIconButton(:final onPressed) => onPressed,
+    AppButton(:final onPressed) => onPressed,
+    _ => null,
+  };
+}
 
 /// Horizontal [PositionedDirectional.start] offset to center actions in the shelf.
 double _shelfActionStart({

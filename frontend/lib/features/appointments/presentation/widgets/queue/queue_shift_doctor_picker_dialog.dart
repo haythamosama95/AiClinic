@@ -98,41 +98,50 @@ class _QueueShiftDoctorPickerDialogState extends State<QueueShiftDoctorPickerDia
     final theme = Theme.of(context);
     final colors = context.semanticColors;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(widget.message ?? 'Select who will see this patient.', style: theme.textTheme.bodyMedium),
-        const SizedBox(height: SpacingTokens.md),
-        ...[
-          for (final option in widget.options) ...[
-            _DoctorOptionTile(
-              option: option,
-              groupValue: _selectedDoctorId,
-              onChanged: option.isBusy ? null : (doctorId) => setState(() => _selectedDoctorId = doctorId),
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.7),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(widget.message ?? 'Select who will see this patient.', style: theme.textTheme.bodyMedium),
+          const SizedBox(height: SpacingTokens.md),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (final option in widget.options) ...[
+                    _DoctorOptionTile(
+                      option: option,
+                      groupValue: _selectedDoctorId,
+                      onChanged: option.isBusy ? null : (doctorId) => setState(() => _selectedDoctorId = doctorId),
+                    ),
+                    if (option != widget.options.last) Divider(height: 1, color: colors.border),
+                  ],
+                ],
+              ),
             ),
-            if (option != widget.options.last) Divider(height: 1, color: colors.border),
-          ],
+          ),
+          const SizedBox(height: SpacingTokens.md),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              AppButton(
+                label: 'Cancel',
+                variant: AppButtonVariant.secondary,
+                expand: false,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              const SizedBox(width: SpacingTokens.sm),
+              AppButton(
+                label: 'Start visit',
+                expand: false,
+                onPressed: _selectedDoctorId == null ? null : () => Navigator.of(context).pop(_selectedDoctorId),
+              ),
+            ],
+          ),
         ],
-        const SizedBox(height: SpacingTokens.md),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            AppButton(
-              label: 'Cancel',
-              variant: AppButtonVariant.secondary,
-              expand: false,
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            const SizedBox(width: SpacingTokens.sm),
-            AppButton(
-              label: 'Start visit',
-              expand: false,
-              onPressed: _selectedDoctorId == null ? null : () => Navigator.of(context).pop(_selectedDoctorId),
-            ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 }

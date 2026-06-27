@@ -35,6 +35,23 @@ DateTime calendarDayInOrganizationTimezone(String organizationTimezone, DateTime
   return _calendarDayInTimezone(referenceUtc, organizationTimezone);
 }
 
+/// Wall-clock local time for [instantUtc] in [organizationTimezone] (for display formatting).
+DateTime appointmentWallClockInOrganizationTimezone(String organizationTimezone, DateTime instantUtc) {
+  ensureAppointmentTimezonesInitialized();
+  final location = tz.getLocation(organizationTimezone);
+  final local = tz.TZDateTime.from(instantUtc.toUtc(), location);
+  return DateTime(
+    local.year,
+    local.month,
+    local.day,
+    local.hour,
+    local.minute,
+    local.second,
+    local.millisecond,
+    local.microsecond,
+  );
+}
+
 /// Whether [startTime]'s calendar day in [organizationTimezone] is today or in the past.
 bool appointmentCalendarDayHasArrivedInTimezone(
   DateTime startTime, {

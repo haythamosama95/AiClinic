@@ -63,7 +63,10 @@ void main() {
       );
 
       expect(find.byType(ShellNavBadge), findsOneWidget);
-      expect(find.byType(Container), findsNothing);
+      expect(
+        find.descendant(of: find.byType(ShellNavBadge), matching: find.textContaining(RegExp(r'^\d+$'))),
+        findsNothing,
+      );
     });
   });
 }

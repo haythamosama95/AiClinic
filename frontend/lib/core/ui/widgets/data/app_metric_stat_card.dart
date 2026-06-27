@@ -71,9 +71,9 @@ class AppMetricStatCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                Positioned(
+                PositionedDirectional(
                   top: -watermarkSize * 0.28,
-                  right: -watermarkSize * 0.08,
+                  end: -watermarkSize * 0.08,
                   child: Transform.rotate(
                     angle: _iconRotation,
                     child: Icon(icon, size: watermarkSize, color: colors.mutedForeground.withValues(alpha: 0.07)),

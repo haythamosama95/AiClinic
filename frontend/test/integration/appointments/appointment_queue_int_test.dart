@@ -303,7 +303,7 @@ void main() {
 
       final stats = AppointmentQueueDisplay.computeStats(
         state.items,
-        now: DateTime.now(),
+        now: now,
         comparisonItems: state.comparisonItems,
         comparisonNow: state.comparisonNow,
       );

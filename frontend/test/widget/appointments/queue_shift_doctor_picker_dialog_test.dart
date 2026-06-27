@@ -32,8 +32,7 @@ void main() {
         ),
       );
       await tester.tap(find.text('Open dialog'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
     }
 
     testWidgets('renders doctor options inside AppDialog without Material errors', (tester) async {
@@ -71,8 +70,7 @@ void main() {
       );
 
       await tester.tap(find.text('Open dialog'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Dr Alpha'));
       await tester.pumpAndSettle();
@@ -129,8 +127,7 @@ void main() {
       );
 
       await tester.tap(find.text('Open dialog'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Start visit'));
       await tester.pumpAndSettle();

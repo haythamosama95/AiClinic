@@ -51,6 +51,7 @@ class AppointmentDetailStatusActions extends ConsumerStatefulWidget {
 
 class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDetailStatusActions> {
   String? _busyActionKey;
+  late AppointmentQueueShiftDoctorLookup _shiftLookup;
 
   AppointmentDetail get detail => widget.detail;
 
@@ -73,8 +74,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     return ref.read(appointmentCalendarProvider).items;
   }
 
-  AppointmentQueueShiftDoctorLookup get _shiftLookup =>
-      ref.watch(appointmentQueueShiftDoctorLookupProvider).value ?? AppointmentQueueShiftDoctorLookup.empty;
+  AppointmentQueueShiftDoctorLookup get _shiftLookupValue => _shiftLookup;
 
   bool get _canCreateAppointments => _permissions.canCreateAppointments();
 
@@ -106,7 +106,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       _listItem,
       organizationTimezone: _organizationTimezone,
       siblingAppointments: _siblingAppointments,
-      shiftLookup: _shiftLookup,
+      shiftLookup: _shiftLookupValue,
     );
     if (activeLabel.isNotEmpty) {
       return activeLabel;
@@ -152,7 +152,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       return AppointmentQueueDisplay.doctorInProgressBlockReason(
         _listItem,
         _siblingAppointments,
-        shiftLookup: _shiftLookup,
+        shiftLookup: _shiftLookupValue,
       );
     }
     return null;
@@ -206,18 +206,10 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   }
 
   Future<String?> _resolveDoctorForStart() async {
-    if (!AppointmentQueueStartDoctor.requiresDoctorPicker(
-      item: _listItem,
-      shiftLookup: _shiftLookup,
-      siblingAppointments: _siblingAppointments,
-    )) {
-      return null;
-    }
-
     final options = AppointmentQueueStartDoctor.optionsForStart(
       item: _listItem,
       siblingAppointments: _siblingAppointments,
-      shiftLookup: _shiftLookup,
+      shiftLookup: _shiftLookupValue,
     );
     if (!mounted) {
       return null;
@@ -288,17 +280,14 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   }
 
   Future<void> _revertDoctorAssignment({required String? originalDoctorId}) async {
-    if (originalDoctorId == null || originalDoctorId.trim().isEmpty) {
-      return;
-    }
-
+    final revertTo = originalDoctorId?.trim();
     try {
       await ref
           .read(appointmentRepositoryProvider)
           .updateAppointment(
             appointmentId: detail.id,
             patientId: detail.patientId,
-            doctorId: originalDoctorId,
+            doctorId: revertTo != null && revertTo.isNotEmpty ? revertTo : null,
             startTime: detail.startTime,
             endTime: detail.endTime,
           );
@@ -316,14 +305,19 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       _listItem,
       organizationTimezone: _organizationTimezone,
       siblingAppointments: _siblingAppointments,
-      shiftLookup: _shiftLookup,
+      shiftLookup: _shiftLookupValue,
     );
     if (target == null) {
       return;
     }
 
     String? doctorIdForStart;
-    if (target == AppointmentStatus.inProgress) {
+    if (target == AppointmentStatus.inProgress &&
+        AppointmentQueueStartDoctor.requiresDoctorPicker(
+          item: _listItem,
+          shiftLookup: _shiftLookupValue,
+          siblingAppointments: _siblingAppointments,
+        )) {
       doctorIdForStart = await _resolveDoctorForStart();
       if (doctorIdForStart == null) {
         return;
@@ -332,9 +326,11 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
 
     await _runAction('advance', () async {
       final originalDoctorId = detail.doctorId?.trim();
+      var didAssignDoctor = false;
       try {
         if (doctorIdForStart != null) {
           await _assignDoctorIfNeeded(doctorIdForStart);
+          didAssignDoctor = true;
         }
         final update = await ref
             .read(appointmentRepositoryProvider)
@@ -353,20 +349,14 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         );
         AppToast.success(context, message: 'Appointment marked as ${target.label.toLowerCase()}.');
       } on RpcFailure catch (error) {
-        if (doctorIdForStart != null &&
-            originalDoctorId != doctorIdForStart &&
-            originalDoctorId != null &&
-            originalDoctorId.isNotEmpty) {
+        if (didAssignDoctor) {
           await _revertDoctorAssignment(originalDoctorId: originalDoctorId);
         }
         if (mounted) {
           AppToast.error(context, message: appointmentMessageForRpc(error));
         }
       } catch (_) {
-        if (doctorIdForStart != null &&
-            originalDoctorId != doctorIdForStart &&
-            originalDoctorId != null &&
-            originalDoctorId.isNotEmpty) {
+        if (didAssignDoctor) {
           await _revertDoctorAssignment(originalDoctorId: originalDoctorId);
         }
         if (mounted) {
@@ -449,6 +439,9 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
 
   @override
   Widget build(BuildContext context) {
+    _shiftLookup =
+        ref.watch(appointmentQueueShiftDoctorLookupProvider).value ?? AppointmentQueueShiftDoctorLookup.empty;
+
     final specs = <_StatusActionSpec>[
       _StatusActionSpec(
         key: const Key('appointment_control_advance_status'),

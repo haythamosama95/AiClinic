@@ -81,6 +81,13 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
 
       unawaited(refresh());
       if (prevScope.activeBranchId != nextScope.activeBranchId) {
+        state = state.copyWith(
+          items: const [],
+          comparisonItems: null,
+          comparisonNow: null,
+          comparisonUnavailable: false,
+          error: null,
+        );
         _subscribeRealtime();
       }
     });
@@ -223,8 +230,8 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
     String? doctorId,
     String? doctorName,
     DateTime? updatedAt,
-    DateTime? checkedInAt,
-    DateTime? inProgressAt,
+    Object? checkedInAt = _sentinel,
+    Object? inProgressAt = _sentinel,
   }) {
     final index = state.items.indexWhere((item) => item.id == appointmentId);
     if (index < 0) {
@@ -238,15 +245,11 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
       doctorId: doctorId ?? existing.doctorId,
       doctorName: doctorName ?? existing.doctorName,
     );
-    if (checkedInAt != null) {
-      patched = patched.copyWith(checkedInAt: checkedInAt);
-    } else if (newStatus == AppointmentStatus.checkedIn && patched.checkedInAt == null) {
-      // Leave null until server timestamps arrive — avoids client-clock drift.
+    if (!identical(checkedInAt, _sentinel)) {
+      patched = patched.copyWith(checkedInAt: checkedInAt as DateTime?);
     }
-    if (inProgressAt != null) {
-      patched = patched.copyWith(inProgressAt: inProgressAt);
-    } else if (newStatus == AppointmentStatus.inProgress && patched.inProgressAt == null) {
-      // Leave null until server timestamps arrive — avoids client-clock drift.
+    if (!identical(inProgressAt, _sentinel)) {
+      patched = patched.copyWith(inProgressAt: inProgressAt as DateTime?);
     }
 
     final items = [...state.items];

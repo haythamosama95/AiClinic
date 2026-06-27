@@ -1,6 +1,14 @@
 -- Enforce at most one in_progress appointment per doctor at a branch (unassigned
 -- doctor_id shares a single slot). Applies to status RPC and visit create advance.
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_one_in_progress_per_doctor
+  ON public.appointments (branch_id, doctor_id)
+  WHERE status = 'in_progress' AND is_deleted = false AND doctor_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_one_in_progress_unassigned
+  ON public.appointments (branch_id)
+  WHERE status = 'in_progress' AND is_deleted = false AND doctor_id IS NULL;
+
 -- -----------------------------------------------------------------------------
 -- auth_internal.doctor_has_in_progress_appointment
 -- -----------------------------------------------------------------------------
@@ -55,7 +63,8 @@ BEGIN
   FROM public.appointments a
   WHERE a.id = p_appointment_id
     AND a.is_deleted = false
-    AND a.branch_id = ANY (public.jwt_branch_ids());
+    AND a.branch_id = ANY (public.jwt_branch_ids())
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RETURN public.rpc_error('NOT_FOUND', 'Appointment was not found.');
@@ -111,6 +120,10 @@ BEGIN
     END IF;
   END IF;
 
+  IF v_new = 'in_progress' AND v_appt.doctor_id IS NULL THEN
+    RETURN public.rpc_error('DOCTOR_REQUIRED', 'A doctor must be selected for this appointment.');
+  END IF;
+
   IF v_new = 'in_progress'
     AND auth_internal.doctor_has_in_progress_appointment(
       v_appt.branch_id,
@@ -123,13 +136,21 @@ BEGIN
     );
   END IF;
 
-  UPDATE public.appointments a
-  SET
-    status = v_new,
-    cancel_reason = a.cancel_reason,
-    updated_at = now(),
-    updated_by = auth.uid()
-  WHERE a.id = v_appt.id;
+  BEGIN
+    UPDATE public.appointments a
+    SET
+      status = v_new,
+      cancel_reason = a.cancel_reason,
+      updated_at = now(),
+      updated_by = auth.uid()
+    WHERE a.id = v_appt.id;
+  EXCEPTION
+    WHEN unique_violation THEN
+      RETURN public.rpc_error(
+        'DOCTOR_ALREADY_IN_PROGRESS',
+        'This doctor already has a patient in progress. Complete that visit before starting another.'
+      );
+  END;
 
   INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
   VALUES (
@@ -187,7 +208,8 @@ BEGIN
   FROM public.appointments a
   WHERE a.id = p_appointment_id
     AND a.is_deleted = false
-    AND a.branch_id = ANY (public.jwt_branch_ids());
+    AND a.branch_id = ANY (public.jwt_branch_ids())
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RETURN public.rpc_error('NOT_FOUND', 'Appointment was not found.');
@@ -239,7 +261,23 @@ BEGIN
     END;
 
     v_doctor_id := p_doctor_id;
+  END IF;
 
+  v_visit_date := auth_internal.resolve_visit_date_from_appointment(v_appt.start_time, v_appt.branch_id);
+
+  IF v_appt.status IN ('checked_in', 'in_progress')
+    AND auth_internal.doctor_has_in_progress_appointment(
+      v_appt.branch_id,
+      v_doctor_id,
+      v_appt.id
+    ) THEN
+    RETURN public.rpc_error(
+      'DOCTOR_ALREADY_IN_PROGRESS',
+      'This doctor already has a patient in progress. Complete that visit before starting another.'
+    );
+  END IF;
+
+  IF v_appt.doctor_id IS NULL THEN
     UPDATE public.appointments a
     SET
       doctor_id = v_doctor_id,
@@ -250,26 +288,21 @@ BEGIN
     v_appt.doctor_id := v_doctor_id;
   END IF;
 
-  v_visit_date := auth_internal.resolve_visit_date_from_appointment(v_appt.start_time, v_appt.branch_id);
-
   IF v_appt.status = 'checked_in' THEN
-    IF auth_internal.doctor_has_in_progress_appointment(
-      v_appt.branch_id,
-      v_doctor_id,
-      v_appt.id
-    ) THEN
-      RETURN public.rpc_error(
-        'DOCTOR_ALREADY_IN_PROGRESS',
-        'This doctor already has a patient in progress. Complete that visit before starting another.'
-      );
-    END IF;
-
-    UPDATE public.appointments a
-    SET
-      status = 'in_progress',
-      updated_at = now(),
-      updated_by = auth.uid()
-    WHERE a.id = v_appt.id;
+    BEGIN
+      UPDATE public.appointments a
+      SET
+        status = 'in_progress',
+        updated_at = now(),
+        updated_by = auth.uid()
+      WHERE a.id = v_appt.id;
+    EXCEPTION
+      WHEN unique_violation THEN
+        RETURN public.rpc_error(
+          'DOCTOR_ALREADY_IN_PROGRESS',
+          'This doctor already has a patient in progress. Complete that visit before starting another.'
+        );
+    END;
 
     v_advanced_appointment := true;
   END IF;

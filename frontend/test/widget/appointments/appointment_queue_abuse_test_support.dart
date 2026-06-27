@@ -51,7 +51,7 @@ DateTime queueTodayStartUtc({int hour = 10}) {
 
 DateTime get queueShiftDate {
   final now = DateTime.now().toUtc();
-  return DateTime(now.year, now.month, now.day);
+  return DateTime.utc(now.year, now.month, now.day);
 }
 
 AuthSessionState queueAuthState() {
@@ -183,11 +183,15 @@ class QueueScenarioRpcClient extends AppointmentRpcTestClient {
       lastParams = params == null ? null : Map<String, dynamic>.from(params);
       rpcCallCounts[fn] = (rpcCallCounts[fn] ?? 0) + 1;
       final appointmentId = params?['p_appointment_id']?.toString() ?? '';
-      final detail =
-          _detailsById[appointmentId] ??
-          queueDetailRpcItem(
-            listItems.firstWhere((item) => item['id'] == appointmentId, orElse: () => listItems.first),
-          );
+      final storedDetail = _detailsById[appointmentId];
+      final listMatch = listItems.cast<Map<String, dynamic>?>().firstWhere(
+        (item) => item?['id']?.toString() == appointmentId,
+        orElse: () => null,
+      );
+      if (storedDetail == null && listMatch == null) {
+        throw StateError('No appointment detail found for id: $appointmentId');
+      }
+      final detail = storedDetail ?? queueDetailRpcItem(listMatch!);
       return FakePostgrestRpc({'success': true, 'data': detail}) as PostgrestFilterBuilder<T>;
     }
 

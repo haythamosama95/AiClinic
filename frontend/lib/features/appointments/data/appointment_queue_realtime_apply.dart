@@ -87,9 +87,9 @@ bool _applyUpdate(List<AppointmentListItem> items, Map<String, dynamic>? record,
     endTime: endTime,
     status: status ?? existing.status,
     type: type ?? existing.type,
-    updatedAt: updatedAt ?? existing.updatedAt,
-    checkedInAt: checkedInAt ?? existing.checkedInAt,
-    inProgressAt: inProgressAt ?? existing.inProgressAt,
+    updatedAt: record.containsKey('updated_at') ? updatedAt : existing.updatedAt,
+    checkedInAt: record.containsKey('checked_in_at') ? checkedInAt : existing.checkedInAt,
+    inProgressAt: record.containsKey('in_progress_at') ? inProgressAt : existing.inProgressAt,
   );
   return true;
 }

@@ -313,7 +313,12 @@ void main() {
 
       final colors = AppTheme.light().extension<SemanticColors>()!;
       final shell = tester.widget<Material>(
-        find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(Material)).first,
+        find
+            .descendant(
+              of: find.ancestor(of: find.byType(InkWell), matching: find.byType(AppNotchedCard)),
+              matching: find.byType(Material),
+            )
+            .first,
       );
 
       expect(shell.color, colors.card);

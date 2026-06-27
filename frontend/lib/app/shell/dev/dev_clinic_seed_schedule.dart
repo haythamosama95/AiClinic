@@ -50,7 +50,7 @@ abstract final class DevClinicSeedSchedule {
   /// Statuses allowed for appointments on a calendar day relative to "today" in [timezone].
   ///
   /// - Before today: completed, cancelled, or no-show only.
-  /// - Today: confirmed only.
+  /// - Today: confirmed and queue-active statuses.
   /// - After today: scheduled, confirmed, or cancelled only.
   static List<AppointmentStatus> allowedStatusesForCalendarDayRelation(DevClinicSeedCalendarDayRelation relation) {
     return switch (relation) {
@@ -59,7 +59,11 @@ abstract final class DevClinicSeedSchedule {
         AppointmentStatus.cancelled,
         AppointmentStatus.noShow,
       ],
-      DevClinicSeedCalendarDayRelation.today => const [AppointmentStatus.confirmed],
+      DevClinicSeedCalendarDayRelation.today => const [
+        AppointmentStatus.confirmed,
+        AppointmentStatus.checkedIn,
+        AppointmentStatus.inProgress,
+      ],
       DevClinicSeedCalendarDayRelation.future => const [
         AppointmentStatus.scheduled,
         AppointmentStatus.confirmed,

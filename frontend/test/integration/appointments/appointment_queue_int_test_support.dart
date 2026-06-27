@@ -63,8 +63,8 @@ BranchWorkingSchedule queueMonFriWorkingSchedule() {
 }
 
 DateTime queueIntegrationTodayLocal() {
-  final now = DateTime.now();
-  return DateTime(now.year, now.month, now.day);
+  final now = DateTime.now().toUtc();
+  return DateTime.utc(now.year, now.month, now.day);
 }
 
 String queueIntegrationTodayShiftDate() {
@@ -222,6 +222,7 @@ class QueueIntegrationRpcClient extends AppointmentRpcTestClient {
           _todayItems[index] = {
             ..._todayItems[index],
             'status': newStatus,
+            if (newStatus == 'checked_in') 'checked_in_at': now,
             if (newStatus == 'in_progress') 'in_progress_at': now,
           };
         }
@@ -232,6 +233,7 @@ class QueueIntegrationRpcClient extends AppointmentRpcTestClient {
               'appointment_id': appointmentId,
               'status': newStatus,
               'updated_at': now,
+              'checked_in_at': newStatus == 'checked_in' || newStatus == 'in_progress' ? now : null,
               'in_progress_at': newStatus == 'in_progress' ? now : null,
             },
           })

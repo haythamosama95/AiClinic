@@ -41,7 +41,7 @@ void main() {
     test('requiresDoctorPicker when assigned preferred doctor is available', () {
       final item = _item(status: AppointmentStatus.checkedIn, doctorId: 'd1', doctorName: 'Dr Alpha');
 
-      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: lookup), isTrue);
+      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: lookup), isFalse);
     });
 
     test('requiresDoctorPicker when only one doctor is on shift', () {
@@ -225,7 +225,34 @@ void main() {
         isTrue,
       );
     });
-    test('BUG-009: blockReasonForStart explains shared unassigned in-progress slot', () {
+    test('blockReasonForStart does not block assigned waiting patient when unassigned visit is in progress', () {
+      final start = DateTime.utc(2026, 6, 4, 11);
+      final active = _item(
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: null,
+        doctorName: null,
+        id: 'active',
+      );
+      final waiting = _item(
+        status: AppointmentStatus.checkedIn,
+        startTime: start.add(const Duration(minutes: 30)),
+        doctorId: 'd2',
+        doctorName: 'Dr Beta',
+        id: 'waiting',
+      );
+
+      expect(
+        AppointmentQueueStartDoctor.blockReasonForStart(
+          item: waiting,
+          siblingAppointments: [active, waiting],
+          shiftLookup: lookup,
+        ),
+        isNull,
+      );
+    });
+
+    test('BUG-009: blockReasonForStart explains shared unassigned in-progress slot for unassigned waiting patient', () {
       final start = DateTime.utc(2026, 6, 4, 11);
       final active = _item(
         status: AppointmentStatus.inProgress,

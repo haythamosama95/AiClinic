@@ -66,18 +66,18 @@ class AppBadge extends StatelessWidget {
       ],
     );
 
-    if (variant == AppBadgeVariant.plain) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm),
-        child: labelRow,
-      );
-    }
-
     final verticalPadding = dense
         ? SpacingTokens.xs / 2
         : comfortable
         ? SpacingTokens.sm
         : SpacingTokens.xs;
+
+    if (variant == AppBadgeVariant.plain) {
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: verticalPadding),
+        child: labelRow,
+      );
+    }
     final horizontalPadding = dense ? SpacingTokens.sm : SpacingTokens.sm + 2;
 
     return DecoratedBox(

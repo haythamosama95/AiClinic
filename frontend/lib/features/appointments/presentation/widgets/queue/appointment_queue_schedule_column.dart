@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -202,11 +203,12 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
   }
 
   String _timeRangeLabel(AppointmentListItem item) {
-    final start = _timeFormat.format(item.startTime.toLocal());
+    final timezone = effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
+    final start = _timeFormat.format(appointmentWallClockInOrganizationTimezone(timezone, item.startTime));
     if (item.status != AppointmentStatus.completed) {
       return start;
     }
-    final end = _timeFormat.format(item.endTime.toLocal());
+    final end = _timeFormat.format(appointmentWallClockInOrganizationTimezone(timezone, item.endTime));
     return '$start - $end';
   }
 
