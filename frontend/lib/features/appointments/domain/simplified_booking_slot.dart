@@ -1,5 +1,31 @@
 import 'package:ai_clinic/features/appointments/domain/appointment_row_parsing.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
+
+/// Inclusive bookable window for simplified slot picker (today through +90 days).
+const int simplifiedBookingMaxDaysAhead = 90;
+
+/// Strips time components from [date] for calendar-day comparisons.
+DateTime simplifiedBookingDateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+
+/// Returns inclusive `[minDate, maxDate]` for simplified booking relative to [reference].
+({DateTime minDate, DateTime maxDate}) simplifiedBookingDateRange({DateTime? reference}) {
+  final today = simplifiedBookingDateOnly(reference ?? clock.now());
+  return (minDate: today, maxDate: today.add(const Duration(days: simplifiedBookingMaxDaysAhead)));
+}
+
+/// Clamps [date] to the simplified booking window `[today, today + 90 days]`.
+DateTime clampSimplifiedBookingDate(DateTime date, {DateTime? reference}) {
+  final range = simplifiedBookingDateRange(reference: reference);
+  final normalized = simplifiedBookingDateOnly(date);
+  if (normalized.isBefore(range.minDate)) {
+    return range.minDate;
+  }
+  if (normalized.isAfter(range.maxDate)) {
+    return range.maxDate;
+  }
+  return normalized;
+}
 
 /// Server-derived availability state for a simplified booking time block (011).
 enum SlotAvailabilityState { available, alternateDoctorsAvailable, fullyUnavailable, past }

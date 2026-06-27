@@ -80,21 +80,21 @@ description: "Task list for Simplified Slot Booking (011) feature implementation
 
 ### Tests for User Story 2
 
-- [ ] T015 [P] [US2] Add unit tests for RPC state mapping and local-date clamp (today..today+90) in `frontend/test/unit/appointments/simplified_booking_slot_test.dart`
+- [X] T015 [P] [US2] Add unit tests for RPC state mapping and local-date clamp (today..today+90) in `frontend/test/unit/appointments/simplified_booking_slot_test.dart`
 
 ### Implementation for User Story 2
 
-- [ ] T016 [P] [US2] Implement `SimplifiedDayStrip` with centered selected day, chevron navigation, and `[today, today+90]` clamp per contracts in `frontend/lib/features/appointments/presentation/widgets/simplified_day_strip.dart`
-- [ ] T017 [P] [US2] Implement `SimplifiedTimeBlockGrid` with four visual states (available, alternate, fully unavailable, selected) and tap routing per state in `frontend/lib/features/appointments/presentation/widgets/simplified_time_block_grid.dart`
-- [ ] T018 [P] [US2] Implement `AlternateDoctorsDialog` listing doctors filtered to `availableDoctorIds` with time message and dismiss behavior in `frontend/lib/features/appointments/presentation/widgets/alternate_doctors_dialog.dart`
-- [ ] T019 [US2] Add inline **Show more slots** expand control with available-block count subtitle in `frontend/lib/features/appointments/presentation/widgets/simplified_time_block_grid.dart`
-- [ ] T020 [US2] Add `Semantics` labels for day cells and time blocks (state-aware) in `frontend/lib/features/appointments/presentation/widgets/simplified_day_strip.dart` and `frontend/lib/features/appointments/presentation/widgets/simplified_time_block_grid.dart`
+- [X] T016 [P] [US2] Implement `SimplifiedDayStrip` with centered selected day, chevron navigation, and `[today, today+90]` clamp per contracts in `frontend/lib/features/appointments/presentation/widgets/simplified_day_strip.dart`
+- [X] T017 [P] [US2] Implement `SimplifiedTimeBlockGrid` with four visual states (available, alternate, fully unavailable, selected) and tap routing per state in `frontend/lib/features/appointments/presentation/widgets/simplified_time_block_grid.dart`
+- [X] T018 [P] [US2] Implement `AlternateDoctorsDialog` listing doctors filtered to `availableDoctorIds` with time message and dismiss behavior in `frontend/lib/features/appointments/presentation/widgets/alternate_doctors_dialog.dart`
+- [X] T019 [US2] Add inline **Show more slots** expand control with available-block count subtitle in `frontend/lib/features/appointments/presentation/widgets/simplified_time_block_grid.dart`
+- [X] T020 [US2] Add `Semantics` labels for day cells and time blocks (state-aware) in `frontend/lib/features/appointments/presentation/widgets/simplified_day_strip.dart` and `frontend/lib/features/appointments/presentation/widgets/simplified_time_block_grid.dart`
 
 ### Tests for User Story 2 (widgets)
 
-- [ ] T021 [P] [US2] Add widget tests for day strip centering, 90-day clamp, and chevron navigation in `frontend/test/widget/appointments/simplified_day_strip_test.dart`
-- [ ] T022 [P] [US2] Add widget tests for block grid states, selection highlight, and show-more expand in `frontend/test/widget/appointments/simplified_time_block_grid_test.dart`
-- [ ] T023 [P] [US2] Add widget tests for alternate-doctors dialog doctor list and dismiss in `frontend/test/widget/appointments/alternate_doctors_dialog_test.dart`
+- [X] T021 [P] [US2] Add widget tests for day strip centering, 90-day clamp, and chevron navigation in `frontend/test/widget/appointments/simplified_day_strip_test.dart`
+- [X] T022 [P] [US2] Add widget tests for block grid states, selection highlight, and show-more expand in `frontend/test/widget/appointments/simplified_time_block_grid_test.dart`
+- [X] T023 [P] [US2] Add widget tests for alternate-doctors dialog doctor list and dismiss in `frontend/test/widget/appointments/alternate_doctors_dialog_test.dart`
 
 **Checkpoint**: US2 picker widgets independently demonstrable with mock slot data.
 
@@ -108,14 +108,14 @@ description: "Task list for Simplified Slot Booking (011) feature implementation
 
 ### Implementation for User Story 3
 
-- [ ] T024 [P] [US3] Implement `SimplifiedSlotSummaryCard` with mint/teal styling, formatted date/time range, doctor name, and disabled confirm when no selection in `frontend/lib/features/appointments/presentation/widgets/simplified_slot_summary_card.dart`
-- [ ] T025 [US3] Wire confirm action to `AppointmentRepository.createAppointment` using `effectiveDoctorId`, selected slot start, and frozen `defaultDurationMinutes` (no override) in `frontend/lib/features/appointments/presentation/widgets/simplified_slot_summary_card.dart`
-- [ ] T026 [US3] Handle `SCHEDULE_CONFLICT` and other RPC failures with user-visible messaging and slot grid refresh callback in `frontend/lib/features/appointments/presentation/widgets/simplified_slot_summary_card.dart`
-- [ ] T027 [US3] Add confirm blocking when parent reports slot load failure; accept `slotsAvailable` / `onRetry` props for step-two host wiring (FR-014) in `frontend/lib/features/appointments/presentation/widgets/simplified_slot_summary_card.dart`
+- [X] T024 [P] [US3] Implement `SimplifiedSlotSummaryCard` with mint/teal styling, formatted date/time range, doctor name, and disabled confirm when no selection in `frontend/lib/features/appointments/presentation/widgets/simplified_slot_summary_card.dart`
+- [X] T025 [US3] Wire confirm action to `AppointmentRepository.createAppointment` using `effectiveDoctorId`, selected slot start, and frozen `defaultDurationMinutes` (no override) in `frontend/lib/features/appointments/presentation/widgets/simplified_slot_summary_card.dart`
+- [X] T026 [US3] Handle `SCHEDULE_CONFLICT` and other RPC failures with user-visible messaging and slot grid refresh callback in `frontend/lib/features/appointments/presentation/widgets/simplified_slot_summary_card.dart`
+- [X] T027 [US3] Add confirm blocking when parent reports slot load failure; accept `slotsAvailable` / `onRetry` props for step-two host wiring (FR-014) in `frontend/lib/features/appointments/presentation/widgets/simplified_slot_summary_card.dart`
 
 ### Tests for User Story 3
 
-- [ ] T028 [P] [US3] Add widget tests for summary card content, disabled confirm, and enabled confirm with selection in `frontend/test/widget/appointments/simplified_slot_summary_card_test.dart`
+- [X] T028 [P] [US3] Add widget tests for summary card content, disabled confirm, and enabled confirm with selection in `frontend/test/widget/appointments/simplified_slot_summary_card_test.dart`
 
 **Checkpoint**: US3 summary + create path testable when embedded in step two host.
 
