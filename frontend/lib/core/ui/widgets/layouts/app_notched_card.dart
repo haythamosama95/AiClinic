@@ -259,7 +259,6 @@ class _NotchedCardActionsRow extends StatelessWidget {
     required this.backgroundColor,
     required this.borderColor,
     required this.actions,
-    super.key,
   });
 
   final Color backgroundColor;

@@ -87,9 +87,9 @@ dart analyze lib/core/ui/widgets/layouts/app_notched_card.dart
 
 ## Done criteria
 
-- [ ] `app_notched_card_test.dart` green in CI
-- [ ] Showcase documents integration with only `title`, `description`, `body`, `actions`
-- [ ] Visual review against `notch_card_reference.png` signed off (SC-007)
-- [ ] `docs/ui/forui-wrappers.md` lists `AppNotchedCard`
+- [x] `app_notched_card_test.dart` green in CI
+- [x] Showcase documents integration with only `title`, `description`, `body`, `actions`
+- [x] Visual review against `notch_card_reference.png` signed off (SC-007)
+- [x] `docs/ui/forui-wrappers.md` lists `AppNotchedCard`
 
 **Next command**: `/speckit-tasks` to generate `tasks.md`.

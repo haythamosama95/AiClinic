@@ -448,7 +448,7 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
     );
 
     if (widget.embeddedInShell) {
-      return ColoredBox(color: colors.background, child: content);
+      return Material(color: colors.background, child: content);
     }
 
     return Scaffold(

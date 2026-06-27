@@ -19,113 +19,89 @@ class DashboardPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            _DashboardCardsGrid(
               children: [
-                Expanded(
-                  child: AppNotchedCard(
-                    title: Text('Appointments', style: theme.textTheme.titleMedium),
-                    description: Text(
-                      'Today\'s schedule',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                    ),
-                    actions: [
-                      AppIconButton(
-                        icon: const Icon(Icons.calendar_month_outlined),
-                        tooltip: 'Open calendar',
-                        onPressed: () {},
-                      ),
-                    ],
-                    body: _AppointmentsSummary(colors: colors, theme: theme),
+                AppNotchedCard(
+                  title: Text('Appointments', style: theme.textTheme.titleMedium),
+                  description: Text(
+                    'Today\'s schedule',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
                   ),
+                  actions: [
+                    AppIconButton(
+                      icon: const Icon(Icons.calendar_month_outlined),
+                      tooltip: 'Open calendar',
+                      onPressed: () {},
+                    ),
+                  ],
+                  body: _AppointmentsSummary(colors: colors, theme: theme),
                 ),
-                const SizedBox(width: SpacingTokens.lg),
-                Expanded(
-                  child: AppNotchedCard(
-                    title: Text('Queue', style: theme.textTheme.titleMedium),
-                    description: Text(
-                      'Patients waiting',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                    ),
-                    actions: [
-                      AppIconButton(icon: const Icon(Icons.refresh), tooltip: 'Refresh queue', onPressed: () {}),
-                    ],
-                    body: const _QueueList(),
+                AppNotchedCard(
+                  title: Text('Queue', style: theme.textTheme.titleMedium),
+                  description: Text(
+                    'Patients waiting',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
                   ),
+                  actions: [AppIconButton(icon: const Icon(Icons.refresh), tooltip: 'Refresh queue', onPressed: () {})],
+                  body: const _QueueList(),
                 ),
-                const SizedBox(width: SpacingTokens.lg),
-                Expanded(
-                  child: AppNotchedCard(
-                    title: Text('Revenue', style: theme.textTheme.titleMedium),
-                    description: Text(
-                      'Month to date',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                    ),
-                    actions: [
-                      AppIconButton(icon: const Icon(Icons.trending_up), tooltip: 'View reports', onPressed: () {}),
-                    ],
-                    body: _RevenueSummary(colors: colors, theme: theme),
+                AppNotchedCard(
+                  title: Text('Revenue', style: theme.textTheme.titleMedium),
+                  description: Text(
+                    'Month to date',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
                   ),
+                  actions: [
+                    AppIconButton(icon: const Icon(Icons.trending_up), tooltip: 'View reports', onPressed: () {}),
+                  ],
+                  body: _RevenueSummary(colors: colors, theme: theme),
                 ),
               ],
             ),
             const SizedBox(height: SpacingTokens.lg),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            _DashboardCardsGrid(
               children: [
-                Expanded(
-                  child: AppNotchedCard(
-                    title: Text('Patients', style: theme.textTheme.titleMedium),
-                    description: Text(
-                      'Registry overview',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                    ),
-                    actions: [
-                      AppIconButton(icon: const Icon(Icons.search), tooltip: 'Search patients', onPressed: () {}),
-                      AppIconButton(
-                        icon: const Icon(Icons.person_add_outlined),
-                        tooltip: 'Add patient',
-                        onPressed: () {},
-                      ),
-                      AppIconButton(icon: const Icon(Icons.filter_list), tooltip: 'Filter list', onPressed: () {}),
-                    ],
-                    body: _PatientsSummary(colors: colors, theme: theme),
+                AppNotchedCard(
+                  title: Text('Patients', style: theme.textTheme.titleMedium),
+                  description: Text(
+                    'Registry overview',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
                   ),
+                  actions: [
+                    AppIconButton(icon: const Icon(Icons.search), tooltip: 'Search patients', onPressed: () {}),
+                    AppIconButton(
+                      icon: const Icon(Icons.person_add_outlined),
+                      tooltip: 'Add patient',
+                      onPressed: () {},
+                    ),
+                    AppIconButton(icon: const Icon(Icons.filter_list), tooltip: 'Filter list', onPressed: () {}),
+                  ],
+                  body: _PatientsSummary(colors: colors, theme: theme),
                 ),
-                const SizedBox(width: SpacingTokens.lg),
-                Expanded(
-                  child: AppNotchedCard(
-                    title: Text('Tasks', style: theme.textTheme.titleMedium),
-                    description: Text(
-                      'Team follow-ups',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                    ),
-                    actions: [
-                      AppIconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit task', onPressed: () {}),
-                      AppIconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete task', onPressed: () {}),
-                      AppIconButton(icon: const Icon(Icons.share_outlined), tooltip: 'Assign task', onPressed: () {}),
-                    ],
-                    body: const _TasksList(),
+                AppNotchedCard(
+                  title: Text('Tasks', style: theme.textTheme.titleMedium),
+                  description: Text(
+                    'Team follow-ups',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
                   ),
+                  actions: [
+                    AppIconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit task', onPressed: () {}),
+                    AppIconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete task', onPressed: () {}),
+                    AppIconButton(icon: const Icon(Icons.share_outlined), tooltip: 'Assign task', onPressed: () {}),
+                  ],
+                  body: const _TasksList(),
                 ),
-                const SizedBox(width: SpacingTokens.lg),
-                Expanded(
-                  child: AppNotchedCard(
-                    title: Text('Inventory', style: theme.textTheme.titleMedium),
-                    description: Text(
-                      'Stock alerts',
-                      style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-                    ),
-                    actions: [
-                      AppIconButton(icon: const Icon(Icons.add_shopping_cart), tooltip: 'Reorder', onPressed: () {}),
-                      AppIconButton(
-                        icon: const Icon(Icons.download_outlined),
-                        tooltip: 'Export list',
-                        onPressed: () {},
-                      ),
-                    ],
-                    body: _InventorySummary(colors: colors, theme: theme),
+                AppNotchedCard(
+                  title: Text('Inventory', style: theme.textTheme.titleMedium),
+                  description: Text(
+                    'Stock alerts',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
                   ),
+                  actions: [
+                    AppIconButton(icon: const Icon(Icons.add_shopping_cart), tooltip: 'Reorder', onPressed: () {}),
+                    AppIconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Export list', onPressed: () {}),
+                  ],
+                  body: _InventorySummary(colors: colors, theme: theme),
                 ),
               ],
             ),
@@ -175,6 +151,46 @@ class DashboardPage extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Breakpoint-based card grid: 1 column on phones, 2 on tablets, 3 on wide screens.
+class _DashboardCardsGrid extends StatelessWidget {
+  const _DashboardCardsGrid({required this.children});
+
+  static const _compactBreakpoint = 640.0;
+  static const _mediumBreakpoint = 960.0;
+
+  final List<Widget> children;
+
+  int _columnCount(double maxWidth) {
+    if (maxWidth < _compactBreakpoint) {
+      return 1;
+    }
+    if (maxWidth < _mediumBreakpoint) {
+      return 2;
+    }
+    return 3;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columnCount = _columnCount(constraints.maxWidth).clamp(1, children.length);
+        final spacing = SpacingTokens.lg;
+        final itemWidth = (constraints.maxWidth - (columnCount - 1) * spacing) / columnCount;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final child in children)
+              SizedBox(width: columnCount == 1 ? constraints.maxWidth : itemWidth, child: child),
+          ],
+        );
+      },
     );
   }
 }

@@ -133,10 +133,10 @@ description: "Task list for App Notched Card (010) feature implementation"
 
 **Purpose**: Visual baseline, static analysis, and quickstart validation.
 
-- [ ] T023 [P] Add or verify reference asset `docs/ui/assets/notch_card_reference.png` for SC-007 visual sign-off
-- [ ] T024 Run `dart analyze` on `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart` and `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
-- [ ] T025 Run `flutter test test/widget/core/ui/app_notched_card_test.dart test/unit/core/ui/notched_card_path_test.dart` from `frontend/`
-- [ ] T026 Execute manual steps in `specs/010-app-notched-card/quickstart.md` (showcase side-by-side with `AppCard`, narrow-width clip, RTL spot check)
+- [X] T023 [P] Add or verify reference asset `docs/ui/assets/notch_card_reference.png` for SC-007 visual sign-off
+- [X] T024 Run `dart analyze` on `frontend/lib/core/ui/widgets/layouts/app_notched_card.dart` and `frontend/lib/core/ui/widgets/layouts/notched_card_path.dart`
+- [X] T025 Run `flutter test test/widget/core/ui/app_notched_card_test.dart test/unit/core/ui/notched_card_path_test.dart` from `frontend/`
+- [X] T026 Execute manual steps in `specs/010-app-notched-card/quickstart.md` (showcase side-by-side with `AppCard`, narrow-width clip, RTL spot check)
 
 ---
 
