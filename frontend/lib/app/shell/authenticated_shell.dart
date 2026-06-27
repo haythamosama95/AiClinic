@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
@@ -50,11 +49,18 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
     }
   }
 
-  String? _pageTitleForLocation(String location, String selectedItemId) {
-    if (location == AppRoutes.settings || location.startsWith('${AppRoutes.settings}/')) {
+  String? _pageTitleForLocation(String location, String? selectedItemId) {
+    if (ShellNavConfig.isSettingsLocation(location)) {
       return 'Settings';
     }
-    return ShellNavConfig.labelFor(selectedItemId);
+    return selectedItemId != null ? ShellNavConfig.labelFor(selectedItemId) : null;
+  }
+
+  String? _selectedItemIdForLocation(String location) {
+    if (ShellNavConfig.isSettingsLocation(location)) {
+      return null;
+    }
+    return ShellNavConfig.itemIdForLocation(location) ?? _selectedItemId;
   }
 
   void _onGroupToggled(String groupId) {
@@ -71,7 +77,7 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final location = GoRouterState.of(context).matchedLocation;
-    final selectedItemId = ShellNavConfig.itemIdForLocation(location) ?? _selectedItemId;
+    final selectedItemId = _selectedItemIdForLocation(location);
     final pageTitle = _pageTitleForLocation(location, selectedItemId);
 
     return ShellDevShellWrapper(

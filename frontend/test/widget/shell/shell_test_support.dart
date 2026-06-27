@@ -124,6 +124,10 @@ GoRouter shellTestRouter({String initialLocation = AppRoutes.home}) {
             path: AppRoutes.patients,
             builder: (_, _) => const Scaffold(body: Text('Patients content')),
           ),
+          GoRoute(
+            path: AppRoutes.settings,
+            builder: (_, _) => const Scaffold(body: Text('Settings content')),
+          ),
         ],
       ),
     ],

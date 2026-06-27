@@ -84,5 +84,20 @@ void main() {
 
       expect(find.text('Patients content'), findsOneWidget);
     });
+
+    testWidgets('settings header button clears nav selection', (tester) async {
+      await pumpAuthenticatedShell(tester, initialLocation: AppRoutes.home);
+
+      final dashboardRowBefore = tester.widget<ShellNavItemRow>(find.widgetWithText(ShellNavItemRow, 'Dashboard'));
+      expect(dashboardRowBefore.isSelected, isTrue);
+
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+
+      final dashboardRowAfter = tester.widget<ShellNavItemRow>(find.widgetWithText(ShellNavItemRow, 'Dashboard'));
+      expect(dashboardRowAfter.isSelected, isFalse);
+      expect(find.text('Settings content'), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
+    });
   });
 }
