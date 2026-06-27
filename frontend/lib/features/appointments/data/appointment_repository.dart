@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/domain/create_appointment_result.dart';
+import 'package:ai_clinic/features/appointments/domain/simplified_booking_slot.dart';
 
 /// Appointment scheduling RPC wrappers (V1-4).
 class AppointmentRepository with AppRpcInvoker {
@@ -21,7 +22,7 @@ class AppointmentRepository with AppRpcInvoker {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260526140000_appointment_management.sql';
+  String get migrationHint => '20260627120000_simplified_slot_booking.sql';
 
   @override
   String get rpcLogDomain => 'appointments';
@@ -56,6 +57,28 @@ class AppointmentRepository with AppRpcInvoker {
       throw StateError('Set default duration returned an unexpected shape.');
     }
     return savedMinutes;
+  }
+
+  Future<SimplifiedBookingDaySlots> getSimplifiedBookingSlots({
+    required String branchId,
+    required DateTime localDate,
+    required String preferredDoctorId,
+  }) async {
+    _assertNonEmpty('branchId', branchId);
+    _assertNonEmpty('preferredDoctorId', preferredDoctorId);
+
+    final params = <String, dynamic>{
+      'p_branch_id': branchId.trim(),
+      'p_local_date': _formatLocalDate(localDate),
+      'p_preferred_doctor_id': preferredDoctorId.trim(),
+    };
+
+    final result = await invokeRpc('get_simplified_booking_slots', params);
+    final slots = SimplifiedBookingDaySlots.fromRpcData(result.data);
+    if (slots == null) {
+      throw StateError('Get simplified booking slots returned an unexpected shape.');
+    }
+    return slots;
   }
 
   Future<CreateAppointmentResult> createAppointment({
@@ -338,6 +361,13 @@ class AppointmentRepository with AppRpcInvoker {
         ),
       );
     }
+  }
+
+  static String _formatLocalDate(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 }
 

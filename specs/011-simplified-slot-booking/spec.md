@@ -1,6 +1,6 @@
 # Feature Specification: Simplified Slot Booking
 
-**Feature Branch**: `011-simplified-slot-booking`
+**Feature Branch**: `ui/011-simplified-slot-booking`
 
 **Created**: 2026-06-27
 

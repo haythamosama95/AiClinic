@@ -100,6 +100,7 @@ run_sql_test "Appointment management CRUD" "appointment_management_crud.sql"
 run_sql_test "Appointment management patient filter" "appointment_management_patient_filter.sql"
 run_sql_test "Appointment management RLS" "appointment_management_rls.sql"
 run_sql_test "Appointment management grants" "appointment_management_grants.sql"
+run_sql_test "Simplified slot booking" "simplified_slot_booking.sql"
 
 # --- Visit Medical Records ---
 printf '\n--- Visit Medical Records ---\n'

@@ -1,6 +1,6 @@
 # Implementation Plan: Simplified Slot Booking
 
-**Branch**: `011-simplified-slot-booking` | **Date**: 2026-06-27 | **Spec**: `specs/011-simplified-slot-booking/spec.md`
+**Branch**: `ui/011-simplified-slot-booking` | **Date**: 2026-06-27 | **Spec**: `specs/011-simplified-slot-booking/spec.md`
 
 **Input**: Feature specification from `specs/011-simplified-slot-booking/spec.md`
 

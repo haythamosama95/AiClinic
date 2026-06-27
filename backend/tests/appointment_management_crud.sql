@@ -666,7 +666,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Reschedule parity: doctor-less appointment overlap is rejected (regression #3).
+  -- Reschedule parity: doctor-less appointment may overlap assigned doctor (per-doctor overlap, 011).
   v_result := public.create_patient(
     v_main_branch_id, 'Reschedule No Doctor', '201000000146', NULL, NULL, NULL, NULL, false
   );
@@ -688,8 +688,8 @@ BEGIN
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'reschedule_doctorless_overlap_rejected',
-    NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
+    'reschedule_doctorless_overlap_with_assigned_allowed',
+    v_result.success,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -1001,8 +1001,8 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Same time different doctors: conflict because slots are branch-wide.
-  v_start := date_trunc('hour', now() + interval '11 days');
+  -- Same time different doctors: allowed with per-doctor overlap (011).
+  v_start := date_trunc('day', now() + interval '11 days') + interval '10 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
   );
@@ -1015,18 +1015,42 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_appointment(
-    v_main_branch_id, v_patient_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient2_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'planned_same_time_different_doctors_conflict',
+    'planned_same_time_different_doctors_allowed',
+    v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Same doctor same time: still conflicts with per-doctor overlap.
+  v_start := date_trunc('day', now() + interval '12 days') + interval '10 hours';
+  v_result := public.create_appointment(
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'planned_same_time_same_doctor_first',
+    v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_appointment(
+    v_main_branch_id, v_patient2_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'planned_same_time_same_doctor_conflict',
     NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Two unassigned planned at same time: still conflicts due to slot uniqueness.
-  v_start := date_trunc('hour', now() + interval '12 days');
+  -- Two unassigned planned at same time: allowed (no doctor overlap when doctor is null).
+  v_start := date_trunc('day', now() + interval '13 days') + interval '10 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
   );
@@ -1039,12 +1063,12 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_appointment(
-    v_main_branch_id, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
+    v_main_branch_id, v_patient2_id, NULL, 'planned', v_start, 15, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'two_planned_without_doctor_conflict',
-    NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
+    'two_planned_without_doctor_allowed',
+    v_result.success,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

@@ -26,7 +26,8 @@ DECLARE
     'auth_internal.update_appointment(uuid,uuid,uuid,timestamp with time zone,integer,timestamp with time zone,text)'::regprocedure,
     'auth_internal.cancel_appointment(uuid,text)'::regprocedure,
     'auth_internal.update_appointment_status(uuid,text)'::regprocedure,
-    'auth_internal.list_appointments(uuid,timestamp with time zone,timestamp with time zone,uuid,text[],uuid)'::regprocedure
+    'auth_internal.list_appointments(uuid,timestamp with time zone,timestamp with time zone,uuid,text[],uuid)'::regprocedure,
+    'auth_internal.get_simplified_booking_slots(uuid,date,uuid)'::regprocedure
   ];
 BEGIN
   FOREACH v_sig IN ARRAY v_required LOOP

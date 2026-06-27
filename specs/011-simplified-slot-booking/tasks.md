@@ -31,9 +31,9 @@ description: "Task list for Simplified Slot Booking (011) feature implementation
 
 **Purpose**: Confirm baseline patterns and prepare test directories for new appointment widgets.
 
-- [ ] T001 Verify feature branch `011-simplified-slot-booking` and create widget/unit test directories `frontend/test/widget/appointments/` and `frontend/test/unit/appointments/` if missing
-- [ ] T002 [P] Review `frontend/lib/features/appointments/presentation/widgets/appointment_booking_sheet.dart` for modal scrim, patient search, and doctor selector patterns to reuse in simplified flow
-- [ ] T003 [P] Review `frontend/lib/features/appointments/presentation/pages/appointment_calendar_page.dart` for header **Book Appointment** callback and slot-tap `_showBookingSheet` wiring
+- [X] T001 Verify feature branch `ui/011-simplified-slot-booking` and create widget/unit test directories `frontend/test/widget/appointments/` and `frontend/test/unit/appointments/` if missing
+- [X] T002 [P] Review `frontend/lib/features/appointments/presentation/widgets/appointment_booking_sheet.dart` for modal scrim, patient search, and doctor selector patterns to reuse in simplified flow
+- [X] T003 [P] Review `frontend/lib/features/appointments/presentation/pages/appointment_calendar_page.dart` for header **Book Appointment** callback and slot-tap `_showBookingSheet` wiring
 
 ---
 
@@ -43,13 +43,13 @@ description: "Task list for Simplified Slot Booking (011) feature implementation
 
 **⚠️ CRITICAL**: US2, US3, and US4 cannot begin until this phase is complete.
 
-- [ ] T004 Restore per-doctor filter in `auth_internal.appointment_has_overlap` with migration comments documenting supersession of branch-wide uniqueness in `backend/supabase/migrations/20260627120000_simplified_slot_booking.sql`
-- [ ] T005 Implement `auth_internal.get_simplified_booking_slots` and public wrapper `get_simplified_booking_slots` (block generation, three availability states, `past` for today, date validation today..+90) in `backend/supabase/migrations/20260627120000_simplified_slot_booking.sql`
-- [ ] T006 [P] Add SQL tests for slot RPC states (`available`, `alternate_doctors_available`, `fully_unavailable`, `past`), per-doctor overlap (two doctors same time allowed; same doctor blocked), and date validation in `backend/tests/simplified_slot_booking.sql`
-- [ ] T007 [P] Update overlap regression expectations in `backend/tests/appointment_management_crud.sql` for per-doctor semantics
-- [ ] T008 [P] Add `SlotAvailabilityState` enum and `SimplifiedBookingSlot` model per data-model.md in `frontend/lib/features/appointments/domain/simplified_booking_slot.dart`
-- [ ] T009 Add `SimplifiedBookingDaySlots` response type and RPC JSON → domain mapper (state string mapping, `availableDoctorIds`) in `frontend/lib/features/appointments/domain/simplified_booking_slot.dart`
-- [ ] T010 Implement `getSimplifiedBookingSlots({branchId, localDate, preferredDoctorId})` calling `get_simplified_booking_slots` RPC in `frontend/lib/features/appointments/data/appointment_repository.dart`
+- [X] T004 Restore per-doctor filter in `auth_internal.appointment_has_overlap` with migration comments documenting supersession of branch-wide uniqueness in `backend/supabase/migrations/20260627120000_simplified_slot_booking.sql`
+- [X] T005 Implement `auth_internal.get_simplified_booking_slots` and public wrapper `get_simplified_booking_slots` (block generation, three availability states, `past` for today, date validation today..+90) in `backend/supabase/migrations/20260627120000_simplified_slot_booking.sql`
+- [X] T006 [P] Add SQL tests for slot RPC states (`available`, `alternate_doctors_available`, `fully_unavailable`, `past`), per-doctor overlap (two doctors same time allowed; same doctor blocked), and date validation in `backend/tests/simplified_slot_booking.sql`
+- [X] T007 [P] Update overlap regression expectations in `backend/tests/appointment_management_crud.sql` for per-doctor semantics
+- [X] T008 [P] Add `SlotAvailabilityState` enum and `SimplifiedBookingSlot` model per data-model.md in `frontend/lib/features/appointments/domain/simplified_booking_slot.dart`
+- [X] T009 Add `SimplifiedBookingDaySlots` response type and RPC JSON → domain mapper (state string mapping, `availableDoctorIds`) in `frontend/lib/features/appointments/domain/simplified_booking_slot.dart`
+- [X] T010 Implement `getSimplifiedBookingSlots({branchId, localDate, preferredDoctorId})` calling `get_simplified_booking_slots` RPC in `frontend/lib/features/appointments/data/appointment_repository.dart`
 
 **Checkpoint**: Migration applied, slot RPC tested, repository method returns parsed blocks — slot picker UI can begin.
 
