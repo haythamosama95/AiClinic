@@ -13,8 +13,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_display
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_advance_button.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_no_show_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_status_button.dart';
 
 /// Column 1 — today's appointment schedule with a focus timeline.
 class AppointmentQueueScheduleColumn extends StatefulWidget {
@@ -179,7 +178,6 @@ class _AppointmentQueueScheduleColumnState extends State<AppointmentQueueSchedul
                         child: _AppointmentRow(
                           item: item,
                           shiftLookup: widget.shiftLookup,
-                          siblingAppointments: widget.items,
                           timeLabel: _timeRangeLabel(item),
                           isFocused: isFocused,
                           statusDimmed: AppointmentQueueDisplay.isScheduleRowDimmed(item),
@@ -255,7 +253,6 @@ class _AppointmentRow extends StatelessWidget {
   const _AppointmentRow({
     required this.item,
     required this.shiftLookup,
-    required this.siblingAppointments,
     required this.timeLabel,
     required this.isFocused,
     required this.statusDimmed,
@@ -265,7 +262,6 @@ class _AppointmentRow extends StatelessWidget {
 
   final AppointmentListItem item;
   final AppointmentQueueShiftDoctorLookup shiftLookup;
-  final List<AppointmentListItem> siblingAppointments;
   final String timeLabel;
   final bool isFocused;
   final bool statusDimmed;
@@ -380,17 +376,7 @@ class _AppointmentRow extends StatelessWidget {
                       _QueueSectionDivider(color: colors.border),
                       Padding(
                         padding: const EdgeInsets.only(top: SpacingTokens.xs),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AppointmentQueueRowNoShowButton(item: item),
-                            AppointmentQueueRowAdvanceButton(
-                              item: item,
-                              siblingAppointments: siblingAppointments,
-                              shiftLookup: shiftLookup,
-                            ),
-                          ],
-                        ),
+                        child: AppointmentQueueRowStatusButton(item: item),
                       ),
                     ],
                   ),

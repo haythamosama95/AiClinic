@@ -55,7 +55,12 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
       } else {
         _routeScrollPrimed = true;
       }
-      unawaited(ref.read(appointmentQueueProvider.notifier).refresh());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        unawaited(ref.read(appointmentQueueProvider.notifier).refresh());
+      });
       _wasCurrentRoute = true;
     } else if (!isCurrent) {
       _wasCurrentRoute = false;

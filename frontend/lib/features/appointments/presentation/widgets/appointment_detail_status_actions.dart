@@ -259,6 +259,42 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         );
   }
 
+  String? _doctorNameForId(String doctorId) {
+    final trimmed = doctorId.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final assignedDoctorId = detail.doctorId?.trim();
+    if (assignedDoctorId == trimmed && detail.doctorName?.trim().isNotEmpty == true) {
+      return detail.doctorName!.trim();
+    }
+
+    for (final doctor in _shiftLookup.doctorsOnShiftAt(detail.startTime)) {
+      if (doctor.id == trimmed) {
+        return doctor.name;
+      }
+    }
+
+    for (final item in _siblingAppointments) {
+      if (item.doctorId == trimmed && item.doctorName?.trim().isNotEmpty == true) {
+        return item.doctorName!.trim();
+      }
+    }
+    return null;
+  }
+
+  void _patchQueueAfterStatusChange({required AppointmentStatus newStatus, String? doctorId}) {
+    ref
+        .read(appointmentQueueProvider.notifier)
+        .patchAppointmentStatus(
+          appointmentId: detail.id,
+          newStatus: newStatus,
+          doctorId: doctorId,
+          doctorName: doctorId == null ? null : _doctorNameForId(doctorId),
+        );
+  }
+
   Future<void> _handleAdvanceStatus() async {
     if (_disabledReasonFor('advance', _advanceStatusDisabledReason()) != null) {
       return;
@@ -295,7 +331,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         }
         ref.invalidate(appointmentDetailProvider(detail.id));
         ref.invalidate(appointmentCalendarProvider);
-        ref.invalidate(appointmentQueueProvider);
+        _patchQueueAfterStatusChange(newStatus: target, doctorId: doctorIdForStart);
         AppToast.success(context, message: 'Appointment marked as ${target.label.toLowerCase()}.');
       } on RpcFailure catch (error) {
         if (mounted) {
@@ -329,7 +365,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         }
         ref.invalidate(appointmentDetailProvider(detail.id));
         ref.invalidate(appointmentCalendarProvider);
-        ref.invalidate(appointmentQueueProvider);
+        _patchQueueAfterStatusChange(newStatus: AppointmentStatus.cancelled);
         AppToast.success(context, message: 'Appointment cancelled.');
       } on RpcFailure catch (error) {
         if (mounted) {
@@ -364,7 +400,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
             }
             ref.invalidate(appointmentDetailProvider(detail.id));
             ref.invalidate(appointmentCalendarProvider);
-            ref.invalidate(appointmentQueueProvider);
+            _patchQueueAfterStatusChange(newStatus: AppointmentStatus.noShow);
             AppToast.success(context, message: 'Appointment marked as no-show.');
           } on RpcFailure catch (error) {
             if (mounted) {
