@@ -206,6 +206,7 @@ class _QueueBody extends ConsumerWidget {
           now: now,
           shiftLookup: shiftLookup,
           doctorsLoading: doctorsLoading,
+          onDoctorTap: (item) => onCheckedInPatientTap(item.id),
         );
         final waitingColumn = AppointmentQueueWaitingColumn(
           items: partition.waiting,
