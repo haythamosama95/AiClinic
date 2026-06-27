@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -143,6 +144,15 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
   }
 }
 
+/// Minimum notched-card heights so queue panels stay usable after window resize.
+abstract final class _QueuePanelHeights {
+  static const schedule = 320.0;
+  static const session = 220.0;
+  static const waiting = 220.0;
+  static const statsBannerWide = 108.0;
+  static const statsBannerCompact = 224.0;
+}
+
 class _QueueBody extends ConsumerWidget {
   const _QueueBody({
     required this.state,
@@ -176,96 +186,145 @@ class _QueueBody extends ConsumerWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 1100;
+        final statsHeightEstimate = constraints.maxWidth < 720
+            ? _QueuePanelHeights.statsBannerCompact
+            : _QueuePanelHeights.statsBannerWide;
+        final minColumnsHeight = _minColumnsHeight(isWide);
+        final minBodyHeight = statsHeightEstimate + SpacingTokens.lg + minColumnsHeight;
+        final fillsViewport = constraints.maxHeight >= minBodyHeight;
+
+        final scheduleColumn = AppointmentQueueScheduleColumn(
+          items: partition.schedule,
+          now: now,
+          shiftLookup: shiftLookup,
+          scrollNonce: scrollNonce,
+          scrollToAppointmentId: scrollToAppointmentId,
+          onTargetAppointmentScrollHandled: onTargetAppointmentScrollHandled,
+        );
+        final sessionColumn = AppointmentQueueSessionColumn(
+          appointments: state.items,
+          now: now,
+          shiftLookup: shiftLookup,
+          doctorsLoading: doctorsLoading,
+        );
+        final waitingColumn = AppointmentQueueWaitingColumn(
+          items: partition.waiting,
+          now: now,
+          shiftLookup: shiftLookup,
+          onPatientTap: (item) => onCheckedInPatientTap(item.id),
+        );
 
         final columns = isWide
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: AppointmentQueueScheduleColumn(
-                      items: partition.schedule,
-                      now: now,
-                      shiftLookup: shiftLookup,
-                      scrollNonce: scrollNonce,
-                      scrollToAppointmentId: scrollToAppointmentId,
-                      onTargetAppointmentScrollHandled: onTargetAppointmentScrollHandled,
-                    ),
-                  ),
-                  const SizedBox(width: SpacingTokens.md),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: AppointmentQueueSessionColumn(
-                            appointments: state.items,
-                            now: now,
-                            shiftLookup: shiftLookup,
-                            doctorsLoading: doctorsLoading,
-                          ),
-                        ),
-                        const SizedBox(height: SpacingTokens.md),
-                        Expanded(
-                          child: AppointmentQueueWaitingColumn(
-                            items: partition.waiting,
-                            now: now,
-                            shiftLookup: shiftLookup,
-                            onPatientTap: (item) => onCheckedInPatientTap(item.id),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            ? _buildWideColumns(
+                fillsViewport: fillsViewport,
+                scheduleColumn: scheduleColumn,
+                sessionColumn: sessionColumn,
+                waitingColumn: waitingColumn,
               )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: AppointmentQueueScheduleColumn(
-                      items: partition.schedule,
-                      now: now,
-                      shiftLookup: shiftLookup,
-                      scrollNonce: scrollNonce,
-                      scrollToAppointmentId: scrollToAppointmentId,
-                      onTargetAppointmentScrollHandled: onTargetAppointmentScrollHandled,
-                    ),
-                  ),
-                  const SizedBox(height: SpacingTokens.md),
-                  Expanded(
-                    flex: 2,
-                    child: AppointmentQueueSessionColumn(
-                      appointments: state.items,
-                      now: now,
-                      shiftLookup: shiftLookup,
-                      doctorsLoading: doctorsLoading,
-                    ),
-                  ),
-                  const SizedBox(height: SpacingTokens.md),
-                  Expanded(
-                    flex: 2,
-                    child: AppointmentQueueWaitingColumn(
-                      items: partition.waiting,
-                      now: now,
-                      shiftLookup: shiftLookup,
-                      onPatientTap: (item) => onCheckedInPatientTap(item.id),
-                    ),
-                  ),
-                ],
+            : _buildNarrowColumns(
+                fillsViewport: fillsViewport,
+                scheduleColumn: scheduleColumn,
+                sessionColumn: sessionColumn,
+                waitingColumn: waitingColumn,
               );
 
-        return Column(
+        final body = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             AppointmentQueueStatsBanner(stats: stats),
             const SizedBox(height: SpacingTokens.lg),
-            Expanded(child: columns),
+            if (fillsViewport) Expanded(child: columns) else columns,
           ],
         );
+
+        if (fillsViewport) {
+          return body;
+        }
+
+        return SingleChildScrollView(child: body);
       },
+    );
+  }
+
+  static double _minColumnsHeight(bool isWide) {
+    final stackedSidePanels = _QueuePanelHeights.session + SpacingTokens.md + _QueuePanelHeights.waiting;
+
+    if (isWide) {
+      return math.max(_QueuePanelHeights.schedule, stackedSidePanels);
+    }
+
+    return _QueuePanelHeights.schedule + SpacingTokens.md + stackedSidePanels;
+  }
+
+  static Widget _queuePanel({
+    required bool fillsViewport,
+    required double minHeight,
+    required Widget child,
+    int flex = 1,
+  }) {
+    if (fillsViewport) {
+      return Expanded(
+        flex: flex,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: minHeight),
+          child: child,
+        ),
+      );
+    }
+
+    return SizedBox(height: minHeight, child: child);
+  }
+
+  static Widget _buildWideColumns({
+    required bool fillsViewport,
+    required Widget scheduleColumn,
+    required Widget sessionColumn,
+    required Widget waitingColumn,
+  }) {
+    final sidePanels = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _queuePanel(fillsViewport: fillsViewport, minHeight: _QueuePanelHeights.session, flex: 2, child: sessionColumn),
+        const SizedBox(height: SpacingTokens.md),
+        _queuePanel(fillsViewport: fillsViewport, minHeight: _QueuePanelHeights.waiting, flex: 2, child: waitingColumn),
+      ],
+    );
+
+    return Row(
+      crossAxisAlignment: fillsViewport ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
+      children: [
+        _queuePanel(
+          fillsViewport: fillsViewport,
+          minHeight: _QueuePanelHeights.schedule,
+          flex: 3,
+          child: scheduleColumn,
+        ),
+        const SizedBox(width: SpacingTokens.md),
+        Expanded(flex: 2, child: sidePanels),
+      ],
+    );
+  }
+
+  static Widget _buildNarrowColumns({
+    required bool fillsViewport,
+    required Widget scheduleColumn,
+    required Widget sessionColumn,
+    required Widget waitingColumn,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _queuePanel(
+          fillsViewport: fillsViewport,
+          minHeight: _QueuePanelHeights.schedule,
+          flex: 3,
+          child: scheduleColumn,
+        ),
+        const SizedBox(height: SpacingTokens.md),
+        _queuePanel(fillsViewport: fillsViewport, minHeight: _QueuePanelHeights.session, flex: 2, child: sessionColumn),
+        const SizedBox(height: SpacingTokens.md),
+        _queuePanel(fillsViewport: fillsViewport, minHeight: _QueuePanelHeights.waiting, flex: 2, child: waitingColumn),
+      ],
     );
   }
 }
