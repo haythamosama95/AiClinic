@@ -20,6 +20,7 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
     this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
     this.doctorsLoading = false,
     this.onDoctorTap,
+    this.bodyScrollable = true,
     super.key,
   });
 
@@ -28,6 +29,9 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
   final AppointmentQueueShiftDoctorLookup shiftLookup;
   final bool doctorsLoading;
   final ValueChanged<AppointmentListItem>? onDoctorTap;
+
+  /// When false, the list expands to show every row and defers scrolling to the page.
+  final bool bodyScrollable;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +57,8 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
           : doctorsOnShift.isEmpty
           ? const Padding(padding: EdgeInsets.all(SpacingTokens.md), child: _NoDoctorsOnShiftPlaceholder())
           : ListView.separated(
+              shrinkWrap: !bodyScrollable,
+              physics: bodyScrollable ? null : const NeverScrollableScrollPhysics(),
               padding: const EdgeInsets.all(SpacingTokens.md),
               itemCount: doctorsOnShift.length,
               separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),

@@ -144,7 +144,7 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
   }
 }
 
-/// Minimum notched-card heights so queue panels stay usable after window resize.
+/// Minimum notched-card heights when the queue fills the viewport (wide layout).
 abstract final class _QueuePanelHeights {
   static const schedule = 320.0;
   static const session = 220.0;
@@ -200,6 +200,7 @@ class _QueueBody extends ConsumerWidget {
           scrollNonce: scrollNonce,
           scrollToAppointmentId: scrollToAppointmentId,
           onTargetAppointmentScrollHandled: onTargetAppointmentScrollHandled,
+          bodyScrollable: fillsViewport,
         );
         final sessionColumn = AppointmentQueueSessionColumn(
           appointments: state.items,
@@ -207,12 +208,14 @@ class _QueueBody extends ConsumerWidget {
           shiftLookup: shiftLookup,
           doctorsLoading: doctorsLoading,
           onDoctorTap: (item) => onCheckedInPatientTap(item.id),
+          bodyScrollable: fillsViewport,
         );
         final waitingColumn = AppointmentQueueWaitingColumn(
           items: partition.waiting,
           now: now,
           shiftLookup: shiftLookup,
           onPatientTap: (item) => onCheckedInPatientTap(item.id),
+          bodyScrollable: fillsViewport,
         );
 
         final columns = isWide
@@ -273,7 +276,7 @@ class _QueueBody extends ConsumerWidget {
       );
     }
 
-    return SizedBox(height: minHeight, child: child);
+    return child;
   }
 
   static Widget _buildWideColumns({

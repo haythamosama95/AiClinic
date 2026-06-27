@@ -34,12 +34,16 @@ class AppointmentQueueScheduleColumn extends ConsumerStatefulWidget {
     this.scrollNonce = 0,
     this.scrollToAppointmentId,
     this.onTargetAppointmentScrollHandled,
+    this.bodyScrollable = true,
     super.key,
   });
 
   final List<AppointmentListItem> items;
   final DateTime now;
   final AppointmentQueueShiftDoctorLookup shiftLookup;
+
+  /// When false, the list expands to show every row and defers scrolling to the page.
+  final bool bodyScrollable;
 
   /// Bumped by the queue page on each visit so the list scrolls to the focused row.
   final int scrollNonce;
@@ -146,7 +150,7 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
     }
 
     final closestIndex = _scrollTargetIndex();
-    if (_scrollController.hasClients && _scrollTargetRowKey.currentContext == null) {
+    if (widget.bodyScrollable && _scrollController.hasClients && _scrollTargetRowKey.currentContext == null) {
       final maxExtent = _scrollController.position.maxScrollExtent;
       final targetOffset = (closestIndex * _estimatedRowHeight).clamp(0.0, maxExtent);
       _scrollController.jumpTo(targetOffset);
@@ -247,7 +251,9 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
       body: widget.items.isEmpty
           ? const _ScheduleEmptyState()
           : ListView.builder(
-              controller: _scrollController,
+              controller: widget.bodyScrollable ? _scrollController : null,
+              shrinkWrap: !widget.bodyScrollable,
+              physics: widget.bodyScrollable ? null : const NeverScrollableScrollPhysics(),
               padding: const EdgeInsets.all(SpacingTokens.md),
               itemCount: widget.items.length,
               itemBuilder: (context, index) {
