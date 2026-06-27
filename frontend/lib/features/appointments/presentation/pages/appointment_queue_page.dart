@@ -14,6 +14,7 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_schedule_column.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_session_column.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_stats_banner.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_waiting_column.dart';
 
 /// Clinic queue dashboard for front-desk flow management.
 class AppointmentQueuePage extends ConsumerStatefulWidget {
@@ -160,12 +161,26 @@ class _QueueBody extends ConsumerWidget {
                   const SizedBox(width: SpacingTokens.md),
                   Expanded(
                     flex: 2,
-                    child: AppointmentQueueSessionColumn(
-                      appointments: state.items,
-                      nextUp: partition.nextUp,
-                      now: now,
-                      shiftLookup: shiftLookup,
-                      doctorsLoading: doctorsLoading,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: AppointmentQueueSessionColumn(
+                            appointments: state.items,
+                            now: now,
+                            shiftLookup: shiftLookup,
+                            doctorsLoading: doctorsLoading,
+                          ),
+                        ),
+                        const SizedBox(height: SpacingTokens.md),
+                        Expanded(
+                          child: AppointmentQueueWaitingColumn(
+                            items: partition.waiting,
+                            now: now,
+                            shiftLookup: shiftLookup,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -187,11 +202,15 @@ class _QueueBody extends ConsumerWidget {
                     flex: 2,
                     child: AppointmentQueueSessionColumn(
                       appointments: state.items,
-                      nextUp: partition.nextUp,
                       now: now,
                       shiftLookup: shiftLookup,
                       doctorsLoading: doctorsLoading,
                     ),
+                  ),
+                  const SizedBox(height: SpacingTokens.md),
+                  Expanded(
+                    flex: 2,
+                    child: AppointmentQueueWaitingColumn(items: partition.waiting, now: now, shiftLookup: shiftLookup),
                   ),
                 ],
               );

@@ -210,6 +210,24 @@ void main() {
       expect(AppointmentQueueDisplay.isScheduleRowDimmed(noShow), isFalse);
     });
 
+    test('partition orders checked-in patients by appointment start time', () {
+      final early = item(
+        status: AppointmentStatus.checkedIn,
+        id: 'early',
+        startTime: DateTime.utc(2026, 6, 4, 9),
+        checkedInAt: DateTime.utc(2026, 6, 4, 8, 30),
+      );
+      final late = item(
+        status: AppointmentStatus.checkedIn,
+        id: 'late',
+        startTime: DateTime.utc(2026, 6, 4, 11),
+        checkedInAt: DateTime.utc(2026, 6, 4, 10, 45),
+      );
+      final partition = AppointmentQueueDisplay.partition([late, early]);
+
+      expect(partition.waiting.map((item) => item.id), ['early', 'late']);
+    });
+
     test('computeStats compares average waited time using stored check-in timestamps', () {
       final now = DateTime.utc(2026, 6, 4, 12);
       final todayItems = [

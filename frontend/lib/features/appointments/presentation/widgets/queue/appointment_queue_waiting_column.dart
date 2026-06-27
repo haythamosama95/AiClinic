@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
+import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
@@ -13,25 +14,24 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_d
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
 
-/// Column 3 — doctors on the current shift.
-class AppointmentQueueSessionColumn extends StatelessWidget {
-  const AppointmentQueueSessionColumn({
-    required this.appointments,
+/// Checked-in patients waiting to be seen, sorted by appointment time.
+class AppointmentQueueWaitingColumn extends StatelessWidget {
+  const AppointmentQueueWaitingColumn({
+    required this.items,
     required this.now,
     this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
-    this.doctorsLoading = false,
     super.key,
   });
 
-  final List<AppointmentListItem> appointments;
+  final List<AppointmentListItem> items;
   final DateTime now;
   final AppointmentQueueShiftDoctorLookup shiftLookup;
-  final bool doctorsLoading;
+
+  static final _timeFormat = DateFormat('h:mm a');
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final doctorsOnShift = shiftLookup.doctorsOnCurrentShiftAt(now);
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -45,7 +45,7 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(SpacingTokens.md, SpacingTokens.md, SpacingTokens.md, SpacingTokens.sm),
             child: Text(
-              'Doctors',
+              'Checked in',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
@@ -53,56 +53,60 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(SpacingTokens.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: doctorsLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : doctorsOnShift.isEmpty
-                        ? const _NoDoctorsOnShiftPlaceholder()
-                        : ListView.separated(
-                            itemCount: doctorsOnShift.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
-                            itemBuilder: (context, index) {
-                              final doctor = doctorsOnShift[index];
-                              final inProgressAppointment = AppointmentQueueDisplay.inProgressAppointmentForDoctor(
-                                doctor.id,
-                                appointments,
-                              );
-                              return _DoctorOnShiftRow(
-                                doctor: doctor,
-                                inProgressAppointment: inProgressAppointment,
-                                now: now,
-                              );
-                            },
+              child: items.isEmpty
+                  ? const _NoCheckedInPlaceholder()
+                  : ListView.separated(
+                      itemCount: items.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        return _CheckedInPatientRow(
+                          item: item,
+                          preferredDoctorLabel: _preferredDoctorLabel(item),
+                          timeLabel: _timeFormat.format(item.startTime.toLocal()),
+                          waitLabel: AppointmentQueueDisplay.formatWaitedLabel(
+                            AppointmentQueueDisplay.estimateWaitDuration(item, now: now),
                           ),
-                  ),
-                ],
-              ),
+                        );
+                      },
+                    ),
             ),
           ),
         ],
       ),
     );
   }
+
+  String _preferredDoctorLabel(AppointmentListItem item) {
+    final presentation = AppointmentQueueDisplay.queueDoctorPresentation(item, shiftLookup: shiftLookup);
+    if (presentation.displayNames == AppointmentQueueDisplay.noPreferredDoctorLabel) {
+      return AppointmentQueueDisplay.noPreferredDoctorLabel;
+    }
+    if (presentation.hasPatientChoice) {
+      return "Patient's choice · ${presentation.displayNames}";
+    }
+    return presentation.displayNames;
+  }
 }
 
-class _DoctorOnShiftRow extends StatelessWidget {
-  const _DoctorOnShiftRow({required this.doctor, required this.now, this.inProgressAppointment});
+class _CheckedInPatientRow extends StatelessWidget {
+  const _CheckedInPatientRow({
+    required this.item,
+    required this.preferredDoctorLabel,
+    required this.timeLabel,
+    required this.waitLabel,
+  });
 
-  final QueueShiftDoctor doctor;
-  final DateTime now;
-  final AppointmentListItem? inProgressAppointment;
+  final AppointmentListItem item;
+  final String preferredDoctorLabel;
+  final String timeLabel;
+  final String waitLabel;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final textTheme = Theme.of(context).textTheme;
-    final hasPatientInProgress = inProgressAppointment != null;
-    final statusColor = hasPatientInProgress
-        ? AppointmentCalendarDisplay.statusColor(AppointmentStatus.inProgress)
-        : AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled);
+    final statusColor = AppointmentCalendarDisplay.statusColor(AppointmentStatus.checkedIn);
     final borderRadius = BorderRadius.circular(context.shapeTokens.lg);
 
     return FCard.raw(
@@ -118,11 +122,7 @@ class _DoctorOnShiftRow extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: hasPatientInProgress
-                ? () => AppNavigator(
-                    context,
-                  ).pushAppointmentDetail(inProgressAppointment!.id, preview: inProgressAppointment)
-                : null,
+            onTap: () => AppNavigator(context).pushAppointmentDetail(item.id, preview: item),
             child: Ink(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -137,15 +137,16 @@ class _DoctorOnShiftRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
+                      flex: 7,
                       child: TiltedBackgroundIconStack(
-                        icon: Icons.medical_services_outlined,
+                        icon: Icons.assignment_ind_outlined,
                         minIconSize: 60,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             AppointmentScaleDownText(
-                              text: doctor.name,
+                              text: item.patientName,
                               style: textTheme.bodyMedium?.copyWith(
                                 color: colors.foreground,
                                 fontWeight: FontWeight.w700,
@@ -153,7 +154,7 @@ class _DoctorOnShiftRow extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'On shift',
+                              preferredDoctorLabel,
                               style: textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -164,29 +165,26 @@ class _DoctorOnShiftRow extends StatelessWidget {
                     ),
                     _QueueSectionDivider(color: colors.border),
                     Expanded(
+                      flex: 3,
                       child: TiltedBackgroundIconStack(
-                        icon: Icons.assignment_ind_outlined,
+                        icon: Icons.schedule_outlined,
                         minIconSize: 60,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            AppointmentScaleDownText(
-                              text: hasPatientInProgress
-                                  ? inProgressAppointment!.patientName
-                                  : 'No patient in progress',
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: hasPatientInProgress ? colors.foreground : colors.mutedForeground,
+                            Text(
+                              timeLabel,
+                              style: textTheme.titleSmall?.copyWith(
+                                color: colors.foreground,
                                 fontWeight: FontWeight.w700,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              hasPatientInProgress
-                                  ? AppointmentQueueDisplay.formatSessionLabel(
-                                      AppointmentQueueDisplay.estimateSessionDuration(inProgressAppointment!, now: now),
-                                    )
-                                  : 'Available',
+                              waitLabel,
                               style: textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -206,7 +204,6 @@ class _DoctorOnShiftRow extends StatelessWidget {
   }
 }
 
-/// Centered vertical divider between queue card sections.
 class _QueueSectionDivider extends StatelessWidget {
   const _QueueSectionDivider({required this.color});
 
@@ -229,8 +226,8 @@ class _QueueSectionDivider extends StatelessWidget {
   }
 }
 
-class _NoDoctorsOnShiftPlaceholder extends StatelessWidget {
-  const _NoDoctorsOnShiftPlaceholder();
+class _NoCheckedInPlaceholder extends StatelessWidget {
+  const _NoCheckedInPlaceholder();
 
   @override
   Widget build(BuildContext context) {
@@ -248,15 +245,15 @@ class _NoDoctorsOnShiftPlaceholder extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.medical_services_outlined, size: 48, color: colors.mutedForeground),
+              Icon(Icons.how_to_reg_outlined, size: 48, color: colors.mutedForeground),
               const SizedBox(height: SpacingTokens.md),
               Text(
-                'No doctors on shift',
+                'No patients checked in',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: SpacingTokens.sm),
               Text(
-                'Assign doctors to an active shift for this branch.',
+                'Checked-in patients will appear here in appointment order.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
               ),

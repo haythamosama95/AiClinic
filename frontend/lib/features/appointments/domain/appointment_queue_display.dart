@@ -41,13 +41,12 @@ class AppointmentQueueStats {
   final AppointmentQueueStatTrend? avgWaitTrend;
 }
 
-/// Three-column partition of today's queue.
+/// Partition of today's queue into schedule and checked-in columns.
 class AppointmentQueuePartition {
-  const AppointmentQueuePartition({required this.schedule, required this.waiting, this.nextUp});
+  const AppointmentQueuePartition({required this.schedule, required this.waiting});
 
   final List<AppointmentListItem> schedule;
   final List<AppointmentListItem> waiting;
-  final AppointmentListItem? nextUp;
 }
 
 /// Pure display rules for the clinic queue dashboard.
@@ -161,23 +160,10 @@ abstract final class AppointmentQueueDisplay {
   }
 
   static AppointmentQueuePartition partition(List<AppointmentListItem> items, {DateTime? now}) {
-    final reference = now ?? DateTime.now();
     final sorted = sortAppointmentsByStartTime(_activeToday(items));
-    final waiting = sorted.where((item) => item.status == AppointmentStatus.checkedIn).toList(growable: false)
-      ..sort((a, b) => estimateWaitDuration(b, now: reference).compareTo(estimateWaitDuration(a, now: reference)));
-    AppointmentListItem? nextUp;
-    if (waiting.isNotEmpty) {
-      nextUp = waiting.first;
-    } else {
-      for (final item in sorted) {
-        if (item.status == AppointmentStatus.confirmed || item.status == AppointmentStatus.scheduled) {
-          nextUp = item;
-          break;
-        }
-      }
-    }
+    final waiting = sorted.where((item) => item.status == AppointmentStatus.checkedIn).toList(growable: false);
 
-    return AppointmentQueuePartition(schedule: sorted, waiting: waiting, nextUp: nextUp);
+    return AppointmentQueuePartition(schedule: sorted, waiting: waiting);
   }
 
   /// Doctor column content for the queue appointments card.
@@ -188,7 +174,7 @@ abstract final class AppointmentQueueDisplay {
     return shiftLookup.presentationFor(item);
   }
 
-  /// Compact doctor label for session / next-up summaries.
+  /// Compact doctor label for queue summary rows.
   static String queueDoctorLabel(
     AppointmentListItem item, {
     AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
