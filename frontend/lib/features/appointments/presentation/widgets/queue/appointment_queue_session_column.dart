@@ -8,24 +8,25 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_display
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
 
-/// Column 3 — active session cards (one per doctor) and next-up preview.
+/// Column 3 — doctors on the current shift and next-up preview.
 class AppointmentQueueSessionColumn extends StatelessWidget {
   const AppointmentQueueSessionColumn({
-    required this.activeSessions,
     required this.nextUp,
     required this.now,
     this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
+    this.doctorsLoading = false,
     super.key,
   });
 
-  final List<AppointmentListItem> activeSessions;
   final AppointmentListItem? nextUp;
   final DateTime now;
   final AppointmentQueueShiftDoctorLookup shiftLookup;
+  final bool doctorsLoading;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
+    final doctorsOnShift = shiftLookup.doctorsOnCurrentShiftAt(now);
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -41,15 +42,10 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Active sessions',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                ),
+                Text('Doctors', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: SpacingTokens.xs / 2),
                 Text(
-                  activeSessions.length <= 1
-                      ? 'Who is currently with the doctor'
-                      : 'Patients currently in consultation by doctor',
+                  'Staff on shift right now',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
                 ),
               ],
@@ -63,19 +59,15 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
-                    child: activeSessions.isEmpty
-                        ? const _NoActiveSessionPlaceholder()
-                        : activeSessions.length == 1
-                        ? _ActiveSessionHeroCard(item: activeSessions.first, now: now, shiftLookup: shiftLookup)
+                    child: doctorsLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : doctorsOnShift.isEmpty
+                        ? const _NoDoctorsOnShiftPlaceholder()
                         : ListView.separated(
-                            itemCount: activeSessions.length,
+                            itemCount: doctorsOnShift.length,
                             separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
                             itemBuilder: (context, index) {
-                              return _ActiveSessionCompactCard(
-                                item: activeSessions[index],
-                                now: now,
-                                shiftLookup: shiftLookup,
-                              );
+                              return _DoctorOnShiftRow(doctor: doctorsOnShift[index]);
                             },
                           ),
                   ),
@@ -93,149 +85,42 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
   }
 }
 
-class _ActiveSessionHeroCard extends StatelessWidget {
-  const _ActiveSessionHeroCard({required this.item, required this.now, required this.shiftLookup});
+class _DoctorOnShiftRow extends StatelessWidget {
+  const _DoctorOnShiftRow({required this.doctor});
 
-  final AppointmentListItem item;
-  final DateTime now;
-  final AppointmentQueueShiftDoctorLookup shiftLookup;
+  final QueueShiftDoctor doctor;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
-    final sessionLabel = AppointmentQueueDisplay.formatSessionLabel(
-      AppointmentQueueDisplay.estimateSessionDuration(item, now: now),
-    );
-    final doctorLabel = AppointmentQueueDisplay.queueDoctorLabel(item, shiftLookup: shiftLookup);
 
-    return Material(
-      color: colors.primary.withValues(alpha: 0.06),
-      borderRadius: BorderRadius.circular(SpacingTokens.lg),
-      child: InkWell(
-        onTap: () => AppNavigator(context).pushAppointmentDetail(item.id, preview: item),
-        borderRadius: BorderRadius.circular(SpacingTokens.lg),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(SpacingTokens.lg),
-            border: Border.all(color: colors.primary.withValues(alpha: 0.35), width: 2),
-          ),
-          padding: const EdgeInsets.all(SpacingTokens.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'CURRENTLY WITH DOCTOR',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colors.primary,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const Spacer(),
-              AppointmentScaleDownText(
-                text: item.patientName,
-                style: Theme.of(
-                  context,
-                ).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w800, color: colors.foreground, height: 1.05),
-              ),
-              const SizedBox(height: SpacingTokens.md),
-              Row(
-                children: [
-                  Icon(Icons.timer_outlined, size: 18, color: colors.primary),
-                  const SizedBox(width: SpacingTokens.xs),
-                  Text(
-                    sessionLabel,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(color: colors.primary, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              Row(
-                children: [
-                  Icon(Icons.medical_services_outlined, size: 18, color: colors.mutedForeground),
-                  const SizedBox(width: SpacingTokens.xs),
-                  Expanded(
-                    child: AppointmentScaleDownText(
-                      text: doctorLabel,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: colors.mutedForeground),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActiveSessionCompactCard extends StatelessWidget {
-  const _ActiveSessionCompactCard({required this.item, required this.now, required this.shiftLookup});
-
-  final AppointmentListItem item;
-  final DateTime now;
-  final AppointmentQueueShiftDoctorLookup shiftLookup;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final sessionLabel = AppointmentQueueDisplay.formatSessionLabel(
-      AppointmentQueueDisplay.estimateSessionDuration(item, now: now),
-    );
-    final doctorLabel = AppointmentQueueDisplay.queueDoctorLabel(item, shiftLookup: shiftLookup);
-
-    return Material(
-      color: colors.primary.withValues(alpha: 0.06),
-      borderRadius: BorderRadius.circular(SpacingTokens.md),
-      child: InkWell(
-        onTap: () => AppNavigator(context).pushAppointmentDetail(item.id, preview: item),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.muted.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(SpacingTokens.md),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(SpacingTokens.md),
-            border: Border.all(color: colors.primary.withValues(alpha: 0.35)),
-          ),
-          padding: const EdgeInsets.all(SpacingTokens.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AppointmentScaleDownText(
-                text: doctorLabel,
-                style: Theme.of(
-                  context,
-                ).textTheme.labelMedium?.copyWith(color: colors.primary, fontWeight: FontWeight.w700),
+        border: Border.all(color: colors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
+        child: Row(
+          children: [
+            Icon(Icons.medical_services_outlined, size: 20, color: colors.primary),
+            const SizedBox(width: SpacingTokens.sm),
+            Expanded(
+              child: AppointmentScaleDownText(
+                text: doctor.name,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
-              const SizedBox(height: SpacingTokens.xs),
-              AppointmentScaleDownText(
-                text: item.patientName,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: SpacingTokens.xs),
-              Row(
-                children: [
-                  Icon(Icons.timer_outlined, size: 16, color: colors.primary),
-                  const SizedBox(width: SpacingTokens.xs),
-                  Text(
-                    sessionLabel,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: colors.primary, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _NoActiveSessionPlaceholder extends StatelessWidget {
-  const _NoActiveSessionPlaceholder();
+class _NoDoctorsOnShiftPlaceholder extends StatelessWidget {
+  const _NoDoctorsOnShiftPlaceholder();
 
   @override
   Widget build(BuildContext context) {
@@ -253,15 +138,15 @@ class _NoActiveSessionPlaceholder extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.meeting_room_outlined, size: 48, color: colors.mutedForeground),
+              Icon(Icons.medical_services_outlined, size: 48, color: colors.mutedForeground),
               const SizedBox(height: SpacingTokens.md),
               Text(
-                'No active sessions',
+                'No doctors on shift',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: SpacingTokens.sm),
               Text(
-                'Use Call next on a waiting patient or advance status to start a session.',
+                'Assign doctors to an active shift for this branch.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
               ),

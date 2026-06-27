@@ -56,39 +56,6 @@ void main() {
       expect(AppointmentQueueDisplay.indexClosestToNow(items, now: start.add(const Duration(hours: 5))), 1);
     });
 
-    test('activeSessionsFor returns one session per doctor', () {
-      final doctorA = 'doc-a';
-      final doctorB = 'doc-b';
-      final start = DateTime.utc(2026, 6, 4, 10);
-      final items = [
-        item(
-          status: AppointmentStatus.inProgress,
-          startTime: start,
-          doctorId: doctorA,
-          doctorName: 'Dr Alpha',
-          id: 'a1',
-        ),
-        item(
-          status: AppointmentStatus.inProgress,
-          startTime: start.add(const Duration(hours: 1)),
-          doctorId: doctorB,
-          doctorName: 'Dr Beta',
-          id: 'a2',
-        ),
-        item(
-          status: AppointmentStatus.inProgress,
-          startTime: start.add(const Duration(minutes: 30)),
-          doctorId: doctorA,
-          doctorName: 'Dr Alpha',
-          id: 'a3',
-        ),
-      ];
-
-      final sessions = AppointmentQueueDisplay.activeSessionsFor(items);
-      expect(sessions, hasLength(2));
-      expect(sessions.map((session) => session.id), containsAll(['a1', 'a2']));
-    });
-
     test('queueDoctorLabel shows no preferred doctor when unassigned', () {
       final unassigned = item(doctorId: null, doctorName: null);
       expect(AppointmentQueueDisplay.queueDoctorLabel(unassigned), 'No preferred doctor');

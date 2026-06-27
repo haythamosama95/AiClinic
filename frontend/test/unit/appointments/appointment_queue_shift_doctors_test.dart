@@ -49,6 +49,41 @@ void main() {
       expect(lookup.doctorsOnShiftAt(DateTime.utc(2026, 6, 4, 14)), isEmpty);
     });
 
+    test('doctorsOnCurrentShiftAt includes staffed shifts with unknown status', () {
+      final unknownStatusShift = ShiftListItem(
+        id: 's2',
+        branchId: 'b1',
+        shiftDate: DateTime(2026, 6, 4),
+        startTime: '09:00',
+        endTime: '13:00',
+        status: ShiftStatus.unknown,
+        isUnassigned: false,
+        assigneeNames: const ['Dr Alpha'],
+        assigneeCount: 1,
+      );
+      final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
+        organizationTimezone: 'UTC',
+        shifts: [unknownStatusShift],
+        doctors: doctors,
+      );
+
+      expect(lookup.doctorsOnCurrentShiftAt(DateTime.utc(2026, 6, 4, 10)), hasLength(1));
+    });
+
+    test('doctorsOnCurrentShiftAt falls back to staffed shifts on the same day', () {
+      final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
+        organizationTimezone: 'UTC',
+        shifts: [morningShift],
+        doctors: doctors,
+      );
+
+      expect(lookup.doctorsOnCurrentShiftAt(DateTime.utc(2026, 6, 4, 14)).map((doctor) => doctor.name), [
+        'Dr Alpha',
+        'Dr Beta',
+      ]);
+      expect(lookup.doctorsOnShiftAt(DateTime.utc(2026, 6, 4, 14)), isEmpty);
+    });
+
     test('presentationFor marks pre-visit assigned doctor as patient choice', () {
       final lookup = AppointmentQueueShiftDoctorLookup.empty;
       final item = _item(status: AppointmentStatus.confirmed, doctorId: 'd1', doctorName: 'Dr Alpha');

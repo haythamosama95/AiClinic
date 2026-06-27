@@ -129,8 +129,9 @@ class _QueueBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final shiftLookup =
-        ref.watch(appointmentQueueShiftDoctorLookupProvider).value ?? AppointmentQueueShiftDoctorLookup.empty;
+    final shiftLookupAsync = ref.watch(appointmentQueueShiftDoctorLookupProvider);
+    final shiftLookup = shiftLookupAsync.value ?? AppointmentQueueShiftDoctorLookup.empty;
+    final doctorsLoading = shiftLookupAsync.isLoading && !shiftLookupAsync.hasValue;
     final stats = AppointmentQueueDisplay.computeStats(
       state.items,
       now: now,
@@ -160,10 +161,10 @@ class _QueueBody extends ConsumerWidget {
                   Expanded(
                     flex: 2,
                     child: AppointmentQueueSessionColumn(
-                      activeSessions: partition.activeSessions,
                       nextUp: partition.nextUp,
                       now: now,
                       shiftLookup: shiftLookup,
+                      doctorsLoading: doctorsLoading,
                     ),
                   ),
                 ],
@@ -184,10 +185,10 @@ class _QueueBody extends ConsumerWidget {
                   Expanded(
                     flex: 2,
                     child: AppointmentQueueSessionColumn(
-                      activeSessions: partition.activeSessions,
                       nextUp: partition.nextUp,
                       now: now,
                       shiftLookup: shiftLookup,
+                      doctorsLoading: doctorsLoading,
                     ),
                   ),
                 ],

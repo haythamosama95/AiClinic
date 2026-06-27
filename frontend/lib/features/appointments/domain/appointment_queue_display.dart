@@ -41,16 +41,10 @@ class AppointmentQueueStats {
 
 /// Three-column partition of today's queue.
 class AppointmentQueuePartition {
-  const AppointmentQueuePartition({
-    required this.schedule,
-    required this.waiting,
-    required this.activeSessions,
-    this.nextUp,
-  });
+  const AppointmentQueuePartition({required this.schedule, required this.waiting, this.nextUp});
 
   final List<AppointmentListItem> schedule;
   final List<AppointmentListItem> waiting;
-  final List<AppointmentListItem> activeSessions;
   final AppointmentListItem? nextUp;
 }
 
@@ -168,7 +162,6 @@ abstract final class AppointmentQueueDisplay {
     final sorted = sortAppointmentsByStartTime(_activeToday(items));
     final waiting = sorted.where((item) => item.status == AppointmentStatus.checkedIn).toList(growable: false)
       ..sort((a, b) => estimateWaitDuration(b, now: reference).compareTo(estimateWaitDuration(a, now: reference)));
-    final activeSessions = activeSessionsFor(sorted);
     AppointmentListItem? nextUp;
     if (waiting.isNotEmpty) {
       nextUp = waiting.first;
@@ -181,12 +174,7 @@ abstract final class AppointmentQueueDisplay {
       }
     }
 
-    return AppointmentQueuePartition(
-      schedule: sorted,
-      waiting: waiting,
-      activeSessions: activeSessions,
-      nextUp: nextUp,
-    );
+    return AppointmentQueuePartition(schedule: sorted, waiting: waiting, nextUp: nextUp);
   }
 
   /// Doctor column content for the queue appointments card.
@@ -203,18 +191,6 @@ abstract final class AppointmentQueueDisplay {
     AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
   }) {
     return queueDoctorPresentation(item, shiftLookup: shiftLookup).displayNames;
-  }
-
-  /// One active session per doctor (earliest in-progress slot when duplicates exist).
-  static List<AppointmentListItem> activeSessionsFor(List<AppointmentListItem> items) {
-    final inProgress = items.where((item) => item.status == AppointmentStatus.inProgress).toList(growable: false);
-    final byDoctor = <String, AppointmentListItem>{};
-    for (final item in inProgress) {
-      final doctorKey = item.doctorId ?? '';
-      byDoctor.putIfAbsent(doctorKey, () => item);
-    }
-    final sessions = byDoctor.values.toList(growable: false)..sort((a, b) => a.startTime.compareTo(b.startTime));
-    return sessions;
   }
 
   /// Whether [item] can start because its doctor has no other in-progress appointment.

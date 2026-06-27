@@ -82,25 +82,33 @@ class AppointmentQueueShiftDoctorLookup {
       idsByKey[key] = doctor.id;
     }
 
-    final activeShifts = shifts
-        .where((shift) => shift.status == ShiftStatus.active && !shift.isUnassigned)
-        .toList(growable: false);
+    final staffedShifts = shifts.where(_isStaffedShift).toList(growable: false);
 
     return AppointmentQueueShiftDoctorLookup(
       organizationTimezone: organizationTimezone,
-      shifts: activeShifts,
+      shifts: staffedShifts,
       doctorNamesByNormalizedName: namesByKey,
       doctorIdsByNormalizedName: idsByKey,
     );
   }
 
+  static bool _isStaffedShift(ShiftListItem shift) {
+    return shift.status != ShiftStatus.cancelled && !shift.isUnassigned && shift.assigneeNames.isNotEmpty;
+  }
+
+  /// Doctors on shifts covering [referenceUtc] in organization local time.
+  ///
+  /// Falls back to all staffed shifts on the same calendar day when none cover
+  /// [referenceUtc], so the queue sidebar still lists today's shift doctors.
+  List<QueueShiftDoctor> doctorsOnCurrentShiftAt(DateTime referenceUtc) {
+    final covering = _doctorNamesOnShiftAt(referenceUtc, requireCoveringInstant: true);
+    final names = covering.isEmpty ? _doctorNamesOnShiftAt(referenceUtc, requireCoveringInstant: false) : covering;
+    return _queueShiftDoctorsForNames(names);
+  }
+
   /// Doctors on an active shift covering [appointmentStartUtc] in org local time.
   List<QueueShiftDoctor> doctorsOnShiftAt(DateTime appointmentStartUtc) {
-    final names = _doctorNamesOnShiftAt(appointmentStartUtc);
-    return [
-      for (final name in names)
-        if (_resolveDoctorId(name) case final id?) QueueShiftDoctor(id: id, name: name),
-    ];
+    return _queueShiftDoctorsForNames(_doctorNamesOnShiftAt(appointmentStartUtc));
   }
 
   /// Doctor names on an active shift covering [appointmentStartUtc] in org local time.
@@ -108,7 +116,20 @@ class AppointmentQueueShiftDoctorLookup {
     return _doctorNamesOnShiftAt(appointmentStartUtc);
   }
 
-  List<String> _doctorNamesOnShiftAt(DateTime appointmentStartUtc) {
+  List<QueueShiftDoctor> _queueShiftDoctorsForNames(List<String> names) {
+    final doctors = <QueueShiftDoctor>[];
+    for (final name in names) {
+      final id = _resolveDoctorId(name);
+      if (id == null) {
+        continue;
+      }
+      doctors.add(QueueShiftDoctor(id: id, name: name));
+    }
+    doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return doctors;
+  }
+
+  List<String> _doctorNamesOnShiftAt(DateTime appointmentStartUtc, {bool requireCoveringInstant = true}) {
     ensureAppointmentTimezonesInitialized();
     final location = tz.getLocation(organizationTimezone);
     final localStart = tz.TZDateTime.from(appointmentStartUtc.toUtc(), location);
@@ -125,7 +146,7 @@ class AppointmentQueueShiftDoctorLookup {
       if (shiftStart == null || shiftEnd == null) {
         continue;
       }
-      if (appointmentMinutes < shiftStart || appointmentMinutes >= shiftEnd) {
+      if (requireCoveringInstant && (appointmentMinutes < shiftStart || appointmentMinutes >= shiftEnd)) {
         continue;
       }
       for (final assignee in shift.assigneeNames) {
