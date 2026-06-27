@@ -14,12 +14,11 @@ abstract final class ShellTokens {
   static const double iconInsetFromNavEdge = 28;
 
   static const double headerHeight = 64;
-  static const double headerSearchMaxWidth = 480;
   static const double headerAvatarSize = 40;
   static const double headerIconButtonSize = 40;
   static const double headerActionsGap = 16;
 
-  /// Inset between the nav edge and the floating content panel.
+  /// Inset between the nav edge and the content panel (leading and below header only).
   static const double contentPanelInset = 16;
   static const double itemHeight = 40;
   static const double itemRadius = 12;

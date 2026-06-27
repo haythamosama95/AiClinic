@@ -93,12 +93,7 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
                   ShellHeader(pageTitle: pageTitle),
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        ShellTokens.contentPanelInset,
-                        SpacingTokens.sm,
-                        ShellTokens.contentPanelInset,
-                        ShellTokens.contentPanelInset,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(ShellTokens.contentPanelInset, SpacingTokens.sm, 0, 0),
                       child: ShellContentPanel(child: widget.child),
                     ),
                   ),
