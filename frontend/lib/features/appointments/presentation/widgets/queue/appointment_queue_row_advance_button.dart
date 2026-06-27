@@ -195,7 +195,9 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
       }
       ref.invalidate(appointmentDetailProvider(item.id));
       ref.invalidate(appointmentCalendarProvider);
-      ref.invalidate(appointmentQueueProvider);
+      ref
+          .read(appointmentQueueProvider.notifier)
+          .patchAppointmentStatus(appointmentId: item.id, newStatus: target, doctorId: doctorIdForStart);
       AppToast.success(context, message: 'Appointment marked as ${target.label.toLowerCase()}.');
     } on RpcFailure catch (error) {
       if (mounted) {

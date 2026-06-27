@@ -12,6 +12,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.d
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
@@ -106,15 +107,16 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
       return;
     }
 
-    state = state.copyWith(loading: true, error: null);
+    if (state.items.isEmpty) {
+      state = state.copyWith(loading: true, error: null);
+    } else {
+      state = state.copyWith(error: null);
+    }
     try {
       final range = _todayRange;
       final repository = ref.read(appointmentRepositoryProvider);
       final items = await repository.listAppointments(branchId: branchId, from: range.from, to: range.to);
-      final comparison = await _fetchComparisonItems(
-        branchId: branchId,
-        repository: repository,
-      );
+      final comparison = await _fetchComparisonItems(branchId: branchId, repository: repository);
       state = state.copyWith(
         loading: false,
         items: sortAppointmentsByStartTime(items),
@@ -143,10 +145,7 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
 
       final dayOffset = todayLocal.difference(previousDay).inDays;
       final comparisonNow = DateTime.now().subtract(Duration(days: dayOffset));
-      final comparisonRange = appointmentTodayRangeInTimezone(
-        timezone,
-        comparisonNow.toUtc(),
-      );
+      final comparisonRange = appointmentTodayRangeInTimezone(timezone, comparisonNow.toUtc());
       final items = await repository.listAppointments(
         branchId: branchId,
         from: comparisonRange.from,
@@ -196,6 +195,38 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
   void _unsubscribeRealtime() {
     _realtimeClient?.unsubscribe();
     _realtimeClient = null;
+  }
+
+  /// Applies a successful status RPC to the cached queue row without reloading the list.
+  void patchAppointmentStatus({
+    required String appointmentId,
+    required AppointmentStatus newStatus,
+    String? doctorId,
+    String? doctorName,
+  }) {
+    final index = state.items.indexWhere((item) => item.id == appointmentId);
+    if (index < 0) {
+      return;
+    }
+
+    final now = DateTime.now().toUtc();
+    final existing = state.items[index];
+    var patched = existing.copyWith(
+      status: newStatus,
+      updatedAt: now,
+      doctorId: doctorId ?? existing.doctorId,
+      doctorName: doctorName ?? existing.doctorName,
+    );
+    if (newStatus == AppointmentStatus.checkedIn && patched.checkedInAt == null) {
+      patched = patched.copyWith(checkedInAt: now);
+    }
+    if (newStatus == AppointmentStatus.inProgress && patched.inProgressAt == null) {
+      patched = patched.copyWith(inProgressAt: now);
+    }
+
+    final items = [...state.items];
+    items[index] = patched;
+    state = state.copyWith(items: sortAppointmentsByStartTime(items));
   }
 
   void _onRealtimeChange(AppointmentQueueRealtimeChange change) {

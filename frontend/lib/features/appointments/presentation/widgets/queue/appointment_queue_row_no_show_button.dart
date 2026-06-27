@@ -91,7 +91,9 @@ class _AppointmentQueueRowNoShowButtonState extends ConsumerState<AppointmentQue
           }
           ref.invalidate(appointmentDetailProvider(item.id));
           ref.invalidate(appointmentCalendarProvider);
-          ref.invalidate(appointmentQueueProvider);
+          ref
+              .read(appointmentQueueProvider.notifier)
+              .patchAppointmentStatus(appointmentId: item.id, newStatus: AppointmentStatus.noShow);
           AppToast.success(context, message: 'Appointment marked as no-show.');
         } on RpcFailure catch (error) {
           if (mounted) {
