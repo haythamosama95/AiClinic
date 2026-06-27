@@ -321,10 +321,10 @@ class _AppointmentRow extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
-                        width: 100,
+                        width: 72,
                         child: TiltedBackgroundIconStack(
                           icon: Icons.schedule_outlined,
-                          minIconSize: 88,
+                          minIconSize: 60,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
@@ -335,6 +335,8 @@ class _AppointmentRow extends StatelessWidget {
                                   color: primaryTextColor,
                                   fontWeight: primaryWeight,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 2),
                               Text(
