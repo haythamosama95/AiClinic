@@ -193,6 +193,21 @@ abstract final class AppointmentQueueDisplay {
     return queueDoctorPresentation(item, shiftLookup: shiftLookup).displayNames;
   }
 
+  /// In-progress appointment currently assigned to [doctorId], if any.
+  static AppointmentListItem? inProgressAppointmentForDoctor(String doctorId, Iterable<AppointmentListItem> items) {
+    final normalizedId = doctorId.trim();
+    if (normalizedId.isEmpty) {
+      return null;
+    }
+
+    for (final item in items) {
+      if (item.status == AppointmentStatus.inProgress && item.doctorId == normalizedId) {
+        return item;
+      }
+    }
+    return null;
+  }
+
   /// Whether [item] can start because its doctor has no other in-progress appointment.
   static String? doctorInProgressBlockReason(
     AppointmentListItem item,
@@ -256,7 +271,17 @@ abstract final class AppointmentQueueDisplay {
   }
 
   static Duration estimateSessionDuration(AppointmentListItem item, {required DateTime now}) {
-    return estimateWaitDuration(item, now: now);
+    if (item.status != AppointmentStatus.inProgress) {
+      return Duration.zero;
+    }
+
+    final startedAt = item.inProgressAt ?? item.updatedAt;
+    if (startedAt == null) {
+      return Duration.zero;
+    }
+
+    final elapsed = now.difference(startedAt);
+    return elapsed.isNegative ? Duration.zero : elapsed;
   }
 
   static AppointmentQueueWaitTier waitTierFor(Duration wait) {

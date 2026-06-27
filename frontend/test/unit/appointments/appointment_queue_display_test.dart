@@ -235,6 +235,27 @@ void main() {
       expect(stats.avgWaitTrend?.percentChange, closeTo(-50, 0.01));
     });
 
+    test('estimateSessionDuration uses inProgressAt for active visits', () {
+      final startedAt = DateTime.utc(2026, 6, 4, 10);
+      final now = startedAt.add(const Duration(minutes: 22));
+      final active = item(status: AppointmentStatus.inProgress, inProgressAt: startedAt);
+
+      expect(AppointmentQueueDisplay.estimateSessionDuration(active, now: now), const Duration(minutes: 22));
+      expect(
+        AppointmentQueueDisplay.formatSessionLabel(AppointmentQueueDisplay.estimateSessionDuration(active, now: now)),
+        'In session: 22m',
+      );
+    });
+
+    test('inProgressAppointmentForDoctor returns active visit for doctor', () {
+      final active = item(id: 'active', status: AppointmentStatus.inProgress, doctorId: 'd1', doctorName: 'Dr Alpha');
+      final waiting = item(id: 'waiting', status: AppointmentStatus.checkedIn, doctorId: 'd2');
+
+      expect(AppointmentQueueDisplay.inProgressAppointmentForDoctor('d1', [active, waiting]), active);
+      expect(AppointmentQueueDisplay.inProgressAppointmentForDoctor('d2', [active, waiting]), isNull);
+      expect(AppointmentQueueDisplay.inProgressAppointmentForDoctor('', [active]), isNull);
+    });
+
     test('doctorInProgressBlockReason blocks start when doctor already in session', () {
       final doctorId = 'doc-a';
       final start = DateTime.utc(2026, 6, 4, 11);

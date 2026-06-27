@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
+import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/ui/widgets/layouts/tilted_background_icon_stack.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
 
 /// Column 3 — doctors on the current shift and next-up preview.
 class AppointmentQueueSessionColumn extends StatelessWidget {
   const AppointmentQueueSessionColumn({
+    required this.appointments,
     required this.nextUp,
     required this.now,
     this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
@@ -18,6 +24,7 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
     super.key,
   });
 
+  final List<AppointmentListItem> appointments;
   final AppointmentListItem? nextUp;
   final DateTime now;
   final AppointmentQueueShiftDoctorLookup shiftLookup;
@@ -39,16 +46,9 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(SpacingTokens.md, SpacingTokens.md, SpacingTokens.md, SpacingTokens.sm),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Doctors', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: SpacingTokens.xs / 2),
-                Text(
-                  'Staff on shift right now',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                ),
-              ],
+            child: Text(
+              'Doctors',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           const Divider(height: 1),
@@ -67,7 +67,16 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
                             itemCount: doctorsOnShift.length,
                             separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
                             itemBuilder: (context, index) {
-                              return _DoctorOnShiftRow(doctor: doctorsOnShift[index]);
+                              final doctor = doctorsOnShift[index];
+                              final inProgressAppointment = AppointmentQueueDisplay.inProgressAppointmentForDoctor(
+                                doctor.id,
+                                appointments,
+                              );
+                              return _DoctorOnShiftRow(
+                                doctor: doctor,
+                                inProgressAppointment: inProgressAppointment,
+                                now: now,
+                              );
                             },
                           ),
                   ),
@@ -86,33 +95,140 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
 }
 
 class _DoctorOnShiftRow extends StatelessWidget {
-  const _DoctorOnShiftRow({required this.doctor});
+  const _DoctorOnShiftRow({required this.doctor, required this.now, this.inProgressAppointment});
 
   final QueueShiftDoctor doctor;
+  final DateTime now;
+  final AppointmentListItem? inProgressAppointment;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
+    final textTheme = Theme.of(context).textTheme;
+    final hasPatientInProgress = inProgressAppointment != null;
+    final statusColor = hasPatientInProgress
+        ? AppointmentCalendarDisplay.statusColor(AppointmentStatus.inProgress)
+        : AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled);
+    final borderRadius = BorderRadius.circular(context.shapeTokens.lg);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.muted.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(SpacingTokens.md),
-        border: Border.all(color: colors.border),
+    return FCard.raw(
+      style: FCardStyleDelta.delta(
+        decoration: DecorationDelta.boxDelta(
+          color: colors.card,
+          border: Border.all(color: colors.border),
+          borderRadius: borderRadius,
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
-        child: Row(
-          children: [
-            Icon(Icons.medical_services_outlined, size: 20, color: colors.primary),
-            const SizedBox(width: SpacingTokens.sm),
-            Expanded(
-              child: AppointmentScaleDownText(
-                text: doctor.name,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: hasPatientInProgress
+                ? () => AppNavigator(
+                    context,
+                  ).pushAppointmentDetail(inProgressAppointment!.id, preview: inProgressAppointment)
+                : null,
+            child: Ink(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [statusColor.withValues(alpha: 0.22), statusColor.withValues(alpha: 0)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.md),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TiltedBackgroundIconStack(
+                        icon: Icons.medical_services_outlined,
+                        minIconSize: 60,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AppointmentScaleDownText(
+                              text: doctor.name,
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colors.foreground,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'On shift',
+                              style: textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    _QueueSectionDivider(color: colors.border),
+                    Expanded(
+                      child: TiltedBackgroundIconStack(
+                        icon: Icons.assignment_ind_outlined,
+                        minIconSize: 60,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AppointmentScaleDownText(
+                              text: hasPatientInProgress
+                                  ? inProgressAppointment!.patientName
+                                  : 'No patient in progress',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: hasPatientInProgress ? colors.foreground : colors.mutedForeground,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              hasPatientInProgress
+                                  ? AppointmentQueueDisplay.formatSessionLabel(
+                                      AppointmentQueueDisplay.estimateSessionDuration(inProgressAppointment!, now: now),
+                                    )
+                                  : 'Available',
+                              style: textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Centered vertical divider between queue card sections.
+class _QueueSectionDivider extends StatelessWidget {
+  const _QueueSectionDivider({required this.color});
+
+  final Color color;
+
+  static const _gap = SpacingTokens.md;
+  static const _lineHeight = 40.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: _gap * 2 + 1,
+      child: Center(
+        child: SizedBox(
+          height: _lineHeight,
+          child: VerticalDivider(width: 1, thickness: 1, color: color.withValues(alpha: 1)),
         ),
       ),
     );

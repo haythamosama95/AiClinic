@@ -161,6 +161,7 @@ class _QueueBody extends ConsumerWidget {
                   Expanded(
                     flex: 2,
                     child: AppointmentQueueSessionColumn(
+                      appointments: state.items,
                       nextUp: partition.nextUp,
                       now: now,
                       shiftLookup: shiftLookup,
@@ -185,6 +186,7 @@ class _QueueBody extends ConsumerWidget {
                   Expanded(
                     flex: 2,
                     child: AppointmentQueueSessionColumn(
+                      appointments: state.items,
                       nextUp: partition.nextUp,
                       now: now,
                       shiftLookup: shiftLookup,
