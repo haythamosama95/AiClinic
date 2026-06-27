@@ -14,6 +14,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'appointment_queue_test_support.dart';
+
 /// Valid local profile used by startup widget and integration tests.
 DeploymentProfile sampleDeploymentProfile({String? sourcePath}) {
   return DeploymentProfile(
@@ -102,6 +104,7 @@ List<Override> integrationTestOverrides() {
   return [
     startupSessionProvider.overrideWith(TestValidStartupSessionNotifier.new),
     idleTimeoutSettingsProvider.overrideWith(TestIdleTimeoutSettingsNotifier.new),
+    ...appointmentQueueTestOverrides(),
   ];
 }
 

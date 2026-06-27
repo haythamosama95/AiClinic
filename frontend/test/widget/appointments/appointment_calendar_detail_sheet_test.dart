@@ -22,6 +22,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
+import '../../helpers/appointment_queue_test_support.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../helpers/patient_test_support.dart';
 import '../../support/appointment_calendar_test_support.dart';
@@ -76,6 +77,7 @@ Future<void> pumpCalendarWithDetailRoutes(WidgetTester tester, {AppointmentRpcTe
         patientRepositoryProvider.overrideWithValue(patientRepo),
         listBranchesUseCaseProvider.overrideWith((ref) => ListBranches(CalendarStubBranchRepository())),
         listStaffUseCaseProvider.overrideWith((ref) => ListStaff(CalendarStubStaffRepository())),
+        ...appointmentQueueTestOverrides(),
       ],
       child: ForuiAppScope(
         child: MaterialApp.router(

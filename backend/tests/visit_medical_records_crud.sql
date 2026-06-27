@@ -28,6 +28,37 @@ BEGIN
 END;
 $$;
 
+-- Clears in-progress visits for [p_doctor_id] so later same-day slots can start fresh.
+CREATE OR REPLACE FUNCTION pg_temp.release_doctor_in_progress(p_doctor_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+
+  UPDATE public.visits v
+  SET
+    status = 'completed',
+    updated_at = now()
+  FROM public.appointments a
+  WHERE v.appointment_id = a.id
+    AND v.is_deleted = false
+    AND v.status = 'in_progress'
+    AND a.doctor_id = p_doctor_id
+    AND a.is_deleted = false;
+
+  UPDATE public.appointments a
+  SET
+    status = 'completed',
+    updated_at = now()
+  WHERE a.doctor_id = p_doctor_id
+    AND a.is_deleted = false
+    AND a.status = 'in_progress';
+
+  PERFORM set_config('role', 'authenticated', true);
+END;
+$$;
+
 DO $$
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
@@ -214,6 +245,8 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  PERFORM pg_temp.release_doctor_in_progress(v_doctor_staff);
+
   -- create_visit from checked_in advances appointment to in_progress.
   v_start := pg_temp.test_appointment_same_day_slot(3);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 3;
@@ -236,6 +269,8 @@ BEGIN
     COALESCE(v_result.error_code, 'appt=' || COALESCE(v_appt_status, '<null>'))
   );
   PERFORM set_config('role', 'authenticated', true);
+
+  PERFORM pg_temp.release_doctor_in_progress(v_doctor_staff);
 
   -- create_visit from in_progress (appointment already in_progress).
   v_start := pg_temp.test_appointment_same_day_slot(4);
@@ -298,6 +333,8 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  PERFORM pg_temp.release_doctor_in_progress(v_doctor_staff);
+
   -- SOAP workflow on a dedicated visit.
   v_start := pg_temp.test_appointment_same_day_slot(5);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 5;
@@ -354,21 +391,10 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- SOAP_REQUIRED_FOR_COMPLETE when all sections empty.
-  v_start := pg_temp.test_appointment_same_day_slot(6);
-  SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 6;
-  v_result := public.create_appointment(
-    v_branch_main, v_sd_patient, v_doctor_staff, 'planned', v_start, 20, NULL, NULL
-  );
-  v_appt_id := (v_result.data ->> 'appointment_id')::uuid;
-  v_result := public.update_appointment_status(v_appt_id, 'confirmed');
-  v_result := public.update_appointment_status(v_appt_id, 'checked_in');
-  v_result := public.create_visit(v_appt_id, NULL);
-  v_visit2_id := (v_result.data ->> 'visit_id')::uuid;
-  SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit2_id;
-  v_result := public.save_soap_note(v_visit2_id, v_visit_updated_at, '   ', '  ', NULL, NULL, NULL);
+  -- SOAP_REQUIRED_FOR_COMPLETE when all sections empty (same visit as partial save above).
+  v_result := public.save_soap_note(v_visit_id, v_visit_updated_at, '   ', '  ', NULL, NULL, NULL);
   v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
-  v_result := public.complete_visit(v_visit2_id, v_soap_updated_at);
+  v_result := public.complete_visit(v_visit_id, v_soap_updated_at);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
     'complete_visit_requires_soap_content',
@@ -465,10 +491,14 @@ BEGIN
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
     'get_visit_by_appointment',
-    v_result.success
-      AND (v_result.data ->> 'visit_id')::uuid = v_completed_visit_id
-      AND (v_result.data ->> 'status') = 'completed',
-    COALESCE(v_result.error_code, '<null>')
+    COALESCE(
+      v_result.success
+        AND (v_result.data ->> 'visit_id')::uuid IS NOT NULL
+        AND (v_result.data ->> 'visit_id')::uuid = v_completed_visit_id
+        AND (v_result.data ->> 'status') = 'completed',
+      false
+    ),
+    COALESCE(v_result.error_code, COALESCE(v_result.data::text, '<null>'))
   );
   PERFORM set_config('role', 'authenticated', true);
 
@@ -938,6 +968,8 @@ BEGIN
     )::text,
     true
   );
+
+  PERFORM pg_temp.release_doctor_in_progress(v_doctor_staff);
 
   -- update_appointment_status in_progress -> completed requires visit completion.
   v_start := pg_temp.test_appointment_same_day_slot(9);

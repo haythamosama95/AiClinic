@@ -70,6 +70,9 @@ class BoundaryTestContext {
     if (clinic != null && (requested == null || clinic!.suffix == requested)) {
       return clinic!;
     }
+    if (clinic != null) {
+      await devResetAsBootstrapAdmin(client);
+    }
     clinic = await fixtures.bootstrapOnly(label: requested);
     return clinic!;
   }
