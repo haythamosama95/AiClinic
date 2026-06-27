@@ -5,7 +5,7 @@ import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 
 /// Semantic badge variants for counts, statuses, and tags.
-enum AppBadgeVariant { muted, primary, outline, accent }
+enum AppBadgeVariant { muted, primary, outline, accent, plain }
 
 /// Compact label chip for counts, statuses, and metadata.
 class AppBadge extends StatelessWidget {
@@ -25,40 +25,56 @@ class AppBadge extends StatelessWidget {
       AppBadgeVariant.primary => (colors.primary, colors.primaryForeground, colors.primary),
       AppBadgeVariant.outline => (colors.background, colors.foreground, colors.border),
       AppBadgeVariant.accent => (colors.accent, colors.accentForeground, colors.accent),
+      AppBadgeVariant.plain => (null, colors.mutedForeground, null),
     };
+
+    final textStyle = switch (variant) {
+      AppBadgeVariant.plain => Theme.of(
+        context,
+      ).textTheme.labelMedium?.copyWith(color: foreground, fontWeight: FontWeight.w500),
+      _ => Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: foreground,
+        fontWeight: variant == AppBadgeVariant.muted ? FontWeight.w500 : FontWeight.w600,
+        fontSize: dense ? 11 : 12,
+        height: 1.2,
+      ),
+    };
+
+    final labelRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          IconTheme.merge(
+            data: IconThemeData(size: variant == AppBadgeVariant.plain ? 14 : 12, color: foreground),
+            child: icon!,
+          ),
+          const SizedBox(width: SpacingTokens.xs),
+        ],
+        Flexible(
+          child: Text(label, style: textStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    );
+
+    if (variant == AppBadgeVariant.plain) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm),
+        child: labelRow,
+      );
+    }
 
     final verticalPadding = dense ? SpacingTokens.xs / 2 : SpacingTokens.xs;
     final horizontalPadding = dense ? SpacingTokens.sm : SpacingTokens.sm + 2;
-    final textStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
-      color: foreground,
-      fontWeight: variant == AppBadgeVariant.muted ? FontWeight.w500 : FontWeight.w600,
-      fontSize: dense ? 11 : 12,
-      height: 1.2,
-    );
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: background,
         borderRadius: radius,
-        border: Border.all(color: border),
+        border: Border.all(color: border!),
       ),
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              IconTheme.merge(
-                data: IconThemeData(size: 12, color: foreground),
-                child: icon!,
-              ),
-              const SizedBox(width: SpacingTokens.xs),
-            ],
-            Flexible(
-              child: Text(label, style: textStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-          ],
-        ),
+        child: labelRow,
       ),
     );
   }

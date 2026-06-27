@@ -7,6 +7,21 @@ import 'package:ai_clinic/core/ui/widgets/buttons/app_icon_button.dart';
 import 'package:ai_clinic/core/ui/widgets/input/app_field_size.dart';
 import 'package:ai_clinic/core/ui/widgets/layouts/notched_card_path.dart';
 
+/// Optional wrapper for an [AppNotchedCard] shelf action.
+///
+/// When [providesOwnBackground] is true the card renders [action] as-is (for
+/// example a filled [AppButton]). When false (default) the card applies its
+/// standard card-colored stadium shell around [action].
+class AppNotchedCardAction extends StatelessWidget {
+  const AppNotchedCardAction({required this.action, this.providesOwnBackground = false, super.key});
+
+  final Widget action;
+  final bool providesOwnBackground;
+
+  @override
+  Widget build(BuildContext context) => action;
+}
+
 /// Dashboard panel with a top-trailing step-down cut-out for floating actions.
 ///
 /// Mirrors [AppCard] chrome on three corners; caller-supplied [actions] float
@@ -149,6 +164,8 @@ class _AppNotchedCardLayoutState extends State<_AppNotchedCardLayout> {
       textDirection: textDirection,
     );
 
+    final expandsVertically = widget.constraints.maxHeight.isFinite;
+
     return Stack(
       clipBehavior: Clip.none,
       fit: StackFit.passthrough,
@@ -170,40 +187,45 @@ class _AppNotchedCardLayoutState extends State<_AppNotchedCardLayout> {
             ),
             child: ColoredBox(
               color: colors.card,
-              child: Padding(
-                padding: contentStyle.padding,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.title != null)
-                      Padding(
-                        padding: EdgeInsetsDirectional.only(end: trailingInset),
-                        child: DefaultTextStyle.merge(
-                          textHeightBehavior: const TextHeightBehavior(
-                            applyHeightToFirstAscent: false,
-                            applyHeightToLastDescent: false,
-                          ),
-                          style: contentStyle.titleTextStyle,
-                          child: widget.title!,
-                        ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: expandsVertically ? MainAxisSize.max : MainAxisSize.min,
+                children: [
+                  if (widget.title != null || widget.description != null)
+                    Padding(
+                      padding: contentStyle.padding,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.title != null)
+                            Padding(
+                              padding: EdgeInsetsDirectional.only(end: trailingInset),
+                              child: DefaultTextStyle.merge(
+                                textHeightBehavior: const TextHeightBehavior(
+                                  applyHeightToFirstAscent: false,
+                                  applyHeightToLastDescent: false,
+                                ),
+                                style: contentStyle.titleTextStyle,
+                                child: widget.title!,
+                              ),
+                            ),
+                          if (widget.title != null && widget.description != null)
+                            SizedBox(height: contentStyle.titleSpacing),
+                          if (widget.description != null)
+                            DefaultTextStyle.merge(
+                              textHeightBehavior: const TextHeightBehavior(
+                                applyHeightToFirstAscent: false,
+                                applyHeightToLastDescent: false,
+                              ),
+                              style: contentStyle.subtitleTextStyle,
+                              child: widget.description!,
+                            ),
+                        ],
                       ),
-                    if (widget.title != null && widget.description != null) SizedBox(height: contentStyle.titleSpacing),
-                    if (widget.description != null)
-                      DefaultTextStyle.merge(
-                        textHeightBehavior: const TextHeightBehavior(
-                          applyHeightToFirstAscent: false,
-                          applyHeightToLastDescent: false,
-                        ),
-                        style: contentStyle.subtitleTextStyle,
-                        child: widget.description!,
-                      ),
-                    if (widget.title != null && widget.description != null)
-                      SizedBox(height: contentStyle.subtitleSpacing),
-                    if (_hasActions) SizedBox(height: kNotchActionBottomMargin),
-                    widget.body,
-                  ],
-                ),
+                    ),
+                  if (expandsVertically) Expanded(child: widget.body) else widget.body,
+                ],
               ),
             ),
           ),
@@ -255,11 +277,7 @@ Widget _buildActionsRow({
 
 /// Card-colored row of per-action shells in the notch shelf.
 class _NotchedCardActionsRow extends StatelessWidget {
-  const _NotchedCardActionsRow({
-    required this.backgroundColor,
-    required this.borderColor,
-    required this.actions,
-  });
+  const _NotchedCardActionsRow({required this.backgroundColor, required this.borderColor, required this.actions});
 
   final Color backgroundColor;
   final Color borderColor;
@@ -267,13 +285,20 @@ class _NotchedCardActionsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      spacing: SpacingTokens.sm,
-      children: [
-        for (final action in actions)
-          _NotchedCardActionShell(backgroundColor: backgroundColor, borderColor: borderColor, child: action),
-      ],
+    return IntrinsicHeight(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: SpacingTokens.sm,
+        children: [
+          for (final action in actions)
+            _NotchedCardActionShell(
+              backgroundColor: backgroundColor,
+              borderColor: borderColor,
+              parsed: _parseNotchedCardAction(action),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -284,28 +309,39 @@ class _NotchedCardActionsRow extends StatelessWidget {
 /// full stadium (including padding). Caller actions are display-only here to
 /// avoid nested pointer/hover regions on [IconButton] and forui controls.
 class _NotchedCardActionShell extends StatelessWidget {
-  const _NotchedCardActionShell({required this.backgroundColor, required this.borderColor, required this.child});
+  const _NotchedCardActionShell({required this.backgroundColor, required this.borderColor, required this.parsed});
 
   final Color backgroundColor;
   final Color borderColor;
-  final Widget child;
+  final ({Widget action, bool providesOwnBackground}) parsed;
 
   @override
   Widget build(BuildContext context) {
-    final onPressed = _actionOnPressed(child);
-    if (onPressed == null && child is! AppIconButton && child is! AppButton) {
+    final action = parsed.action;
+
+    if (parsed.providesOwnBackground) {
+      return Center(child: action);
+    }
+
+    final onPressed = _actionOnPressed(action);
+    if (onPressed == null && action is! AppIconButton && action is! AppButton) {
       return DecoratedBox(
         decoration: ShapeDecoration(
           color: backgroundColor,
           shape: StadiumBorder(side: BorderSide(color: borderColor)),
         ),
-        child: Padding(padding: const EdgeInsets.all(kNotchActionContainerPadding), child: child),
+        child: Padding(
+          padding: const EdgeInsets.all(kNotchActionContainerPadding),
+          child: Center(child: action),
+        ),
       );
     }
 
     final colors = context.semanticColors;
-    final usesAccentHover = child is AppButton && (child as AppButton).variant == AppButtonVariant.ghost;
-    final tooltip = child is AppIconButton ? (child as AppIconButton).tooltip : null;
+    final tooltip = switch (action) {
+      AppIconButton(:final tooltip) => tooltip,
+      _ => null,
+    };
 
     final shell = Material(
       color: backgroundColor,
@@ -319,15 +355,11 @@ class _NotchedCardActionShell extends StatelessWidget {
             return null;
           }
 
-          if (usesAccentHover) {
-            return colors.accent;
-          }
-
           return colors.foreground.withValues(alpha: 0.08);
         }),
         child: Padding(
           padding: const EdgeInsets.all(kNotchActionContainerPadding),
-          child: _NotchedCardActionDisplay(action: child),
+          child: Center(child: _NotchedCardActionDisplay(action: action)),
         ),
       ),
     );
@@ -382,12 +414,7 @@ class _NotchedCardButtonDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = const FButtonStyleDelta.context()(
-      context.theme.buttonStyles.resolve({_mapFButtonVariant(button.variant), context.platformVariant}).resolve({
-        button.size.buttonSize,
-        context.platformVariant,
-      }),
-    );
+    final style = _resolveAppButtonStyle(context, button);
     final contentStyle = style.contentStyle;
     final variants = button.onPressed == null ? {FTappableVariant.disabled} : const <FTappableVariant>{};
     final textStyle = contentStyle.textStyle.resolve(variants);
@@ -418,6 +445,15 @@ class _NotchedCardButtonDisplay extends StatelessWidget {
   }
 }
 
+FButtonStyle _resolveAppButtonStyle(BuildContext context, AppButton button) {
+  return const FButtonStyleDelta.context()(
+    context.theme.buttonStyles.resolve({_mapFButtonVariant(button.variant), context.platformVariant}).resolve({
+      button.size.buttonSize,
+      context.platformVariant,
+    }),
+  );
+}
+
 FButtonVariant _mapFButtonVariant(AppButtonVariant variant) => switch (variant) {
   AppButtonVariant.primary => FButtonVariant.primary,
   AppButtonVariant.secondary => FButtonVariant.secondary,
@@ -425,6 +461,14 @@ FButtonVariant _mapFButtonVariant(AppButtonVariant variant) => switch (variant) 
   AppButtonVariant.outline => FButtonVariant.outline,
   AppButtonVariant.ghost => FButtonVariant.ghost,
 };
+
+({Widget action, bool providesOwnBackground}) _parseNotchedCardAction(Widget widget) {
+  if (widget is AppNotchedCardAction) {
+    return (action: widget.action, providesOwnBackground: widget.providesOwnBackground);
+  }
+
+  return (action: widget, providesOwnBackground: false);
+}
 
 VoidCallback? _actionOnPressed(Widget action) => switch (action) {
   AppIconButton(:final onPressed) => onPressed,

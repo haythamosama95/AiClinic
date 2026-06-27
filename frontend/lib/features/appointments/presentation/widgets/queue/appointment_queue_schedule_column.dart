@@ -1,22 +1,32 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/navigation/app_navigator.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/widgets/layouts/tilted_background_icon_stack.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_status_button.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 
 /// Column 1 — today's appointment schedule with a focus timeline.
-class AppointmentQueueScheduleColumn extends StatefulWidget {
+class AppointmentQueueScheduleColumn extends ConsumerStatefulWidget {
   const AppointmentQueueScheduleColumn({
     required this.items,
     required this.now,
@@ -33,10 +43,10 @@ class AppointmentQueueScheduleColumn extends StatefulWidget {
   final int scrollNonce;
 
   @override
-  State<AppointmentQueueScheduleColumn> createState() => _AppointmentQueueScheduleColumnState();
+  ConsumerState<AppointmentQueueScheduleColumn> createState() => _AppointmentQueueScheduleColumnState();
 }
 
-class _AppointmentQueueScheduleColumnState extends State<AppointmentQueueScheduleColumn> {
+class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueueScheduleColumn> {
   static final _timeFormat = DateFormat('h:mm a');
   static final _dateFormat = DateFormat('MMM d, yyyy');
   static const _focusBubbleColor = Color(0xFF14B8A6);
@@ -131,120 +141,98 @@ class _AppointmentQueueScheduleColumnState extends State<AppointmentQueueSchedul
     return '$start - $end';
   }
 
+  Future<void> _showBookingSheet({required String branchId, required BranchWorkingSchedule schedule}) async {
+    final doctors = ref.read(appointmentCalendarDoctorsProvider).value ?? const <StaffListItem>[];
+    final slotRange = AppointmentCalendarDisplay.slotRangeFromTap(
+      tappedDate: AppointmentCalendarDisplay.snapTimeToSlot(widget.now),
+      schedule: schedule,
+      mode: AppointmentCalendarMode.day,
+    );
+
+    final booked = await AppointmentBookingSheet.show(
+      context,
+      branchId: branchId,
+      schedule: schedule,
+      slotStart: slotRange.start,
+      slotEnd: slotRange.end,
+      doctors: doctors,
+    );
+    if (booked == true && mounted) {
+      await ref.read(appointmentQueueProvider.notifier).refresh();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final closestIndex = AppointmentQueueDisplay.indexClosestToNow(widget.items, now: widget.now);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(SpacingTokens.lg),
-        border: Border.all(color: colors.border),
+    final dateLabel = _dateFormat.format(widget.now.toLocal());
+    final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
+    final branchId = ref.watch(authSessionProvider).context?.activeBranchId?.trim();
+    final branches = ref.watch(appointmentCalendarBranchesProvider).value ?? const <BranchListItem>[];
+    final selectedBranch = branches.where((branch) => branch.id == branchId).firstOrNull;
+    final schedule = selectedBranch?.workingSchedule ?? BranchWorkingSchedule.defaultSchedule();
+    final canBook = canCreate && branchId != null && branchId.isNotEmpty;
+
+    return AppNotchedCard(
+      title: Text(
+        'Appointments',
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _AppointmentsHeader(
-            dateLabel: _dateFormat.format(widget.now.toLocal()),
-            onOpenCalendar: () => AppNavigator(context).goAppointmentsCalendar(),
+      actions: [
+        AppBadge(label: dateLabel, variant: AppBadgeVariant.plain),
+        if (canBook)
+          AppNotchedCardAction(
+            providesOwnBackground: true,
+            action: AppButton(
+              label: 'Book Appointment',
+              size: AppFieldSize.sm,
+              onPressed: () => unawaited(_showBookingSheet(branchId: branchId, schedule: schedule)),
+            ),
           ),
-          const Divider(height: 1),
-          Expanded(
-            child: widget.items.isEmpty
-                ? const _ScheduleEmptyState()
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(SpacingTokens.md),
-                    itemCount: widget.items.length,
-                    itemBuilder: (context, index) {
-                      final item = widget.items[index];
-                      final isFocused = index == closestIndex;
-                      final isPast = index < closestIndex;
-                      return _ScheduleTimelineRow(
-                        key: isFocused ? _closestRowKey : ValueKey(item.id),
-                        isFirst: index == 0,
-                        isLast: index == widget.items.length - 1,
-                        isPast: isPast,
-                        isFocused: isFocused,
-                        activeLineColor: colors.primary,
-                        inactiveLineColor: colors.border,
-                        focusBubbleColor: _focusBubbleColor,
-                        inactiveBubbleColor: colors.mutedForeground.withValues(alpha: 0.45),
-                        gutterWidth: _timelineGutterWidth,
-                        bubbleSize: _timelineBubbleSize,
-                        lineWidth: _timelineLineWidth,
-                        bottomGap: index < widget.items.length - 1 ? _rowGap : 0,
-                        child: _AppointmentRow(
-                          item: item,
-                          shiftLookup: widget.shiftLookup,
-                          timeLabel: _timeRangeLabel(item),
-                          isFocused: isFocused,
-                          statusDimmed: AppointmentQueueDisplay.isScheduleRowDimmed(item),
-                          now: widget.now,
-                          onTap: () => AppNavigator(context).pushAppointmentDetail(item.id, preview: item),
-                        ),
-                      );
-                    },
+        AppIconButton(
+          icon: Icon(Icons.calendar_today_outlined, color: colors.primary),
+          tooltip: 'Open calendar',
+          onPressed: () => AppNavigator(context).goAppointmentsCalendar(),
+        ),
+      ],
+      body: widget.items.isEmpty
+          ? const _ScheduleEmptyState()
+          : ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(SpacingTokens.md),
+              itemCount: widget.items.length,
+              itemBuilder: (context, index) {
+                final item = widget.items[index];
+                final isFocused = index == closestIndex;
+                final isPast = index < closestIndex;
+                return _ScheduleTimelineRow(
+                  key: isFocused ? _closestRowKey : ValueKey(item.id),
+                  isFirst: index == 0,
+                  isLast: index == widget.items.length - 1,
+                  isPast: isPast,
+                  isFocused: isFocused,
+                  activeLineColor: colors.primary,
+                  inactiveLineColor: colors.border,
+                  focusBubbleColor: _focusBubbleColor,
+                  inactiveBubbleColor: colors.mutedForeground.withValues(alpha: 0.45),
+                  gutterWidth: _timelineGutterWidth,
+                  bubbleSize: _timelineBubbleSize,
+                  lineWidth: _timelineLineWidth,
+                  bottomGap: index < widget.items.length - 1 ? _rowGap : 0,
+                  child: _AppointmentRow(
+                    item: item,
+                    shiftLookup: widget.shiftLookup,
+                    timeLabel: _timeRangeLabel(item),
+                    isFocused: isFocused,
+                    statusDimmed: AppointmentQueueDisplay.isScheduleRowDimmed(item),
+                    now: widget.now,
+                    onTap: () => AppNavigator(context).pushAppointmentDetail(item.id, preview: item),
                   ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AppointmentsHeader extends StatelessWidget {
-  const _AppointmentsHeader({required this.dateLabel, required this.onOpenCalendar});
-
-  final String dateLabel;
-  final VoidCallback onOpenCalendar;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, SpacingTokens.md, SpacingTokens.md, SpacingTokens.md),
-      child: Row(
-        children: [
-          Text('Appointments', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          const Spacer(),
-          Text(dateLabel, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground)),
-          const SizedBox(width: SpacingTokens.xs),
-          _HeaderIconButton(icon: Icons.chevron_left, tooltip: 'Previous day', onPressed: onOpenCalendar),
-          _HeaderIconButton(icon: Icons.chevron_right, tooltip: 'Next day', onPressed: onOpenCalendar),
-          _HeaderIconButton(
-            icon: Icons.calendar_today_outlined,
-            tooltip: 'Open calendar',
-            iconColor: colors.primary,
-            onPressed: onOpenCalendar,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  const _HeaderIconButton({required this.icon, required this.tooltip, required this.onPressed, this.iconColor});
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onPressed;
-  final Color? iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return IconButton(
-      tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20, color: iconColor ?? colors.mutedForeground),
+                );
+              },
+            ),
     );
   }
 }

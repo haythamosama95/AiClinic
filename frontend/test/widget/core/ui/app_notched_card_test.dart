@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
+import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/buttons/app_button.dart';
 import 'package:ai_clinic/core/ui/widgets/buttons/app_icon_button.dart';
@@ -257,6 +258,71 @@ void main() {
       expect(find.text('Last 6 months'), findsOneWidget);
       expect(lastShell.bottom - cardTopLeft.dy, lessThanOrEqualTo(clipper.shelfDepth + 1));
       expect(firstShell.top - cardTopLeft.dy, greaterThanOrEqualTo(-1));
+    });
+
+    testWidgets('renders providesOwnBackground action without card-colored shell', (tester) async {
+      await pumpCard(
+        tester,
+        body: const Text('Body'),
+        actions: [
+          AppNotchedCardAction(
+            providesOwnBackground: true,
+            action: AppButton(label: 'Book Appointment', size: AppFieldSize.sm, onPressed: () {}),
+          ),
+        ],
+      );
+
+      expect(find.byType(AppButton), findsOneWidget);
+
+      final colors = AppTheme.light().extension<SemanticColors>()!;
+      final cardColoredShell = find.descendant(
+        of: find.byType(AppNotchedCard),
+        matching: find.byWidgetPredicate((widget) => widget is Material && widget.color == colors.card),
+      );
+
+      expect(cardColoredShell, findsNothing);
+    });
+
+    testWidgets('uses card-colored shell for default AppButton action', (tester) async {
+      await pumpCard(
+        tester,
+        body: const Text('Body'),
+        actions: [
+          AppButton(label: 'Last 6 months', variant: AppButtonVariant.ghost, size: AppFieldSize.sm, onPressed: () {}),
+        ],
+      );
+
+      final colors = AppTheme.light().extension<SemanticColors>()!;
+      final shell = tester.widget<Material>(
+        find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(Material)).first,
+      );
+
+      expect(shell.color, colors.card);
+      expect(find.byType(AppButton), findsNothing);
+    });
+
+    testWidgets('equalizes action shell heights to the tallest action', (tester) async {
+      await pumpCard(
+        tester,
+        body: const Text('Body'),
+        actions: [
+          AppIconButton(icon: const Icon(Icons.filter_list_outlined), tooltip: 'Filter billing', onPressed: () {}),
+          AppButton(
+            label: 'Last 6 months',
+            icon: const Icon(Icons.expand_more, size: 18),
+            variant: AppButtonVariant.ghost,
+            size: AppFieldSize.sm,
+            onPressed: () {},
+          ),
+        ],
+      );
+
+      final shells = find.descendant(of: find.byType(AppNotchedCard), matching: find.byType(InkWell));
+      final iconShell = tester.getRect(shells.at(0));
+      final buttonShell = tester.getRect(shells.at(1));
+
+      expect(iconShell.height, closeTo(buttonShell.height, 0.01));
+      expect(iconShell.height, greaterThan(32 + 2 * kNotchActionContainerPadding));
     });
 
     testWidgets('clips overflowing actions at card boundary', (tester) async {
