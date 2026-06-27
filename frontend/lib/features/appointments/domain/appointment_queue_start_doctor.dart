@@ -6,11 +6,12 @@ import 'package:flutter/foundation.dart';
 /// Doctor option when starting a checked-in appointment from the queue.
 @immutable
 class QueueStartDoctorOption {
-  const QueueStartDoctorOption({required this.id, required this.name, required this.isBusy});
+  const QueueStartDoctorOption({required this.id, required this.name, required this.isBusy, this.isPreferred = false});
 
   final String id;
   final String name;
   final bool isBusy;
+  final bool isPreferred;
 }
 
 /// Resolves which doctor should take a checked-in appointment when it starts.
@@ -35,6 +36,7 @@ abstract final class AppointmentQueueStartDoctor {
     required Iterable<AppointmentListItem> siblingAppointments,
     required AppointmentQueueShiftDoctorLookup shiftLookup,
   }) {
+    final preferredDoctorId = item.doctorId?.trim();
     final onShift = shiftLookup.doctorsOnShiftAt(item.startTime);
     return [
       for (final doctor in onShift)
@@ -42,7 +44,37 @@ abstract final class AppointmentQueueStartDoctor {
           id: doctor.id,
           name: doctor.name,
           isBusy: isDoctorBusy(doctorId: doctor.id, excludeAppointmentId: item.id, items: siblingAppointments),
+          isPreferred: preferredDoctorId != null && preferredDoctorId.isNotEmpty && doctor.id == preferredDoctorId,
         ),
+    ];
+  }
+
+  /// Doctors selectable when starting [item], including the preferred doctor when missing from shift.
+  static List<QueueStartDoctorOption> optionsForStart({
+    required AppointmentListItem item,
+    required Iterable<AppointmentListItem> siblingAppointments,
+    required AppointmentQueueShiftDoctorLookup shiftLookup,
+  }) {
+    final options = shiftOptionsFor(item: item, siblingAppointments: siblingAppointments, shiftLookup: shiftLookup);
+    final preferredDoctorId = item.doctorId?.trim();
+    if (preferredDoctorId == null || preferredDoctorId.isEmpty) {
+      return options;
+    }
+    if (options.any((option) => option.id == preferredDoctorId)) {
+      return options;
+    }
+
+    final preferredDoctorName = item.doctorName?.trim().isNotEmpty == true
+        ? item.doctorName!.trim()
+        : 'Preferred doctor';
+    return [
+      QueueStartDoctorOption(
+        id: preferredDoctorId,
+        name: preferredDoctorName,
+        isBusy: isDoctorBusy(doctorId: preferredDoctorId, excludeAppointmentId: item.id, items: siblingAppointments),
+        isPreferred: true,
+      ),
+      ...options,
     ];
   }
 
@@ -116,48 +148,22 @@ abstract final class AppointmentQueueStartDoctor {
     return null;
   }
 
-  /// Doctor to assign before advancing to in progress.
-  ///
-  /// Returns the assigned doctor id when [item] already has one and they are free,
-  /// the only shift doctor when exactly one is staffed, or `null` when the caller
-  /// must prompt.
-  static String? autoSelectedDoctorId({
-    required AppointmentListItem item,
-    required AppointmentQueueShiftDoctorLookup shiftLookup,
-    Iterable<AppointmentListItem> siblingAppointments = const [],
-  }) {
-    final assignedDoctorId = item.doctorId?.trim();
-    if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
-      if (!isPreferredDoctorBusy(item: item, siblingAppointments: siblingAppointments)) {
-        return assignedDoctorId;
-      }
-      return null;
-    }
-
-    final onShift = shiftLookup.doctorsOnShiftAt(item.startTime);
-    if (onShift.length == 1) {
-      return onShift.first.id;
-    }
-    return null;
-  }
-
-  /// Whether the user must pick a doctor before starting.
+  /// Whether the user must confirm a doctor in the picker before starting.
   static bool requiresDoctorPicker({
     required AppointmentListItem item,
     required AppointmentQueueShiftDoctorLookup shiftLookup,
     Iterable<AppointmentListItem> siblingAppointments = const [],
   }) {
-    final assignedDoctorId = item.doctorId?.trim();
-    if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
-      if (isPreferredDoctorBusy(item: item, siblingAppointments: siblingAppointments)) {
-        return availableShiftOptionsFor(
-          item: item,
-          siblingAppointments: siblingAppointments,
-          shiftLookup: shiftLookup,
-        ).isNotEmpty;
-      }
+    if (item.status != AppointmentStatus.checkedIn) {
       return false;
     }
-    return shiftLookup.doctorsOnShiftAt(item.startTime).length > 1;
+    if (blockReasonForStart(item: item, siblingAppointments: siblingAppointments, shiftLookup: shiftLookup) != null) {
+      return false;
+    }
+    return optionsForStart(
+      item: item,
+      siblingAppointments: siblingAppointments,
+      shiftLookup: shiftLookup,
+    ).any((option) => !option.isBusy);
   }
 }

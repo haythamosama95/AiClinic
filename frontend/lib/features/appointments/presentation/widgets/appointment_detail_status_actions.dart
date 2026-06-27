@@ -206,15 +206,6 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   }
 
   Future<String?> _resolveDoctorForStart() async {
-    final autoSelected = AppointmentQueueStartDoctor.autoSelectedDoctorId(
-      item: _listItem,
-      shiftLookup: _shiftLookup,
-      siblingAppointments: _siblingAppointments,
-    );
-    if (autoSelected != null) {
-      return autoSelected;
-    }
-
     if (!AppointmentQueueStartDoctor.requiresDoctorPicker(
       item: _listItem,
       shiftLookup: _shiftLookup,
@@ -223,7 +214,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       return null;
     }
 
-    final options = AppointmentQueueStartDoctor.shiftOptionsFor(
+    final options = AppointmentQueueStartDoctor.optionsForStart(
       item: _listItem,
       siblingAppointments: _siblingAppointments,
       shiftLookup: _shiftLookup,
@@ -231,15 +222,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     if (!mounted) {
       return null;
     }
-    final preferredDoctorUnavailable = AppointmentQueueStartDoctor.isPreferredDoctorBusy(
-      item: _listItem,
-      siblingAppointments: _siblingAppointments,
-    );
-    return QueueShiftDoctorPickerDialog.show(
-      context,
-      options: options,
-      preferredDoctorUnavailable: preferredDoctorUnavailable,
-    );
+    return QueueShiftDoctorPickerDialog.show(context, options: options);
   }
 
   Future<void> _assignDoctorIfNeeded(String doctorId) async {

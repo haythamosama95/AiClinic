@@ -6,27 +6,18 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_start_doctor.dart';
 
-/// Prompts staff to choose which on-shift doctor will take the appointment.
+/// Prompts staff to choose which doctor will take the appointment when it starts.
 class QueueShiftDoctorPickerDialog extends StatefulWidget {
-  static Future<String?> show(
-    BuildContext context, {
-    required List<QueueStartDoctorOption> options,
-    bool preferredDoctorUnavailable = false,
-  }) {
+  static Future<String?> show(BuildContext context, {required List<QueueStartDoctorOption> options}) {
     final available = options.where((option) => !option.isBusy).toList(growable: false);
     if (available.isEmpty) {
       return Future.value();
     }
-    if (available.length == 1 && !preferredDoctorUnavailable) {
-      return Future.value(available.first.id);
-    }
 
-    final title = preferredDoctorUnavailable ? 'Preferred doctor unavailable' : 'Choose doctor';
-    final message = preferredDoctorUnavailable
-        ? available.length == 1
-              ? 'The preferred doctor is currently busy. Another doctor is available — select who will see this patient.'
-              : 'The preferred doctor is currently busy. Other doctors are available — select who will see this patient.'
-        : 'Multiple doctors are on shift. Select who will see this patient.';
+    final preferredOption = _preferredOption(options);
+    final preferredBusy = preferredOption != null && preferredOption.isBusy;
+    const title = 'Confirm doctor';
+    final message = _messageFor(options: options, preferredOption: preferredOption, preferredBusy: preferredBusy);
 
     return AppDialog.show<String>(
       context: context,
@@ -35,6 +26,42 @@ class QueueShiftDoctorPickerDialog extends StatefulWidget {
       body: QueueShiftDoctorPickerDialog(options: options, message: message),
       actions: const [],
     );
+  }
+
+  static QueueStartDoctorOption? _preferredOption(List<QueueStartDoctorOption> options) {
+    for (final option in options) {
+      if (option.isPreferred) {
+        return option;
+      }
+    }
+    return null;
+  }
+
+  static String _messageFor({
+    required List<QueueStartDoctorOption> options,
+    required QueueStartDoctorOption? preferredOption,
+    required bool preferredBusy,
+  }) {
+    if (preferredOption == null) {
+      if (options.length == 1) {
+        return 'Confirm which doctor will see this patient.';
+      }
+      return 'Multiple doctors are on shift. Select who will see this patient.';
+    }
+
+    final preferredName = preferredOption.name;
+    if (preferredBusy) {
+      final availableCount = options.where((option) => !option.isBusy).length;
+      if (availableCount == 1) {
+        return '$preferredName is the preferred doctor but is currently busy. Another doctor is available — select who will see this patient.';
+      }
+      return '$preferredName is the preferred doctor but is currently busy. Other doctors are available — select who will see this patient.';
+    }
+
+    if (options.where((option) => !option.isBusy).length == 1) {
+      return '$preferredName is the preferred doctor for this appointment. Confirm or choose another doctor.';
+    }
+    return '$preferredName is the preferred doctor for this appointment. Confirm or choose another doctor to start the visit.';
   }
 
   final List<QueueStartDoctorOption> options;
@@ -56,6 +83,11 @@ class _QueueShiftDoctorPickerDialogState extends State<QueueShiftDoctorPickerDia
   void initState() {
     super.initState();
     final available = _availableOptions;
+    final preferredAvailable = available.where((option) => option.isPreferred).toList(growable: false);
+    if (preferredAvailable.length == 1) {
+      _selectedDoctorId = preferredAvailable.first.id;
+      return;
+    }
     if (available.length == 1) {
       _selectedDoctorId = available.first.id;
     }
@@ -70,10 +102,7 @@ class _QueueShiftDoctorPickerDialogState extends State<QueueShiftDoctorPickerDia
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          widget.message ?? 'Multiple doctors are on shift. Select who will see this patient.',
-          style: theme.textTheme.bodyMedium,
-        ),
+        Text(widget.message ?? 'Select who will see this patient.', style: theme.textTheme.bodyMedium),
         const SizedBox(height: SpacingTokens.md),
         ...[
           for (final option in widget.options) ...[
@@ -119,7 +148,8 @@ class _DoctorOptionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final theme = Theme.of(context).textTheme;
-    final subtitle = option.isBusy ? 'Busy — patient in progress' : 'Available';
+    final availabilityLabel = option.isBusy ? 'Busy — patient in progress' : 'Available';
+    final subtitle = option.isPreferred ? 'Preferred · $availabilityLabel' : availabilityLabel;
     final selected = groupValue == option.id;
     final enabled = !option.isBusy;
 

@@ -14,7 +14,7 @@ void main() {
       QueueStartDoctorOption(id: 'doc-c', name: 'Dr Gamma', isBusy: true),
     ];
 
-    Future<void> openDialog(WidgetTester tester) async {
+    Future<void> openDialog(WidgetTester tester, {List<QueueStartDoctorOption> dialogOptions = options}) async {
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
@@ -24,7 +24,7 @@ void main() {
               return Scaffold(
                 body: AppButton(
                   label: 'Open dialog',
-                  onPressed: () => QueueShiftDoctorPickerDialog.show(context, options: options),
+                  onPressed: () => QueueShiftDoctorPickerDialog.show(context, options: dialogOptions),
                 ),
               );
             },
@@ -39,7 +39,7 @@ void main() {
     testWidgets('renders doctor options inside AppDialog without Material errors', (tester) async {
       await openDialog(tester);
 
-      expect(find.text('Choose doctor'), findsOneWidget);
+      expect(find.text('Confirm doctor'), findsOneWidget);
       expect(find.text('Dr Alpha'), findsOneWidget);
       expect(find.text('Dr Beta'), findsOneWidget);
       expect(find.text('Dr Gamma'), findsOneWidget);
@@ -83,11 +83,31 @@ void main() {
       expect(selectedDoctorId, 'doc-a');
     });
 
-    testWidgets('shows preferred doctor unavailable copy when requested', (tester) async {
-      const singleAvailable = [
-        QueueStartDoctorOption(id: 'doc-a', name: 'Dr Alpha', isBusy: true),
+    testWidgets('shows preferred doctor copy and badge when appointment has preferred doctor', (tester) async {
+      const preferredOptions = [
+        QueueStartDoctorOption(id: 'doc-a', name: 'Dr Alpha', isBusy: true, isPreferred: true),
         QueueStartDoctorOption(id: 'doc-b', name: 'Dr Beta', isBusy: false),
       ];
+
+      await openDialog(tester, dialogOptions: preferredOptions);
+
+      expect(find.text('Confirm doctor'), findsOneWidget);
+      expect(
+        find.text(
+          'Dr Alpha is the preferred doctor but is currently busy. Another doctor is available — select who will see this patient.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Preferred ·'), findsOneWidget);
+    });
+
+    testWidgets('pre-selects available preferred doctor', (tester) async {
+      const preferredOptions = [
+        QueueStartDoctorOption(id: 'doc-a', name: 'Dr Alpha', isBusy: false, isPreferred: true),
+        QueueStartDoctorOption(id: 'doc-b', name: 'Dr Beta', isBusy: false),
+      ];
+
+      String? selectedDoctorId;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -98,11 +118,9 @@ void main() {
               return Scaffold(
                 body: AppButton(
                   label: 'Open dialog',
-                  onPressed: () => QueueShiftDoctorPickerDialog.show(
-                    context,
-                    options: singleAvailable,
-                    preferredDoctorUnavailable: true,
-                  ),
+                  onPressed: () async {
+                    selectedDoctorId = await QueueShiftDoctorPickerDialog.show(context, options: preferredOptions);
+                  },
                 ),
               );
             },
@@ -114,13 +132,20 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('Preferred doctor unavailable'), findsOneWidget);
-      expect(
-        find.text(
-          'The preferred doctor is currently busy. Another doctor is available — select who will see this patient.',
-        ),
-        findsOneWidget,
-      );
+      await tester.tap(find.text('Start visit'));
+      await tester.pumpAndSettle();
+
+      expect(selectedDoctorId, 'doc-a');
+    });
+
+    testWidgets('shows dialog even when only one doctor is available', (tester) async {
+      const singleDoctor = [QueueStartDoctorOption(id: 'doc-b', name: 'Dr Beta', isBusy: false)];
+
+      await openDialog(tester, dialogOptions: singleDoctor);
+
+      expect(find.text('Confirm doctor'), findsOneWidget);
+      expect(find.text('Confirm which doctor will see this patient.'), findsOneWidget);
+      expect(find.text('Start visit'), findsOneWidget);
     });
   });
 }

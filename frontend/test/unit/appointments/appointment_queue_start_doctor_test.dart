@@ -38,14 +38,13 @@ void main() {
       expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: lookup), isTrue);
     });
 
-    test('autoSelectedDoctorId returns assigned doctor without prompting', () {
+    test('requiresDoctorPicker when assigned preferred doctor is available', () {
       final item = _item(status: AppointmentStatus.checkedIn, doctorId: 'd1', doctorName: 'Dr Alpha');
 
-      expect(AppointmentQueueStartDoctor.autoSelectedDoctorId(item: item, shiftLookup: lookup), 'd1');
-      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: lookup), isFalse);
+      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: lookup), isTrue);
     });
 
-    test('autoSelectedDoctorId picks the only doctor on shift', () {
+    test('requiresDoctorPicker when only one doctor is on shift', () {
       final singleDoctorLookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
         organizationTimezone: 'UTC',
         shifts: [
@@ -65,8 +64,35 @@ void main() {
       );
       final item = _item(status: AppointmentStatus.checkedIn);
 
-      expect(AppointmentQueueStartDoctor.autoSelectedDoctorId(item: item, shiftLookup: singleDoctorLookup), 'd1');
-      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: singleDoctorLookup), isFalse);
+      expect(AppointmentQueueStartDoctor.requiresDoctorPicker(item: item, shiftLookup: singleDoctorLookup), isTrue);
+    });
+
+    test('optionsForStart marks preferred doctor on shift', () {
+      final item = _item(status: AppointmentStatus.checkedIn, doctorId: 'd1', doctorName: 'Dr Alpha');
+
+      final options = AppointmentQueueStartDoctor.optionsForStart(
+        item: item,
+        siblingAppointments: [item],
+        shiftLookup: lookup,
+      );
+
+      expect(options, hasLength(2));
+      expect(options.firstWhere((option) => option.id == 'd1').isPreferred, isTrue);
+      expect(options.firstWhere((option) => option.id == 'd2').isPreferred, isFalse);
+    });
+
+    test('optionsForStart includes preferred doctor when not on shift', () {
+      final item = _item(status: AppointmentStatus.checkedIn, doctorId: 'd9', doctorName: 'Dr Off Shift');
+
+      final options = AppointmentQueueStartDoctor.optionsForStart(
+        item: item,
+        siblingAppointments: [item],
+        shiftLookup: lookup,
+      );
+
+      expect(options.first.id, 'd9');
+      expect(options.first.isPreferred, isTrue);
+      expect(options, hasLength(3));
     });
 
     test('shiftOptionsFor marks busy doctors', () {
@@ -197,14 +223,6 @@ void main() {
           siblingAppointments: [active, waiting],
         ),
         isTrue,
-      );
-      expect(
-        AppointmentQueueStartDoctor.autoSelectedDoctorId(
-          item: waiting,
-          shiftLookup: lookup,
-          siblingAppointments: [active, waiting],
-        ),
-        isNull,
       );
     });
   });
