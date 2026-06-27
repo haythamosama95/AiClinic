@@ -350,7 +350,7 @@ class _AppointmentRow extends StatelessWidget {
                           ),
                         ),
                       ),
-                      _RowDivider(color: colors.border),
+                      _QueueSectionDivider(color: colors.border),
                       Expanded(
                         flex: 3,
                         child: TiltedBackgroundIconStack(
@@ -363,7 +363,7 @@ class _AppointmentRow extends StatelessWidget {
                           ),
                         ),
                       ),
-                      _RowDivider(color: colors.border),
+                      _QueueSectionDivider(color: colors.border),
                       Expanded(
                         flex: 3,
                         child: TiltedBackgroundIconStack(
@@ -375,6 +375,7 @@ class _AppointmentRow extends StatelessWidget {
                           ),
                         ),
                       ),
+                      _QueueSectionDivider(color: colors.border),
                       Padding(
                         padding: const EdgeInsets.only(top: SpacingTokens.xs),
                         child: Row(
@@ -481,17 +482,25 @@ class _PersonColumn extends StatelessWidget {
   }
 }
 
-class _RowDivider extends StatelessWidget {
-  const _RowDivider({required this.color});
+/// Centered vertical divider between queue appointment row sections.
+class _QueueSectionDivider extends StatelessWidget {
+  const _QueueSectionDivider({required this.color});
 
   final Color color;
 
+  static const _gap = SpacingTokens.md;
+  static const _lineHeight = 40.0;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      margin: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm),
-      color: color.withValues(alpha: 0.65),
+    return SizedBox(
+      width: _gap * 2 + 1,
+      child: Center(
+        child: SizedBox(
+          height: _lineHeight,
+          child: VerticalDivider(width: 1, thickness: 1, color: color.withValues(alpha: 1)),
+        ),
+      ),
     );
   }
 }

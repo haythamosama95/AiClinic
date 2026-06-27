@@ -40,14 +40,6 @@ class _AppointmentQueueRowNoShowButtonState extends ConsumerState<AppointmentQue
 
   bool get _canCancelAppointments => AuthRouteGuard.canAccessAppointmentCancelActions(ref.read(authSessionProvider));
 
-  bool get _showsNoShowAction => switch (item.status) {
-    AppointmentStatus.scheduled => true,
-    AppointmentStatus.confirmed => true,
-    AppointmentStatus.checkedIn => true,
-    AppointmentStatus.noShow => true,
-    _ => false,
-  };
-
   String? _disabledReason() {
     if (item.status == AppointmentStatus.noShow) {
       return 'This appointment is already marked as no-show.';
@@ -120,10 +112,6 @@ class _AppointmentQueueRowNoShowButtonState extends ConsumerState<AppointmentQue
 
   @override
   Widget build(BuildContext context) {
-    if (!_showsNoShowAction) {
-      return const SizedBox.shrink();
-    }
-
     final colors = context.semanticColors;
     final disabledReason = _disabledReason();
     final isInteractive = disabledReason == null && !_isLoading;

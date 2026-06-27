@@ -51,15 +51,6 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
 
   bool get _canCreateAppointments => ref.read(permissionServiceProvider).canCreateAppointments();
 
-  bool get _showsAdvanceAction => switch (item.status) {
-    AppointmentStatus.scheduled => true,
-    AppointmentStatus.confirmed => true,
-    AppointmentStatus.checkedIn => true,
-    AppointmentStatus.inProgress => true,
-    AppointmentStatus.noShow => true,
-    _ => false,
-  };
-
   AppointmentStatus? get _targetStatus => switch (item.status) {
     AppointmentStatus.scheduled => AppointmentStatus.confirmed,
     AppointmentStatus.confirmed => AppointmentStatus.checkedIn,
@@ -73,6 +64,10 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
       return 'This appointment is marked as no-show.';
     }
 
+    if (item.status.isTerminal) {
+      return 'This appointment is ${item.status.label.toLowerCase()} and cannot be advanced further.';
+    }
+
     if (!_canCreateAppointments) {
       return 'You do not have permission to manage appointments.';
     }
@@ -83,7 +78,7 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
 
     final target = _targetStatus;
     if (target == null) {
-      return null;
+      return 'No further status change is available.';
     }
     if (!canTransitionToStatusOnDate(target, item.startTime, organizationTimezone: _organizationTimezone)) {
       return switch (target) {
@@ -219,18 +214,15 @@ class _AppointmentQueueRowAdvanceButtonState extends ConsumerState<AppointmentQu
 
   @override
   Widget build(BuildContext context) {
-    if (!_showsAdvanceAction) {
-      return const SizedBox.shrink();
-    }
-
     final colors = context.semanticColors;
     final disabledReason = _disabledReason();
     final isInteractive = disabledReason == null && !_isLoading;
     final isNoShow = item.status == AppointmentStatus.noShow;
-    final buttonColor = isInteractive ? colors.primary : (isNoShow ? colors.muted : colors.destructive);
+    final useMutedDisabled = !isInteractive && (isNoShow || item.status.isTerminal);
+    final buttonColor = isInteractive ? colors.primary : (useMutedDisabled ? colors.muted : colors.destructive);
     final foregroundColor = isInteractive
         ? colors.primaryForeground
-        : (isNoShow ? colors.mutedForeground : colors.destructiveForeground);
+        : (useMutedDisabled ? colors.mutedForeground : colors.destructiveForeground);
 
     final button = Material(
       color: buttonColor,
