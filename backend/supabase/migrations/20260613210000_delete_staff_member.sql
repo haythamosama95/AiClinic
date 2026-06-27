@@ -101,7 +101,7 @@ BEGIN
   BEGIN
     PERFORM auth_internal.assert_permission('settings.manage_staff');
   EXCEPTION
-    WHEN SQLSTATE = 'P0003' THEN
+    WHEN SQLSTATE 'P0003' THEN
       RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage staff.');
   END;
 
@@ -133,7 +133,7 @@ BEGIN
     BEGIN
       PERFORM auth_internal.assert_not_last_administrator(p_staff_member_id);
     EXCEPTION
-      WHEN SQLSTATE = 'P0002' THEN
+      WHEN SQLSTATE 'P0002' THEN
         RETURN public.rpc_error('LAST_ADMINISTRATOR', 'Cannot delete the last active administrator.');
     END;
 
@@ -143,7 +143,7 @@ BEGIN
   BEGIN
     PERFORM auth_internal.assert_not_last_administrator(p_staff_member_id);
   EXCEPTION
-    WHEN SQLSTATE = 'P0002' THEN
+    WHEN SQLSTATE 'P0002' THEN
       RETURN public.rpc_error('LAST_ADMINISTRATOR', 'Cannot delete the last active administrator.');
   END;
 
