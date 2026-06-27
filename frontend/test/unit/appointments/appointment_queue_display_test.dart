@@ -168,12 +168,11 @@ void main() {
 
       expect(stats.total, 3);
       expect(stats.completed, 1);
-      expect(stats.waiting, 1);
       expect(stats.noShow, 0);
+      expect(stats.avgVisitMinutes, isNull);
       expect(stats.totalTrend?.percentChange, closeTo(0, 0.01));
       expect(stats.completedTrend?.percentChange, closeTo(0, 0.01));
       expect(stats.noShowTrend?.percentChange, closeTo(0, 0.01));
-      expect(stats.waitingTrend?.percentChange, closeTo(100, 0.01));
       expect(stats.avgWaitTrend?.percentChange, closeTo(100, 0.01));
     });
 
@@ -226,6 +225,42 @@ void main() {
       final partition = AppointmentQueueDisplay.partition([late, early]);
 
       expect(partition.waiting.map((item) => item.id), ['early', 'late']);
+    });
+
+    test('computeStats compares average visit duration using session timestamps', () {
+      final now = DateTime.utc(2026, 6, 4, 12);
+      final todayItems = [
+        item(
+          status: AppointmentStatus.completed,
+          id: 'c1',
+          inProgressAt: now.subtract(const Duration(minutes: 50)),
+          updatedAt: now.subtract(const Duration(minutes: 10)),
+        ),
+        item(
+          status: AppointmentStatus.inProgress,
+          id: 'active',
+          inProgressAt: now.subtract(const Duration(minutes: 20)),
+        ),
+      ];
+      final comparisonNow = now.subtract(const Duration(days: 1));
+      final previousItems = [
+        item(
+          status: AppointmentStatus.completed,
+          id: 'pc1',
+          inProgressAt: comparisonNow.subtract(const Duration(minutes: 30)),
+          updatedAt: comparisonNow.subtract(const Duration(minutes: 10)),
+        ),
+      ];
+
+      final stats = AppointmentQueueDisplay.computeStats(
+        todayItems,
+        now: now,
+        comparisonItems: previousItems,
+        comparisonNow: comparisonNow,
+      );
+
+      expect(stats.avgVisitMinutes, 30);
+      expect(stats.avgVisitTrend?.percentChange, closeTo(50, 0.01));
     });
 
     test('computeStats compares average waited time using stored check-in timestamps', () {

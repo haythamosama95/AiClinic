@@ -29,22 +29,22 @@ class AppointmentQueueStatsBanner extends StatelessWidget {
             percentChange: stats.completedTrend?.percentChange,
           ),
           AppMetricStatCard(
-            label: 'Currently waiting',
-            value: '${stats.waiting}',
-            icon: Icons.hourglass_top_outlined,
-            percentChange: stats.waitingTrend?.percentChange,
+            label: 'No-show',
+            value: '${stats.noShow}',
+            icon: Icons.person_off_outlined,
+            percentChange: stats.noShowTrend?.percentChange,
           ),
           AppMetricStatCard(
-            label: 'Avg. waited time',
+            label: 'Avg. waiting time',
             value: stats.avgWaitMinutes == null ? '—' : '${stats.avgWaitMinutes} mins',
             icon: Icons.timer_outlined,
             percentChange: stats.avgWaitTrend?.percentChange,
           ),
           AppMetricStatCard(
-            label: 'No-show',
-            value: '${stats.noShow}',
-            icon: Icons.person_off_outlined,
-            percentChange: stats.noShowTrend?.percentChange,
+            label: 'Avg. visit duration',
+            value: stats.avgVisitMinutes == null ? '—' : '${stats.avgVisitMinutes} mins',
+            icon: Icons.medical_services_outlined,
+            percentChange: stats.avgVisitTrend?.percentChange,
           ),
         ];
 

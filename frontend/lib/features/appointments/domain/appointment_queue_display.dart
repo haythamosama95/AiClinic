@@ -19,26 +19,26 @@ class AppointmentQueueStats {
   const AppointmentQueueStats({
     required this.total,
     required this.completed,
-    required this.waiting,
     required this.noShow,
     required this.avgWaitMinutes,
+    required this.avgVisitMinutes,
     this.totalTrend,
     this.completedTrend,
     this.noShowTrend,
-    this.waitingTrend,
     this.avgWaitTrend,
+    this.avgVisitTrend,
   });
 
   final int total;
   final int completed;
-  final int waiting;
   final int noShow;
   final int? avgWaitMinutes;
+  final int? avgVisitMinutes;
   final AppointmentQueueStatTrend? totalTrend;
   final AppointmentQueueStatTrend? completedTrend;
   final AppointmentQueueStatTrend? noShowTrend;
-  final AppointmentQueueStatTrend? waitingTrend;
   final AppointmentQueueStatTrend? avgWaitTrend;
+  final AppointmentQueueStatTrend? avgVisitTrend;
 }
 
 /// Partition of today's queue into schedule and checked-in columns.
@@ -71,9 +71,9 @@ abstract final class AppointmentQueueDisplay {
       return AppointmentQueueStats(
         total: current.total,
         completed: current.completed,
-        waiting: current.waiting,
         noShow: current.noShow,
         avgWaitMinutes: current.avgWaitMinutes,
+        avgVisitMinutes: current.avgVisitMinutes,
       );
     }
 
@@ -81,35 +81,37 @@ abstract final class AppointmentQueueDisplay {
     return AppointmentQueueStats(
       total: current.total,
       completed: current.completed,
-      waiting: current.waiting,
       noShow: current.noShow,
       avgWaitMinutes: current.avgWaitMinutes,
+      avgVisitMinutes: current.avgVisitMinutes,
       totalTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.total, previous.total)),
       completedTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.completed, previous.completed)),
       noShowTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.noShow, previous.noShow)),
-      waitingTrend: AppointmentQueueStatTrend(percentChange: _percentChange(current.waiting, previous.waiting)),
       avgWaitTrend: AppointmentQueueStatTrend(
         percentChange: _percentChangeNullable(current.avgWaitMinutes, previous.avgWaitMinutes),
+      ),
+      avgVisitTrend: AppointmentQueueStatTrend(
+        percentChange: _percentChangeNullable(current.avgVisitMinutes, previous.avgVisitMinutes),
       ),
     );
   }
 
-  static ({int total, int completed, int waiting, int noShow, int? avgWaitMinutes}) _rawStats(
+  static ({int total, int completed, int noShow, int? avgWaitMinutes, int? avgVisitMinutes}) _rawStats(
     List<AppointmentListItem> items, {
     required DateTime now,
   }) {
     final active = _activeToday(items);
     final completed = active.where((item) => item.status == AppointmentStatus.completed).length;
-    final waiting = active.where((item) => item.status == AppointmentStatus.checkedIn).toList(growable: false);
     final noShow = items.where((item) => item.status == AppointmentStatus.noShow).length;
     final avgWaitMinutes = _averageWaitMinutesAt(active, now);
+    final avgVisitMinutes = _averageVisitMinutesAt(active, now);
 
     return (
       total: active.length,
       completed: completed,
-      waiting: waiting.length,
       noShow: noShow,
       avgWaitMinutes: avgWaitMinutes,
+      avgVisitMinutes: avgVisitMinutes,
     );
   }
 
@@ -126,6 +128,48 @@ abstract final class AppointmentQueueDisplay {
       return null;
     }
     return (waits.map((d) => d.inMinutes).reduce((a, b) => a + b) / waits.length).round();
+  }
+
+  /// Average visit length among appointments that started or finished a session.
+  static int? _averageVisitMinutesAt(List<AppointmentListItem> items, DateTime referenceNow) {
+    final visits = <Duration>[];
+    for (final item in items) {
+      final visit = _visitDurationFor(item, referenceNow);
+      if (visit != null) {
+        visits.add(visit);
+      }
+    }
+    if (visits.isEmpty) {
+      return null;
+    }
+    return (visits.map((d) => d.inMinutes).reduce((a, b) => a + b) / visits.length).round();
+  }
+
+  /// Visit duration for [item] at [referenceNow], or null when no session has started.
+  static Duration? _visitDurationFor(AppointmentListItem item, DateTime referenceNow) {
+    final startedAt = item.inProgressAt;
+    if (startedAt == null) {
+      return null;
+    }
+
+    if (item.status == AppointmentStatus.inProgress) {
+      if (referenceNow.isBefore(startedAt)) {
+        return null;
+      }
+      final elapsed = referenceNow.difference(startedAt);
+      return elapsed.isNegative ? Duration.zero : elapsed;
+    }
+
+    if (item.status == AppointmentStatus.completed) {
+      final endedAt = item.updatedAt;
+      if (endedAt == null || endedAt.isBefore(startedAt)) {
+        return null;
+      }
+      final elapsed = endedAt.difference(startedAt);
+      return elapsed.isNegative ? Duration.zero : elapsed;
+    }
+
+    return null;
   }
 
   /// Wait duration for [item] at [referenceNow], or null when not in the waiting room then.

@@ -247,5 +247,5 @@ final appointmentQueueProvider = NotifierProvider<AppointmentQueueController, Ap
 /// Checked-in patient count for the shell queue nav badge.
 final appointmentQueueCheckedInCountProvider = Provider<int>((ref) {
   final items = ref.watch(appointmentQueueProvider).items;
-  return AppointmentQueueDisplay.computeStats(items, now: DateTime.now()).waiting;
+  return AppointmentQueueDisplay.partition(items).waiting.length;
 });
