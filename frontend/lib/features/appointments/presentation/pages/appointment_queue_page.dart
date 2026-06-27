@@ -28,6 +28,7 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
   int _scheduleScrollNonce = 0;
+  String? _scrollToAppointmentId;
   bool _routeScrollPrimed = false;
   bool _wasCurrentRoute = false;
 
@@ -44,6 +45,20 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
 
   void _bumpScheduleScroll() {
     _scheduleScrollNonce = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  void _onCheckedInPatientTap(String appointmentId) {
+    setState(() {
+      _scrollToAppointmentId = appointmentId;
+      _bumpScheduleScroll();
+    });
+  }
+
+  void _onTargetAppointmentScrollHandled() {
+    if (_scrollToAppointmentId == null) {
+      return;
+    }
+    setState(() => _scrollToAppointmentId = null);
   }
 
   @override
@@ -112,7 +127,14 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
                       SpacingTokens.lg,
                       SpacingTokens.lg,
                     ),
-                    child: _QueueBody(state: state, now: _now, scrollNonce: _scheduleScrollNonce),
+                    child: _QueueBody(
+                      state: state,
+                      now: _now,
+                      scrollNonce: _scheduleScrollNonce,
+                      scrollToAppointmentId: _scrollToAppointmentId,
+                      onCheckedInPatientTap: _onCheckedInPatientTap,
+                      onTargetAppointmentScrollHandled: _onTargetAppointmentScrollHandled,
+                    ),
                   ),
                 ),
               ],
@@ -122,11 +144,21 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
 }
 
 class _QueueBody extends ConsumerWidget {
-  const _QueueBody({required this.state, required this.now, required this.scrollNonce});
+  const _QueueBody({
+    required this.state,
+    required this.now,
+    required this.scrollNonce,
+    required this.scrollToAppointmentId,
+    required this.onCheckedInPatientTap,
+    required this.onTargetAppointmentScrollHandled,
+  });
 
   final AppointmentQueueState state;
   final DateTime now;
   final int scrollNonce;
+  final String? scrollToAppointmentId;
+  final ValueChanged<String> onCheckedInPatientTap;
+  final VoidCallback onTargetAppointmentScrollHandled;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -156,6 +188,8 @@ class _QueueBody extends ConsumerWidget {
                       now: now,
                       shiftLookup: shiftLookup,
                       scrollNonce: scrollNonce,
+                      scrollToAppointmentId: scrollToAppointmentId,
+                      onTargetAppointmentScrollHandled: onTargetAppointmentScrollHandled,
                     ),
                   ),
                   const SizedBox(width: SpacingTokens.md),
@@ -178,6 +212,7 @@ class _QueueBody extends ConsumerWidget {
                             items: partition.waiting,
                             now: now,
                             shiftLookup: shiftLookup,
+                            onPatientTap: (item) => onCheckedInPatientTap(item.id),
                           ),
                         ),
                       ],
@@ -195,6 +230,8 @@ class _QueueBody extends ConsumerWidget {
                       now: now,
                       shiftLookup: shiftLookup,
                       scrollNonce: scrollNonce,
+                      scrollToAppointmentId: scrollToAppointmentId,
+                      onTargetAppointmentScrollHandled: onTargetAppointmentScrollHandled,
                     ),
                   ),
                   const SizedBox(height: SpacingTokens.md),
@@ -210,7 +247,12 @@ class _QueueBody extends ConsumerWidget {
                   const SizedBox(height: SpacingTokens.md),
                   Expanded(
                     flex: 2,
-                    child: AppointmentQueueWaitingColumn(items: partition.waiting, now: now, shiftLookup: shiftLookup),
+                    child: AppointmentQueueWaitingColumn(
+                      items: partition.waiting,
+                      now: now,
+                      shiftLookup: shiftLookup,
+                      onPatientTap: (item) => onCheckedInPatientTap(item.id),
+                    ),
                   ),
                 ],
               );

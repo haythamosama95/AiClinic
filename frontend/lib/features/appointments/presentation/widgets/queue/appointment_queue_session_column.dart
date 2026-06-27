@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 
-import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -115,89 +114,74 @@ class _DoctorOnShiftRow extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: borderRadius,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: hasPatientInProgress
-                ? () => AppNavigator(
-                    context,
-                  ).pushAppointmentDetail(inProgressAppointment!.id, preview: inProgressAppointment)
-                : null,
-            child: Ink(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [statusColor.withValues(alpha: 0.22), statusColor.withValues(alpha: 0)],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.md),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TiltedBackgroundIconStack(
-                        icon: Icons.medical_services_outlined,
-                        minIconSize: 60,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AppointmentScaleDownText(
-                              text: doctor.name,
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: colors.foreground,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'On shift',
-                              style: textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [statusColor.withValues(alpha: 0.22), statusColor.withValues(alpha: 0)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.md),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TiltedBackgroundIconStack(
+                    icon: Icons.medical_services_outlined,
+                    minIconSize: 60,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppointmentScaleDownText(
+                          text: doctor.name,
+                          style: textTheme.bodyMedium?.copyWith(color: colors.foreground, fontWeight: FontWeight.w700),
                         ),
-                      ),
-                    ),
-                    _QueueSectionDivider(color: colors.border),
-                    Expanded(
-                      child: TiltedBackgroundIconStack(
-                        icon: Icons.assignment_ind_outlined,
-                        minIconSize: 60,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AppointmentScaleDownText(
-                              text: hasPatientInProgress
-                                  ? inProgressAppointment!.patientName
-                                  : 'No patient in progress',
-                              style: textTheme.bodyMedium?.copyWith(
-                                color: hasPatientInProgress ? colors.foreground : colors.mutedForeground,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              hasPatientInProgress
-                                  ? AppointmentQueueDisplay.formatSessionLabel(
-                                      AppointmentQueueDisplay.estimateSessionDuration(inProgressAppointment!, now: now),
-                                    )
-                                  : 'Available',
-                              style: textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+                        const SizedBox(height: 2),
+                        Text(
+                          'On shift',
+                          style: textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                _QueueSectionDivider(color: colors.border),
+                Expanded(
+                  child: TiltedBackgroundIconStack(
+                    icon: Icons.assignment_ind_outlined,
+                    minIconSize: 60,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppointmentScaleDownText(
+                          text: hasPatientInProgress ? inProgressAppointment!.patientName : 'No patient in progress',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: hasPatientInProgress ? colors.foreground : colors.mutedForeground,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          hasPatientInProgress
+                              ? AppointmentQueueDisplay.formatSessionLabel(
+                                  AppointmentQueueDisplay.estimateSessionDuration(inProgressAppointment!, now: now),
+                                )
+                              : 'Available',
+                          style: textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

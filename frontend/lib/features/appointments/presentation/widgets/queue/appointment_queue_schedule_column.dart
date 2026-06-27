@@ -32,6 +32,8 @@ class AppointmentQueueScheduleColumn extends ConsumerStatefulWidget {
     required this.now,
     this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
     this.scrollNonce = 0,
+    this.scrollToAppointmentId,
+    this.onTargetAppointmentScrollHandled,
     super.key,
   });
 
@@ -41,6 +43,14 @@ class AppointmentQueueScheduleColumn extends ConsumerStatefulWidget {
 
   /// Bumped by the queue page on each visit so the list scrolls to the focused row.
   final int scrollNonce;
+
+  /// When set, scrolls to this appointment instead of the slot closest to [now].
+  final String? scrollToAppointmentId;
+
+  /// Called after a requested [scrollToAppointmentId] scroll completes.
+  final VoidCallback? onTargetAppointmentScrollHandled;
+
+  static const flashDuration = Duration(milliseconds: 1400);
 
   @override
   ConsumerState<AppointmentQueueScheduleColumn> createState() => _AppointmentQueueScheduleColumnState();
@@ -57,10 +67,12 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
   static const _estimatedRowHeight = 92.0;
   static const _maxScrollAttempts = 16;
 
-  final _closestRowKey = GlobalKey();
+  final _scrollTargetRowKey = GlobalKey();
   final _scrollController = ScrollController();
   String? _lastSuccessfulScrollKey;
   String? _pendingScrollKey;
+  String? _flashingAppointmentId;
+  Timer? _flashTimer;
 
   @override
   void initState() {
@@ -71,18 +83,47 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
   @override
   void didUpdateWidget(covariant AppointmentQueueScheduleColumn oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollToAppointmentId != null &&
+        oldWidget.scrollToAppointmentId!.isNotEmpty &&
+        widget.scrollToAppointmentId == null) {
+      _lastSuccessfulScrollKey = _scrollKey();
+    }
     _scheduleScrollToCurrent();
   }
 
   @override
   void dispose() {
+    _flashTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
 
   String _scrollKey() {
     final itemSignature = widget.items.map((item) => item.id).join(',');
-    return '${widget.scrollNonce}|$itemSignature';
+    return '${widget.scrollNonce}|${widget.scrollToAppointmentId ?? ''}|$itemSignature';
+  }
+
+  int _scrollTargetIndex() {
+    final targetId = widget.scrollToAppointmentId;
+    if (targetId != null && targetId.isNotEmpty) {
+      final index = widget.items.indexWhere((item) => item.id == targetId);
+      if (index >= 0) {
+        return index;
+      }
+    }
+    return AppointmentQueueDisplay.indexClosestToNow(widget.items, now: widget.now);
+  }
+
+  void _triggerFlash(String appointmentId) {
+    _flashTimer?.cancel();
+    setState(() => _flashingAppointmentId = appointmentId);
+    _flashTimer = Timer(AppointmentQueueScheduleColumn.flashDuration, () {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _flashingAppointmentId = null);
+      widget.onTargetAppointmentScrollHandled?.call();
+    });
   }
 
   void _scheduleScrollToCurrent() {
@@ -104,22 +145,26 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
       return;
     }
 
-    final closestIndex = AppointmentQueueDisplay.indexClosestToNow(widget.items, now: widget.now);
-    if (_scrollController.hasClients && _closestRowKey.currentContext == null) {
+    final closestIndex = _scrollTargetIndex();
+    if (_scrollController.hasClients && _scrollTargetRowKey.currentContext == null) {
       final maxExtent = _scrollController.position.maxScrollExtent;
       final targetOffset = (closestIndex * _estimatedRowHeight).clamp(0.0, maxExtent);
       _scrollController.jumpTo(targetOffset);
     }
 
-    final rowContext = _closestRowKey.currentContext;
+    final rowContext = _scrollTargetRowKey.currentContext;
     if (rowContext != null) {
       Scrollable.ensureVisible(
         rowContext,
         alignment: 0.5,
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 450),
         curve: Curves.easeInOut,
       );
       _lastSuccessfulScrollKey = _pendingScrollKey;
+      final flashId = widget.scrollToAppointmentId;
+      if (flashId != null && flashId.isNotEmpty) {
+        _triggerFlash(flashId);
+      }
       _pendingScrollKey = null;
       return;
     }
@@ -166,6 +211,7 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final closestIndex = AppointmentQueueDisplay.indexClosestToNow(widget.items, now: widget.now);
+    final scrollTargetIndex = _scrollTargetIndex();
 
     final dateLabel = _dateFormat.format(widget.now.toLocal());
     final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
@@ -206,9 +252,10 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
               itemBuilder: (context, index) {
                 final item = widget.items[index];
                 final isFocused = index == closestIndex;
+                final isScrollTarget = index == scrollTargetIndex;
                 final isPast = index < closestIndex;
                 return _ScheduleTimelineRow(
-                  key: isFocused ? _closestRowKey : ValueKey(item.id),
+                  key: isScrollTarget ? _scrollTargetRowKey : ValueKey(item.id),
                   isFirst: index == 0,
                   isLast: index == widget.items.length - 1,
                   isPast: isPast,
@@ -226,6 +273,7 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
                     shiftLookup: widget.shiftLookup,
                     timeLabel: _timeRangeLabel(item),
                     isFocused: isFocused,
+                    isFlashing: _flashingAppointmentId == item.id,
                     statusDimmed: AppointmentQueueDisplay.isScheduleRowDimmed(item),
                     now: widget.now,
                     onTap: () => AppNavigator(context).pushAppointmentDetail(item.id, preview: item),
@@ -237,12 +285,13 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
   }
 }
 
-class _AppointmentRow extends StatelessWidget {
+class _AppointmentRow extends StatefulWidget {
   const _AppointmentRow({
     required this.item,
     required this.shiftLookup,
     required this.timeLabel,
     required this.isFocused,
+    required this.isFlashing,
     required this.statusDimmed,
     required this.now,
     required this.onTap,
@@ -252,45 +301,99 @@ class _AppointmentRow extends StatelessWidget {
   final AppointmentQueueShiftDoctorLookup shiftLookup;
   final String timeLabel;
   final bool isFocused;
+  final bool isFlashing;
   final bool statusDimmed;
   final DateTime now;
   final VoidCallback onTap;
 
   @override
+  State<_AppointmentRow> createState() => _AppointmentRowState();
+}
+
+class _AppointmentRowState extends State<_AppointmentRow> with SingleTickerProviderStateMixin {
+  late AnimationController _flashController;
+
+  @override
+  void initState() {
+    super.initState();
+    _flashController = AnimationController(
+      vsync: this,
+      duration: AppointmentQueueScheduleColumn.flashDuration,
+      value: 1,
+    );
+    if (widget.isFlashing) {
+      _flashController.forward(from: 0);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _AppointmentRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isFlashing && !oldWidget.isFlashing) {
+      _flashController.forward(from: 0);
+    } else if (!widget.isFlashing && oldWidget.isFlashing) {
+      _flashController.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _flashController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
     final colors = context.semanticColors;
     final textTheme = Theme.of(context).textTheme;
     final statusColor = item.status == AppointmentStatus.noShow
         ? colors.destructive
         : AppointmentCalendarDisplay.statusColor(item.status);
-    final opacity = statusDimmed ? 0.5 : 1.0;
-    final primaryTextColor = isFocused ? colors.foreground : colors.mutedForeground;
-    final primaryWeight = isFocused ? FontWeight.w700 : FontWeight.w500;
+    final opacity = widget.statusDimmed ? 0.5 : 1.0;
+    final primaryTextColor = widget.isFocused ? colors.foreground : colors.mutedForeground;
+    final primaryWeight = widget.isFocused ? FontWeight.w700 : FontWeight.w500;
     final showWait = item.status == AppointmentStatus.checkedIn;
     final waitLabel = showWait
-        ? AppointmentQueueDisplay.formatWaitedLabel(AppointmentQueueDisplay.estimateWaitDuration(item, now: now))
+        ? AppointmentQueueDisplay.formatWaitedLabel(AppointmentQueueDisplay.estimateWaitDuration(item, now: widget.now))
         : null;
 
-    final doctorPresentation = AppointmentQueueDisplay.queueDoctorPresentation(item, shiftLookup: shiftLookup);
+    final doctorPresentation = AppointmentQueueDisplay.queueDoctorPresentation(item, shiftLookup: widget.shiftLookup);
     final visitLabel = _doctorVisitLabel(item);
     final borderRadius = BorderRadius.circular(context.shapeTokens.lg);
 
     return Opacity(
       opacity: opacity,
-      child: FCard.raw(
-        style: FCardStyleDelta.delta(
-          decoration: DecorationDelta.boxDelta(
-            color: colors.card,
-            border: Border.all(color: colors.border),
-            borderRadius: borderRadius,
-          ),
-        ),
+      child: AnimatedBuilder(
+        animation: _flashController,
+        builder: (context, child) {
+          final glow = (1 - Curves.easeOut.transform(_flashController.value)).clamp(0.0, 1.0);
+          final borderColor = Color.lerp(colors.border, colors.primary, glow * 0.95)!;
+          return FCard.raw(
+            style: FCardStyleDelta.delta(
+              decoration: DecorationDelta.boxDelta(
+                color: colors.card,
+                border: Border.all(color: borderColor, width: 1 + glow * 2),
+                borderRadius: borderRadius,
+                boxShadow: glow > 0.05
+                    ? [
+                        BoxShadow(
+                          color: colors.primary.withValues(alpha: glow * 0.35),
+                          blurRadius: 8 + glow * 6,
+                        ),
+                      ]
+                    : null,
+              ),
+            ),
+            child: child!,
+          );
+        },
         child: ClipRRect(
           borderRadius: borderRadius,
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: onTap,
+              onTap: widget.onTap,
               child: Ink(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -314,7 +417,7 @@ class _AppointmentRow extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                timeLabel,
+                                widget.timeLabel,
                                 style: textTheme.titleSmall?.copyWith(
                                   color: primaryTextColor,
                                   fontWeight: primaryWeight,

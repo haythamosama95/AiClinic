@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 import 'package:intl/intl.dart';
 
-import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -20,12 +19,14 @@ class AppointmentQueueWaitingColumn extends StatelessWidget {
     required this.items,
     required this.now,
     this.shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
+    this.onPatientTap,
     super.key,
   });
 
   final List<AppointmentListItem> items;
   final DateTime now;
   final AppointmentQueueShiftDoctorLookup shiftLookup;
+  final ValueChanged<AppointmentListItem>? onPatientTap;
 
   static final _timeFormat = DateFormat('h:mm a');
 
@@ -67,6 +68,7 @@ class AppointmentQueueWaitingColumn extends StatelessWidget {
                           waitLabel: AppointmentQueueDisplay.formatWaitedLabel(
                             AppointmentQueueDisplay.estimateWaitDuration(item, now: now),
                           ),
+                          onTap: onPatientTap == null ? null : () => onPatientTap!(item),
                         );
                       },
                     ),
@@ -95,12 +97,14 @@ class _CheckedInPatientRow extends StatelessWidget {
     required this.preferredDoctorLabel,
     required this.timeLabel,
     required this.waitLabel,
+    this.onTap,
   });
 
   final AppointmentListItem item;
   final String preferredDoctorLabel;
   final String timeLabel;
   final String waitLabel;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -122,7 +126,7 @@ class _CheckedInPatientRow extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: () => AppNavigator(context).pushAppointmentDetail(item.id, preview: item),
+            onTap: onTap,
             child: Ink(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
