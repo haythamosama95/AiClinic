@@ -267,7 +267,13 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     return null;
   }
 
-  void _patchQueueAfterStatusChange({required AppointmentStatus newStatus, String? doctorId}) {
+  void _patchQueueAfterStatusChange({
+    required AppointmentStatus newStatus,
+    String? doctorId,
+    DateTime? updatedAt,
+    DateTime? checkedInAt,
+    DateTime? inProgressAt,
+  }) {
     ref
         .read(appointmentQueueProvider.notifier)
         .patchAppointmentStatus(
@@ -275,7 +281,30 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
           newStatus: newStatus,
           doctorId: doctorId,
           doctorName: doctorId == null ? null : _doctorNameForId(doctorId),
+          updatedAt: updatedAt,
+          checkedInAt: checkedInAt,
+          inProgressAt: inProgressAt,
         );
+  }
+
+  Future<void> _revertDoctorAssignment({required String? originalDoctorId}) async {
+    if (originalDoctorId == null || originalDoctorId.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(appointmentRepositoryProvider)
+          .updateAppointment(
+            appointmentId: detail.id,
+            patientId: detail.patientId,
+            doctorId: originalDoctorId,
+            startTime: detail.startTime,
+            endTime: detail.endTime,
+          );
+    } catch (error) {
+      debugPrint('AppointmentDetailStatusActions._revertDoctorAssignment failed: $error');
+    }
   }
 
   Future<void> _handleAdvanceStatus() async {
@@ -302,11 +331,12 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     }
 
     await _runAction('advance', () async {
+      final originalDoctorId = detail.doctorId?.trim();
       try {
         if (doctorIdForStart != null) {
           await _assignDoctorIfNeeded(doctorIdForStart);
         }
-        await ref
+        final update = await ref
             .read(appointmentRepositoryProvider)
             .updateAppointmentStatus(appointmentId: detail.id, newStatus: target);
         if (!mounted) {
@@ -314,13 +344,31 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         }
         ref.invalidate(appointmentDetailProvider(detail.id));
         ref.invalidate(appointmentCalendarProvider);
-        _patchQueueAfterStatusChange(newStatus: target, doctorId: doctorIdForStart);
+        _patchQueueAfterStatusChange(
+          newStatus: target,
+          doctorId: doctorIdForStart,
+          updatedAt: update.updatedAt,
+          checkedInAt: update.checkedInAt,
+          inProgressAt: update.inProgressAt,
+        );
         AppToast.success(context, message: 'Appointment marked as ${target.label.toLowerCase()}.');
       } on RpcFailure catch (error) {
+        if (doctorIdForStart != null &&
+            originalDoctorId != doctorIdForStart &&
+            originalDoctorId != null &&
+            originalDoctorId.isNotEmpty) {
+          await _revertDoctorAssignment(originalDoctorId: originalDoctorId);
+        }
         if (mounted) {
           AppToast.error(context, message: appointmentMessageForRpc(error));
         }
       } catch (_) {
+        if (doctorIdForStart != null &&
+            originalDoctorId != doctorIdForStart &&
+            originalDoctorId != null &&
+            originalDoctorId.isNotEmpty) {
+          await _revertDoctorAssignment(originalDoctorId: originalDoctorId);
+        }
         if (mounted) {
           AppToast.error(context, message: 'Unable to update status. Try again.');
         }

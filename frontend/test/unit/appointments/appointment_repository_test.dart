@@ -153,12 +153,12 @@ void main() {
     });
 
     test('advanced: updateAppointmentStatus forwards wire value', () async {
-      final status = await repository.updateAppointmentStatus(
+      final update = await repository.updateAppointmentStatus(
         appointmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         newStatus: AppointmentStatus.checkedIn,
       );
 
-      expect(status, AppointmentStatus.checkedIn);
+      expect(update.status, AppointmentStatus.checkedIn);
       expect(client.lastParams?['p_new_status'], 'checked_in');
     });
 

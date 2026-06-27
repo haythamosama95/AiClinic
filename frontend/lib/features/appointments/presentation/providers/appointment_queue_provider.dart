@@ -24,6 +24,8 @@ class AppointmentQueueState {
     required this.items,
     this.comparisonItems,
     this.comparisonNow,
+    this.comparisonUnavailable = false,
+    this.realtimeConnection,
     this.loading = false,
     this.error,
   });
@@ -31,6 +33,8 @@ class AppointmentQueueState {
   final List<AppointmentListItem> items;
   final List<AppointmentListItem>? comparisonItems;
   final DateTime? comparisonNow;
+  final bool comparisonUnavailable;
+  final AppointmentQueueRealtimeConnection? realtimeConnection;
   final bool loading;
   final String? error;
 
@@ -38,6 +42,8 @@ class AppointmentQueueState {
     List<AppointmentListItem>? items,
     Object? comparisonItems = _sentinel,
     Object? comparisonNow = _sentinel,
+    bool? comparisonUnavailable,
+    Object? realtimeConnection = _sentinel,
     bool? loading,
     Object? error = _sentinel,
   }) {
@@ -47,6 +53,10 @@ class AppointmentQueueState {
           ? this.comparisonItems
           : comparisonItems as List<AppointmentListItem>?,
       comparisonNow: identical(comparisonNow, _sentinel) ? this.comparisonNow : comparisonNow as DateTime?,
+      comparisonUnavailable: comparisonUnavailable ?? this.comparisonUnavailable,
+      realtimeConnection: identical(realtimeConnection, _sentinel)
+          ? this.realtimeConnection
+          : realtimeConnection as AppointmentQueueRealtimeConnection?,
       loading: loading ?? this.loading,
       error: identical(error, _sentinel) ? this.error : error as String?,
     );
@@ -120,8 +130,9 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
       state = state.copyWith(
         loading: false,
         items: sortAppointmentsByStartTime(items),
-        comparisonItems: comparison?.items,
-        comparisonNow: comparison?.referenceNow,
+        comparisonItems: comparison != null && !comparison.unavailable ? comparison.items : null,
+        comparisonNow: comparison != null && !comparison.unavailable ? comparison.referenceNow : null,
+        comparisonUnavailable: comparison?.unavailable ?? false,
         error: null,
       );
     } catch (error) {
@@ -130,7 +141,7 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
     }
   }
 
-  Future<({List<AppointmentListItem> items, DateTime referenceNow})?> _fetchComparisonItems({
+  Future<({List<AppointmentListItem> items, DateTime referenceNow, bool unavailable})?> _fetchComparisonItems({
     required String branchId,
     required AppointmentRepository repository,
   }) async {
@@ -151,10 +162,10 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
         from: comparisonRange.from,
         to: comparisonRange.to,
       );
-      return (items: sortAppointmentsByStartTime(items), referenceNow: comparisonNow);
+      return (items: sortAppointmentsByStartTime(items), referenceNow: comparisonNow, unavailable: false);
     } catch (error) {
       debugPrint('AppointmentQueueController._fetchComparisonItems failed: $error');
-      return null;
+      return (items: <AppointmentListItem>[], referenceNow: DateTime.now(), unavailable: true);
     }
   }
 
@@ -189,7 +200,15 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
     _unsubscribeRealtime();
     final client = ref.read(appointmentQueueRealtimeClientProvider);
     _realtimeClient = client;
-    client.subscribe(branchId: branchId, onConnectionChanged: (_) {}, onAppointmentChange: _onRealtimeChange);
+    client.subscribe(
+      branchId: branchId,
+      onConnectionChanged: _onRealtimeConnectionChanged,
+      onAppointmentChange: _onRealtimeChange,
+    );
+  }
+
+  void _onRealtimeConnectionChanged(AppointmentQueueRealtimeConnection connection) {
+    state = state.copyWith(realtimeConnection: connection);
   }
 
   void _unsubscribeRealtime() {
@@ -203,25 +222,31 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
     required AppointmentStatus newStatus,
     String? doctorId,
     String? doctorName,
+    DateTime? updatedAt,
+    DateTime? checkedInAt,
+    DateTime? inProgressAt,
   }) {
     final index = state.items.indexWhere((item) => item.id == appointmentId);
     if (index < 0) {
       return;
     }
 
-    final now = DateTime.now().toUtc();
     final existing = state.items[index];
     var patched = existing.copyWith(
       status: newStatus,
-      updatedAt: now,
+      updatedAt: updatedAt ?? existing.updatedAt,
       doctorId: doctorId ?? existing.doctorId,
       doctorName: doctorName ?? existing.doctorName,
     );
-    if (newStatus == AppointmentStatus.checkedIn && patched.checkedInAt == null) {
-      patched = patched.copyWith(checkedInAt: now);
+    if (checkedInAt != null) {
+      patched = patched.copyWith(checkedInAt: checkedInAt);
+    } else if (newStatus == AppointmentStatus.checkedIn && patched.checkedInAt == null) {
+      // Leave null until server timestamps arrive — avoids client-clock drift.
     }
-    if (newStatus == AppointmentStatus.inProgress && patched.inProgressAt == null) {
-      patched = patched.copyWith(inProgressAt: now);
+    if (inProgressAt != null) {
+      patched = patched.copyWith(inProgressAt: inProgressAt);
+    } else if (newStatus == AppointmentStatus.inProgress && patched.inProgressAt == null) {
+      // Leave null until server timestamps arrive — avoids client-clock drift.
     }
 
     final items = [...state.items];
@@ -248,4 +273,10 @@ final appointmentQueueProvider = NotifierProvider<AppointmentQueueController, Ap
 final appointmentQueueCheckedInCountProvider = Provider<int>((ref) {
   final items = ref.watch(appointmentQueueProvider).items;
   return AppointmentQueueDisplay.partition(items).waiting.length;
+});
+
+/// Eagerly warms the queue provider so the nav badge reflects today's check-ins
+/// without requiring a visit to the queue page.
+final appointmentQueueShellWarmProvider = Provider<void>((ref) {
+  ref.watch(appointmentQueueCheckedInCountProvider);
 });

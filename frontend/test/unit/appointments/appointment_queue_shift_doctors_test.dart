@@ -115,6 +115,31 @@ void main() {
       final presentation = lookup.presentationFor(item);
       expect(presentation.entries.first.isPatientChoice, isFalse);
     });
+
+    test('BUG-005: duplicate doctor names are excluded from shift lookup', () {
+      final lookup = AppointmentQueueShiftDoctorLookup.fromShiftsAndDoctors(
+        organizationTimezone: 'UTC',
+        shifts: [
+          ShiftListItem(
+            id: 's1',
+            branchId: 'b1',
+            shiftDate: DateTime(2026, 6, 4),
+            startTime: '09:00',
+            endTime: '17:00',
+            status: ShiftStatus.active,
+            isUnassigned: false,
+            assigneeNames: const ['Dr Alpha'],
+            assigneeCount: 1,
+          ),
+        ],
+        doctors: const [
+          StaffListItem(id: 'd1', fullName: 'Dr Alpha', role: StaffRole.doctor, isActive: true),
+          StaffListItem(id: 'd2', fullName: 'Dr Alpha', role: StaffRole.doctor, isActive: true),
+        ],
+      );
+
+      expect(lookup.doctorsOnShiftAt(DateTime.utc(2026, 6, 4, 10)), isEmpty);
+    });
   });
 }
 

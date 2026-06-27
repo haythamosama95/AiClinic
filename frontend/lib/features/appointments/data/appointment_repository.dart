@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status_update_result.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/domain/create_appointment_result.dart';
 
@@ -175,7 +176,7 @@ class AppointmentRepository with AppRpcInvoker {
   /// Advances appointment status via `update_appointment_status` (V1-4 US5).
   ///
   /// Throws [RpcFailure] with code `INVALID_TRANSITION` when the server rejects the change.
-  Future<AppointmentStatus> updateAppointmentStatus({
+  Future<AppointmentStatusUpdateResult> updateAppointmentStatus({
     required String appointmentId,
     required AppointmentStatus newStatus,
   }) async {
@@ -186,11 +187,11 @@ class AppointmentRepository with AppRpcInvoker {
       'p_new_status': newStatus.wireValue,
     });
 
-    final status = AppointmentStatus.tryParse(result.data?['status']?.toString());
-    if (status == null) {
+    final update = AppointmentStatusUpdateResult.fromRpcData(result.data);
+    if (update == null) {
       throw StateError('Update appointment status returned an unexpected shape.');
     }
-    return status;
+    return update;
   }
 
   /// Updates a non-terminal planned appointment via `update_appointment`.
@@ -308,8 +309,9 @@ class AppointmentRepository with AppRpcInvoker {
   }
 
   /// Marks an appointment as no-show via `update_appointment_status` (V1-4 US7).
-  Future<AppointmentStatus> markAppointmentNoShow({required String appointmentId}) {
-    return updateAppointmentStatus(appointmentId: appointmentId, newStatus: AppointmentStatus.noShow);
+  Future<AppointmentStatus> markAppointmentNoShow({required String appointmentId}) async {
+    final update = await updateAppointmentStatus(appointmentId: appointmentId, newStatus: AppointmentStatus.noShow);
+    return update.status;
   }
 
   void _assertNonEmpty(String field, String value) {

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
@@ -9,21 +11,22 @@ import 'package:ai_clinic/app/shell/widgets/shell_header.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 
 /// Authenticated route shell: header, left nav, and feature content regions.
 ///
 /// Navigation contracts and route definitions remain in [AppRoutes] and
 /// [appRouterProvider]. Nav selection is local UI state until wired to routes.
-class AuthenticatedShell extends StatefulWidget {
+class AuthenticatedShell extends ConsumerStatefulWidget {
   const AuthenticatedShell({required this.child, super.key});
 
   final Widget child;
 
   @override
-  State<AuthenticatedShell> createState() => _AuthenticatedShellState();
+  ConsumerState<AuthenticatedShell> createState() => _AuthenticatedShellState();
 }
 
-class _AuthenticatedShellState extends State<AuthenticatedShell> {
+class _AuthenticatedShellState extends ConsumerState<AuthenticatedShell> {
   late String _selectedItemId;
   late Set<String> _expandedGroupIds;
 
@@ -79,6 +82,9 @@ class _AuthenticatedShellState extends State<AuthenticatedShell> {
     final location = GoRouterState.of(context).matchedLocation;
     final selectedItemId = _selectedItemIdForLocation(location);
     final pageTitle = _pageTitleForLocation(location, selectedItemId);
+    if (ref.watch(permissionServiceProvider).canAccessAppointments()) {
+      ref.watch(appointmentQueueShellWarmProvider);
+    }
 
     return ShellDevShellWrapper(
       child: ColoredBox(

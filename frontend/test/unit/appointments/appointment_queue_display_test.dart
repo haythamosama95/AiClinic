@@ -301,13 +301,46 @@ void main() {
       );
     });
 
+    test('BUG-008: indexClosestToNow prefers in-progress over slot proximity', () {
+      final start = DateTime.utc(2026, 6, 4, 10);
+      final items = [
+        item(id: 'current-slot', startTime: start.add(const Duration(hours: 1)), status: AppointmentStatus.confirmed),
+        item(id: 'in-progress', startTime: start, status: AppointmentStatus.inProgress),
+      ];
+      final now = start.add(const Duration(hours: 1, minutes: 10));
+
+      expect(AppointmentQueueDisplay.indexClosestToNow(items, now: now), 1);
+    });
+
+    test('BUG-003: estimatedScheduleScrollOffset uses measured heights before fallback', () {
+      final offset = AppointmentQueueDisplay.estimatedScheduleScrollOffset(
+        targetIndex: 2,
+        measuredRowHeights: const {0: 110, 1: 140},
+        fallbackRowHeight: 92,
+      );
+
+      expect(offset, 250);
+    });
+
     test('inProgressAppointmentForDoctor returns active visit for doctor', () {
       final active = item(id: 'active', status: AppointmentStatus.inProgress, doctorId: 'd1', doctorName: 'Dr Alpha');
       final waiting = item(id: 'waiting', status: AppointmentStatus.checkedIn, doctorId: 'd2');
 
       expect(AppointmentQueueDisplay.inProgressAppointmentForDoctor('d1', [active, waiting]), active);
       expect(AppointmentQueueDisplay.inProgressAppointmentForDoctor('d2', [active, waiting]), isNull);
-      expect(AppointmentQueueDisplay.inProgressAppointmentForDoctor('', [active]), isNull);
+    });
+
+    test('BUG-009: inProgressAppointmentForDoctor matches unassigned in-progress slot', () {
+      final unassignedActive = item(
+        id: 'active',
+        status: AppointmentStatus.inProgress,
+        doctorId: null,
+        doctorName: null,
+      );
+
+      expect(AppointmentQueueDisplay.inProgressAppointmentForDoctor(null, [unassignedActive]), unassignedActive);
+      expect(AppointmentQueueDisplay.inProgressAppointmentForDoctor('', [unassignedActive]), unassignedActive);
+      expect(AppointmentQueueDisplay.inProgressAppointmentForDoctor('d1', [unassignedActive]), isNull);
     });
 
     test('doctorInProgressBlockReason blocks start when doctor already in session', () {

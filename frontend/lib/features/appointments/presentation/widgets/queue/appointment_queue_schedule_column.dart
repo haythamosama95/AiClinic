@@ -73,6 +73,7 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
 
   final _scrollTargetRowKey = GlobalKey();
   final _scrollController = ScrollController();
+  final _rowHeights = <int, double>{};
   String? _lastSuccessfulScrollKey;
   String? _pendingScrollKey;
   String? _flashingAppointmentId;
@@ -144,6 +145,25 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
     WidgetsBinding.instance.addPostFrameCallback((_) => _attemptScrollToFocused(0));
   }
 
+  void _onRowHeightReported(int index, double height) {
+    if (height <= 0) {
+      return;
+    }
+    final previous = _rowHeights[index];
+    if (previous != null && (previous - height).abs() < 0.5) {
+      return;
+    }
+    _rowHeights[index] = height;
+  }
+
+  double _estimatedOffsetForIndex(int index) {
+    return AppointmentQueueDisplay.estimatedScheduleScrollOffset(
+      targetIndex: index,
+      measuredRowHeights: _rowHeights,
+      fallbackRowHeight: _estimatedRowHeight,
+    );
+  }
+
   void _attemptScrollToFocused(int attempt) {
     if (!mounted || _pendingScrollKey == null) {
       return;
@@ -152,7 +172,7 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
     final closestIndex = _scrollTargetIndex();
     if (widget.bodyScrollable && _scrollController.hasClients && _scrollTargetRowKey.currentContext == null) {
       final maxExtent = _scrollController.position.maxScrollExtent;
-      final targetOffset = (closestIndex * _estimatedRowHeight).clamp(0.0, maxExtent);
+      final targetOffset = _estimatedOffsetForIndex(closestIndex).clamp(0.0, maxExtent);
       _scrollController.jumpTo(targetOffset);
     }
 
@@ -263,6 +283,8 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
                 final isPast = index < closestIndex;
                 return _ScheduleTimelineRow(
                   key: isScrollTarget ? _scrollTargetRowKey : ValueKey(item.id),
+                  index: index,
+                  onHeightReported: _onRowHeightReported,
                   isFirst: index == 0,
                   isLast: index == widget.items.length - 1,
                   isPast: isPast,
@@ -593,6 +615,8 @@ class _QueueSectionDivider extends StatelessWidget {
 
 class _ScheduleTimelineRow extends StatefulWidget {
   const _ScheduleTimelineRow({
+    required this.index,
+    required this.onHeightReported,
     required this.isFirst,
     required this.isLast,
     required this.isPast,
@@ -609,6 +633,8 @@ class _ScheduleTimelineRow extends StatefulWidget {
     super.key,
   });
 
+  final int index;
+  final void Function(int index, double height) onHeightReported;
   final bool isFirst;
   final bool isLast;
   final bool isPast;
@@ -669,11 +695,18 @@ class _ScheduleTimelineRowState extends State<_ScheduleTimelineRow> {
     }
 
     final height = _cardKey.currentContext?.size?.height;
-    if (height == null || height <= 0 || (_cardHeight - height).abs() < 0.5) {
+    if (height == null || height <= 0) {
+      return;
+    }
+
+    final totalHeight = height + widget.bottomGap;
+    if ((_cardHeight - height).abs() < 0.5) {
+      widget.onHeightReported(widget.index, totalHeight);
       return;
     }
 
     setState(() => _cardHeight = height);
+    widget.onHeightReported(widget.index, totalHeight);
   }
 
   @override

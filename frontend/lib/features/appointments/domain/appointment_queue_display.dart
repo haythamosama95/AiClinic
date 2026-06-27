@@ -227,9 +227,17 @@ abstract final class AppointmentQueueDisplay {
   }
 
   /// In-progress appointment currently assigned to [doctorId], if any.
-  static AppointmentListItem? inProgressAppointmentForDoctor(String doctorId, Iterable<AppointmentListItem> items) {
-    final normalizedId = doctorId.trim();
-    if (normalizedId.isEmpty) {
+  ///
+  /// When [doctorId] is null or empty, matches unassigned in-progress rows
+  /// (they share a single server-side slot).
+  static AppointmentListItem? inProgressAppointmentForDoctor(String? doctorId, Iterable<AppointmentListItem> items) {
+    final normalizedId = doctorId?.trim();
+    if (normalizedId == null || normalizedId.isEmpty) {
+      for (final item in items) {
+        if (item.status == AppointmentStatus.inProgress && (item.doctorId == null || item.doctorId!.trim().isEmpty)) {
+          return item;
+        }
+      }
       return null;
     }
 
@@ -260,11 +268,16 @@ abstract final class AppointmentQueueDisplay {
 
   /// Index of the schedule row whose time slot is nearest to [now].
   ///
-  /// Returns 0 when [items] is empty. An in-progress slot (now within
-  /// [startTime, endTime)) wins over adjacent slots.
+  /// Returns 0 when [items] is empty. An in-progress appointment wins over slot
+  /// proximity; otherwise the slot containing [now] or nearest edge is used.
   static int indexClosestToNow(List<AppointmentListItem> items, {required DateTime now}) {
     if (items.isEmpty) {
       return 0;
+    }
+
+    final inProgressIndex = items.indexWhere((item) => item.status == AppointmentStatus.inProgress);
+    if (inProgressIndex >= 0) {
+      return inProgressIndex;
     }
 
     var bestIndex = 0;
@@ -277,6 +290,19 @@ abstract final class AppointmentQueueDisplay {
       }
     }
     return bestIndex;
+  }
+
+  /// Scroll offset estimate for [targetIndex] using measured row heights when available.
+  static double estimatedScheduleScrollOffset({
+    required int targetIndex,
+    required Map<int, double> measuredRowHeights,
+    double fallbackRowHeight = 92,
+  }) {
+    var offset = 0.0;
+    for (var i = 0; i < targetIndex; i++) {
+      offset += measuredRowHeights[i] ?? fallbackRowHeight;
+    }
+    return offset;
   }
 
   static Duration _scheduleTimeDistance(AppointmentListItem item, DateTime now) {

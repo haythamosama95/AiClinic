@@ -69,6 +69,7 @@ class AppointmentQueueShiftDoctorLookup {
   }) {
     final namesByKey = <String, String>{};
     final idsByKey = <String, String>{};
+    final ambiguousKeys = <String>{};
     for (final doctor in doctors) {
       if (doctor.role != StaffRole.doctor) {
         continue;
@@ -78,8 +79,17 @@ class AppointmentQueueShiftDoctorLookup {
         continue;
       }
       final key = name.toLowerCase();
+      if (idsByKey.containsKey(key) && idsByKey[key] != doctor.id) {
+        ambiguousKeys.add(key);
+        continue;
+      }
       namesByKey[key] = name;
       idsByKey[key] = doctor.id;
+    }
+
+    for (final key in ambiguousKeys) {
+      namesByKey.remove(key);
+      idsByKey.remove(key);
     }
 
     final staffedShifts = shifts.where(_isStaffedShift).toList(growable: false);

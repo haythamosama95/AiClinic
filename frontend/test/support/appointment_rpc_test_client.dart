@@ -115,7 +115,13 @@ class AppointmentRpcTestClient extends RpcCaptureSupabaseClient {
       'get_appointment' => {'success': true, 'data': appointmentRpcDefaultDetailItem()},
       'update_appointment_status' => {
         'success': true,
-        'data': {'appointment_id': lastParams?['p_appointment_id'], 'status': lastParams?['p_new_status']},
+        'data': {
+          'appointment_id': lastParams?['p_appointment_id'],
+          'status': lastParams?['p_new_status'],
+          'updated_at': '2026-06-04T10:00:00.000Z',
+          'checked_in_at': lastParams?['p_new_status'] == 'checked_in' ? '2026-06-04T09:45:00.000Z' : null,
+          'in_progress_at': lastParams?['p_new_status'] == 'in_progress' ? '2026-06-04T10:00:00.000Z' : null,
+        },
       },
       'update_appointment' => {
         'success': true,

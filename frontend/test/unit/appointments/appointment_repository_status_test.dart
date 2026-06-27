@@ -19,12 +19,12 @@ void main() {
     test('trivial: forwards appointment id and wire status', () async {
       const appointmentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-      final status = await repository.updateAppointmentStatus(
+      final update = await repository.updateAppointmentStatus(
         appointmentId: appointmentId,
         newStatus: AppointmentStatus.checkedIn,
       );
 
-      expect(status, AppointmentStatus.checkedIn);
+      expect(update.status, AppointmentStatus.checkedIn);
       expect(client.lastFunction, 'update_appointment_status');
       expect(client.lastParams?['p_appointment_id'], appointmentId);
       expect(client.lastParams?['p_new_status'], 'checked_in');
@@ -36,12 +36,12 @@ void main() {
         'data': {'appointment_id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'status': 'in_progress'},
       };
 
-      final status = await repository.updateAppointmentStatus(
+      final update = await repository.updateAppointmentStatus(
         appointmentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
         newStatus: AppointmentStatus.inProgress,
       );
 
-      expect(status, AppointmentStatus.inProgress);
+      expect(update.status, AppointmentStatus.inProgress);
     });
 
     test('invalid state: INVALID_TRANSITION surfaces from RPC', () async {
@@ -81,6 +81,28 @@ void main() {
         ),
         throwsA(isA<StateError>()),
       );
+    });
+
+    test('BUG-001: returns server timestamps from RPC payload', () async {
+      client.rpcResults['update_appointment_status'] = {
+        'success': true,
+        'data': {
+          'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          'status': 'checked_in',
+          'updated_at': '2026-06-04T10:00:00.000Z',
+          'checked_in_at': '2026-06-04T09:45:00.000Z',
+          'in_progress_at': null,
+        },
+      };
+
+      final update = await repository.updateAppointmentStatus(
+        appointmentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        newStatus: AppointmentStatus.checkedIn,
+      );
+
+      expect(update.checkedInAt, DateTime.utc(2026, 6, 4, 9, 45));
+      expect(update.updatedAt, DateTime.utc(2026, 6, 4, 10));
+      expect(update.inProgressAt, isNull);
     });
 
     test('regression: FORBIDDEN permission denial propagates', () async {

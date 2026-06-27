@@ -201,23 +201,23 @@ void main() {
         durationMinutes: 20,
       );
 
-      var status = await ctx.appointments.updateAppointmentStatus(
+      var update = await ctx.appointments.updateAppointmentStatus(
         appointmentId: created.appointmentId,
         newStatus: AppointmentStatus.confirmed,
       );
-      expect(status, AppointmentStatus.confirmed);
+      expect(update.status, AppointmentStatus.confirmed);
 
-      status = await ctx.appointments.updateAppointmentStatus(
+      update = await ctx.appointments.updateAppointmentStatus(
         appointmentId: created.appointmentId,
         newStatus: AppointmentStatus.checkedIn,
       );
-      expect(status, AppointmentStatus.checkedIn);
+      expect(update.status, AppointmentStatus.checkedIn);
 
-      status = await ctx.appointments.updateAppointmentStatus(
+      update = await ctx.appointments.updateAppointmentStatus(
         appointmentId: created.appointmentId,
         newStatus: AppointmentStatus.inProgress,
       );
-      expect(status, AppointmentStatus.inProgress);
+      expect(update.status, AppointmentStatus.inProgress);
 
       // V1-5: in_progress → completed requires visit documentation (not a direct status RPC).
       await sessions.signInAs(StaffRole.doctor);

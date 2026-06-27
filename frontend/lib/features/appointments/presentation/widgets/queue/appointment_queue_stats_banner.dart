@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -6,9 +7,10 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_display
 
 /// Top stats banner with executive KPI cards for queue pulse metrics.
 class AppointmentQueueStatsBanner extends StatelessWidget {
-  const AppointmentQueueStatsBanner({required this.stats, super.key});
+  const AppointmentQueueStatsBanner({required this.stats, this.trendsUnavailable = false, super.key});
 
   final AppointmentQueueStats stats;
+  final bool trendsUnavailable;
 
   @override
   Widget build(BuildContext context) {
@@ -49,24 +51,61 @@ class AppointmentQueueStatsBanner extends StatelessWidget {
         ];
 
         if (isCompact) {
-          return Wrap(
-            spacing: SpacingTokens.sm,
-            runSpacing: SpacingTokens.sm,
-            children: children
-                .map((card) => SizedBox(width: (constraints.maxWidth - SpacingTokens.sm) / 2, child: card))
-                .toList(),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (trendsUnavailable) const _TrendsUnavailableBanner(),
+              Wrap(
+                spacing: SpacingTokens.sm,
+                runSpacing: SpacingTokens.sm,
+                children: children
+                    .map((card) => SizedBox(width: (constraints.maxWidth - SpacingTokens.sm) / 2, child: card))
+                    .toList(),
+              ),
+            ],
           );
         }
 
-        return Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var i = 0; i < children.length; i++) ...[
-              if (i > 0) const SizedBox(width: SpacingTokens.md),
-              Expanded(child: children[i]),
-            ],
+            if (trendsUnavailable) const _TrendsUnavailableBanner(),
+            Row(
+              children: [
+                for (var i = 0; i < children.length; i++) ...[
+                  if (i > 0) const SizedBox(width: SpacingTokens.md),
+                  Expanded(child: children[i]),
+                ],
+              ],
+            ),
           ],
         );
       },
+    );
+  }
+}
+
+class _TrendsUnavailableBanner extends StatelessWidget {
+  const _TrendsUnavailableBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 16, color: colors.mutedForeground),
+          const SizedBox(width: SpacingTokens.xs),
+          Expanded(
+            child: Text(
+              'Day-over-day trends are temporarily unavailable.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

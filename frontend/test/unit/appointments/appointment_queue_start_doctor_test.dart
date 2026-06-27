@@ -225,6 +225,26 @@ void main() {
         isTrue,
       );
     });
+    test('BUG-009: blockReasonForStart explains shared unassigned in-progress slot', () {
+      final start = DateTime.utc(2026, 6, 4, 11);
+      final active = _item(
+        status: AppointmentStatus.inProgress,
+        startTime: start,
+        doctorId: null,
+        doctorName: null,
+        id: 'active',
+      );
+      final waiting = _item(status: AppointmentStatus.checkedIn, startTime: start.add(const Duration(minutes: 30)));
+
+      expect(
+        AppointmentQueueStartDoctor.blockReasonForStart(
+          item: waiting,
+          siblingAppointments: [active, waiting],
+          shiftLookup: lookup,
+        ),
+        'Another visit without an assigned doctor is already in progress. Complete that visit or assign a doctor before starting another.',
+      );
+    });
   });
 }
 

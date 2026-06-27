@@ -22,11 +22,21 @@ abstract final class AppointmentQueueStartDoctor {
     required String excludeAppointmentId,
     required Iterable<AppointmentListItem> items,
   }) {
+    final normalizedId = doctorId.trim();
+    if (normalizedId.isEmpty) {
+      return items.any(
+        (other) =>
+            other.id != excludeAppointmentId &&
+            other.status == AppointmentStatus.inProgress &&
+            (other.doctorId == null || other.doctorId!.trim().isEmpty),
+      );
+    }
+
     return items.any(
       (other) =>
           other.id != excludeAppointmentId &&
           other.status == AppointmentStatus.inProgress &&
-          other.doctorId == doctorId,
+          other.doctorId == normalizedId,
     );
   }
 
@@ -128,6 +138,16 @@ abstract final class AppointmentQueueStartDoctor {
         return '$doctorLabel already has a patient in progress. Complete that visit before starting another.';
       }
       return null;
+    }
+
+    final unassignedInProgress = siblingAppointments.where(
+      (other) =>
+          other.id != item.id &&
+          other.status == AppointmentStatus.inProgress &&
+          (other.doctorId == null || other.doctorId!.trim().isEmpty),
+    );
+    if (unassignedInProgress.isNotEmpty) {
+      return 'Another visit without an assigned doctor is already in progress. Complete that visit or assign a doctor before starting another.';
     }
 
     final options = shiftOptionsFor(item: item, siblingAppointments: siblingAppointments, shiftLookup: shiftLookup);
