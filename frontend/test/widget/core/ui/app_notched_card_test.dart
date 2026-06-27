@@ -17,6 +17,7 @@ void main() {
   Future<void> pumpCard(
     WidgetTester tester, {
     Widget? title,
+    IconData? titleIcon,
     Widget? description,
     required Widget body,
     List<Widget>? actions,
@@ -32,7 +33,13 @@ void main() {
             body: Center(
               child: SizedBox(
                 width: cardWidth,
-                child: AppNotchedCard(title: title, description: description, actions: actions, body: body),
+                child: AppNotchedCard(
+                  title: title,
+                  titleIcon: titleIcon,
+                  description: description,
+                  actions: actions,
+                  body: body,
+                ),
               ),
             ),
           ),
@@ -54,6 +61,18 @@ void main() {
       expect(find.text('Panel title'), findsOneWidget);
       expect(find.text('Panel description'), findsOneWidget);
       expect(find.text('Panel body'), findsOneWidget);
+    });
+
+    testWidgets('renders optional title icon to the left of the title', (tester) async {
+      await pumpCard(
+        tester,
+        titleIcon: Icons.event_note_outlined,
+        title: const Text('Appointments'),
+        body: const Text('Body'),
+      );
+
+      expect(find.byIcon(Icons.event_note_outlined), findsOneWidget);
+      expect(find.text('Appointments'), findsOneWidget);
     });
 
     testWidgets('reserves trailing header space so title does not overlap notch shelf', (tester) async {

@@ -222,12 +222,12 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
     final canBook = canCreate && branchId != null && branchId.isNotEmpty;
 
     return AppNotchedCard(
+      titleIcon: Icons.event_note_outlined,
       title: Text(
         'Appointments',
         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
       ),
       actions: [
-        AppBadge(label: dateLabel, variant: AppBadgeVariant.plain),
         if (canBook)
           AppNotchedCardAction(
             providesOwnBackground: true,
@@ -237,6 +237,7 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
               onPressed: () => unawaited(_showBookingSheet(branchId: branchId, schedule: schedule)),
             ),
           ),
+        AppBadge(label: dateLabel, variant: AppBadgeVariant.plain),
         AppIconButton(
           icon: Icon(Icons.calendar_today_outlined, color: colors.primary),
           tooltip: 'Open calendar',

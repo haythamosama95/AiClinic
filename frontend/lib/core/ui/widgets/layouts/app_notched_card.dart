@@ -28,10 +28,11 @@ class AppNotchedCardAction extends StatelessWidget {
 /// centered in the notch shelf. Only the title reserves trailing space so it
 /// does not overlap the cut-out.
 class AppNotchedCard extends StatelessWidget {
-  const AppNotchedCard({required this.body, this.title, this.description, this.actions, super.key});
+  const AppNotchedCard({required this.body, this.title, this.titleIcon, this.description, this.actions, super.key});
 
   final Widget body;
   final Widget? title;
+  final IconData? titleIcon;
   final Widget? description;
   final List<Widget>? actions;
 
@@ -43,6 +44,7 @@ class AppNotchedCard extends StatelessWidget {
           constraints: constraints,
           body: body,
           title: title,
+          titleIcon: titleIcon,
           description: description,
           actions: actions,
         );
@@ -85,6 +87,7 @@ class _AppNotchedCardLayout extends StatefulWidget {
     required this.constraints,
     required this.body,
     this.title,
+    this.titleIcon,
     this.description,
     this.actions,
   });
@@ -92,6 +95,7 @@ class _AppNotchedCardLayout extends StatefulWidget {
   final BoxConstraints constraints;
   final Widget body;
   final Widget? title;
+  final IconData? titleIcon;
   final Widget? description;
   final List<Widget>? actions;
 
@@ -201,14 +205,7 @@ class _AppNotchedCardLayoutState extends State<_AppNotchedCardLayout> {
                           if (widget.title != null)
                             Padding(
                               padding: EdgeInsetsDirectional.only(end: trailingInset),
-                              child: DefaultTextStyle.merge(
-                                textHeightBehavior: const TextHeightBehavior(
-                                  applyHeightToFirstAscent: false,
-                                  applyHeightToLastDescent: false,
-                                ),
-                                style: contentStyle.titleTextStyle,
-                                child: widget.title!,
-                              ),
+                              child: _NotchedCardTitleRow(title: widget.title!, titleIcon: widget.titleIcon),
                             ),
                           if (widget.title != null && widget.description != null)
                             SizedBox(height: contentStyle.titleSpacing),
@@ -257,6 +254,38 @@ class _AppNotchedCardLayoutState extends State<_AppNotchedCardLayout> {
               ),
             ),
           ),
+      ],
+    );
+  }
+}
+
+class _NotchedCardTitleRow extends StatelessWidget {
+  const _NotchedCardTitleRow({required this.title, this.titleIcon});
+
+  final Widget title;
+  final IconData? titleIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final contentStyle = context.theme.cardStyle.contentStyle;
+
+    final titleText = DefaultTextStyle.merge(
+      textHeightBehavior: const TextHeightBehavior(applyHeightToFirstAscent: false, applyHeightToLastDescent: false),
+      style: contentStyle.titleTextStyle,
+      child: title,
+    );
+
+    if (titleIcon == null) {
+      return titleText;
+    }
+
+    final colors = context.semanticColors;
+
+    return Row(
+      spacing: SpacingTokens.sm,
+      children: [
+        Icon(titleIcon, size: 20, color: colors.primary),
+        Expanded(child: titleText),
       ],
     );
   }
