@@ -120,6 +120,19 @@ Uses `FTextFormField` for built-in validator error slots. Pass `validator` to en
 
 Maps `description` → forui `subtitle`. Optional `actions` render in a trailing row inside the card body.
 
+### `AppNotchedCard`
+
+Dashboard panel sibling to `AppCard` with a top-trailing step-down cut-out (mirrored to top-leading in RTL). Caller actions float centered in the notch shelf; title reserves trailing space so header text does not overlap the recess.
+
+| Parameter       | Type            | Notes                                                                 |
+| --------------- | --------------- | --------------------------------------------------------------------- |
+| `body`          | `Widget`        | Required; rendered below optional title/description with card padding |
+| `title`         | `Widget?`       | Omitted → no header title region                                      |
+| `description`   | `Widget?`       | Omitted → title flows directly to body (matches `AppCard`)            |
+| `actions`       | `List<Widget>?` | `null` or `[]` → minimum notch width; actions float in top shelf only |
+
+Import via `package:ai_clinic/core/ui/widgets/widgets.dart`. Visual reference: `docs/ui/assets/notch_card_reference.png`.
+
 ### `AppDialog.showConfirmation`
 
 Horizontal layout with confirm (primary or destructive) and cancel (secondary) `AppButton` actions. Pops navigator before calling `onConfirm`.

@@ -22,7 +22,7 @@ class ShellNavGroupWidget extends StatefulWidget {
 
   final ShellNavGroup group;
   final bool isExpanded;
-  final String selectedItemId;
+  final String? selectedItemId;
   final ValueChanged<String> onToggle;
   final ValueChanged<String> onSelected;
 

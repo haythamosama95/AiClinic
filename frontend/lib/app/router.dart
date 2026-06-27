@@ -13,6 +13,7 @@ import 'package:ai_clinic/features/appointments/presentation/navigation/appointm
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+import 'package:ai_clinic/features/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
@@ -70,7 +71,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.foundationDemo,
             builder: (context, state) => const ThemeShowcasePage(embeddedInShell: true),
           ),
-          GoRoute(path: AppRoutes.home, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
+          GoRoute(path: AppRoutes.home, builder: (context, state) => const DashboardPage()),
 
           // Patient management
           GoRoute(path: AppRoutes.patients, builder: (context, state) => const PatientsPage()),

@@ -1,6 +1,7 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/app/shell/models/shell_nav_models.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_nav_item_row.dart';
@@ -30,6 +31,36 @@ List<Override> shellTestProviderOverrides({bool stubQueue = false}) => [
   if (stubQueue) appointmentQueueProvider.overrideWith(ShellTestIdleQueueNotifier.new),
 ];
 
+List<Override> _shellWidgetProviderOverrides({
+  bool stubQueue = false,
+  List<Override> overrides = const [],
+}) {
+  final hasAuthOverride = overrides.any((override) => override.origin == authSessionProvider);
+  return [
+    if (!hasAuthOverride) authSessionProvider.overrideWith(TestAuthSessionNotifier.new),
+    if (stubQueue) appointmentQueueProvider.overrideWith(ShellTestIdleQueueNotifier.new),
+    ...overrides,
+  ];
+}
+
+Override shellAuthenticatedSessionOverride({AuthSessionContext? context}) {
+  final sessionContext = context ?? sampleAuthSessionContext();
+  return authSessionProvider.overrideWith(
+    () => _ShellTestAuthSessionNotifier(
+      AuthSessionState(status: AuthSessionStatus.authenticated, context: sessionContext),
+    ),
+  );
+}
+
+class _ShellTestAuthSessionNotifier extends TestAuthSessionNotifier {
+  _ShellTestAuthSessionNotifier(this.initial);
+
+  final AuthSessionState initial;
+
+  @override
+  AuthSessionState build() => initial;
+}
+
 /// Pumps [child] inside the app theme shell at [size].
 Future<void> pumpShellWidget(
   WidgetTester tester, {
@@ -44,10 +75,7 @@ Future<void> pumpShellWidget(
 
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [
-        ...shellTestProviderOverrides(stubQueue: stubQueue),
-        ...overrides,
-      ],
+      overrides: _shellWidgetProviderOverrides(stubQueue: stubQueue, overrides: overrides),
       child: MaterialApp(
         theme: AppTheme.light(),
         builder: (context, appChild) => ForuiAppScope(child: appChild ?? const SizedBox.shrink()),
@@ -147,6 +175,10 @@ GoRouter shellTestRouter({String initialLocation = AppRoutes.home}) {
           GoRoute(
             path: AppRoutes.patients,
             builder: (_, _) => const Scaffold(body: Text('Patients content')),
+          ),
+          GoRoute(
+            path: AppRoutes.settings,
+            builder: (_, _) => const Scaffold(body: Text('Settings content')),
           ),
         ],
       ),

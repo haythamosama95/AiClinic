@@ -39,6 +39,11 @@ abstract final class ShellNavConfig {
   /// Returns the route path for [itemId], or null when the item is not wired yet.
   static String? routeFor(String itemId) => _routesByItemId[itemId] ?? ShellDevNav.routeFor(itemId);
 
+  /// Whether [location] is a settings route that should not highlight shell nav items.
+  static bool isSettingsLocation(String location) {
+    return location == AppRoutes.settings || location.startsWith('${AppRoutes.settings}/');
+  }
+
   /// Resolves the nav item id for [location], including parameterized feature routes.
   static String? itemIdForLocation(String location) {
     for (final entry in _routesByItemId.entries) {

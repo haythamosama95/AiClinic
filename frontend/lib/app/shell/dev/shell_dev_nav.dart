@@ -81,7 +81,7 @@ class ShellDevNavFooter extends ConsumerWidget {
     super.key,
   });
 
-  final String selectedItemId;
+  final String? selectedItemId;
   final Set<String> expandedGroupIds;
   final ValueChanged<String> onItemSelected;
   final ValueChanged<String> onGroupToggled;

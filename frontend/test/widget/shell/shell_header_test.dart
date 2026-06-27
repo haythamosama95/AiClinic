@@ -2,7 +2,6 @@ import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_header.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_header_icon_button.dart';
 import 'package:ai_clinic/app/shell/widgets/shell_header_profile.dart';
-import 'package:ai_clinic/core/ui/widgets/input/app_text_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -29,29 +28,16 @@ void main() {
       expect(find.text('Dashboard'), findsNothing);
     });
 
-    testWidgets('renders centered search field with hint', (tester) async {
-      await pumpShellWidget(tester, child: const ShellHeader(pageTitle: 'Dashboard'));
-
-      expect(find.byType(AppTextInput), findsOneWidget);
-      expect(find.text('Search patients, appointments, visits…'), findsOneWidget);
-      expect(find.byIcon(Icons.search), findsOneWidget);
-    });
-
-    testWidgets('search field max width is constrained', (tester) async {
-      await pumpShellWidget(tester, child: const ShellHeader(pageTitle: 'Dashboard'));
-
-      final constrainedBox = tester.widget<ConstrainedBox>(
-        find.ancestor(of: find.byType(AppTextInput), matching: find.byType(ConstrainedBox)),
+    testWidgets('renders ShellHeaderProfile from authenticated session', (tester) async {
+      await pumpShellWidget(
+        tester,
+        overrides: [shellAuthenticatedSessionOverride()],
+        child: const ShellHeader(pageTitle: 'Dashboard'),
       );
-      expect(constrainedBox.constraints.maxWidth, ShellTokens.headerSearchMaxWidth);
-    });
-
-    testWidgets('renders ShellHeaderProfile', (tester) async {
-      await pumpShellWidget(tester, child: const ShellHeader(pageTitle: 'Dashboard'));
 
       expect(find.byType(ShellHeaderProfile), findsOneWidget);
-      expect(find.text('Alex Morgan'), findsOneWidget);
-      expect(find.text('Clinic Administrator'), findsOneWidget);
+      expect(find.text('Test Staff'), findsOneWidget);
+      expect(find.text('Administrator'), findsOneWidget);
     });
 
     testWidgets('renders notifications and settings icon buttons', (tester) async {

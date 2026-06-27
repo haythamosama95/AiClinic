@@ -41,6 +41,13 @@ abstract final class ShadowTokens {
   /// Default card / surface elevation.
   static const List<BoxShadow> card = shadowSm;
 
+  /// Authenticated shell content panel — casts onto the accent gutter above and
+  /// to the leading side because the panel is flush to the trailing/bottom edges.
+  static const List<BoxShadow> shellContentPanel = [
+    BoxShadow(color: Color(0x2E1A1A1A), offset: Offset(-8, -5), blurRadius: 10, spreadRadius: -4),
+    BoxShadow(color: Color(0x1A1A1A1A), offset: Offset(-3, -2), blurRadius: 8, spreadRadius: -1),
+  ];
+
   /// Exposes the raw shadow color for custom compositions.
   static Color get shadowColor => _shadowColor;
 }

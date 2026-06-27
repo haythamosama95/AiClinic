@@ -31,6 +31,9 @@ void main() {
 
     test('itemIdForLocation returns null for unrelated path', () {
       expect(ShellNavConfig.itemIdForLocation(AppRoutes.settings), isNull);
+      expect(ShellNavConfig.isSettingsLocation(AppRoutes.settings), isTrue);
+      expect(ShellNavConfig.isSettingsLocation(AppRoutes.settingsOrganization), isTrue);
+      expect(ShellNavConfig.isSettingsLocation(AppRoutes.home), isFalse);
     });
 
     test('labelFor resolves top-level single', () {

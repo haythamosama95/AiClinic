@@ -1,14 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/shell_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 
 /// Account summary shown in the shell header: avatar, display name, and role.
-///
-/// Placeholder values until wired to the authenticated session.
-class ShellHeaderProfile extends StatelessWidget {
-  const ShellHeaderProfile({this.name = 'Alex Morgan', this.role = 'Clinic Administrator', super.key});
+class ShellHeaderProfile extends ConsumerWidget {
+  const ShellHeaderProfile({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(authSessionProvider).context?.staffProfile;
+    if (profile == null) {
+      return const SizedBox.shrink();
+    }
+
+    return ShellHeaderProfileView(name: profile.fullName, role: profile.role.displayLabel);
+  }
+}
+
+/// Avatar, display name, and role row for the shell header.
+class ShellHeaderProfileView extends StatelessWidget {
+  const ShellHeaderProfileView({required this.name, required this.role, super.key});
 
   final String name;
   final String role;
