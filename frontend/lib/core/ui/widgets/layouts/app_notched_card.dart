@@ -349,7 +349,10 @@ class _NotchedCardActionShell extends StatelessWidget {
     final action = parsed.action;
 
     if (parsed.providesOwnBackground) {
-      return Center(child: action);
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: SpacingTokens.xs),
+        child: Center(child: action),
+      );
     }
 
     final onPressed = _actionOnPressed(action);

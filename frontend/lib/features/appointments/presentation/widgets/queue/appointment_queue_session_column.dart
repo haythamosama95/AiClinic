@@ -4,7 +4,7 @@ import 'package:forui/forui.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
-import 'package:ai_clinic/core/ui/widgets/layouts/tilted_background_icon_stack.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
@@ -29,61 +29,49 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
     final doctorsOnShift = shiftLookup.doctorsOnCurrentShiftAt(now);
+    final onShiftCount = doctorsOnShift.length;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(SpacingTokens.lg),
-        border: Border.all(color: colors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(SpacingTokens.md, SpacingTokens.md, SpacingTokens.md, SpacingTokens.sm),
-            child: Text(
-              'Doctors',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
+    return AppNotchedCard(
+      titleIcon: Icons.medical_services_outlined,
+      title: Text('Doctors', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+      actions: [
+        AppNotchedCardAction(
+          providesOwnBackground: true,
+          action: AppBadge(
+            label: doctorsLoading ? 'Loading…' : _onShiftCountLabel(onShiftCount),
+            icon: const Icon(Icons.medical_services_outlined),
+            variant: doctorsLoading || onShiftCount == 0 ? AppBadgeVariant.muted : AppBadgeVariant.outline,
+            comfortable: true,
           ),
-          const Divider(height: 1),
-          Expanded(
-            child: Padding(
+        ),
+      ],
+      body: doctorsLoading
+          ? const Center(child: CircularProgressIndicator())
+          : doctorsOnShift.isEmpty
+          ? const Padding(padding: EdgeInsets.all(SpacingTokens.md), child: _NoDoctorsOnShiftPlaceholder())
+          : ListView.separated(
               padding: const EdgeInsets.all(SpacingTokens.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: doctorsLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : doctorsOnShift.isEmpty
-                        ? const _NoDoctorsOnShiftPlaceholder()
-                        : ListView.separated(
-                            itemCount: doctorsOnShift.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
-                            itemBuilder: (context, index) {
-                              final doctor = doctorsOnShift[index];
-                              final inProgressAppointment = AppointmentQueueDisplay.inProgressAppointmentForDoctor(
-                                doctor.id,
-                                appointments,
-                              );
-                              return _DoctorOnShiftRow(
-                                doctor: doctor,
-                                inProgressAppointment: inProgressAppointment,
-                                now: now,
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
+              itemCount: doctorsOnShift.length,
+              separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
+              itemBuilder: (context, index) {
+                final doctor = doctorsOnShift[index];
+                final inProgressAppointment = AppointmentQueueDisplay.inProgressAppointmentForDoctor(
+                  doctor.id,
+                  appointments,
+                );
+                return _DoctorOnShiftRow(doctor: doctor, inProgressAppointment: inProgressAppointment, now: now);
+              },
             ),
-          ),
-        ],
-      ),
     );
+  }
+
+  static String _onShiftCountLabel(int count) {
+    return switch (count) {
+      0 => 'None on shift',
+      1 => '1 on shift',
+      _ => '$count on shift',
+    };
   }
 }
 

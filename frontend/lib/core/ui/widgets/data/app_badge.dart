@@ -9,12 +9,22 @@ enum AppBadgeVariant { muted, primary, outline, accent, plain }
 
 /// Compact label chip for counts, statuses, and metadata.
 class AppBadge extends StatelessWidget {
-  const AppBadge({required this.label, this.variant = AppBadgeVariant.muted, this.icon, this.dense = false, super.key});
+  const AppBadge({
+    required this.label,
+    this.variant = AppBadgeVariant.muted,
+    this.icon,
+    this.dense = false,
+    this.comfortable = false,
+    super.key,
+  });
 
   final String label;
   final AppBadgeVariant variant;
   final Widget? icon;
   final bool dense;
+
+  /// Extra vertical padding for shelf chips and other touch-target-adjacent badges.
+  final bool comfortable;
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +73,11 @@ class AppBadge extends StatelessWidget {
       );
     }
 
-    final verticalPadding = dense ? SpacingTokens.xs / 2 : SpacingTokens.xs;
+    final verticalPadding = dense
+        ? SpacingTokens.xs / 2
+        : comfortable
+        ? SpacingTokens.sm
+        : SpacingTokens.xs;
     final horizontalPadding = dense ? SpacingTokens.sm : SpacingTokens.sm + 2;
 
     return DecoratedBox(

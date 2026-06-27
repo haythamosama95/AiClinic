@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
-import 'package:ai_clinic/core/ui/widgets/layouts/tilted_background_icon_stack.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
@@ -32,50 +32,41 @@ class AppointmentQueueWaitingColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    final waitingCount = items.length;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(SpacingTokens.lg),
-        border: Border.all(color: colors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(SpacingTokens.md, SpacingTokens.md, SpacingTokens.md, SpacingTokens.sm),
-            child: Text(
-              'Checked in',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
+    return AppNotchedCard(
+      titleIcon: Icons.how_to_reg_outlined,
+      title: Text('Checked in', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+      actions: [
+        AppNotchedCardAction(
+          providesOwnBackground: true,
+          action: AppBadge(
+            label: _waitingCountLabel(waitingCount),
+            icon: const Icon(Icons.people_outline),
+            variant: waitingCount == 0 ? AppBadgeVariant.muted : AppBadgeVariant.outline,
+            comfortable: true,
           ),
-          const Divider(height: 1),
-          Expanded(
-            child: Padding(
+        ),
+      ],
+      body: items.isEmpty
+          ? const Padding(padding: EdgeInsets.all(SpacingTokens.md), child: _NoCheckedInPlaceholder())
+          : ListView.separated(
               padding: const EdgeInsets.all(SpacingTokens.md),
-              child: items.isEmpty
-                  ? const _NoCheckedInPlaceholder()
-                  : ListView.separated(
-                      itemCount: items.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
-                      itemBuilder: (context, index) {
-                        final item = items[index];
-                        return _CheckedInPatientRow(
-                          item: item,
-                          preferredDoctorLabel: _preferredDoctorLabel(item),
-                          timeLabel: _timeFormat.format(item.startTime.toLocal()),
-                          waitLabel: AppointmentQueueDisplay.formatWaitedLabel(
-                            AppointmentQueueDisplay.estimateWaitDuration(item, now: now),
-                          ),
-                          onTap: onPatientTap == null ? null : () => onPatientTap!(item),
-                        );
-                      },
-                    ),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return _CheckedInPatientRow(
+                  item: item,
+                  preferredDoctorLabel: _preferredDoctorLabel(item),
+                  timeLabel: _timeFormat.format(item.startTime.toLocal()),
+                  waitLabel: AppointmentQueueDisplay.formatWaitedLabel(
+                    AppointmentQueueDisplay.estimateWaitDuration(item, now: now),
+                  ),
+                  onTap: onPatientTap == null ? null : () => onPatientTap!(item),
+                );
+              },
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -88,6 +79,14 @@ class AppointmentQueueWaitingColumn extends StatelessWidget {
       return "Patient's choice · ${presentation.displayNames}";
     }
     return presentation.displayNames;
+  }
+
+  static String _waitingCountLabel(int count) {
+    return switch (count) {
+      0 => 'None waiting',
+      1 => '1 waiting',
+      _ => '$count waiting',
+    };
   }
 }
 
