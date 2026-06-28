@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_list_item.dart';
@@ -156,6 +157,76 @@ class VisitRepository with AppRpcInvoker {
     await invokeRpc('archive_treatment_plan', {'p_treatment_plan_id': treatmentPlanId.trim()});
   }
 
+  Future<List<CatalogItem>> listPredefinedVitalSigns() async {
+    final result = await invokeRpc('list_predefined_vital_signs', const {});
+    return _parseCatalogItems(result.data?['items']);
+  }
+
+  Future<String> createVisitVitalSign({
+    required String visitId,
+    required String name,
+    required String value,
+    String? unit,
+    String? predefinedVitalSignId,
+  }) async {
+    _assertNonEmpty('visitId', visitId);
+    _assertNonEmpty('name', name);
+    _assertNonEmpty('value', value);
+
+    final result = await invokeRpc('create_visit_vital_sign', {
+      'p_visit_id': visitId.trim(),
+      'p_name': name.trim(),
+      'p_value': value.trim(),
+      'p_unit': ?unit,
+      if (predefinedVitalSignId != null && predefinedVitalSignId.trim().isNotEmpty)
+        'p_predefined_vital_sign_id': predefinedVitalSignId.trim(),
+    });
+
+    final id = result.data?['vital_sign_id']?.toString();
+    if (id == null || id.isEmpty) {
+      throw StateError('Create visit vital sign returned an unexpected shape.');
+    }
+    return id;
+  }
+
+  Future<void> updateVisitVitalSign({
+    required String vitalSignId,
+    String? name,
+    String? value,
+    String? unit,
+    String? predefinedVitalSignId,
+  }) async {
+    _assertNonEmpty('vitalSignId', vitalSignId);
+
+    await invokeRpc('update_visit_vital_sign', {
+      'p_vital_sign_id': vitalSignId.trim(),
+      'p_name': ?name,
+      'p_value': ?value,
+      'p_unit': ?unit,
+      'p_predefined_vital_sign_id': ?predefinedVitalSignId,
+    });
+  }
+
+  Future<void> archiveVisitVitalSign({required String vitalSignId}) async {
+    _assertNonEmpty('vitalSignId', vitalSignId);
+    await invokeRpc('archive_visit_vital_sign', {'p_vital_sign_id': vitalSignId.trim()});
+  }
+
+  Future<CatalogCreateResult> createPredefinedVitalSign({required String name, String? defaultUnit}) async {
+    _assertNonEmpty('name', name);
+
+    final result = await invokeRpc('create_predefined_vital_sign', {
+      'p_name': name.trim(),
+      'p_default_unit': ?defaultUnit,
+    });
+
+    final created = CatalogCreateResult.fromRpcData(result.data);
+    if (created == null) {
+      throw StateError('Create predefined vital sign returned an unexpected shape.');
+    }
+    return created;
+  }
+
   Future<String> registerVisitAttachment({
     required String visitId,
     required String filePath,
@@ -241,6 +312,19 @@ class VisitRepository with AppRpcInvoker {
     if (value.trim().isEmpty) {
       throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
     }
+  }
+
+  List<CatalogItem> _parseCatalogItems(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    return [
+      for (final item in raw)
+        if (item is Map<String, dynamic>)
+          ?CatalogItem.fromRow(item)
+        else if (item is Map)
+          ?CatalogItem.fromRow(Map<String, dynamic>.from(item)),
+    ].whereType<CatalogItem>().toList(growable: false);
   }
 }
 

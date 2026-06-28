@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
@@ -24,6 +25,7 @@ class VisitDocumentationState {
     required this.diagnosis,
     required this.plan,
     required this.expectedUpdatedAt,
+    this.predefinedVitalSigns = const [],
     this.saveStatus = DocumentationSaveStatus.idle,
     this.noteEditMode = DocumentationEditMode.editing,
     this.errorMessage,
@@ -36,6 +38,7 @@ class VisitDocumentationState {
   final String diagnosis;
   final String plan;
   final DateTime expectedUpdatedAt;
+  final List<CatalogItem> predefinedVitalSigns;
   final DocumentationSaveStatus saveStatus;
   final DocumentationEditMode noteEditMode;
   final String? errorMessage;
@@ -62,6 +65,7 @@ class VisitDocumentationState {
     String? diagnosis,
     String? plan,
     DateTime? expectedUpdatedAt,
+    List<CatalogItem>? predefinedVitalSigns,
     DocumentationSaveStatus? saveStatus,
     DocumentationEditMode? noteEditMode,
     String? errorMessage,
@@ -75,13 +79,14 @@ class VisitDocumentationState {
       diagnosis: diagnosis ?? this.diagnosis,
       plan: plan ?? this.plan,
       expectedUpdatedAt: expectedUpdatedAt ?? this.expectedUpdatedAt,
+      predefinedVitalSigns: predefinedVitalSigns ?? this.predefinedVitalSigns,
       saveStatus: saveStatus ?? this.saveStatus,
       noteEditMode: noteEditMode ?? this.noteEditMode,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 
-  static VisitDocumentationState fromVisit(VisitDetail visit) {
+  static VisitDocumentationState fromVisit(VisitDetail visit, {List<CatalogItem> predefinedVitalSigns = const []}) {
     final note = visit.documentation;
     return VisitDocumentationState(
       visit: visit,
@@ -91,6 +96,7 @@ class VisitDocumentationState {
       diagnosis: note?.diagnosis ?? '',
       plan: note?.plan ?? '',
       expectedUpdatedAt: note?.updatedAt ?? visit.updatedAt ?? DateTime.now().toUtc(),
+      predefinedVitalSigns: predefinedVitalSigns,
     );
   }
 }
@@ -117,7 +123,8 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
 
     final repo = ref.read(visitRepositoryProvider);
     final visit = await repo.getVisit(visitId: visitId);
-    return VisitDocumentationState.fromVisit(visit);
+    final predefinedVitalSigns = await repo.listPredefinedVitalSigns();
+    return VisitDocumentationState.fromVisit(visit, predefinedVitalSigns: predefinedVitalSigns);
   }
 
   bool _canEditVisit(VisitDetail visit) {
@@ -191,16 +198,17 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           );
 
       final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
-      final next = VisitDocumentationState.fromVisit(refreshed).copyWith(
-        complaint: current.complaint,
-        history: current.history,
-        examination: current.examination,
-        diagnosis: current.diagnosis,
-        plan: current.plan,
-        expectedUpdatedAt: saved.updatedAt,
-        saveStatus: DocumentationSaveStatus.saved,
-        noteEditMode: DocumentationEditMode.readOnly,
-      );
+      final next = VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns)
+          .copyWith(
+            complaint: current.complaint,
+            history: current.history,
+            examination: current.examination,
+            diagnosis: current.diagnosis,
+            plan: current.plan,
+            expectedUpdatedAt: saved.updatedAt,
+            saveStatus: DocumentationSaveStatus.saved,
+            noteEditMode: DocumentationEditMode.readOnly,
+          );
       state = AsyncData(next);
     } on RpcFailure catch (error) {
       final currentAfter = state.value ?? current;
@@ -234,7 +242,9 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       return;
     }
 
-    final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
+    final repo = ref.read(visitRepositoryProvider);
+    final refreshed = await repo.getVisit(visitId: current.visit.id);
+    final predefinedVitalSigns = await repo.listPredefinedVitalSigns();
     state = AsyncData(
       current.copyWith(
         visit: current.visit.copyWith(
@@ -246,6 +256,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           visitDate: refreshed.visitDate,
           attachments: refreshed.attachments,
         ),
+        predefinedVitalSigns: predefinedVitalSigns,
       ),
     );
   }

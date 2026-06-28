@@ -91,14 +91,14 @@ description: "Task list for Visits Page Redesign (014)"
 
 ### Implementation for User Story 2
 
-- [ ] T028 [P] [US2] Create `VisitVitalSign` domain model in `frontend/lib/features/visits/domain/visit_vital_sign.dart`
-- [ ] T029 [P] [US2] Create shared `CatalogItem` domain model in `frontend/lib/features/visits/domain/catalog_item.dart`
-- [ ] T030 [P] [US2] Implement `CatalogNameNormalizer.normalize` (trim, collapse spaces, capitalize first char) in `frontend/lib/features/visits/domain/catalog_name_normalizer.dart`
-- [ ] T031 [P] [US2] Add unit tests for `CatalogNameNormalizer` in `frontend/test/unit/visits/catalog_name_normalizer_test.dart`
-- [ ] T032 [US2] Add `listPredefinedVitalSigns`, vital sign create/update/archive, and `createPredefinedVitalSign` RPC wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T033 [US2] Create `SaveToCatalogDialog` for optional org catalog save in `frontend/lib/features/visits/presentation/widgets/save_to_catalog_dialog.dart`
-- [ ] T034 [US2] Create `VitalSignList` widget (predefined picker, custom entry, edit/remove) in `frontend/lib/features/visits/presentation/widgets/vital_sign_list.dart`
-- [ ] T035 [US2] Integrate vital signs section and save-to-catalog flow into `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart` and `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
+- [X] T028 [P] [US2] Create `VisitVitalSign` domain model in `frontend/lib/features/visits/domain/visit_vital_sign.dart`
+- [X] T029 [P] [US2] Create shared `CatalogItem` domain model in `frontend/lib/features/visits/domain/catalog_item.dart`
+- [X] T030 [P] [US2] Implement `CatalogNameNormalizer.normalize` (trim, collapse spaces, capitalize first char) in `frontend/lib/features/visits/domain/catalog_name_normalizer.dart`
+- [X] T031 [P] [US2] Add unit tests for `CatalogNameNormalizer` in `frontend/test/unit/visits/catalog_name_normalizer_test.dart`
+- [X] T032 [US2] Add `listPredefinedVitalSigns`, vital sign create/update/archive, and `createPredefinedVitalSign` RPC wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T033 [US2] Create `SaveToCatalogDialog` for optional org catalog save in `frontend/lib/features/visits/presentation/widgets/save_to_catalog_dialog.dart`
+- [X] T034 [US2] Create `VitalSignList` widget (predefined picker, custom entry, edit/remove) in `frontend/lib/features/visits/presentation/widgets/vital_sign_list.dart`
+- [X] T035 [US2] Integrate vital signs section and save-to-catalog flow into `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart` and `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
 
 **Checkpoint**: User Stories 1 and 2 work independently — vital signs CRUD with normalization and catalog prompt
 

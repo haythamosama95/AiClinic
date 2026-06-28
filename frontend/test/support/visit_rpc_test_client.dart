@@ -129,6 +129,29 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
       },
       'update_treatment_plan' => {'success': true, 'data': {}},
       'archive_treatment_plan' => {'success': true, 'data': {}},
+      'list_predefined_vital_signs' => {
+        'success': true,
+        'data': {
+          'items': [
+            {'id': 'vvvvvvvv-vvvv-4vvv-8vvv-vvvvvvvvvvvv', 'name': 'Blood Pressure', 'default_unit': 'mmHg'},
+          ],
+        },
+      },
+      'create_visit_vital_sign' => {
+        'success': true,
+        'data': {'vital_sign_id': 'ssssssss-ssss-4sss-8sss-ssssssssssss'},
+      },
+      'update_visit_vital_sign' => {'success': true, 'data': {}},
+      'archive_visit_vital_sign' => {'success': true, 'data': {}},
+      'create_predefined_vital_sign' => {
+        'success': true,
+        'data': {
+          'id': 'vvvvvvvv-vvvv-4vvv-8vvv-vvvvvvvvvvvv',
+          'name': 'Custom sign',
+          'default_unit': 'bpm',
+          'created': true,
+        },
+      },
       'register_visit_attachment' => {
         'success': true,
         'data': {'attachment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},

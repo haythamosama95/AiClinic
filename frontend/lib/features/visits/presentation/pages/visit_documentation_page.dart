@@ -14,6 +14,7 @@ import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
@@ -185,6 +186,19 @@ class _VisitDocumentationBody extends ConsumerWidget {
                   title: 'Clinical note',
                   description: 'Complaint, history, examination, diagnosis, and plan',
                   child: ClinicalNoteEditor(visitId: visitId, state: state, canEdit: canEdit),
+                ),
+                const SizedBox(height: SpacingTokens.lg),
+                VisitSectionCard(
+                  title: 'Vital signs',
+                  description: 'Record measurements from predefined options or custom entries',
+                  child: VitalSignList(
+                    visitId: visitId,
+                    vitalSigns: state.visit.vitalSigns,
+                    predefinedVitalSigns: state.predefinedVitalSigns,
+                    canEdit: canEdit,
+                    onChanged: () =>
+                        ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+                  ),
                 ),
                 const SizedBox(height: SpacingTokens.lg),
                 VisitSectionCard(
