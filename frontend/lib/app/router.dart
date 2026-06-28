@@ -13,6 +13,8 @@ import 'package:ai_clinic/features/appointments/presentation/navigation/appointm
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_documentation_page.dart';
 import 'package:ai_clinic/features/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
@@ -120,11 +122,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Visits (V1-5)
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Visits', state),
+            builder: (context, state) {
+              final visitId = state.pathParameters['visitId'];
+              return VisitDocumentationPage(visitId: visitId);
+            },
           ),
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Visits', state),
+            builder: (context, state) {
+              final visitId = state.pathParameters['visitId'];
+              return VisitDetailPage(visitId: visitId);
+            },
           ),
 
           // Billing (V1-6)

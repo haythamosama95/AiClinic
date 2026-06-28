@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
@@ -22,6 +25,8 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/queue_shift_doctor_picker_dialog.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/visit_create_dialog.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 
 extension _AppointmentDetailListItem on AppointmentDetail {
   AppointmentListItem toListItem() {
@@ -52,10 +57,15 @@ class AppointmentDetailStatusActions extends ConsumerStatefulWidget {
 class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDetailStatusActions> {
   String? _busyActionKey;
   late AppointmentQueueShiftDoctorLookup _shiftLookup;
+  String? _linkedVisitId;
+  var _visitLookupDone = false;
 
   AppointmentDetail get detail => widget.detail;
 
   bool get _isBusy => _busyActionKey != null;
+
+  bool get _canStartVisit =>
+      detail.status == AppointmentStatus.checkedIn || detail.status == AppointmentStatus.inProgress;
 
   String get _organizationTimezone =>
       ref.read(authSessionProvider).context?.organizationTimezone?.trim().isNotEmpty == true
@@ -79,6 +89,96 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   bool get _canCreateAppointments => _permissions.canCreateAppointments();
 
   bool get _canCancelAppointments => AuthRouteGuard.canAccessAppointmentCancelActions(ref.read(authSessionProvider));
+
+  bool get _canCreateVisit => _permissions.canCreateVisits();
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshVisitLink();
+  }
+
+  @override
+  void didUpdateWidget(covariant AppointmentDetailStatusActions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.detail.id != detail.id || oldWidget.detail.status != detail.status) {
+      _refreshVisitLink();
+    }
+  }
+
+  Future<void> _refreshVisitLink() async {
+    if (!_canCreateVisit || !_canStartVisit) {
+      if (mounted) {
+        setState(() {
+          _linkedVisitId = null;
+          _visitLookupDone = true;
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _visitLookupDone = false);
+    }
+
+    try {
+      final link = await ref.read(visitRepositoryProvider).getVisitByAppointment(appointmentId: detail.id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _linkedVisitId = link.visitId?.trim().isNotEmpty == true ? link.visitId : null;
+        _visitLookupDone = true;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _linkedVisitId = null;
+        _visitLookupDone = true;
+      });
+    }
+  }
+
+  Future<void> _openVisitDocumentation(String visitId) async {
+    if (!mounted) {
+      return;
+    }
+    await context.push(AppRoutes.visitDocument(visitId));
+    if (!mounted) {
+      return;
+    }
+    await _refreshVisitLink();
+  }
+
+  Future<void> _createOrOpenVisit() async {
+    final existingVisitId = _linkedVisitId;
+    if (existingVisitId != null && existingVisitId.isNotEmpty) {
+      await _openVisitDocumentation(existingVisitId);
+      return;
+    }
+
+    final created = await VisitCreateDialog.show(context, item: _listItem, branchId: detail.branchId);
+    if (!mounted || created == null) {
+      return;
+    }
+
+    await _openVisitDocumentation(created.visitId);
+  }
+
+  String? _visitActionDisabledReason() {
+    if (!_canCreateVisit) {
+      return 'You do not have permission to manage visits.';
+    }
+    if (!_canStartVisit) {
+      return 'Visits can be opened after the patient is checked in.';
+    }
+    if (!_visitLookupDone) {
+      return 'Loading visit link…';
+    }
+    return _busyBlockedReason('visit');
+  }
 
   String? _busyBlockedReason(String actionKey) {
     if (_busyActionKey != null && _busyActionKey != actionKey) {
@@ -442,7 +542,22 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     _shiftLookup =
         ref.watch(appointmentQueueShiftDoctorLookupProvider).value ?? AppointmentQueueShiftDoctorLookup.empty;
 
+    final visitLabel = _linkedVisitId != null ? 'Open visit' : 'Create visit';
+    final visitKey = _linkedVisitId != null
+        ? const Key('appointment_control_open_visit')
+        : const Key('appointment_control_create_visit');
+    final showVisitAction = _canCreateVisit && _canStartVisit;
+
     final specs = <_StatusActionSpec>[
+      if (showVisitAction)
+        _StatusActionSpec(
+          key: visitKey,
+          icon: Icons.medical_services_outlined,
+          label: visitLabel,
+          disabledReason: _disabledReasonFor('visit', _visitActionDisabledReason()),
+          isLoading: _busyActionKey == 'visit',
+          onPressed: () => _runAction('visit', _createOrOpenVisit),
+        ),
       _StatusActionSpec(
         key: const Key('appointment_control_advance_status'),
         icon: Icons.play_arrow_rounded,

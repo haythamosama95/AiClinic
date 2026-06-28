@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -73,6 +76,7 @@ class _PatientDetailTimelineSectionState extends ConsumerState<PatientDetailTime
                 items: [
                   for (final visit in widget.pastVisits)
                     _VisitTimelineItem(
+                      visitId: visit.id,
                       dateLabel: PatientDetailTimelineSection._timelineDate.format(visit.visitDate),
                       timeLabel: PatientDetailTimelineSection._timelineTime.format(visit.visitDate),
                       branch: visit.branchName,
@@ -80,6 +84,9 @@ class _PatientDetailTimelineSectionState extends ConsumerState<PatientDetailTime
                       state: visit.status.label,
                     ),
                 ],
+                onVisitTap: ref.watch(permissionServiceProvider).canViewVisitClinicalDetail()
+                    ? (visitId) => context.push(AppRoutes.visitDetail(visitId))
+                    : null,
               ),
       ),
       PatientDetailHistoryTab.upcoming => _TimelinePanelContent(
@@ -344,6 +351,7 @@ class _TimelineErrorState extends StatelessWidget {
 @immutable
 class _VisitTimelineItem {
   const _VisitTimelineItem({
+    this.visitId,
     required this.dateLabel,
     required this.timeLabel,
     required this.branch,
@@ -351,6 +359,7 @@ class _VisitTimelineItem {
     required this.state,
   });
 
+  final String? visitId;
   final String dateLabel;
   final String timeLabel;
   final String branch;
@@ -359,9 +368,10 @@ class _VisitTimelineItem {
 }
 
 class _VisitsTimeline extends StatelessWidget {
-  const _VisitsTimeline({required this.items});
+  const _VisitsTimeline({required this.items, this.onVisitTap});
 
   final List<_VisitTimelineItem> items;
+  final ValueChanged<String>? onVisitTap;
 
   static const _timelineGutter = 40.0;
   static const _bubbleSize = 14.0;
@@ -378,6 +388,7 @@ class _VisitsTimeline extends StatelessWidget {
         for (var index = 0; index < items.length; index++)
           _VisitTimelineRow(
             item: items[index],
+            onVisitTap: onVisitTap,
             bubbleFilled: index == 0,
             isFirst: index == 0,
             isLast: index == items.length - 1,
@@ -395,6 +406,7 @@ class _VisitsTimeline extends StatelessWidget {
 class _VisitTimelineRow extends StatefulWidget {
   const _VisitTimelineRow({
     required this.item,
+    this.onVisitTap,
     required this.bubbleFilled,
     required this.isFirst,
     required this.isLast,
@@ -406,6 +418,7 @@ class _VisitTimelineRow extends StatefulWidget {
   });
 
   final _VisitTimelineItem item;
+  final ValueChanged<String>? onVisitTap;
   final bool bubbleFilled;
   final bool isFirst;
   final bool isLast;
@@ -496,7 +509,7 @@ class _VisitTimelineRowState extends State<_VisitTimelineRow> {
             padding: EdgeInsets.only(bottom: widget.bottomGap),
             child: KeyedSubtree(
               key: _cardKey,
-              child: _VisitTimelineCard(item: widget.item),
+              child: _VisitTimelineCard(item: widget.item, onVisitTap: widget.onVisitTap),
             ),
           ),
         ),
@@ -579,16 +592,19 @@ class _TimelineGutterPainter extends CustomPainter {
 }
 
 class _VisitTimelineCard extends StatelessWidget {
-  const _VisitTimelineCard({required this.item});
+  const _VisitTimelineCard({required this.item, this.onVisitTap});
 
   final _VisitTimelineItem item;
+  final ValueChanged<String>? onVisitTap;
+
+  bool get _isTappable => onVisitTap != null && item.visitId != null && item.visitId!.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.semanticColors;
     final textTheme = Theme.of(context).textTheme;
 
-    return DecoratedBox(
+    final card = DecoratedBox(
       decoration: BoxDecoration(
         color: colors.card,
         borderRadius: BorderRadius.circular(context.shapeTokens.md),
@@ -656,6 +672,19 @@ class _VisitTimelineCard extends StatelessWidget {
             );
           },
         ),
+      ),
+    );
+
+    if (!_isTappable) {
+      return card;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => onVisitTap!(item.visitId!),
+        borderRadius: BorderRadius.circular(context.shapeTokens.md),
+        child: card,
       ),
     );
   }
