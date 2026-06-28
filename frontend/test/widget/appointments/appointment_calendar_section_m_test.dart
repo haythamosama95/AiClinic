@@ -88,11 +88,12 @@ void main() {
 
     testWidgets('CAL-M04: system back closes booking sheet gracefully', (tester) async {
       await pumpAppointmentCalendarPage(tester, authState: calendarAuthStateWithCreate());
-      await waitForCalendarLoaded(tester);
+      final container = await waitForCalendarLoaded(tester);
 
-      await tester.tap(find.text('Book Appointment'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      await tapCalendarViewTab(tester, 'Day');
+      final focusDate = container.read(appointmentCalendarProvider).focusDate;
+      final tappedDate = DateTime(focusDate.year, focusDate.month, focusDate.day, 11, 7);
+      await invokeCalendarTap(tester, date: tappedDate);
 
       expect(find.text('Book appointment'), findsWidgets);
 

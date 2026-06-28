@@ -2,6 +2,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
+import 'package:ai_clinic/features/appointments/domain/simplified_booking_slot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/appointment_rpc_test_client.dart';
@@ -182,6 +183,125 @@ void main() {
           type: AppointmentType.planned,
           startTime: DateTime.utc(2026, 6, 1, 10),
           notes: 'x' * 2001,
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+      );
+    });
+  });
+
+  group('AppointmentRepository (011 simplified slots)', () {
+    late AppointmentRpcTestClient client;
+    late AppointmentRepository repository;
+
+    setUp(() {
+      client = AppointmentRpcTestClient();
+      repository = AppointmentRepository(client);
+    });
+
+    test('trivial: getSimplifiedBookingSlots calls RPC with branch, date, and doctor', () async {
+      final localDate = DateTime(2026, 6, 27);
+      final slots = await repository.getSimplifiedBookingSlots(
+        branchId: '44444444-4444-4444-8444-444444444444',
+        localDate: localDate,
+        preferredDoctorId: '22222222-2222-4222-8222-222222222222',
+      );
+
+      expect(client.lastFunction, 'get_simplified_booking_slots');
+      expect(client.lastParams?['p_branch_id'], '44444444-4444-4444-8444-444444444444');
+      expect(client.lastParams?['p_local_date'], '2026-06-27');
+      expect(client.lastParams?['p_preferred_doctor_id'], '22222222-2222-4222-8222-222222222222');
+      expect(slots.defaultDurationMinutes, 30);
+      expect(slots.blocks, hasLength(1));
+      expect(slots.blocks.first.state, SlotAvailabilityState.available);
+    });
+
+    test('advanced: getSimplifiedBookingSlots parses alternate and unavailable states', () async {
+      client.rpcResults['get_simplified_booking_slots'] = {
+        'success': true,
+        'data': {
+          'default_duration_minutes': 15,
+          'blocks': [
+            {
+              'start_time': '2026-06-27T09:00:00.000',
+              'end_time': '2026-06-27T09:15:00.000',
+              'state': 'alternate_doctors_available',
+              'available_doctor_ids': ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+            },
+            {
+              'start_time': '2026-06-27T09:15:00.000',
+              'end_time': '2026-06-27T09:30:00.000',
+              'state': 'fully_unavailable',
+              'available_doctor_ids': [],
+            },
+          ],
+        },
+      };
+
+      final slots = await repository.getSimplifiedBookingSlots(
+        branchId: '44444444-4444-4444-8444-444444444444',
+        localDate: DateTime(2026, 6, 27),
+        preferredDoctorId: '22222222-2222-4222-8222-222222222222',
+      );
+
+      expect(slots.defaultDurationMinutes, 15);
+      expect(slots.blocks, hasLength(2));
+      expect(slots.blocks[0].state, SlotAvailabilityState.alternateDoctorsAvailable);
+      expect(slots.blocks[0].availableDoctorIds, ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
+      expect(slots.blocks[1].state, SlotAvailabilityState.fullyUnavailable);
+    });
+
+    test('stupid usage: blank branch id throws INVALID_INPUT before RPC', () async {
+      expect(
+        () => repository.getSimplifiedBookingSlots(
+          branchId: '  ',
+          localDate: DateTime(2026, 6, 27),
+          preferredDoctorId: '22222222-2222-4222-8222-222222222222',
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+      );
+      expect(client.lastFunction, isNull);
+    });
+
+    test('stupid usage: blank preferred doctor id throws INVALID_INPUT before RPC', () async {
+      expect(
+        () => repository.getSimplifiedBookingSlots(
+          branchId: '44444444-4444-4444-8444-444444444444',
+          localDate: DateTime(2026, 6, 27),
+          preferredDoctorId: '  ',
+        ),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+      );
+      expect(client.lastFunction, isNull);
+    });
+
+    test('regression: malformed slot response throws StateError', () async {
+      client.rpcResults['get_simplified_booking_slots'] = {
+        'success': true,
+        'data': {'default_duration_minutes': null},
+      };
+
+      expect(
+        () => repository.getSimplifiedBookingSlots(
+          branchId: '44444444-4444-4444-8444-444444444444',
+          localDate: DateTime(2026, 6, 27),
+          preferredDoctorId: '22222222-2222-4222-8222-222222222222',
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('regression: RPC failure surfaces from getSimplifiedBookingSlots', () async {
+      client.rpcResults['get_simplified_booking_slots'] = {
+        'success': false,
+        'error_code': 'INVALID_INPUT',
+        'error_message': 'Date out of range',
+      };
+
+      expect(
+        () => repository.getSimplifiedBookingSlots(
+          branchId: '44444444-4444-4444-8444-444444444444',
+          localDate: DateTime(2026, 6, 27),
+          preferredDoctorId: '22222222-2222-4222-8222-222222222222',
         ),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
       );

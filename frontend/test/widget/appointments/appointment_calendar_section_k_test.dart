@@ -104,12 +104,13 @@ void main() {
         );
         await waitForCalendarLoaded(tester);
 
-        await tester.tap(find.text('Book Appointment'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+        await tapCalendarViewTab(tester, 'Day');
+        final container = ProviderScope.containerOf(tester.element(find.byType(AppointmentCalendarPage)));
+        final focusDate = container.read(appointmentCalendarProvider).focusDate;
+        final tappedDate = DateTime(focusDate.year, focusDate.month, focusDate.day, 11, 7);
+        await invokeCalendarTap(tester, date: tappedDate);
         await waitForBookingSheetReady(tester);
 
-        final container = ProviderScope.containerOf(tester.element(find.byType(AppointmentCalendarPage)));
         await container.read(appointmentCalendarProvider.notifier).refresh();
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));

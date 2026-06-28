@@ -152,11 +152,11 @@ description: "Task list for Simplified Slot Booking (011) feature implementation
 
 ### Implementation for User Story 5
 
-- [ ] T036 [US5] Verify `_showBookingSheet` / `AppointmentBookingSheet.show` on calendar slot tap is unchanged and not redirected to simplified flow in `frontend/lib/features/appointments/presentation/pages/appointment_calendar_page.dart`
+- [X] T036 [US5] Verify `_showBookingSheet` / `AppointmentBookingSheet.show` on calendar slot tap is unchanged and not redirected to simplified flow in `frontend/lib/features/appointments/presentation/pages/appointment_calendar_page.dart`
 
 ### Tests for User Story 5
 
-- [ ] T037 [P] [US5] Add widget test asserting header **Book Appointment** opens `SimplifiedBookingFlow` while slot tap opens `AppointmentBookingSheet` in `frontend/test/widget/appointments/appointment_calendar_booking_test.dart`
+- [X] T037 [P] [US5] Add widget test asserting header **Book Appointment** opens `SimplifiedBookingFlow` while slot tap opens `AppointmentBookingSheet` in `frontend/test/widget/appointments/appointment_calendar_booking_test.dart`
 
 **Checkpoint**: US5 regression verified — existing calendar booking path intact.
 
@@ -166,11 +166,11 @@ description: "Task list for Simplified Slot Booking (011) feature implementation
 
 **Purpose**: End-to-end verification, repository test coverage, and quickstart validation.
 
-- [ ] T038 [P] Extend `AppointmentRepository` unit tests for `getSimplifiedBookingSlots` parsing and error surfacing in `frontend/test/unit/appointments/appointment_repository_test.dart`
-- [ ] T039 Run `./backend/tests/run_all_backend_tests.sh` and fix any failures from overlap migration
-- [ ] T040 Run `flutter test test/unit/appointments/simplified_booking_slot_test.dart` and `flutter test test/widget/appointments/` per quickstart.md
-- [ ] T041 Execute manual verification checklist in `specs/011-simplified-slot-booking/quickstart.md` §3–5 (settings, simplified booking, alternate doctors, calendar path unchanged)
-- [ ] T042 [P] Review constitution alignment: server-authoritative slots, per-doctor overlap, no AI dependency, layer boundaries in `specs/011-simplified-slot-booking/plan.md`
+- [X] T038 [P] Extend `AppointmentRepository` unit tests for `getSimplifiedBookingSlots` parsing and error surfacing in `frontend/test/unit/appointments/appointment_repository_test.dart`
+- [X] T039 Run `./backend/tests/run_all_backend_tests.sh` and fix any failures from overlap migration
+- [X] T040 Run `flutter test test/unit/appointments/simplified_booking_slot_test.dart` and `flutter test test/widget/appointments/` per quickstart.md
+- [X] T041 Execute manual verification checklist in `specs/011-simplified-slot-booking/quickstart.md` §3–5 (settings, simplified booking, alternate doctors, calendar path unchanged)
+- [X] T042 [P] Review constitution alignment: server-authoritative slots, per-doctor overlap, no AI dependency, layer boundaries in `specs/011-simplified-slot-booking/plan.md`
 
 ---
 
