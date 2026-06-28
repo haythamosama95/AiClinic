@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
 
 /// Shared treatment plan presentation for documentation, detail, and list views.
+/// Duration-only model — no start/end dates (013).
 class TreatmentPlanDisplay {
   TreatmentPlanDisplay._();
 

@@ -52,7 +52,7 @@ class VisitDocumentationPage extends ConsumerWidget {
 
         return _VisitDocumentationScaffold(
           headerActions: [
-            VisitDetailActions(visitId: id, status: state.visit.status),
+            VisitDetailActions(visitId: id, status: state.visit.status, canEditDocumentation: canEdit),
             if (canSubmit && state.visit.status == VisitStatus.inProgress)
               AppButton(
                 key: const Key('visit_submit_button'),

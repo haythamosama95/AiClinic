@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
@@ -16,22 +17,51 @@ final visitInvoiceProvider = FutureProvider.autoDispose.family<InvoiceListItem?,
   return ref.watch(invoiceRepositoryProvider).findForVisit(visitId: visitId);
 });
 
-/// Create or open invoice actions for completed visits (V1-6 US1).
+/// Invoice and documentation actions for visit detail and documentation screens (013 US6).
 class VisitDetailActions extends ConsumerWidget {
-  const VisitDetailActions({super.key, required this.visitId, required this.status});
+  const VisitDetailActions({super.key, required this.visitId, required this.status, this.canEditDocumentation = false});
 
   final String visitId;
   final VisitStatus status;
+  final bool canEditDocumentation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (status != VisitStatus.completed) {
+    final children = <Widget>[];
+
+    if (canEditDocumentation) {
+      children.add(
+        AppButton(
+          key: const Key('visit_detail_edit_documentation'),
+          label: status == VisitStatus.inProgress ? 'Edit documentation' : 'Edit visit',
+          variant: AppButtonVariant.outline,
+          icon: const Icon(Icons.edit_note_outlined, size: 18),
+          onPressed: () => context.push(AppRoutes.visitDocument(visitId)),
+        ),
+      );
+    }
+
+    if (status == VisitStatus.completed) {
+      final invoiceAction = _buildInvoiceAction(context, ref);
+      if (invoiceAction != null) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: SpacingTokens.sm));
+        }
+        children.add(invoiceAction);
+      }
+    }
+
+    if (children.isEmpty) {
       return const SizedBox.shrink();
     }
 
+    return Row(mainAxisSize: MainAxisSize.min, children: children);
+  }
+
+  Widget? _buildInvoiceAction(BuildContext context, WidgetRef ref) {
     final canCreate = ref.watch(permissionServiceProvider).canCreateInvoices();
     if (!canCreate) {
-      return const SizedBox.shrink();
+      return null;
     }
 
     final invoiceAsync = ref.watch(visitInvoiceProvider(visitId));

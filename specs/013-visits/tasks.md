@@ -164,11 +164,11 @@ description: "Task list for Visits Page Redesign (014)"
 
 ### Implementation for User Story 6
 
-- [ ] T049 [US6] Replace `VisitDetailPage` layout for clinical note, vital signs, treatments, investigations, and attachments in `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
-- [ ] T050 [US6] Rework `TreatmentPlanDisplay` for duration-only display (no dates) in `frontend/lib/features/visits/presentation/widgets/treatment_plan_display.dart`
-- [ ] T051 [US6] Update read-only vs editable gating by permission on detail page in `frontend/lib/features/visits/presentation/providers/visit_detail_provider.dart`
-- [ ] T052 [US6] Update `VisitDetailActions` for post-submit documentation edit navigation in `frontend/lib/features/visits/presentation/widgets/visit_detail_actions.dart`
-- [ ] T053 [US6] Handle empty optional collections gracefully (no vital signs/treatments/investigations) in `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
+- [X] T049 [US6] Replace `VisitDetailPage` layout for clinical note, vital signs, treatments, investigations, and attachments in `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
+- [X] T050 [US6] Rework `TreatmentPlanDisplay` for duration-only display (no dates) in `frontend/lib/features/visits/presentation/widgets/treatment_plan_display.dart`
+- [X] T051 [US6] Update read-only vs editable gating by permission on detail page in `frontend/lib/features/visits/presentation/providers/visit_detail_provider.dart`
+- [X] T052 [US6] Update `VisitDetailActions` for post-submit documentation edit navigation in `frontend/lib/features/visits/presentation/widgets/visit_detail_actions.dart`
+- [X] T053 [US6] Handle empty optional collections gracefully (no vital signs/treatments/investigations) in `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
 
 **Checkpoint**: Full read and edit experience on visit detail for new documentation model
 
@@ -178,12 +178,12 @@ description: "Task list for Visits Page Redesign (014)"
 
 **Purpose**: Remove legacy SOAP/specialty code, fix references, run automated checks, validate quickstart
 
-- [ ] T054 [P] Delete `frontend/lib/features/visits/domain/soap_note.dart` and `frontend/lib/features/visits/domain/specialty_form_schema.dart`
-- [ ] T055 [P] Delete `frontend/lib/features/visits/presentation/widgets/soap_editor.dart`, `specialty_form_fields.dart`, `specialty_form_read_only_section.dart`, and `frontend/lib/features/visits/presentation/providers/specialty_form_schema_provider.dart`
-- [ ] T056 Remove all SOAP/specialty imports and dead code across `frontend/lib/features/visits/`
-- [ ] T057 Finalize documentation page layout order: clinical sections → vital signs → treatments → investigations → attachments in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
-- [ ] T058 [P] Run `dart analyze lib/features/visits` and fix analyzer issues
-- [ ] T059 [P] Run `flutter test test/unit/visits/` and `flutter test test/widget/visits/` and fix failures
+- [X] T054 [P] Delete `frontend/lib/features/visits/domain/soap_note.dart` and `frontend/lib/features/visits/domain/specialty_form_schema.dart`
+- [X] T055 [P] Delete `frontend/lib/features/visits/presentation/widgets/soap_editor.dart`, `specialty_form_fields.dart`, `specialty_form_read_only_section.dart`, and `frontend/lib/features/visits/presentation/providers/specialty_form_schema_provider.dart`
+- [X] T056 Remove all SOAP/specialty imports and dead code across `frontend/lib/features/visits/`
+- [X] T057 Finalize documentation page layout order: clinical sections → vital signs → treatments → investigations → attachments in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T058 [P] Run `dart analyze lib/features/visits` and fix analyzer issues
+- [X] T059 [P] Run `flutter test test/unit/visits/` and `flutter test test/widget/visits/` and fix failures
 - [ ] T060 Execute manual regression from `specs/013-visits/quickstart.md` (appointment create/open visit, patient visit history metadata, catalog search SC-002)
 
 ---
