@@ -9,8 +9,10 @@ import 'package:ai_clinic/features/appointments/data/appointment_repository.dart
 import 'package:ai_clinic/features/appointments/domain/simplified_booking_session.dart';
 import 'package:ai_clinic/features/appointments/domain/simplified_booking_slot.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/alternate_doctors_dialog.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/simplified_booking_filter_popover.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/simplified_day_strip.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/simplified_slot_summary_card.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/simplified_slot_legend.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/simplified_time_block_grid.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:flutter/material.dart';
@@ -37,6 +39,9 @@ class SimplifiedBookingStepTwo extends ConsumerStatefulWidget {
   ConsumerState<SimplifiedBookingStepTwo> createState() => _SimplifiedBookingStepTwoState();
 }
 
+/// Sentinel value for the step-two doctor filter meaning all branch doctors.
+const simplifiedBookingAllDoctorsId = '';
+
 class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStepTwo> {
   List<SimplifiedBookingSlot> _slots = const [];
   bool _loadingSlots = true;
@@ -44,8 +49,14 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
   String? _slotsError;
   int _loadGeneration = 0;
   int _slideDirection = 0;
+  bool _hideFullyBooked = true;
+  late String _viewDoctorId;
 
   static String _dateKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
+
+  bool get _hasViewDoctor {
+    return _viewDoctorId.trim().isNotEmpty;
+  }
 
   bool get _hasPreferredDoctor {
     final preferred = widget.session.preferredDoctorId;
@@ -53,6 +64,9 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
   }
 
   String? _rpcDoctorId() {
+    if (_hasViewDoctor) {
+      return _viewDoctorId;
+    }
     final fromSession = widget.session.effectiveDoctorId ?? widget.session.preferredDoctorId;
     if (fromSession != null && fromSession.trim().isNotEmpty) {
       return fromSession;
@@ -61,7 +75,7 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
   }
 
   List<SimplifiedBookingSlot> _slotsForDisplay(List<SimplifiedBookingSlot> slots) {
-    if (_hasPreferredDoctor) {
+    if (_hasPreferredDoctor && _hasViewDoctor) {
       return slots;
     }
     return [
@@ -81,22 +95,61 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
   @override
   void initState() {
     super.initState();
+    _viewDoctorId = _initialViewDoctorId(widget.session);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadSlots());
   }
 
   @override
   void didUpdateWidget(covariant SimplifiedBookingStepTwo oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final preferredChanged = oldWidget.session.preferredDoctorId != widget.session.preferredDoctorId;
     final doctorChanged =
         oldWidget.session.effectiveDoctorId != widget.session.effectiveDoctorId ||
         oldWidget.session.preferredDoctorId != widget.session.preferredDoctorId;
     final dateChanged = !_isSameDay(oldWidget.session.selectedDate, widget.session.selectedDate);
+
+    if (preferredChanged && _viewDoctorId == _initialViewDoctorId(oldWidget.session)) {
+      _viewDoctorId = _initialViewDoctorId(widget.session);
+    }
     if (doctorChanged) {
       _slideDirection = 0;
       _loadSlots();
     } else if (dateChanged) {
       _loadSlots();
     }
+  }
+
+  static String _initialViewDoctorId(SimplifiedBookingSession session) {
+    final preferred = session.preferredDoctorId;
+    if (preferred != null && preferred.trim().isNotEmpty) {
+      return preferred;
+    }
+    return simplifiedBookingAllDoctorsId;
+  }
+
+  void _onViewDoctorChanged(String? doctorId) {
+    final normalized = doctorId ?? simplifiedBookingAllDoctorsId;
+    if (normalized == _viewDoctorId) {
+      return;
+    }
+    setState(() => _viewDoctorId = normalized);
+    widget.onSessionChanged(
+      widget.session.copyWith(
+        clearSelectedSlot: true,
+        effectiveDoctorId: normalized.isEmpty ? widget.session.preferredDoctorId : normalized,
+        clearEffectiveDoctor: normalized.isEmpty && !_hasPreferredDoctor,
+      ),
+    );
+    _loadSlots();
+  }
+
+  Map<String, String> _viewDoctorItems() {
+    final items = <String, String>{'All doctors': simplifiedBookingAllDoctorsId};
+    final sorted = [...widget.doctors]..sort(StaffListItem.compareByFullName);
+    for (final doctor in sorted) {
+      items[doctor.fullName] = doctor.id;
+    }
+    return items;
   }
 
   Future<void> _loadSlots() async {
@@ -188,12 +241,17 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
   }
 
   void _onAvailableSlotSelected(SimplifiedBookingSlot slot) {
-    final preferredDoctorId = widget.session.preferredDoctorId;
-    if (preferredDoctorId == null || preferredDoctorId.trim().isEmpty) {
+    if (!_hasPreferredDoctor) {
       unawaited(_onAlternateSlotTap(slot));
       return;
     }
-    widget.onSessionChanged(widget.session.copyWith(selectedSlot: slot, effectiveDoctorId: preferredDoctorId));
+    if (!_hasViewDoctor) {
+      final doctorId = widget.session.effectiveDoctorId ?? widget.session.preferredDoctorId!;
+      widget.onSessionChanged(widget.session.copyWith(selectedSlot: slot, effectiveDoctorId: doctorId));
+      return;
+    }
+    final doctorId = _viewDoctorId;
+    widget.onSessionChanged(widget.session.copyWith(selectedSlot: slot, effectiveDoctorId: doctorId));
   }
 
   Future<void> _onAlternateSlotTap(SimplifiedBookingSlot slot) async {
@@ -201,6 +259,7 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
       context,
       slot: slot,
       doctors: widget.doctors,
+      hasPreferredDoctor: _hasPreferredDoctor,
       onDoctorSelected: (doctorId) {
         widget.onSessionChanged(widget.session.copyWith(selectedSlot: slot, effectiveDoctorId: doctorId));
       },
@@ -238,6 +297,7 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
     return SimplifiedTimeBlockGrid(
       slots: _slotsForDisplay(_slots),
       selectedStart: widget.session.selectedSlot?.startTime,
+      hideFullyBooked: _hideFullyBooked,
       onSlotTap: widget.enabled ? _onAvailableSlotSelected : (_) {},
       onAlternateSlotTap: widget.enabled ? _onAlternateSlotTap : null,
     );
@@ -251,32 +311,26 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
     final effectiveDoctorId = session.effectiveDoctorId ?? session.preferredDoctorId;
     final dateRange = simplifiedBookingDateRange();
 
+    final defaultViewDoctorId = _initialViewDoctorId(session);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: Text('Select Date and Time', style: theme.textTheme.titleMedium)),
-            const SizedBox(width: SpacingTokens.md),
-            SizedBox(
-              width: 148,
-              child: AppDateField(
-                key: const Key('simplified_booking_pick_date'),
-                label: 'Date',
-                size: AppFieldSize.sm,
-                value: session.selectedDate,
-                firstDate: dateRange.minDate,
-                lastDate: dateRange.maxDate,
-                enabled: widget.enabled,
-                onChanged: widget.enabled
-                    ? (date) {
-                        if (date != null) {
-                          _onDateSelected(clampSimplifiedBookingDate(date), defer: true);
-                        }
-                      }
-                    : null,
-              ),
+            SimplifiedBookingFilterButton(
+              hideFullyBooked: _hideFullyBooked,
+              viewDoctorId: _viewDoctorId,
+              defaultViewDoctorId: defaultViewDoctorId,
+              selectedDate: session.selectedDate,
+              firstDate: dateRange.minDate,
+              lastDate: dateRange.maxDate,
+              doctorItems: _viewDoctorItems(),
+              enabled: widget.enabled,
+              onHideFullyBookedChanged: (value) => setState(() => _hideFullyBooked = value),
+              onViewDoctorChanged: _onViewDoctorChanged,
+              onDateChanged: (date) => _onDateSelected(date),
             ),
           ],
         ),
@@ -290,6 +344,10 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
           direction: _slideDirection,
           child: _buildSlotsPanel(),
         ),
+        const SizedBox(height: SpacingTokens.md),
+        Divider(height: 1, color: context.semanticColors.border),
+        const SizedBox(height: SpacingTokens.md),
+        SimplifiedSlotLegend(showAlternateDoctors: _hasPreferredDoctor),
         if (durationMinutes != null && session.patientId != null) ...[
           const SizedBox(height: SpacingTokens.lg),
           SimplifiedSlotSummaryCard(

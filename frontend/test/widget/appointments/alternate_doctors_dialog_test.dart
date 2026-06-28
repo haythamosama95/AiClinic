@@ -65,6 +65,44 @@ void main() {
       expect(find.text('Other doctors available'), findsNothing);
     });
 
+    testWidgets('without preferred doctor asks to select a doctor', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          builder: (context, child) => ForuiAppScope(child: child!),
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      AlternateDoctorsDialog.show(
+                        context,
+                        slot: slot,
+                        doctors: doctors,
+                        hasPreferredDoctor: false,
+                        onDoctorSelected: (_) {},
+                      );
+                    },
+                    child: const Text('Open'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select a doctor'), findsOneWidget);
+      expect(find.textContaining('Select a doctor for'), findsOneWidget);
+      expect(find.text('Other doctors available'), findsNothing);
+      expect(find.textContaining('Other doctors are available'), findsNothing);
+    });
+
     testWidgets('cancel dismisses without selecting', (tester) async {
       var selected = false;
 

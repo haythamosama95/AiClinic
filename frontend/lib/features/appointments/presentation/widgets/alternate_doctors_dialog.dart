@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 import 'package:intl/intl.dart';
 
-/// Lists alternate doctors available for a simplified booking time block (011).
+/// Lists doctors available for a simplified booking time block (011).
 class AlternateDoctorsDialog extends StatelessWidget {
   const AlternateDoctorsDialog({
     required this.slot,
@@ -14,6 +14,7 @@ class AlternateDoctorsDialog extends StatelessWidget {
     required this.onDoctorSelected,
     required this.dialogStyle,
     required this.animation,
+    this.hasPreferredDoctor = true,
     super.key,
   });
 
@@ -22,12 +23,14 @@ class AlternateDoctorsDialog extends StatelessWidget {
   final ValueChanged<String> onDoctorSelected;
   final FDialogStyle dialogStyle;
   final Animation<double> animation;
+  final bool hasPreferredDoctor;
 
   static Future<void> show(
     BuildContext context, {
     required SimplifiedBookingSlot slot,
     required List<StaffListItem> doctors,
     required ValueChanged<String> onDoctorSelected,
+    bool hasPreferredDoctor = true,
   }) {
     final fTheme = context.theme;
     final availableIds = slot.availableDoctorIds.toSet();
@@ -47,6 +50,7 @@ class AlternateDoctorsDialog extends StatelessWidget {
             onDoctorSelected: onDoctorSelected,
             dialogStyle: style,
             animation: animation,
+            hasPreferredDoctor: hasPreferredDoctor,
           ),
         );
       },
@@ -58,23 +62,25 @@ class AlternateDoctorsDialog extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
     final timeLabel = DateFormat.jm().format(slot.startTime.toLocal());
+    final title = hasPreferredDoctor ? 'Other doctors available' : 'Select a doctor';
+    final body = hasPreferredDoctor ? 'Other doctors are available at $timeLabel.' : 'Select a doctor for $timeLabel.';
+    final emptyMessage = hasPreferredDoctor
+        ? 'No alternate doctors are available.'
+        : 'No doctors are available at this time.';
 
     return FDialog(
       style: dialogStyle,
       animation: animation,
       direction: Axis.horizontal,
-      title: Text('Other doctors available', style: theme.textTheme.titleLarge),
+      title: Text(title, style: theme.textTheme.titleLarge),
       body: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Other doctors are available at $timeLabel.', style: theme.textTheme.bodyMedium),
+          Text(body, style: theme.textTheme.bodyMedium),
           const SizedBox(height: SpacingTokens.md),
           if (doctors.isEmpty)
-            Text(
-              'No alternate doctors are available.',
-              style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-            )
+            Text(emptyMessage, style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground))
           else
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 280),

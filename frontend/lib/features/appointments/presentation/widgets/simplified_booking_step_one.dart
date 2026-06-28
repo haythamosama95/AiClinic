@@ -135,8 +135,15 @@ class _SimplifiedBookingStepOneState extends ConsumerState<SimplifiedBookingStep
     }
 
     final notes = _trimOrNull(_notesController.text);
+    final clearedDoctor = _selectedDoctorId == null;
     widget.onNext(
-      widget.session.copyWith(patient: _selectedPatient, preferredDoctorId: _selectedDoctorId, notes: notes),
+      widget.session.copyWith(
+        patient: _selectedPatient,
+        preferredDoctorId: _selectedDoctorId,
+        clearPreferredDoctor: clearedDoctor,
+        clearEffectiveDoctor: clearedDoctor,
+        notes: notes,
+      ),
     );
   }
 

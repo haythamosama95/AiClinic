@@ -164,6 +164,77 @@ void main() {
       });
     });
 
+    testWidgets('step two without preferred doctor shows branch-wide slots without yellow chips', (tester) async {
+      await withClock(Clock.fixed(DateTime(2026, 6, 27, 8, 0)), () async {
+        final client = AppointmentRpcTestClient();
+        final patient = samplePatientListItem(fullName: 'No Doctor Patient');
+
+        await pumpFlow(
+          tester,
+          client: client,
+          patientRepository: FakePatientRepository(patients: [patient]),
+        );
+
+        await tester.enterText(find.byKey(const Key('simplified_booking_patient_search')), 'No Doc');
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(patient.fullName));
+        await tester.pumpAndSettle();
+
+        final nextFinder = find.byKey(const Key('simplified_booking_step_one_next'));
+        await tester.ensureVisible(nextFinder);
+        await tester.tap(nextFinder);
+        await tester.pump();
+        await waitForStepTwo(tester);
+        await waitForSlotsLoaded(tester);
+        await tester.pumpAndSettle();
+
+        final slotLabel = DateFormat.jm().format(DateTime(2026, 6, 27, 10));
+        expect(find.text(slotLabel), findsOneWidget);
+        expect(client.rpcCallCounts['get_simplified_booking_slots'], 1);
+        expect(find.text('Other doctors free'), findsNothing);
+      });
+    });
+
+    testWidgets('clearing doctor after going back updates step two', (tester) async {
+      await withClock(Clock.fixed(DateTime(2026, 6, 27, 8, 0)), () async {
+        final client = AppointmentRpcTestClient();
+        final patient = samplePatientListItem(fullName: 'Clear Doctor Patient');
+
+        await pumpFlow(
+          tester,
+          client: client,
+          patientRepository: FakePatientRepository(patients: [patient]),
+        );
+        await completeStepOne(tester, patient: patient, searchQuery: 'Clear');
+
+        final slotLabel = DateFormat.jm().format(DateTime(2026, 6, 27, 10));
+        expect(find.text(slotLabel), findsOneWidget);
+        expect(client.rpcCallCounts['get_simplified_booking_slots'], 1);
+
+        final backFinder = find.byKey(const Key('simplified_booking_back'));
+        await tester.ensureVisible(backFinder);
+        await tester.tap(backFinder);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(AppSelect<String>, 'Doctor (optional)'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('No doctor assigned'));
+        await tester.pumpAndSettle();
+
+        final nextFinder = find.byKey(const Key('simplified_booking_step_one_next'));
+        await tester.ensureVisible(nextFinder);
+        await tester.tap(nextFinder);
+        await tester.pump();
+        await waitForStepTwo(tester);
+        await tester.pumpAndSettle();
+
+        expect(find.text(slotLabel), findsOneWidget);
+        expect(client.rpcCallCounts['get_simplified_booking_slots'], 2);
+        expect(find.text('Other doctors free'), findsNothing);
+      });
+    });
+
     testWidgets('completes two-step booking from step one through confirm', (tester) async {
       await withClock(Clock.fixed(DateTime(2026, 6, 27, 8, 0)), () async {
         final client = AppointmentRpcTestClient();
@@ -181,13 +252,16 @@ void main() {
         expect(find.text('Step 2 / 2'), findsOneWidget);
 
         final slotLabel = DateFormat.jm().format(DateTime(2026, 6, 27, 10));
-        await tester.ensureVisible(find.text(slotLabel));
-        await tester.tap(find.text(slotLabel));
+        final slotFinder = find.text(slotLabel);
+        await tester.ensureVisible(slotFinder);
+        await tester.tap(slotFinder);
         await tester.pumpAndSettle();
 
         expect(find.text('Dr. Ada'), findsWidgets);
 
-        await tester.tap(find.byKey(const Key('simplified_slot_confirm')));
+        final confirmFinder = find.byKey(const Key('simplified_slot_confirm'));
+        await tester.ensureVisible(confirmFinder);
+        await tester.tap(confirmFinder);
         await tester.pumpAndSettle();
 
         expect(client.createAppointmentCalls, hasLength(1));
@@ -210,11 +284,15 @@ void main() {
         await completeStepOne(tester, patient: patient, searchQuery: 'Back');
 
         final slotLabel = DateFormat.jm().format(DateTime(2026, 6, 27, 10));
-        await tester.tap(find.text(slotLabel));
+        final slotFinder = find.text(slotLabel);
+        await tester.ensureVisible(slotFinder);
+        await tester.tap(slotFinder);
         await tester.pumpAndSettle();
         expect(find.textContaining('Jun 27'), findsOneWidget);
 
-        await tester.tap(find.byKey(const Key('simplified_booking_back')));
+        final backFinder = find.byKey(const Key('simplified_booking_back'));
+        await tester.ensureVisible(backFinder);
+        await tester.tap(backFinder);
         await tester.pumpAndSettle();
 
         expect(find.text('Step 1 / 2'), findsOneWidget);
@@ -270,7 +348,9 @@ void main() {
         await completeStepOne(tester, patient: patient, searchQuery: 'Doc', doctorName: 'Dr. Ada');
         expect(client.rpcCallCounts['get_simplified_booking_slots'], 1);
 
-        await tester.tap(find.byKey(const Key('simplified_booking_back')));
+        final backFinder = find.byKey(const Key('simplified_booking_back'));
+        await tester.ensureVisible(backFinder);
+        await tester.tap(backFinder);
         await tester.pumpAndSettle();
 
         await tester.tap(find.widgetWithText(AppSelect<String>, 'Doctor (optional)'));

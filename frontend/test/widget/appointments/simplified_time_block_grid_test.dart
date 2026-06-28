@@ -28,6 +28,7 @@ void main() {
       WidgetTester tester, {
       required List<SimplifiedBookingSlot> slots,
       DateTime? selectedStart,
+      bool hideFullyBooked = false,
       ValueChanged<SimplifiedBookingSlot>? onSlotTap,
       ValueChanged<SimplifiedBookingSlot>? onAlternateSlotTap,
     }) async {
@@ -39,6 +40,7 @@ void main() {
             body: SimplifiedTimeBlockGrid(
               slots: slots,
               selectedStart: selectedStart,
+              hideFullyBooked: hideFullyBooked,
               onSlotTap: onSlotTap ?? (_) {},
               onAlternateSlotTap: onAlternateSlotTap,
               collapsedSlotCount: 4,
@@ -49,7 +51,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('renders available, alternate, and unavailable states', (tester) async {
+    testWidgets('renders available, alternate hint, and fully booked states', (tester) async {
       await pumpGrid(
         tester,
         slots: [
@@ -60,7 +62,49 @@ void main() {
         ],
       );
 
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(3));
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+      expect(find.byIcon(Icons.help_outline), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(2));
+      expect(find.text(slotLabel(9)), findsOneWidget);
+    });
+
+    testWidgets('hides fully booked slots when toggle is on', (tester) async {
+      await pumpGrid(
+        tester,
+        hideFullyBooked: true,
+        slots: [
+          slot(hour: 9, state: SlotAvailabilityState.available),
+          slot(hour: 10, state: SlotAvailabilityState.fullyUnavailable),
+        ],
+      );
+
+      expect(find.text(slotLabel(9)), findsOneWidget);
+      expect(find.text(slotLabel(10)), findsNothing);
+    });
+
+    testWidgets('animates when fully booked slots are hidden', (tester) async {
+      final slots = [
+        slot(hour: 9, state: SlotAvailabilityState.available),
+        slot(hour: 10, state: SlotAvailabilityState.fullyUnavailable),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          builder: (context, child) => ForuiAppScope(child: child!),
+          home: _HideFullyBookedHarness(slots: slots),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(slotLabel(10)), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('toggle_hide_fully_booked')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+
+      expect(find.text(slotLabel(10)), findsNothing);
       expect(find.text(slotLabel(9)), findsOneWidget);
     });
 
@@ -125,4 +169,33 @@ void main() {
       expect(find.text(slotLabel(12)), findsOneWidget);
     });
   });
+}
+
+class _HideFullyBookedHarness extends StatefulWidget {
+  const _HideFullyBookedHarness({required this.slots});
+
+  final List<SimplifiedBookingSlot> slots;
+
+  @override
+  State<_HideFullyBookedHarness> createState() => _HideFullyBookedHarnessState();
+}
+
+class _HideFullyBookedHarnessState extends State<_HideFullyBookedHarness> {
+  var _hideFullyBooked = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          Switch(
+            key: const Key('toggle_hide_fully_booked'),
+            value: _hideFullyBooked,
+            onChanged: (value) => setState(() => _hideFullyBooked = value),
+          ),
+          SimplifiedTimeBlockGrid(slots: widget.slots, hideFullyBooked: _hideFullyBooked, onSlotTap: (_) {}),
+        ],
+      ),
+    );
+  }
 }

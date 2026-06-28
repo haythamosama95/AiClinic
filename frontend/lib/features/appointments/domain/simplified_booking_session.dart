@@ -39,7 +39,9 @@ class SimplifiedBookingSession {
     PatientListItem? patient,
     bool clearPatient = false,
     String? preferredDoctorId,
+    bool clearPreferredDoctor = false,
     String? effectiveDoctorId,
+    bool clearEffectiveDoctor = false,
     DateTime? selectedDate,
     SimplifiedBookingSlot? selectedSlot,
     bool clearSelectedSlot = false,
@@ -49,8 +51,8 @@ class SimplifiedBookingSession {
     return SimplifiedBookingSession(
       branchId: branchId,
       patient: clearPatient ? null : (patient ?? this.patient),
-      preferredDoctorId: preferredDoctorId ?? this.preferredDoctorId,
-      effectiveDoctorId: effectiveDoctorId ?? this.effectiveDoctorId,
+      preferredDoctorId: clearPreferredDoctor ? null : (preferredDoctorId ?? this.preferredDoctorId),
+      effectiveDoctorId: clearEffectiveDoctor ? null : (effectiveDoctorId ?? this.effectiveDoctorId),
       selectedDate: selectedDate ?? this.selectedDate,
       selectedSlot: clearSelectedSlot ? null : (selectedSlot ?? this.selectedSlot),
       defaultDurationMinutes: defaultDurationMinutes ?? this.defaultDurationMinutes,
@@ -60,19 +62,12 @@ class SimplifiedBookingSession {
 
   SimplifiedBookingSession clearSlot() => copyWith(clearSelectedSlot: true);
 
-  SimplifiedBookingSession forStepTwoEntry({
-    required int defaultDurationMinutes,
-    PatientListItem? patient,
-    String? preferredDoctorId,
-    String? notes,
-  }) {
-    final doctorId = preferredDoctorId ?? this.preferredDoctorId;
+  SimplifiedBookingSession forStepTwoEntry({required int defaultDurationMinutes}) {
+    final doctorId = preferredDoctorId;
     return copyWith(
-      patient: patient,
-      preferredDoctorId: doctorId,
       effectiveDoctorId: doctorId,
+      clearEffectiveDoctor: doctorId == null,
       defaultDurationMinutes: defaultDurationMinutes,
-      notes: notes,
       clearSelectedSlot: true,
     );
   }
