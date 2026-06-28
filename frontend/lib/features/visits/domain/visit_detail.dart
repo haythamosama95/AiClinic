@@ -1,12 +1,14 @@
 import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
-import 'package:ai_clinic/features/visits/domain/soap_note.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
+import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
+import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
+import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:flutter/foundation.dart';
 
-/// Full visit profile for documentation and detail flows (`get_visit`, V1-5).
+/// Full visit profile for documentation and detail flows (`get_visit`, 013).
 @immutable
 class VisitDetail {
   const VisitDetail({
@@ -18,7 +20,10 @@ class VisitDetail {
     required this.doctorName,
     required this.visitDate,
     required this.status,
-    this.soap,
+    this.updatedAt,
+    this.documentation,
+    this.vitalSigns = const [],
+    this.investigations = const [],
     this.treatmentPlans = const [],
     this.attachments = const [],
   });
@@ -31,7 +36,10 @@ class VisitDetail {
   final String doctorName;
   final DateTime visitDate;
   final VisitStatus status;
-  final SoapNote? soap;
+  final DateTime? updatedAt;
+  final VisitClinicalNote? documentation;
+  final List<VisitVitalSign> vitalSigns;
+  final List<VisitInvestigation> investigations;
   final List<TreatmentPlanItem> treatmentPlans;
   final List<VisitAttachmentItem> attachments;
 
@@ -62,16 +70,13 @@ class VisitDetail {
       return null;
     }
 
-    SoapNote? soap;
-    final soapRaw = row['soap'];
-    if (soapRaw is Map<String, dynamic>) {
-      soap = SoapNote.fromRow(soapRaw);
-    } else if (soapRaw is Map) {
-      soap = SoapNote.fromRow(Map<String, dynamic>.from(soapRaw));
+    VisitClinicalNote? documentation;
+    final documentationRaw = row['documentation'];
+    if (documentationRaw is Map<String, dynamic>) {
+      documentation = VisitClinicalNote.fromRow(documentationRaw);
+    } else if (documentationRaw is Map) {
+      documentation = VisitClinicalNote.fromRow(Map<String, dynamic>.from(documentationRaw));
     }
-
-    final treatmentPlans = _parseTreatmentPlans(row['treatment_plans'], visitId: id, patientId: patientId);
-    final attachments = _parseAttachments(row['attachments']);
 
     return VisitDetail(
       id: id,
@@ -82,10 +87,39 @@ class VisitDetail {
       doctorName: doctorName,
       visitDate: visitDate,
       status: status,
-      soap: soap,
-      treatmentPlans: treatmentPlans,
-      attachments: attachments,
+      updatedAt: parseVisitDateTime(row['updated_at']),
+      documentation: documentation,
+      vitalSigns: _parseVitalSigns(row['vital_signs']),
+      investigations: _parseInvestigations(row['investigations']),
+      treatmentPlans: _parseTreatmentPlans(row['treatment_plans'], visitId: id, patientId: patientId),
+      attachments: _parseAttachments(row['attachments']),
     );
+  }
+
+  static List<VisitVitalSign> _parseVitalSigns(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    return [
+      for (final item in raw)
+        if (item is Map<String, dynamic>)
+          ?VisitVitalSign.fromRow(item)
+        else if (item is Map)
+          ?VisitVitalSign.fromRow(Map<String, dynamic>.from(item)),
+    ].whereType<VisitVitalSign>().toList(growable: false);
+  }
+
+  static List<VisitInvestigation> _parseInvestigations(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    return [
+      for (final item in raw)
+        if (item is Map<String, dynamic>)
+          ?VisitInvestigation.fromRow(item)
+        else if (item is Map)
+          ?VisitInvestigation.fromRow(Map<String, dynamic>.from(item)),
+    ].whereType<VisitInvestigation>().toList(growable: false);
   }
 
   static List<TreatmentPlanItem> _parseTreatmentPlans(
@@ -127,7 +161,10 @@ class VisitDetail {
     String? doctorName,
     DateTime? visitDate,
     VisitStatus? status,
-    Object? soap = copyWithSentinel,
+    Object? updatedAt = copyWithSentinel,
+    Object? documentation = copyWithSentinel,
+    List<VisitVitalSign>? vitalSigns,
+    List<VisitInvestigation>? investigations,
     List<TreatmentPlanItem>? treatmentPlans,
     List<VisitAttachmentItem>? attachments,
   }) {
@@ -140,7 +177,12 @@ class VisitDetail {
       doctorName: doctorName ?? this.doctorName,
       visitDate: visitDate ?? this.visitDate,
       status: status ?? this.status,
-      soap: identical(soap, copyWithSentinel) ? this.soap : soap as SoapNote?,
+      updatedAt: identical(updatedAt, copyWithSentinel) ? this.updatedAt : updatedAt as DateTime?,
+      documentation: identical(documentation, copyWithSentinel)
+          ? this.documentation
+          : documentation as VisitClinicalNote?,
+      vitalSigns: vitalSigns ?? this.vitalSigns,
+      investigations: investigations ?? this.investigations,
       treatmentPlans: treatmentPlans ?? this.treatmentPlans,
       attachments: attachments ?? this.attachments,
     );
@@ -159,7 +201,10 @@ class VisitDetail {
             doctorName == other.doctorName &&
             visitDate == other.visitDate &&
             status == other.status &&
-            soap == other.soap &&
+            updatedAt == other.updatedAt &&
+            documentation == other.documentation &&
+            listEquals(vitalSigns, other.vitalSigns) &&
+            listEquals(investigations, other.investigations) &&
             listEquals(treatmentPlans, other.treatmentPlans) &&
             listEquals(attachments, other.attachments);
   }
@@ -174,7 +219,10 @@ class VisitDetail {
     doctorName,
     visitDate,
     status,
-    soap,
+    updatedAt,
+    documentation,
+    Object.hashAll(vitalSigns),
+    Object.hashAll(investigations),
     Object.hashAll(treatmentPlans),
     Object.hashAll(attachments),
   );

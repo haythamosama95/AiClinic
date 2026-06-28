@@ -29,7 +29,7 @@ description: "Task list for Visits Page Redesign (014)"
 
 **Purpose**: Scaffold the feature migration and verify branch context
 
-- [ ] T001 Create migration scaffold `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql` with header comments referencing `specs/013-visits/plan.md`
+- [X] T001 Create migration scaffold `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql` with header comments referencing `specs/013-visits/plan.md` `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql` with header comments referencing `specs/013-visits/plan.md`
 
 ---
 
@@ -39,25 +39,25 @@ description: "Task list for Visits Page Redesign (014)"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T002 Create `visit_clinical_notes` table (five text columns, 10k char CHECKs, audit columns, 1:1 `visit_id` UNIQUE) with RLS deny-direct-writes in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T003 [P] Create org catalog tables `medications`, `investigations`, `predefined_vital_signs` with unique `(organization_id, lower(trim(name)))` partial indexes and RLS in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T004 [P] Create `visit_vital_signs` and `visit_investigations` child tables with denormalized names, nullable catalog FKs, and RLS in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T005 Alter `treatment_plans`: add `medication_id` FK, migrate `start_date`/`end_date` → `duration`, drop date columns and end-after-start CHECK in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T006 Drop `soap_notes` table and remove specialty form JSON usage from visit-related functions in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T007 Implement `auth_internal.save_visit_documentation` with optimistic concurrency (`STALE_DOCUMENTATION`), partial save, and public wrapper in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T008 [P] Implement catalog RPCs (`search_medications`, `search_investigations`, `list_predefined_vital_signs`, `create_catalog_medication`, `create_catalog_investigation`, `create_predefined_vital_sign`) per `specs/013-visits/contracts/catalog-queries.md` in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T009 [P] Implement vital sign CRUD RPCs (`create_visit_vital_sign`, `update_visit_vital_sign`, `archive_visit_vital_sign`) per `specs/013-visits/contracts/visit-mutations.md` in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T010 [P] Implement investigation CRUD RPCs (`create_visit_investigation`, `update_visit_investigation`, `archive_visit_investigation`) per `specs/013-visits/contracts/visit-mutations.md` in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T011 Update `get_visit` to return `documentation`, `vital_signs`, `investigations` payload (remove `soap`/`specialty_form_json`) per `specs/013-visits/contracts/visit-queries.md` in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T012 Update `complete_visit` to require at least one non-empty clinical section (`DOCUMENTATION_REQUIRED_FOR_COMPLETE`) in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T013 Update `create_treatment_plan` and `update_treatment_plan` for required `p_duration`, optional `p_medication_id`, no date params (`DURATION_REQUIRED`) in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T014 Drop public wrappers `save_soap_note` and `get_specialty_form_schema`; grant EXECUTE on new RPCs in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T015 Seed dev medications (≥10), investigations (≥10), and predefined vital signs (BP, HR, Temp, RR, SpO2, Weight, Height) idempotently per org in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
-- [ ] T016 Rewrite clinical note, catalog, vital sign, investigation, duration migration, and `DOCUMENTATION_REQUIRED_FOR_COMPLETE` cases in `backend/tests/visit_medical_records_crud.sql`
-- [ ] T017 Update cross-branch denial RLS cases for new tables in `backend/tests/visit_medical_records_rls.sql`
-- [ ] T018 Run `backend/tests/run_visit_medical_records_tests.sh` and fix migration/RPC issues until all tests pass
-- [ ] T019 Update `VisitDetail` domain model and `visit_row_parsing.dart` for new `get_visit` payload shape in `frontend/lib/features/visits/domain/visit_detail.dart` and `frontend/lib/features/visits/domain/visit_row_parsing.dart`
-- [ ] T020 Update `getVisit` RPC wrapper to parse documentation, vital signs, and investigations in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T002 Create `visit_clinical_notes` table (five text columns, 10k char CHECKs, audit columns, 1:1 `visit_id` UNIQUE) with RLS deny-direct-writes in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T003 [P] Create org catalog tables `medications`, `investigations`, `predefined_vital_signs` with unique `(organization_id, lower(trim(name)))` partial indexes and RLS in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T004 [P] Create `visit_vital_signs` and `visit_investigations` child tables with denormalized names, nullable catalog FKs, and RLS in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T005 Alter `treatment_plans`: add `medication_id` FK, migrate `start_date`/`end_date` → `duration`, drop date columns and end-after-start CHECK in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T006 Drop `soap_notes` table and remove specialty form JSON usage from visit-related functions in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T007 Implement `auth_internal.save_visit_documentation` with optimistic concurrency (`STALE_DOCUMENTATION`), partial save, and public wrapper in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T008 [P] Implement catalog RPCs (`search_medications`, `search_investigations`, `list_predefined_vital_signs`, `create_catalog_medication`, `create_catalog_investigation`, `create_predefined_vital_sign`) per `specs/013-visits/contracts/catalog-queries.md` in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T009 [P] Implement vital sign CRUD RPCs (`create_visit_vital_sign`, `update_visit_vital_sign`, `archive_visit_vital_sign`) per `specs/013-visits/contracts/visit-mutations.md` in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T010 [P] Implement investigation CRUD RPCs (`create_visit_investigation`, `update_visit_investigation`, `archive_visit_investigation`) per `specs/013-visits/contracts/visit-mutations.md` in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T011 Update `get_visit` to return `documentation`, `vital_signs`, `investigations` payload (remove `soap`/`specialty_form_json`) per `specs/013-visits/contracts/visit-queries.md` in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T012 Update `complete_visit` to require at least one non-empty clinical section (`DOCUMENTATION_REQUIRED_FOR_COMPLETE`) in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T013 Update `create_treatment_plan` and `update_treatment_plan` for required `p_duration`, optional `p_medication_id`, no date params (`DURATION_REQUIRED`) in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T014 Drop public wrappers `save_soap_note` and `get_specialty_form_schema`; grant EXECUTE on new RPCs in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T015 Seed dev medications (≥10), investigations (≥10), and predefined vital signs (BP, HR, Temp, RR, SpO2, Weight, Height) idempotently per org in `backend/supabase/migrations/20260628140000_visit_documentation_redesign.sql`
+- [X] T016 Rewrite clinical note, catalog, vital sign, investigation, duration migration, and `DOCUMENTATION_REQUIRED_FOR_COMPLETE` cases in `backend/tests/visit_medical_records_crud.sql`
+- [X] T017 Update cross-branch denial RLS cases for new tables in `backend/tests/visit_medical_records_rls.sql`
+- [X] T018 Run `backend/tests/run_visit_medical_records_tests.sh` and fix migration/RPC issues until all tests pass
+- [X] T019 Update `VisitDetail` domain model and `visit_row_parsing.dart` for new `get_visit` payload shape in `frontend/lib/features/visits/domain/visit_detail.dart` and `frontend/lib/features/visits/domain/visit_row_parsing.dart`
+- [X] T020 Update `getVisit` RPC wrapper to parse documentation, vital signs, and investigations in `frontend/lib/features/visits/data/visit_repository.dart`
 
 **Checkpoint**: Foundation ready — backend migration applied and tests green; `get_visit` parsing ready for Flutter stories
 

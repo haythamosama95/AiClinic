@@ -10,6 +10,7 @@ class TreatmentPlanItem {
     required this.visitId,
     required this.patientId,
     required this.medicationName,
+    this.medicationId,
     this.dosage,
     this.frequency,
     this.duration,
@@ -22,6 +23,7 @@ class TreatmentPlanItem {
   final String visitId;
   final String patientId;
   final String medicationName;
+  final String? medicationId;
   final String? dosage;
   final String? frequency;
   final String? duration;
@@ -53,6 +55,7 @@ class TreatmentPlanItem {
       visitId: resolvedVisitId,
       patientId: resolvedPatientId,
       medicationName: medicationName,
+      medicationId: optionalVisitString(row['medication_id']),
       dosage: optionalVisitString(row['dosage']),
       frequency: optionalVisitString(row['frequency']),
       duration: optionalVisitString(row['duration']),
@@ -67,6 +70,7 @@ class TreatmentPlanItem {
     String? visitId,
     String? patientId,
     String? medicationName,
+    Object? medicationId = copyWithSentinel,
     Object? dosage = copyWithSentinel,
     Object? frequency = copyWithSentinel,
     Object? duration = copyWithSentinel,
@@ -79,6 +83,7 @@ class TreatmentPlanItem {
       visitId: visitId ?? this.visitId,
       patientId: patientId ?? this.patientId,
       medicationName: medicationName ?? this.medicationName,
+      medicationId: identical(medicationId, copyWithSentinel) ? this.medicationId : medicationId as String?,
       dosage: identical(dosage, copyWithSentinel) ? this.dosage : dosage as String?,
       frequency: identical(frequency, copyWithSentinel) ? this.frequency : frequency as String?,
       duration: identical(duration, copyWithSentinel) ? this.duration : duration as String?,
@@ -97,6 +102,7 @@ class TreatmentPlanItem {
             visitId == other.visitId &&
             patientId == other.patientId &&
             medicationName == other.medicationName &&
+            medicationId == other.medicationId &&
             dosage == other.dosage &&
             frequency == other.frequency &&
             duration == other.duration &&
@@ -106,6 +112,17 @@ class TreatmentPlanItem {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, visitId, patientId, medicationName, dosage, frequency, duration, startDate, endDate, notes);
+  int get hashCode => Object.hash(
+    id,
+    visitId,
+    patientId,
+    medicationName,
+    medicationId,
+    dosage,
+    frequency,
+    duration,
+    startDate,
+    endDate,
+    notes,
+  );
 }

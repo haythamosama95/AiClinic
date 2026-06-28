@@ -19,7 +19,7 @@ class VisitRepository with AppRpcInvoker {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260531180000_visit_medical_records.sql';
+  String get migrationHint => '20260628140000_visit_documentation_redesign.sql';
 
   @override
   String get rpcLogDomain => 'visits';

@@ -47,7 +47,7 @@ DECLARE
   v_items jsonb;
   v_i int;
   v_visit_updated_at timestamptz;
-  v_soap_updated_at timestamptz;
+  v_doc_updated_at timestamptz;
   v_doctor_can_download boolean;
   v_lab_can_download boolean;
 BEGIN
@@ -143,9 +143,11 @@ BEGIN
   END IF;
   v_visit_id := (v_result.data ->> 'visit_id')::uuid;
   SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
-  v_result := public.save_soap_note(v_visit_id, v_visit_updated_at, 'Attach note.', NULL, NULL, NULL, NULL);
-  v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
-  v_result := public.complete_visit(v_visit_id, v_soap_updated_at);
+  v_result := public.save_visit_documentation(
+    v_visit_id, 'Attach note.', NULL, NULL, NULL, NULL, v_visit_updated_at
+  );
+  v_doc_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.complete_visit(v_visit_id, v_doc_updated_at);
   IF NOT v_result.success THEN
     RAISE EXCEPTION 'complete_visit failed: %', COALESCE(v_result.error_code, '?');
   END IF;

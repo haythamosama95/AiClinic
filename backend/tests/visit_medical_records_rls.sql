@@ -282,18 +282,18 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.save_soap_note(
+  v_result := public.save_visit_documentation(
     v_visit_a2,
-    now(),
     'Should not save',
     NULL,
     NULL,
     NULL,
-    NULL
+    NULL,
+    now()
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_rls_results VALUES (
-    'cross_branch_save_soap_denied',
+    'cross_branch_save_documentation_denied',
     NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
     COALESCE(v_result.error_code, '<null>')
   );
@@ -329,6 +329,38 @@ BEGIN
     'lab_staff_download_other_upload_denied',
     NOT v_result.success AND v_result.error_code = 'ATTACHMENT_DOWNLOAD_DENIED',
     COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- Cross-org denial for new documentation tables (direct SELECT).
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_b::text,
+      'role', 'authenticated',
+      'organization_id', v_org_b::text,
+      'branch_ids', v_branch_b::text,
+      'staff_member_id', v_staff_b::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  SELECT count(*)::int INTO v_visible_count FROM public.visit_clinical_notes;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_rls_results VALUES (
+    'cross_org_visit_clinical_notes_hidden',
+    v_visible_count = 0,
+    'count=' || v_visible_count::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  SELECT count(*)::int INTO v_visible_count FROM public.medications;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_rls_results VALUES (
+    'cross_org_medications_catalog_hidden',
+    v_visible_count = 0,
+    'count=' || v_visible_count::text
   );
   PERFORM set_config('role', 'postgres', true);
 END;

@@ -82,10 +82,12 @@ DECLARE
   v_completed_visit_id uuid;
   v_completed_appt_id uuid;
   v_visit_updated_at timestamptz;
-  v_soap_updated_at timestamptz;
+  v_doc_updated_at timestamptz;
   v_plan_id uuid;
   v_attachment_id uuid;
   v_attachment_patient_id uuid;
+  v_vital_sign_id uuid;
+  v_investigation_line_id uuid;
   v_file_path text;
   v_start timestamptz;
   v_items jsonb;
@@ -94,7 +96,7 @@ DECLARE
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
-  DELETE FROM public.app_settings WHERE key IN ('appointment.default_duration_minutes', 'specialty.form_schema_json');
+  DELETE FROM public.app_settings WHERE key IN ('appointment.default_duration_minutes');
   DELETE FROM public.audit_log;
   DELETE FROM auth.users
   WHERE id IN (v_owner_user, v_doctor_user, v_lab_user);
@@ -147,16 +149,6 @@ BEGIN
   INSERT INTO public.staff_branch_assignments (staff_member_id, branch_id, is_primary, created_by, updated_by)
   SELECT s.id, v_branch_main, true, v_bootstrap_user, v_bootstrap_user
   FROM (VALUES (v_owner_staff), (v_doctor_staff), (v_lab_staff)) AS s(id);
-
-  INSERT INTO public.app_settings (organization_id, branch_id, key, value_json, created_by, updated_by)
-  VALUES (
-    v_org_id,
-    NULL,
-    'specialty.form_schema_json',
-    '{"type":"object","properties":{"pain_score":{"type":"number","title":"Pain score"},"notes":{"type":"string","title":"Notes"}},"required":["pain_score"]}'::jsonb,
-    v_bootstrap_user,
-    v_bootstrap_user
-  );
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
@@ -335,7 +327,7 @@ BEGIN
 
   PERFORM pg_temp.release_doctor_in_progress(v_doctor_staff);
 
-  -- SOAP workflow on a dedicated visit.
+  -- Clinical documentation workflow on a dedicated visit.
   v_start := pg_temp.test_appointment_same_day_slot(5);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 5;
   v_result := public.create_appointment(
@@ -349,82 +341,80 @@ BEGIN
   v_visit_id := (v_result.data ->> 'visit_id')::uuid;
   SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
 
-  v_result := public.save_soap_note(
+  v_result := public.save_visit_documentation(
     v_visit_id,
-    v_visit_updated_at,
-    'Partial subjective only.',
+    'Partial complaint only.',
     NULL,
     NULL,
     NULL,
-    NULL
+    NULL,
+    v_visit_updated_at
   );
-  v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_doc_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'save_soap_note_partial_save',
+    'save_visit_documentation_partial_save',
     v_result.success
       AND EXISTS (
         SELECT 1
-        FROM public.soap_notes sn
-        WHERE sn.visit_id = v_visit_id
-          AND sn.subjective = 'Partial subjective only.'
-          AND sn.objective IS NULL
+        FROM public.visit_clinical_notes vcn
+        WHERE vcn.visit_id = v_visit_id
+          AND vcn.complaint = 'Partial complaint only.'
+          AND vcn.history IS NULL
       ),
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.save_soap_note(
+  v_result := public.save_visit_documentation(
     v_visit_id,
-    v_visit_updated_at - interval '1 second',
     'Stale attempt.',
     NULL,
     NULL,
     NULL,
-    NULL
+    NULL,
+    v_visit_updated_at - interval '1 second'
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'save_soap_note_stale_conflict',
-    NOT v_result.success AND v_result.error_code = 'STALE_SOAP',
+    'save_visit_documentation_stale_conflict',
+    NOT v_result.success AND v_result.error_code = 'STALE_DOCUMENTATION',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- SOAP_REQUIRED_FOR_COMPLETE when all sections empty (same visit as partial save above).
-  v_result := public.save_soap_note(v_visit_id, v_visit_updated_at, '   ', '  ', NULL, NULL, NULL);
-  v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
-  v_result := public.complete_visit(v_visit_id, v_soap_updated_at);
+  -- DOCUMENTATION_REQUIRED_FOR_COMPLETE when all sections empty.
+  v_result := public.save_visit_documentation(v_visit_id, '   ', '  ', NULL, NULL, NULL, v_doc_updated_at);
+  v_doc_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.complete_visit(v_visit_id, v_doc_updated_at);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'complete_visit_requires_soap_content',
-    NOT v_result.success AND v_result.error_code = 'SOAP_REQUIRED_FOR_COMPLETE',
+    'complete_visit_requires_documentation_content',
+    NOT v_result.success AND v_result.error_code = 'DOCUMENTATION_REQUIRED_FOR_COMPLETE',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- complete_visit with SOAP completes appointment.
-  SELECT sn.updated_at
-  INTO v_soap_updated_at
-  FROM public.soap_notes sn
-  WHERE sn.visit_id = v_visit_id
-    AND sn.is_deleted = false;
+  SELECT vcn.updated_at
+  INTO v_doc_updated_at
+  FROM public.visit_clinical_notes vcn
+  WHERE vcn.visit_id = v_visit_id AND vcn.is_deleted = false;
 
-  v_result := public.save_soap_note(
+  v_result := public.save_visit_documentation(
     v_visit_id,
-    v_soap_updated_at,
     'Chief complaint.',
+    'Patient history.',
     'Exam findings.',
     NULL,
     NULL,
-    NULL
+    v_doc_updated_at
   );
-  v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
-  v_result := public.complete_visit(v_visit_id, v_soap_updated_at);
+  v_doc_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.complete_visit(v_visit_id, v_doc_updated_at);
   v_completed_visit_id := v_visit_id;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'complete_visit_with_soap_completes_appointment',
+    'complete_visit_with_documentation_completes_appointment',
     v_result.success
       AND (v_result.data ->> 'visit_status') = 'completed'
       AND (v_result.data ->> 'appointment_status') = 'completed'
@@ -437,14 +427,13 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- get_visit clinical detail and get_visit_by_appointment (completed visit).
   v_result := public.get_visit(v_completed_visit_id);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'get_visit_clinical_includes_soap',
+    'get_visit_clinical_includes_documentation',
     v_result.success
-      AND (v_result.data ? 'soap')
-      AND (v_result.data -> 'soap' ->> 'subjective') = 'Chief complaint.',
+      AND (v_result.data ? 'documentation')
+      AND (v_result.data -> 'documentation' ->> 'complaint') = 'Chief complaint.',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -467,7 +456,7 @@ BEGIN
   INSERT INTO visit_crud_results VALUES (
     'get_visit_lab_staff_metadata_only',
     v_result.success
-      AND NOT (v_result.data ? 'soap')
+      AND NOT (v_result.data ? 'documentation')
       AND (v_result.data ->> 'status') = 'completed',
     COALESCE(v_result.error_code, '<null>')
   );
@@ -502,29 +491,28 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- SOAP save on completed visit (post-submit corrections).
-  SELECT sn.updated_at INTO v_soap_updated_at
-  FROM public.soap_notes sn
-  WHERE sn.visit_id = v_completed_visit_id AND sn.is_deleted = false;
-  v_result := public.save_soap_note(
+  SELECT vcn.updated_at INTO v_doc_updated_at
+  FROM public.visit_clinical_notes vcn
+  WHERE vcn.visit_id = v_completed_visit_id AND vcn.is_deleted = false;
+  v_result := public.save_visit_documentation(
     v_completed_visit_id,
-    v_soap_updated_at,
     'Chief complaint (corrected).',
+    'Patient history.',
     'Exam findings.',
     NULL,
     NULL,
-    NULL
+    v_doc_updated_at
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'save_soap_note_on_completed_visit',
+    'save_visit_documentation_on_completed_visit',
     v_result.success
       AND EXISTS (
         SELECT 1
-        FROM public.soap_notes sn
-        WHERE sn.visit_id = v_completed_visit_id
-          AND sn.is_deleted = false
-          AND sn.subjective = 'Chief complaint (corrected).'
+        FROM public.visit_clinical_notes vcn
+        WHERE vcn.visit_id = v_completed_visit_id
+          AND vcn.is_deleted = false
+          AND vcn.complaint = 'Chief complaint (corrected).'
       ),
     COALESCE(v_result.error_code, '<null>')
   );
@@ -548,8 +536,7 @@ BEGIN
     'Amoxicillin',
     '500mg',
     'twice daily',
-    current_date,
-    current_date + 7,
+    '7 days',
     'Take with food'
   );
   v_plan_id := (v_result.data ->> 'treatment_plan_id')::uuid;
@@ -561,7 +548,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.update_treatment_plan(v_plan_id, 'Amoxicillin XR', '875mg', NULL, NULL, NULL, NULL);
+  v_result := public.update_treatment_plan(v_plan_id, 'Amoxicillin XR', NULL, '875mg', NULL, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
     'update_treatment_plan',
@@ -593,7 +580,7 @@ BEGIN
 
   -- Treatment plan duration field.
   v_result := public.create_treatment_plan(
-    v_visit_id, 'Duration Med', NULL, NULL, NULL, NULL, NULL, '14 days'
+    v_visit_id, 'Duration Med', '10mg', 'daily', '14 days'
   );
   v_plan_id := (v_result.data ->> 'treatment_plan_id')::uuid;
   PERFORM set_config('role', 'postgres', true);
@@ -610,7 +597,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_treatment_plan(
-    v_visit_id, 'Too Long', NULL, NULL, NULL, NULL, NULL, repeat('x', 201)
+    v_visit_id, 'Too Long', '1mg', 'daily', repeat('x', 201)
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
@@ -622,7 +609,7 @@ BEGIN
 
   -- get_visit includes treatment plans (non-archived).
   v_result := public.create_treatment_plan(
-    v_visit_id, 'Ibuprofen', '200mg', 'as needed', NULL, NULL, 'For pain'
+    v_visit_id, 'Ibuprofen', '200mg', 'as needed', '3 days', 'For pain'
   );
   v_plan_id := (v_result.data ->> 'treatment_plan_id')::uuid;
   v_result := public.get_visit(v_visit_id);
@@ -637,12 +624,14 @@ BEGIN
 
   -- Treatment plan on completed visit (corrections allowed).
   SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
-  v_result := public.save_soap_note(v_visit_id, v_visit_updated_at, 'Chief complaint for tp.', NULL, NULL, NULL, NULL);
-  v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
-  v_result := public.complete_visit(v_visit_id, v_soap_updated_at);
+  v_result := public.save_visit_documentation(
+    v_visit_id, 'Chief complaint for tp.', NULL, NULL, NULL, NULL, v_visit_updated_at
+  );
+  v_doc_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.complete_visit(v_visit_id, v_doc_updated_at);
 
   v_result := public.create_treatment_plan(
-    v_visit_id, 'Post-visit Med', '100mg', 'once daily', NULL, NULL, NULL
+    v_visit_id, 'Post-visit Med', '100mg', 'once daily', '5 days'
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
@@ -793,9 +782,11 @@ BEGIN
   v_result := public.create_visit(v_appt2_id, NULL);
   v_visit2_id := (v_result.data ->> 'visit_id')::uuid;
   SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit2_id;
-  v_result := public.save_soap_note(v_visit2_id, v_visit_updated_at, 'Second visit note.', NULL, NULL, NULL, NULL);
-  v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
-  v_result := public.complete_visit(v_visit2_id, v_soap_updated_at);
+  v_result := public.save_visit_documentation(
+    v_visit2_id, 'Second visit note.', NULL, NULL, NULL, NULL, v_visit_updated_at
+  );
+  v_doc_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.complete_visit(v_visit2_id, v_doc_updated_at);
 
   v_result := public.list_patient_visits(v_patient2_id, 1, 0);
   PERFORM set_config('role', 'postgres', true);
@@ -810,164 +801,93 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- get_specialty_form_schema.
-  v_result := public.get_specialty_form_schema();
+  -- Catalog search after explicit create (test orgs are not migration-seeded).
+  v_result := public.create_catalog_medication('Searchable Med');
+  v_result := public.search_medications('Searchable', 10);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'get_specialty_form_schema',
+    'search_medications_prefix',
     v_result.success
-      AND (v_result.data -> 'schema_json' ? 'properties'),
+      AND jsonb_array_length(COALESCE(v_result.data -> 'items', '[]'::jsonb)) >= 1,
+    'count=' || COALESCE(jsonb_array_length(COALESCE(v_result.data -> 'items', '[]'::jsonb))::text, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_catalog_medication('Unique Catalog Med');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'create_catalog_medication_first_insert',
+    v_result.success AND COALESCE((v_result.data ->> 'created')::boolean, false) = true,
+    COALESCE(v_result.error_code, 'created=' || COALESCE(v_result.data ->> 'created', '<null>'))
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_catalog_medication('Unique Catalog Med');
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'create_catalog_medication_idempotent',
+    v_result.success AND COALESCE((v_result.data ->> 'created')::boolean, true) = false,
+    COALESCE(v_result.error_code, 'created=' || COALESCE(v_result.data ->> 'created', '<null>'))
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Vital sign CRUD on in-progress visit (slot 7 visit from treatment plan section).
+  v_result := public.create_visit_vital_sign(v_visit_id, 'Blood Pressure', '120/80', 'mmHg', NULL);
+  v_vital_sign_id := (v_result.data ->> 'vital_sign_id')::uuid;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'create_visit_vital_sign',
+    v_result.success AND v_vital_sign_id IS NOT NULL,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- save_soap_note persists valid specialty_form_json.
-  v_result := public.save_soap_note(
-    v_visit_id,
-    v_soap_updated_at,
-    'Subjective with specialty.',
-    NULL,
-    NULL,
-    NULL,
-    '{"pain_score": 4}'::jsonb
-  );
-  v_soap_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
+  v_result := public.update_visit_vital_sign(v_vital_sign_id, NULL, '118/76', NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'save_soap_note_specialty_json_valid',
+    'update_visit_vital_sign',
     v_result.success
       AND EXISTS (
-        SELECT 1
-        FROM public.soap_notes sn
-        WHERE sn.visit_id = v_visit_id
-          AND sn.subjective = 'Subjective with specialty.'
-          AND (sn.specialty_form_json ->> 'pain_score') = '4'
+        SELECT 1 FROM public.visit_vital_signs vvs
+        WHERE vvs.id = v_vital_sign_id AND vvs.value = '118/76'
       ),
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- save_soap_note rejects unknown specialty field keys.
-  v_result := public.save_soap_note(
-    v_visit_id,
-    v_soap_updated_at,
-    'Subjective with invalid specialty.',
-    NULL,
-    NULL,
-    NULL,
-    '{"unknown_field": 1}'::jsonb
-  );
+  v_result := public.create_visit_investigation(v_visit_id, 'Complete Blood Count', 'Routine panel', NULL);
+  v_investigation_line_id := (v_result.data ->> 'investigation_line_id')::uuid;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'save_soap_note_specialty_json_unknown_field',
-    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
+    'create_visit_investigation',
+    v_result.success AND v_investigation_line_id IS NOT NULL,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- save_soap_note rejects specialty JSON missing required pain_score.
-  v_result := public.save_soap_note(
-    v_visit_id,
-    v_soap_updated_at,
-    'Subjective missing required specialty field.',
-    NULL,
-    NULL,
-    NULL,
-    '{"notes": "only notes"}'::jsonb
-  );
+  v_result := public.get_visit(v_visit_id);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'save_soap_note_specialty_json_missing_required',
-    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- set_specialty_form_schema upserts org schema and round-trips via get_specialty_form_schema.
-  v_result := public.set_specialty_form_schema(
-    '{"type":"object","properties":{"severity":{"type":"string","title":"Severity"}},"required":["severity"]}'::jsonb
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_crud_results VALUES (
-    'set_specialty_form_schema_success',
+    'get_visit_includes_vital_signs_and_investigations',
     v_result.success
-      AND v_result.data -> 'schema_json' ? 'properties'
-      AND v_result.data -> 'schema_json' -> 'properties' ? 'severity',
+      AND jsonb_array_length(COALESCE(v_result.data -> 'vital_signs', '[]'::jsonb)) >= 1
+      AND jsonb_array_length(COALESCE(v_result.data -> 'investigations', '[]'::jsonb)) >= 1,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.get_specialty_form_schema();
+  v_result := public.archive_visit_vital_sign(v_vital_sign_id);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'set_specialty_form_schema_round_trip',
+    'archive_visit_vital_sign',
     v_result.success
-      AND v_result.data -> 'schema_json' -> 'properties' ? 'severity',
+      AND EXISTS (
+        SELECT 1 FROM public.visit_vital_signs vvs
+        WHERE vvs.id = v_vital_sign_id AND vvs.is_deleted = true
+      ),
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
-
-  -- set_specialty_form_schema rejects invalid schema shape.
-  v_result := public.set_specialty_form_schema('[]'::jsonb);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_crud_results VALUES (
-    'set_specialty_form_schema_invalid_input',
-    NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- set_specialty_form_schema clear with empty object.
-  v_result := public.set_specialty_form_schema('{}'::jsonb);
-  v_result := public.get_specialty_form_schema();
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_crud_results VALUES (
-    'set_specialty_form_schema_clear',
-    v_result.success AND v_result.data -> 'schema_json' = '{}'::jsonb,
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Restore schema for subsequent save_soap_note specialty tests if needed.
-  v_result := public.set_specialty_form_schema(
-    '{"type":"object","properties":{"pain_score":{"type":"number","title":"Pain score"},"notes":{"type":"string","title":"Notes"}},"required":["pain_score"]}'::jsonb
-  );
-
-  -- set_specialty_form_schema forbidden for doctor role.
-  PERFORM set_config(
-    'request.jwt.claims',
-    json_build_object(
-      'sub', v_doctor_user::text,
-      'role', 'authenticated',
-      'organization_id', v_org_id::text,
-      'branch_ids', v_branch_main::text,
-      'staff_member_id', v_doctor_staff::text,
-      'staff_role', 'doctor',
-      'setup_required', false
-    )::text,
-    true
-  );
-  v_result := public.set_specialty_form_schema('{}'::jsonb);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_crud_results VALUES (
-    'set_specialty_form_schema_forbidden_doctor',
-    NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-  PERFORM set_config(
-    'request.jwt.claims',
-    json_build_object(
-      'sub', v_owner_user::text,
-      'role', 'authenticated',
-      'organization_id', v_org_id::text,
-      'branch_ids', v_branch_main::text,
-      'staff_member_id', v_owner_staff::text,
-      'staff_role', 'administrator',
-      'setup_required', false
-    )::text,
-    true
-  );
 
   PERFORM pg_temp.release_doctor_in_progress(v_doctor_staff);
 
