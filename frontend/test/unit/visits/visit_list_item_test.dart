@@ -58,7 +58,7 @@ void main() {
         'doctor_name': 'Dr. A',
         'status': 'completed',
         'branch_name': 'Branch',
-        'soap': {'subjective': 'hidden'},
+        'documentation': {'complaint': 'hidden'},
       });
       expect(item, isNotNull);
     });

@@ -223,11 +223,11 @@ void main() {
       await sessions.signInAs(StaffRole.doctor);
       final visit = await ctx.visits.createVisit(appointmentId: created.appointmentId);
       final detail = await ctx.visits.getVisit(visitId: visit.visitId);
-      expect(detail.soap, isNotNull);
-      await ctx.visits.saveSoapNote(
+      expect(detail.documentation, isNotNull);
+      await ctx.visits.saveVisitDocumentation(
         visitId: visit.visitId,
-        expectedUpdatedAt: detail.soap!.updatedAt,
-        subjective: 'Chief complaint documented.',
+        expectedUpdatedAt: detail.documentation!.updatedAt!,
+        complaint: 'Chief complaint documented.',
       );
       final completed = await ctx.visits.completeVisit(visitId: visit.visitId);
       expect(completed.visitStatus, 'completed');

@@ -8,17 +8,18 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/soap_editor.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_fields.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submit_dialog.dart';
 
-/// Visit documentation — SOAP and related sections (V1-5).
+/// Visit documentation — clinical note and related sections (013).
 class VisitDocumentationPage extends ConsumerWidget {
   const VisitDocumentationPage({required this.visitId, super.key});
 
@@ -32,37 +33,46 @@ class VisitDocumentationPage extends ConsumerWidget {
     }
 
     final docAsync = ref.watch(visitDocumentationProvider(id));
+    final auth = ref.watch(authSessionProvider);
     final canEditSoap = ref.watch(permissionServiceProvider).canEditVisitSoap();
 
     return docAsync.when(
       loading: () => const AppFullPageLoading(message: 'Loading visit documentation…'),
       error: (error, _) => _VisitDocumentationError(
-        message: error.toString(),
+        message: error is RpcFailure ? visitMessageForRpc(error) : error.toString(),
         onRetry: () => ref.invalidate(visitDocumentationProvider(id)),
         onBack: () => _goBack(context, id),
       ),
-      data: (state) => _VisitDocumentationScaffold(
-        headerActions: [
-          VisitDetailActions(visitId: id, status: state.visit.status),
-          if (canEditSoap && state.visit.status == VisitStatus.inProgress)
-            AppButton(
-              key: const Key('visit_submit_button'),
-              label: 'Submit visit',
-              icon: const Icon(Icons.check_circle_outline, size: 18),
-              onPressed: () => _submitVisit(context, ref, id, state),
-            )
-          else if (canEditSoap && state.visit.status == VisitStatus.completed)
-            AppButton(
-              key: const Key('visit_save_close_button'),
-              label: state.saveStatus == SoapSaveStatus.saving ? 'Saving…' : 'Save & close',
-              variant: AppButtonVariant.outline,
-              isLoading: state.saveStatus == SoapSaveStatus.saving,
-              onPressed: state.saveStatus == SoapSaveStatus.saving ? null : () => _saveAndClose(context, ref, id),
-            ),
-        ],
-        onBack: () => _goBack(context, id),
-        body: _VisitDocumentationBody(visitId: id, state: state),
-      ),
+      data: (state) {
+        final hasBranchAccess = auth.context?.branchIds.contains(state.visit.branchId) ?? false;
+        final canEdit = canEditSoap && hasBranchAccess;
+        final canSubmit = canEdit;
+
+        return _VisitDocumentationScaffold(
+          headerActions: [
+            VisitDetailActions(visitId: id, status: state.visit.status),
+            if (canSubmit && state.visit.status == VisitStatus.inProgress)
+              AppButton(
+                key: const Key('visit_submit_button'),
+                label: 'Submit visit',
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                onPressed: () => _submitVisit(context, ref, id, state, canEdit: canEdit),
+              )
+            else if (canSubmit && state.visit.status == VisitStatus.completed)
+              AppButton(
+                key: const Key('visit_save_close_button'),
+                label: state.saveStatus == DocumentationSaveStatus.saving ? 'Saving…' : 'Save & close',
+                variant: AppButtonVariant.outline,
+                isLoading: state.saveStatus == DocumentationSaveStatus.saving,
+                onPressed: state.saveStatus == DocumentationSaveStatus.saving
+                    ? null
+                    : () => _saveAndClose(context, ref, id, canEdit: canEdit),
+              ),
+          ],
+          onBack: () => _goBack(context, id),
+          body: _VisitDocumentationBody(visitId: id, state: state, canEdit: canEdit, hasBranchAccess: hasBranchAccess),
+        );
+      },
     );
   }
 
@@ -74,14 +84,22 @@ class VisitDocumentationPage extends ConsumerWidget {
     context.go(AppRoutes.visitDetail(visitId));
   }
 
-  Future<void> _submitVisit(BuildContext context, WidgetRef ref, String visitId, VisitDocumentationState state) async {
+  Future<void> _submitVisit(
+    BuildContext context,
+    WidgetRef ref,
+    String visitId,
+    VisitDocumentationState state, {
+    required bool canEdit,
+  }) async {
     final notifier = ref.read(visitDocumentationProvider(visitId).notifier);
 
-    if (state.needsSaveBeforeLeaving) {
+    if (canEdit && state.hasUnsavedDraft) {
       await notifier.save();
       if (!context.mounted) return;
       final updated = ref.read(visitDocumentationProvider(visitId)).value;
-      if (updated == null || updated.saveStatus == SoapSaveStatus.error || updated.saveStatus == SoapSaveStatus.stale) {
+      if (updated == null ||
+          updated.saveStatus == DocumentationSaveStatus.error ||
+          updated.saveStatus == DocumentationSaveStatus.stale) {
         return;
       }
     }
@@ -95,18 +113,20 @@ class VisitDocumentationPage extends ConsumerWidget {
     AppToast.success(context, message: 'Visit submitted. The linked appointment is now completed.');
   }
 
-  Future<void> _saveAndClose(BuildContext context, WidgetRef ref, String visitId) async {
+  Future<void> _saveAndClose(BuildContext context, WidgetRef ref, String visitId, {required bool canEdit}) async {
     final current = ref.read(visitDocumentationProvider(visitId)).value;
     if (current == null) return;
 
     final notifier = ref.read(visitDocumentationProvider(visitId).notifier);
     var savedChanges = false;
 
-    if (current.needsSaveBeforeLeaving) {
+    if (canEdit && current.hasUnsavedDraft) {
       await notifier.save();
       if (!context.mounted) return;
       final updated = ref.read(visitDocumentationProvider(visitId)).value;
-      if (updated == null || updated.saveStatus == SoapSaveStatus.error || updated.saveStatus == SoapSaveStatus.stale) {
+      if (updated == null ||
+          updated.saveStatus == DocumentationSaveStatus.error ||
+          updated.saveStatus == DocumentationSaveStatus.stale) {
         return;
       }
       savedChanges = true;
@@ -121,10 +141,17 @@ class VisitDocumentationPage extends ConsumerWidget {
 }
 
 class _VisitDocumentationBody extends ConsumerWidget {
-  const _VisitDocumentationBody({required this.visitId, required this.state});
+  const _VisitDocumentationBody({
+    required this.visitId,
+    required this.state,
+    required this.canEdit,
+    required this.hasBranchAccess,
+  });
 
   final String visitId;
   final VisitDocumentationState state;
+  final bool canEdit;
+  final bool hasBranchAccess;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -144,37 +171,20 @@ class _VisitDocumentationBody extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 VisitHeroCard(dateLabel: dateLabel, doctorName: visit.doctorName, status: visit.status),
-                if (!state.specialtySchema.hasFields && state.canEdit) ...[
+                if (!hasBranchAccess) ...[
                   const SizedBox(height: SpacingTokens.lg),
-                  AppAlert(
-                    key: const Key('specialty_schema_empty_banner'),
-                    title: 'No specialty form configured.',
-                    subtitle: 'Configure custom fields in Organization settings.',
-                    icon: const Icon(Icons.tune_outlined),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: AppButton(
-                      key: const Key('specialty_schema_settings_link'),
-                      label: 'Organization settings',
-                      variant: AppButtonVariant.outline,
-                      onPressed: () => context.go(AppRoutes.settingsOrganization),
-                    ),
-                  ),
-                ],
-                if (state.specialtySchema.hasFields) ...[
-                  const SizedBox(height: SpacingTokens.lg),
-                  VisitSectionCard(
-                    title: 'Specialty fields',
-                    description: 'Clinic-specific clinical fields',
-                    child: SpecialtyFormFields(visitId: visitId, state: state),
+                  const AppAlert(
+                    key: Key('visit_branch_access_denied_banner'),
+                    title: 'This visit belongs to a branch you are not assigned to.',
+                    subtitle: 'Clinical documentation is read-only.',
+                    icon: Icon(Icons.lock_outlined),
                   ),
                 ],
                 const SizedBox(height: SpacingTokens.lg),
                 VisitSectionCard(
-                  title: 'SOAP note',
-                  description: 'Document subjective, objective, assessment, and plan',
-                  child: SoapEditor(visitId: visitId, state: state),
+                  title: 'Clinical note',
+                  description: 'Complaint, history, examination, diagnosis, and plan',
+                  child: ClinicalNoteEditor(visitId: visitId, state: state, canEdit: canEdit),
                 ),
                 const SizedBox(height: SpacingTokens.lg),
                 VisitSectionCard(
@@ -183,8 +193,9 @@ class _VisitDocumentationBody extends ConsumerWidget {
                   child: TreatmentPlanList(
                     visitId: visitId,
                     treatmentPlans: state.visit.treatmentPlans,
-                    canEdit: state.canEdit,
-                    onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+                    canEdit: canEdit,
+                    onChanged: () =>
+                        ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
                   ),
                 ),
                 const SizedBox(height: SpacingTokens.lg),
@@ -196,7 +207,8 @@ class _VisitDocumentationBody extends ConsumerWidget {
                     branchId: visit.branchId,
                     attachments: state.visit.attachments,
                     canUpload: canUploadAttachments,
-                    onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+                    onChanged: () =>
+                        ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
                   ),
                 ),
               ],
@@ -209,11 +221,7 @@ class _VisitDocumentationBody extends ConsumerWidget {
 }
 
 class _VisitDocumentationScaffold extends StatelessWidget {
-  const _VisitDocumentationScaffold({
-    required this.headerActions,
-    required this.onBack,
-    required this.body,
-  });
+  const _VisitDocumentationScaffold({required this.headerActions, required this.onBack, required this.body});
 
   final List<Widget> headerActions;
   final VoidCallback onBack;
@@ -228,23 +236,18 @@ class _VisitDocumentationScaffold extends StatelessWidget {
         children: [
           Row(
             children: [
-              AppIconButton(
-                icon: const Icon(Icons.arrow_back, size: 18),
-                tooltip: 'Back',
-                onPressed: onBack,
-              ),
+              AppIconButton(icon: const Icon(Icons.arrow_back, size: 18), tooltip: 'Back', onPressed: onBack),
               const Spacer(),
               ...headerActions.map(
-                (action) => Padding(padding: const EdgeInsets.only(left: SpacingTokens.sm), child: action),
+                (action) => Padding(
+                  padding: const EdgeInsets.only(left: SpacingTokens.sm),
+                  child: action,
+                ),
               ),
             ],
           ),
           const SizedBox(height: SpacingTokens.md),
-          Expanded(
-            child: SingleChildScrollView(
-              child: body,
-            ),
-          ),
+          Expanded(child: SingleChildScrollView(child: body)),
         ],
       ),
     );

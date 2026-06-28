@@ -14,7 +14,7 @@ void main() {
         'doctor_name': 'Dr. Smith',
         'visit_date': '2026-05-31',
         'status': 'in_progress',
-        'soap': {'subjective': 'Cough', 'updated_at': '2026-05-31T09:00:00Z'},
+        'documentation': {'complaint': 'Cough', 'updated_at': '2026-05-31T09:00:00Z'},
         'treatment_plans': [
           {'id': 'tp-1', 'visit_id': 'visit-1', 'patient_id': 'patient-1', 'medication_name': 'Drug'},
         ],
@@ -31,7 +31,7 @@ void main() {
 
       expect(detail, isNotNull);
       expect(detail!.status, VisitStatus.inProgress);
-      expect(detail.soap?.subjective, 'Cough');
+      expect(detail.documentation?.complaint, 'Cough');
       expect(detail.treatmentPlans, hasLength(1));
       expect(detail.attachments, hasLength(1));
     });
@@ -49,7 +49,7 @@ void main() {
       });
 
       expect(detail, isNotNull);
-      expect(detail!.soap, isNull);
+      expect(detail!.documentation, isNull);
       expect(detail.treatmentPlans, isEmpty);
       expect(detail.attachments, isEmpty);
     });
@@ -62,13 +62,27 @@ void main() {
           'branch_id': 'branch-1',
           'appointment_id': 'appt-1',
           'patient_id': 'patient-1',
-          'doctor_id': 'doctor-1',
-          'doctor_name': '',
+          'doctor_id': '',
           'visit_date': '2026-05-31',
           'status': 'in_progress',
         }),
         isNull,
       );
+    });
+
+    test('defaults empty doctor_name to Unknown doctor', () {
+      final detail = VisitDetail.fromRow({
+        'id': 'visit-1',
+        'branch_id': 'branch-1',
+        'appointment_id': 'appt-1',
+        'patient_id': 'patient-1',
+        'doctor_id': 'doctor-1',
+        'doctor_name': '',
+        'visit_date': '2026-05-31',
+        'status': 'in_progress',
+      });
+      expect(detail, isNotNull);
+      expect(detail!.doctorName, 'Unknown doctor');
     });
 
     test('parses treatment plans from API payload without visit_id on each row', () {
@@ -113,7 +127,7 @@ void main() {
       expect(detail.attachments, isEmpty);
     });
 
-    test('stupid user: soap without updated_at is ignored', () {
+    test('parses documentation without updated_at', () {
       final detail = VisitDetail.fromRow({
         'id': 'visit-1',
         'branch_id': 'branch-1',
@@ -123,14 +137,15 @@ void main() {
         'doctor_name': 'Dr. Smith',
         'visit_date': '2026-05-31',
         'status': 'in_progress',
-        'soap': {'subjective': 'orphan'},
+        'documentation': {'complaint': 'orphan'},
       });
-      expect(detail!.soap, isNull);
+      expect(detail!.documentation?.complaint, 'orphan');
+      expect(detail.documentation?.updatedAt, isNull);
     });
   });
 
   group('VisitDetail.copyWith', () {
-    test('updates status and nested soap', () {
+    test('updates status', () {
       final original = VisitDetail(
         id: 'v1',
         branchId: 'b1',

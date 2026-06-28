@@ -36,16 +36,16 @@ void main() {
       expect(client.lastParams?.containsKey('p_expected_updated_at'), isFalse);
     });
 
-    test('invalid state: SOAP_REQUIRED_FOR_COMPLETE surfaces from RPC', () async {
+    test('invalid state: DOCUMENTATION_REQUIRED_FOR_COMPLETE surfaces from RPC', () async {
       client.rpcResults['complete_visit'] = {
         'success': false,
-        'error_code': 'SOAP_REQUIRED_FOR_COMPLETE',
-        'error_message': 'SOAP required',
+        'error_code': 'DOCUMENTATION_REQUIRED_FOR_COMPLETE',
+        'error_message': 'Documentation required',
       };
 
       expect(
         () => repository.completeVisit(visitId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'),
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'SOAP_REQUIRED_FOR_COMPLETE')),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'DOCUMENTATION_REQUIRED_FOR_COMPLETE')),
       );
     });
 
@@ -153,7 +153,7 @@ void main() {
       repository = VisitRepository(client);
     });
 
-    test('trivial: clinical payload includes SOAP sections', () async {
+    test('trivial: clinical payload includes documentation sections', () async {
       client.rpcResults['get_visit'] = {
         'success': true,
         'data': {
@@ -165,12 +165,12 @@ void main() {
           'doctor_name': 'Dr Test',
           'visit_date': '2026-05-31',
           'status': 'completed',
-          'soap': {
-            'subjective': 'Chief complaint.',
-            'objective': 'Exam findings.',
-            'assessment': null,
+          'documentation': {
+            'complaint': 'Chief complaint.',
+            'history': 'Patient history.',
+            'examination': 'Exam findings.',
+            'diagnosis': null,
             'plan': null,
-            'specialty_form_json': {},
             'updated_at': '2026-05-31T10:00:00.000Z',
           },
         },
@@ -178,11 +178,11 @@ void main() {
 
       final detail = await repository.getVisit(visitId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
 
-      expect(detail.soap?.subjective, 'Chief complaint.');
-      expect(detail.soap?.hasAnySection, isTrue);
+      expect(detail.documentation?.complaint, 'Chief complaint.');
+      expect(detail.documentation?.hasContent, isTrue);
     });
 
-    test('advanced: metadata-only payload omits SOAP', () async {
+    test('advanced: metadata-only payload omits documentation', () async {
       client.rpcResults['get_visit'] = {
         'success': true,
         'data': {
@@ -199,7 +199,7 @@ void main() {
 
       final detail = await repository.getVisit(visitId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
 
-      expect(detail.soap, isNull);
+      expect(detail.documentation, isNull);
       expect(detail.status, VisitStatus.completed);
     });
 

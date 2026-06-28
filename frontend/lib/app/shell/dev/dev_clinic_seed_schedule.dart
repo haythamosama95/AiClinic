@@ -204,7 +204,7 @@ abstract final class DevClinicSeedSchedule {
     };
   }
 
-  /// Whether the seeded visit should be completed (requires full SOAP + treatment plan).
+  /// Whether the seeded visit should be completed (requires clinical note + treatment plan).
   static bool shouldCompleteVisit(AppointmentStatus status) {
     return status == AppointmentStatus.completed;
   }
@@ -221,12 +221,12 @@ abstract final class DevClinicSeedSchedule {
       return DevClinicVisitDocumentationKind.completedWithTreatment;
     }
     if (status == AppointmentStatus.inProgress) {
-      return seedKey.isEven ? DevClinicVisitDocumentationKind.fullSoap : DevClinicVisitDocumentationKind.partialSoap;
+      return seedKey.isEven ? DevClinicVisitDocumentationKind.full : DevClinicVisitDocumentationKind.partial;
     }
 
     return switch (seedKey % 3) {
-      0 => DevClinicVisitDocumentationKind.partialSoap,
-      1 => DevClinicVisitDocumentationKind.fullSoap,
+      0 => DevClinicVisitDocumentationKind.partial,
+      1 => DevClinicVisitDocumentationKind.full,
       _ => DevClinicVisitDocumentationKind.none,
     };
   }
@@ -268,8 +268,8 @@ abstract final class DevClinicSeedSchedule {
     return 'Dev seed $branchCode patient #$patientIndex day $dayOffset — ${status.label}.';
   }
 
-  static ({String subjective, String objective, String assessment, String plan, Map<String, dynamic> specialtyFormJson})
-  soapContentFor({
+  static ({String complaint, String history, String examination, String diagnosis, String plan})
+  clinicalNoteContentFor({
     required DevClinicVisitDocumentationKind kind,
     required String branchCode,
     required int patientIndex,
@@ -278,32 +278,32 @@ abstract final class DevClinicSeedSchedule {
     final label = '$branchCode #$patientIndex day $dayOffset';
     return switch (kind) {
       DevClinicVisitDocumentationKind.none => (
-        subjective: '',
-        objective: '',
-        assessment: '',
+        complaint: '',
+        history: '',
+        examination: '',
+        diagnosis: '',
         plan: '',
-        specialtyFormJson: const {},
       ),
-      DevClinicVisitDocumentationKind.partialSoap => (
-        subjective: 'Patient $label reports mild symptoms for two days.',
-        objective: '',
-        assessment: '',
+      DevClinicVisitDocumentationKind.partial => (
+        complaint: 'Patient $label reports mild symptoms for two days.',
+        history: '',
+        examination: '',
+        diagnosis: '',
         plan: '',
-        specialtyFormJson: const {},
       ),
-      DevClinicVisitDocumentationKind.fullSoap => (
-        subjective: 'Patient $label reports intermittent discomfort.',
-        objective: 'Vitals stable. No acute distress.',
-        assessment: 'Likely viral upper respiratory infection.',
+      DevClinicVisitDocumentationKind.full => (
+        complaint: 'Patient $label reports intermittent discomfort.',
+        history: 'Symptoms began three days ago without trauma.',
+        examination: 'Vitals stable. No acute distress.',
+        diagnosis: 'Likely viral upper respiratory infection.',
         plan: 'Hydration, rest, return if symptoms worsen.',
-        specialtyFormJson: const {},
       ),
       DevClinicVisitDocumentationKind.completedWithTreatment => (
-        subjective: 'Patient $label completed follow-up visit.',
-        objective: 'Exam unremarkable. Labs reviewed.',
-        assessment: 'Condition improving on current regimen.',
+        complaint: 'Patient $label completed follow-up visit.',
+        history: 'Prior visit two weeks ago for same complaint.',
+        examination: 'Exam unremarkable. Labs reviewed.',
+        diagnosis: 'Condition improving on current regimen.',
         plan: 'Continue medication, schedule routine follow-up.',
-        specialtyFormJson: const {},
       ),
     };
   }
@@ -382,4 +382,4 @@ abstract final class DevClinicSeedSchedule {
 
 enum DevClinicSeedCalendarDayRelation { past, today, future }
 
-enum DevClinicVisitDocumentationKind { none, partialSoap, fullSoap, completedWithTreatment }
+enum DevClinicVisitDocumentationKind { none, partial, full, completedWithTreatment }

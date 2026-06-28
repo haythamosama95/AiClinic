@@ -1,6 +1,27 @@
 import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
 import 'package:flutter/foundation.dart';
 
+/// Maximum characters per clinical note section (matches backend validation).
+const kMaxClinicalSectionLength = 10000;
+
+/// User-facing error when any clinical section exceeds [kMaxClinicalSectionLength], or null if valid.
+String? clinicalSectionLengthError({
+  required String complaint,
+  required String history,
+  required String examination,
+  required String diagnosis,
+  required String plan,
+}) {
+  if (complaint.length > kMaxClinicalSectionLength ||
+      history.length > kMaxClinicalSectionLength ||
+      examination.length > kMaxClinicalSectionLength ||
+      diagnosis.length > kMaxClinicalSectionLength ||
+      plan.length > kMaxClinicalSectionLength) {
+    return 'Each clinical note section must be 10,000 characters or fewer.';
+  }
+  return null;
+}
+
 /// Clinical note sections for a visit (013 redesign).
 @immutable
 class VisitClinicalNote {

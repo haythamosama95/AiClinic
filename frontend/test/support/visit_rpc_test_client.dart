@@ -58,17 +58,17 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           'doctor_name': 'Dr Test',
           'visit_date': '2026-05-31',
           'status': 'in_progress',
-          'soap': {
-            'subjective': null,
-            'objective': null,
-            'assessment': null,
+          'documentation': {
+            'complaint': null,
+            'history': null,
+            'examination': null,
+            'diagnosis': null,
             'plan': null,
-            'specialty_form_json': {},
             'updated_at': '2026-05-31T10:00:00.000Z',
           },
         },
       },
-      'save_soap_note' => {
+      'save_visit_documentation' => {
         'success': true,
         'data': {
           'visit_id': lastParams?['p_visit_id'] ?? 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
@@ -82,35 +82,6 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           'visit_status': 'completed',
           'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
           'appointment_status': 'completed',
-        },
-      },
-      'get_specialty_form_schema' => {
-        'success': true,
-        'data': {
-          'schema_json': {
-            'type': 'object',
-            'properties': {
-              'pain_score': {'type': 'number', 'title': 'Pain score'},
-              'follow_up': {'type': 'boolean', 'title': 'Follow up'},
-              'site': {
-                'type': 'string',
-                'title': 'Site',
-                'enum': ['arm', 'leg'],
-              },
-            },
-            'required': ['pain_score'],
-          },
-        },
-      },
-      'set_specialty_form_schema' => {
-        'success': true,
-        'data': {
-          'schema_json': {
-            'type': 'object',
-            'properties': {
-              'pain_score': {'type': 'number', 'title': 'Pain score'},
-            },
-          },
         },
       },
       'list_patient_visits' => {

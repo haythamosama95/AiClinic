@@ -20,14 +20,18 @@ void main() {
       expect(DevClinicSeedSchedule.patientNotes(branchCode: 'DTWN', patientIndex: 1), contains('DTWN'));
     });
 
-    test('visit SOAP seed data omits specialty form fields until org schema exists', () {
-      final soap = DevClinicSeedSchedule.soapContentFor(
-        kind: DevClinicVisitDocumentationKind.fullSoap,
+    test('visit clinical note seed data includes all five sections when full', () {
+      final note = DevClinicSeedSchedule.clinicalNoteContentFor(
+        kind: DevClinicVisitDocumentationKind.full,
         branchCode: 'DTWN',
         patientIndex: 1,
         dayOffset: 0,
       );
-      expect(soap.specialtyFormJson, isEmpty);
+      expect(note.complaint, isNotEmpty);
+      expect(note.history, isNotEmpty);
+      expect(note.examination, isNotEmpty);
+      expect(note.diagnosis, isNotEmpty);
+      expect(note.plan, isNotEmpty);
     });
 
     test('appointment statuses follow calendar-day rules in org timezone', () {
@@ -77,7 +81,11 @@ void main() {
           ),
         );
       }
-      expect(todayStatuses, {AppointmentStatus.confirmed});
+      expect(todayStatuses, {
+        AppointmentStatus.confirmed,
+        AppointmentStatus.checkedIn,
+        AppointmentStatus.inProgress,
+      });
 
       for (final dayOffset in [1, 2, 3, 4, 5]) {
         final startTime = DevClinicSeedSchedule.appointmentStartUtc(
@@ -102,11 +110,11 @@ void main() {
     test('visit documentation includes partial, full, and completed treatment paths', () {
       expect(
         DevClinicSeedSchedule.visitDocumentationFor(status: AppointmentStatus.checkedIn, seedKey: 0),
-        DevClinicVisitDocumentationKind.partialSoap,
+        DevClinicVisitDocumentationKind.partial,
       );
       expect(
         DevClinicSeedSchedule.visitDocumentationFor(status: AppointmentStatus.inProgress, seedKey: 1),
-        DevClinicVisitDocumentationKind.partialSoap,
+        DevClinicVisitDocumentationKind.partial,
       );
       expect(
         DevClinicSeedSchedule.visitDocumentationFor(status: AppointmentStatus.completed, seedKey: 2),
@@ -230,7 +238,7 @@ void main() {
       }
     });
 
-    test('in-progress seeded visits always include SOAP so doctor slots can be released', () {
+    test('in-progress seeded visits always include documentation so doctor slots can be released', () {
       for (var seedKey = 0; seedKey < 12; seedKey++) {
         expect(
           DevClinicSeedSchedule.visitDocumentationFor(status: AppointmentStatus.inProgress, seedKey: seedKey),

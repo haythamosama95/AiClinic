@@ -6,70 +6,76 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
-/// S/O/A/P fields with save and stale-conflict handling (V1-5 US2).
-class SoapEditor extends ConsumerWidget {
-  const SoapEditor({required this.visitId, required this.state, super.key});
+/// Five-section clinical note editor with save and stale-conflict handling (013 US1).
+class ClinicalNoteEditor extends ConsumerWidget {
+  const ClinicalNoteEditor({required this.visitId, required this.state, required this.canEdit, super.key});
 
   final String visitId;
   final VisitDocumentationState state;
+  final bool canEdit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!state.canEdit) {
-      return _ReadOnlySoap(state: state);
+    if (!canEdit) {
+      return _ReadOnlyClinicalNote(state: state);
     }
-    if (state.soapEditMode == SoapEditMode.readOnly) {
-      return _ReadOnlySoap(
+    if (state.noteEditMode == DocumentationEditMode.readOnly) {
+      return _ReadOnlyClinicalNote(
         state: state,
         showEditButton: true,
-        onEdit: () => ref.read(visitDocumentationProvider(visitId).notifier).enterSoapEditMode(),
+        onEdit: () => ref.read(visitDocumentationProvider(visitId).notifier).enterEditMode(),
       );
     }
-    return _EditableSoap(visitId: visitId, state: state);
+    return _EditableClinicalNote(visitId: visitId, state: state);
   }
 }
 
-class _EditableSoap extends ConsumerStatefulWidget {
-  const _EditableSoap({required this.visitId, required this.state});
+class _EditableClinicalNote extends ConsumerStatefulWidget {
+  const _EditableClinicalNote({required this.visitId, required this.state});
 
   final String visitId;
   final VisitDocumentationState state;
 
   @override
-  ConsumerState<_EditableSoap> createState() => _EditableSoapState();
+  ConsumerState<_EditableClinicalNote> createState() => _EditableClinicalNoteState();
 }
 
-class _EditableSoapState extends ConsumerState<_EditableSoap> {
-  late final TextEditingController _subjective;
-  late final TextEditingController _objective;
-  late final TextEditingController _assessment;
+class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
+  late final TextEditingController _complaint;
+  late final TextEditingController _history;
+  late final TextEditingController _examination;
+  late final TextEditingController _diagnosis;
   late final TextEditingController _plan;
 
   @override
   void initState() {
     super.initState();
-    _subjective = TextEditingController(text: widget.state.subjective);
-    _objective = TextEditingController(text: widget.state.objective);
-    _assessment = TextEditingController(text: widget.state.assessment);
+    _complaint = TextEditingController(text: widget.state.complaint);
+    _history = TextEditingController(text: widget.state.history);
+    _examination = TextEditingController(text: widget.state.examination);
+    _diagnosis = TextEditingController(text: widget.state.diagnosis);
     _plan = TextEditingController(text: widget.state.plan);
   }
 
   @override
-  void didUpdateWidget(covariant _EditableSoap oldWidget) {
+  void didUpdateWidget(covariant _EditableClinicalNote oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.state.saveStatus == SoapSaveStatus.stale && widget.state.saveStatus != SoapSaveStatus.stale) {
-      _subjective.text = widget.state.subjective;
-      _objective.text = widget.state.objective;
-      _assessment.text = widget.state.assessment;
+    if (oldWidget.state.saveStatus == DocumentationSaveStatus.stale &&
+        widget.state.saveStatus != DocumentationSaveStatus.stale) {
+      _complaint.text = widget.state.complaint;
+      _history.text = widget.state.history;
+      _examination.text = widget.state.examination;
+      _diagnosis.text = widget.state.diagnosis;
       _plan.text = widget.state.plan;
     }
   }
 
   @override
   void dispose() {
-    _subjective.dispose();
-    _objective.dispose();
-    _assessment.dispose();
+    _complaint.dispose();
+    _history.dispose();
+    _examination.dispose();
+    _diagnosis.dispose();
     _plan.dispose();
     super.dispose();
   }
@@ -78,15 +84,15 @@ class _EditableSoapState extends ConsumerState<_EditableSoap> {
   Widget build(BuildContext context) {
     final state = widget.state;
     final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
-    final isSaving = state.saveStatus == SoapSaveStatus.saving;
+    final isSaving = state.saveStatus == DocumentationSaveStatus.saving;
     final colors = context.semanticColors;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (state.saveStatus == SoapSaveStatus.stale) ...[
+        if (state.saveStatus == DocumentationSaveStatus.stale) ...[
           AppAlert(
-            key: const Key('soap_stale_banner'),
+            key: const Key('clinical_note_stale_banner'),
             title: state.errorMessage ?? 'This visit note was updated elsewhere. Reload and try again.',
             variant: AppAlertVariant.destructive,
             icon: const Icon(Icons.warning_amber_outlined),
@@ -95,7 +101,7 @@ class _EditableSoapState extends ConsumerState<_EditableSoap> {
           Align(
             alignment: Alignment.centerRight,
             child: AppButton(
-              key: const Key('soap_reload_button'),
+              key: const Key('clinical_note_reload_button'),
               label: 'Reload',
               variant: AppButtonVariant.outline,
               onPressed: isSaving ? null : () => notifier.reloadAfterStale(),
@@ -103,61 +109,70 @@ class _EditableSoapState extends ConsumerState<_EditableSoap> {
           ),
           const SizedBox(height: SpacingTokens.md),
         ],
-        _SoapField(
-          key: const Key('soap_subjective'),
-          label: 'Subjective',
-          hintText: 'Patient-reported symptoms, history, and concerns',
-          controller: _subjective,
+        _ClinicalNoteField(
+          key: const Key('clinical_note_complaint'),
+          label: 'Complaint',
+          hintText: "The patient's main reason for the visit.",
+          controller: _complaint,
           enabled: !isSaving,
-          onChanged: notifier.updateSubjective,
+          onChanged: notifier.updateComplaint,
         ),
-        _SoapField(
-          key: const Key('soap_objective'),
-          label: 'Objective',
-          hintText: 'Exam findings, vitals, and measurable observations',
-          controller: _objective,
+        _ClinicalNoteField(
+          key: const Key('clinical_note_history'),
+          label: 'History',
+          controller: _history,
           enabled: !isSaving,
-          onChanged: notifier.updateObjective,
+          onChanged: notifier.updateHistory,
         ),
-        _SoapField(
-          key: const Key('soap_assessment'),
-          label: 'Assessment',
-          hintText: 'Clinical impression and differential diagnosis',
-          controller: _assessment,
+        _ClinicalNoteField(
+          key: const Key('clinical_note_examination'),
+          label: 'Examination',
+          hintText: 'Physical examination findings.',
+          controller: _examination,
           enabled: !isSaving,
-          onChanged: notifier.updateAssessment,
+          onChanged: notifier.updateExamination,
         ),
-        _SoapField(
-          key: const Key('soap_plan'),
+        _ClinicalNoteField(
+          key: const Key('clinical_note_diagnosis'),
+          label: 'Diagnosis',
+          hintText: 'Clinical assessment or diagnosis.',
+          controller: _diagnosis,
+          enabled: !isSaving,
+          onChanged: notifier.updateDiagnosis,
+        ),
+        _ClinicalNoteField(
+          key: const Key('clinical_note_plan'),
           label: 'Plan',
-          hintText: 'Treatment plan, follow-up, and patient instructions',
+          hintText: 'Treatment plan, follow-up instructions, and patient advice.',
           controller: _plan,
           enabled: !isSaving,
           onChanged: notifier.updatePlan,
         ),
-        if (state.saveStatus == SoapSaveStatus.saved)
+        if (state.saveStatus == DocumentationSaveStatus.saved)
           Padding(
             padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
             child: Text(
               'Saved',
-              key: const Key('soap_saved_label'),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.primary, fontWeight: FontWeight.w600),
+              key: const Key('clinical_note_saved_label'),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.primary, fontWeight: FontWeight.w600),
             ),
           ),
-        if (state.saveStatus == SoapSaveStatus.error && state.errorMessage != null)
+        if (state.saveStatus == DocumentationSaveStatus.error && state.errorMessage != null)
           Padding(
             padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
             child: Text(
               state.errorMessage!,
-              key: const Key('soap_error_label'),
+              key: const Key('clinical_note_error_label'),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.destructive),
             ),
           ),
         Align(
           alignment: Alignment.centerRight,
           child: AppButton(
-            key: const Key('soap_save_button'),
-            label: isSaving ? 'Saving…' : 'Save SOAP',
+            key: const Key('clinical_note_save_button'),
+            label: isSaving ? 'Saving…' : 'Save clinical note',
             icon: const Icon(Icons.save_outlined, size: 18),
             isLoading: isSaving,
             onPressed: isSaving ? null : () => notifier.save(),
@@ -168,8 +183,8 @@ class _EditableSoapState extends ConsumerState<_EditableSoap> {
   }
 }
 
-class _ReadOnlySoap extends StatelessWidget {
-  const _ReadOnlySoap({required this.state, this.showEditButton = false, this.onEdit});
+class _ReadOnlyClinicalNote extends StatelessWidget {
+  const _ReadOnlyClinicalNote({required this.state, this.showEditButton = false, this.onEdit});
 
   final VisitDocumentationState state;
   final bool showEditButton;
@@ -180,17 +195,18 @@ class _ReadOnlySoap extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ReadOnlySection(label: 'Subjective', value: state.subjective),
-        _ReadOnlySection(label: 'Objective', value: state.objective),
-        _ReadOnlySection(label: 'Assessment', value: state.assessment),
+        _ReadOnlySection(label: 'Complaint', value: state.complaint),
+        _ReadOnlySection(label: 'History', value: state.history),
+        _ReadOnlySection(label: 'Examination', value: state.examination),
+        _ReadOnlySection(label: 'Diagnosis', value: state.diagnosis),
         _ReadOnlySection(label: 'Plan', value: state.plan),
         if (showEditButton && onEdit != null) ...[
           const SizedBox(height: SpacingTokens.sm),
           Align(
             alignment: Alignment.centerRight,
             child: AppButton(
-              key: const Key('soap_edit_button'),
-              label: 'Edit SOAP',
+              key: const Key('clinical_note_edit_button'),
+              label: 'Edit clinical note',
               variant: AppButtonVariant.outline,
               icon: const Icon(Icons.edit_outlined, size: 18),
               onPressed: onEdit,
@@ -226,18 +242,18 @@ class _ReadOnlySection extends StatelessWidget {
   }
 }
 
-class _SoapField extends StatelessWidget {
-  const _SoapField({
+class _ClinicalNoteField extends StatelessWidget {
+  const _ClinicalNoteField({
     required this.label,
-    required this.hintText,
     required this.controller,
     required this.onChanged,
     required this.enabled,
+    this.hintText,
     super.key,
   });
 
   final String label;
-  final String hintText;
+  final String? hintText;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final bool enabled;

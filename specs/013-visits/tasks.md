@@ -71,13 +71,13 @@ description: "Task list for Visits Page Redesign (014)"
 
 ### Implementation for User Story 1
 
-- [ ] T021 [P] [US1] Create `VisitClinicalNote` domain model in `frontend/lib/features/visits/domain/visit_clinical_note.dart`
-- [ ] T022 [P] [US1] Add `STALE_DOCUMENTATION` and `DOCUMENTATION_REQUIRED_FOR_COMPLETE` error mappings in `frontend/lib/features/visits/application/visit_rpc_messages.dart`
-- [ ] T023 [US1] Add `saveVisitDocumentation` RPC wrapper with `p_expected_updated_at` in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T024 [US1] Create `ClinicalNoteEditor` widget (five sections, hints for Complaint/Examination/Diagnosis/Plan) in `frontend/lib/features/visits/presentation/widgets/clinical_note_editor.dart`
-- [ ] T025 [US1] Update `VisitDocumentationNotifier` for clinical note load/save and stale-refresh handling in `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
-- [ ] T026 [US1] Integrate `ClinicalNoteEditor` and Save action into `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
-- [ ] T027 [US1] Gate clinical note edit/save by `visits.edit_soap` and branch scope in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T021 [P] [US1] Create `VisitClinicalNote` domain model in `frontend/lib/features/visits/domain/visit_clinical_note.dart`
+- [X] T022 [P] [US1] Add `STALE_DOCUMENTATION` and `DOCUMENTATION_REQUIRED_FOR_COMPLETE` error mappings in `frontend/lib/features/visits/application/visit_rpc_messages.dart`
+- [X] T023 [US1] Add `saveVisitDocumentation` RPC wrapper with `p_expected_updated_at` in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T024 [US1] Create `ClinicalNoteEditor` widget (five sections, hints for Complaint/Examination/Diagnosis/Plan) in `frontend/lib/features/visits/presentation/widgets/clinical_note_editor.dart`
+- [X] T025 [US1] Update `VisitDocumentationNotifier` for clinical note load/save and stale-refresh handling in `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
+- [X] T026 [US1] Integrate `ClinicalNoteEditor` and Save action into `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T027 [US1] Gate clinical note edit/save by `visits.edit_soap` and branch scope in `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
 
 **Checkpoint**: User Story 1 fully functional — clinical note save, concurrency error, and permission gating work independently
 

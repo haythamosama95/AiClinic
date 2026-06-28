@@ -511,14 +511,14 @@ BEGIN
   v_result := public.create_visit(v_appt_planned, NULL);
   v_visit_id := (v_result.data ->> 'visit_id')::uuid;
   SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
-  v_result := public.save_soap_note(
+  v_result := public.save_visit_documentation(
     v_visit_id,
-    v_visit_updated_at,
     'Lifecycle completion note.',
     NULL,
     NULL,
     NULL,
-    NULL
+    NULL,
+    v_visit_updated_at
   );
   v_result := public.complete_visit(v_visit_id, NULL);
   PERFORM set_config('role', 'postgres', true);
@@ -567,14 +567,14 @@ BEGIN
   v_result := public.create_visit(v_appt_second, NULL);
   v_visit_id := (v_result.data ->> 'visit_id')::uuid;
   SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
-  v_result := public.save_soap_note(
+  v_result := public.save_visit_documentation(
     v_visit_id,
-    v_visit_updated_at,
     'Chief complaint documented.',
     NULL,
     NULL,
     NULL,
-    NULL
+    NULL,
+    v_visit_updated_at
   );
   v_result := public.complete_visit(v_visit_id, NULL);
   PERFORM set_config('role', 'postgres', true);
@@ -876,7 +876,7 @@ BEGIN
   v_result := public.create_visit(v_appt_second, NULL);
   v_visit_id := (v_result.data ->> 'visit_id')::uuid;
   SELECT v.updated_at INTO v_visit_updated_at FROM public.visits v WHERE v.id = v_visit_id;
-  v_result := public.save_soap_note(v_visit_id, v_visit_updated_at, 'Done.', NULL, NULL, NULL, NULL);
+  v_result := public.save_visit_documentation(v_visit_id, 'Done.', NULL, NULL, NULL, NULL, v_visit_updated_at);
   v_result := public.complete_visit(v_visit_id, NULL);
   v_result := public.cancel_appointment(v_appt_second, 'Too late');
   PERFORM set_config('role', 'postgres', true);
@@ -1230,7 +1230,7 @@ BEGIN
   DELETE FROM public.visit_attachments WHERE visit_id IN (
     SELECT v.id FROM public.visits v WHERE v.branch_id = v_main_branch_id
   );
-  DELETE FROM public.soap_notes WHERE visit_id IN (
+  DELETE FROM public.visit_clinical_notes WHERE visit_id IN (
     SELECT v.id FROM public.visits v WHERE v.branch_id = v_main_branch_id
   );
   DELETE FROM public.treatment_plans WHERE visit_id IN (

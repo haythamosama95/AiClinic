@@ -53,35 +53,38 @@ class VisitRepository with AppRpcInvoker {
     final result = await invokeRpc('get_visit', {'p_visit_id': visitId.trim()});
     final detail = VisitDetail.fromRow(result.data ?? const {});
     if (detail == null) {
-      throw StateError('Get visit returned an unexpected shape.');
+      throw StateError(
+        'Get visit returned an unexpected shape. '
+        'Ensure migration $migrationHint is applied and the visit record is valid.',
+      );
     }
     return detail;
   }
 
-  Future<SoapSaveResult> saveSoapNote({
+  Future<DocumentationSaveResult> saveVisitDocumentation({
     required String visitId,
     required DateTime expectedUpdatedAt,
-    String? subjective,
-    String? objective,
-    String? assessment,
+    String? complaint,
+    String? history,
+    String? examination,
+    String? diagnosis,
     String? plan,
-    Map<String, dynamic>? specialtyFormJson,
   }) async {
     _assertNonEmpty('visitId', visitId);
 
-    final result = await invokeRpc('save_soap_note', {
+    final result = await invokeRpc('save_visit_documentation', {
       'p_visit_id': visitId.trim(),
       'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
-      'p_subjective': ?subjective,
-      'p_objective': ?objective,
-      'p_assessment': ?assessment,
+      'p_complaint': ?complaint,
+      'p_history': ?history,
+      'p_examination': ?examination,
+      'p_diagnosis': ?diagnosis,
       'p_plan': ?plan,
-      'p_specialty_form_json': ?specialtyFormJson,
     });
 
-    final saved = SoapSaveResult.fromRpcData(result.data);
+    final saved = DocumentationSaveResult.fromRpcData(result.data);
     if (saved == null) {
-      throw StateError('Save SOAP note returned an unexpected shape.');
+      throw StateError('Save visit documentation returned an unexpected shape.');
     }
     return saved;
   }
@@ -234,26 +237,6 @@ class VisitRepository with AppRpcInvoker {
     ].whereType<PatientVisitAttachmentRow>().toList(growable: false);
   }
 
-  Future<Map<String, dynamic>> getSpecialtyFormSchema() async {
-    final result = await invokeRpc('get_specialty_form_schema', null);
-    return _parseSchemaJson(result.data?['schema_json']);
-  }
-
-  Future<Map<String, dynamic>> setSpecialtyFormSchema({required Map<String, dynamic> schemaJson}) async {
-    final result = await invokeRpc('set_specialty_form_schema', {'p_schema_json': schemaJson});
-    return _parseSchemaJson(result.data?['schema_json']);
-  }
-
-  Map<String, dynamic> _parseSchemaJson(Object? schema) {
-    if (schema is Map<String, dynamic>) {
-      return schema;
-    }
-    if (schema is Map) {
-      return Map<String, dynamic>.from(schema);
-    }
-    return const {};
-  }
-
   void _assertNonEmpty(String field, String value) {
     if (value.trim().isEmpty) {
       throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
@@ -319,14 +302,14 @@ class VisitByAppointmentResult {
   }
 }
 
-/// Result of `save_soap_note`.
-class SoapSaveResult {
-  const SoapSaveResult({required this.visitId, required this.updatedAt});
+/// Result of `save_visit_documentation`.
+class DocumentationSaveResult {
+  const DocumentationSaveResult({required this.visitId, required this.updatedAt});
 
   final String visitId;
   final DateTime updatedAt;
 
-  static SoapSaveResult? fromRpcData(Map<String, dynamic>? data) {
+  static DocumentationSaveResult? fromRpcData(Map<String, dynamic>? data) {
     if (data == null) {
       return null;
     }
@@ -339,7 +322,7 @@ class SoapSaveResult {
     if (updatedAt == null) {
       return null;
     }
-    return SoapSaveResult(visitId: visitId, updatedAt: updatedAt);
+    return DocumentationSaveResult(visitId: visitId, updatedAt: updatedAt);
   }
 }
 

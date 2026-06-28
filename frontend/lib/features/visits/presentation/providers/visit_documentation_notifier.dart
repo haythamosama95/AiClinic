@@ -4,114 +4,93 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
-import 'package:ai_clinic/features/visits/domain/soap_note.dart';
-import 'package:ai_clinic/features/visits/domain/specialty_form_schema.dart';
+import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 
-/// SOAP save lifecycle on the visit documentation screen.
-enum SoapSaveStatus { idle, saving, saved, stale, error }
+/// Clinical note save lifecycle on the visit documentation screen.
+enum DocumentationSaveStatus { idle, saving, saved, stale, error }
 
-/// Whether the SOAP section is in editing or read-only-after-save mode.
-enum SoapEditMode { editing, readOnly }
+/// Whether the clinical note section is in editing or read-only-after-save mode.
+enum DocumentationEditMode { editing, readOnly }
 
 @immutable
 class VisitDocumentationState {
   const VisitDocumentationState({
     required this.visit,
-    required this.subjective,
-    required this.objective,
-    required this.assessment,
+    required this.complaint,
+    required this.history,
+    required this.examination,
+    required this.diagnosis,
     required this.plan,
-    required this.specialtyFormJson,
-    required this.specialtySchema,
-    this.specialtyFieldErrors = const {},
     required this.expectedUpdatedAt,
-    this.saveStatus = SoapSaveStatus.idle,
-    this.soapEditMode = SoapEditMode.editing,
+    this.saveStatus = DocumentationSaveStatus.idle,
+    this.noteEditMode = DocumentationEditMode.editing,
     this.errorMessage,
-    required this.canEdit,
   });
 
   final VisitDetail visit;
-  final String subjective;
-  final String objective;
-  final String assessment;
+  final String complaint;
+  final String history;
+  final String examination;
+  final String diagnosis;
   final String plan;
-  final Map<String, dynamic> specialtyFormJson;
-  final SpecialtyFormSchema specialtySchema;
-  final Map<String, String> specialtyFieldErrors;
   final DateTime expectedUpdatedAt;
-  final SoapSaveStatus saveStatus;
-  final SoapEditMode soapEditMode;
+  final DocumentationSaveStatus saveStatus;
+  final DocumentationEditMode noteEditMode;
   final String? errorMessage;
-  final bool canEdit;
 
-  /// Clinical content (SOAP, specialty fields, treatment plans) is editable whenever
-  /// the user has permission, including after visit submit (`completed`).
-  bool get isEditable => canEdit;
-
-  /// Whether documentation should be persisted before leaving the editor.
-  bool get needsSaveBeforeLeaving {
-    if (!canEdit || saveStatus == SoapSaveStatus.saving) {
+  /// Whether the clinical note draft has unsaved changes.
+  bool get hasUnsavedDraft {
+    if (saveStatus == DocumentationSaveStatus.saving) {
       return false;
     }
-    if (saveStatus == SoapSaveStatus.stale) {
+    if (saveStatus == DocumentationSaveStatus.stale) {
       return true;
     }
-    return soapEditMode == SoapEditMode.editing || saveStatus == SoapSaveStatus.idle;
+    return noteEditMode == DocumentationEditMode.editing || saveStatus == DocumentationSaveStatus.idle;
   }
+
+  /// @deprecated Use [hasUnsavedDraft] with page-level permission gating.
+  bool get needsSaveBeforeLeaving => hasUnsavedDraft;
 
   VisitDocumentationState copyWith({
     VisitDetail? visit,
-    String? subjective,
-    String? objective,
-    String? assessment,
+    String? complaint,
+    String? history,
+    String? examination,
+    String? diagnosis,
     String? plan,
-    Map<String, dynamic>? specialtyFormJson,
-    SpecialtyFormSchema? specialtySchema,
-    Map<String, String>? specialtyFieldErrors,
     DateTime? expectedUpdatedAt,
-    SoapSaveStatus? saveStatus,
-    SoapEditMode? soapEditMode,
+    DocumentationSaveStatus? saveStatus,
+    DocumentationEditMode? noteEditMode,
     String? errorMessage,
-    bool? canEdit,
     bool clearError = false,
-    bool clearSpecialtyErrors = false,
   }) {
     return VisitDocumentationState(
       visit: visit ?? this.visit,
-      subjective: subjective ?? this.subjective,
-      objective: objective ?? this.objective,
-      assessment: assessment ?? this.assessment,
+      complaint: complaint ?? this.complaint,
+      history: history ?? this.history,
+      examination: examination ?? this.examination,
+      diagnosis: diagnosis ?? this.diagnosis,
       plan: plan ?? this.plan,
-      specialtyFormJson: specialtyFormJson ?? this.specialtyFormJson,
-      specialtySchema: specialtySchema ?? this.specialtySchema,
-      specialtyFieldErrors: clearSpecialtyErrors ? const {} : (specialtyFieldErrors ?? this.specialtyFieldErrors),
       expectedUpdatedAt: expectedUpdatedAt ?? this.expectedUpdatedAt,
       saveStatus: saveStatus ?? this.saveStatus,
-      soapEditMode: soapEditMode ?? this.soapEditMode,
+      noteEditMode: noteEditMode ?? this.noteEditMode,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-      canEdit: canEdit ?? this.canEdit,
     );
   }
 
-  static VisitDocumentationState fromVisit(
-    VisitDetail visit, {
-    required bool canEdit,
-    SpecialtyFormSchema specialtySchema = const SpecialtyFormSchema(),
-  }) {
-    final soap = visit.soap;
+  static VisitDocumentationState fromVisit(VisitDetail visit) {
+    final note = visit.documentation;
     return VisitDocumentationState(
       visit: visit,
-      subjective: soap?.subjective ?? '',
-      objective: soap?.objective ?? '',
-      assessment: soap?.assessment ?? '',
-      plan: soap?.plan ?? '',
-      specialtyFormJson: Map<String, dynamic>.from(soap?.specialtyFormJson ?? const {}),
-      specialtySchema: specialtySchema,
-      expectedUpdatedAt: soap?.updatedAt ?? DateTime.now().toUtc(),
-      canEdit: canEdit,
+      complaint: note?.complaint ?? '',
+      history: note?.history ?? '',
+      examination: note?.examination ?? '',
+      diagnosis: note?.diagnosis ?? '',
+      plan: note?.plan ?? '',
+      expectedUpdatedAt: note?.updatedAt ?? visit.updatedAt ?? DateTime.now().toUtc(),
     );
   }
 }
@@ -137,58 +116,39 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     }
 
     final repo = ref.read(visitRepositoryProvider);
-    final permissions = ref.read(permissionServiceProvider);
     final visit = await repo.getVisit(visitId: visitId);
-    final schemaJson = await repo.getSpecialtyFormSchema();
-    final specialtySchema = SpecialtyFormSchema.parse(schemaJson);
-    return VisitDocumentationState.fromVisit(
-      visit,
-      canEdit: permissions.canEditVisitSoap(),
-      specialtySchema: specialtySchema,
-    );
+    return VisitDocumentationState.fromVisit(visit);
   }
 
-  void updateSubjective(String value) => _updateDraft(subjective: value);
+  bool _canEditVisit(VisitDetail visit) {
+    final permissions = ref.read(permissionServiceProvider);
+    final branchIds = ref.read(authSessionProvider).context?.branchIds ?? const <String>[];
+    return permissions.canEditVisitSoap() && branchIds.contains(visit.branchId);
+  }
 
-  void updateObjective(String value) => _updateDraft(objective: value);
+  void updateComplaint(String value) => _updateDraft(complaint: value);
 
-  void updateAssessment(String value) => _updateDraft(assessment: value);
+  void updateHistory(String value) => _updateDraft(history: value);
+
+  void updateExamination(String value) => _updateDraft(examination: value);
+
+  void updateDiagnosis(String value) => _updateDraft(diagnosis: value);
 
   void updatePlan(String value) => _updateDraft(plan: value);
 
-  void updateSpecialtyField(String key, Object? value) {
+  void _updateDraft({String? complaint, String? history, String? examination, String? diagnosis, String? plan}) {
     final current = state.value;
-    if (current == null || !current.isEditable) {
-      return;
-    }
-    final nextJson = Map<String, dynamic>.from(current.specialtyFormJson);
-    if (value == null) {
-      nextJson.remove(key);
-    } else {
-      nextJson[key] = value;
-    }
-    state = AsyncData(
-      current.copyWith(
-        specialtyFormJson: nextJson,
-        saveStatus: SoapSaveStatus.idle,
-        clearError: true,
-        clearSpecialtyErrors: true,
-      ),
-    );
-  }
-
-  void _updateDraft({String? subjective, String? objective, String? assessment, String? plan}) {
-    final current = state.value;
-    if (current == null || !current.isEditable) {
+    if (current == null || !_canEditVisit(current.visit)) {
       return;
     }
     state = AsyncData(
       current.copyWith(
-        subjective: subjective,
-        objective: objective,
-        assessment: assessment,
+        complaint: complaint,
+        history: history,
+        examination: examination,
+        diagnosis: diagnosis,
         plan: plan,
-        saveStatus: SoapSaveStatus.idle,
+        saveStatus: DocumentationSaveStatus.idle,
         clearError: true,
       ),
     );
@@ -199,94 +159,75 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     if (current == null) {
       return;
     }
-    if (!current.isEditable) {
+    if (!_canEditVisit(current.visit)) {
       return;
     }
 
-    final soapLengthError = soapSectionLengthError(
-      subjective: current.subjective,
-      objective: current.objective,
-      assessment: current.assessment,
+    final lengthError = clinicalSectionLengthError(
+      complaint: current.complaint,
+      history: current.history,
+      examination: current.examination,
+      diagnosis: current.diagnosis,
       plan: current.plan,
     );
-    if (soapLengthError != null) {
-      state = AsyncData(current.copyWith(saveStatus: SoapSaveStatus.error, errorMessage: soapLengthError));
+    if (lengthError != null) {
+      state = AsyncData(current.copyWith(saveStatus: DocumentationSaveStatus.error, errorMessage: lengthError));
       return;
     }
 
-    final specialtyErrors = current.specialtySchema.hasFields
-        ? SpecialtyFormSchema.validateValues(current.specialtyFormJson, current.specialtySchema)
-        : const <String, String>{};
-    final specialtyPayload = current.specialtySchema.encodeForSave(current.specialtyFormJson);
-    if (specialtyErrors.isNotEmpty) {
-      state = AsyncData(
-        current.copyWith(
-          specialtyFieldErrors: specialtyErrors,
-          saveStatus: SoapSaveStatus.error,
-          errorMessage: 'Fix specialty field errors before saving.',
-        ),
-      );
-      return;
-    }
-
-    state = AsyncData(
-      current.copyWith(saveStatus: SoapSaveStatus.saving, clearError: true, clearSpecialtyErrors: true),
-    );
+    state = AsyncData(current.copyWith(saveStatus: DocumentationSaveStatus.saving, clearError: true));
 
     try {
       final saved = await ref
           .read(visitRepositoryProvider)
-          .saveSoapNote(
+          .saveVisitDocumentation(
             visitId: current.visit.id,
             expectedUpdatedAt: current.expectedUpdatedAt,
-            subjective: _nullableSection(current.subjective),
-            objective: _nullableSection(current.objective),
-            assessment: _nullableSection(current.assessment),
+            complaint: _nullableSection(current.complaint),
+            history: _nullableSection(current.history),
+            examination: _nullableSection(current.examination),
+            diagnosis: _nullableSection(current.diagnosis),
             plan: _nullableSection(current.plan),
-            specialtyFormJson: specialtyPayload.isEmpty ? null : specialtyPayload,
           );
 
       final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
-      final next =
-          VisitDocumentationState.fromVisit(
-            refreshed,
-            canEdit: current.canEdit,
-            specialtySchema: current.specialtySchema,
-          ).copyWith(
-            subjective: current.subjective,
-            objective: current.objective,
-            assessment: current.assessment,
-            plan: current.plan,
-            specialtyFormJson: specialtyPayload.isEmpty ? current.specialtyFormJson : specialtyPayload,
-            expectedUpdatedAt: saved.updatedAt,
-            saveStatus: SoapSaveStatus.saved,
-            soapEditMode: SoapEditMode.readOnly,
-          );
+      final next = VisitDocumentationState.fromVisit(refreshed).copyWith(
+        complaint: current.complaint,
+        history: current.history,
+        examination: current.examination,
+        diagnosis: current.diagnosis,
+        plan: current.plan,
+        expectedUpdatedAt: saved.updatedAt,
+        saveStatus: DocumentationSaveStatus.saved,
+        noteEditMode: DocumentationEditMode.readOnly,
+      );
       state = AsyncData(next);
     } on RpcFailure catch (error) {
       final currentAfter = state.value ?? current;
-      if (error.code == 'STALE_SOAP') {
+      if (error.code == 'STALE_DOCUMENTATION') {
         state = AsyncData(
-          currentAfter.copyWith(saveStatus: SoapSaveStatus.stale, errorMessage: visitMessageForRpc(error)),
+          currentAfter.copyWith(saveStatus: DocumentationSaveStatus.stale, errorMessage: visitMessageForRpc(error)),
         );
         return;
       }
       state = AsyncData(
-        currentAfter.copyWith(saveStatus: SoapSaveStatus.error, errorMessage: visitMessageForRpc(error)),
+        currentAfter.copyWith(saveStatus: DocumentationSaveStatus.error, errorMessage: visitMessageForRpc(error)),
       );
     } catch (error) {
       final currentAfter = state.value ?? current;
-      state = AsyncData(currentAfter.copyWith(saveStatus: SoapSaveStatus.error, errorMessage: error.toString()));
+      state = AsyncData(
+        currentAfter.copyWith(saveStatus: DocumentationSaveStatus.error, errorMessage: error.toString()),
+      );
     }
   }
 
-  void enterSoapEditMode() {
+  void enterEditMode() {
     final current = state.value;
-    if (current == null || !current.canEdit) return;
-    state = AsyncData(current.copyWith(soapEditMode: SoapEditMode.editing));
+    if (current == null || !_canEditVisit(current.visit)) return;
+    state = AsyncData(current.copyWith(noteEditMode: DocumentationEditMode.editing));
   }
 
-  /// Refreshes visit metadata (treatment plans, attachments, status) without discarding unsaved SOAP draft.
+  /// Refreshes visit metadata without discarding unsaved clinical note draft.
   Future<void> refreshVisitPreservingDraft() async {
     final current = state.value;
     if (current == null) {
@@ -298,6 +239,8 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       current.copyWith(
         visit: current.visit.copyWith(
           treatmentPlans: refreshed.treatmentPlans,
+          vitalSigns: refreshed.vitalSigns,
+          investigations: refreshed.investigations,
           status: refreshed.status,
           doctorName: refreshed.doctorName,
           visitDate: refreshed.visitDate,

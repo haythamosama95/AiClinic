@@ -398,7 +398,7 @@ class DevClinicSeedService {
 
     final visit = await _visits.createVisit(appointmentId: appointmentId);
 
-    final soap = DevClinicSeedSchedule.soapContentFor(
+    final note = DevClinicSeedSchedule.clinicalNoteContentFor(
       kind: documentation,
       branchCode: branchCode,
       patientIndex: patientIndex,
@@ -406,19 +406,19 @@ class DevClinicSeedService {
     );
 
     final detail = await _visits.getVisit(visitId: visit.visitId);
-    final soapUpdatedAt = detail.soap?.updatedAt;
-    if (soapUpdatedAt == null) {
-      throw StateError('Visit SOAP row missing after create for dev seed.');
+    final docUpdatedAt = detail.documentation?.updatedAt;
+    if (docUpdatedAt == null) {
+      throw StateError('Visit documentation timestamp missing after create for dev seed.');
     }
 
-    final saved = await _visits.saveSoapNote(
+    final saved = await _visits.saveVisitDocumentation(
       visitId: visit.visitId,
-      expectedUpdatedAt: soapUpdatedAt,
-      subjective: soap.subjective,
-      objective: soap.objective,
-      assessment: soap.assessment,
-      plan: soap.plan,
-      specialtyFormJson: soap.specialtyFormJson.isEmpty ? null : soap.specialtyFormJson,
+      expectedUpdatedAt: docUpdatedAt,
+      complaint: note.complaint.isEmpty ? null : note.complaint,
+      history: note.history.isEmpty ? null : note.history,
+      examination: note.examination.isEmpty ? null : note.examination,
+      diagnosis: note.diagnosis.isEmpty ? null : note.diagnosis,
+      plan: note.plan.isEmpty ? null : note.plan,
     );
 
     if (DevClinicSeedSchedule.shouldCompleteVisit(targetStatus)) {
@@ -459,23 +459,20 @@ class DevClinicSeedService {
       return;
     }
 
-    var soapUpdatedAt = detail.soap?.updatedAt;
-    if (detail.soap?.hasAnySection != true) {
-      if (soapUpdatedAt == null) {
-        throw StateError('Visit SOAP row missing while releasing dev seed doctor slot.');
+    var docUpdatedAt = detail.documentation?.updatedAt;
+    if (detail.documentation?.hasContent != true) {
+      if (docUpdatedAt == null) {
+        throw StateError('Visit documentation timestamp missing while releasing dev seed doctor slot.');
       }
-      final saved = await _visits.saveSoapNote(
+      final saved = await _visits.saveVisitDocumentation(
         visitId: visitId,
-        expectedUpdatedAt: soapUpdatedAt,
-        subjective: 'Dev seed auto-completed to free doctor slot.',
-        objective: '',
-        assessment: '',
-        plan: '',
+        expectedUpdatedAt: docUpdatedAt,
+        complaint: 'Dev seed auto-completed to free doctor slot.',
       );
-      soapUpdatedAt = saved.updatedAt;
+      docUpdatedAt = saved.updatedAt;
     }
 
-    await _visits.completeVisit(visitId: visitId, expectedUpdatedAt: soapUpdatedAt!);
+    await _visits.completeVisit(visitId: visitId, expectedUpdatedAt: docUpdatedAt!);
   }
 
   Future<void> _assignBootstrapAdminToBranches(String staffMemberId, List<String> branchIds) async {

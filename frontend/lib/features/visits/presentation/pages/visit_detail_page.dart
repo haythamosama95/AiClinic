@@ -8,13 +8,10 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/visits/domain/specialty_form_schema.dart';
-import 'package:ai_clinic/features/visits/domain/soap_note.dart';
+import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
-import 'package:ai_clinic/features/visits/presentation/providers/specialty_form_schema_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/specialty_form_read_only_section.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
@@ -34,7 +31,6 @@ class VisitDetailPage extends ConsumerWidget {
     }
 
     final detailAsync = ref.watch(visitDetailProvider(id));
-    final schemaAsync = ref.watch(specialtyFormSchemaProvider);
     final canEdit = ref.watch(permissionServiceProvider).canEditVisitSoap();
 
     return detailAsync.when(
@@ -44,21 +40,7 @@ class VisitDetailPage extends ConsumerWidget {
         onRetry: () => ref.invalidate(visitDetailProvider(id)),
         onBack: () => _goBack(context),
       ),
-      data: (visit) => schemaAsync.when(
-        loading: () => const AppFullPageLoading(message: 'Loading visit…'),
-        error: (_, _) => _VisitDetailContentView(
-          visit: visit,
-          schema: const SpecialtyFormSchema(),
-          canEdit: canEdit,
-          onBack: () => _goBack(context),
-        ),
-        data: (schema) => _VisitDetailContentView(
-          visit: visit,
-          schema: schema,
-          canEdit: canEdit,
-          onBack: () => _goBack(context),
-        ),
-      ),
+      data: (visit) => _VisitDetailContentView(visit: visit, canEdit: canEdit, onBack: () => _goBack(context)),
     );
   }
 
@@ -72,15 +54,9 @@ class VisitDetailPage extends ConsumerWidget {
 }
 
 class _VisitDetailContentView extends StatelessWidget {
-  const _VisitDetailContentView({
-    required this.visit,
-    required this.schema,
-    required this.canEdit,
-    required this.onBack,
-  });
+  const _VisitDetailContentView({required this.visit, required this.canEdit, required this.onBack});
 
   final VisitDetail visit;
-  final SpecialtyFormSchema schema;
   final bool canEdit;
   final VoidCallback onBack;
 
@@ -88,7 +64,7 @@ class _VisitDetailContentView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final specialtyValues = visit.soap?.specialtyFormJson ?? const {};
+    final note = visit.documentation;
 
     return Padding(
       padding: const EdgeInsets.all(SpacingTokens.lg),
@@ -127,20 +103,13 @@ class _VisitDetailContentView extends StatelessWidget {
                         doctorName: visit.doctorName,
                         status: visit.status,
                       ),
-                      if (specialtyValues.isNotEmpty) ...[
+                      if (note != null && note.hasContent) ...[
                         const SizedBox(height: SpacingTokens.lg),
                         VisitSectionCard(
-                          title: 'Specialty fields',
-                          child: SpecialtyFormReadOnlySection(values: specialtyValues, schema: schema),
-                        ),
-                      ],
-                      if (visit.soap != null) ...[
-                        const SizedBox(height: SpacingTokens.lg),
-                        VisitSectionCard(
-                          title: 'SOAP note',
+                          title: 'Clinical note',
                           child: KeyedSubtree(
-                            key: const Key('visit_detail_soap_section'),
-                            child: _SoapSections(soap: visit.soap!),
+                            key: const Key('visit_detail_clinical_note_section'),
+                            child: _ClinicalNoteSections(note: note),
                           ),
                         ),
                       ],
@@ -182,27 +151,28 @@ class _VisitDetailContentView extends StatelessWidget {
   }
 }
 
-class _SoapSections extends StatelessWidget {
-  const _SoapSections({required this.soap});
+class _ClinicalNoteSections extends StatelessWidget {
+  const _ClinicalNoteSections({required this.note});
 
-  final SoapNote soap;
+  final VisitClinicalNote note;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SoapSection(key: const Key('visit_detail_subjective'), label: 'Subjective', value: soap.subjective),
-        _SoapSection(key: const Key('visit_detail_objective'), label: 'Objective', value: soap.objective),
-        _SoapSection(key: const Key('visit_detail_assessment'), label: 'Assessment', value: soap.assessment),
-        _SoapSection(key: const Key('visit_detail_plan'), label: 'Plan', value: soap.plan),
+        _ClinicalNoteSection(key: const Key('visit_detail_complaint'), label: 'Complaint', value: note.complaint),
+        _ClinicalNoteSection(key: const Key('visit_detail_history'), label: 'History', value: note.history),
+        _ClinicalNoteSection(key: const Key('visit_detail_examination'), label: 'Examination', value: note.examination),
+        _ClinicalNoteSection(key: const Key('visit_detail_diagnosis'), label: 'Diagnosis', value: note.diagnosis),
+        _ClinicalNoteSection(key: const Key('visit_detail_plan'), label: 'Plan', value: note.plan),
       ],
     );
   }
 }
 
-class _SoapSection extends StatelessWidget {
-  const _SoapSection({required this.label, required this.value, super.key});
+class _ClinicalNoteSection extends StatelessWidget {
+  const _ClinicalNoteSection({required this.label, required this.value, super.key});
 
   final String label;
   final String? value;

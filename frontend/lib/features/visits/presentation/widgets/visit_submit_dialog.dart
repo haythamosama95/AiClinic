@@ -81,7 +81,7 @@ class _VisitSubmitDialogState extends ConsumerState<VisitSubmitDialog> {
           children: [
             const Text(
               'Submitting completes this visit and marks the linked appointment as completed. '
-              'At least one SOAP section must contain text.',
+              'At least one clinical note section must contain text.',
             ),
             if (_formError != null) ...[
               const SizedBox(height: SpacingTokens.md),

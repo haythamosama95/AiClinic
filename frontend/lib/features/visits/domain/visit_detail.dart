@@ -49,7 +49,7 @@ class VisitDetail {
     final appointmentId = row['appointment_id']?.toString();
     final patientId = row['patient_id']?.toString();
     final doctorId = row['doctor_id']?.toString();
-    final doctorName = row['doctor_name']?.toString().trim();
+    final doctorNameRaw = row['doctor_name']?.toString().trim();
     final visitDate = parseVisitDate(row['visit_date']);
     final status = VisitStatus.tryParse(row['status']?.toString());
 
@@ -63,12 +63,12 @@ class VisitDetail {
         patientId.isEmpty ||
         doctorId == null ||
         doctorId.isEmpty ||
-        doctorName == null ||
-        doctorName.isEmpty ||
         visitDate == null ||
         status == null) {
       return null;
     }
+
+    final doctorName = doctorNameRaw == null || doctorNameRaw.isEmpty ? 'Unknown doctor' : doctorNameRaw;
 
     VisitClinicalNote? documentation;
     final documentationRaw = row['documentation'];

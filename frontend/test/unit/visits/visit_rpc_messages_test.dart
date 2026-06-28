@@ -8,7 +8,7 @@ void main() {
   group('visitMessageForRpc', () {
     test('maps known visit domain codes', () {
       expect(
-        visitMessageForRpc(RpcFailure(const RpcResult(success: false, errorCode: 'STALE_SOAP', errorMessage: ''))),
+        visitMessageForRpc(RpcFailure(const RpcResult(success: false, errorCode: 'STALE_DOCUMENTATION', errorMessage: ''))),
         contains('updated elsewhere'),
       );
       expect(
