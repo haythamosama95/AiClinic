@@ -1,0 +1,1079 @@
+{
+  "title": "Common Medical Investigations in Egypt",
+  "description": "Curated catalog of laboratory tests, imaging, and procedures commonly ordered in Egyptian outpatient clinics and national lab checkup packages.",
+  "compiled_date": "2026-06-28",
+  "count": 135,
+  "sources": [
+    "AlFarabi Medical Labs — Spring Basic Package (باقة الربيع الأساسية)",
+    "Nilescan and Labs — Comprehensive Checkup (الفحص الشامل)",
+    "European Medical Center — Full Checkup Guide",
+    "Dalili Medical — Essential Blood Tests Guide",
+    "AiClinic medical-investigations-catalog.md (international reference)"
+  ],
+  "schema": {
+    "name_en": "Value stored in investigations.name (max 200 chars)",
+    "name_ar": "Arabic display / search alias",
+    "category": "Clinical grouping for reference",
+    "aliases": "Common abbreviations and alternate search terms"
+  },
+  "investigations": [
+    {
+      "name_en": "Complete Blood Count (CBC)",
+      "name_ar": "صورة دم كاملة",
+      "category": "haematology",
+      "aliases": [
+        "CBC",
+        "صورة دم"
+      ]
+    },
+    {
+      "name_en": "Liver Function Test (LFT)",
+      "name_ar": "وظائف الكبد",
+      "category": "biochemistry",
+      "aliases": [
+        "LFT",
+        "وظائف كبد"
+      ]
+    },
+    {
+      "name_en": "Kidney Function Test (KFT)",
+      "name_ar": "وظائف الكلى",
+      "category": "biochemistry",
+      "aliases": [
+        "KFT",
+        "RFT",
+        "وظائف كلى"
+      ]
+    },
+    {
+      "name_en": "Renal Function Test (RFT)",
+      "name_ar": "وظائف الكلى",
+      "category": "biochemistry",
+      "aliases": [
+        "RFT",
+        "KFT"
+      ]
+    },
+    {
+      "name_en": "Lipid Profile",
+      "name_ar": "تحليل الدهون",
+      "category": "biochemistry",
+      "aliases": [
+        "Lipid panel",
+        "دهون"
+      ]
+    },
+    {
+      "name_en": "Thyroid Function Test (TFT)",
+      "name_ar": "وظائف الغدة الدرقية",
+      "category": "endocrine",
+      "aliases": [
+        "TFT",
+        "Thyroid panel",
+        "الغدة الدرقية"
+      ]
+    },
+    {
+      "name_en": "Basic Metabolic Panel (BMP)",
+      "name_ar": "التحاليل الأيضية الأساسية",
+      "category": "biochemistry",
+      "aliases": [
+        "BMP"
+      ]
+    },
+    {
+      "name_en": "Comprehensive Metabolic Panel (CMP)",
+      "name_ar": "التحاليل الأيضية الشاملة",
+      "category": "biochemistry",
+      "aliases": [
+        "CMP"
+      ]
+    },
+    {
+      "name_en": "Iron Studies",
+      "name_ar": "دراسة الحديد",
+      "category": "haematology",
+      "aliases": [
+        "Iron profile",
+        "الحديد"
+      ]
+    },
+    {
+      "name_en": "Coagulation Profile",
+      "name_ar": "تخثر الدم",
+      "category": "haematology",
+      "aliases": [
+        "Coagulation panel"
+      ]
+    },
+    {
+      "name_en": "Erythrocyte Sedimentation Rate (ESR)",
+      "name_ar": "سرعة الترسيب",
+      "category": "haematology",
+      "aliases": [
+        "ESR",
+        "الترسيب"
+      ]
+    },
+    {
+      "name_en": "Peripheral Blood Smear",
+      "name_ar": "فحص الدم بالمجهر",
+      "category": "haematology",
+      "aliases": [
+        "Blood film"
+      ]
+    },
+    {
+      "name_en": "Reticulocyte Count",
+      "name_ar": "عدد الخلايا الشبكية",
+      "category": "haematology",
+      "aliases": []
+    },
+    {
+      "name_en": "Blood Group and Rh",
+      "name_ar": "فصيلة الدم والعامل الريزيسي",
+      "category": "haematology",
+      "aliases": [
+        "Blood typing",
+        "فصيلة الدم"
+      ]
+    },
+    {
+      "name_en": "Prothrombin Time (PT/INR)",
+      "name_ar": "زمن البروثرومبين",
+      "category": "haematology",
+      "aliases": [
+        "PT",
+        "INR"
+      ]
+    },
+    {
+      "name_en": "Activated Partial Thromboplastin Time (APTT)",
+      "name_ar": "زمن الثرومبوبلاستين الجزئي",
+      "category": "haematology",
+      "aliases": [
+        "APTT",
+        "PTT"
+      ]
+    },
+    {
+      "name_en": "D-Dimer",
+      "name_ar": "دي دايمر",
+      "category": "haematology",
+      "aliases": []
+    },
+    {
+      "name_en": "Haemoglobin Electrophoresis",
+      "name_ar": "تفكك الهيموجلوبين",
+      "category": "haematology",
+      "aliases": [
+        "Thalassaemia screen"
+      ]
+    },
+    {
+      "name_en": "G6PD Screen",
+      "name_ar": "فحص G6PD",
+      "category": "haematology",
+      "aliases": []
+    },
+    {
+      "name_en": "Fasting Blood Glucose",
+      "name_ar": "سكر صائم",
+      "category": "biochemistry",
+      "aliases": [
+        "FBS",
+        "FBG",
+        "سكر الدم الصائم"
+      ]
+    },
+    {
+      "name_en": "Random Blood Glucose",
+      "name_ar": "سكر عشوائي",
+      "category": "biochemistry",
+      "aliases": [
+        "RBS",
+        "RBG"
+      ]
+    },
+    {
+      "name_en": "HbA1c (Glycated Haemoglobin)",
+      "name_ar": "السكر التراكمي",
+      "category": "biochemistry",
+      "aliases": [
+        "HbA1c",
+        "سكر تراكمي"
+      ]
+    },
+    {
+      "name_en": "Oral Glucose Tolerance Test (OGTT)",
+      "name_ar": "اختبار تحمل الجلوكوز",
+      "category": "biochemistry",
+      "aliases": [
+        "OGTT"
+      ]
+    },
+    {
+      "name_en": "Creatinine",
+      "name_ar": "الكرياتينين",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Urea (Blood Urea Nitrogen)",
+      "name_ar": "اليوريا",
+      "category": "biochemistry",
+      "aliases": [
+        "BUN",
+        "اليوريا"
+      ]
+    },
+    {
+      "name_en": "Uric Acid",
+      "name_ar": "حمض اليوريك",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Estimated GFR (eGFR)",
+      "name_ar": "معدل الترشيح الكلوي",
+      "category": "biochemistry",
+      "aliases": [
+        "eGFR",
+        "GFR"
+      ]
+    },
+    {
+      "name_en": "Alanine Aminotransferase (ALT)",
+      "name_ar": "إنزيم ALT",
+      "category": "biochemistry",
+      "aliases": [
+        "ALT",
+        "SGPT"
+      ]
+    },
+    {
+      "name_en": "Aspartate Aminotransferase (AST)",
+      "name_ar": "إنزيم AST",
+      "category": "biochemistry",
+      "aliases": [
+        "AST",
+        "SGOT"
+      ]
+    },
+    {
+      "name_en": "Alkaline Phosphatase (ALP)",
+      "name_ar": "الفوسفاتيز القلوي",
+      "category": "biochemistry",
+      "aliases": [
+        "ALP"
+      ]
+    },
+    {
+      "name_en": "Gamma-Glutamyl Transferase (GGT)",
+      "name_ar": "إنزيم GGT",
+      "category": "biochemistry",
+      "aliases": [
+        "GGT"
+      ]
+    },
+    {
+      "name_en": "Total Bilirubin",
+      "name_ar": "البيليروبين الكلي",
+      "category": "biochemistry",
+      "aliases": [
+        "Bilirubin"
+      ]
+    },
+    {
+      "name_en": "Albumin",
+      "name_ar": "الألبومين",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Total Protein",
+      "name_ar": "البروتين الكلي",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Total Cholesterol",
+      "name_ar": "الكوليسترول الكلي",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "LDL Cholesterol",
+      "name_ar": "كوليسترول LDL",
+      "category": "biochemistry",
+      "aliases": [
+        "LDL"
+      ]
+    },
+    {
+      "name_en": "HDL Cholesterol",
+      "name_ar": "كوليسترول HDL",
+      "category": "biochemistry",
+      "aliases": [
+        "HDL"
+      ]
+    },
+    {
+      "name_en": "Triglycerides",
+      "name_ar": "الدهون الثلاثية",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Sodium",
+      "name_ar": "الصوديوم",
+      "category": "biochemistry",
+      "aliases": [
+        "Na"
+      ]
+    },
+    {
+      "name_en": "Potassium",
+      "name_ar": "البوتاسيوم",
+      "category": "biochemistry",
+      "aliases": [
+        "K"
+      ]
+    },
+    {
+      "name_en": "Calcium",
+      "name_ar": "الكالسيوم",
+      "category": "biochemistry",
+      "aliases": [
+        "Ca"
+      ]
+    },
+    {
+      "name_en": "Magnesium",
+      "name_ar": "الماغنسيوم",
+      "category": "biochemistry",
+      "aliases": [
+        "Mg"
+      ]
+    },
+    {
+      "name_en": "Phosphate",
+      "name_ar": "الفوسفات",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Ferritin",
+      "name_ar": "الفيريتين",
+      "category": "biochemistry",
+      "aliases": [
+        "مخزون الحديد"
+      ]
+    },
+    {
+      "name_en": "Serum Iron",
+      "name_ar": "الحديد في الدم",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Vitamin D (25-Hydroxyvitamin D)",
+      "name_ar": "فيتامين د",
+      "category": "biochemistry",
+      "aliases": [
+        "Vitamin D",
+        "فيتامين د"
+      ]
+    },
+    {
+      "name_en": "Vitamin B12",
+      "name_ar": "فيتامين ب12",
+      "category": "biochemistry",
+      "aliases": [
+        "B12"
+      ]
+    },
+    {
+      "name_en": "Folic Acid (Folate)",
+      "name_ar": "حمض الفوليك",
+      "category": "biochemistry",
+      "aliases": [
+        "Folate"
+      ]
+    },
+    {
+      "name_en": "Zinc",
+      "name_ar": "الزنك",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "C-Reactive Protein (CRP)",
+      "name_ar": "بروتين سي التفاعلي",
+      "category": "immunology",
+      "aliases": [
+        "CRP"
+      ]
+    },
+    {
+      "name_en": "Procalcitonin",
+      "name_ar": "البروكالسيتونين",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Lactate Dehydrogenase (LDH)",
+      "name_ar": "إنزيم LDH",
+      "category": "biochemistry",
+      "aliases": [
+        "LDH"
+      ]
+    },
+    {
+      "name_en": "Amylase",
+      "name_ar": "الأميليز",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Lipase",
+      "name_ar": "الليباز",
+      "category": "biochemistry",
+      "aliases": []
+    },
+    {
+      "name_en": "Arterial Blood Gas (ABG)",
+      "name_ar": "غازات الدم الشرياني",
+      "category": "biochemistry",
+      "aliases": [
+        "ABG"
+      ]
+    },
+    {
+      "name_en": "Thyroid Stimulating Hormone (TSH)",
+      "name_ar": "هرمون الغدة الدرقية",
+      "category": "endocrine",
+      "aliases": [
+        "TSH"
+      ]
+    },
+    {
+      "name_en": "Free T4 (Thyroxine)",
+      "name_ar": "هرمون T4 الحر",
+      "category": "endocrine",
+      "aliases": [
+        "Free T4",
+        "FT4"
+      ]
+    },
+    {
+      "name_en": "Free T3 (Triiodothyronine)",
+      "name_ar": "هرمون T3 الحر",
+      "category": "endocrine",
+      "aliases": [
+        "Free T3",
+        "FT3"
+      ]
+    },
+    {
+      "name_en": "Prolactin",
+      "name_ar": "البرولاكتين",
+      "category": "endocrine",
+      "aliases": []
+    },
+    {
+      "name_en": "Cortisol",
+      "name_ar": "الكورتيزول",
+      "category": "endocrine",
+      "aliases": []
+    },
+    {
+      "name_en": "Insulin (Fasting)",
+      "name_ar": "الأنسولين الصائم",
+      "category": "endocrine",
+      "aliases": []
+    },
+    {
+      "name_en": "Testosterone",
+      "name_ar": "التستوستيرون",
+      "category": "endocrine",
+      "aliases": []
+    },
+    {
+      "name_en": "Estradiol",
+      "name_ar": "الإستراديول",
+      "category": "endocrine",
+      "aliases": []
+    },
+    {
+      "name_en": "Progesterone",
+      "name_ar": "البروجسترون",
+      "category": "endocrine",
+      "aliases": []
+    },
+    {
+      "name_en": "Beta-hCG (Blood)",
+      "name_ar": "هرمون الحمل",
+      "category": "endocrine",
+      "aliases": [
+        "HCG",
+        "Pregnancy test blood"
+      ]
+    },
+    {
+      "name_en": "Prostate-Specific Antigen (PSA)",
+      "name_ar": "مستضد البروستاتا",
+      "category": "biochemistry",
+      "aliases": [
+        "PSA"
+      ]
+    },
+    {
+      "name_en": "Parathyroid Hormone (PTH)",
+      "name_ar": "هرمون الغدة الجار درقية",
+      "category": "endocrine",
+      "aliases": [
+        "PTH"
+      ]
+    },
+    {
+      "name_en": "Urinalysis",
+      "name_ar": "تحليل البول",
+      "category": "urine_studies",
+      "aliases": [
+        "Urine analysis",
+        "بول"
+      ]
+    },
+    {
+      "name_en": "Urine Culture and Sensitivity",
+      "name_ar": "مزرعة البول",
+      "category": "microbiology",
+      "aliases": [
+        "Urine C/S",
+        "مزرعة بول"
+      ]
+    },
+    {
+      "name_en": "Urine Microalbumin",
+      "name_ar": "ألبومين البول الدقيق",
+      "category": "urine_studies",
+      "aliases": [
+        "Microalbumin"
+      ]
+    },
+    {
+      "name_en": "24-Hour Urine Protein",
+      "name_ar": "بروتين البول لمدة 24 ساعة",
+      "category": "urine_studies",
+      "aliases": []
+    },
+    {
+      "name_en": "Pregnancy Test (Urine hCG)",
+      "name_ar": "اختبار حمل بالبول",
+      "category": "urine_studies",
+      "aliases": [
+        "Urine pregnancy test"
+      ]
+    },
+    {
+      "name_en": "Stool Analysis",
+      "name_ar": "تحليل البراز",
+      "category": "stool_studies",
+      "aliases": [
+        "Stool exam",
+        "براز"
+      ]
+    },
+    {
+      "name_en": "Stool Culture and Sensitivity",
+      "name_ar": "مزرعة البراز",
+      "category": "microbiology",
+      "aliases": [
+        "Stool C/S"
+      ]
+    },
+    {
+      "name_en": "Stool Occult Blood",
+      "name_ar": "دم خفي في البراز",
+      "category": "stool_studies",
+      "aliases": [
+        "FOBT",
+        "FIT"
+      ]
+    },
+    {
+      "name_en": "Helicobacter pylori Stool Antigen",
+      "name_ar": "مستضد هيليكوباكتر بالبراز",
+      "category": "microbiology",
+      "aliases": [
+        "H. pylori stool"
+      ]
+    },
+    {
+      "name_en": "Faecal Calprotectin",
+      "name_ar": "الكالبروتكتين بالبراز",
+      "category": "stool_studies",
+      "aliases": [
+        "Calprotectin"
+      ]
+    },
+    {
+      "name_en": "Blood Culture and Sensitivity",
+      "name_ar": "مزرعة الدم",
+      "category": "microbiology",
+      "aliases": [
+        "Blood C/S",
+        "مزرعة دم"
+      ]
+    },
+    {
+      "name_en": "Sputum Culture and Sensitivity",
+      "name_ar": "مزرعة البلغم",
+      "category": "microbiology",
+      "aliases": [
+        "Sputum C/S"
+      ]
+    },
+    {
+      "name_en": "Throat Swab Culture",
+      "name_ar": "مزرعة مسحة الحلق",
+      "category": "microbiology",
+      "aliases": [
+        "Throat culture"
+      ]
+    },
+    {
+      "name_en": "Wound Swab Culture",
+      "name_ar": "مزرعة مسحة الجرح",
+      "category": "microbiology",
+      "aliases": []
+    },
+    {
+      "name_en": "Hepatitis B Surface Antigen (HBsAg)",
+      "name_ar": "مستضد فيروس ب",
+      "category": "virology_serology",
+      "aliases": [
+        "HBsAg",
+        "فيروس ب"
+      ]
+    },
+    {
+      "name_en": "Hepatitis C Antibody (Anti-HCV)",
+      "name_ar": "أجسام فيروس سي",
+      "category": "virology_serology",
+      "aliases": [
+        "Anti-HCV",
+        "فيروس سي"
+      ]
+    },
+    {
+      "name_en": "HIV 1/2 Antigen-Antibody Screen",
+      "name_ar": "فحص الإيدز",
+      "category": "virology_serology",
+      "aliases": [
+        "HIV screen",
+        "الإيدز"
+      ]
+    },
+    {
+      "name_en": "TORCH Panel",
+      "name_ar": "فحص TORCH",
+      "category": "virology_serology",
+      "aliases": [
+        "TORCH"
+      ]
+    },
+    {
+      "name_en": "COVID-19 PCR",
+      "name_ar": "PCR كورونا",
+      "category": "molecular",
+      "aliases": [
+        "SARS-CoV-2 PCR"
+      ]
+    },
+    {
+      "name_en": "Influenza A/B PCR",
+      "name_ar": "PCR إنفلونزا",
+      "category": "molecular",
+      "aliases": []
+    },
+    {
+      "name_en": "Rapid Strep Test",
+      "name_ar": "اختبار سريع للمكورات العقدية",
+      "category": "microbiology",
+      "aliases": []
+    },
+    {
+      "name_en": "Mantoux Test (TB Skin Test)",
+      "name_ar": "اختبار السل الجلدي",
+      "category": "immunology",
+      "aliases": [
+        "PPD",
+        "TB skin test"
+      ]
+    },
+    {
+      "name_en": "Quantiferon TB Gold",
+      "name_ar": "فحص السل بالدم",
+      "category": "immunology",
+      "aliases": [
+        "IGRA"
+      ]
+    },
+    {
+      "name_en": "Antinuclear Antibody (ANA)",
+      "name_ar": "الأجسام المضادة للنواة",
+      "category": "immunology",
+      "aliases": [
+        "ANA"
+      ]
+    },
+    {
+      "name_en": "Rheumatoid Factor (RF)",
+      "name_ar": "عامل الروماتويد",
+      "category": "immunology",
+      "aliases": [
+        "RF"
+      ]
+    },
+    {
+      "name_en": "Anti-CCP Antibody",
+      "name_ar": "أجسام Anti-CCP",
+      "category": "immunology",
+      "aliases": [
+        "CCP"
+      ]
+    },
+    {
+      "name_en": "Total IgE",
+      "name_ar": "الإيمونوجلوبين E الكلي",
+      "category": "immunology",
+      "aliases": [
+        "IgE"
+      ]
+    },
+    {
+      "name_en": "Coombs Test (Direct)",
+      "name_ar": "اختبار كومبس المباشر",
+      "category": "immunology",
+      "aliases": [
+        "DAT"
+      ]
+    },
+    {
+      "name_en": "Chest X-Ray",
+      "name_ar": "أشعة صدر",
+      "category": "imaging_radiology",
+      "aliases": [
+        "CXR",
+        "أشعة على الصدر"
+      ]
+    },
+    {
+      "name_en": "Abdominal X-Ray",
+      "name_ar": "أشعة بطن",
+      "category": "imaging_radiology",
+      "aliases": [
+        "AXR"
+      ]
+    },
+    {
+      "name_en": "X-Ray (Specify Region)",
+      "name_ar": "أشعة سينية",
+      "category": "imaging_radiology",
+      "aliases": [
+        "X-ray"
+      ]
+    },
+    {
+      "name_en": "Abdominal Ultrasound",
+      "name_ar": "سونار بطن",
+      "category": "imaging_radiology",
+      "aliases": [
+        "US abdomen",
+        "سونار على البطن"
+      ]
+    },
+    {
+      "name_en": "Pelvic Ultrasound",
+      "name_ar": "سونار حوض",
+      "category": "imaging_radiology",
+      "aliases": [
+        "US pelvis",
+        "سونار حوض"
+      ]
+    },
+    {
+      "name_en": "Thyroid Ultrasound",
+      "name_ar": "سونار غدة درقية",
+      "category": "imaging_radiology",
+      "aliases": [
+        "US thyroid"
+      ]
+    },
+    {
+      "name_en": "Breast Ultrasound",
+      "name_ar": "سونار ثدي",
+      "category": "imaging_radiology",
+      "aliases": [
+        "US breast"
+      ]
+    },
+    {
+      "name_en": "Obstetric Ultrasound",
+      "name_ar": "سونار حمل",
+      "category": "imaging_radiology",
+      "aliases": [
+        "Pregnancy ultrasound",
+        "سونار للحمل"
+      ]
+    },
+    {
+      "name_en": "Doppler Ultrasound",
+      "name_ar": "دوبلر",
+      "category": "imaging_radiology",
+      "aliases": [
+        "Doppler"
+      ]
+    },
+    {
+      "name_en": "Mammography",
+      "name_ar": "ماموجرام",
+      "category": "imaging_radiology",
+      "aliases": [
+        "Mammogram"
+      ]
+    },
+    {
+      "name_en": "CT Scan",
+      "name_ar": "أشعة مقطعية",
+      "category": "imaging_radiology",
+      "aliases": [
+        "Computed tomography",
+        "CT"
+      ]
+    },
+    {
+      "name_en": "CT Brain",
+      "name_ar": "أشعة مقطعية على المخ",
+      "category": "imaging_radiology",
+      "aliases": [
+        "CT head"
+      ]
+    },
+    {
+      "name_en": "CT Chest",
+      "name_ar": "أشعة مقطعية على الصدر",
+      "category": "imaging_radiology",
+      "aliases": []
+    },
+    {
+      "name_en": "CT Abdomen/Pelvis",
+      "name_ar": "أشعة مقطعية بطن وحوض",
+      "category": "imaging_radiology",
+      "aliases": [
+        "CT A/P"
+      ]
+    },
+    {
+      "name_en": "MRI",
+      "name_ar": "رنين مغناطيسي",
+      "category": "imaging_radiology",
+      "aliases": [
+        "Magnetic resonance imaging"
+      ]
+    },
+    {
+      "name_en": "MRI Brain",
+      "name_ar": "رنين مغناطيسي على المخ",
+      "category": "imaging_radiology",
+      "aliases": []
+    },
+    {
+      "name_en": "MRI Spine",
+      "name_ar": "رنين مغناطيسي على العمود الفقري",
+      "category": "imaging_radiology",
+      "aliases": []
+    },
+    {
+      "name_en": "Bone Density Scan (DEXA)",
+      "name_ar": "قياس كثافة العظام",
+      "category": "imaging_radiology",
+      "aliases": [
+        "DEXA",
+        "DXA"
+      ]
+    },
+    {
+      "name_en": "ECG (Electrocardiogram)",
+      "name_ar": "تخطيط قلب",
+      "category": "cardiology",
+      "aliases": [
+        "EKG",
+        "رسم قلب"
+      ]
+    },
+    {
+      "name_en": "Echocardiography",
+      "name_ar": "إيكو قلب",
+      "category": "cardiology",
+      "aliases": [
+        "Echo",
+        "إيكو"
+      ]
+    },
+    {
+      "name_en": "Exercise Stress Test",
+      "name_ar": "اختبار جهد",
+      "category": "cardiology",
+      "aliases": [
+        "Treadmill test",
+        "جهد"
+      ]
+    },
+    {
+      "name_en": "Holter Monitor (24-hour ECG)",
+      "name_ar": "هولتر",
+      "category": "cardiology",
+      "aliases": [
+        "Holter"
+      ]
+    },
+    {
+      "name_en": "Troponin",
+      "name_ar": "تروبونين",
+      "category": "cardiology",
+      "aliases": []
+    },
+    {
+      "name_en": "BNP / NT-proBNP",
+      "name_ar": "BNP",
+      "category": "cardiology",
+      "aliases": [
+        "NT-proBNP"
+      ]
+    },
+    {
+      "name_en": "Spirometry (Pulmonary Function Test)",
+      "name_ar": "وظائف رئتين",
+      "category": "pulmonary",
+      "aliases": [
+        "PFT",
+        "Spirometry"
+      ]
+    },
+    {
+      "name_en": "Peak Expiratory Flow",
+      "name_ar": "ذروة تدفق الزفير",
+      "category": "pulmonary",
+      "aliases": [
+        "PEF"
+      ]
+    },
+    {
+      "name_en": "Upper Endoscopy (OGD)",
+      "name_ar": "منظار معدة",
+      "category": "gastroenterology",
+      "aliases": [
+        "EGD",
+        "Gastroscopy",
+        "منظار"
+      ]
+    },
+    {
+      "name_en": "Colonoscopy",
+      "name_ar": "منظار قولون",
+      "category": "gastroenterology",
+      "aliases": []
+    },
+    {
+      "name_en": "Abdominal Ultrasound with Liver Assessment",
+      "name_ar": "سونار كبد وبطن",
+      "category": "gastroenterology",
+      "aliases": []
+    },
+    {
+      "name_en": "EEG (Electroencephalogram)",
+      "name_ar": "تخطيط مخ",
+      "category": "neurology",
+      "aliases": []
+    },
+    {
+      "name_en": "EMG and Nerve Conduction Study",
+      "name_ar": "تخطيط عضلات وأعصاب",
+      "category": "neurology",
+      "aliases": [
+        "EMG/NCS"
+      ]
+    },
+    {
+      "name_en": "Lumbar Puncture (CSF Analysis)",
+      "name_ar": "بزل قطني",
+      "category": "neurology",
+      "aliases": [
+        "Spinal tap",
+        "CSF"
+      ]
+    },
+    {
+      "name_en": "Pap Smear (Cervical Cytology)",
+      "name_ar": "مسحة عنق الرحم",
+      "category": "obstetrics_gynaecology",
+      "aliases": [
+        "Pap test"
+      ]
+    },
+    {
+      "name_en": "HPV DNA Test",
+      "name_ar": "فحص فيروس HPV",
+      "category": "obstetrics_gynaecology",
+      "aliases": [
+        "HPV"
+      ]
+    },
+    {
+      "name_en": "Semen Analysis",
+      "name_ar": "تحليل سائل منوي",
+      "category": "obstetrics_gynaecology",
+      "aliases": [
+        "Sperm analysis"
+      ]
+    },
+    {
+      "name_en": "Uroflowmetry",
+      "name_ar": "قياس تدفق البول",
+      "category": "urology",
+      "aliases": []
+    },
+    {
+      "name_en": "Cystoscopy",
+      "name_ar": "منظار مثانة",
+      "category": "urology",
+      "aliases": []
+    },
+    {
+      "name_en": "Fine Needle Aspiration (FNA)",
+      "name_ar": "شفط بالإبرة الرفيعة",
+      "category": "pathology",
+      "aliases": [
+        "FNA"
+      ]
+    },
+    {
+      "name_en": "Tissue Biopsy (Histopathology)",
+      "name_ar": "خزعة نسيجية",
+      "category": "pathology",
+      "aliases": [
+        "Biopsy",
+        "خزعة"
+      ]
+    },
+    {
+      "name_en": "Bone Marrow Aspiration/Biopsy",
+      "name_ar": "خزعة نخاع العظم",
+      "category": "pathology",
+      "aliases": []
+    }
+  ]
+}

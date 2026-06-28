@@ -49,3 +49,12 @@ class CatalogCreateResult {
     );
   }
 }
+
+/// Result of dev-only `dev_seed_medications_catalog` / `dev_seed_investigations_catalog` batch import.
+@immutable
+class DevCatalogSeedResult {
+  const DevCatalogSeedResult({required this.inserted, required this.requested});
+
+  final int inserted;
+  final int requested;
+}

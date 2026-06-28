@@ -22,6 +22,8 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_schedule.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_spec.dart';
+import 'package:ai_clinic/app/shell/dev/dev_egyptian_investigations_asset.dart';
+import 'package:ai_clinic/app/shell/dev/dev_egyptian_medications_asset.dart';
 
 typedef DevClinicSeedProgress = void Function(String message);
 
@@ -122,6 +124,8 @@ class DevClinicSeedService {
       ),
     );
     await refreshSession();
+
+    await _seedEgyptianCatalogs(onProgress: report);
 
     final branchIds = <String>[bootstrapResult.branchId];
     for (var staffIndex = 0; staffIndex < firstBranch.branchStaff.length; staffIndex++) {
@@ -236,6 +240,47 @@ class DevClinicSeedService {
     report('Refreshing session…');
     await refreshSession();
     report('Done');
+  }
+
+  Future<void> _seedEgyptianCatalogs({required DevClinicSeedProgress onProgress}) async {
+    await _seedEgyptianMedications(onProgress: onProgress);
+    await _seedEgyptianInvestigations(onProgress: onProgress);
+  }
+
+  Future<void> _seedEgyptianMedications({required DevClinicSeedProgress onProgress}) async {
+    onProgress('Loading Egyptian medication catalog…');
+    final names = await DevEgyptianMedicationsAsset.loadNames();
+    final batches = DevEgyptianMedicationsAsset.batchesFor(names);
+    if (batches.isEmpty) {
+      return;
+    }
+
+    var totalInserted = 0;
+    for (var batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      onProgress('Importing medications (${batchIndex + 1}/${batches.length})…');
+      final result = await _visits.devSeedMedicationsCatalog(names: batches[batchIndex]);
+      totalInserted += result.inserted;
+    }
+
+    onProgress('Imported $totalInserted Egyptian medications.');
+  }
+
+  Future<void> _seedEgyptianInvestigations({required DevClinicSeedProgress onProgress}) async {
+    onProgress('Loading Egyptian investigation catalog…');
+    final names = await DevEgyptianInvestigationsAsset.loadNames();
+    final batches = DevEgyptianInvestigationsAsset.batchesFor(names);
+    if (batches.isEmpty) {
+      return;
+    }
+
+    var totalInserted = 0;
+    for (var batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      onProgress('Importing investigations (${batchIndex + 1}/${batches.length})…');
+      final result = await _visits.devSeedInvestigationsCatalog(names: batches[batchIndex]);
+      totalInserted += result.inserted;
+    }
+
+    onProgress('Imported $totalInserted Egyptian investigations.');
   }
 
   Future<void> _seedShifts({

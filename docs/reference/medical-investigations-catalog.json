@@ -1,0 +1,5639 @@
+{
+  "title": "Medical Investigations Reference Catalog",
+  "description": "Comprehensive reference list of laboratory tests, imaging studies, and diagnostic procedures commonly ordered by physicians. Compiled from public medical sources for clinical software catalog seeding.",
+  "compiled_date": "2026-06-28",
+  "total_count": 725,
+  "sources": [
+    "Manchester University NHS Foundation Trust — A-Z Laboratory Tests (612 tests)",
+    "Wikipedia — List of Medical Tests",
+    "MedlinePlus — Medical Tests",
+    "NCBI StatPearls — Overview on Ordering and Evaluation of Laboratory Tests",
+    "Fullscript — Most Commonly Ordered Lab Tests",
+    "Cleveland Clinic — Blood Tests Guide",
+    "AiClinic project seed data (specs/013-visits)"
+  ],
+  "disclaimer": "This catalog is a reference compilation, not medical advice. Test availability varies by country, facility, and clinical context. ICD-10/11 alone contains 70,000+ procedure codes; this list focuses on commonly ordered investigations.",
+  "categories": {
+    "Biochemistry": 1,
+    "Biochemistry / Chemical Pathology": 188,
+    "Cardiology": 5,
+    "Cardiology / Biochemistry": 2,
+    "Cardiology / Imaging": 3,
+    "Cytogenetics": 1,
+    "Cytology": 35,
+    "Dermatology / Immunology": 1,
+    "Dermatology / Pathology": 1,
+    "ENT": 1,
+    "ENT / Audiology": 2,
+    "ENT / Neurology": 2,
+    "Endocrine / Biochemistry": 2,
+    "Gastroenterology": 2,
+    "Gastroenterology / Endoscopy": 5,
+    "Gynaecological Cytology": 4,
+    "Gynaecology": 1,
+    "Gynaecology / Molecular": 1,
+    "Haematology": 68,
+    "Haematology / Biochemistry": 1,
+    "Haematology / Pathology": 1,
+    "Histopathology / Anatomic Pathology": 8,
+    "Immunology / Biochemistry": 1,
+    "Immunology / Serology": 98,
+    "Microbiology": 10,
+    "Microbiology / Bacteriology": 52,
+    "Molecular Genetics": 1,
+    "Molecular Microbiology": 45,
+    "Mycology": 5,
+    "Neurology": 3,
+    "Neurology / Procedure": 1,
+    "Nuclear Medicine": 3,
+    "Obstetrics / Imaging": 1,
+    "Obstetrics / Procedure": 2,
+    "Ophthalmology": 3,
+    "Ophthalmology / Imaging": 1,
+    "Pathology": 1,
+    "Pathology / Cytology": 1,
+    "Pathology / Procedure": 1,
+    "Pulmonary / Endoscopy": 1,
+    "Pulmonary Function": 3,
+    "Radiology / Imaging": 22,
+    "Reference Microbiology": 4,
+    "Rheumatology / Laboratory": 1,
+    "Rheumatology / Procedure": 1,
+    "Synovial Fluid Analysis": 15,
+    "Urine Studies": 2,
+    "Urology": 2,
+    "Urology / Pathology": 1,
+    "Vaccine Serology": 8,
+    "Virology": 101
+  },
+  "investigations": [
+    {
+      "name": "Complete Blood Count (CBC)",
+      "category": "Haematology",
+      "type": "laboratory_panel",
+      "source": "StatPearls / Fullscript"
+    },
+    {
+      "name": "Basic Metabolic Panel (BMP)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory_panel",
+      "source": "StatPearls / Fullscript"
+    },
+    {
+      "name": "Comprehensive Metabolic Panel (CMP)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory_panel",
+      "source": "StatPearls / Fullscript"
+    },
+    {
+      "name": "Lipid Panel",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory_panel",
+      "source": "StatPearls / Fullscript"
+    },
+    {
+      "name": "Thyroid Function Panel",
+      "category": "Endocrine / Biochemistry",
+      "type": "laboratory_panel",
+      "source": "Fullscript"
+    },
+    {
+      "name": "Coagulation Panel",
+      "category": "Haematology",
+      "type": "laboratory_panel",
+      "source": "Wikipedia / Cleveland Clinic"
+    },
+    {
+      "name": "Electrolyte Panel",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory_panel",
+      "source": "Cleveland Clinic"
+    },
+    {
+      "name": "Arterial Blood Gas (ABG)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Urinalysis",
+      "category": "Urine Studies",
+      "type": "laboratory",
+      "source": "StatPearls / Fullscript"
+    },
+    {
+      "name": "Urine Culture",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Stool Culture",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Blood Culture",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Sputum Culture",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Mantoux Test (Tuberculin Skin Test)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Genetic Testing",
+      "category": "Molecular Genetics",
+      "type": "laboratory",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Karyotype",
+      "category": "Cytogenetics",
+      "type": "laboratory",
+      "source": "MedlinePlus"
+    },
+    {
+      "name": "Urea Breath Test",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Chest X-Ray",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia / AiClinic seed"
+    },
+    {
+      "name": "Abdominal X-Ray",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Skull X-Ray",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Spine X-Ray",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Extremity X-Ray",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Mammography",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "CT Scan (Computed Tomography)",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "CT Head",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "CT Chest",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "CT Abdomen/Pelvis",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "MRI (Magnetic Resonance Imaging)",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "MRI Brain",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "MRI Spine",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "MRI Knee",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Ultrasound",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia / MedlinePlus"
+    },
+    {
+      "name": "Abdominal Ultrasound",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "AiClinic seed"
+    },
+    {
+      "name": "Pelvic Ultrasound",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Thyroid Ultrasound",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Doppler Ultrasound",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Echocardiography",
+      "category": "Cardiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "PET Scan (Positron Emission Tomography)",
+      "category": "Nuclear Medicine",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "SPECT Scan",
+      "category": "Nuclear Medicine",
+      "type": "imaging",
+      "source": "NCBI"
+    },
+    {
+      "name": "Bone Scan",
+      "category": "Nuclear Medicine",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "DEXA Scan (Bone Density)",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Fluoroscopy",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Angiography",
+      "category": "Radiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Coronary Angiography",
+      "category": "Cardiology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "ECG (Electrocardiogram)",
+      "category": "Cardiology",
+      "type": "procedure",
+      "source": "Wikipedia / AiClinic seed"
+    },
+    {
+      "name": "Holter Monitor (24-hour ECG)",
+      "category": "Cardiology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Exercise Stress Test",
+      "category": "Cardiology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Echocardiogram",
+      "category": "Cardiology",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Cardiac MRI",
+      "category": "Cardiology / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Coronary Catheterization",
+      "category": "Cardiology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Esophagogastroduodenoscopy (EGD / Upper Endoscopy)",
+      "category": "Gastroenterology / Endoscopy",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Colonoscopy",
+      "category": "Gastroenterology / Endoscopy",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Sigmoidoscopy",
+      "category": "Gastroenterology / Endoscopy",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Capsule Endoscopy",
+      "category": "Gastroenterology / Endoscopy",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "ERCP (Endoscopic Retrograde Cholangiopancreatography)",
+      "category": "Gastroenterology / Endoscopy",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Esophageal Manometry",
+      "category": "Gastroenterology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Esophageal pH Monitoring",
+      "category": "Gastroenterology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Liver Biopsy",
+      "category": "Pathology / Procedure",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Spirometry",
+      "category": "Pulmonary Function",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Pulmonary Function Test (PFT)",
+      "category": "Pulmonary Function",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Peak Flow Measurement",
+      "category": "Pulmonary Function",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Bronchoscopy",
+      "category": "Pulmonary / Endoscopy",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "EEG (Electroencephalogram)",
+      "category": "Neurology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "EMG (Electromyography)",
+      "category": "Neurology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Nerve Conduction Study",
+      "category": "Neurology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Lumbar Puncture (Spinal Tap)",
+      "category": "Neurology / Procedure",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Electronystagmography (ENG)",
+      "category": "ENT / Neurology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Videonystagmography (VNG)",
+      "category": "ENT / Neurology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Audiometry (Hearing Test)",
+      "category": "ENT / Audiology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Laryngoscopy",
+      "category": "ENT",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Tympanometry",
+      "category": "ENT / Audiology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Skin Biopsy",
+      "category": "Dermatology / Pathology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Skin Allergy Test (Patch Test)",
+      "category": "Dermatology / Immunology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Visual Field Test",
+      "category": "Ophthalmology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Optical Coherence Tomography (OCT)",
+      "category": "Ophthalmology / Imaging",
+      "type": "imaging",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Dilated Fundus Examination",
+      "category": "Ophthalmology",
+      "type": "procedure",
+      "source": "Wikipedia"
+    },
+    {
+      "name": "Tonometry (Eye Pressure)",
+      "category": "Ophthalmology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Pap Smear (Cervical Cytology)",
+      "category": "Gynaecology",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "HPV Test",
+      "category": "Gynaecology / Molecular",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Obstetric Ultrasound",
+      "category": "Obstetrics / Imaging",
+      "type": "imaging",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Amniocentesis",
+      "category": "Obstetrics / Procedure",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Chorionic Villus Sampling (CVS)",
+      "category": "Obstetrics / Procedure",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Cystoscopy",
+      "category": "Urology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Uroflowmetry",
+      "category": "Urology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Prostate Biopsy",
+      "category": "Urology / Pathology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Joint Aspiration (Arthrocentesis)",
+      "category": "Rheumatology / Procedure",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Synovial Fluid Analysis",
+      "category": "Rheumatology / Laboratory",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Fine Needle Aspiration (FNA)",
+      "category": "Pathology / Cytology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Core Needle Biopsy",
+      "category": "Pathology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Bone Marrow Biopsy",
+      "category": "Haematology / Pathology",
+      "type": "procedure",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Histopathology Examination",
+      "category": "Histopathology / Anatomic Pathology",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Fasting Blood Glucose",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "source": "AiClinic seed / MedlinePlus"
+    },
+    {
+      "name": "HbA1c (Glycated Haemoglobin)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "source": "AiClinic seed / Fullscript"
+    },
+    {
+      "name": "Liver Function Test (LFT)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory_panel",
+      "source": "AiClinic seed"
+    },
+    {
+      "name": "Renal Function Test (RFT)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory_panel",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Thyroid Panel",
+      "category": "Endocrine / Biochemistry",
+      "type": "laboratory_panel",
+      "source": "AiClinic seed"
+    },
+    {
+      "name": "Prostate-Specific Antigen (PSA)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "source": "Fullscript"
+    },
+    {
+      "name": "Vitamin D (25-Hydroxyvitamin D)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "source": "Fullscript"
+    },
+    {
+      "name": "Vitamin B12",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "source": "MedlinePlus"
+    },
+    {
+      "name": "Folate (Folic Acid)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "source": "MedlinePlus"
+    },
+    {
+      "name": "Iron Studies (Ferritin, TIBC, Transferrin)",
+      "category": "Haematology / Biochemistry",
+      "type": "laboratory_panel",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "D-Dimer",
+      "category": "Haematology",
+      "type": "laboratory",
+      "source": "Cleveland Clinic"
+    },
+    {
+      "name": "Troponin",
+      "category": "Cardiology / Biochemistry",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "BNP / NT-proBNP",
+      "category": "Cardiology / Biochemistry",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "C-Reactive Protein (CRP)",
+      "category": "Immunology / Biochemistry",
+      "type": "laboratory",
+      "source": "Fullscript"
+    },
+    {
+      "name": "Erythrocyte Sedimentation Rate (ESR)",
+      "category": "Haematology",
+      "type": "laboratory",
+      "source": "Fullscript"
+    },
+    {
+      "name": "Kidney Stone Analysis",
+      "category": "Urine Studies",
+      "type": "laboratory",
+      "source": "MedlinePlus"
+    },
+    {
+      "name": "Pregnancy Test (Urine hCG)",
+      "category": "Biochemistry",
+      "type": "laboratory",
+      "source": "MedlinePlus"
+    },
+    {
+      "name": "HIV Screen",
+      "category": "Virology",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Hepatitis Panel",
+      "category": "Virology",
+      "type": "laboratory_panel",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "COVID-19 PCR Test",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Influenza PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Strep Throat Rapid Test",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "source": "Clinical practice"
+    },
+    {
+      "name": "Whooping Cough (Pertussis) Test",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "source": "MedlinePlus"
+    },
+    {
+      "name": "Zika Virus Test",
+      "category": "Virology",
+      "type": "laboratory",
+      "source": "MedlinePlus"
+    },
+    {
+      "name": "Yeast Infection Test",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "source": "MedlinePlus"
+    },
+    {
+      "name": "1,25-dihydroxy vitamin D (DHVD)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "17 OHP (blood spot)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Bloodspot 17-hydroxyprogesterone",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "17 OHP (serum)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Serum 17-hydroxyprogesterone",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "A1AT",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Alpha-1-Antitrypsin",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Abdominal mass FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Abscesses and Deep-Seated Wound Infections",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Acetyl Choline Receptor Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Acid base status",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "Gases",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Acid fast bacilli (mycobacteria) Special Stain",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "ACR",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Albumin Creatinine Ratio",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Activated partial thromboplastin time",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Actual bicarbonate",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Acute kidney injury score",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "AKI",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Acute Leukaemia Panel",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "Can include: CD2, CD10, CD13, CD14, CD19, CD33, CD34, cytoCD79a, CD117, cytoTdT, cytoMPO",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Adenovirus",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "department": "Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Adenovirus (respiratory infection)",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Respiratory virus PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Adenovirus 40/41 (Enteric) PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Enteric Virus Panel",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Adrenal antibody",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Adrenal FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "AFP",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "Alpha-feto-protein",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "AKI",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Acute kidney injury score",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Alanine Aminotransferase",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "ALT",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Albumin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Albumin Creatinine Ratio (ACR)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "ACR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Albumin excretion (urine micro albumin)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Aldosterone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Alkaline Phosphatase",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "ALP",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Alkaline Phosphate isoenzymes",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Allergen Specific IgE",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "ALP",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Alkaline Phosphatase",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Alpha-1-Antitrypsin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "A1AT",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Alpha-feto-protein",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See AFP",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "ALT",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Alanine Aminotransferase",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "AMH",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Anti-Müllerian Hormone",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Amikacin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Aminotransferase",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ammonia",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "ANA",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Antinuclear antibody (ANA)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "ANCA",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Anti-neutrophil cytoplasmic antibody",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Androstenedione",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anion-Gap",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti C1q",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti HBs",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B (HBV) surface antigen (HBsAg)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti Myelin oligodendrocyte glycoprotein (MOG) Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "MOG",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti-Basal Ganglia Abs",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Antibiotic Susceptibility Tests",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "Antimicrobial Susceptibility Test; AST",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Antibody screen and save serum",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Antibody titre",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anticoagulant Control – Heparin control; Oral Anticoagulant Control (INR)",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti-Cyclic citrullinated peptide (CCP)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "CCP; Cyclic citrullinated peptide",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti-HCV antibody screen and confirmation",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis C antibody (HCV) screen and confirmation",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti-Hepatitis Bs antibody Virology",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti-HIV 1 and 2 antibody and p24 antigen screen",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See HIV screen (4th generation: HIV1 and 2 antibody and p24 antigen)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Antimicrobial Susceptibility Test",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Antibiotic Susceptibility Tests",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti-Müllerian Hormone, AMH",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Anti-neutrophil cytoplasmic antibody (ANCA)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "ANCA",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Antinuclear antibody (ANA)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "ENA antibodies includes: Ro (SS-A 52, SSA-60), La (SS-B), Sm, Sm/RNP, RNP (RNP A, RNP 68), Ribosomal P, Chromatin, Jo-1, and Scl-70",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Antithrombin",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "AP100 Alternative Pathway Haemolytic Complement",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "APTT",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Aquaporin 4",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ascitic fluid",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "ASO",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Streptococcal serology",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Aspartate Aminotransferase",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "AST",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Aspergillus fumigatus precipitins",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Aspergillus galactomannan",
+      "category": "Mycology",
+      "type": "laboratory",
+      "department": "Mycology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Aspergillus PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "Invasive infection with Aspergillus",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Aspergillus PCR on respiratory samples",
+      "category": "Mycology",
+      "type": "laboratory",
+      "department": "Mycology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "AST",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Antibiotic Susceptibility Tests",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Astrovirus PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Enteric Virus Panel",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Autoimmune diabetes marker panel",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Avian precipitins",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "B Cell Maturation Panel",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bartonella (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bence Jones protein (Urinary light chains) Urine immunofixation",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Beta 2 Glycoprotein (IgG and IgM)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Beta Hydroxybutyrate",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bicarbonate",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bile acids",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bile duct brushings",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bilharzia",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Ova, Cysts and Parasites",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bilirubin (conjugated/direct)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bilirubin (total)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "BK virus PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "Polyoma viruses (BK)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bladder washings",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Blastomyces (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bleeding Time",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Blood Cultures",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Blood group",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Blood Transfusion",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bloodspot 17-hydroxyprogesterone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "17 OHP (blood spot)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "BNP (N-terminal pro BNP)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bocavirus PCR (referral)",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bone marrow report",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bordetella pertussis culture",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Bordetella pertussis PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bordetella pertussis PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "Bordetella pertussis culture; Pernasal swab (for pertussis)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Breath Hydrogen Test",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bronchial brushings",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bronchial trap",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Bronchoalveolar lavage",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Brucella (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Busulphan",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "C1 esterase inhibitor",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "C1 esterase inhibitor functional test",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "C1q",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "C3 nephritic factor",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CA125",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Caeruloplasmin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Calcium (blood and urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Calcium ionized",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Calcium, plasma, total",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Calprotectin (faeces)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Campylobacter serology (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "cANCA",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See PR3 autoantibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Candida PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "Invasive infection with Candida",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Candida precipitins (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Carbamazepine",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Carbapenemase-Producing Enterobacteriaceae (CPE) Screen",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Rapid/routine Carbapenemase-Producing Enterobacteriaceae (CPE) Screen",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Carboxyhaemoglobin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cardiac muscle antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cardiolipin (IgG and IgM) antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CASPR & LGi1 Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Catecholamines (urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CCP",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Anti-cyclic citrullinated peptide",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CD34 (Stem cells)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CD4 count (T cell count)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CEA",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cerebrospinal fluid",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See CSF",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cervical Cytology",
+      "category": "Gynaecological Cytology",
+      "type": "laboratory",
+      "department": "Gynaecological Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CH50 complement activity Classical Pathway",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Chain-of-custody medico-legal specimens",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Chlamydia trachomatis, Neisseria gonorrhoea, Trichomonas vaginalis, Mycoplasma genitalium NAATs",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Chloride",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cholesterol",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cholinesterase",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Chromium",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Chronic lymphocytic/lymphoma panel",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "Can include: CD2, CD3, CD4, CD5, CD8, CD10, CD11c, CD16/CD56, CD19, CD23, CD25, CD38, CD79b, FMC7, Kappa and lambda light chains on B cells",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ciclosporin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Cyclosporin A",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CK",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Creatine Kinase",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Clostridium difficile GDH and Toxin",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CMV (cytomegalovirus) antiviral resistance markers",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "Cytomegalovirus anitviral resistance markers",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CMV (cytomegalovirus) IgG",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Cytomegalovirus (CMV) IgG",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CMV (cytomegalovirus) IgG avidity",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Cytomegalovirus (CMV) IgG avidity",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CMV (Cytomegalovirus) IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Cytomegalovirus (CMV) IgM",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CMV (cytomegalovirus) viral load",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "Cytomegalovirus viral load",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cobalt",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Coccidioides (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Coeliac Disease Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cold agglutinin titres (4°C)",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Complement C3",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Complement C4",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Contact lens",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Copper (blood and urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cord blood investigations",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Corneal Scrape (Bacteriology)",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Corneal Scrape (Virology)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Coronavirus COVID-19 Testing for SARS-CoV-2",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cortisol",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CPE screen",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Rapid/routine Carbapenemase-Producing Enterobacteriaceae (CPE) Screen",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "C-peptide",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Creatine Kinase",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "CK",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Creatinine (blood and urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Creatinine clearance",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Crithidia antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cross matching",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cryoglobulins",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cryptococcal antigen",
+      "category": "Mycology",
+      "type": "laboratory",
+      "department": "Mycology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cryptococcus antigen",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cryptosporidium",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Ova, Cysts and Parasites",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CSF",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CSF – Glucose",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CSF – Lactate",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CSF – Protein",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CSF Bilirubin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Xanthochromia Screen (CSF)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CSF Xanthochromia",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Xanthochromia Screen (CSF)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "CTX",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Culture",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cyclic citrullinated peptide (CCP)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Anti-cyclic citrullinated peptide",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cyclosporin A",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "Ciclosporin",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cystatin C",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cystic Fibrosis",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cytomegalovirus (CMV) IgG",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See CMV (cytomegalovirus) IgG",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cytomegalovirus (CMV) IgG avidity",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See CMV (cytomegalovirus) IgG avidity",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cytomegalovirus (CMV) IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See CMV (cytomegalovirus) IgM",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cytomegalovirus anitviral resistance markers",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See CMV anitviral resistance markers",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Cytomegalovirus viral load",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See CMV (cytomegalovirus) viral load",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "DHEA – sulphate",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Digoxin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Diphtheria IgG antibody determination",
+      "category": "Vaccine Serology",
+      "type": "laboratory",
+      "department": "Vaccine Evaluation Unit",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Direct Antiglobulin Test",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "DNA Testing for the Haemoglobinopathies",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Double Negative T Cell (DNT) panel",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Double stranded DNA antibodies (IgG)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Dried blood spot Hepatitis B core antibody",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B (HBV) core antibody – Dried Blood Spot",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Dried blood spot Hepatitis B surface antigen",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B (HBV) surface antigen (HBsAg) – Dried Blood Spot",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Dried blood spot Hepatitis C antibody",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis C antibody (HCV) screen and confirmation – Dried Blood Spot",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Dried blood spot Hepatitis C genotyping",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis C antibody (HCV) screen and confirmation – Dried Blood Spot",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Dried blood spot Hepatitis C RNA screening",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Dried blood spot HIV Ag/Ab",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See HIV 1 and 2 antibody and p24 antigen screen – Dried Blood Spot",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Dried blood spot Syphilis antibody",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Drugs of abuse (urine screen)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ear",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "EBNA",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See EBV",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "EBV (EBNA)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "EBNA, Epstein Barr Virus (EBNA)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "EBV (Epstein Barr Virus) viral load",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Epstein Barr Virus viral load",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "EBV VCA IgG – screening",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Epstein Barr Virus screening",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "EBV VCA IgM – screening",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Epstein Barr Virus screening",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "eGfR (estimated GfR)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ehrlichia IF (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Elastase (faeces)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Electrolytes (urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Electron microscopy",
+      "category": "Histopathology / Anatomic Pathology",
+      "type": "laboratory",
+      "department": "Histopathology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "EMA binding assay for Hereditary Spherocytosis",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "ENA antibodies includes: Ro (SS-A 52, SSA-60), La (SS-B), Sm, Sm/RNP, RNP (RNP A, RNP 68), Ribosomal P, Chromatin, Jo-1, and Scl-70",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Antinuclear antibody (ANA)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Entamoeba",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Ova, Cysts and Parasites",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Enteric Virus Panel",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Adenovirus 40/41 (Enteric) PCR; Astrovirus PCR; Norovirus PCR; Rotavirus PCR; Sapovirus PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Enterovirus and parechovirus PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Enzyme histochemistry",
+      "category": "Histopathology / Anatomic Pathology",
+      "type": "laboratory",
+      "department": "Histopathology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "EPO",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Epstein Barr Virus (EBNA) confirmation",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See EBV",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Epstein Barr Virus (EBV) IgG – screening",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Epstein Barr Virus screening",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Epstein Barr Virus (EBV) IgM – screening",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Epstein Barr Virus screening",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Epstein Barr Virus screening",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "EBV VCA IgG, IgM",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Erythropoietin",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ethanol (drinking alcohol)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Eye",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor II assay",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor IX assay",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor IX inhibitors",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor V assay",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor V Leiden Mutation screen",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor VII assay",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor VIII assay",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor VIII inhibitors",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor X assay",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor XI assay",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Factor XII assay",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Faecal immunochemical testing",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "FIT",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Faecal reducing substances",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Faeces Bacteria/Parasite PCR – Serosep DX",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Failing metal-on-metal prosthetic joints",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Farmer’s lung precipitins",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "FBC",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "FDP D-Dimers",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Features associated with ganglia",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Features of Juvenile inflammatory arthropathy",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Features of rheumatoid disease",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ferritin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Fibrin Degradation Products",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Fibrinogen",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "FIT",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Faecal immunochemical testing",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Flucytosine",
+      "category": "Mycology",
+      "type": "laboratory",
+      "department": "Mycology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Fluids from Normally Sterile Sites",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "Joint fluids; sterile fluids",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Folate (serum and red cell)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Follicle stimulating hormone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "FSH",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Free fatty acids",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Free Light Chains",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Free T3",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Free Tri-iodothyronine",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Free T4",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Free thyroxine",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Free thyroxine",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "Free T4",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Free Tri-iodothyronine",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "Free T3",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "FSH",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Follicle stimulating hormone",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Full blood count and automated differential",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Functional antibody to Neisseria meningitidis serogroup B by Serum Bactericidal Antibody Assay (SBA)",
+      "category": "Vaccine Serology",
+      "type": "laboratory",
+      "department": "Vaccine Evaluation Unit",
+      "notes": "See Neisseria meningitidis: Functional antibody to serogroup B by Serum Bactericidal Antibody Assay (SBA)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Fungal beta D glucan assay",
+      "category": "Mycology",
+      "type": "laboratory",
+      "department": "Mycology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Fungi – Special Stain",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "G6PD Assay (if screen gives intermediate or reduced result)",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "G6PD Screen",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "GABAb receptor & AMPA receptor 1/2 antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Galactomannan referral",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Gamma-glutamyl transferase",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "GGT",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ganglioside Abs GM1",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ganglioside Abs GQ1b",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Gases",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Acid base status",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Gastric Biopsies for Helicobacter pylori",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Helicobacter pylori in Gastric Biopsies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Gastric Parietal Cell (GPC)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Smooth muscle antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Genital specimens for culture",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Gentamicin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "GGT",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Gamma-glutamyl transferase",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Giardia lamblia",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Ova, Cysts and Parasites",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Glandular fever screening test",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Glomerular basement membrane antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Glucose",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Glutamic Acid Decarboxylase Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Glycated Haemoglobin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "HbA1c",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Glycogen – Special Stain",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Gout (urate crystals)",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "GPC",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Smooth muscle antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Gram +ve/-ve sepsis",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Growth Hormone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "hGH",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Haematinics – Serum intrinisic factor antibodies",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Haemochromatosis C282Y, H63D and S65C genotyping",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Haemoglobinopathy Screening",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Haemophilius influenze type b antibody",
+      "category": "Vaccine Serology",
+      "type": "laboratory",
+      "department": "Vaccine Evaluation Unit",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Haptoglobulin Estimation",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HAV",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis A virus",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HbA1c",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Glycated Haemoglobin",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HbS Screening Test – Urgent/pre-operative (Pts >1 yr Old)",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HBsAg",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B (HBV) surface antigen",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HBV confirmation",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B confirmation",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HBV core antibodies",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B core antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HBV core antibody – Dried Blood Spot",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B (HBV) core antibody – Dried Blood Spot",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HBV core IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B (HBV) core IgM (anti-HBc IgM)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HBV resistance markers",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Hepatitis B virus genotyping and resistance",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HBV surface antibody",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B (HBV) surface antigen (HBsAg)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HCG blood (pregnancy and as tumour marker)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "Pregnancy test (blood); Human Chorionic Gonadotrophin",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HCV genotyping",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Helicobacter pylori",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Helicobacter pylori in Gastric Biopsies",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "Gastric Biopsies for Helicobacter pylori",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Heparin control",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis A total antibody (IgG and IgM)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis A virus (HAV) IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B (HBV) confirmation",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "HBV confirmation",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B (HBV) core antibodies",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "HBV core antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B (HBV) core antibody – Dried Blood Spot",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Dried blood spot Hepatitis B core antibody",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B (HBV) core IgM (anti-HBc IgM)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B (HBV) surface antibody (Anti-HBs)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B (HBV) surface antigen (HBsAg)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B (HBV) surface antigen (HBsAg)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "HBV surface antibody; anti HBs; HBsAg",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B (HBV) surface antigen (HBsAg) – Dried Blood Spot",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Dried blood spot Hepatitis B surface antigen",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B e antibody",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B virus (HBV) e antigen (HBeAg) and e antibody (Anti-HBe)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B e antigen",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Hepatitis B virus (HBV) e antigen (HBeAg) and e antibody (Anti-HBe)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B virus (HBV) e antigen (HBeAg) and e antibody (Anti-HBe)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Hepatitis B e antibody; Hepatitis B e antigen",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B virus Genotyping and Resistance Markers",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "HBV resistance markers",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis B virus viral load",
+      "category": "Microbiology",
+      "type": "laboratory",
+      "department": "Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis C antibody (HCV) screen and confirmation",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Anti-HCV antibody screen and confirmation",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis C antibody (HCV) screen and confirmation – Dried Blood Spot",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Dried blood spot Hepatitis C genotyping",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis C qualitative PCR and genotype if HCV antibody is reactive – Dried Blood Spot",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis C viral load",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis D (delta) antibody",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis E IgG (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Hepatitis E IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Herpes simplex 1/2 antibody (IgG type specific, Total IgM and Total IgG)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Herpes simplex virus types 1 and 2 PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HFE",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "hGH",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Growth hormone",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HHV6 & 7 PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Human Herpes virus 6 & 7",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "High Risk HPV Test of Cure",
+      "category": "Gynaecological Cytology",
+      "type": "laboratory",
+      "department": "Gynaecological Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "High Risk HPV triage",
+      "category": "Gynaecological Cytology",
+      "type": "laboratory",
+      "department": "Gynaecological Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Histone Abs",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Histopathology – Paediatric Histopathology",
+      "category": "Histopathology / Anatomic Pathology",
+      "type": "laboratory",
+      "department": "Histopathology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Histopathology – Routine (adult) Histopathology",
+      "category": "Histopathology / Anatomic Pathology",
+      "type": "laboratory",
+      "department": "Histopathology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Histoplasma (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HIV 1 and 2 antibody and p24 antigen screen – Dried Blood Spot",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Dried blood spot HIV Ag/Ab",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HIV confirmation (screen test plus at least two further tests for HIV 1/2) Virology",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HIV p24 antigen Virology",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HIV resistance, integrase, tropism Molecular Microbiology",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HIV screen (4th generation: HIV1 and 2 antibody and p24 antigen)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Anti-HIV 1 and 2 antibody and p24 antigen screen",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HIV-1 viral load",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "HTLV 1 and 2 antibody",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Human T Lymphotropic virus (HTLV) 1 and 2",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Human Chorionic Gonadotrophin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See HCG blood",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Human Herpes virus 6 & 7",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "HHV6 & 7 PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Human Papilloma Virus Screening",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Human Parvovirus B19 IgG",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Parvovirus B19 IgG",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Human Parvovirus B19 IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Parvovirus B19 IgM",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Human Parvovirus B19 viral load",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "Parvovirus B19 viral load",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Human T Lymphotropic virus (HTLV) 1 and 2",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "HTLV 1 and 2 antibody",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "IA2",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "IgE (Total)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "IGF-1",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Insulin-like Growth Factor 1",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "IGFBP-3",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Insulin-like Growth Factor Binding Protein 3",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "IgG subclasses",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Immunocytochemistry",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Immunodeficiency (T&B Lymphocyte Subsets)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "T&B Lymphocyte Subsets",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Immunofluorescence Histopathology",
+      "category": "Histopathology / Anatomic Pathology",
+      "type": "laboratory",
+      "department": "Histopathology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Immunoglobulin D, IgD",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Immunoglobulins (IgG, IgA, IgM)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Inflammatory/non-inflammatory bursitis",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "INR",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Insulin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Insulin Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Insulin-like Growth Factor 1",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "IGF-1",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Insulin-like Growth Factor Binding Protein 3",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "IGFBP-3",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Intravascular cannulae",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "Tips",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Invasive infection with Aspergillus",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Aspergillus PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Invasive infection with Candida",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Candida PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Iron",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "JC virus PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Jejunal Disaccharidases",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Joint fluids",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Fluids from Normally Sterile Sites",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lactate",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lactate Dehydrogenase (LDH)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lamotrigine",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Legionella urinary antigen detection",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Leptospira (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Leukocyte Adhesion Deficiency (LAD) Markers",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "LH",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Luteinising Hormone",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lipase (blood and fluid)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lipid profile incl. total cholesterol, LDL, HDL, triglyceride",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lithium (serum)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Liver FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Liver Function Tests",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Liver Kidney Microsomal (LKM)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Smooth muscle antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "LKM",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Smooth muscle antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "L-Selectin Shedding assay",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lung FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lupus anticoagulant",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Luteinising Hormone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "LH",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lyme Disease",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Lymph node FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "MAG",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Myelin Associated Glycoprotein",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Magnesium (Blood and Urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Malarial parasites, detection of",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mannose Binding Lectins",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Manual blood film",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mast Cell Tryptase",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Measles IgG",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Measles IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Measles virus PCR",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mediastinal mass FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Meningococcal DNA detection by PCR (multiplex with Pneumococcal DNA PCR)",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "Pneumococcal PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Metadrenalines",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Met-haemoglobin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Methotrexate",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mitochondrial antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Smooth muscle antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "MOG",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Anti Myelin oligodendrocyte glycoprotein (MOG) Antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mouth swab",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "MPO",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Myeloperoxidase (MPO) antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mpox/Orthopox PCR",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "MRSA",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mucin – Special Stain",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mumps IgG",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mumps IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Muscle Specific Tyrosine Kinase (MUSK)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "MUSK",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "MUSK",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Muscle Specific Tyrosine Kinase",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mycobacteria – microscopy/culture",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "TB examination",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mycobacterium PCR",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Mycobacteria – microscopy/culture",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Mycoplasma PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Myelin Associated Glycoprotein (MAG)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "MAG",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Myeloperoxidase (MPO) antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Myositis Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Naïve Memory and Effector T Cell Subsets",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Neck FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Neisseria meningitidis isolate characterisation",
+      "category": "Reference Microbiology",
+      "type": "laboratory",
+      "department": "Meningococcal Reference Unit",
+      "notes": "See Neisseria meningitidis: Serogrouping and outer membrane typing",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Neisseria meningitidis: Functional antibody to serogroup B by Serum Bactericidal Antibody Assay (SBA)",
+      "category": "Vaccine Serology",
+      "type": "laboratory",
+      "department": "Vaccine Evaluation Unit",
+      "notes": "Functional antibody to Neisseria meningitidis serogroup B by Serum Bactericidal Antibody Assay (SBA)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Neisseria meningitidis: Functional antibody to serogroups A, C, W and Y by internationally standardised serum bactericidal antibody assays",
+      "category": "Vaccine Serology",
+      "type": "laboratory",
+      "department": "Vaccine Evaluation Unit",
+      "notes": "Meningococcal Serology; Molecular subtyping of isolates; Neisseria meningitidis serology",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Neisseria meningitidis: Minimum inhibitory concentration",
+      "category": "Reference Microbiology",
+      "type": "laboratory",
+      "department": "Meningococcal Reference Unit",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Neisseria meningitidis: Serogrouping and outer membrane typing",
+      "category": "Reference Microbiology",
+      "type": "laboratory",
+      "department": "Meningococcal Reference Unit",
+      "notes": "Neisseria meningitidis isolate characterisation; Polysaccharide antigen detection",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Neutrophil Function (DHR) Test",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "NMDA – N-methyl-D-aspartate receptor antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Non-specific inflammatory arthropathies",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Non-specific non-inflammatory arthropathies",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Norovirus PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Enteric Virus Panel",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Nose Swab",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "NT-proBNP",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Oesophageal brushings",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Oestradiol",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Oral Anticoagulant Control (INR)",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Orosomucoid",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Osmolality (Blood and Urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Osmolar Gap (calculated as: calculated osmolality – measured osmolality. Calculated osmolality is 2 x (Na + K) + glucose + urea)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Osteoarthritis",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ova, Cysts and Parasites",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "Bilharzia; Cryptosporidium; Entamoeba; Giardia lamblia; Parasites; Schistosoma haematobium",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ovarian cyst FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ovary antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "P1NP",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Type I Procollagen N terminal Peptide",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "P3NP",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Procollagen III Peptide",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pancreatic FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Paracetamol",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Paraneoplastic Neuronal Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Parasites",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Ova, Cysts and Parasites",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Paratesticular FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Parathyroid hormone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "PTH",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Parvovirus B19 IgG",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Human Parvovirus B19 IgG",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Parvovirus B19 IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Human Parvovirus B19 IgM",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Parvovirus B19 viral load",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Human Parvovirus B19 viral load",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Perinatal post mortems",
+      "category": "Histopathology / Anatomic Pathology",
+      "type": "laboratory",
+      "department": "Histopathology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Peritoneal fluid",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Peritoneal Fluids",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Peritoneal washings",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pernasal swab (for pertussis)",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Bordetella pertussis PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "pH (blood and urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Phenobarbitone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Phenytoin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Phosphate (blood and urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "PIIINP",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Procollagen III Peptide",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "PLA2R Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Plasma viscosity",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Platelet Glycoprotein Expression",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Platelets Aggregation Studies",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pleural fluid",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "PLGF",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pneumococcal PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Meningococcal DNA detection by PCR (multiplex with Pneumococcal DNA PCR)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pneumococcal serotype-specific IgG",
+      "category": "Vaccine Serology",
+      "type": "laboratory",
+      "department": "Vaccine Evaluation Unit",
+      "notes": "See Streptococcus pneumoniae serology",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pneumococcal urinary antigen detection",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pneumocystis jirovecii PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Polyoma viruses (BK)",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See BK virus PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Polysaccharide antigen detection",
+      "category": "Reference Microbiology",
+      "type": "laboratory",
+      "department": "Meningococcal Reference Unit",
+      "notes": "See Neisseria meningitidis: Serogrouping and outer membrane typing",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Post Trachelectomy Cytology",
+      "category": "Gynaecological Cytology",
+      "type": "laboratory",
+      "department": "Gynaecological Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Potassium",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "PR3 autoantibodies (cANCA)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pregnancy test (blood)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See HCG blood",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Procalcitonin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Procollagen III Peptide",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "P3NP; PIIINP",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Progesterone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Prolactin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Prostate Specific Antigen",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Protein C",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Protein creatinine ratio (urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Total protein",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Protein S",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Prothrombin time",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Prothrombin G20210A Mutation screen",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pseudogout (pyrophosphate crystals)",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "PTH",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Parathyroid hormone",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Pus",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Abscesses and Deep-Seated Wound Infections",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "PVIS",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Q Fever Serology and PCR (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Quiescent gout (urate crystals)",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Rapid/routine Carbapenemase-Producing Enterobacteriaceae (CPE) Screen",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "CPE screen; Carbapenemase-Producing Enterobacteriaceae (CPE) Screen",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Reducing substances (faeces only)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Renal FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Renin concentration",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Resin embedding/thin sectioning Electron Microscopy",
+      "category": "Histopathology / Anatomic Pathology",
+      "type": "laboratory",
+      "department": "Histopathology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Respiratory screen",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Respiratory virus PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Respiratory specimens",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "Sputum",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Respiratory virus PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "Respiratory screen; adenovirus",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Reticulocyte count",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Retroperitoneal mass FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Rheumatoid factor",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ribosomal",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Anti-nuclear antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "RIPA",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ristocetin induced platelet aggregation (RIPA)",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Rotavirus PCR – enteric",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Enteric Virus Panel",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Routine haemoglobinopathy screening",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Rubella Avidity (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Rubella IgG",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Rubella IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Salicylate",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Salivary gland FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Sapovirus PCR – enteric",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Enteric Virus Panel",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Schistosoma haematobium",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Ova, Cysts and Parasites",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Selenium",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Sero-negative arthropathies",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Sero-negative spondylarthropathies",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Serum 17-hydroxyprogesterone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "17-OHP",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Serum ferritin",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Serum folate",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Serum intrinisic factor antibodies",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Serum paraprotein identification/quantification",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Serum Protein Electrophoresis",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Serum Protein Electrophoresis",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "Serum paraprotein identification/quantification",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Serum vitamin B12",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "SHBG",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Sirolimus",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Skin antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Skin, superficial, non-surgical wounds",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Wounds – Skin, Superficial, Non-surgical",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Smooth muscle mitochondrial antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "Gastric Parietal Cell (GPC); Liver Kidney Microsomal (LKM); Mitochondrial antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Sodium (blood and urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Splenic FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Sputum",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Respiratory specimens",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "ß2 Microglobulin",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Staphylococcal serology – AST (referral)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Stem cell sterility check",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Sterile fluids",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Fluids from Normally Sterile Sites",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Stool for Sugar chromatography (paediatric only)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Faecal reducing substances",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Streptococcal serology – Antistreptolysin O (ASO)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "ASO",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Streptococcus pneumoniae serology",
+      "category": "Vaccine Serology",
+      "type": "laboratory",
+      "department": "Vaccine Evaluation Unit",
+      "notes": "Pneumococcal serotype-specific IgG",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Subcutaneous mass FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Sweat tests",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Syphilis antibody",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Treponema pallidum screen",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Syphilis confirmation including Immunoblot",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Syphilis IgM; Treponema pallidum confirmation",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Syphilis IgM",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Syphilis confirmation including Immunoblot",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "T Cell Activation Panel",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "T&B Lymphocyte Subsets",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": "See Immunodeficiency (T&B Lymphocyte Subsets)",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Tacrolimus (FK506, prograf)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "TB examination (microscopy)",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Mycobacteria – microscopy/culture",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "TB Gamma Interferon Release Assay (Quantiferon)",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Testicular FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Testis antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Testosterone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Tetanus antibodies",
+      "category": "Vaccine Serology",
+      "type": "laboratory",
+      "department": "Vaccine Evaluation Unit",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Theophylline",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Therapeutic Drug Monitoring of anti-TNF therapies Infliximab and Adalimumab",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Thiopental",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Thiopurine metabolites",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Thiopurine Methyltransferase (TPMT)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Throat Swab",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Thyroid FNA",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Thyroid peroxidase (TPO) antibodies",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "TPO",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Thyroid Stimulating Hormone",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "TSH",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Tips",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "See Intravascular cannulae",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Tissue and biopsies",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Tobramycin",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Total Protein",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "Protein creatine ratio",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Toxoplasma PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Toxoplasma serology (avidity)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Toxoplasma serology (IgG)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Toxoplasma serology (IgM)",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "TPO",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Thyroid peroxidase (TPO) antibodies",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Transferrin (and saturation)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Treponema pallidum (syphilis) PCR",
+      "category": "Molecular Microbiology",
+      "type": "laboratory",
+      "department": "Molecular Microbiology",
+      "notes": "See Treponema pallidum screen",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Treponema pallidum confirmation",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "See Syphilis confirmation including Immunoblot",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Treponema pallidum screen",
+      "category": "Virology",
+      "type": "laboratory",
+      "department": "Virology",
+      "notes": "Syphilis antibody; Treponema pallidum (syphilis) PCR",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Triglycerides",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Triiodothyronine (free T3)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Troponin T",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "TSH",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "See Thyroid Stimulating Hormone",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "TSH Receptor Antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Type I Procollagen N terminal Peptide",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": "P1NP",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Universal Antenatal Haemoglobinopathy Screening",
+      "category": "Haematology",
+      "type": "laboratory",
+      "department": "Haematology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Urate (blood and urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Urea (blood and urine)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Ureteric washing",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Urethral washing",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Urine (voided, catheterised, instrumented or from ileal conduit)",
+      "category": "Cytology",
+      "type": "laboratory",
+      "department": "Non-Gynaecology Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Urines",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Wear and/or loosening of prosthetic joints",
+      "category": "Synovial Fluid Analysis",
+      "type": "laboratory",
+      "department": "Synovial Fluid Cytology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Wounds – Skin, Superficial, Non-surgical",
+      "category": "Microbiology / Bacteriology",
+      "type": "laboratory",
+      "department": "Bacteriology",
+      "notes": "Skin, superficial, non-surgical wounds",
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Xanthochromia Screen (CSF)",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Zinc",
+      "category": "Biochemistry / Chemical Pathology",
+      "type": "laboratory",
+      "department": "Biochemistry",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    },
+    {
+      "name": "Zinc Transporter 8 (ZnT8) antibodies",
+      "category": "Immunology / Serology",
+      "type": "laboratory",
+      "department": "Immunology",
+      "notes": null,
+      "source": "Manchester University NHS Foundation Trust A-Z Laboratory Tests"
+    }
+  ]
+}

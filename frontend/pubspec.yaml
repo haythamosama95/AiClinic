@@ -81,6 +81,8 @@ flutter:
   assets:
     - assets/images/patient_avatar_female.png
     - assets/images/patient_avatar_male.png
+    - assets/dev/egyptian_medication_names.json
+    - assets/dev/egyptian_investigation_names.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

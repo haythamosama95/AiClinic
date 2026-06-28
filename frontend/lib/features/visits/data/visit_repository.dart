@@ -121,6 +121,35 @@ class VisitRepository with AppRpcInvoker {
     return created;
   }
 
+  /// Bulk-import medication catalog names (bootstrap admin, dev environments only).
+  Future<DevCatalogSeedResult> devSeedMedicationsCatalog({required List<String> names}) async {
+    return _devSeedCatalog(rpcName: 'dev_seed_medications_catalog', names: names, label: 'medications');
+  }
+
+  /// Bulk-import investigation catalog names (bootstrap admin, dev environments only).
+  Future<DevCatalogSeedResult> devSeedInvestigationsCatalog({required List<String> names}) async {
+    return _devSeedCatalog(rpcName: 'dev_seed_investigations_catalog', names: names, label: 'investigations');
+  }
+
+  Future<DevCatalogSeedResult> _devSeedCatalog({
+    required String rpcName,
+    required List<String> names,
+    required String label,
+  }) async {
+    if (names.isEmpty) {
+      return const DevCatalogSeedResult(inserted: 0, requested: 0);
+    }
+
+    final result = await invokeRpc(rpcName, {'p_names': names});
+    final inserted = result.data?['inserted'];
+    final requested = result.data?['requested'];
+    if (inserted is! num || requested is! num) {
+      throw StateError('Dev seed $label catalog returned an unexpected shape.');
+    }
+
+    return DevCatalogSeedResult(inserted: inserted.toInt(), requested: requested.toInt());
+  }
+
   Future<String> createTreatmentPlan({
     required String visitId,
     required String medicationName,

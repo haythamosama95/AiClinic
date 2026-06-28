@@ -143,6 +143,20 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           'created': true,
         },
       },
+      'dev_seed_medications_catalog' => {
+        'success': true,
+        'data': {
+          'inserted': (lastParams?['p_names'] as List?)?.length ?? 0,
+          'requested': (lastParams?['p_names'] as List?)?.length ?? 0,
+        },
+      },
+      'dev_seed_investigations_catalog' => {
+        'success': true,
+        'data': {
+          'inserted': (lastParams?['p_names'] as List?)?.length ?? 0,
+          'requested': (lastParams?['p_names'] as List?)?.length ?? 0,
+        },
+      },
       'update_treatment_plan' => {'success': true, 'data': {}},
       'archive_treatment_plan' => {'success': true, 'data': {}},
       'list_predefined_vital_signs' => {
