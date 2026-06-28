@@ -13,6 +13,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
@@ -110,7 +111,6 @@ class VisitDocumentationPage extends ConsumerWidget {
 
     if (result == null || !context.mounted) return;
 
-    ref.invalidate(visitDocumentationProvider(visitId));
     AppToast.success(context, message: 'Visit submitted. The linked appointment is now completed.');
   }
 
@@ -207,6 +207,18 @@ class _VisitDocumentationBody extends ConsumerWidget {
                   child: TreatmentPlanList(
                     visitId: visitId,
                     treatmentPlans: state.visit.treatmentPlans,
+                    canEdit: canEdit,
+                    onChanged: () =>
+                        ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+                  ),
+                ),
+                const SizedBox(height: SpacingTokens.lg),
+                VisitSectionCard(
+                  title: 'Investigations',
+                  description: 'Search investigations catalog or enter custom names with optional notes',
+                  child: InvestigationList(
+                    visitId: visitId,
+                    investigations: state.visit.investigations,
                     canEdit: canEdit,
                     onChanged: () =>
                         ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),

@@ -250,6 +250,66 @@ class VisitRepository with AppRpcInvoker {
     return created;
   }
 
+  Future<List<CatalogItem>> searchInvestigations({String? query, int limit = 20}) async {
+    final result = await invokeRpc('search_investigations', {'p_query': query?.trim() ?? '', 'p_limit': limit});
+    return _parseCatalogItems(result.data?['items']);
+  }
+
+  Future<CatalogCreateResult> createCatalogInvestigation({required String name}) async {
+    _assertNonEmpty('name', name);
+
+    final result = await invokeRpc('create_catalog_investigation', {'p_name': name.trim()});
+    final created = CatalogCreateResult.fromRpcData(result.data);
+    if (created == null) {
+      throw StateError('Create catalog investigation returned an unexpected shape.');
+    }
+    return created;
+  }
+
+  Future<String> createVisitInvestigation({
+    required String visitId,
+    required String name,
+    String? note,
+    String? investigationId,
+  }) async {
+    _assertNonEmpty('visitId', visitId);
+    _assertNonEmpty('name', name);
+
+    final result = await invokeRpc('create_visit_investigation', {
+      'p_visit_id': visitId.trim(),
+      'p_name': name.trim(),
+      'p_note': ?note,
+      if (investigationId != null && investigationId.trim().isNotEmpty) 'p_investigation_id': investigationId.trim(),
+    });
+
+    final id = result.data?['investigation_line_id']?.toString();
+    if (id == null || id.isEmpty) {
+      throw StateError('Create visit investigation returned an unexpected shape.');
+    }
+    return id;
+  }
+
+  Future<void> updateVisitInvestigation({
+    required String investigationLineId,
+    String? name,
+    String? note,
+    String? investigationId,
+  }) async {
+    _assertNonEmpty('investigationLineId', investigationLineId);
+
+    await invokeRpc('update_visit_investigation', {
+      'p_investigation_line_id': investigationLineId.trim(),
+      'p_name': ?name,
+      'p_note': ?note,
+      if (investigationId != null) 'p_investigation_id': investigationId.trim().isEmpty ? null : investigationId.trim(),
+    });
+  }
+
+  Future<void> archiveVisitInvestigation({required String investigationLineId}) async {
+    _assertNonEmpty('investigationLineId', investigationLineId);
+    await invokeRpc('archive_visit_investigation', {'p_investigation_line_id': investigationLineId.trim()});
+  }
+
   Future<String> registerVisitAttachment({
     required String visitId,
     required String filePath,

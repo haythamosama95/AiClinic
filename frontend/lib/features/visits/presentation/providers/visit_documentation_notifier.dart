@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
+import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 
 /// Clinical note save lifecycle on the visit documentation screen.
@@ -130,7 +131,58 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
   bool _canEditVisit(VisitDetail visit) {
     final permissions = ref.read(permissionServiceProvider);
     final branchIds = ref.read(authSessionProvider).context?.branchIds ?? const <String>[];
+    // Post-submit editing allowed on completed visits (013 FR-017, V1-5 parity).
     return permissions.canEditVisitSoap() && branchIds.contains(visit.branchId);
+  }
+
+  /// Whether the visit can be submitted (in-progress only, with edit permission).
+  bool canSubmitVisit(VisitDetail visit) => _canEditVisit(visit) && visit.status == VisitStatus.inProgress;
+
+  /// Completes an in-progress visit. Persists local draft fields and keeps documentation editable afterward.
+  Future<CompleteVisitResult> completeVisit() async {
+    final current = state.value;
+    if (current == null) {
+      throw StateError('Visit documentation is not loaded.');
+    }
+    if (!canSubmitVisit(current.visit)) {
+      throw RpcFailure(
+        RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Only in-progress visits with edit permission can be submitted.',
+        ),
+      );
+    }
+
+    try {
+      final result = await ref
+          .read(visitRepositoryProvider)
+          .completeVisit(visitId: current.visit.id, expectedUpdatedAt: current.expectedUpdatedAt);
+
+      final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
+      state = AsyncData(
+        VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns).copyWith(
+          complaint: current.complaint,
+          history: current.history,
+          examination: current.examination,
+          diagnosis: current.diagnosis,
+          plan: current.plan,
+          expectedUpdatedAt: refreshed.documentation?.updatedAt ?? refreshed.updatedAt ?? current.expectedUpdatedAt,
+          noteEditMode: DocumentationEditMode.editing,
+          saveStatus: DocumentationSaveStatus.saved,
+          clearError: true,
+        ),
+      );
+      return result;
+    } on RpcFailure catch (error) {
+      if (error.code == 'DOCUMENTATION_REQUIRED_FOR_COMPLETE') {
+        final currentAfter = state.value ?? current;
+        state = AsyncData(
+          currentAfter.copyWith(saveStatus: DocumentationSaveStatus.error, errorMessage: visitMessageForRpc(error)),
+        );
+      }
+      rethrow;
+    }
   }
 
   void updateComplaint(String value) => _updateDraft(complaint: value);

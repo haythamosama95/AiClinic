@@ -130,10 +130,10 @@ description: "Task list for Visits Page Redesign (014)"
 
 ### Implementation for User Story 4
 
-- [ ] T041 [P] [US4] Create `VisitInvestigation` domain model in `frontend/lib/features/visits/domain/visit_investigation.dart`
-- [ ] T042 [US4] Add `searchInvestigations`, investigation create/update/archive, and `createCatalogInvestigation` RPC wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T043 [US4] Create `InvestigationList` widget with autocomplete, note field, and save-to-catalog prompt in `frontend/lib/features/visits/presentation/widgets/investigation_list.dart`
-- [ ] T044 [US4] Integrate investigations section into `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart` and `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
+- [X] T041 [P] [US4] Create `VisitInvestigation` domain model in `frontend/lib/features/visits/domain/visit_investigation.dart`
+- [X] T042 [US4] Add `searchInvestigations`, investigation create/update/archive, and `createCatalogInvestigation` RPC wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T043 [US4] Create `InvestigationList` widget with autocomplete, note field, and save-to-catalog prompt in `frontend/lib/features/visits/presentation/widgets/investigation_list.dart`
+- [X] T044 [US4] Integrate investigations section into `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart` and `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
 
 **Checkpoint**: User Story 4 independently testable — investigation ordering with catalog search
 
@@ -147,10 +147,10 @@ description: "Task list for Visits Page Redesign (014)"
 
 ### Implementation for User Story 5
 
-- [ ] T045 [US5] Update `VisitSubmitDialog` copy and validation for `DOCUMENTATION_REQUIRED_FOR_COMPLETE` in `frontend/lib/features/visits/presentation/widgets/visit_submit_dialog.dart`
-- [ ] T046 [US5] Update complete-visit flow in `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart` for new error code and post-submit edit allowance
-- [ ] T047 [US5] Verify attachment upload/list/download unchanged in `frontend/lib/features/visits/data/visit_attachment_service.dart` and `frontend/lib/features/visits/presentation/widgets/visit_attachment_list.dart`
-- [ ] T048 [US5] Confirm attachment regression cases pass in `backend/tests/visit_medical_records_crud.sql` after documentation redesign
+- [X] T045 [US5] Update `VisitSubmitDialog` copy and validation for `DOCUMENTATION_REQUIRED_FOR_COMPLETE` in `frontend/lib/features/visits/presentation/widgets/visit_submit_dialog.dart`
+- [X] T046 [US5] Update complete-visit flow in `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart` for new error code and post-submit edit allowance
+- [X] T047 [US5] Verify attachment upload/list/download unchanged in `frontend/lib/features/visits/data/visit_attachment_service.dart` and `frontend/lib/features/visits/presentation/widgets/visit_attachment_list.dart`
+- [X] T048 [US5] Confirm attachment regression cases pass in `backend/tests/visit_medical_records_crud.sql` after documentation redesign
 
 **Checkpoint**: Visit completion and attachments verified — no regression from V1-5
 

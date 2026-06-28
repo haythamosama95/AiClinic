@@ -6,7 +6,8 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/core/utils/user_error_mapper.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
-import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart' show CompleteVisitResult;
+import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 /// Confirms visit submission and completes the linked appointment (V1-5 US6).
 class VisitSubmitDialog extends ConsumerStatefulWidget {
@@ -42,9 +43,7 @@ class _VisitSubmitDialogState extends ConsumerState<VisitSubmitDialog> {
     });
 
     try {
-      final result = await ref
-          .read(visitRepositoryProvider)
-          .completeVisit(visitId: widget.visitId, expectedUpdatedAt: widget.expectedUpdatedAt);
+      final result = await ref.read(visitDocumentationProvider(widget.visitId).notifier).completeVisit();
 
       if (!mounted) {
         return;
@@ -81,7 +80,8 @@ class _VisitSubmitDialogState extends ConsumerState<VisitSubmitDialog> {
           children: [
             const Text(
               'Submitting completes this visit and marks the linked appointment as completed. '
-              'At least one clinical note section must contain text.',
+              'At least one clinical note section (complaint, history, examination, diagnosis, or plan) must contain text. '
+              'After submission, documentation remains editable for users with edit permission.',
             ),
             if (_formError != null) ...[
               const SizedBox(height: SpacingTokens.md),
