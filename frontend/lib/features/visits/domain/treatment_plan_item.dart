@@ -2,7 +2,7 @@ import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
 import 'package:flutter/foundation.dart';
 
-/// Treatment plan line item linked to a visit (V1-5).
+/// Treatment plan line item linked to a visit (013 duration-only model).
 @immutable
 class TreatmentPlanItem {
   const TreatmentPlanItem({
@@ -14,8 +14,6 @@ class TreatmentPlanItem {
     this.dosage,
     this.frequency,
     this.duration,
-    this.startDate,
-    this.endDate,
     this.notes,
   });
 
@@ -27,10 +25,6 @@ class TreatmentPlanItem {
   final String? dosage;
   final String? frequency;
   final String? duration;
-
-  /// Legacy DB columns from pre-duration schema; shown in UI but not editable or sent on update.
-  final DateTime? startDate;
-  final DateTime? endDate;
   final String? notes;
 
   static TreatmentPlanItem? fromRow(Map<String, dynamic> row, {String? visitId, String? patientId}) {
@@ -59,8 +53,6 @@ class TreatmentPlanItem {
       dosage: optionalVisitString(row['dosage']),
       frequency: optionalVisitString(row['frequency']),
       duration: optionalVisitString(row['duration']),
-      startDate: parseVisitDate(row['start_date']),
-      endDate: parseVisitDate(row['end_date']),
       notes: optionalVisitString(row['notes']),
     );
   }
@@ -74,8 +66,6 @@ class TreatmentPlanItem {
     Object? dosage = copyWithSentinel,
     Object? frequency = copyWithSentinel,
     Object? duration = copyWithSentinel,
-    Object? startDate = copyWithSentinel,
-    Object? endDate = copyWithSentinel,
     Object? notes = copyWithSentinel,
   }) {
     return TreatmentPlanItem(
@@ -87,8 +77,6 @@ class TreatmentPlanItem {
       dosage: identical(dosage, copyWithSentinel) ? this.dosage : dosage as String?,
       frequency: identical(frequency, copyWithSentinel) ? this.frequency : frequency as String?,
       duration: identical(duration, copyWithSentinel) ? this.duration : duration as String?,
-      startDate: identical(startDate, copyWithSentinel) ? this.startDate : startDate as DateTime?,
-      endDate: identical(endDate, copyWithSentinel) ? this.endDate : endDate as DateTime?,
       notes: identical(notes, copyWithSentinel) ? this.notes : notes as String?,
     );
   }
@@ -106,23 +94,10 @@ class TreatmentPlanItem {
             dosage == other.dosage &&
             frequency == other.frequency &&
             duration == other.duration &&
-            startDate == other.startDate &&
-            endDate == other.endDate &&
             notes == other.notes;
   }
 
   @override
-  int get hashCode => Object.hash(
-    id,
-    visitId,
-    patientId,
-    medicationName,
-    medicationId,
-    dosage,
-    frequency,
-    duration,
-    startDate,
-    endDate,
-    notes,
-  );
+  int get hashCode =>
+      Object.hash(id, visitId, patientId, medicationName, medicationId, dosage, frequency, duration, notes);
 }

@@ -7,10 +7,12 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
 
-/// Editable treatment plan list for visit documentation (V1-5 US4).
+/// Editable treatment plan list for visit documentation (013 US3).
 class TreatmentPlanList extends ConsumerStatefulWidget {
   const TreatmentPlanList({
     required this.visitId,
@@ -117,21 +119,38 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
       _isSubmitting = true;
       _errorMessage = null;
     });
+
     try {
-      await ref.read(visitRepositoryProvider).createTreatmentPlan(
+      final normalizedName = CatalogNameNormalizer.normalize(data.medicationName);
+      if (normalizedName.isEmpty) {
+        throw RpcFailure(
+          RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Medication name is required.'),
+        );
+      }
+
+      final isCustom = data.isCustomMedication;
+      await ref
+          .read(visitRepositoryProvider)
+          .createTreatmentPlan(
             visitId: widget.visitId,
-            medicationName: data.medicationName,
+            medicationName: normalizedName,
+            medicationId: data.medicationId,
             dosage: data.dosage,
             frequency: data.frequency,
             duration: data.duration,
             notes: data.notes,
           );
-      if (mounted) {
-        setState(() {
-          _showAddForm = false;
-          _isSubmitting = false;
-        });
-        widget.onChanged();
+
+      if (!mounted) return;
+
+      setState(() {
+        _showAddForm = false;
+        _isSubmitting = false;
+      });
+      widget.onChanged();
+
+      if (isCustom && mounted) {
+        await _maybeSaveCustomToCatalog(normalizedName: normalizedName);
       }
     } on RpcFailure catch (e) {
       if (mounted) {
@@ -155,29 +174,61 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
       _isSubmitting = true;
       _errorMessage = null;
     });
+
     try {
-      final params = data.updateParamsFor(existing);
-      final hasChanges = params.medicationName != null ||
-          params.dosage != null ||
-          params.frequency != null ||
-          params.duration != null ||
-          params.notes != null;
+      final normalizedName = CatalogNameNormalizer.normalize(data.medicationName);
+      if (normalizedName.isEmpty) {
+        throw RpcFailure(
+          RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Medication name is required.'),
+        );
+      }
+
+      final normalizedData = TreatmentPlanFormData(
+        medicationName: normalizedName,
+        medicationId: data.medicationId,
+        dosage: data.dosage,
+        frequency: data.frequency,
+        duration: data.duration,
+        notes: data.notes,
+      );
+      final updateParams = normalizedData.updateParamsFor(existing);
+
+      final hasChanges =
+          updateParams.medicationName != null ||
+          updateParams.medicationId != null ||
+          updateParams.dosage != null ||
+          updateParams.frequency != null ||
+          updateParams.duration != null ||
+          updateParams.notes != null;
+
       if (hasChanges) {
-        await ref.read(visitRepositoryProvider).updateTreatmentPlan(
+        await ref
+            .read(visitRepositoryProvider)
+            .updateTreatmentPlan(
               treatmentPlanId: existing.id,
-              medicationName: params.medicationName,
-              dosage: params.dosage,
-              frequency: params.frequency,
-              duration: params.duration,
-              notes: params.notes,
+              medicationName: updateParams.medicationName,
+              medicationId: updateParams.medicationId,
+              dosage: updateParams.dosage,
+              frequency: updateParams.frequency,
+              duration: updateParams.duration,
+              notes: updateParams.notes,
             );
       }
-      if (mounted) {
-        setState(() {
-          _editingPlanId = null;
-          _isSubmitting = false;
-        });
-        widget.onChanged();
+
+      if (!mounted) return;
+
+      final becameCustom = data.isCustomMedication && existing.medicationId != null;
+      final wasCustom = existing.medicationId == null;
+      final nameChanged = normalizedName != existing.medicationName;
+
+      setState(() {
+        _editingPlanId = null;
+        _isSubmitting = false;
+      });
+      widget.onChanged();
+
+      if (mounted && (becameCustom || (wasCustom && nameChanged))) {
+        await _maybeSaveCustomToCatalog(normalizedName: normalizedName);
       }
     } on RpcFailure catch (e) {
       if (mounted) {
@@ -234,6 +285,25 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
           _errorMessage = e.toString();
         });
       }
+    }
+  }
+
+  Future<void> _maybeSaveCustomToCatalog({required String normalizedName}) async {
+    if (!mounted) return;
+
+    final save = await SaveToCatalogDialog.show(context, normalizedName: normalizedName, itemTypeLabel: 'medication');
+    if (save != true || !mounted) return;
+
+    try {
+      await ref.read(visitRepositoryProvider).createCatalogMedication(name: normalizedName);
+      if (!mounted) return;
+      AppToast.success(context, message: 'Saved "$normalizedName" to your medication catalog.');
+    } on RpcFailure catch (e) {
+      if (!mounted) return;
+      AppToast.error(context, message: visitMessageForRpc(e));
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.error(context, message: e.toString());
     }
   }
 }

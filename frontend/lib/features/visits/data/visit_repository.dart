@@ -105,24 +105,45 @@ class VisitRepository with AppRpcInvoker {
     return completed;
   }
 
+  Future<List<CatalogItem>> searchMedications({String? query, int limit = 20}) async {
+    final result = await invokeRpc('search_medications', {'p_query': query?.trim() ?? '', 'p_limit': limit});
+    return _parseCatalogItems(result.data?['items']);
+  }
+
+  Future<CatalogCreateResult> createCatalogMedication({required String name}) async {
+    _assertNonEmpty('name', name);
+
+    final result = await invokeRpc('create_catalog_medication', {'p_name': name.trim()});
+    final created = CatalogCreateResult.fromRpcData(result.data);
+    if (created == null) {
+      throw StateError('Create catalog medication returned an unexpected shape.');
+    }
+    return created;
+  }
+
   Future<String> createTreatmentPlan({
     required String visitId,
     required String medicationName,
-    String? dosage,
-    String? frequency,
-    String? duration,
+    required String dosage,
+    required String frequency,
+    required String duration,
+    String? medicationId,
     String? notes,
   }) async {
     _assertNonEmpty('visitId', visitId);
     _assertNonEmpty('medicationName', medicationName);
+    _assertNonEmpty('dosage', dosage);
+    _assertNonEmpty('frequency', frequency);
+    _assertNonEmpty('duration', duration);
 
     final result = await invokeRpc('create_treatment_plan', {
       'p_visit_id': visitId.trim(),
       'p_medication_name': medicationName.trim(),
-      'p_dosage': ?dosage,
-      'p_frequency': ?frequency,
-      'p_duration': ?duration,
+      'p_dosage': dosage.trim(),
+      'p_frequency': frequency.trim(),
+      'p_duration': duration.trim(),
       'p_notes': ?notes,
+      if (medicationId != null && medicationId.trim().isNotEmpty) 'p_medication_id': medicationId.trim(),
     });
 
     final id = result.data?['treatment_plan_id']?.toString();
@@ -135,6 +156,7 @@ class VisitRepository with AppRpcInvoker {
   Future<void> updateTreatmentPlan({
     required String treatmentPlanId,
     String? medicationName,
+    String? medicationId,
     String? dosage,
     String? frequency,
     String? duration,
@@ -145,6 +167,7 @@ class VisitRepository with AppRpcInvoker {
     await invokeRpc('update_treatment_plan', {
       'p_treatment_plan_id': treatmentPlanId.trim(),
       'p_medication_name': ?medicationName,
+      if (medicationId != null) 'p_medication_id': medicationId.trim().isEmpty ? null : medicationId.trim(),
       'p_dosage': ?dosage,
       'p_frequency': ?frequency,
       'p_duration': ?duration,

@@ -30,7 +30,7 @@ void main() {
       });
       expect(item, isNotNull);
       expect(item!.dosage, isNull);
-      expect(item.startDate, isNull);
+      expect(item.medicationId, isNull);
     });
 
     test('parses get_visit payload using parent visit and patient ids', () {

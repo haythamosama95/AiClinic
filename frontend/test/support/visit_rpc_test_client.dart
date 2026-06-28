@@ -127,6 +127,22 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
         'success': true,
         'data': {'treatment_plan_id': 'tttttttt-tttt-4ttt-8ttt-tttttttttttt'},
       },
+      'search_medications' => {
+        'success': true,
+        'data': {
+          'items': [
+            {'id': 'mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm', 'name': 'Amoxicillin'},
+          ],
+        },
+      },
+      'create_catalog_medication' => {
+        'success': true,
+        'data': {
+          'id': 'mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm',
+          'name': lastParams?['p_name'] ?? 'Custom drug',
+          'created': true,
+        },
+      },
       'update_treatment_plan' => {'success': true, 'data': {}},
       'archive_treatment_plan' => {'success': true, 'data': {}},
       'list_predefined_vital_signs' => {

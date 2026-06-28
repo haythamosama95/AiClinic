@@ -112,11 +112,11 @@ description: "Task list for Visits Page Redesign (014)"
 
 ### Implementation for User Story 3
 
-- [ ] T036 [P] [US3] Update `TreatmentPlanItem` domain model: add `medicationId`, remove start/end dates in `frontend/lib/features/visits/domain/treatment_plan_item.dart`
-- [ ] T037 [US3] Add `searchMedications`, `createCatalogMedication`, and updated treatment plan create/update/archive RPC wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T038 [US3] Create `CatalogAutocompleteField` with 300ms debounced search and free-text commit in `frontend/lib/features/visits/presentation/widgets/catalog_autocomplete_field.dart`
-- [ ] T039 [US3] Rework `TreatmentPlanList` for medication autocomplete, duration-only, field validation, and save-to-catalog prompt in `frontend/lib/features/visits/presentation/widgets/treatment_plan_list.dart`
-- [ ] T040 [US3] Integrate treatments section into `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart` and `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
+- [X] T036 [P] [US3] Update `TreatmentPlanItem` domain model: add `medicationId`, remove start/end dates in `frontend/lib/features/visits/domain/treatment_plan_item.dart`
+- [X] T037 [US3] Add `searchMedications`, `createCatalogMedication`, and updated treatment plan create/update/archive RPC wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T038 [US3] Create `CatalogAutocompleteField` with 300ms debounced search and free-text commit in `frontend/lib/features/visits/presentation/widgets/catalog_autocomplete_field.dart`
+- [X] T039 [US3] Rework `TreatmentPlanList` for medication autocomplete, duration-only, field validation, and save-to-catalog prompt in `frontend/lib/features/visits/presentation/widgets/treatment_plan_list.dart`
+- [X] T040 [US3] Integrate treatments section into `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart` and `frontend/lib/features/visits/presentation/providers/visit_documentation_notifier.dart`
 
 **Checkpoint**: User Stories 1–3 work — full treatment prescribing with catalog search and duration-only model
 

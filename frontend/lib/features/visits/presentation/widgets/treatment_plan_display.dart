@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
 
 /// Shared treatment plan presentation for documentation, detail, and list views.
 class TreatmentPlanDisplay {
@@ -13,24 +15,11 @@ class TreatmentPlanDisplay {
 
   /// Subtitle segments for a treatment plan card (dosage · frequency · duration).
   static List<String> subtitleParts(TreatmentPlanItem plan) {
-    final parts = <String>[
+    return [
       if (plan.dosage != null && plan.dosage!.isNotEmpty) plan.dosage!,
       if (plan.frequency != null && plan.frequency!.isNotEmpty) plan.frequency!,
       if (plan.duration != null && plan.duration!.isNotEmpty) plan.duration!,
     ];
-    final legacyDates = _legacyDateRange(plan.startDate, plan.endDate);
-    if (legacyDates != null && parts.every((p) => p != legacyDates)) {
-      parts.add(legacyDates);
-    }
-    return parts;
-  }
-
-  static String? _legacyDateRange(DateTime? start, DateTime? end) {
-    final fmt = DateFormat.yMMMd();
-    if (start != null && end != null) return '${fmt.format(start)} – ${fmt.format(end)}';
-    if (start != null) return 'From ${fmt.format(start)}';
-    if (end != null) return 'Until ${fmt.format(end)}';
-    return null;
   }
 }
 
@@ -66,14 +55,20 @@ class TreatmentPlanCardView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(plan.medicationName, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    plan.medicationName,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
                   if (subtitleParts.isNotEmpty) ...[
                     const SizedBox(height: SpacingTokens.xs),
                     Text(subtitleParts.join(' · '), style: Theme.of(context).textTheme.bodySmall),
                   ],
                   if (plan.notes != null && plan.notes!.isNotEmpty) ...[
                     const SizedBox(height: SpacingTokens.xs),
-                    Text(plan.notes!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground)),
+                    Text(
+                      plan.notes!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                    ),
                   ],
                 ],
               ),
@@ -105,20 +100,30 @@ class TreatmentPlanCardView extends StatelessWidget {
 
 /// Form data for creating or updating a treatment plan.
 class TreatmentPlanFormData {
-  TreatmentPlanFormData({required this.medicationName, this.dosage, this.frequency, this.duration, this.notes});
+  const TreatmentPlanFormData({
+    required this.medicationName,
+    this.medicationId,
+    required this.dosage,
+    required this.frequency,
+    required this.duration,
+    this.notes,
+  });
 
   final String medicationName;
-  final String? dosage;
-  final String? frequency;
-  final String? duration;
+  final String? medicationId;
+  final String dosage;
+  final String frequency;
+  final String duration;
   final String? notes;
 
-  ({String? medicationName, String? dosage, String? frequency, String? duration, String? notes}) updateParamsFor(
-    TreatmentPlanItem existing,
-  ) {
+  bool get isCustomMedication => medicationId == null;
+
+  ({String? medicationName, String? medicationId, String? dosage, String? frequency, String? duration, String? notes})
+  updateParamsFor(TreatmentPlanItem existing) {
     final trimmedName = medicationName.trim();
     return (
       medicationName: trimmedName != existing.medicationName ? trimmedName : null,
+      medicationId: medicationId != existing.medicationId ? medicationId : null,
       dosage: _optionalUpdateParam(existing.dosage, dosage),
       frequency: _optionalUpdateParam(existing.frequency, frequency),
       duration: _optionalUpdateParam(existing.duration, duration),
@@ -145,7 +150,7 @@ class TreatmentPlanFormData {
 }
 
 /// Add/edit treatment plan form shared across visit documentation.
-class TreatmentPlanFormView extends StatefulWidget {
+class TreatmentPlanFormView extends ConsumerStatefulWidget {
   const TreatmentPlanFormView({
     this.initialPlan,
     required this.isSubmitting,
@@ -160,31 +165,31 @@ class TreatmentPlanFormView extends StatefulWidget {
   final VoidCallback onCancel;
 
   @override
-  State<TreatmentPlanFormView> createState() => _TreatmentPlanFormViewState();
+  ConsumerState<TreatmentPlanFormView> createState() => _TreatmentPlanFormViewState();
 }
 
-class _TreatmentPlanFormViewState extends State<TreatmentPlanFormView> {
+class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _medication;
+  final _medicationFieldKey = GlobalKey<CatalogAutocompleteFieldState>();
   late final TextEditingController _dosage;
   late final TextEditingController _frequency;
   late final TextEditingController _duration;
   late final TextEditingController _notes;
+  CatalogFieldSelection _medicationSelection = const CatalogFieldSelection(name: '');
 
   @override
   void initState() {
     super.initState();
-    final p = widget.initialPlan;
-    _medication = TextEditingController(text: p?.medicationName ?? '');
-    _dosage = TextEditingController(text: p?.dosage ?? '');
-    _frequency = TextEditingController(text: p?.frequency ?? '');
-    _duration = TextEditingController(text: p?.duration ?? '');
-    _notes = TextEditingController(text: p?.notes ?? '');
+    final plan = widget.initialPlan;
+    _medicationSelection = CatalogFieldSelection(name: plan?.medicationName ?? '', catalogId: plan?.medicationId);
+    _dosage = TextEditingController(text: plan?.dosage ?? '');
+    _frequency = TextEditingController(text: plan?.frequency ?? '');
+    _duration = TextEditingController(text: plan?.duration ?? '');
+    _notes = TextEditingController(text: plan?.notes ?? '');
   }
 
   @override
   void dispose() {
-    _medication.dispose();
     _dosage.dispose();
     _frequency.dispose();
     _duration.dispose();
@@ -215,12 +220,16 @@ class _TreatmentPlanFormViewState extends State<TreatmentPlanFormView> {
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: SpacingTokens.md),
-              AppTextField(
-                key: const Key('treatment_plan_medication_field'),
-                label: 'Medication name *',
-                controller: _medication,
+              CatalogAutocompleteField(
+                key: _medicationFieldKey,
+                label: 'Medication *',
+                initialName: widget.initialPlan?.medicationName,
+                initialCatalogId: widget.initialPlan?.medicationId,
                 enabled: !widget.isSubmitting,
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                hintText: 'Search medications or enter a custom name',
+                onSearch: (query) => ref.read(visitRepositoryProvider).searchMedications(query: query),
+                onSelectionChanged: (selection) => setState(() => _medicationSelection = selection),
+                validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
               ),
               const SizedBox(height: SpacingTokens.sm),
               Row(
@@ -228,18 +237,20 @@ class _TreatmentPlanFormViewState extends State<TreatmentPlanFormView> {
                   Expanded(
                     child: AppTextField(
                       key: const Key('treatment_plan_dosage_field'),
-                      label: 'Dosage',
+                      label: 'Dosage *',
                       controller: _dosage,
                       enabled: !widget.isSubmitting,
+                      validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
                     ),
                   ),
                   const SizedBox(width: SpacingTokens.sm),
                   Expanded(
                     child: AppTextField(
                       key: const Key('treatment_plan_frequency_field'),
-                      label: 'Frequency',
+                      label: 'Frequency *',
                       controller: _frequency,
                       enabled: !widget.isSubmitting,
+                      validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
                     ),
                   ),
                 ],
@@ -247,10 +258,11 @@ class _TreatmentPlanFormViewState extends State<TreatmentPlanFormView> {
               const SizedBox(height: SpacingTokens.sm),
               AppTextField(
                 key: const Key('treatment_plan_duration_field'),
-                label: 'Duration',
+                label: 'Duration *',
                 hintText: 'e.g. 7 days, 2 weeks',
                 controller: _duration,
                 enabled: !widget.isSubmitting,
+                validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
               ),
               const SizedBox(height: SpacingTokens.sm),
               AppTextField(
@@ -286,24 +298,31 @@ class _TreatmentPlanFormViewState extends State<TreatmentPlanFormView> {
     );
   }
 
+  void _submit() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final medicationName = _medicationFieldKey.currentState?.currentSelection.name ?? _medicationSelection.name;
+    final medicationId = _medicationFieldKey.currentState?.currentSelection.catalogId ?? _medicationSelection.catalogId;
+    final isEdit = widget.initialPlan != null;
+
+    widget.onSubmit(
+      TreatmentPlanFormData(
+        medicationName: medicationName.trim(),
+        medicationId: medicationId,
+        dosage: _dosage.text.trim(),
+        frequency: _frequency.text.trim(),
+        duration: _duration.text.trim(),
+        notes: _optionalFieldForSubmit(_notes.text.trim(), isEdit: isEdit),
+      ),
+    );
+  }
+
   String? _optionalFieldForSubmit(String trimmed, {required bool isEdit}) {
     if (trimmed.isEmpty) {
       return isEdit ? '' : null;
     }
     return trimmed;
-  }
-
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-    final isEdit = widget.initialPlan != null;
-    widget.onSubmit(
-      TreatmentPlanFormData(
-        medicationName: _medication.text.trim(),
-        dosage: _optionalFieldForSubmit(_dosage.text.trim(), isEdit: isEdit),
-        frequency: _optionalFieldForSubmit(_frequency.text.trim(), isEdit: isEdit),
-        duration: _optionalFieldForSubmit(_duration.text.trim(), isEdit: isEdit),
-        notes: _optionalFieldForSubmit(_notes.text.trim(), isEdit: isEdit),
-      ),
-    );
   }
 }

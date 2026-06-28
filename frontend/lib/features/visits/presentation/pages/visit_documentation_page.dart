@@ -203,7 +203,7 @@ class _VisitDocumentationBody extends ConsumerWidget {
                 const SizedBox(height: SpacingTokens.lg),
                 VisitSectionCard(
                   title: 'Treatment plans',
-                  description: 'Prescriptions and medication instructions',
+                  description: 'Search medications, enter custom names, and record dose, frequency, and duration',
                   child: TreatmentPlanList(
                     visitId: visitId,
                     treatmentPlans: state.visit.treatmentPlans,
