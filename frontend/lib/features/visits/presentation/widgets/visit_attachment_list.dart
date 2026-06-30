@@ -7,8 +7,6 @@ import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
@@ -16,6 +14,8 @@ import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart' show VisitAttachmentDownloadResult;
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Visit attachment list with upload, progress, and download (V1-5 US5).
 class VisitAttachmentList extends ConsumerStatefulWidget {
@@ -53,7 +53,6 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
     final dateFormat = DateFormat.yMMMd().add_jm();
 
     return Column(
@@ -94,59 +93,28 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
           Text(
             _errorMessage!,
             key: const Key('visit_attachment_error'),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.destructive),
+            style: context.visitTheme.caption(color: context.visitTheme.danger),
           ),
         ],
         if (widget.attachments.isEmpty && !_isUploading)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
-            child: Text(
-              'No attachments yet.',
-              key: const Key('visit_attachment_empty'),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-            ),
+          const VisitEmptyHint(
+            key: Key('visit_attachment_empty'),
+            message: 'No attachments yet.',
+            icon: Icons.attach_file_outlined,
           ),
-        ...widget.attachments.map((attachment) {
-          final title = attachment.label?.trim().isNotEmpty == true ? attachment.label! : attachment.fileType.label;
-          final subtitle = [
-            attachment.fileType.label,
-            _formatSize(attachment.sizeBytes),
-            if (attachment.uploadedByName?.trim().isNotEmpty == true) attachment.uploadedByName!,
-            dateFormat.format(attachment.createdAt.toLocal()),
-          ].join(' · ');
-
-          return Padding(
-            padding: const EdgeInsets.only(top: SpacingTokens.sm),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.muted.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(context.shapeTokens.md),
-                border: Border.all(color: colors.border),
+        Wrap(
+          spacing: SpacingTokens.sm,
+          runSpacing: SpacingTokens.sm,
+          children: [
+            for (final attachment in widget.attachments)
+              _AttachmentTile(
+                attachment: attachment,
+                dateFormat: dateFormat,
+                isDownloading: _downloadingAttachmentId == attachment.id,
+                onDownload: () => _download(attachment.id),
               ),
-              child: ListTile(
-                key: Key('visit_attachment_row_${attachment.id}'),
-                contentPadding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md),
-                leading: Icon(_iconForType(attachment.fileType), color: colors.primary),
-                title: Text(title),
-                subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-                trailing: attachment.canDownload
-                    ? _downloadingAttachmentId == attachment.id
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: AppCircularProgress(key: Key('visit_attachment_download_progress')),
-                          )
-                        : AppIconButton(
-                            key: Key('visit_attachment_download_${attachment.id}'),
-                            tooltip: 'Download',
-                            icon: const Icon(Icons.download_outlined, size: 18),
-                            onPressed: () => _download(attachment.id),
-                          )
-                    : null,
-              ),
-            ),
-          );
-        }),
+          ],
+        ),
       ],
     );
   }
@@ -172,12 +140,9 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     });
 
     try {
-      await ref.read(visitAttachmentServiceProvider).uploadAndRegister(
-            organizationId: orgId,
-            branchId: widget.branchId,
-            visitId: widget.visitId,
-            pick: pick,
-          );
+      await ref
+          .read(visitAttachmentServiceProvider)
+          .uploadAndRegister(organizationId: orgId, branchId: widget.branchId, visitId: widget.visitId, pick: pick);
       if (!mounted) return;
       widget.onChanged();
     } catch (error) {
@@ -260,5 +225,86 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
       VisitAttachmentFileType.docx => Icons.description_outlined,
       VisitAttachmentFileType.jpeg || VisitAttachmentFileType.png => Icons.image_outlined,
     };
+  }
+}
+
+class _AttachmentTile extends StatelessWidget {
+  const _AttachmentTile({
+    required this.attachment,
+    required this.dateFormat,
+    required this.isDownloading,
+    required this.onDownload,
+  });
+
+  final VisitAttachmentItem attachment;
+  final DateFormat dateFormat;
+  final bool isDownloading;
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.visitTheme;
+    final title = attachment.label?.trim().isNotEmpty == true ? attachment.label! : attachment.fileType.label;
+    final meta = [
+      _VisitAttachmentListState._formatSize(attachment.sizeBytes),
+      if (attachment.uploadedByName?.trim().isNotEmpty == true) attachment.uploadedByName!,
+      dateFormat.format(attachment.createdAt.toLocal()),
+    ].join(' · ');
+
+    return ConstrainedBox(
+      key: Key('visit_attachment_row_${attachment.id}'),
+      constraints: const BoxConstraints(minWidth: 200, maxWidth: 280),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.tile,
+          borderRadius: BorderRadius.circular(theme.tileRadius),
+          border: Border.all(color: theme.hairline),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(SpacingTokens.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: theme.pulse.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(theme.tileRadius - 1),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      _VisitAttachmentListState._iconForType(attachment.fileType),
+                      size: 20,
+                      color: theme.pulseDeep,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (attachment.canDownload)
+                    isDownloading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: AppCircularProgress(key: Key('visit_attachment_download_progress')),
+                          )
+                        : AppIconButton(
+                            key: Key('visit_attachment_download_${attachment.id}'),
+                            tooltip: 'Download',
+                            icon: const Icon(Icons.download_outlined, size: 18),
+                            onPressed: onDownload,
+                          ),
+                ],
+              ),
+              const SizedBox(height: SpacingTokens.sm),
+              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.bodyStrong(size: 14)),
+              const SizedBox(height: SpacingTokens.xs),
+              Text(meta, style: theme.caption(size: 12)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

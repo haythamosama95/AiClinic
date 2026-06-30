@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
 /// Shared treatment plan presentation for documentation, detail, and list views.
 /// Duration-only model — no start/end dates (013).
@@ -24,7 +23,7 @@ class TreatmentPlanDisplay {
   }
 }
 
-/// Read-only treatment plan card used across visit screens.
+/// Read-only treatment plan card — prescription slip style.
 class TreatmentPlanCardView extends StatelessWidget {
   const TreatmentPlanCardView({required this.plan, this.canEdit = false, this.onEdit, this.onArchive, super.key});
 
@@ -35,41 +34,49 @@ class TreatmentPlanCardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    final theme = context.visitTheme;
     final subtitleParts = TreatmentPlanDisplay.subtitleParts(plan);
 
     return DecoratedBox(
       key: Key('treatment_plan_card_${plan.id}'),
       decoration: BoxDecoration(
-        color: colors.muted.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(context.shapeTokens.md),
-        border: Border.all(color: colors.border),
+        color: theme.tile,
+        borderRadius: BorderRadius.circular(theme.tileRadius),
+        border: Border.all(color: theme.hairline),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.md),
+        padding: const EdgeInsets.fromLTRB(SpacingTokens.md, SpacingTokens.md, SpacingTokens.sm, SpacingTokens.md),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.medication_outlined, size: 20, color: colors.primary),
-            const SizedBox(width: SpacingTokens.sm),
+            Container(
+              margin: const EdgeInsets.only(top: 2),
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: theme.pulse.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(theme.tileRadius - 2),
+              ),
+              alignment: Alignment.center,
+              child: Text('Rx', style: theme.readout(color: theme.pulseDeep, size: 12)),
+            ),
+            const SizedBox(width: SpacingTokens.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    plan.medicationName,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                  ),
+                  Text(plan.medicationName, style: theme.title(size: 15)),
                   if (subtitleParts.isNotEmpty) ...[
-                    const SizedBox(height: SpacingTokens.xs),
-                    Text(subtitleParts.join(' · '), style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: SpacingTokens.sm),
+                    Wrap(
+                      spacing: SpacingTokens.xs,
+                      runSpacing: SpacingTokens.xs,
+                      children: [for (final part in subtitleParts) _DetailTag(label: part)],
+                    ),
                   ],
                   if (plan.notes != null && plan.notes!.isNotEmpty) ...[
-                    const SizedBox(height: SpacingTokens.xs),
-                    Text(
-                      plan.notes!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                    ),
+                    const SizedBox(height: SpacingTokens.sm),
+                    Text(plan.notes!, style: theme.caption()),
                   ],
                 ],
               ),
@@ -80,19 +87,45 @@ class TreatmentPlanCardView extends StatelessWidget {
                 children: [
                   AppIconButton(
                     key: Key('treatment_plan_edit_${plan.id}'),
-                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
                     tooltip: 'Edit',
                     onPressed: onEdit,
                   ),
                   AppIconButton(
                     key: Key('treatment_plan_archive_${plan.id}'),
-                    icon: const Icon(Icons.delete_outline, size: 18),
+                    icon: const Icon(Icons.close_rounded, size: 16),
                     tooltip: 'Remove',
                     onPressed: onArchive,
                   ),
                 ],
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailTag extends StatelessWidget {
+  const _DetailTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.visitTheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.surface,
+        borderRadius: BorderRadius.circular(theme.tileRadius - 2),
+        border: Border.all(color: theme.hairline),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: 3),
+        child: Text(
+          label,
+          style: theme.caption(color: theme.ink, size: 11.5).copyWith(fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -200,14 +233,14 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = context.visitTheme;
     final isEdit = widget.initialPlan != null;
-    final colors = context.semanticColors;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.md),
-        border: Border.all(color: colors.primary.withValues(alpha: 0.35)),
+        color: theme.tile,
+        borderRadius: BorderRadius.circular(theme.tileRadius),
+        border: Border.all(color: theme.pulse.withValues(alpha: 0.35)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(SpacingTokens.lg),
@@ -216,10 +249,7 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                isEdit ? 'Edit treatment plan' : 'New treatment plan',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
+              Text(isEdit ? 'Edit treatment plan' : 'New treatment plan', style: theme.title(size: 15)),
               const SizedBox(height: SpacingTokens.md),
               CatalogAutocompleteField(
                 key: _medicationFieldKey,

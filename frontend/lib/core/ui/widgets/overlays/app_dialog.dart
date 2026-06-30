@@ -9,14 +9,19 @@ abstract final class AppDialog {
   static const _actionSize = AppFieldSize.sm;
 
   /// Shows a dialog with custom title, body, and actions.
+  ///
+  /// Prefer [actionsBuilder] when actions need to close the dialog — it receives the
+  /// overlay [dialogContext], which stays valid while the dialog is open.
   static Future<T?> show<T>({
     required BuildContext context,
     String? title,
     required Widget body,
     List<Widget>? actions,
+    List<Widget> Function(BuildContext dialogContext)? actionsBuilder,
     Axis direction = Axis.horizontal,
     bool barrierDismissible = true,
   }) {
+    assert(actions == null || actionsBuilder == null, 'Provide either actions or actionsBuilder, not both.');
     final fTheme = context.theme;
     final materialTheme = Theme.of(context);
 
@@ -33,7 +38,7 @@ abstract final class AppDialog {
             direction: direction,
             title: title == null ? null : Text(title, style: materialTheme.textTheme.titleLarge),
             body: body,
-            actions: actions ?? const [],
+            actions: actions ?? actionsBuilder?.call(dialogContext) ?? const [],
           ),
         );
       },

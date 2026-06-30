@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
 
 /// Editable treatment plan list for visit documentation (013 US3).
@@ -70,13 +71,10 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
           ),
         ],
         if (plans.isEmpty && !_showAddForm)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
-            child: Text(
-              'No treatment plans added yet.',
-              key: const Key('treatment_plan_empty'),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-            ),
+          const VisitEmptyHint(
+            key: Key('treatment_plan_empty'),
+            message: 'No treatment plans added yet.',
+            icon: Icons.medication_outlined,
           ),
         ...plans.map(
           (plan) => Padding(

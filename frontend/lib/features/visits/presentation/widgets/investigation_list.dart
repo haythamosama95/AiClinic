@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
@@ -12,6 +10,8 @@ import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Editable investigation list for visit documentation (013 US4).
 class InvestigationList extends ConsumerStatefulWidget {
@@ -40,7 +40,6 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
     final investigations = widget.investigations;
 
     return Column(
@@ -67,17 +66,14 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
           Text(
             _errorMessage!,
             key: const Key('investigation_error'),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.destructive),
+            style: context.visitTheme.caption(color: context.visitTheme.danger),
           ),
         ],
         if (investigations.isEmpty && !_showAddForm)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
-            child: Text(
-              'No investigations ordered yet.',
-              key: const Key('investigation_empty'),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-            ),
+          const VisitEmptyHint(
+            key: Key('investigation_empty'),
+            message: 'No investigations ordered yet.',
+            icon: Icons.biotech_outlined,
           ),
         ...investigations.map(
           (investigation) => Padding(
@@ -305,7 +301,7 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
   }
 }
 
-/// Read-only investigation card.
+/// Read-only investigation card — lab order style.
 class InvestigationCardView extends StatelessWidget {
   const InvestigationCardView({
     required this.investigation,
@@ -322,36 +318,40 @@ class InvestigationCardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    final theme = context.visitTheme;
 
     return DecoratedBox(
       key: Key('investigation_card_${investigation.id}'),
       decoration: BoxDecoration(
-        color: colors.muted.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(context.shapeTokens.md),
-        border: Border.all(color: colors.border),
+        color: theme.tile,
+        borderRadius: BorderRadius.circular(theme.tileRadius),
+        border: Border.all(color: theme.hairline),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.md),
+        padding: const EdgeInsets.fromLTRB(SpacingTokens.md, SpacingTokens.md, SpacingTokens.sm, SpacingTokens.md),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.science_outlined, size: 20, color: colors.primary),
-            const SizedBox(width: SpacingTokens.sm),
+            Container(
+              margin: const EdgeInsets.only(top: 2),
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: theme.pulse.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(theme.tileRadius - 2),
+              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.biotech_outlined, size: 16, color: theme.pulseDeep),
+            ),
+            const SizedBox(width: SpacingTokens.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    investigation.name,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                  ),
+                  Text(investigation.name, style: theme.title(size: 15)),
                   if (investigation.note != null && investigation.note!.isNotEmpty) ...[
                     const SizedBox(height: SpacingTokens.xs),
-                    Text(
-                      investigation.note!,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-                    ),
+                    Text(investigation.note!, style: theme.caption()),
                   ],
                 ],
               ),
@@ -362,13 +362,13 @@ class InvestigationCardView extends StatelessWidget {
                 children: [
                   AppIconButton(
                     key: Key('investigation_edit_${investigation.id}'),
-                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
                     tooltip: 'Edit',
                     onPressed: onEdit,
                   ),
                   AppIconButton(
                     key: Key('investigation_archive_${investigation.id}'),
-                    icon: const Icon(Icons.delete_outline, size: 18),
+                    icon: const Icon(Icons.close_rounded, size: 16),
                     tooltip: 'Remove',
                     onPressed: onArchive,
                   ),
@@ -462,14 +462,14 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = context.visitTheme;
     final isEdit = widget.initialInvestigation != null;
-    final colors = context.semanticColors;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.md),
-        border: Border.all(color: colors.primary.withValues(alpha: 0.35)),
+        color: theme.tile,
+        borderRadius: BorderRadius.circular(theme.tileRadius),
+        border: Border.all(color: theme.pulse.withValues(alpha: 0.35)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(SpacingTokens.lg),
@@ -478,10 +478,7 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                isEdit ? 'Edit investigation' : 'New investigation',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
+              Text(isEdit ? 'Edit investigation' : 'New investigation', style: theme.title(size: 15)),
               const SizedBox(height: SpacingTokens.md),
               CatalogAutocompleteField(
                 key: _investigationFieldKey,

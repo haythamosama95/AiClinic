@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
@@ -12,6 +10,8 @@ import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 const _customVitalSignKey = '__custom__';
 
@@ -44,7 +44,6 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
     final signs = widget.vitalSigns;
 
     return Column(
@@ -71,41 +70,49 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
           Text(
             _errorMessage!,
             key: const Key('vital_sign_error'),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.destructive),
+            style: context.visitTheme.caption(color: context.visitTheme.danger),
           ),
         ],
         if (signs.isEmpty && !_showAddForm)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
-            child: Text(
-              'No vital signs recorded yet.',
-              key: const Key('vital_sign_empty'),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
+          const VisitEmptyHint(
+            key: Key('vital_sign_empty'),
+            message: 'No vital signs recorded yet.',
+            icon: Icons.monitor_heart_outlined,
+          ),
+        if (signs.isNotEmpty && _editingVitalSignId == null && !_showAddForm)
+          Wrap(
+            spacing: SpacingTokens.sm,
+            runSpacing: SpacingTokens.sm,
+            children: [
+              for (final sign in signs)
+                VitalSignCardView(
+                  sign: sign,
+                  canEdit: widget.canEdit,
+                  onEdit: () => setState(() {
+                    _editingVitalSignId = sign.id;
+                    _showAddForm = false;
+                  }),
+                  onArchive: () => _archiveSign(sign),
+                ),
+            ],
+          ),
+        ...signs
+            .where((sign) => _editingVitalSignId == sign.id)
+            .map(
+              (sign) => Padding(
+                padding: const EdgeInsets.only(top: SpacingTokens.sm),
+                child: _editingVitalSignId == sign.id
+                    ? VitalSignFormView(
+                        key: Key('vital_sign_edit_form_${sign.id}'),
+                        predefinedVitalSigns: widget.predefinedVitalSigns,
+                        initialSign: sign,
+                        isSubmitting: _isSubmitting,
+                        onSubmit: (data) => _updateSign(sign, data),
+                        onCancel: () => setState(() => _editingVitalSignId = null),
+                      )
+                    : const SizedBox.shrink(),
+              ),
             ),
-          ),
-        ...signs.map(
-          (sign) => Padding(
-            padding: const EdgeInsets.only(top: SpacingTokens.sm),
-            child: _editingVitalSignId == sign.id
-                ? VitalSignFormView(
-                    key: Key('vital_sign_edit_form_${sign.id}'),
-                    predefinedVitalSigns: widget.predefinedVitalSigns,
-                    initialSign: sign,
-                    isSubmitting: _isSubmitting,
-                    onSubmit: (data) => _updateSign(sign, data),
-                    onCancel: () => setState(() => _editingVitalSignId = null),
-                  )
-                : VitalSignCardView(
-                    sign: sign,
-                    canEdit: widget.canEdit,
-                    onEdit: () => setState(() {
-                      _editingVitalSignId = sign.id;
-                      _showAddForm = false;
-                    }),
-                    onArchive: () => _archiveSign(sign),
-                  ),
-          ),
-        ),
         if (_showAddForm)
           Padding(
             padding: const EdgeInsets.only(top: SpacingTokens.sm),
@@ -308,7 +315,7 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
   }
 }
 
-/// Read-only vital sign card.
+/// Read-only vital sign metric tile.
 class VitalSignCardView extends StatelessWidget {
   const VitalSignCardView({required this.sign, this.canEdit = false, this.onEdit, this.onArchive, super.key});
 
@@ -319,52 +326,62 @@ class VitalSignCardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final valueLabel = sign.unit == null || sign.unit!.isEmpty ? sign.value : '${sign.value} ${sign.unit}';
+    final theme = context.visitTheme;
+    final hasUnit = sign.unit != null && sign.unit!.isNotEmpty;
 
-    return DecoratedBox(
+    return ConstrainedBox(
       key: Key('vital_sign_card_${sign.id}'),
-      decoration: BoxDecoration(
-        color: colors.muted.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(context.shapeTokens.md),
-        border: Border.all(color: colors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.md),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.monitor_heart_outlined, size: 20, color: colors.primary),
-            const SizedBox(width: SpacingTokens.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(sign.name, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: SpacingTokens.xs),
-                  Text(valueLabel, style: Theme.of(context).textTheme.bodySmall),
-                ],
-              ),
-            ),
-            if (canEdit)
+      constraints: const BoxConstraints(minWidth: VisitPageTokens.metricTileMinWidth),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.tile,
+          borderRadius: BorderRadius.circular(theme.tileRadius),
+          border: Border.all(color: theme.hairline),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(SpacingTokens.md, SpacingTokens.md, SpacingTokens.sm, SpacingTokens.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  AppIconButton(
-                    key: Key('vital_sign_edit_${sign.id}'),
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    tooltip: 'Edit',
-                    onPressed: onEdit,
+                  Expanded(
+                    child: Text(sign.name.toUpperCase(), style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.1)),
                   ),
-                  AppIconButton(
-                    key: Key('vital_sign_archive_${sign.id}'),
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    tooltip: 'Remove',
-                    onPressed: onArchive,
-                  ),
+                  if (canEdit)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppIconButton(
+                          key: Key('vital_sign_edit_${sign.id}'),
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          tooltip: 'Edit',
+                          onPressed: onEdit,
+                        ),
+                        AppIconButton(
+                          key: Key('vital_sign_archive_${sign.id}'),
+                          icon: const Icon(Icons.close_rounded, size: 16),
+                          tooltip: 'Remove',
+                          onPressed: onArchive,
+                        ),
+                      ],
+                    ),
                 ],
               ),
-          ],
+              const SizedBox(height: SpacingTokens.sm),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(sign.value, style: theme.readout(color: theme.ink, size: 24)),
+                  if (hasUnit) ...[
+                    const SizedBox(width: 4),
+                    Text(sign.unit!, style: theme.readout(color: theme.mutedInk, size: 12)),
+                  ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -472,13 +489,13 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
+    final theme = context.visitTheme;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.muted.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(context.shapeTokens.md),
-        border: Border.all(color: colors.border),
+        color: theme.tile,
+        borderRadius: BorderRadius.circular(theme.tileRadius),
+        border: Border.all(color: theme.pulse.withValues(alpha: 0.35)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(SpacingTokens.md),
