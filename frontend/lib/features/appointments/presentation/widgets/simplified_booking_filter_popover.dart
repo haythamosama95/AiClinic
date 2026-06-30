@@ -54,10 +54,42 @@ class _SimplifiedBookingFilterButtonState extends State<SimplifiedBookingFilterB
   final _filterPopoverGroup = Object();
   var _isHovered = false;
 
+  late bool _draftHideFullyBooked;
+  late String _draftViewDoctorId;
+  late DateTime _draftSelectedDate;
+  DateTime? _stripDateBaseline;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncDraftFromApplied();
+  }
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant SimplifiedBookingFilterButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_controller.status == AnimationStatus.dismissed &&
+        (oldWidget.hideFullyBooked != widget.hideFullyBooked ||
+            oldWidget.viewDoctorId != widget.viewDoctorId ||
+            !_isSameDay(oldWidget.selectedDate, widget.selectedDate))) {
+      _syncDraftFromApplied();
+    }
+  }
+
+  void _prepareDraftForOpen() {
+    _stripDateBaseline ??= widget.selectedDate;
+  }
+
+  void _syncDraftFromApplied() {
+    _draftHideFullyBooked = widget.hideFullyBooked;
+    _draftViewDoctorId = widget.viewDoctorId;
+    _draftSelectedDate = widget.selectedDate;
   }
 
   void _applyFilters({required bool hideFullyBooked, required String viewDoctorId, required DateTime selectedDate}) {
@@ -73,8 +105,27 @@ class _SimplifiedBookingFilterButtonState extends State<SimplifiedBookingFilterB
     _controller.hide();
   }
 
-  void _clearFilters() {
-    _applyFilters(hideFullyBooked: true, viewDoctorId: widget.defaultViewDoctorId, selectedDate: widget.selectedDate);
+  void _applyDraftFilters() {
+    _applyFilters(
+      hideFullyBooked: _draftHideFullyBooked,
+      viewDoctorId: _draftViewDoctorId,
+      selectedDate: clampSimplifiedBookingDate(_draftSelectedDate),
+    );
+  }
+
+  void _clearDraftFilters() {
+    final resetDate = _stripDateBaseline ?? widget.selectedDate;
+    setState(() {
+      _draftHideFullyBooked = true;
+      _draftViewDoctorId = widget.defaultViewDoctorId;
+      _draftSelectedDate = resetDate;
+    });
+    _applyFilters(
+      hideFullyBooked: true,
+      viewDoctorId: widget.defaultViewDoctorId,
+      selectedDate: resetDate,
+    );
+    _stripDateBaseline = null;
   }
 
   static bool _isSameDay(DateTime a, DateTime b) {
@@ -96,23 +147,37 @@ class _SimplifiedBookingFilterButtonState extends State<SimplifiedBookingFilterB
       popoverBuilder: (context, controller) => _SimplifiedBookingFilterPanel(
         controller: controller,
         filterPopoverGroup: _filterPopoverGroup,
-        hideFullyBooked: widget.hideFullyBooked,
-        viewDoctorId: widget.viewDoctorId,
+        hideFullyBooked: _draftHideFullyBooked,
+        viewDoctorId: _draftViewDoctorId,
         defaultViewDoctorId: widget.defaultViewDoctorId,
-        selectedDate: widget.selectedDate,
+        selectedDate: _draftSelectedDate,
         firstDate: widget.firstDate,
         lastDate: widget.lastDate,
         doctorItems: widget.doctorItems,
         enabled: widget.enabled,
-        onApplyFilters: _applyFilters,
-        onClearFilters: _clearFilters,
+        onHideFullyBookedChanged: (value) => setState(() => _draftHideFullyBooked = value),
+        onViewDoctorChanged: (doctorId) => setState(() => _draftViewDoctorId = doctorId),
+        onDateChanged: (date) {
+          if (date != null) {
+            setState(() => _draftSelectedDate = date);
+          }
+        },
+        onApplyFilters: _applyDraftFilters,
+        onClearFilters: _clearDraftFilters,
       ),
       builder: (context, controller, child) => MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
         cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
         child: FTappable(
-          onPress: widget.enabled ? controller.toggle : null,
+          onPress: widget.enabled
+              ? () {
+                  if (_controller.status == AnimationStatus.dismissed) {
+                    _prepareDraftForOpen();
+                  }
+                  controller.toggle();
+                }
+              : null,
           child: IgnorePointer(child: child),
         ),
       ),
@@ -145,7 +210,7 @@ class _SimplifiedBookingFilterButtonState extends State<SimplifiedBookingFilterB
   }
 }
 
-class _SimplifiedBookingFilterPanel extends StatefulWidget {
+class _SimplifiedBookingFilterPanel extends StatelessWidget {
   const _SimplifiedBookingFilterPanel({
     required this.controller,
     required this.filterPopoverGroup,
@@ -157,6 +222,9 @@ class _SimplifiedBookingFilterPanel extends StatefulWidget {
     required this.lastDate,
     required this.doctorItems,
     required this.enabled,
+    required this.onHideFullyBookedChanged,
+    required this.onViewDoctorChanged,
+    required this.onDateChanged,
     required this.onApplyFilters,
     required this.onClearFilters,
   });
@@ -171,52 +239,11 @@ class _SimplifiedBookingFilterPanel extends StatefulWidget {
   final DateTime lastDate;
   final Map<String, String> doctorItems;
   final bool enabled;
-  final void Function({required bool hideFullyBooked, required String viewDoctorId, required DateTime selectedDate})
-  onApplyFilters;
+  final ValueChanged<bool> onHideFullyBookedChanged;
+  final ValueChanged<String> onViewDoctorChanged;
+  final ValueChanged<DateTime?> onDateChanged;
+  final VoidCallback onApplyFilters;
   final VoidCallback onClearFilters;
-
-  @override
-  State<_SimplifiedBookingFilterPanel> createState() => _SimplifiedBookingFilterPanelState();
-}
-
-class _SimplifiedBookingFilterPanelState extends State<_SimplifiedBookingFilterPanel> {
-  late bool _draftHideFullyBooked;
-  late String _draftViewDoctorId;
-  late DateTime _draftSelectedDate;
-
-  @override
-  void initState() {
-    super.initState();
-    _syncDraftFromApplied();
-  }
-
-  @override
-  void didUpdateWidget(covariant _SimplifiedBookingFilterPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.hideFullyBooked != widget.hideFullyBooked ||
-        oldWidget.viewDoctorId != widget.viewDoctorId ||
-        !_isSameDay(oldWidget.selectedDate, widget.selectedDate)) {
-      _syncDraftFromApplied();
-    }
-  }
-
-  void _syncDraftFromApplied() {
-    _draftHideFullyBooked = widget.hideFullyBooked;
-    _draftViewDoctorId = widget.viewDoctorId;
-    _draftSelectedDate = widget.selectedDate;
-  }
-
-  static bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  void _applyFilters() {
-    widget.onApplyFilters(
-      hideFullyBooked: _draftHideFullyBooked,
-      viewDoctorId: _draftViewDoctorId,
-      selectedDate: clampSimplifiedBookingDate(_draftSelectedDate),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -246,18 +273,12 @@ class _SimplifiedBookingFilterPanelState extends State<_SimplifiedBookingFilterP
                 label: 'Date',
                 child: _InlineDateField(
                   key: const Key('simplified_booking_pick_date'),
-                  value: _draftSelectedDate,
-                  firstDate: widget.firstDate,
-                  lastDate: widget.lastDate,
-                  popoverGroupId: widget.filterPopoverGroup,
-                  enabled: widget.enabled,
-                  onChanged: widget.enabled
-                      ? (date) {
-                          if (date != null) {
-                            setState(() => _draftSelectedDate = date);
-                          }
-                        }
-                      : null,
+                  value: selectedDate,
+                  firstDate: firstDate,
+                  lastDate: lastDate,
+                  calendarGroupId: filterPopoverGroup,
+                  enabled: enabled,
+                  onChanged: enabled ? onDateChanged : null,
                 ),
               ),
               Padding(
@@ -268,14 +289,14 @@ class _SimplifiedBookingFilterPanelState extends State<_SimplifiedBookingFilterP
                 label: 'Doctor',
                 child: AppFilterSelect<String>(
                   key: const Key('simplified_booking_view_doctor'),
-                  items: widget.doctorItems,
-                  value: _draftViewDoctorId,
+                  items: doctorItems,
+                  value: viewDoctorId,
                   hintText: 'All doctors',
-                  enabled: widget.enabled,
-                  contentGroupId: widget.filterPopoverGroup,
+                  enabled: enabled,
+                  contentGroupId: filterPopoverGroup,
                   showPopoverCloseButton: true,
-                  onChanged: widget.enabled
-                      ? (doctorId) => setState(() => _draftViewDoctorId = doctorId ?? widget.defaultViewDoctorId)
+                  onChanged: enabled
+                      ? (doctorId) => onViewDoctorChanged(doctorId ?? defaultViewDoctorId)
                       : null,
                 ),
               ),
@@ -287,20 +308,23 @@ class _SimplifiedBookingFilterPanelState extends State<_SimplifiedBookingFilterP
                 label: 'Hide fully booked',
                 child: AppSwitch(
                   key: const Key('simplified_booking_hide_fully_booked'),
-                  value: _draftHideFullyBooked,
-                  enabled: widget.enabled,
+                  value: hideFullyBooked,
+                  enabled: enabled,
                   onChanged: (value) {
-                    if (!widget.enabled) {
+                    if (!enabled) {
                       return;
                     }
-                    setState(() => _draftHideFullyBooked = value);
+                    onHideFullyBookedChanged(value);
                   },
                 ),
               ),
             ],
           ),
         ),
-        _FilterFooter(onClearFilters: widget.onClearFilters, onApplyFilters: widget.enabled ? _applyFilters : null),
+        _FilterFooter(
+          onClearFilters: enabled ? onClearFilters : null,
+          onApplyFilters: enabled ? onApplyFilters : null,
+        ),
       ],
     );
   }
@@ -339,7 +363,7 @@ class _InlineDateField extends StatefulWidget {
     required this.value,
     required this.firstDate,
     required this.lastDate,
-    required this.popoverGroupId,
+    required this.calendarGroupId,
     required this.enabled,
     this.onChanged,
     super.key,
@@ -348,7 +372,7 @@ class _InlineDateField extends StatefulWidget {
   final DateTime value;
   final DateTime firstDate;
   final DateTime lastDate;
-  final Object popoverGroupId;
+  final Object calendarGroupId;
   final bool enabled;
   final ValueChanged<DateTime?>? onChanged;
 
@@ -358,6 +382,7 @@ class _InlineDateField extends StatefulWidget {
 
 class _InlineDateFieldState extends State<_InlineDateField> {
   late final FDateFieldController _controller;
+  var _suppressControllerChange = false;
 
   @override
   void initState() {
@@ -370,7 +395,9 @@ class _InlineDateFieldState extends State<_InlineDateField> {
   void didUpdateWidget(covariant _InlineDateField oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.value != _controller.value) {
+      _suppressControllerChange = true;
       _controller.value = widget.value;
+      _suppressControllerChange = false;
     }
   }
 
@@ -383,6 +410,9 @@ class _InlineDateFieldState extends State<_InlineDateField> {
   }
 
   void _handleControllerChange() {
+    if (_suppressControllerChange) {
+      return;
+    }
     widget.onChanged?.call(_controller.value);
   }
 
@@ -395,16 +425,16 @@ class _InlineDateFieldState extends State<_InlineDateField> {
       calendar: FDateFieldCalendarProperties(
         start: widget.firstDate,
         end: widget.lastDate,
-        groupId: widget.popoverGroupId,
+        groupId: widget.calendarGroupId,
       ),
     );
   }
 }
 
 class _FilterFooter extends StatelessWidget {
-  const _FilterFooter({required this.onClearFilters, this.onApplyFilters});
+  const _FilterFooter({this.onClearFilters, this.onApplyFilters});
 
-  final VoidCallback onClearFilters;
+  final VoidCallback? onClearFilters;
   final VoidCallback? onApplyFilters;
 
   @override

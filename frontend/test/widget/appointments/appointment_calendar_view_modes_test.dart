@@ -73,10 +73,10 @@ void main() {
           staffRepository: CalendarDoctorsStubStaffRepository(),
         );
         await waitForCalendarLoaded(tester);
-        await tester.pump(const Duration(milliseconds: 200));
+        await waitForCalendarDoctorsLoaded(tester);
 
         await tapCalendarViewTab(tester, 'Timeline Day');
-        await tester.pump(const Duration(milliseconds: 200));
+        await settleCalendarWidgetTest(tester);
 
         final calendar = calendarWidget(tester);
         final dataSource = calendar.dataSource! as AppointmentCalendarDataSource;

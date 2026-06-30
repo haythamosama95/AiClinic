@@ -138,6 +138,7 @@ void main() {
       await pumpAppointmentCalendarPage(tester, authState: calendarAuthStateWithCreate(), rpcClient: client);
       await waitForCalendarLoaded(tester);
       await tapCalendarViewTab(tester, 'Day');
+      await settleCalendarWidgetTest(tester);
 
       final appointment = firstCalendarAppointment(tester);
       final originalStart = appointment.startTime;

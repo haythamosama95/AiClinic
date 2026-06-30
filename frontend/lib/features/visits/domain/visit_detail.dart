@@ -70,6 +70,15 @@ class VisitDetail {
       soap = SoapNote.fromRow(Map<String, dynamic>.from(soapRaw));
     }
 
+    if (soap == null) {
+      final documentationRaw = row['documentation'];
+      if (documentationRaw is Map<String, dynamic>) {
+        soap = SoapNote.fromDocumentationRow(documentationRaw);
+      } else if (documentationRaw is Map) {
+        soap = SoapNote.fromDocumentationRow(Map<String, dynamic>.from(documentationRaw));
+      }
+    }
+
     final treatmentPlans = _parseTreatmentPlans(row['treatment_plans'], visitId: id, patientId: patientId);
     final attachments = _parseAttachments(row['attachments']);
 

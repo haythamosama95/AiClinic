@@ -15,7 +15,7 @@ void main() {
       repository = VisitRepository(client);
     });
 
-    test('trivial: forwards visit id and expected timestamp to save_soap_note', () async {
+    test('trivial: forwards visit id and expected timestamp to save_visit_documentation', () async {
       const visitId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
       final expected = DateTime.utc(2026, 5, 31, 10);
 
@@ -25,10 +25,10 @@ void main() {
         subjective: 'Headache',
       );
 
-      expect(client.lastFunction, 'save_soap_note');
+      expect(client.lastFunction, 'save_visit_documentation');
       expect(client.lastParams?['p_visit_id'], visitId);
       expect(client.lastParams?['p_expected_updated_at'], expected.toUtc().toIso8601String());
-      expect(client.lastParams?['p_subjective'], 'Headache');
+      expect(client.lastParams?['p_complaint'], 'Headache');
       expect(result.visitId, visitId);
       expect(result.updatedAt, DateTime.parse('2026-05-31T10:05:00.000Z'));
     });
@@ -43,13 +43,13 @@ void main() {
         plan: null,
       );
 
-      expect(client.lastParams?['p_subjective'], 'Note');
-      expect(client.lastParams?['p_objective'], isNull);
-      expect(client.lastParams?['p_assessment'], isNull);
+      expect(client.lastParams?['p_complaint'], 'Note');
+      expect(client.lastParams?['p_examination'], isNull);
+      expect(client.lastParams?['p_diagnosis'], isNull);
       expect(client.lastParams?['p_plan'], isNull);
     });
 
-    test('advanced: includes specialty JSON when provided', () async {
+    test('advanced: ignores specialty JSON (legacy param, no longer forwarded)', () async {
       const specialty = {'field_a': 'value'};
 
       await repository.saveSoapNote(
@@ -58,13 +58,13 @@ void main() {
         specialtyFormJson: specialty,
       );
 
-      expect(client.lastParams?['p_specialty_form_json'], specialty);
+      expect(client.lastParams?.containsKey('p_specialty_form_json'), isFalse);
     });
 
-    test('invalid state: STALE_SOAP surfaces from RPC', () async {
-      client.rpcResults['save_soap_note'] = {
+    test('invalid state: STALE_DOCUMENTATION surfaces from RPC', () async {
+      client.rpcResults['save_visit_documentation'] = {
         'success': false,
-        'error_code': 'STALE_SOAP',
+        'error_code': 'STALE_DOCUMENTATION',
         'error_message': 'Stale',
       };
 
@@ -73,7 +73,7 @@ void main() {
           visitId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
           expectedUpdatedAt: DateTime.utc(2026, 5, 31, 9),
         ),
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'STALE_SOAP')),
+        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'STALE_DOCUMENTATION')),
       );
     });
 
@@ -86,7 +86,7 @@ void main() {
     });
 
     test('edge case: malformed success payload throws StateError', () async {
-      client.rpcResults['save_soap_note'] = {
+      client.rpcResults['save_visit_documentation'] = {
         'success': true,
         'data': {'visit_id': 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'},
       };
@@ -101,7 +101,7 @@ void main() {
     });
 
     test('regression: FORBIDDEN when user lacks visits.edit_soap', () async {
-      client.rpcResults['save_soap_note'] = {
+      client.rpcResults['save_visit_documentation'] = {
         'success': false,
         'error_code': 'FORBIDDEN',
         'error_message': 'Denied',

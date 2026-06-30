@@ -59,6 +59,14 @@ void main() {
       expect(client.lastParams?.containsKey('p_branch_id'), isFalse);
     });
 
+    test('INT-J05: setDefaultDuration returns saved value from RPC', () async {
+      final saved = await repository.setDefaultDuration(durationMinutes: 60);
+
+      expect(saved, 60);
+      expect(client.lastFunction, 'set_appointment_default_duration');
+      expect(client.lastParams?['p_duration_minutes'], 60);
+    });
+
     test('edge case: setDefaultDuration rejects out-of-range minutes', () async {
       expect(
         () => repository.setDefaultDuration(durationMinutes: 4),
@@ -304,6 +312,34 @@ void main() {
           preferredDoctorId: '22222222-2222-4222-8222-222222222222',
         ),
         throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'INVALID_INPUT')),
+      );
+    });
+
+    test('INT-J04: getSimplifiedBookingSlots sends p_local_date as YYYY-MM-DD', () async {
+      final localDate = DateTime(2026, 12, 5, 15, 42, 30);
+      await repository.getSimplifiedBookingSlots(
+        branchId: '44444444-4444-4444-8444-444444444444',
+        localDate: localDate,
+        preferredDoctorId: '22222222-2222-4222-8222-222222222222',
+      );
+
+      expect(client.lastFunction, 'get_simplified_booking_slots');
+      expect(client.lastParams?['p_local_date'], '2026-12-05');
+    });
+
+    test('INT-J06: getSimplifiedBookingSlots throws StateError on unexpected RPC shape', () async {
+      client.rpcResults['get_simplified_booking_slots'] = {
+        'success': true,
+        'data': null,
+      };
+
+      expect(
+        () => repository.getSimplifiedBookingSlots(
+          branchId: '44444444-4444-4444-8444-444444444444',
+          localDate: DateTime(2026, 6, 27),
+          preferredDoctorId: '22222222-2222-4222-8222-222222222222',
+        ),
+        throwsA(isA<StateError>()),
       );
     });
   });

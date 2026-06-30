@@ -44,7 +44,8 @@ RpcFailure? bootstrapRpcFailureFromPostgrest(PostgrestException error, String fu
         errorCode: 'RESET_DEPENDENCY_BLOCKED',
         errorMessage:
             'Clinic reset could not remove branches or organization data because related records still exist '
-            '(for example patients or billing settings). Apply migration 20260605190000_dev_reset_delete_billing.sql, restart Supabase, and try again.',
+            '(for example visit documentation, patients, or billing settings). Apply migration '
+            '20260630120000_dev_reset_delete_visit_documentation.sql, restart Supabase, and try again.',
       ),
     );
   }

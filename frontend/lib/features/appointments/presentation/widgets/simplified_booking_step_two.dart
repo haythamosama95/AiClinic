@@ -161,8 +161,8 @@ class _SimplifiedBookingStepTwoState extends ConsumerState<SimplifiedBookingStep
       setState(() {
         _loadingSlots = false;
         _slots = const [];
-        _slotsAvailable = true;
-        _slotsError = null;
+        _slotsAvailable = false;
+        _slotsError = 'No active doctors are configured for this branch.';
       });
       return;
     }

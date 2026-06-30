@@ -52,7 +52,7 @@ void main() {
     });
 
     group('saveSoapNote with specialty', () {
-      test('trivial: forwards encoded specialty JSON on save', () async {
+      test('trivial: specialty JSON is ignored on save (legacy param)', () async {
         const specialty = {'pain_score': 3, 'notes': 'mild'};
 
         await repository.saveSoapNote(
@@ -61,14 +61,15 @@ void main() {
           specialtyFormJson: specialty,
         );
 
-        expect(client.lastParams?['p_specialty_form_json'], specialty);
+        expect(client.lastFunction, 'save_visit_documentation');
+        expect(client.lastParams?.containsKey('p_specialty_form_json'), isFalse);
       });
 
-      test('invalid state: INVALID_INPUT from backend specialty validation', () async {
-        client.rpcResults['save_soap_note'] = {
+      test('invalid state: INVALID_INPUT from backend validation', () async {
+        client.rpcResults['save_visit_documentation'] = {
           'success': false,
           'error_code': 'INVALID_INPUT',
-          'error_message': 'Specialty form data is not valid.',
+          'error_message': 'Each clinical section must be 10000 characters or fewer.',
         };
 
         expect(
@@ -81,14 +82,15 @@ void main() {
         );
       });
 
-      test('edge case: omits p_specialty_form_json when specialtyFormJson is null', () async {
+      test('edge case: omits specialty param when specialtyFormJson is null', () async {
         await repository.saveSoapNote(
           visitId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
           expectedUpdatedAt: DateTime.utc(2026, 5, 31, 10),
           subjective: 'SOAP only',
         );
 
-        expect(client.lastParams?['p_specialty_form_json'], isNull);
+        expect(client.lastParams?.containsKey('p_specialty_form_json'), isFalse);
+        expect(client.lastParams?['p_complaint'], 'SOAP only');
       });
     });
 

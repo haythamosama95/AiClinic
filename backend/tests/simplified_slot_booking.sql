@@ -34,6 +34,10 @@ DECLARE
   v_has_available boolean := false;
   v_has_alternate boolean := false;
   v_has_fully_unavailable boolean := false;
+  v_ids_match boolean := false;
+  v_appt_id uuid;
+  v_day_name text;
+  c_invalid_branch constant uuid := '00000000-0000-0000-0000-000000000099';
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -116,7 +120,7 @@ BEGIN
   v_today := (now() AT TIME ZONE 'UTC')::date;
   v_future := v_today + 5;
 
-  -- Today: includes past blocks.
+  -- BE-L01: Today includes past blocks.
   v_result := public.get_simplified_booking_slots(v_branch_id, v_today, c_doctor_a);
   v_blocks := COALESCE(v_result.data -> 'blocks', '[]'::jsonb);
   FOR v_block IN SELECT value FROM jsonb_array_elements(v_blocks)
@@ -133,7 +137,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Date validation: before today.
+  -- BE-L02: Reject past date.
   v_result := public.get_simplified_booking_slots(v_branch_id, v_today - 1, c_doctor_a);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO simplified_slot_results VALUES (
@@ -143,7 +147,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Date validation: more than 90 days ahead.
+  -- BE-L03: Reject date beyond 90 days.
   v_result := public.get_simplified_booking_slots(v_branch_id, v_today + 91, c_doctor_a);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO simplified_slot_results VALUES (
@@ -153,7 +157,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Available: preferred doctor free on a future day.
+  -- BE-L04: Available when preferred doctor is free.
   v_future := v_today + 5;
   v_start := (v_future::timestamp + v_slot_time) AT TIME ZONE 'UTC';
   v_result := public.get_simplified_booking_slots(v_branch_id, v_future, c_doctor_a);
@@ -173,7 +177,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Alternate doctors: doctor A busy, doctor B free at same time.
+  -- BE-L05: Alternate doctors when preferred busy and another doctor is free.
   v_future := v_today + 6;
   v_start := (v_future::timestamp + v_slot_time) AT TIME ZONE 'UTC';
   v_result := public.create_appointment(v_branch_id, v_patient_id, c_doctor_a, 'planned', v_start, 30, NULL, NULL);
@@ -195,7 +199,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Fully unavailable: both doctors busy at same time.
+  -- BE-L06: Fully unavailable when all doctors are busy.
   v_future := v_today + 7;
   v_start := (v_future::timestamp + v_slot_time) AT TIME ZONE 'UTC';
   v_result := public.create_appointment(v_branch_id, v_patient_id, c_doctor_a, 'planned', v_start, 30, NULL, NULL);
@@ -217,7 +221,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Per-doctor overlap: same doctor blocked, different doctors allowed.
+  -- BE-L07: Per-doctor overlap allows different doctors at the same time.
   v_future := v_today + 8;
   v_start := (v_future::timestamp + v_slot_time) AT TIME ZONE 'UTC';
   v_result := public.create_appointment(v_branch_id, v_patient_id, c_doctor_a, 'planned', v_start, 30, NULL, NULL);
@@ -230,11 +234,173 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- BE-L08: Per-doctor overlap blocks the same doctor at the same time.
   v_result := public.create_appointment(v_branch_id, v_patient_id, c_doctor_a, 'planned', v_start, 30, NULL, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO simplified_slot_results VALUES (
     'per_doctor_overlap_blocks_same_doctor',
     NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- BE-L09: Two doctor-less planned appointments at the same time are allowed.
+  v_future := v_today + 9;
+  v_start := (v_future::timestamp + v_slot_time) AT TIME ZONE 'UTC';
+  v_result := public.create_appointment(v_branch_id, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO simplified_slot_results VALUES (
+    'doctorless_overlap_first_planned',
+    v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.create_appointment(v_branch_id, v_patient2_id, NULL, 'planned', v_start, 15, NULL, NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO simplified_slot_results VALUES (
+    'doctorless_overlap_same_time_allowed',
+    v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- BE-L10: Invalid branch id is rejected.
+  v_result := public.get_simplified_booking_slots(c_invalid_branch, v_today + 5, c_doctor_a);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO simplified_slot_results VALUES (
+    'reject_invalid_branch',
+    NOT v_result.success AND v_result.error_code = 'INVALID_BRANCH',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- BE-L11: Non-doctor staff id is rejected as preferred doctor.
+  v_result := public.get_simplified_booking_slots(v_branch_id, v_today + 5, v_owner_staff);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO simplified_slot_results VALUES (
+    'reject_invalid_doctor',
+    NOT v_result.success AND v_result.error_code = 'INVALID_DOCTOR',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- BE-L14: available_doctor_ids lists only free doctors for mixed availability.
+  v_future := v_today + 10;
+  v_start := (v_future::timestamp + v_slot_time) AT TIME ZONE 'UTC';
+  v_result := public.create_appointment(v_branch_id, v_patient_id, c_doctor_a, 'planned', v_start, 30, NULL, NULL);
+  v_result := public.get_simplified_booking_slots(v_branch_id, v_future, c_doctor_a);
+  v_blocks := COALESCE(v_result.data -> 'blocks', '[]'::jsonb);
+  v_ids_match := false;
+  FOR v_block IN SELECT value FROM jsonb_array_elements(v_blocks)
+  LOOP
+    IF (v_block ->> 'start_time')::timestamptz = v_start THEN
+      v_ids_match :=
+        (v_block -> 'available_doctor_ids') @> jsonb_build_array(c_doctor_b::text)
+        AND NOT ((v_block -> 'available_doctor_ids') @> jsonb_build_array(c_doctor_a::text));
+      EXIT;
+    END IF;
+  END LOOP;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO simplified_slot_results VALUES (
+    'available_doctor_ids_match_free_doctors_only',
+    v_result.success AND v_ids_match,
+    'start=' || v_start::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- BE-L15: Response includes branch default duration setting.
+  PERFORM public.set_appointment_default_duration(45, v_branch_id);
+  v_future := v_today + 11;
+  v_result := public.get_simplified_booking_slots(v_branch_id, v_future, c_doctor_a);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO simplified_slot_results VALUES (
+    'response_includes_default_duration_minutes',
+    v_result.success AND (v_result.data ->> 'default_duration_minutes')::int = 45,
+    COALESCE(v_result.data ->> 'default_duration_minutes', '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- BE-L12: Null working schedule returns empty blocks successfully.
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches SET working_schedule = NULL WHERE id = v_branch_id;
+  PERFORM set_config('role', 'authenticated', true);
+  v_future := v_today + 12;
+  v_result := public.get_simplified_booking_slots(v_branch_id, v_future, c_doctor_a);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO simplified_slot_results VALUES (
+    'null_working_schedule_returns_empty_blocks',
+    v_result.success AND jsonb_array_length(COALESCE(v_result.data -> 'blocks', '[]'::jsonb)) = 0,
+    'blocks=' || jsonb_array_length(COALESCE(v_result.data -> 'blocks', '[]'::jsonb))::text
+  );
+
+  -- Restore working schedule for closed-day test.
+  UPDATE public.branches b
+  SET working_schedule = jsonb_build_object(
+    'days',
+    jsonb_build_array(
+      jsonb_build_object('day', 'monday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'tuesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'wednesday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'thursday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'friday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'saturday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59'),
+      jsonb_build_object('day', 'sunday', 'is_working_day', true, 'open_time', '00:00', 'close_time', '23:59')
+    )
+  )
+  WHERE b.id = v_branch_id;
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- BE-L13: Non-working weekday returns empty blocks.
+  v_future := v_today + 20;
+  v_day_name := CASE extract(isodow FROM v_future)
+    WHEN 1 THEN 'monday'
+    WHEN 2 THEN 'tuesday'
+    WHEN 3 THEN 'wednesday'
+    WHEN 4 THEN 'thursday'
+    WHEN 5 THEN 'friday'
+    WHEN 6 THEN 'saturday'
+    ELSE 'sunday'
+  END;
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.branches b
+  SET working_schedule = (
+    SELECT jsonb_build_object(
+      'days',
+      jsonb_agg(
+        CASE
+          WHEN lower(trim(d.value ->> 'day')) = v_day_name THEN
+            jsonb_set(d.value, '{is_working_day}', 'false'::jsonb)
+          ELSE d.value
+        END
+      )
+    )
+    FROM jsonb_array_elements(b.working_schedule -> 'days') AS d(value)
+  )
+  WHERE b.id = v_branch_id;
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.get_simplified_booking_slots(v_branch_id, v_future, c_doctor_a);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO simplified_slot_results VALUES (
+    'closed_day_returns_empty_blocks',
+    v_result.success AND jsonb_array_length(COALESCE(v_result.data -> 'blocks', '[]'::jsonb)) = 0,
+    'day=' || v_day_name
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- BE-L16: Reschedule to a time occupied by a different doctor is allowed.
+  v_future := v_today + 21;
+  v_start := (v_future::timestamp + v_slot_time) AT TIME ZONE 'UTC';
+  v_result := public.create_appointment(v_branch_id, v_patient_id, c_doctor_a, 'planned', v_start, 30, NULL, NULL);
+  v_result := public.create_appointment(
+    v_branch_id, v_patient2_id, c_doctor_b, 'planned', v_start + interval '4 hours', 30, NULL, NULL
+  );
+  v_appt_id := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.reschedule_appointment(v_appt_id, v_start, 30, NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO simplified_slot_results VALUES (
+    'reschedule_cross_doctor_same_time_allowed',
+    v_result.success,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

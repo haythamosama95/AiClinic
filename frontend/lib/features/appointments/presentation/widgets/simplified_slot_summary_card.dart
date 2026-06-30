@@ -46,13 +46,31 @@ class SimplifiedSlotSummaryCard extends ConsumerStatefulWidget {
 }
 
 class _SimplifiedSlotSummaryCardState extends ConsumerState<SimplifiedSlotSummaryCard> {
+  static const _maxNotesLength = 2000;
+
   bool _isSaving = false;
   String? _errorMessage;
 
   bool get _hasSelection => widget.selectedSlot != null;
 
-  bool get _canConfirm =>
-      _hasSelection && widget.slotsAvailable && !_isSaving && widget.effectiveDoctorId.trim().isNotEmpty;
+  bool get _hasDoctor => widget.effectiveDoctorId.trim().isNotEmpty;
+
+  bool get _notesValid => (widget.notes?.trim().length ?? 0) <= _maxNotesLength;
+
+  bool get _canConfirm => _hasSelection && widget.slotsAvailable && !_isSaving && _hasDoctor && _notesValid;
+
+  String? _confirmBlockedMessage() {
+    if (!_hasSelection) {
+      return null;
+    }
+    if (!_hasDoctor) {
+      return 'Select a doctor for this time slot before confirming.';
+    }
+    if (!_notesValid) {
+      return 'Notes must be $_maxNotesLength characters or fewer.';
+    }
+    return null;
+  }
 
   Future<void> _confirm() async {
     final slot = widget.selectedSlot;
@@ -114,6 +132,7 @@ class _SimplifiedSlotSummaryCardState extends ConsumerState<SimplifiedSlotSummar
     final theme = Theme.of(context);
     final slot = widget.selectedSlot;
     final summaryLabel = slot == null ? 'Select a time slot above' : _formatSelection(slot);
+    final confirmBlockedMessage = _confirmBlockedMessage();
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -147,6 +166,10 @@ class _SimplifiedSlotSummaryCardState extends ConsumerState<SimplifiedSlotSummar
                 const SizedBox(height: SpacingTokens.sm),
                 AppButton(label: 'Retry', variant: AppButtonVariant.secondary, onPressed: widget.onRetry),
               ],
+            ],
+            if (confirmBlockedMessage != null) ...[
+              const SizedBox(height: SpacingTokens.sm),
+              AppAlert(title: confirmBlockedMessage, variant: AppAlertVariant.destructive),
             ],
             if (_errorMessage != null) ...[
               const SizedBox(height: SpacingTokens.sm),

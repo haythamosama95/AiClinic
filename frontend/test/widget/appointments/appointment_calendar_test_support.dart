@@ -33,6 +33,12 @@ import '../../support/appointment_rpc_test_client.dart';
 
 const calendarWidgetSurfaceSize = Size(1280, 900);
 
+/// Flushes Forui [FTappable] press/release animation timers (100 ms each).
+Future<void> tapForuiControl(WidgetTester tester, Finder finder) async {
+  await tester.tap(finder);
+  await tester.pump(const Duration(milliseconds: 150));
+}
+
 /// Bounded pumps for Syncfusion calendar widget tests (never use [pumpAndSettle]).
 Future<void> settleCalendarWidgetTest(
   WidgetTester tester, {
@@ -132,6 +138,18 @@ Future<ProviderContainer> waitForCalendarLoaded(WidgetTester tester) async {
   }
   await settleCalendarWidgetTest(tester);
   return container;
+}
+
+Future<void> waitForCalendarDoctorsLoaded(WidgetTester tester) async {
+  final container = ProviderScope.containerOf(tester.element(find.byType(AppointmentCalendarPage)));
+  for (var i = 0; i < 30; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    final doctors = container.read(appointmentCalendarDoctorsProvider);
+    if (doctors.hasValue && doctors.requireValue.isNotEmpty) {
+      break;
+    }
+  }
+  await settleCalendarWidgetTest(tester);
 }
 
 Future<void> tapCalendarViewTab(WidgetTester tester, String label) async {
@@ -317,8 +335,7 @@ Future<void> invokeCalendarDragCancel(WidgetTester tester, {required Appointment
   calendar.onDragStart!(AppointmentDragStartDetails(appointment, null));
   await tester.pump();
   calendar.onDragEnd!(AppointmentDragEndDetails(appointment, null, null, null));
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 300));
+  await settleCalendarWidgetTest(tester);
 }
 
 Future<void> invokeCalendarDrag(

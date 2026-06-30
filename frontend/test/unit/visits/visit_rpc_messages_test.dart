@@ -13,6 +13,12 @@ void main() {
       );
       expect(
         visitMessageForRpc(
+          RpcFailure(const RpcResult(success: false, errorCode: 'STALE_DOCUMENTATION', errorMessage: '')),
+        ),
+        contains('updated elsewhere'),
+      );
+      expect(
+        visitMessageForRpc(
           RpcFailure(const RpcResult(success: false, errorCode: 'VISIT_REQUIRED_FOR_COMPLETION', errorMessage: '')),
         ),
         contains('visit documentation'),

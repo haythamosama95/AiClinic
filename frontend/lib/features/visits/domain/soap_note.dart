@@ -62,6 +62,23 @@ class SoapNote {
     );
   }
 
+  /// Maps `get_visit` `documentation` payload to legacy SOAP fields for callers
+  /// that still use [SoapNote] (complaint → subjective, examination → objective, …).
+  static SoapNote? fromDocumentationRow(Map<String, dynamic> row) {
+    final updatedAt = parseVisitDateTime(row['updated_at']);
+    if (updatedAt == null) {
+      return null;
+    }
+
+    return SoapNote(
+      subjective: optionalVisitString(row['complaint']),
+      objective: optionalVisitString(row['examination']),
+      assessment: optionalVisitString(row['diagnosis']),
+      plan: optionalVisitString(row['plan']),
+      updatedAt: updatedAt,
+    );
+  }
+
   SoapNote copyWith({
     Object? subjective = copyWithSentinel,
     Object? objective = copyWithSentinel,

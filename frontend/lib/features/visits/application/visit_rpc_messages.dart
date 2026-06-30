@@ -57,12 +57,12 @@ String visitMessageForDownloadError(Object error) {
 /// User-facing copy for visit RPC failures (V1-5).
 String visitMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {
-    'STALE_SOAP' => 'This visit note was updated elsewhere. Reload and try again.',
+    'STALE_SOAP' || 'STALE_DOCUMENTATION' => 'This visit note was updated elsewhere. Reload and try again.',
     'APPOINTMENT_NOT_ELIGIBLE' => 'Visits can only be started from checked-in or in-progress appointments.',
     'VISIT_ALREADY_EXISTS' => 'A visit already exists for this appointment. Open the existing visit instead.',
     'DOCTOR_REQUIRED' => 'Select a doctor before starting this visit.',
     'INVALID_DOCTOR' => 'The selected doctor is not available at this branch.',
-    'SOAP_REQUIRED_FOR_COMPLETE' =>
+    'SOAP_REQUIRED_FOR_COMPLETE' || 'DOCUMENTATION_REQUIRED_FOR_COMPLETE' =>
       'Enter at least one SOAP section (subjective, objective, assessment, or plan) before submitting the visit.',
     'APPOINTMENT_NOT_IN_PROGRESS' => 'The linked appointment is no longer in progress. Reload the visit and try again.',
     'VISIT_REQUIRED_FOR_COMPLETION' => 'Complete the visit documentation to finish this appointment.',

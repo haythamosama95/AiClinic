@@ -61,6 +61,65 @@ void main() {
       );
       expect(SimplifiedBookingSlot.fromRpcBlock({'state': 'available'}), isNull);
     });
+
+    test('INT-J01: fromRpcBlock maps four state strings correctly', () {
+      const cases = <String, SlotAvailabilityState>{
+        'available': SlotAvailabilityState.available,
+        'alternate_doctors_available': SlotAvailabilityState.alternateDoctorsAvailable,
+        'fully_unavailable': SlotAvailabilityState.fullyUnavailable,
+        'past': SlotAvailabilityState.past,
+      };
+
+      for (final entry in cases.entries) {
+        final slot = SimplifiedBookingSlot.fromRpcBlock({
+          'start_time': '2026-06-27T09:00:00.000',
+          'end_time': '2026-06-27T09:30:00.000',
+          'state': entry.key,
+          'available_doctor_ids': [],
+        });
+
+        expect(slot, isNotNull, reason: 'state ${entry.key}');
+        expect(slot!.state, entry.value);
+      }
+    });
+
+    test('INT-J02: malformed blocks are skipped or return null', () {
+      expect(SimplifiedBookingSlot.fromRpcBlock(null), isNull);
+      expect(SimplifiedBookingSlot.fromRpcBlock({'state': 'available'}), isNull);
+      expect(
+        SimplifiedBookingSlot.fromRpcBlock({
+          'start_time': '2026-06-27T09:00:00.000',
+          'state': 'available',
+          'available_doctor_ids': [],
+        }),
+        isNull,
+      );
+      expect(
+        SimplifiedBookingSlot.fromRpcBlock({
+          'end_time': '2026-06-27T09:30:00.000',
+          'state': 'available',
+          'available_doctor_ids': [],
+        }),
+        isNull,
+      );
+
+      final daySlots = SimplifiedBookingDaySlots.fromRpcData({
+        'default_duration_minutes': 30,
+        'blocks': [
+          {'state': 'available'},
+          {
+            'start_time': '2026-06-27T09:00:00.000',
+            'end_time': '2026-06-27T09:30:00.000',
+            'state': 'available',
+            'available_doctor_ids': [],
+          },
+        ],
+      });
+
+      expect(daySlots, isNotNull);
+      expect(daySlots!.blocks, hasLength(1));
+      expect(daySlots.blocks.single.state, SlotAvailabilityState.available);
+    });
   });
 
   group('SimplifiedBookingDaySlots.fromRpcData', () {
@@ -81,6 +140,17 @@ void main() {
       expect(daySlots!.defaultDurationMinutes, 20);
       expect(daySlots.blocks, hasLength(1));
       expect(daySlots.blocks.single.state, SlotAvailabilityState.available);
+    });
+
+    test('INT-J03: fromRpcData with empty blocks preserves duration', () {
+      final daySlots = SimplifiedBookingDaySlots.fromRpcData({
+        'default_duration_minutes': 45,
+        'blocks': [],
+      });
+
+      expect(daySlots, isNotNull);
+      expect(daySlots!.defaultDurationMinutes, 45);
+      expect(daySlots.blocks, isEmpty);
     });
   });
 

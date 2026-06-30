@@ -31,6 +31,15 @@ BEGIN
   IF to_regclass('public.visit_attachments') IS NOT NULL THEN
     DELETE FROM public.visit_attachments WHERE true;
   END IF;
+  IF to_regclass('public.visit_vital_signs') IS NOT NULL THEN
+    DELETE FROM public.visit_vital_signs WHERE true;
+  END IF;
+  IF to_regclass('public.visit_investigations') IS NOT NULL THEN
+    DELETE FROM public.visit_investigations WHERE true;
+  END IF;
+  IF to_regclass('public.visit_clinical_notes') IS NOT NULL THEN
+    DELETE FROM public.visit_clinical_notes WHERE true;
+  END IF;
   IF to_regclass('public.soap_notes') IS NOT NULL THEN
     DELETE FROM public.soap_notes WHERE true;
   END IF;

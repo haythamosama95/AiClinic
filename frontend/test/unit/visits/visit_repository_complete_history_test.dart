@@ -153,6 +153,36 @@ void main() {
       repository = VisitRepository(client);
     });
 
+    test('advanced: clinical payload includes documentation sections', () async {
+      client.rpcResults['get_visit'] = {
+        'success': true,
+        'data': {
+          'id': 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          'branch_id': '44444444-4444-4444-8444-444444444444',
+          'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          'patient_id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          'doctor_id': 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          'doctor_name': 'Dr Test',
+          'visit_date': '2026-05-31',
+          'status': 'completed',
+          'documentation': {
+            'complaint': 'Chief complaint.',
+            'history': '',
+            'examination': 'Exam findings.',
+            'diagnosis': null,
+            'plan': null,
+            'updated_at': '2026-05-31T10:00:00.000Z',
+          },
+        },
+      };
+
+      final detail = await repository.getVisit(visitId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
+
+      expect(detail.soap?.subjective, 'Chief complaint.');
+      expect(detail.soap?.objective, 'Exam findings.');
+      expect(detail.soap?.hasAnySection, isTrue);
+    });
+
     test('trivial: clinical payload includes SOAP sections', () async {
       client.rpcResults['get_visit'] = {
         'success': true,

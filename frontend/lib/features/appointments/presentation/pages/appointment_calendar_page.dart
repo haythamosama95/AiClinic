@@ -575,6 +575,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final anchor = visible[visible.length ~/ 2];
     final normalized = DateTime(anchor.year, anchor.month, anchor.day);
     final effectiveMode = syncedMode ?? ref.read(appointmentCalendarProvider).mode;
+    final syncedFocus = _lastSyncedFocusDate;
+    if (syncedFocus != null && !_isSameCalendarPeriod(normalized, syncedFocus, effectiveMode)) {
+      return;
+    }
     if (_isSameCalendarPeriod(normalized, ref.read(appointmentCalendarProvider).focusDate, effectiveMode)) {
       return;
     }
@@ -717,7 +721,17 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final droppingTime = details.droppingTime;
     final calendarAppointment = details.appointment;
     if (droppingTime == null || calendarAppointment is! Appointment) {
-      _clearDragSession(items: items);
+      if (_dragSession != null) {
+        _clearDragSession(items: items);
+      } else {
+        _revertCalendarItems(
+          items,
+          doctors: doctors,
+          includeDoctorResources: includeDoctorResources,
+          evenResourceRowColor: evenResourceRowColor,
+          oddResourceRowColor: oddResourceRowColor,
+        );
+      }
       return;
     }
 

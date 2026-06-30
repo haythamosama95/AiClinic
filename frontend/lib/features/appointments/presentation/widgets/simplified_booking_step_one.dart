@@ -152,6 +152,17 @@ class _SimplifiedBookingStepOneState extends ConsumerState<SimplifiedBookingStep
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  void _clearSelectedPatient() {
+    _patientSearchDebounce?.cancel();
+    _patientSearchController.clear();
+    setState(() {
+      _selectedPatient = null;
+      _patientResults = const [];
+      _lastPatientQuery = '';
+      _patientSearchError = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -192,7 +203,7 @@ class _SimplifiedBookingStepOneState extends ConsumerState<SimplifiedBookingStep
                     key: const Key('simplified_booking_patient_clear'),
                     label: 'Clear',
                     variant: AppButtonVariant.ghost,
-                    onPressed: () => setState(() => _selectedPatient = null),
+                    onPressed: _clearSelectedPatient,
                   ),
               ],
             ),
@@ -215,6 +226,7 @@ class _SimplifiedBookingStepOneState extends ConsumerState<SimplifiedBookingStep
                     subtitle: Text(patient.phone ?? patient.registeringBranchName),
                     onTap: widget.enabled
                         ? () {
+                            _patientSearchDebounce?.cancel();
                             setState(() {
                               _selectedPatient = patient;
                               _patientResults = const [];

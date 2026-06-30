@@ -1,6 +1,6 @@
 -- 011 Simplified Slot Booking: restore per-doctor overlap and add slot query RPC.
 --
--- Supersedes branch-wide slot uniqueness in 20260528150500_appointment_slot_and_patient_day_conflicts.sql.
+-- Supersedes branch-wide overlap restored in 20260627150000_restore_branch_wide_appointment_overlap.sql.
 -- Alternate-doctor booking requires per-doctor conflict detection so two doctors may share
 -- the same branch clock time while the same doctor cannot double-book.
 

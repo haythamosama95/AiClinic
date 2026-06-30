@@ -307,7 +307,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Conflict: overlapping planned slot.
+  -- BE-L08: same doctor partial overlap on create → SCHEDULE_CONFLICT.
   v_result := public.create_appointment(
     v_main_branch_id,
     v_patient_id,
@@ -552,7 +552,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Reschedule conflict: another appointment blocks the target slot.
+  -- REG-M02 / REG-M03: reschedule overlap for the same doctor is rejected.
   v_start := date_trunc('hour', now() + interval '6 days');
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 30, NULL, NULL
@@ -572,6 +572,29 @@ BEGIN
   INSERT INTO appointment_crud_results VALUES (
     'reschedule_conflict_rejected',
     NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- BE-L16 / REG-M02: reschedule into a slot occupied by a different doctor at the same time succeeds.
+  v_start := date_trunc('day', now() + interval '23 days') + interval '10 hours';
+  v_result := public.create_appointment(
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 30, NULL, NULL
+  );
+  v_result := public.create_appointment(
+    v_main_branch_id, v_patient2_id, v_doctor2_staff, 'planned', v_start + interval '4 hours', 30, NULL, NULL
+  );
+  v_appt_second := (v_result.data ->> 'appointment_id')::uuid;
+  v_result := public.reschedule_appointment(
+    v_appt_second,
+    v_start,
+    30,
+    NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'reschedule_cross_doctor_same_time_allowed',
+    v_result.success,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -666,7 +689,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Reschedule parity: doctor-less appointment may overlap assigned doctor (per-doctor overlap, 011).
+  -- BE-L09: doctor-less reschedule may overlap an assigned doctor (per-doctor overlap, 011).
   v_result := public.create_patient(
     v_main_branch_id, 'Reschedule No Doctor', '201000000146', NULL, NULL, NULL, NULL, false
   );
@@ -1001,7 +1024,8 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Same time different doctors: allowed with per-doctor overlap (011).
+  -- Per-doctor overlap (011 simplified slot booking): BE-L07, BE-L08, BE-L09; REG-M04 umbrella.
+  -- BE-L07: same clock time for two different doctors on create succeeds.
   v_start := date_trunc('day', now() + interval '11 days') + interval '10 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
@@ -1025,7 +1049,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Same doctor same time: still conflicts with per-doctor overlap.
+  -- BE-L08: same doctor same start time on create → SCHEDULE_CONFLICT.
   v_start := date_trunc('day', now() + interval '12 days') + interval '10 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
@@ -1049,7 +1073,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Two unassigned planned at same time: allowed (no doctor overlap when doctor is null).
+  -- BE-L09: two doctor-less planned appointments at the same time are allowed.
   v_start := date_trunc('day', now() + interval '13 days') + interval '10 hours';
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
@@ -1069,6 +1093,20 @@ BEGIN
   INSERT INTO appointment_crud_results VALUES (
     'two_planned_without_doctor_allowed',
     v_result.success,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- REG-M10: 240-minute planned appointment create still allowed (no upper duration cap).
+  v_start := date_trunc('day', now() + interval '24 days') + interval '10 hours';
+  v_result := public.create_appointment(
+    v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 240, NULL, NULL
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO appointment_crud_results VALUES (
+    'create_240_min_planned_succeeds',
+    v_result.success
+      AND (v_result.data ->> 'end_time')::timestamptz = v_start + interval '240 minutes',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

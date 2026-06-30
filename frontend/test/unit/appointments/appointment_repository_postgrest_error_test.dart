@@ -52,7 +52,7 @@ void main() {
         throwsA(
           isA<RpcFailure>()
               .having((e) => e.code, 'code', 'RPC_NOT_APPLIED')
-              .having((e) => e.message, 'message', contains('20260526140000_appointment_management.sql'))
+              .having((e) => e.message, 'message', contains('20260628160000_simplified_slot_booking.sql'))
               .having((e) => e.message, 'message', contains('get_appointment_settings')),
         ),
       );
@@ -67,7 +67,7 @@ void main() {
         throwsA(
           isA<RpcFailure>()
               .having((e) => e.code, 'code', 'RPC_NOT_CONFIGURED')
-              .having((e) => e.message, 'message', contains('20260526140000_appointment_management.sql')),
+              .having((e) => e.message, 'message', contains('20260628160000_simplified_slot_booking.sql')),
         ),
       );
     });

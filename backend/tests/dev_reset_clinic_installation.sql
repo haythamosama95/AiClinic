@@ -279,6 +279,90 @@ BEGIN
 END;
 $$;
 
+-- Reset must delete visit documentation rows before visits (013 redesign FKs).
+DO $$
+DECLARE
+  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_result public.rpc_result;
+  v_org_id uuid;
+  v_branch_id uuid;
+  v_patient_id uuid;
+  v_doctor_id uuid;
+  v_appointment_id uuid;
+  v_visit_id uuid;
+  v_passed boolean;
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
+  DELETE FROM public.audit_log WHERE true;
+  DELETE FROM public.app_settings WHERE true;
+  DELETE FROM public.subscription_cache WHERE true;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.bootstrap_create_organization('Reset With Visit Docs', '{}'::jsonb, NULL, 'EGP', 'UTC');
+  v_org_id := (v_result.data ->> 'organization_id')::uuid;
+  v_result := public.bootstrap_create_branch(
+    v_org_id,
+    'Visit Doc Branch',
+    '1 Main St',
+    '555',
+    'VDB1',
+    'https://maps.example'
+  );
+  v_branch_id := (v_result.data ->> 'branch_id')::uuid;
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT id INTO v_doctor_id FROM public.staff_members WHERE is_bootstrap_admin LIMIT 1;
+
+  INSERT INTO public.patients (branch_id, organization_id, full_name, phone, gender, created_by)
+  VALUES (v_branch_id, v_org_id, 'Visit Doc Patient', '01000000002', 'female', v_bootstrap_user)
+  RETURNING id INTO v_patient_id;
+
+  INSERT INTO public.appointments (branch_id, patient_id, doctor_id, start_time, end_time, status, created_by)
+  VALUES (
+    v_branch_id,
+    v_patient_id,
+    v_doctor_id,
+    now(),
+    now() + interval '30 minutes',
+    'completed',
+    v_bootstrap_user
+  )
+  RETURNING id INTO v_appointment_id;
+
+  INSERT INTO public.visits (appointment_id, branch_id, patient_id, doctor_id, visit_date, created_by)
+  VALUES (v_appointment_id, v_branch_id, v_patient_id, v_doctor_id, current_date, v_bootstrap_user)
+  RETURNING id INTO v_visit_id;
+
+  INSERT INTO public.visit_clinical_notes (visit_id, complaint) VALUES (v_visit_id, 'reset test');
+  INSERT INTO public.visit_vital_signs (visit_id, name, value) VALUES (v_visit_id, 'Heart Rate', '72');
+  INSERT INTO public.visit_investigations (visit_id, name) VALUES (v_visit_id, 'CBC');
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.dev_reset_clinic_installation();
+  v_passed := v_result.success AND NOT auth_internal.organization_exists();
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO dev_reset_results VALUES (
+    'dev_reset_deletes_visit_documentation_before_visits',
+    v_passed,
+    COALESCE(v_result.error_code, 'ok')
+  );
+END;
+$$;
+
 DO $$
 DECLARE
   v_failures int;

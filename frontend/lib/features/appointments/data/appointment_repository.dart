@@ -22,7 +22,7 @@ class AppointmentRepository with AppRpcInvoker {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260627120000_simplified_slot_booking.sql';
+  String get migrationHint => '20260628160000_simplified_slot_booking.sql';
 
   @override
   String get rpcLogDomain => 'appointments';

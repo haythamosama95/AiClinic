@@ -69,14 +69,13 @@ class VisitRepository with AppRpcInvoker {
   }) async {
     _assertNonEmpty('visitId', visitId);
 
-    final result = await invokeRpc('save_soap_note', {
+    final result = await invokeRpc('save_visit_documentation', {
       'p_visit_id': visitId.trim(),
       'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
-      'p_subjective': ?subjective,
-      'p_objective': ?objective,
-      'p_assessment': ?assessment,
+      'p_complaint': ?subjective,
+      'p_examination': ?objective,
+      'p_diagnosis': ?assessment,
       'p_plan': ?plan,
-      'p_specialty_form_json': ?specialtyFormJson,
     });
 
     final saved = SoapSaveResult.fromRpcData(result.data);

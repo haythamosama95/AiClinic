@@ -107,7 +107,7 @@ void main() {
         expect(find.byType(AppointmentCalendarSkeleton), findsOneWidget);
         expect(find.byType(SfCalendar), findsNothing);
 
-        await settleCalendarWidgetTest(tester, passes: 3);
+        await waitForCalendarLoaded(tester);
 
         expect(find.byType(AppointmentCalendarSkeleton), findsNothing);
         expect(find.byType(SfCalendar), findsOneWidget);
@@ -155,20 +155,40 @@ void main() {
       });
 
       testWidgets('CAL-B04: Retry refreshes appointments after error', (tester) async {
-        final client = FlakyListAppointmentRpcClient();
+        // Syncfusion may trigger a second list fetch via onViewChanged before Retry.
+        final client = FlakyListAppointmentRpcClient(failuresBeforeSuccess: 2);
 
         await pumpAppointmentCalendarPage(tester, authState: calendarAuthState(), rpcClient: client);
+
+        final container = ProviderScope.containerOf(tester.element(find.byType(AppointmentCalendarPage)));
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+          final state = container.read(appointmentCalendarProvider);
+          if (!state.loading && state.error != null) {
+            break;
+          }
+        }
         await settleCalendarWidgetTest(tester);
 
         expect(find.textContaining('Could not load appointments'), findsOneWidget);
-        expect(client.rpcCallCounts['list_appointments'], 1);
+        final callsBeforeRetry = client.rpcCallCounts['list_appointments'] ?? 0;
+        expect(callsBeforeRetry, greaterThanOrEqualTo(1));
 
-        await tester.tap(find.text('Retry'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+        // Syncfusion may issue 1–2 list fetches before Retry; drain remaining failures so Retry succeeds.
+        client.failuresBeforeSuccess = 0;
+        await tapForuiControl(tester, find.text('Retry'));
+        final containerAfterRetry = ProviderScope.containerOf(tester.element(find.byType(AppointmentCalendarPage)));
+        for (var i = 0; i < 30; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+          final state = containerAfterRetry.read(appointmentCalendarProvider);
+          if (!state.loading && state.error == null) {
+            break;
+          }
+        }
+        await settleCalendarWidgetTest(tester);
 
         expect(find.textContaining('Could not load appointments'), findsNothing);
-        expect(client.rpcCallCounts['list_appointments'], 2);
+        expect(client.rpcCallCounts['list_appointments'], greaterThan(callsBeforeRetry));
         expect(find.byType(SfCalendar), findsOneWidget);
       });
 

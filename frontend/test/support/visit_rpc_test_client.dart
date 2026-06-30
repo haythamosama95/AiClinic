@@ -68,7 +68,7 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           },
         },
       },
-      'save_soap_note' => {
+      'save_visit_documentation' => {
         'success': true,
         'data': {
           'visit_id': lastParams?['p_visit_id'] ?? 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
