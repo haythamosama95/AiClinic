@@ -25,4 +25,5 @@ export 'overlays/app_dialog.dart';
 export 'overlays/app_popover.dart';
 export 'overlays/app_sheets.dart';
 export 'overlays/app_toast.dart';
+export 'overlays/app_tooltip.dart';
 export 'tiles/app_tiles.dart';
