@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
@@ -21,6 +22,8 @@ class ThemeShowcasePage extends ConsumerStatefulWidget {
 class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
+  final _clinicalNotesController = TextEditingController();
+  late final QuillController _richNotesController;
   var _buttonLoading = false;
   var _checkboxValue = true;
   var _switchValue = false;
@@ -38,8 +41,16 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
   static const _doctors = {'Dr. Ahmed': 'ahmed', 'Dr. Sara': 'sara', 'Dr. Omar': 'omar'};
 
   @override
+  void initState() {
+    super.initState();
+    _richNotesController = QuillController.basic();
+  }
+
+  @override
   void dispose() {
     _usernameController.dispose();
+    _clinicalNotesController.dispose();
+    _richNotesController.dispose();
     super.dispose();
   }
 
@@ -475,6 +486,51 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
               AppButton(label: 'Save', onPressed: () {}),
             ],
             child: Text('Card body content for metrics, lists, or forms.', style: theme.textTheme.bodyMedium),
+          ),
+        ),
+        const SizedBox(height: SpacingTokens.lg),
+        _Section(
+          title: 'Paragraph fields',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AppParagraphField(
+                label: 'Clinical notes',
+                description: 'Fixed height — content scrolls inside the field.',
+                hintText: 'Describe symptoms, findings, and plan…',
+                controller: _clinicalNotesController,
+                minLines: 4,
+              ),
+              const SizedBox(height: SpacingTokens.md),
+              AppParagraphField(
+                label: 'History of present illness',
+                description: 'Expands as you type.',
+                hintText: 'Patient reports…',
+                expands: true,
+                minLines: 3,
+              ),
+              const SizedBox(height: SpacingTokens.md),
+              AppParagraphField(
+                label: 'Assessment (rich text)',
+                description: 'Optional formatting for emphasis and lists.',
+                hintText: 'Summarize diagnosis and rationale…',
+                richText: true,
+                quillController: _richNotesController,
+                minLines: 5,
+              ),
+              const SizedBox(height: SpacingTokens.md),
+              AppParagraphFormField(
+                label: 'Required summary',
+                hintText: 'At least a few words are required.',
+                minLines: 3,
+                validator: (value) {
+                  if (value == null || value.trim().length < 8) {
+                    return 'Enter at least 8 characters.';
+                  }
+                  return null;
+                },
+              ),
+            ],
           ),
         ),
         const SizedBox(height: SpacingTokens.lg),

@@ -16,6 +16,7 @@ export 'input/app_clock_time_field.dart';
 export 'input/app_date_field.dart';
 export 'input/app_field_size.dart';
 export 'input/app_label.dart';
+export 'input/app_paragraph_field.dart';
 export 'input/app_selectors.dart';
 export 'input/app_text_field.dart';
 export 'layouts/app_card.dart';
