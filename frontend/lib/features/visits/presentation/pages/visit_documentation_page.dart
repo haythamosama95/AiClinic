@@ -10,13 +10,8 @@ import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_documentation_layout.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_header.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_assessment.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_objective.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_plan.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_subjective.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspace_shell.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
@@ -52,6 +47,7 @@ class VisitDocumentationPage extends ConsumerWidget {
         final canSubmit = canEdit;
 
         return VisitPageShell(
+          scrollBody: false,
           headerActions: [
             VisitDetailActions(visitId: id, status: state.visit.status, canEditDocumentation: canEdit),
             if (canSubmit && state.visit.status == VisitStatus.inProgress)
@@ -73,7 +69,14 @@ class VisitDocumentationPage extends ConsumerWidget {
               ),
           ],
           onBack: () => _goBack(context, id),
-          body: _VisitDocumentationBody(visitId: id, state: state, canEdit: canEdit, hasBranchAccess: hasBranchAccess),
+          body: _VisitDocumentationBody(
+            visitId: id,
+            state: state,
+            canEdit: canEdit,
+            hasBranchAccess: hasBranchAccess,
+            canSubmit: canSubmit,
+            onSubmit: () => _submitVisit(context, ref, id, state, canEdit: canEdit),
+          ),
         );
       },
     );
@@ -148,18 +151,21 @@ class _VisitDocumentationBody extends ConsumerWidget {
     required this.state,
     required this.canEdit,
     required this.hasBranchAccess,
+    required this.canSubmit,
+    required this.onSubmit,
   });
 
   final String visitId;
   final VisitDocumentationState state;
   final bool canEdit;
   final bool hasBranchAccess;
+  final bool canSubmit;
+  final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final visit = state.visit;
     final canUploadAttachments = ref.watch(permissionServiceProvider).canUploadVisitAttachments();
-    final onRefresh = () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -175,20 +181,16 @@ class _VisitDocumentationBody extends ConsumerWidget {
           ),
           const SizedBox(height: VisitPageTokens.sectionGap),
         ],
-        EncounterDocumentationLayout(
-          phases: [
-            EncounterPhaseContext(visit: visit),
-            EncounterPhaseSubjective(visitId: visitId, state: state, canEdit: canEdit),
-            EncounterPhaseObjective(visitId: visitId, state: state, canEdit: canEdit, onRefresh: onRefresh),
-            EncounterPhaseAssessment(visitId: visitId, state: state, canEdit: canEdit),
-            EncounterPhasePlan(
-              visitId: visitId,
-              state: state,
-              canEdit: canEdit,
-              canUploadAttachments: canUploadAttachments,
-              onRefresh: onRefresh,
-            ),
-          ],
+        Expanded(
+          child: EncounterWorkspaceShell(
+            visitId: visitId,
+            state: state,
+            canEdit: canEdit,
+            canUploadAttachments: canUploadAttachments,
+            onRefresh: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+            onSubmit: onSubmit,
+            showSubmit: canSubmit && state.visit.status == VisitStatus.inProgress,
+          ),
         ),
       ],
     );

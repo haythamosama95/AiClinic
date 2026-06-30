@@ -12,11 +12,18 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widg
 
 /// Assessment phase — diagnosis section (014 US2).
 class EncounterPhaseAssessment extends ConsumerWidget {
-  const EncounterPhaseAssessment({required this.visitId, required this.state, required this.canEdit, super.key});
+  const EncounterPhaseAssessment({
+    required this.visitId,
+    required this.state,
+    required this.canEdit,
+    this.showClinicalNoteSaveBar = true,
+    super.key,
+  });
 
   final String visitId;
   final VisitDocumentationState state;
   final bool canEdit;
+  final bool showClinicalNoteSaveBar;
 
   static const _sections = {ClinicalNoteSection.diagnosis};
 
@@ -40,7 +47,7 @@ class EncounterPhaseAssessment extends ConsumerWidget {
               canEdit: canEdit,
               sections: _sections,
               showStaleBanner: false,
-              showSaveBar: true,
+              showSaveBar: showClinicalNoteSaveBar,
             ),
           ),
         ],

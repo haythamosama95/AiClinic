@@ -104,15 +104,15 @@
 
 ### Implementation for User Story 4
 
-- [ ] T020 [P] [US4] Create `encounter_step_provider.dart` deriving empty/hasContent/error badges from `VisitDetail` + draft in `frontend/lib/features/visits/presentation/providers/encounter_step_provider.dart`
-- [ ] T021 [P] [US4] Create `encounter_workspace_shell.dart` three-region layout with responsive collapse in `frontend/lib/features/visits/presentation/widgets/encounter_workspace_shell.dart`
-- [ ] T022 [P] [US4] Create `encounter_step_rail.dart` with non-linear step navigation and badges in `frontend/lib/features/visits/presentation/widgets/encounter_step_rail.dart`
-- [ ] T023 [P] [US4] Create `encounter_sticky_footer.dart` reusing per-section save status in `frontend/lib/features/visits/presentation/widgets/encounter_sticky_footer.dart`
-- [ ] T024 [P] [US4] Create `encounter_review.dart` read-only summary with per-section edit links and submit in `frontend/lib/features/visits/presentation/widgets/encounter_review.dart`
-- [ ] T025 [US4] Wire `visit_documentation_page.dart` body through `EncounterWorkspaceShell` (guided mode default)
-- [ ] T026 [US4] Wire `visit_detail_page.dart` body to `EncounterReview` read-only view
-- [ ] T027 [P] [US4] Add widget tests for workspace shell, non-linear navigation, and step badges in `frontend/test/widget/visits/encounter_workspace_test.dart`
-- [ ] T028 [P] [US4] Add unit tests for `encounter_step_provider.dart` badge logic in `frontend/test/unit/visits/encounter_step_provider_test.dart`
+- [X] T020 [P] [US4] Create `encounter_step_provider.dart` deriving empty/hasContent/error badges from `VisitDetail` + draft in `frontend/lib/features/visits/presentation/providers/encounter_step_provider.dart`
+- [X] T021 [P] [US4] Create `encounter_workspace_shell.dart` three-region layout with responsive collapse in `frontend/lib/features/visits/presentation/widgets/encounter_workspace_shell.dart`
+- [X] T022 [P] [US4] Create `encounter_step_rail.dart` with non-linear step navigation and badges in `frontend/lib/features/visits/presentation/widgets/encounter_step_rail.dart`
+- [X] T023 [P] [US4] Create `encounter_sticky_footer.dart` reusing per-section save status in `frontend/lib/features/visits/presentation/widgets/encounter_sticky_footer.dart`
+- [X] T024 [P] [US4] Create `encounter_review.dart` read-only summary with per-section edit links and submit in `frontend/lib/features/visits/presentation/widgets/encounter_review.dart`
+- [X] T025 [US4] Wire `visit_documentation_page.dart` body through `EncounterWorkspaceShell` (guided mode default)
+- [X] T026 [US4] Wire `visit_detail_page.dart` body to `EncounterReview` read-only view
+- [X] T027 [P] [US4] Add widget tests for workspace shell, non-linear navigation, and step badges in `frontend/test/widget/visits/encounter_workspace_test.dart`
+- [X] T028 [P] [US4] Add unit tests for `encounter_step_provider.dart` badge logic in `frontend/test/unit/visits/encounter_step_provider_test.dart`
 
 **Checkpoint**: US4 independently testable — full stepper workspace with P1 content and safety rail
 
@@ -126,10 +126,10 @@
 
 ### Implementation for User Story 5
 
-- [ ] T029 [P] [US5] Create `workspace_mode_provider.dart` with guided default and best-effort local persistence in `frontend/lib/features/visits/presentation/providers/workspace_mode_provider.dart`
-- [ ] T030 [P] [US5] Create `expert_mode_accordion.dart` rendering five collapsible phase sections in `frontend/lib/features/visits/presentation/widgets/expert_mode_accordion.dart`
-- [ ] T031 [US5] Integrate guided/expert toggle into `encounter_workspace_shell.dart` preserving draft and save state (FR-019)
-- [ ] T032 [P] [US5] Add widget test for mode toggle data preservation in `frontend/test/widget/visits/expert_mode_test.dart`
+- [X] T029 [P] [US5] Create `workspace_mode_provider.dart` with guided default and best-effort local persistence in `frontend/lib/features/visits/presentation/providers/workspace_mode_provider.dart`
+- [X] T030 [P] [US5] Create `expert_mode_accordion.dart` rendering five collapsible phase sections in `frontend/lib/features/visits/presentation/widgets/expert_mode_accordion.dart`
+- [X] T031 [US5] Integrate guided/expert toggle into `encounter_workspace_shell.dart` preserving draft and save state (FR-019)
+- [X] T032 [P] [US5] Add widget test for mode toggle data preservation in `frontend/test/widget/visits/expert_mode_test.dart`
 
 **Checkpoint**: P2 complete (US4 + US5) — shippable frontend-only workspace per quickstart.md P2 validation
 

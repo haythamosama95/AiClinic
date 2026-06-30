@@ -14,7 +14,7 @@ class EncounterDocumentationLayout extends StatelessWidget {
   final EncounterPhase? activePhase;
 
   static const _safetyRailBreakpoint = 960.0;
-  static const _safetyRailWidth = 260.0;
+  static const safetyRailWidth = 260.0;
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +31,7 @@ class EncounterDocumentationLayout extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _withGaps(phases)),
               ),
               const SizedBox(width: VisitPageTokens.sectionGap),
-              SizedBox(width: _safetyRailWidth, child: safetyRail),
+              SizedBox(width: safetyRailWidth, child: safetyRail),
             ],
           );
         }

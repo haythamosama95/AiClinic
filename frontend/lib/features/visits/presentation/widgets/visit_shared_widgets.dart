@@ -6,11 +6,18 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens
 
 /// Page shell aligned with patient and appointment detail scaffolds.
 class VisitPageShell extends StatelessWidget {
-  const VisitPageShell({required this.onBack, required this.body, this.headerActions = const [], super.key});
+  const VisitPageShell({
+    required this.onBack,
+    required this.body,
+    this.headerActions = const [],
+    this.scrollBody = true,
+    super.key,
+  });
 
   final VoidCallback onBack;
   final List<Widget> headerActions;
   final Widget body;
+  final bool scrollBody;
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +28,7 @@ class VisitPageShell extends StatelessWidget {
         children: [
           _VisitTopBar(onBack: onBack, headerActions: headerActions),
           const SizedBox(height: SpacingTokens.md),
-          Expanded(child: SingleChildScrollView(child: body)),
+          Expanded(child: scrollBody ? SingleChildScrollView(child: body) : body),
         ],
       ),
     );

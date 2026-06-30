@@ -21,6 +21,7 @@ class EncounterPhasePlan extends ConsumerWidget {
     required this.canEdit,
     required this.canUploadAttachments,
     required this.onRefresh,
+    this.showClinicalNoteSaveBar = true,
     super.key,
   });
 
@@ -29,6 +30,7 @@ class EncounterPhasePlan extends ConsumerWidget {
   final bool canEdit;
   final bool canUploadAttachments;
   final VoidCallback onRefresh;
+  final bool showClinicalNoteSaveBar;
 
   static const _sections = {ClinicalNoteSection.plan};
 
@@ -55,7 +57,7 @@ class EncounterPhasePlan extends ConsumerWidget {
               canEdit: canEdit,
               sections: _sections,
               showStaleBanner: false,
-              showSaveBar: true,
+              showSaveBar: showClinicalNoteSaveBar,
             ),
           ),
           const SizedBox(height: VisitPageTokens.sectionGap),

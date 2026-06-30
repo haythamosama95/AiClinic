@@ -53,6 +53,7 @@ Future<void> pumpEncounterWidget(
   VisitDocumentationState? docState,
   PatientDetail? patientDetail,
   Size size = const Size(1280, 900),
+  bool scrollable = true,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -69,13 +70,15 @@ Future<void> pumpEncounterWidget(
     );
   }
 
+  final body = scrollable ? child : SizedBox(width: size.width, height: size.height, child: child);
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: overrides,
       child: MaterialApp(
         theme: AppTheme.light(),
         builder: (context, appChild) => ForuiAppScope(child: appChild ?? const SizedBox.shrink()),
-        home: Scaffold(body: SingleChildScrollView(child: child)),
+        home: Scaffold(body: scrollable ? SingleChildScrollView(child: body) : body),
       ),
     ),
   );

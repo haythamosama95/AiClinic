@@ -12,11 +12,18 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widg
 
 /// Subjective phase — Complaint and History (014 US2).
 class EncounterPhaseSubjective extends ConsumerWidget {
-  const EncounterPhaseSubjective({required this.visitId, required this.state, required this.canEdit, super.key});
+  const EncounterPhaseSubjective({
+    required this.visitId,
+    required this.state,
+    required this.canEdit,
+    this.showClinicalNoteSaveBar = true,
+    super.key,
+  });
 
   final String visitId;
   final VisitDocumentationState state;
   final bool canEdit;
+  final bool showClinicalNoteSaveBar;
 
   static const _sections = {ClinicalNoteSection.complaint, ClinicalNoteSection.history};
 
@@ -40,7 +47,7 @@ class EncounterPhaseSubjective extends ConsumerWidget {
               canEdit: canEdit,
               sections: _sections,
               showStaleBanner: true,
-              showSaveBar: true,
+              showSaveBar: showClinicalNoteSaveBar,
               showEditButton: true,
             ),
           ),

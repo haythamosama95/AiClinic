@@ -7,22 +7,11 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
-import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
-import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
-import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_documentation_layout.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_header.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_assessment.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_objective.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_plan.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_subjective.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_review.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
@@ -93,11 +82,12 @@ class _EditableVisitDetailPage extends ConsumerWidget {
         body: _VisitDetailBody(
           visitId: visitId,
           visit: docState.visit,
+          state: docState,
           canEdit: true,
-          docState: docState,
           hasBranchAccess: view.hasBranchAccess,
           canUploadAttachments: view.canUploadAttachments,
           onRefresh: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+          onEditDocumentation: () => context.go(AppRoutes.visitDocument(visitId)),
         ),
       ),
     );
@@ -137,7 +127,8 @@ class _VisitDetailBody extends ConsumerWidget {
     required this.hasBranchAccess,
     required this.canUploadAttachments,
     required this.onRefresh,
-    this.docState,
+    this.state,
+    this.onEditDocumentation,
   });
 
   final String visitId;
@@ -146,12 +137,11 @@ class _VisitDetailBody extends ConsumerWidget {
   final bool hasBranchAccess;
   final bool canUploadAttachments;
   final VoidCallback onRefresh;
-  final VisitDocumentationState? docState;
+  final VisitDocumentationState? state;
+  final VoidCallback? onEditDocumentation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final note = visit.documentation;
-
     return Column(
       key: const Key('visit_detail_body'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -167,158 +157,15 @@ class _VisitDetailBody extends ConsumerWidget {
           ),
           const SizedBox(height: VisitPageTokens.sectionGap),
         ],
-        EncounterDocumentationLayout(
-          phases: [
-            EncounterPhaseReadGroup(
-              phase: EncounterPhase.context,
-              child: EncounterPhaseContext(visit: visit),
-            ),
-            EncounterPhaseReadGroup(
-              phase: EncounterPhase.subjective,
-              child: EncounterPhaseSubjectiveDetail(visitId: visitId, state: docState, canEdit: canEdit, note: note),
-            ),
-            EncounterPhaseReadGroup(
-              phase: EncounterPhase.objective,
-              child: EncounterPhaseObjectiveDetail(
-                visitId: visitId,
-                visit: visit,
-                canEdit: canEdit,
-                docState: docState,
-                onRefresh: onRefresh,
-              ),
-            ),
-            EncounterPhaseReadGroup(
-              phase: EncounterPhase.assessment,
-              child: canEdit && docState != null
-                  ? EncounterPhaseAssessmentReadOnly(visitId: visitId, state: docState!, canEdit: true)
-                  : EncounterPhaseAssessmentFromVisit(note: note),
-            ),
-            EncounterPhaseReadGroup(
-              phase: EncounterPhase.plan,
-              initiallyExpanded: true,
-              child: canEdit && docState != null
-                  ? EncounterPhasePlan(
-                      visitId: visitId,
-                      state: docState!,
-                      canEdit: true,
-                      canUploadAttachments: canUploadAttachments,
-                      onRefresh: onRefresh,
-                    )
-                  : _PlanReadOnly(
-                      visit: visit,
-                      visitId: visitId,
-                      canUploadAttachments: canUploadAttachments,
-                      onRefresh: onRefresh,
-                    ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _PlanReadOnly extends StatelessWidget {
-  const _PlanReadOnly({
-    required this.visit,
-    required this.visitId,
-    required this.canUploadAttachments,
-    required this.onRefresh,
-  });
-
-  final VisitDetail visit;
-  final String visitId;
-  final bool canUploadAttachments;
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        VisitSectionCard(
-          kind: VisitPanelKind.clinicalNote,
-          title: 'Plan',
-          child: VisitDetailField(label: 'Plan', value: visit.documentation?.plan ?? '', abbr: 'P'),
-        ),
-        const SizedBox(height: VisitPageTokens.sectionGap),
-        VisitSectionCard(
-          kind: VisitPanelKind.treatment,
-          title: 'Treatment plans',
-          child: _TreatmentPlansReadOnly(treatmentPlans: visit.treatmentPlans),
-        ),
-        const SizedBox(height: VisitPageTokens.sectionGap),
-        VisitSectionCard(
-          kind: VisitPanelKind.investigation,
-          title: 'Investigations',
-          child: _InvestigationsReadOnly(investigations: visit.investigations),
-        ),
-        const SizedBox(height: VisitPageTokens.sectionGap),
-        VisitAttachmentList(
+        EncounterReview(
           visitId: visitId,
-          branchId: visit.branchId,
-          attachments: visit.attachments,
-          canUpload: canUploadAttachments,
-          onChanged: onRefresh,
-          sectionKind: VisitPanelKind.attachment,
-          sectionTitle: 'Attachments',
+          visit: visit,
+          state: state,
+          canEdit: canEdit,
+          canUploadAttachments: canUploadAttachments,
+          onRefresh: onRefresh,
+          onEditPhase: canEdit && onEditDocumentation != null ? (_) => onEditDocumentation!() : null,
         ),
-      ],
-    );
-  }
-}
-
-class _TreatmentPlansReadOnly extends StatelessWidget {
-  const _TreatmentPlansReadOnly({required this.treatmentPlans});
-
-  final List<TreatmentPlanItem> treatmentPlans;
-
-  @override
-  Widget build(BuildContext context) {
-    if (treatmentPlans.isEmpty) {
-      return const VisitEmptyHint(
-        key: Key('visit_detail_treatment_plans_empty'),
-        message: 'No treatment plans recorded.',
-        icon: Icons.medication_outlined,
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final plan in treatmentPlans)
-          Padding(
-            padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
-            child: TreatmentPlanCardView(plan: plan),
-          ),
-      ],
-    );
-  }
-}
-
-class _InvestigationsReadOnly extends StatelessWidget {
-  const _InvestigationsReadOnly({required this.investigations});
-
-  final List<VisitInvestigation> investigations;
-
-  @override
-  Widget build(BuildContext context) {
-    if (investigations.isEmpty) {
-      return const VisitEmptyHint(
-        key: Key('visit_detail_investigations_empty'),
-        message: 'No investigations ordered.',
-        icon: Icons.biotech_outlined,
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final investigation in investigations)
-          Padding(
-            padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
-            child: InvestigationCardView(investigation: investigation),
-          ),
       ],
     );
   }

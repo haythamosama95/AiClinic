@@ -22,6 +22,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
     required this.state,
     required this.canEdit,
     required this.onRefresh,
+    this.showClinicalNoteSaveBar = true,
     super.key,
   });
 
@@ -29,6 +30,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
   final VisitDocumentationState state;
   final bool canEdit;
   final VoidCallback onRefresh;
+  final bool showClinicalNoteSaveBar;
 
   static const _sections = {ClinicalNoteSection.examination};
 
@@ -64,7 +66,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
               canEdit: canEdit,
               sections: _sections,
               showStaleBanner: false,
-              showSaveBar: true,
+              showSaveBar: showClinicalNoteSaveBar,
             ),
           ),
         ],
