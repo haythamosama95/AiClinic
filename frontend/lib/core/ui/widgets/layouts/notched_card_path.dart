@@ -19,6 +19,9 @@ const double kNotchHorizontalPadding = SpacingTokens.sm;
 /// Internal padding around caller actions inside the card-colored shell.
 const double kNotchActionContainerPadding = SpacingTokens.xs;
 
+/// Inset between the notch cut-out border and floating actions.
+const double kNotchActionMargin = SpacingTokens.xs;
+
 /// Vertical gap below floating actions before card body content.
 const double kNotchActionBottomMargin = SpacingTokens.sm;
 

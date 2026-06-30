@@ -20,6 +20,9 @@ class InvestigationList extends ConsumerStatefulWidget {
     required this.investigations,
     required this.canEdit,
     required this.onChanged,
+    required this.sectionTitle,
+    required this.sectionKind,
+    this.sectionDescription,
     super.key,
   });
 
@@ -27,6 +30,9 @@ class InvestigationList extends ConsumerStatefulWidget {
   final List<VisitInvestigation> investigations;
   final bool canEdit;
   final VoidCallback onChanged;
+  final String sectionTitle;
+  final String? sectionDescription;
+  final VisitPanelKind sectionKind;
 
   @override
   ConsumerState<InvestigationList> createState() => _InvestigationListState();
@@ -38,29 +44,45 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  List<Widget>? _shelfActions() {
+    if (!widget.canEdit || _showAddForm) return null;
+
+    return [
+      AppNotchedCardAction(
+        providesOwnBackground: true,
+        action: AppButton(
+          key: const Key('investigation_add_button'),
+          label: 'Add investigation',
+          size: AppFieldSize.sm,
+          icon: const Icon(Icons.add, size: 18),
+          onPressed: _isSubmitting
+              ? null
+              : () => setState(() {
+                  _showAddForm = true;
+                  _editingInvestigationId = null;
+                }),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
+    return VisitSectionCard(
+      kind: widget.sectionKind,
+      title: widget.sectionTitle,
+      description: widget.sectionDescription,
+      headerActions: _shelfActions(),
+      child: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
     final investigations = widget.investigations;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.canEdit && !_showAddForm)
-          Align(
-            alignment: Alignment.centerRight,
-            child: AppButton(
-              key: const Key('investigation_add_button'),
-              label: 'Add investigation',
-              variant: AppButtonVariant.outline,
-              icon: const Icon(Icons.add, size: 18),
-              onPressed: _isSubmitting
-                  ? null
-                  : () => setState(() {
-                      _showAddForm = true;
-                      _editingInvestigationId = null;
-                    }),
-            ),
-          ),
         if (_errorMessage != null) ...[
           const SizedBox(height: SpacingTokens.sm),
           Text(

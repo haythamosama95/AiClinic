@@ -25,6 +25,9 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
     required this.attachments,
     required this.canUpload,
     required this.onChanged,
+    required this.sectionTitle,
+    required this.sectionKind,
+    this.sectionDescription,
     this.pickAttachment,
     this.fetchDownloadBytes,
     this.saveDownloadedAttachment,
@@ -36,6 +39,9 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
   final List<VisitAttachmentItem> attachments;
   final bool canUpload;
   final VoidCallback onChanged;
+  final String sectionTitle;
+  final String? sectionDescription;
+  final VisitPanelKind sectionKind;
 
   final Future<VisitAttachmentPickInput?> Function()? pickAttachment;
   final Future<Uint8List> Function(VisitAttachmentDownloadResult download)? fetchDownloadBytes;
@@ -51,24 +57,40 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
   String? _errorMessage;
   String? _downloadingAttachmentId;
 
+  List<Widget>? _shelfActions() {
+    if (!widget.canUpload || _isUploading) return null;
+
+    return [
+      AppNotchedCardAction(
+        providesOwnBackground: true,
+        action: AppButton(
+          key: const Key('visit_attachment_upload_button'),
+          label: 'Upload file',
+          size: AppFieldSize.sm,
+          icon: const Icon(Icons.upload_file_outlined, size: 18),
+          onPressed: _pickAndUpload,
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
+    return VisitSectionCard(
+      kind: widget.sectionKind,
+      title: widget.sectionTitle,
+      description: widget.sectionDescription,
+      headerActions: _shelfActions(),
+      child: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
     final dateFormat = DateFormat.yMMMd().add_jm();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.canUpload && !_isUploading)
-          Align(
-            alignment: Alignment.centerRight,
-            child: AppButton(
-              key: const Key('visit_attachment_upload_button'),
-              label: 'Upload file',
-              variant: AppButtonVariant.outline,
-              icon: const Icon(Icons.upload_file_outlined, size: 18),
-              onPressed: _pickAndUpload,
-            ),
-          ),
         if (_isUploading) ...[
           const SizedBox(height: SpacingTokens.md),
           Row(

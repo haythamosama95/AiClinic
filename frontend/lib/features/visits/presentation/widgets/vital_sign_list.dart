@@ -23,6 +23,9 @@ class VitalSignList extends ConsumerStatefulWidget {
     required this.predefinedVitalSigns,
     required this.canEdit,
     required this.onChanged,
+    required this.sectionTitle,
+    required this.sectionKind,
+    this.sectionDescription,
     super.key,
   });
 
@@ -31,6 +34,9 @@ class VitalSignList extends ConsumerStatefulWidget {
   final List<CatalogItem> predefinedVitalSigns;
   final bool canEdit;
   final VoidCallback onChanged;
+  final String sectionTitle;
+  final String? sectionDescription;
+  final VisitPanelKind sectionKind;
 
   @override
   ConsumerState<VitalSignList> createState() => _VitalSignListState();
@@ -42,29 +48,45 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  List<Widget>? _shelfActions() {
+    if (!widget.canEdit || _showAddForm) return null;
+
+    return [
+      AppNotchedCardAction(
+        providesOwnBackground: true,
+        action: AppButton(
+          key: const Key('vital_sign_add_button'),
+          label: 'Add vital sign',
+          size: AppFieldSize.sm,
+          icon: const Icon(Icons.add, size: 18),
+          onPressed: _isSubmitting
+              ? null
+              : () => setState(() {
+                  _showAddForm = true;
+                  _editingVitalSignId = null;
+                }),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
+    return VisitSectionCard(
+      kind: widget.sectionKind,
+      title: widget.sectionTitle,
+      description: widget.sectionDescription,
+      headerActions: _shelfActions(),
+      child: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
     final signs = widget.vitalSigns;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.canEdit && !_showAddForm)
-          Align(
-            alignment: Alignment.centerRight,
-            child: AppButton(
-              key: const Key('vital_sign_add_button'),
-              label: 'Add vital sign',
-              variant: AppButtonVariant.outline,
-              icon: const Icon(Icons.add, size: 18),
-              onPressed: _isSubmitting
-                  ? null
-                  : () => setState(() {
-                      _showAddForm = true;
-                      _editingVitalSignId = null;
-                    }),
-            ),
-          ),
         if (_errorMessage != null) ...[
           const SizedBox(height: SpacingTokens.sm),
           Text(

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -19,6 +17,7 @@ import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.d
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_patient_info_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submit_dialog.dart';
 
@@ -158,88 +157,72 @@ class _VisitDocumentationBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final visit = state.visit;
-    final dateLabel = DateFormat('EEEE, MMM d, yyyy').format(visit.visitDate.toLocal());
     final canUploadAttachments = ref.watch(permissionServiceProvider).canUploadVisitAttachments();
 
-    return VisitContentFrame(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          VisitHeroCard(
-            dateLabel: dateLabel,
-            doctorName: visit.doctorName,
-            status: visit.status,
-            vitalSigns: visit.vitalSigns,
-          ),
-          if (!hasBranchAccess) ...[
-            const SizedBox(height: VisitPageTokens.sectionGap),
-            const AppAlert(
-              key: Key('visit_branch_access_denied_banner'),
-              title: 'This visit belongs to a branch you are not assigned to.',
-              subtitle: 'Clinical documentation is read-only.',
-              icon: Icon(Icons.lock_outlined),
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        VisitPatientBasicInfoCard(patientId: visit.patientId),
+        if (!hasBranchAccess) ...[
           const SizedBox(height: VisitPageTokens.sectionGap),
-          VisitSectionCard(
-            kind: VisitPanelKind.clinicalNote,
-            title: 'Clinical note',
-            description: 'Complaint, history, examination, diagnosis, and plan',
-            child: ClinicalNoteEditor(visitId: visitId, state: state, canEdit: canEdit),
-          ),
-          const SizedBox(height: VisitPageTokens.sectionGap),
-          VisitSectionGrid(
-            children: [
-              VisitSectionCard(
-                kind: VisitPanelKind.vitalSigns,
-                title: 'Vital signs',
-                description: 'Record measurements from predefined options or custom entries',
-                child: VitalSignList(
-                  visitId: visitId,
-                  vitalSigns: state.visit.vitalSigns,
-                  predefinedVitalSigns: state.predefinedVitalSigns,
-                  canEdit: canEdit,
-                  onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
-                ),
-              ),
-              VisitSectionCard(
-                kind: VisitPanelKind.treatment,
-                title: 'Treatment plans',
-                description: 'Search medications, enter custom names, and record dose, frequency, and duration',
-                child: TreatmentPlanList(
-                  visitId: visitId,
-                  treatmentPlans: state.visit.treatmentPlans,
-                  canEdit: canEdit,
-                  onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
-                ),
-              ),
-              VisitSectionCard(
-                kind: VisitPanelKind.investigation,
-                title: 'Investigations',
-                description: 'Search investigations catalog or enter custom names with optional notes',
-                child: InvestigationList(
-                  visitId: visitId,
-                  investigations: state.visit.investigations,
-                  canEdit: canEdit,
-                  onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
-                ),
-              ),
-              VisitSectionCard(
-                kind: VisitPanelKind.attachment,
-                title: 'Attachments',
-                description: 'PDF, Word, JPEG, or PNG files up to 25 MB',
-                child: VisitAttachmentList(
-                  visitId: visitId,
-                  branchId: visit.branchId,
-                  attachments: state.visit.attachments,
-                  canUpload: canUploadAttachments,
-                  onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
-                ),
-              ),
-            ],
+          const AppAlert(
+            key: Key('visit_branch_access_denied_banner'),
+            title: 'This visit belongs to a branch you are not assigned to.',
+            subtitle: 'Clinical documentation is read-only.',
+            icon: Icon(Icons.lock_outlined),
           ),
         ],
-      ),
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        VisitSectionCard(
+          kind: VisitPanelKind.clinicalNote,
+          title: 'Clinical note',
+          description: 'Complaint, history, examination, diagnosis, and plan',
+          child: ClinicalNoteEditor(visitId: visitId, state: state, canEdit: canEdit),
+        ),
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        VisitSectionGrid(
+          children: [
+            VitalSignList(
+              visitId: visitId,
+              vitalSigns: state.visit.vitalSigns,
+              predefinedVitalSigns: state.predefinedVitalSigns,
+              canEdit: canEdit,
+              onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+              sectionKind: VisitPanelKind.vitalSigns,
+              sectionTitle: 'Vital signs',
+              sectionDescription: 'Record measurements from predefined options or custom entries',
+            ),
+            TreatmentPlanList(
+              visitId: visitId,
+              treatmentPlans: state.visit.treatmentPlans,
+              canEdit: canEdit,
+              onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+              sectionKind: VisitPanelKind.treatment,
+              sectionTitle: 'Treatment plans',
+              sectionDescription: 'Search medications, enter custom names, and record dose, frequency, and duration',
+            ),
+            InvestigationList(
+              visitId: visitId,
+              investigations: state.visit.investigations,
+              canEdit: canEdit,
+              onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+              sectionKind: VisitPanelKind.investigation,
+              sectionTitle: 'Investigations',
+              sectionDescription: 'Search investigations catalog or enter custom names with optional notes',
+            ),
+            VisitAttachmentList(
+              visitId: visitId,
+              branchId: visit.branchId,
+              attachments: state.visit.attachments,
+              canUpload: canUploadAttachments,
+              onChanged: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+              sectionKind: VisitPanelKind.attachment,
+              sectionTitle: 'Attachments',
+              sectionDescription: 'PDF, Word, JPEG, or PNG files up to 25 MB',
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

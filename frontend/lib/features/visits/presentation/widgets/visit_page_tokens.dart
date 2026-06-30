@@ -7,9 +7,7 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 
 /// Visit-page layout constants.
 abstract final class VisitPageTokens {
-  static const double contentMaxWidth = 1100;
-  static const double sidebarWidth = 260;
-  static const double sectionGap = SpacingTokens.lg;
+  static const double sectionGap = SpacingTokens.md;
   static const double marginRailWidth = 34;
   static const double metricTileMinWidth = 150;
 
@@ -54,26 +52,14 @@ class VisitTheme {
   Color get hairline => _colors.border;
   Color get hairlineSoft => _colors.border;
 
-  // ── Hero header (secondary-toned band) ────────────────────────────────
-
-  Color get heroGradientStart => _colors.secondary;
-  Color get heroGradientEnd => Color.lerp(_colors.secondary, _colors.foreground, 0.35)!;
-  Color get onInk => _colors.secondaryForeground;
-  Color get onInkMuted => _colors.secondaryForeground.withValues(alpha: 0.72);
-
   // ── Shape & elevation ─────────────────────────────────────────────────
 
   double get panelRadius => _shapes.lg;
   double get tileRadius => _shapes.md;
 
   List<BoxShadow> get panelShadow => ShadowTokens.card;
-  List<BoxShadow> get headerShadow => ShadowTokens.shadowLg;
 
   // ── Typography ──────────────────────────────────────────────────────────
-
-  TextStyle heroDate({Color? color}) =>
-      _text.headlineLarge?.copyWith(fontWeight: FontWeight.w700, color: color ?? onInk) ??
-      TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: color ?? onInk);
 
   TextStyle title({Color? color, double? size}) =>
       _text.titleMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: size, color: color ?? ink) ??

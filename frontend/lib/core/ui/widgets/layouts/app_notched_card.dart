@@ -299,7 +299,12 @@ Widget _buildActionsRow({
 }) {
   return Padding(
     key: key,
-    padding: const EdgeInsets.only(bottom: kNotchActionBottomMargin),
+    padding: const EdgeInsets.fromLTRB(
+      kNotchActionMargin,
+      kNotchActionMargin,
+      kNotchActionMargin,
+      kNotchActionBottomMargin,
+    ),
     child: _NotchedCardActionsRow(backgroundColor: backgroundColor, borderColor: borderColor, actions: actions),
   );
 }

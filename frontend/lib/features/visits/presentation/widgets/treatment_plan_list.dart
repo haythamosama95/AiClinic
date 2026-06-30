@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
@@ -20,6 +21,9 @@ class TreatmentPlanList extends ConsumerStatefulWidget {
     required this.treatmentPlans,
     required this.canEdit,
     required this.onChanged,
+    required this.sectionTitle,
+    required this.sectionKind,
+    this.sectionDescription,
     super.key,
   });
 
@@ -27,6 +31,9 @@ class TreatmentPlanList extends ConsumerStatefulWidget {
   final List<TreatmentPlanItem> treatmentPlans;
   final bool canEdit;
   final VoidCallback onChanged;
+  final String sectionTitle;
+  final String? sectionDescription;
+  final VisitPanelKind sectionKind;
 
   @override
   ConsumerState<TreatmentPlanList> createState() => _TreatmentPlanListState();
@@ -38,30 +45,46 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  List<Widget>? _shelfActions() {
+    if (!widget.canEdit || _showAddForm) return null;
+
+    return [
+      AppNotchedCardAction(
+        providesOwnBackground: true,
+        action: AppButton(
+          key: const Key('treatment_plan_add_button'),
+          label: 'Add medication',
+          size: AppFieldSize.sm,
+          icon: const Icon(Icons.add, size: 18),
+          onPressed: _isSubmitting
+              ? null
+              : () => setState(() {
+                  _showAddForm = true;
+                  _editingPlanId = null;
+                }),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
+    return VisitSectionCard(
+      kind: widget.sectionKind,
+      title: widget.sectionTitle,
+      description: widget.sectionDescription,
+      headerActions: _shelfActions(),
+      child: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
     final colors = context.semanticColors;
     final plans = widget.treatmentPlans;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.canEdit && !_showAddForm)
-          Align(
-            alignment: Alignment.centerRight,
-            child: AppButton(
-              key: const Key('treatment_plan_add_button'),
-              label: 'Add medication',
-              variant: AppButtonVariant.outline,
-              icon: const Icon(Icons.add, size: 18),
-              onPressed: _isSubmitting
-                  ? null
-                  : () => setState(() {
-                      _showAddForm = true;
-                      _editingPlanId = null;
-                    }),
-            ),
-          ),
         if (_errorMessage != null) ...[
           const SizedBox(height: SpacingTokens.sm),
           Text(
