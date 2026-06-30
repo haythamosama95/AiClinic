@@ -4,8 +4,10 @@ import 'app_theme_meta.dart';
 import 'color_tokens.dart';
 import 'semantic_colors.dart';
 import 'shadow_tokens.dart';
+import 'shape_tokens.dart';
 import 'spacing_tokens.dart';
 import 'variants/app_theme_variant.dart';
+import 'variants/med_spectra/med_spectra_shadow_tokens.dart';
 import 'variants/theme_palette_resolver.dart';
 
 /// Builds [ThemeData] from a named design-system variant.
@@ -49,16 +51,7 @@ class AppTheme {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
       ),
-      cardTheme: CardThemeData(
-        color: tokens.card,
-        elevation: 0,
-        shadowColor: ShadowTokens.shadowColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: borderRadius,
-          side: BorderSide(color: tokens.border),
-        ),
-        margin: EdgeInsets.zero,
-      ),
+      cardTheme: _cardTheme(tokens, shapes, variant, brightness, borderRadius),
       dialogTheme: DialogThemeData(
         backgroundColor: tokens.popover,
         surfaceTintColor: Colors.transparent,
@@ -74,19 +67,19 @@ class AppTheme {
         fillColor: tokens.input,
         contentPadding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.md),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(shapes.md),
+          borderRadius: BorderRadius.circular(_inputRadius(shapes, variant)),
           borderSide: BorderSide(color: tokens.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(shapes.md),
+          borderRadius: BorderRadius.circular(_inputRadius(shapes, variant)),
           borderSide: BorderSide(color: tokens.border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(shapes.md),
+          borderRadius: BorderRadius.circular(_inputRadius(shapes, variant)),
           borderSide: BorderSide(color: tokens.ring, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(shapes.md),
+          borderRadius: BorderRadius.circular(_inputRadius(shapes, variant)),
           borderSide: BorderSide(color: tokens.destructive),
         ),
         hintStyle: TextStyle(color: tokens.mutedForeground),
@@ -195,6 +188,34 @@ class AppTheme {
         textStyle: TextStyle(color: tokens.popoverForeground),
       ),
     );
+  }
+
+  static CardThemeData _cardTheme(
+    ColorTokens tokens,
+    ShapeTokens shapes,
+    AppThemeVariant variant,
+    Brightness brightness,
+    BorderRadius borderRadius,
+  ) {
+    final isMedSpectra = variant == AppThemeVariant.medSpectra;
+
+    return CardThemeData(
+      color: tokens.card,
+      elevation: isMedSpectra ? MedSpectraShadowTokens.cardElevation : 0,
+      shadowColor: isMedSpectra ? MedSpectraShadowTokens.cardShadowColor(brightness) : ShadowTokens.shadowColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: borderRadius,
+        side: isMedSpectra ? BorderSide.none : BorderSide(color: tokens.border),
+      ),
+      margin: EdgeInsets.zero,
+    );
+  }
+
+  static double _inputRadius(ShapeTokens shapes, AppThemeVariant variant) {
+    if (variant == AppThemeVariant.medSpectra) {
+      return shapes.lg;
+    }
+    return shapes.md;
   }
 
   static ColorScheme _colorScheme(ColorTokens tokens, Brightness brightness) {
