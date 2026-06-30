@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
-/// Five-section clinical note editor with save and stale-conflict handling (013 US1).
+/// Five-section clinical note editor with chart margin rail (013 US1).
 class ClinicalNoteEditor extends ConsumerWidget {
   const ClinicalNoteEditor({required this.visitId, required this.state, required this.canEdit, super.key});
 
@@ -85,7 +86,59 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
     final state = widget.state;
     final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
     final isSaving = state.saveStatus == DocumentationSaveStatus.saving;
-    final colors = context.semanticColors;
+
+    final fields =
+        <
+          ({
+            String abbr,
+            String label,
+            String? hint,
+            TextEditingController controller,
+            void Function(String) onChanged,
+            Key key,
+          })
+        >[
+          (
+            abbr: 'C',
+            label: 'Complaint',
+            hint: "The patient's main reason for the visit.",
+            controller: _complaint,
+            onChanged: notifier.updateComplaint,
+            key: const Key('clinical_note_complaint'),
+          ),
+          (
+            abbr: 'H',
+            label: 'History',
+            hint: null,
+            controller: _history,
+            onChanged: notifier.updateHistory,
+            key: const Key('clinical_note_history'),
+          ),
+          (
+            abbr: 'E',
+            label: 'Examination',
+            hint: 'Physical examination findings.',
+            controller: _examination,
+            onChanged: notifier.updateExamination,
+            key: const Key('clinical_note_examination'),
+          ),
+          (
+            abbr: 'D',
+            label: 'Diagnosis',
+            hint: 'Clinical assessment or diagnosis.',
+            controller: _diagnosis,
+            onChanged: notifier.updateDiagnosis,
+            key: const Key('clinical_note_diagnosis'),
+          ),
+          (
+            abbr: 'P',
+            label: 'Plan',
+            hint: 'Treatment plan, follow-up instructions, and patient advice.',
+            controller: _plan,
+            onChanged: notifier.updatePlan,
+            key: const Key('clinical_note_plan'),
+          ),
+        ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -109,73 +162,60 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
           ),
           const SizedBox(height: SpacingTokens.md),
         ],
-        _ClinicalNoteField(
-          key: const Key('clinical_note_complaint'),
-          label: 'Complaint',
-          hintText: "The patient's main reason for the visit.",
-          controller: _complaint,
-          enabled: !isSaving,
-          onChanged: notifier.updateComplaint,
-        ),
-        _ClinicalNoteField(
-          key: const Key('clinical_note_history'),
-          label: 'History',
-          controller: _history,
-          enabled: !isSaving,
-          onChanged: notifier.updateHistory,
-        ),
-        _ClinicalNoteField(
-          key: const Key('clinical_note_examination'),
-          label: 'Examination',
-          hintText: 'Physical examination findings.',
-          controller: _examination,
-          enabled: !isSaving,
-          onChanged: notifier.updateExamination,
-        ),
-        _ClinicalNoteField(
-          key: const Key('clinical_note_diagnosis'),
-          label: 'Diagnosis',
-          hintText: 'Clinical assessment or diagnosis.',
-          controller: _diagnosis,
-          enabled: !isSaving,
-          onChanged: notifier.updateDiagnosis,
-        ),
-        _ClinicalNoteField(
-          key: const Key('clinical_note_plan'),
-          label: 'Plan',
-          hintText: 'Treatment plan, follow-up instructions, and patient advice.',
-          controller: _plan,
-          enabled: !isSaving,
-          onChanged: notifier.updatePlan,
-        ),
-        if (state.saveStatus == DocumentationSaveStatus.saved)
-          Padding(
-            padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
-            child: Text(
-              'Saved',
-              key: const Key('clinical_note_saved_label'),
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: colors.primary, fontWeight: FontWeight.w600),
-            ),
+        for (var i = 0; i < fields.length; i++) ...[
+          _ClinicalNoteField(
+            key: fields[i].key,
+            abbr: fields[i].abbr,
+            label: fields[i].label,
+            hintText: fields[i].hint,
+            controller: fields[i].controller,
+            enabled: !isSaving,
+            onChanged: fields[i].onChanged,
+            showDivider: i < fields.length - 1,
           ),
-        if (state.saveStatus == DocumentationSaveStatus.error && state.errorMessage != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
-            child: Text(
-              state.errorMessage!,
-              key: const Key('clinical_note_error_label'),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.destructive),
-            ),
+        ],
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: context.visitTheme.tile,
+            borderRadius: BorderRadius.circular(context.visitTheme.tileRadius),
+            border: Border.all(color: context.visitTheme.hairlineSoft),
           ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: AppButton(
-            key: const Key('clinical_note_save_button'),
-            label: isSaving ? 'Saving…' : 'Save clinical note',
-            icon: const Icon(Icons.save_outlined, size: 18),
-            isLoading: isSaving,
-            onPressed: isSaving ? null : () => notifier.save(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
+            child: Row(
+              children: [
+                if (state.saveStatus == DocumentationSaveStatus.saved)
+                  Row(
+                    key: const Key('clinical_note_saved_label'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle_rounded, size: 15, color: context.visitTheme.pulseDeep),
+                      const SizedBox(width: SpacingTokens.xs),
+                      Text(
+                        'Saved',
+                        style: context.visitTheme.bodyStrong(color: context.visitTheme.pulseDeep, size: 13),
+                      ),
+                    ],
+                  ),
+                if (state.saveStatus == DocumentationSaveStatus.error && state.errorMessage != null)
+                  Expanded(
+                    child: Text(
+                      state.errorMessage!,
+                      key: const Key('clinical_note_error_label'),
+                      style: context.visitTheme.caption(color: context.visitTheme.danger),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                AppButton(
+                  key: const Key('clinical_note_save_button'),
+                  label: isSaving ? 'Saving…' : 'Save clinical note',
+                  icon: const Icon(Icons.save_outlined, size: 18),
+                  isLoading: isSaving,
+                  onPressed: isSaving ? null : () => notifier.save(),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -192,14 +232,17 @@ class _ReadOnlyClinicalNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final values = [state.complaint, state.history, state.examination, state.diagnosis, state.plan];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ReadOnlySection(label: 'Complaint', value: state.complaint),
-        _ReadOnlySection(label: 'History', value: state.history),
-        _ReadOnlySection(label: 'Examination', value: state.examination),
-        _ReadOnlySection(label: 'Diagnosis', value: state.diagnosis),
-        _ReadOnlySection(label: 'Plan', value: state.plan),
+        for (var i = 0; i < VisitPageTokens.clinicalSections.length; i++)
+          _ReadOnlySection(
+            abbr: VisitPageTokens.clinicalSections[i].abbr,
+            label: VisitPageTokens.clinicalSections[i].label,
+            value: values[i],
+          ),
         if (showEditButton && onEdit != null) ...[
           const SizedBox(height: SpacingTokens.sm),
           Align(
@@ -219,57 +262,73 @@ class _ReadOnlyClinicalNote extends StatelessWidget {
 }
 
 class _ReadOnlySection extends StatelessWidget {
-  const _ReadOnlySection({required this.label, required this.value});
+  const _ReadOnlySection({required this.abbr, required this.label, required this.value});
 
+  final String abbr;
   final String label;
   final String value;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final display = value.trim().isEmpty ? '—' : value;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: SpacingTokens.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
-          const SizedBox(height: SpacingTokens.xs),
-          Text(display, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.foreground)),
-        ],
-      ),
-    );
+    return VisitDetailField(label: label, value: value, abbr: abbr);
   }
 }
 
 class _ClinicalNoteField extends StatelessWidget {
   const _ClinicalNoteField({
+    required this.abbr,
     required this.label,
     required this.controller,
     required this.onChanged,
     required this.enabled,
     this.hintText,
+    this.showDivider = true,
     super.key,
   });
 
+  final String abbr;
   final String label;
   final String? hintText;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final bool enabled;
+  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
+    final theme = context.visitTheme;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: SpacingTokens.md),
-      child: AppTextInput(
-        label: label,
-        hintText: hintText,
-        controller: controller,
-        enabled: enabled,
-        minLines: 3,
-        maxLines: 8,
-        onChanged: onChanged,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              VisitMarginAbbr(letter: abbr),
+              const SizedBox(width: SpacingTokens.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(label.toUpperCase(), style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2)),
+                    const SizedBox(height: SpacingTokens.xs + 1),
+                    AppTextInput(
+                      hintText: hintText,
+                      controller: controller,
+                      enabled: enabled,
+                      minLines: 3,
+                      maxLines: 8,
+                      onChanged: onChanged,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (showDivider) ...[const SizedBox(height: SpacingTokens.md), Divider(height: 1, color: theme.hairlineSoft)],
+        ],
       ),
     );
   }

@@ -1,120 +1,49 @@
 import 'package:flutter/material.dart';
 
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/visits/domain/visit_status.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
-/// Shared visit status badge and color helpers for visit screens.
-abstract final class VisitStatusDisplay {
-  static Color statusColor(VisitStatus status, SemanticColors colors) => switch (status) {
-    VisitStatus.inProgress => colors.primary,
-    VisitStatus.completed => colors.accent,
-  };
+/// Page shell aligned with patient and appointment detail scaffolds.
+class VisitPageShell extends StatelessWidget {
+  const VisitPageShell({required this.onBack, required this.body, this.headerActions = const [], super.key});
 
-  static AppBadgeVariant badgeVariant(VisitStatus status) => switch (status) {
-    VisitStatus.inProgress => AppBadgeVariant.primary,
-    VisitStatus.completed => AppBadgeVariant.accent,
-  };
-}
-
-/// Hero summary card for visit date, doctor, and status.
-class VisitHeroCard extends StatelessWidget {
-  const VisitHeroCard({
-    required this.dateLabel,
-    required this.doctorName,
-    required this.status,
-    super.key,
-  });
-
-  final String dateLabel;
-  final String doctorName;
-  final VisitStatus status;
+  final VoidCallback onBack;
+  final List<Widget> headerActions;
+  final Widget body;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-    final statusColor = VisitStatusDisplay.statusColor(status, colors);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-        border: Border.all(color: statusColor.withValues(alpha: 0.28)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Visit',
-                        style: theme.textTheme.labelMedium?.copyWith(color: colors.mutedForeground),
-                      ),
-                      const SizedBox(height: SpacingTokens.xs),
-                      Text(
-                        dateLabel,
-                        style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ),
-                AppBadge(
-                  label: status.label,
-                  variant: VisitStatusDisplay.badgeVariant(status),
-                  icon: Icon(
-                    status == VisitStatus.inProgress ? Icons.edit_note_outlined : Icons.check_circle_outline,
-                    size: 14,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: SpacingTokens.md),
-            _HeroFactRow(
-              icon: Icons.person_outline_rounded,
-              label: 'Doctor',
-              value: doctorName,
-            ),
-          ],
-        ),
+    return Padding(
+      padding: const EdgeInsets.all(SpacingTokens.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _VisitTopBar(onBack: onBack, headerActions: headerActions),
+          const SizedBox(height: SpacingTokens.md),
+          Expanded(child: SingleChildScrollView(child: body)),
+        ],
       ),
     );
   }
 }
 
-class _HeroFactRow extends StatelessWidget {
-  const _HeroFactRow({required this.icon, required this.label, required this.value});
+class _VisitTopBar extends StatelessWidget {
+  const _VisitTopBar({required this.onBack, required this.headerActions});
 
-  final IconData icon;
-  final String label;
-  final String value;
+  final VoidCallback onBack;
+  final List<Widget> headerActions;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
-
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: colors.primary),
-        const SizedBox(width: SpacingTokens.sm),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground)),
-              Text(value, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-            ],
+        AppIconButton(icon: const Icon(Icons.arrow_back_rounded), tooltip: 'Back', onPressed: onBack),
+        const Spacer(),
+        ...headerActions.map(
+          (action) => Padding(
+            padding: const EdgeInsets.only(left: SpacingTokens.sm),
+            child: action,
           ),
         ),
       ],
@@ -122,13 +51,14 @@ class _HeroFactRow extends StatelessWidget {
   }
 }
 
-/// Section card wrapper for visit documentation blocks.
+/// Section panel with a notched header shelf for optional actions.
 class VisitSectionCard extends StatelessWidget {
   const VisitSectionCard({
     required this.title,
     required this.child,
     this.description,
     this.headerActions,
+    this.kind,
     super.key,
   });
 
@@ -136,41 +66,175 @@ class VisitSectionCard extends StatelessWidget {
   final String? description;
   final Widget child;
   final List<Widget>? headerActions;
+  final VisitPanelKind? kind;
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      title: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-      description: description == null ? null : Text(description!),
+    final theme = context.visitTheme;
+    final icon = kind?.icon ?? Icons.folder_open_outlined;
+    final tag = kind?.tag;
+
+    return AppNotchedCard(
+      titleIcon: icon,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (tag != null) Text(tag, style: theme.eyebrow(color: theme.pulseDeep, size: 10)),
+          if (tag != null) const SizedBox(height: 3),
+          Text(title, style: theme.title()),
+        ],
+      ),
+      description: description != null ? Text(description!, style: theme.caption()) : null,
       actions: headerActions,
-      child: child,
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(SpacingTokens.md, 0, SpacingTokens.md, SpacingTokens.md),
+        child: child,
+      ),
     );
   }
 }
 
 /// Read-only label/value pair for visit detail sections.
 class VisitDetailField extends StatelessWidget {
-  const VisitDetailField({required this.label, required this.value, super.key});
+  const VisitDetailField({required this.label, required this.value, this.abbr, super.key});
 
   final String label;
   final String value;
+  final String? abbr;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final theme = Theme.of(context);
+    final theme = context.visitTheme;
     final display = value.trim().isEmpty ? '—' : value.trim();
+    final isEmpty = value.trim().isEmpty;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: SpacingTokens.md),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: theme.textTheme.labelMedium?.copyWith(color: colors.mutedForeground)),
-          const SizedBox(height: SpacingTokens.xs),
-          Text(display, style: theme.textTheme.bodyMedium),
+          if (abbr != null) ...[VisitMarginAbbr(letter: abbr!), const SizedBox(width: SpacingTokens.md)],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label.toUpperCase(), style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2)),
+                const SizedBox(height: SpacingTokens.xs + 1),
+                Text(display, style: theme.body(color: isEmpty ? theme.mutedInk : theme.ink)),
+              ],
+            ),
+          ),
         ],
       ),
     );
+  }
+}
+
+/// Clinical chart margin abbreviation.
+class VisitMarginAbbr extends StatelessWidget {
+  const VisitMarginAbbr({required this.letter, super.key});
+
+  final String letter;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.visitTheme;
+
+    return Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: theme.pulse.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(theme.tileRadius - 2),
+        border: Border.all(color: theme.pulse.withValues(alpha: 0.28)),
+      ),
+      alignment: Alignment.center,
+      child: Text(letter, style: theme.readout(color: theme.pulseDeep, size: 13)),
+    );
+  }
+}
+
+/// Empty state hint for visit sections.
+class VisitEmptyHint extends StatelessWidget {
+  const VisitEmptyHint({required this.message, this.icon = Icons.inbox_outlined, super.key});
+
+  final String message;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.visitTheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(color: theme.tile, shape: BoxShape.circle),
+              child: Icon(icon, size: 20, color: theme.mutedInk.withValues(alpha: 0.7)),
+            ),
+            const SizedBox(height: SpacingTokens.sm),
+            Text(message, textAlign: TextAlign.center, style: theme.caption()),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Responsive two-column grid for visit ancillary sections.
+class VisitSectionGrid extends StatelessWidget {
+  const VisitSectionGrid({required this.children, super.key});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final useTwoColumns = constraints.maxWidth >= 720;
+
+        if (!useTwoColumns) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _withGaps(children));
+        }
+
+        final rows = <Widget>[];
+        for (var i = 0; i < children.length; i += 2) {
+          final left = children[i];
+          final right = i + 1 < children.length ? children[i + 1] : const SizedBox.shrink();
+          rows.add(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: left),
+                const SizedBox(width: VisitPageTokens.sectionGap),
+                Expanded(child: right),
+              ],
+            ),
+          );
+          if (i + 2 < children.length) {
+            rows.add(const SizedBox(height: VisitPageTokens.sectionGap));
+          }
+        }
+
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+      },
+    );
+  }
+
+  List<Widget> _withGaps(List<Widget> items) {
+    final result = <Widget>[];
+    for (var i = 0; i < items.length; i++) {
+      result.add(items[i]);
+      if (i < items.length - 1) {
+        result.add(const SizedBox(height: VisitPageTokens.sectionGap));
+      }
+    }
+    return result;
   }
 }

@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -24,9 +21,11 @@ import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_li
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_patient_info_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
-/// Visit detail — scannable documentation layout with inline editing when permitted (013 US6).
+/// Visit detail — clinical chart workspace with inline editing when permitted (013 US6).
 class VisitDetailPage extends ConsumerWidget {
   const VisitDetailPage({required this.visitId, super.key});
 
@@ -84,7 +83,7 @@ class _EditableVisitDetailPage extends ConsumerWidget {
         onRetry: () => ref.invalidate(visitDocumentationProvider(visitId)),
         onBack: onBack,
       ),
-      data: (docState) => _VisitDetailScaffold(
+      data: (docState) => VisitPageShell(
         onBack: onBack,
         headerActions: [
           VisitDetailActions(visitId: visitId, status: docState.visit.status, canEditDocumentation: true),
@@ -111,7 +110,7 @@ class _ReadOnlyVisitDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _VisitDetailScaffold(
+    return VisitPageShell(
       onBack: onBack,
       headerActions: [
         VisitDetailActions(visitId: view.visit.id, status: view.visit.status, canEditDocumentation: false),
@@ -123,40 +122,6 @@ class _ReadOnlyVisitDetailPage extends StatelessWidget {
         hasBranchAccess: view.hasBranchAccess,
         canUploadAttachments: false,
         onRefresh: () {},
-      ),
-    );
-  }
-}
-
-class _VisitDetailScaffold extends StatelessWidget {
-  const _VisitDetailScaffold({required this.onBack, required this.headerActions, required this.body});
-
-  final VoidCallback onBack;
-  final List<Widget> headerActions;
-  final Widget body;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(SpacingTokens.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              AppIconButton(icon: const Icon(Icons.arrow_back, size: 18), tooltip: 'Back', onPressed: onBack),
-              const Spacer(),
-              ...headerActions.map(
-                (action) => Padding(
-                  padding: const EdgeInsets.only(left: SpacingTokens.sm),
-                  child: action,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: SpacingTokens.md),
-          Expanded(child: SingleChildScrollView(child: body)),
-        ],
       ),
     );
   }
@@ -181,92 +146,95 @@ class _VisitDetailBody extends ConsumerWidget {
   final VoidCallback onRefresh;
   final VisitDocumentationState? docState;
 
-  static final _dateFormat = DateFormat('EEEE, MMM d, yyyy');
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dateLabel = _dateFormat.format(visit.visitDate.toLocal());
-
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 920),
-        child: Column(
-          key: const Key('visit_detail_body'),
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      key: const Key('visit_detail_body'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        VisitPatientBasicInfoCard(patientId: visit.patientId),
+        if (!hasBranchAccess) ...[
+          const SizedBox(height: VisitPageTokens.sectionGap),
+          const AppAlert(
+            key: Key('visit_branch_access_denied_banner'),
+            title: 'This visit belongs to a branch you are not assigned to.',
+            subtitle: 'Clinical documentation is read-only.',
+            icon: Icon(Icons.lock_outlined),
+          ),
+        ],
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        VisitSectionCard(
+          kind: VisitPanelKind.clinicalNote,
+          title: 'Clinical note',
+          description: canEdit ? 'Complaint, history, examination, diagnosis, and plan' : null,
+          child: KeyedSubtree(
+            key: const Key('visit_detail_clinical_note_section'),
+            child: canEdit && docState != null
+                ? ClinicalNoteEditor(visitId: visitId, state: docState!, canEdit: canEdit)
+                : _ClinicalNoteReadOnly(note: visit.documentation),
+          ),
+        ),
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        VisitSectionGrid(
           children: [
-            VisitHeroCard(dateLabel: dateLabel, doctorName: visit.doctorName, status: visit.status),
-            if (!hasBranchAccess) ...[
-              const SizedBox(height: SpacingTokens.lg),
-              const AppAlert(
-                key: Key('visit_branch_access_denied_banner'),
-                title: 'This visit belongs to a branch you are not assigned to.',
-                subtitle: 'Clinical documentation is read-only.',
-                icon: Icon(Icons.lock_outlined),
-              ),
-            ],
-            const SizedBox(height: SpacingTokens.lg),
-            VisitSectionCard(
-              title: 'Clinical note',
-              description: canEdit ? 'Complaint, history, examination, diagnosis, and plan' : null,
-              child: KeyedSubtree(
-                key: const Key('visit_detail_clinical_note_section'),
-                child: canEdit && docState != null
-                    ? ClinicalNoteEditor(visitId: visitId, state: docState!, canEdit: canEdit)
-                    : _ClinicalNoteReadOnly(note: visit.documentation),
-              ),
-            ),
-            const SizedBox(height: SpacingTokens.lg),
-            VisitSectionCard(
-              title: 'Vital signs',
-              child: canEdit && docState != null
-                  ? VitalSignList(
-                      visitId: visitId,
-                      vitalSigns: visit.vitalSigns,
-                      predefinedVitalSigns: docState!.predefinedVitalSigns,
-                      canEdit: canEdit,
-                      onChanged: onRefresh,
-                    )
-                  : _VitalSignsReadOnly(vitalSigns: visit.vitalSigns),
-            ),
-            const SizedBox(height: SpacingTokens.lg),
-            VisitSectionCard(
-              title: 'Treatment plans',
-              child: canEdit
-                  ? TreatmentPlanList(
-                      visitId: visitId,
-                      treatmentPlans: visit.treatmentPlans,
-                      canEdit: canEdit,
-                      onChanged: onRefresh,
-                    )
-                  : _TreatmentPlansReadOnly(treatmentPlans: visit.treatmentPlans),
-            ),
-            const SizedBox(height: SpacingTokens.lg),
-            VisitSectionCard(
-              title: 'Investigations',
-              child: canEdit
-                  ? InvestigationList(
-                      visitId: visitId,
-                      investigations: visit.investigations,
-                      canEdit: canEdit,
-                      onChanged: onRefresh,
-                    )
-                  : _InvestigationsReadOnly(investigations: visit.investigations),
-            ),
-            const SizedBox(height: SpacingTokens.lg),
-            VisitSectionCard(
-              title: 'Attachments',
-              child: VisitAttachmentList(
+            if (canEdit && docState != null)
+              VitalSignList(
                 visitId: visitId,
-                branchId: visit.branchId,
-                attachments: visit.attachments,
-                canUpload: canUploadAttachments,
+                vitalSigns: visit.vitalSigns,
+                predefinedVitalSigns: docState!.predefinedVitalSigns,
+                canEdit: canEdit,
                 onChanged: onRefresh,
+                sectionKind: VisitPanelKind.vitalSigns,
+                sectionTitle: 'Vital signs',
+              )
+            else
+              VisitSectionCard(
+                kind: VisitPanelKind.vitalSigns,
+                title: 'Vital signs',
+                child: _VitalSignsReadOnly(vitalSigns: visit.vitalSigns),
               ),
+            if (canEdit)
+              TreatmentPlanList(
+                visitId: visitId,
+                treatmentPlans: visit.treatmentPlans,
+                canEdit: canEdit,
+                onChanged: onRefresh,
+                sectionKind: VisitPanelKind.treatment,
+                sectionTitle: 'Treatment plans',
+              )
+            else
+              VisitSectionCard(
+                kind: VisitPanelKind.treatment,
+                title: 'Treatment plans',
+                child: _TreatmentPlansReadOnly(treatmentPlans: visit.treatmentPlans),
+              ),
+            if (canEdit)
+              InvestigationList(
+                visitId: visitId,
+                investigations: visit.investigations,
+                canEdit: canEdit,
+                onChanged: onRefresh,
+                sectionKind: VisitPanelKind.investigation,
+                sectionTitle: 'Investigations',
+              )
+            else
+              VisitSectionCard(
+                kind: VisitPanelKind.investigation,
+                title: 'Investigations',
+                child: _InvestigationsReadOnly(investigations: visit.investigations),
+              ),
+            VisitAttachmentList(
+              visitId: visitId,
+              branchId: visit.branchId,
+              attachments: visit.attachments,
+              canUpload: canUploadAttachments,
+              onChanged: onRefresh,
+              sectionKind: VisitPanelKind.attachment,
+              sectionTitle: 'Attachments',
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 }
@@ -281,29 +249,37 @@ class _ClinicalNoteReadOnly extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ClinicalNoteSection(key: const Key('visit_detail_complaint'), label: 'Complaint', value: note?.complaint),
-        _ClinicalNoteSection(key: const Key('visit_detail_history'), label: 'History', value: note?.history),
-        _ClinicalNoteSection(
-          key: const Key('visit_detail_examination'),
-          label: 'Examination',
-          value: note?.examination,
-        ),
-        _ClinicalNoteSection(key: const Key('visit_detail_diagnosis'), label: 'Diagnosis', value: note?.diagnosis),
-        _ClinicalNoteSection(key: const Key('visit_detail_plan'), label: 'Plan', value: note?.plan),
+        for (final section in VisitPageTokens.clinicalSections)
+          _ClinicalNoteSection(
+            key: Key('visit_detail_${section.label.toLowerCase()}'),
+            abbr: section.abbr,
+            label: section.label,
+            value: _valueForSection(note, section.label),
+          ),
       ],
     );
   }
+
+  String? _valueForSection(VisitClinicalNote? note, String label) => switch (label) {
+    'Complaint' => note?.complaint,
+    'History' => note?.history,
+    'Examination' => note?.examination,
+    'Diagnosis' => note?.diagnosis,
+    'Plan' => note?.plan,
+    _ => null,
+  };
 }
 
 class _ClinicalNoteSection extends StatelessWidget {
-  const _ClinicalNoteSection({required this.label, required this.value, super.key});
+  const _ClinicalNoteSection({required this.abbr, required this.label, required this.value, super.key});
 
+  final String abbr;
   final String label;
   final String? value;
 
   @override
   Widget build(BuildContext context) {
-    return VisitDetailField(label: label, value: value ?? '');
+    return VisitDetailField(label: label, value: value ?? '', abbr: abbr);
   }
 }
 
@@ -314,28 +290,18 @@ class _VitalSignsReadOnly extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
     if (vitalSigns.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
-        child: Text(
-          'No vital signs recorded.',
-          key: const Key('visit_detail_vital_signs_empty'),
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-        ),
+      return const VisitEmptyHint(
+        key: Key('visit_detail_vital_signs_empty'),
+        message: 'No vital signs recorded.',
+        icon: Icons.monitor_heart_outlined,
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final sign in vitalSigns)
-          Padding(
-            padding: const EdgeInsets.only(bottom: SpacingTokens.sm),
-            child: VitalSignCardView(sign: sign),
-          ),
-      ],
+    return Wrap(
+      spacing: SpacingTokens.sm,
+      runSpacing: SpacingTokens.sm,
+      children: [for (final sign in vitalSigns) VitalSignCardView(sign: sign)],
     );
   }
 }
@@ -347,16 +313,11 @@ class _TreatmentPlansReadOnly extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
     if (treatmentPlans.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
-        child: Text(
-          'No treatment plans recorded.',
-          key: const Key('visit_detail_treatment_plans_empty'),
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-        ),
+      return const VisitEmptyHint(
+        key: Key('visit_detail_treatment_plans_empty'),
+        message: 'No treatment plans recorded.',
+        icon: Icons.medication_outlined,
       );
     }
 
@@ -380,16 +341,11 @@ class _InvestigationsReadOnly extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
     if (investigations.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
-        child: Text(
-          'No investigations ordered.',
-          key: const Key('visit_detail_investigations_empty'),
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-        ),
+      return const VisitEmptyHint(
+        key: Key('visit_detail_investigations_empty'),
+        message: 'No investigations ordered.',
+        icon: Icons.biotech_outlined,
       );
     }
 
@@ -415,12 +371,11 @@ class _VisitDetailError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(SpacingTokens.lg),
-      child: Column(
+    return VisitPageShell(
+      onBack: onBack,
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AppIconButton(icon: const Icon(Icons.arrow_back, size: 18), tooltip: 'Back', onPressed: onBack),
           const Spacer(),
           AppAlert(title: message, variant: AppAlertVariant.destructive),
           const SizedBox(height: SpacingTokens.md),

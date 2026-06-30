@@ -16,14 +16,14 @@ class SaveToCatalogDialog extends StatelessWidget {
       title: 'Save to catalog?',
       barrierDismissible: false,
       body: SaveToCatalogDialog(normalizedName: normalizedName, itemTypeLabel: itemTypeLabel),
-      actions: [
+      actionsBuilder: (dialogContext) => [
         AppButton(
           label: 'Not now',
           variant: AppButtonVariant.outline,
           expand: false,
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.of(dialogContext).pop(false),
         ),
-        AppButton(label: 'Save to catalog', expand: false, onPressed: () => Navigator.of(context).pop(true)),
+        AppButton(label: 'Save to catalog', expand: false, onPressed: () => Navigator.of(dialogContext).pop(true)),
       ],
     );
   }

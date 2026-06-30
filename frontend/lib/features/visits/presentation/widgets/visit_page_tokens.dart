@@ -1,0 +1,108 @@
+import 'package:flutter/material.dart';
+
+import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
+import 'package:ai_clinic/core/ui/theme/shadow_tokens.dart';
+import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
+import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+
+/// Visit-page layout constants.
+abstract final class VisitPageTokens {
+  static const double sectionGap = SpacingTokens.md;
+  static const double marginRailWidth = 34;
+  static const double metricTileMinWidth = 150;
+
+  static const clinicalSections = <({String abbr, String label})>[
+    (abbr: 'C', label: 'Complaint'),
+    (abbr: 'H', label: 'History'),
+    (abbr: 'E', label: 'Examination'),
+    (abbr: 'D', label: 'Diagnosis'),
+    (abbr: 'P', label: 'Plan'),
+  ];
+}
+
+/// Theme-aware styling for visit pages — delegates to [SemanticColors],
+/// [ShapeTokens], [TextTheme], [SpacingTokens], and [ShadowTokens].
+class VisitTheme {
+  VisitTheme._(this._context);
+
+  final BuildContext _context;
+
+  static VisitTheme of(BuildContext context) => VisitTheme._(context);
+
+  SemanticColors get _colors => _context.semanticColors;
+  ShapeTokens get _shapes => _context.shapeTokens;
+  TextTheme get _text => Theme.of(_context).textTheme;
+
+  // ── Surfaces & ink ────────────────────────────────────────────────────
+
+  Color get ink => _colors.foreground;
+  Color get canvas => _colors.background;
+  Color get surface => _colors.card;
+  Color get tile => _colors.muted;
+
+  // ── Accent & status ───────────────────────────────────────────────────
+
+  Color get pulse => _colors.primary;
+  Color get pulseDeep => _colors.ring;
+  Color get danger => _colors.destructive;
+
+  // ── Text & lines ──────────────────────────────────────────────────────
+
+  Color get mutedInk => _colors.mutedForeground;
+  Color get hairline => _colors.border;
+  Color get hairlineSoft => _colors.border;
+
+  // ── Shape & elevation ─────────────────────────────────────────────────
+
+  double get panelRadius => _shapes.lg;
+  double get tileRadius => _shapes.md;
+
+  List<BoxShadow> get panelShadow => ShadowTokens.card;
+
+  // ── Typography ──────────────────────────────────────────────────────────
+
+  TextStyle title({Color? color, double? size}) =>
+      _text.titleMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: size, color: color ?? ink) ??
+      TextStyle(fontSize: size ?? 17, fontWeight: FontWeight.w600, color: color ?? ink);
+
+  TextStyle eyebrow({Color? color, double? size}) =>
+      _text.labelSmall?.copyWith(
+        fontSize: size,
+        letterSpacing: 1.2,
+        fontWeight: FontWeight.w600,
+        color: color ?? mutedInk,
+      ) ??
+      TextStyle(fontSize: size ?? 11, letterSpacing: 1.2, fontWeight: FontWeight.w600, color: color ?? mutedInk);
+
+  TextStyle readout({Color? color, double? size}) =>
+      _text.labelMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: size, color: color ?? ink) ??
+      TextStyle(fontSize: size ?? 16, fontWeight: FontWeight.w600, color: color ?? ink);
+
+  TextStyle body({Color? color, double? size, FontWeight weight = FontWeight.w400}) =>
+      _text.bodyMedium?.copyWith(fontSize: size, fontWeight: weight, color: color ?? ink) ??
+      TextStyle(fontSize: size ?? 14.5, fontWeight: weight, color: color ?? ink);
+
+  TextStyle bodyStrong({Color? color, double? size}) => body(color: color, size: size, weight: FontWeight.w600);
+
+  TextStyle caption({Color? color, double? size}) =>
+      _text.bodySmall?.copyWith(fontSize: size, color: color ?? mutedInk) ??
+      TextStyle(fontSize: size ?? 12.5, color: color ?? mutedInk);
+}
+
+/// Convenience accessor for [VisitTheme] from a [BuildContext].
+extension VisitThemeContext on BuildContext {
+  VisitTheme get visitTheme => VisitTheme.of(this);
+}
+
+/// Section identity for visit panels.
+enum VisitPanelKind {
+  clinicalNote(Icons.short_text_rounded, 'NOTE'),
+  vitalSigns(Icons.monitor_heart_outlined, 'VITALS'),
+  treatment(Icons.medication_outlined, 'RX'),
+  investigation(Icons.biotech_outlined, 'LABS'),
+  attachment(Icons.attach_file_rounded, 'FILES');
+
+  const VisitPanelKind(this.icon, this.tag);
+  final IconData icon;
+  final String tag;
+}

@@ -67,6 +67,7 @@ const _sentinel = Object();
 
 class AppointmentQueueController extends Notifier<AppointmentQueueState> {
   AppointmentQueueRealtimeClient? _realtimeClient;
+  bool _realtimeListening = false;
 
   @override
   AppointmentQueueState build() {
@@ -207,6 +208,7 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
     _unsubscribeRealtime();
     final client = ref.read(appointmentQueueRealtimeClientProvider);
     _realtimeClient = client;
+    _realtimeListening = true;
     client.subscribe(
       branchId: branchId,
       onConnectionChanged: _onRealtimeConnectionChanged,
@@ -215,10 +217,17 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
   }
 
   void _onRealtimeConnectionChanged(AppointmentQueueRealtimeConnection connection) {
+    if (!_realtimeListening) {
+      return;
+    }
     state = state.copyWith(realtimeConnection: connection);
   }
 
   void _unsubscribeRealtime() {
+    if (_realtimeClient == null) {
+      return;
+    }
+    _realtimeListening = false;
     _realtimeClient?.unsubscribe();
     _realtimeClient = null;
   }
@@ -258,6 +267,9 @@ class AppointmentQueueController extends Notifier<AppointmentQueueState> {
   }
 
   void _onRealtimeChange(AppointmentQueueRealtimeChange change) {
+    if (!_realtimeListening) {
+      return;
+    }
     final items = [...state.items];
     final applied = applyAppointmentQueueRealtimeChange(items: items, change: change, todayRange: _todayRange);
     if (applied) {
