@@ -9,13 +9,11 @@ import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_result_capture_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_diagnosis_code_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_plan_details_form.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
@@ -58,21 +56,8 @@ class EncounterReview extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const EncounterPhaseHeader(
-            phase: EncounterPhase.review,
-            description: 'Read-only summary of the encounter — edit any section or submit when ready',
-          ),
-          _ReviewSection(
-            phase: EncounterPhase.context,
-            title: 'Context',
-            canEdit: canEdit && onEditPhase != null,
-            onEdit: onEditPhase == null ? null : () => onEditPhase!(EncounterPhase.context),
-            child: EncounterPhaseContext(visit: visit, canEdit: canEdit),
-          ),
-          const SizedBox(height: VisitPageTokens.sectionGap),
           _ReviewSection(
             phase: EncounterPhase.subjective,
-            title: 'Subjective',
             canEdit: canEdit && onEditPhase != null,
             onEdit: onEditPhase == null ? null : () => onEditPhase!(EncounterPhase.subjective),
             child: Column(
@@ -81,13 +66,14 @@ class EncounterReview extends StatelessWidget {
                 VisitDetailField(label: 'Complaint', value: _complaint, abbr: 'C'),
                 const SizedBox(height: SpacingTokens.sm),
                 VisitDetailField(label: 'History', value: _history, abbr: 'H'),
+                const SizedBox(height: VisitPageTokens.sectionGap),
+                EncounterPhaseContext(visit: visit, canEdit: canEdit),
               ],
             ),
           ),
           const SizedBox(height: VisitPageTokens.sectionGap),
           _ReviewSection(
             phase: EncounterPhase.objective,
-            title: 'Objective',
             canEdit: canEdit && onEditPhase != null,
             onEdit: onEditPhase == null ? null : () => onEditPhase!(EncounterPhase.objective),
             child: Column(
@@ -104,28 +90,14 @@ class EncounterReview extends StatelessWidget {
                   const SizedBox(height: SpacingTokens.sm),
                 ],
                 VisitDetailField(label: 'Examination', value: _examination, abbr: 'E'),
-              ],
-            ),
-          ),
-          const SizedBox(height: VisitPageTokens.sectionGap),
-          _ReviewSection(
-            phase: EncounterPhase.assessment,
-            title: 'Assessment',
-            canEdit: canEdit && onEditPhase != null,
-            onEdit: onEditPhase == null ? null : () => onEditPhase!(EncounterPhase.assessment),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                VisitDetailField(label: 'Diagnosis', value: _diagnosis, abbr: 'A'),
                 const SizedBox(height: SpacingTokens.sm),
-                VisitDiagnosisCodeSummary(diagnosisCodes: visit.diagnosisCodes),
+                VisitDetailField(label: 'Diagnosis', value: _diagnosis, abbr: 'D'),
               ],
             ),
           ),
           const SizedBox(height: VisitPageTokens.sectionGap),
           _ReviewSection(
             phase: EncounterPhase.plan,
-            title: 'Plan',
             canEdit: canEdit && onEditPhase != null,
             onEdit: onEditPhase == null ? null : () => onEditPhase!(EncounterPhase.plan),
             child: Column(
@@ -172,16 +144,9 @@ class EncounterReview extends StatelessWidget {
 }
 
 class _ReviewSection extends StatelessWidget {
-  const _ReviewSection({
-    required this.phase,
-    required this.title,
-    required this.child,
-    required this.canEdit,
-    this.onEdit,
-  });
+  const _ReviewSection({required this.phase, required this.child, required this.canEdit, this.onEdit});
 
   final EncounterPhase phase;
-  final String title;
   final Widget child;
   final bool canEdit;
   final VoidCallback? onEdit;
@@ -189,8 +154,8 @@ class _ReviewSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return VisitSectionCard(
-      kind: VisitPanelKind.clinicalNote,
-      title: title,
+      kind: _kindForPhase(phase),
+      title: phase.label,
       headerActions: canEdit && onEdit != null
           ? [
               AppButton(
@@ -206,6 +171,13 @@ class _ReviewSection extends StatelessWidget {
     );
   }
 }
+
+VisitPanelKind _kindForPhase(EncounterPhase phase) => switch (phase) {
+  EncounterPhase.subjective => VisitPanelKind.subjective,
+  EncounterPhase.objective => VisitPanelKind.examination,
+  EncounterPhase.plan => VisitPanelKind.plan,
+  _ => VisitPanelKind.subjective,
+};
 
 class _VitalSignsSummary extends StatelessWidget {
   const _VitalSignsSummary({required this.vitalSigns});

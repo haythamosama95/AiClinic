@@ -27,7 +27,6 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
     required this.onChanged,
     required this.sectionTitle,
     required this.sectionKind,
-    this.sectionDescription,
     this.pickAttachment,
     this.fetchDownloadBytes,
     this.saveDownloadedAttachment,
@@ -40,7 +39,6 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
   final bool canUpload;
   final VoidCallback onChanged;
   final String sectionTitle;
-  final String? sectionDescription;
   final VisitPanelKind sectionKind;
 
   final Future<VisitAttachmentPickInput?> Function()? pickAttachment;
@@ -79,7 +77,6 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     return VisitSectionCard(
       kind: widget.sectionKind,
       title: widget.sectionTitle,
-      description: widget.sectionDescription,
       headerActions: _shelfActions(),
       child: _buildBody(),
     );

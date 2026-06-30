@@ -8,6 +8,7 @@ import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
+import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_header.dart';
@@ -75,10 +76,8 @@ class _EditableVisitDetailPage extends ConsumerWidget {
         onBack: onBack,
       ),
       data: (docState) => VisitPageShell(
+        hideTopBar: true,
         onBack: onBack,
-        headerActions: [
-          VisitDetailActions(visitId: visitId, status: docState.visit.status, canEditDocumentation: true),
-        ],
         body: _VisitDetailBody(
           visitId: visitId,
           visit: docState.visit,
@@ -87,6 +86,7 @@ class _EditableVisitDetailPage extends ConsumerWidget {
           hasBranchAccess: view.hasBranchAccess,
           canUploadAttachments: view.canUploadAttachments,
           onRefresh: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+          onBack: onBack,
           onEditDocumentation: () => context.go(AppRoutes.visitDocument(visitId)),
         ),
       ),
@@ -103,10 +103,8 @@ class _ReadOnlyVisitDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return VisitPageShell(
+      hideTopBar: true,
       onBack: onBack,
-      headerActions: [
-        VisitDetailActions(visitId: view.visit.id, status: view.visit.status, canEditDocumentation: false),
-      ],
       body: _VisitDetailBody(
         visitId: view.visit.id,
         visit: view.visit,
@@ -114,6 +112,7 @@ class _ReadOnlyVisitDetailPage extends StatelessWidget {
         hasBranchAccess: view.hasBranchAccess,
         canUploadAttachments: false,
         onRefresh: () {},
+        onBack: onBack,
       ),
     );
   }
@@ -127,6 +126,7 @@ class _VisitDetailBody extends ConsumerWidget {
     required this.hasBranchAccess,
     required this.canUploadAttachments,
     required this.onRefresh,
+    required this.onBack,
     this.state,
     this.onEditDocumentation,
   });
@@ -137,16 +137,26 @@ class _VisitDetailBody extends ConsumerWidget {
   final bool hasBranchAccess;
   final bool canUploadAttachments;
   final VoidCallback onRefresh;
+  final VoidCallback onBack;
   final VisitDocumentationState? state;
   final VoidCallback? onEditDocumentation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final trailing = visit.status == VisitStatus.completed
+        ? VisitDetailActions(visitId: visitId, status: visit.status, canEditDocumentation: false)
+        : null;
+
     return Column(
       key: const Key('visit_detail_body'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        EncounterHeader(visit: visit),
+        EncounterHeader(
+          visit: visit,
+          onBack: onBack,
+          onEdit: canEdit && onEditDocumentation != null ? onEditDocumentation : null,
+          trailing: trailing,
+        ),
         const SizedBox(height: VisitPageTokens.sectionGap),
         if (!hasBranchAccess) ...[
           const AppAlert(

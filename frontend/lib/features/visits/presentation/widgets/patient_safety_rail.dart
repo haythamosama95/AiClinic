@@ -26,7 +26,6 @@ class PatientSafetyRail extends ConsumerWidget {
         key: const Key('patient_safety_rail'),
         titleIcon: Icons.health_and_safety_outlined,
         title: Text('Safety', style: theme.title(size: 15)),
-        description: Text('Read-only patient context', style: theme.caption(size: 11.5)),
         body: Padding(
           padding: const EdgeInsets.fromLTRB(SpacingTokens.md, 0, SpacingTokens.md, SpacingTokens.md),
           child: safetyAsync.when(
@@ -57,13 +56,11 @@ class _SafetyBody extends StatelessWidget {
         if (!safety.hasStructuredData) _DegradedAlertsLine(theme: theme) else const SizedBox.shrink(),
         if (!safety.hasStructuredData) const SizedBox(height: SpacingTokens.md),
         _SafetyCategory(
-          key: const Key('patient_safety_allergies'),
-          icon: Icons.warning_amber_outlined,
-          label: 'Allergies',
-          emptyMessage: 'No allergies recorded.',
-          items: safety.allergies
-              .map((a) => a.reaction?.trim().isNotEmpty == true ? '${a.substance} — ${a.reaction}' : a.substance)
-              .toList(),
+          key: const Key('patient_safety_conditions'),
+          icon: Icons.favorite_border,
+          label: 'Chronic conditions',
+          emptyMessage: 'No chronic conditions recorded.',
+          items: safety.chronicConditions.map((c) => c.name).toList(),
         ),
         const SizedBox(height: SpacingTokens.sm),
         _SafetyCategory(
@@ -75,11 +72,13 @@ class _SafetyBody extends StatelessWidget {
         ),
         const SizedBox(height: SpacingTokens.sm),
         _SafetyCategory(
-          key: const Key('patient_safety_conditions'),
-          icon: Icons.favorite_border,
-          label: 'Chronic conditions',
-          emptyMessage: 'No chronic conditions recorded.',
-          items: safety.chronicConditions.map((c) => c.name).toList(),
+          key: const Key('patient_safety_allergies'),
+          icon: Icons.warning_amber_outlined,
+          label: 'Allergies',
+          emptyMessage: 'No allergies recorded.',
+          items: safety.allergies
+              .map((a) => a.reaction?.trim().isNotEmpty == true ? '${a.substance} — ${a.reaction}' : a.substance)
+              .toList(),
         ),
         const SizedBox(height: SpacingTokens.sm),
         _SafetyCategory(

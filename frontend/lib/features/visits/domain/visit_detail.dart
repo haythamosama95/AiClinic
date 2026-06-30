@@ -2,7 +2,6 @@ import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
-import 'package:ai_clinic/features/visits/domain/visit_diagnosis_code.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/domain/visit_plan_details.dart';
 import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
@@ -29,7 +28,6 @@ class VisitDetail {
     this.investigations = const [],
     this.treatmentPlans = const [],
     this.attachments = const [],
-    this.diagnosisCodes = const [],
     this.planDetails,
     this.pendingInvestigations = const [],
   });
@@ -49,7 +47,6 @@ class VisitDetail {
   final List<VisitInvestigation> investigations;
   final List<TreatmentPlanItem> treatmentPlans;
   final List<VisitAttachmentItem> attachments;
-  final List<VisitDiagnosisCode> diagnosisCodes;
   final VisitPlanDetails? planDetails;
   final List<VisitInvestigation> pendingInvestigations;
 
@@ -104,7 +101,6 @@ class VisitDetail {
       investigations: _parseInvestigations(row['investigations']),
       treatmentPlans: _parseTreatmentPlans(row['treatment_plans'], visitId: id, patientId: patientId),
       attachments: _parseAttachments(row['attachments']),
-      diagnosisCodes: _parseDiagnosisCodes(row['diagnosis_codes']),
       planDetails: VisitPlanDetails.fromRow(
         row['plan_details'] is Map<String, dynamic>
             ? row['plan_details'] as Map<String, dynamic>
@@ -114,19 +110,6 @@ class VisitDetail {
       ),
       pendingInvestigations: _parseInvestigations(row['pending_investigations']),
     );
-  }
-
-  static List<VisitDiagnosisCode> _parseDiagnosisCodes(Object? raw) {
-    if (raw is! List) {
-      return const [];
-    }
-    return [
-      for (final item in raw)
-        if (item is Map<String, dynamic>)
-          ?VisitDiagnosisCode.fromRow(item)
-        else if (item is Map)
-          ?VisitDiagnosisCode.fromRow(Map<String, dynamic>.from(item)),
-    ].whereType<VisitDiagnosisCode>().toList(growable: false);
   }
 
   static List<VisitVitalSign> _parseVitalSigns(Object? raw) {
@@ -201,7 +184,6 @@ class VisitDetail {
     List<VisitInvestigation>? investigations,
     List<TreatmentPlanItem>? treatmentPlans,
     List<VisitAttachmentItem>? attachments,
-    List<VisitDiagnosisCode>? diagnosisCodes,
     Object? planDetails = copyWithSentinel,
     List<VisitInvestigation>? pendingInvestigations,
   }) {
@@ -223,7 +205,6 @@ class VisitDetail {
       investigations: investigations ?? this.investigations,
       treatmentPlans: treatmentPlans ?? this.treatmentPlans,
       attachments: attachments ?? this.attachments,
-      diagnosisCodes: diagnosisCodes ?? this.diagnosisCodes,
       planDetails: identical(planDetails, copyWithSentinel) ? this.planDetails : planDetails as VisitPlanDetails?,
       pendingInvestigations: pendingInvestigations ?? this.pendingInvestigations,
     );
@@ -249,7 +230,6 @@ class VisitDetail {
             listEquals(investigations, other.investigations) &&
             listEquals(treatmentPlans, other.treatmentPlans) &&
             listEquals(attachments, other.attachments) &&
-            listEquals(diagnosisCodes, other.diagnosisCodes) &&
             planDetails == other.planDetails &&
             listEquals(pendingInvestigations, other.pendingInvestigations);
   }
@@ -271,7 +251,6 @@ class VisitDetail {
     Object.hashAll(investigations),
     Object.hashAll(treatmentPlans),
     Object.hashAll(attachments),
-    Object.hashAll(diagnosisCodes),
     planDetails,
     Object.hashAll(pendingInvestigations),
   );

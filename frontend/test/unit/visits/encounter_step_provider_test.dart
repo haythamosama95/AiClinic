@@ -11,19 +11,17 @@ void main() {
     test('marks empty phases when no content exists', () {
       final badges = deriveEncounterPhaseBadges(sampleEncounterDocState());
 
-      expect(badges[EncounterPhase.context], PhaseCompletionBadge.empty);
       expect(badges[EncounterPhase.subjective], PhaseCompletionBadge.empty);
       expect(badges[EncounterPhase.objective], PhaseCompletionBadge.empty);
-      expect(badges[EncounterPhase.assessment], PhaseCompletionBadge.empty);
       expect(badges[EncounterPhase.plan], PhaseCompletionBadge.empty);
       expect(badges[EncounterPhase.review], PhaseCompletionBadge.empty);
     });
 
-    test('marks context has-content when visit type is present', () {
+    test('marks subjective has-content when visit type is present', () {
       final visit = sampleEncounterVisit(visitType: 'Check-up');
       final badges = deriveEncounterPhaseBadges(sampleEncounterDocState(visit: visit));
 
-      expect(badges[EncounterPhase.context], PhaseCompletionBadge.hasContent);
+      expect(badges[EncounterPhase.subjective], PhaseCompletionBadge.hasContent);
     });
 
     test('marks subjective has-content from draft complaint', () {
@@ -45,7 +43,7 @@ void main() {
       final oversized = 'x' * (kMaxClinicalSectionLength + 1);
       final badges = deriveEncounterPhaseBadges(sampleEncounterDocState().copyWith(diagnosis: oversized));
 
-      expect(badges[EncounterPhase.assessment], PhaseCompletionBadge.error);
+      expect(badges[EncounterPhase.objective], PhaseCompletionBadge.error);
       expect(badges[EncounterPhase.review], PhaseCompletionBadge.error);
     });
 

@@ -12,6 +12,7 @@ import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 const _customVitalSignKey = '__custom__';
@@ -27,7 +28,6 @@ class VitalSignList extends ConsumerStatefulWidget {
     required this.onChanged,
     required this.sectionTitle,
     required this.sectionKind,
-    this.sectionDescription,
     super.key,
   });
 
@@ -37,7 +37,6 @@ class VitalSignList extends ConsumerStatefulWidget {
   final bool canEdit;
   final VoidCallback onChanged;
   final String sectionTitle;
-  final String? sectionDescription;
   final VisitPanelKind sectionKind;
 
   @override
@@ -77,7 +76,6 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
     return VisitSectionCard(
       kind: widget.sectionKind,
       title: widget.sectionTitle,
-      description: widget.sectionDescription,
       headerActions: _shelfActions(),
       child: _buildBody(),
     );
@@ -568,7 +566,7 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
                 },
               )
             else
-              AppTextInput(
+              VisitTextInput(
                 key: const Key('vital_sign_custom_name'),
                 label: 'Vital sign name',
                 controller: _customName,
@@ -576,7 +574,7 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
               ),
             if (_isCustom && widget.predefinedVitalSigns.isNotEmpty) ...[
               const SizedBox(height: SpacingTokens.sm),
-              AppTextInput(
+              VisitTextInput(
                 key: const Key('vital_sign_custom_name'),
                 label: 'Custom name',
                 controller: _customName,
@@ -584,14 +582,14 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
               ),
             ],
             const SizedBox(height: SpacingTokens.sm),
-            AppTextInput(
+            VisitTextInput(
               key: const Key('vital_sign_value'),
               label: 'Value',
               controller: _value,
               enabled: !widget.isSubmitting,
             ),
             const SizedBox(height: SpacingTokens.sm),
-            AppTextInput(
+            VisitTextInput(
               key: const Key('vital_sign_unit'),
               label: 'Unit (optional)',
               controller: _unit,
@@ -731,9 +729,8 @@ class _PainScoreQuickEntryState extends ConsumerState<PainScoreQuickEntry> {
     return Padding(
       padding: const EdgeInsets.only(top: SpacingTokens.sm),
       child: VisitSectionCard(
-        kind: VisitPanelKind.vitalSigns,
+        kind: VisitPanelKind.painScore,
         title: 'Pain score',
-        description: '0 = no pain · 10 = worst pain',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

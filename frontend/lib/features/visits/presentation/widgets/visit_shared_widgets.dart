@@ -11,6 +11,7 @@ class VisitPageShell extends StatelessWidget {
     required this.body,
     this.headerActions = const [],
     this.scrollBody = true,
+    this.hideTopBar = false,
     super.key,
   });
 
@@ -18,6 +19,7 @@ class VisitPageShell extends StatelessWidget {
   final List<Widget> headerActions;
   final Widget body;
   final bool scrollBody;
+  final bool hideTopBar;
 
   @override
   Widget build(BuildContext context) {
@@ -26,8 +28,10 @@ class VisitPageShell extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _VisitTopBar(onBack: onBack, headerActions: headerActions),
-          const SizedBox(height: SpacingTokens.md),
+          if (!hideTopBar) ...[
+            _VisitTopBar(onBack: onBack, headerActions: headerActions),
+            const SizedBox(height: SpacingTokens.md),
+          ],
           Expanded(child: scrollBody ? SingleChildScrollView(child: body) : body),
         ],
       ),
@@ -63,36 +67,26 @@ class VisitSectionCard extends StatelessWidget {
   const VisitSectionCard({
     required this.title,
     required this.child,
-    this.description,
     this.headerActions,
     this.kind,
+    this.icon,
     super.key,
   });
 
   final String title;
-  final String? description;
   final Widget child;
   final List<Widget>? headerActions;
   final VisitPanelKind? kind;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
-    final icon = kind?.icon ?? Icons.folder_open_outlined;
-    final tag = kind?.tag;
+    final titleIcon = icon ?? kind?.icon ?? Icons.folder_open_outlined;
 
     return AppNotchedCard(
-      titleIcon: icon,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (tag != null) Text(tag, style: theme.eyebrow(color: theme.pulseDeep, size: 10)),
-          if (tag != null) const SizedBox(height: 3),
-          Text(title, style: theme.title()),
-        ],
-      ),
-      description: description != null ? Text(description!, style: theme.caption()) : null,
+      titleIcon: titleIcon,
+      title: Text(title, style: theme.title()),
       actions: headerActions,
       body: Padding(
         padding: const EdgeInsets.fromLTRB(SpacingTokens.md, 0, SpacingTokens.md, SpacingTokens.md),

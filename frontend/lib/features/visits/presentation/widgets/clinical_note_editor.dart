@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
@@ -18,6 +19,8 @@ class ClinicalNoteEditor extends ConsumerWidget {
     this.showStaleBanner = true,
     this.showSaveBar = true,
     this.showEditButton = false,
+    this.showSectionHeaders = true,
+    this.expandField = false,
     super.key,
   });
 
@@ -28,19 +31,28 @@ class ClinicalNoteEditor extends ConsumerWidget {
   final bool showStaleBanner;
   final bool showSaveBar;
   final bool showEditButton;
+  final bool showSectionHeaders;
+  final bool expandField;
 
   Set<ClinicalNoteSection> get _visibleSections => sections ?? ClinicalNoteSection.values.toSet();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!canEdit) {
-      return _ReadOnlyClinicalNote(state: state, sections: _visibleSections);
+      return _ReadOnlyClinicalNote(
+        state: state,
+        sections: _visibleSections,
+        showSectionHeaders: showSectionHeaders,
+        expandField: expandField,
+      );
     }
     if (state.noteEditMode == DocumentationEditMode.readOnly) {
       return _ReadOnlyClinicalNote(
         state: state,
         sections: _visibleSections,
         showEditButton: showEditButton,
+        showSectionHeaders: showSectionHeaders,
+        expandField: expandField,
         onEdit: () => ref.read(visitDocumentationProvider(visitId).notifier).enterEditMode(),
       );
     }
@@ -50,6 +62,8 @@ class ClinicalNoteEditor extends ConsumerWidget {
       sections: _visibleSections,
       showStaleBanner: showStaleBanner,
       showSaveBar: showSaveBar,
+      showSectionHeaders: showSectionHeaders,
+      expandField: expandField,
     );
   }
 }
@@ -61,6 +75,8 @@ class _EditableClinicalNote extends ConsumerStatefulWidget {
     required this.sections,
     required this.showStaleBanner,
     required this.showSaveBar,
+    required this.showSectionHeaders,
+    required this.expandField,
   });
 
   final String visitId;
@@ -68,6 +84,8 @@ class _EditableClinicalNote extends ConsumerStatefulWidget {
   final Set<ClinicalNoteSection> sections;
   final bool showStaleBanner;
   final bool showSaveBar;
+  final bool showSectionHeaders;
+  final bool expandField;
 
   @override
   ConsumerState<_EditableClinicalNote> createState() => _EditableClinicalNoteState();
@@ -133,18 +151,34 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
           ),
           const SizedBox(height: SpacingTokens.md),
         ],
-        for (var i = 0; i < orderedSections.length; i++) ...[
-          _ClinicalNoteField(
-            key: Key('clinical_note_${orderedSections[i].name}'),
-            abbr: orderedSections[i].abbr,
-            label: orderedSections[i].label,
-            hintText: orderedSections[i].hasHint ? orderedSections[i].hint : null,
-            controller: _controllers[orderedSections[i]]!,
-            enabled: !isSaving,
-            onChanged: _onChangedForSection(notifier, orderedSections[i]),
-            showDivider: i < orderedSections.length - 1,
-          ),
-        ],
+        if (widget.expandField && orderedSections.length == 1)
+          Expanded(
+            child: _ClinicalNoteField(
+              key: Key('clinical_note_${orderedSections.first.name}'),
+              abbr: orderedSections.first.abbr,
+              label: orderedSections.first.label,
+              hintText: orderedSections.first.hasHint ? orderedSections.first.hint : null,
+              controller: _controllers[orderedSections.first]!,
+              enabled: !isSaving,
+              onChanged: _onChangedForSection(notifier, orderedSections.first),
+              showSectionHeader: widget.showSectionHeaders,
+              expand: true,
+            ),
+          )
+        else
+          for (var i = 0; i < orderedSections.length; i++) ...[
+            _ClinicalNoteField(
+              key: Key('clinical_note_${orderedSections[i].name}'),
+              abbr: orderedSections[i].abbr,
+              label: orderedSections[i].label,
+              hintText: orderedSections[i].hasHint ? orderedSections[i].hint : null,
+              controller: _controllers[orderedSections[i]]!,
+              enabled: !isSaving,
+              onChanged: _onChangedForSection(notifier, orderedSections[i]),
+              showDivider: i < orderedSections.length - 1,
+              showSectionHeader: widget.showSectionHeaders,
+            ),
+          ],
         if (widget.showSaveBar) ...[
           DecoratedBox(
             decoration: BoxDecoration(
@@ -207,11 +241,20 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
 }
 
 class _ReadOnlyClinicalNote extends StatelessWidget {
-  const _ReadOnlyClinicalNote({required this.state, required this.sections, this.showEditButton = false, this.onEdit});
+  const _ReadOnlyClinicalNote({
+    required this.state,
+    required this.sections,
+    this.showEditButton = false,
+    this.showSectionHeaders = true,
+    this.expandField = false,
+    this.onEdit,
+  });
 
   final VisitDocumentationState state;
   final Set<ClinicalNoteSection> sections;
   final bool showEditButton;
+  final bool showSectionHeaders;
+  final bool expandField;
   final VoidCallback? onEdit;
 
   @override
@@ -221,13 +264,27 @@ class _ReadOnlyClinicalNote extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final section in orderedSections)
-          _ReadOnlySection(
-            key: Key('visit_detail_${section.name}'),
-            abbr: section.abbr,
-            label: section.label,
-            value: _textForSection(state, section),
-          ),
+        if (expandField && orderedSections.length == 1)
+          Expanded(
+            child: SingleChildScrollView(
+              child: _ReadOnlySection(
+                key: Key('visit_detail_${orderedSections.first.name}'),
+                abbr: orderedSections.first.abbr,
+                label: orderedSections.first.label,
+                value: _textForSection(state, orderedSections.first),
+                showSectionHeader: showSectionHeaders,
+              ),
+            ),
+          )
+        else
+          for (final section in orderedSections)
+            _ReadOnlySection(
+              key: Key('visit_detail_${section.name}'),
+              abbr: section.abbr,
+              label: section.label,
+              value: _textForSection(state, section),
+              showSectionHeader: showSectionHeaders,
+            ),
         if (showEditButton && onEdit != null) ...[
           const SizedBox(height: SpacingTokens.sm),
           Align(
@@ -247,14 +304,29 @@ class _ReadOnlyClinicalNote extends StatelessWidget {
 }
 
 class _ReadOnlySection extends StatelessWidget {
-  const _ReadOnlySection({required this.abbr, required this.label, required this.value, super.key});
+  const _ReadOnlySection({
+    required this.abbr,
+    required this.label,
+    required this.value,
+    this.showSectionHeader = true,
+    super.key,
+  });
 
   final String abbr;
   final String label;
   final String value;
+  final bool showSectionHeader;
 
   @override
   Widget build(BuildContext context) {
+    if (!showSectionHeader) {
+      final theme = context.visitTheme;
+      final display = value.trim().isEmpty ? '—' : value.trim();
+      final isEmpty = value.trim().isEmpty;
+
+      return Text(display, style: theme.body(color: isEmpty ? theme.mutedInk : theme.ink));
+    }
+
     return VisitDetailField(label: label, value: value, abbr: abbr);
   }
 }
@@ -268,6 +340,8 @@ class _ClinicalNoteField extends StatelessWidget {
     required this.enabled,
     this.hintText,
     this.showDivider = true,
+    this.showSectionHeader = true,
+    this.expand = false,
     super.key,
   });
 
@@ -278,10 +352,24 @@ class _ClinicalNoteField extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final bool enabled;
   final bool showDivider;
+  final bool showSectionHeader;
+  final bool expand;
 
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
+
+    if (!showSectionHeader) {
+      return VisitTextInput(
+        hintText: hintText,
+        controller: controller,
+        enabled: enabled,
+        minLines: expand ? null : 3,
+        maxLines: expand ? null : 8,
+        expands: expand,
+        onChanged: onChanged,
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: SpacingTokens.md),
@@ -299,7 +387,7 @@ class _ClinicalNoteField extends StatelessWidget {
                   children: [
                     Text(label.toUpperCase(), style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2)),
                     const SizedBox(height: SpacingTokens.xs + 1),
-                    AppTextInput(
+                    VisitTextInput(
                       hintText: hintText,
                       controller: controller,
                       enabled: enabled,

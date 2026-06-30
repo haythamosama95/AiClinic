@@ -23,7 +23,6 @@ class InvestigationList extends ConsumerStatefulWidget {
     required this.onChanged,
     required this.sectionTitle,
     required this.sectionKind,
-    this.sectionDescription,
     super.key,
   });
 
@@ -32,7 +31,6 @@ class InvestigationList extends ConsumerStatefulWidget {
   final bool canEdit;
   final VoidCallback onChanged;
   final String sectionTitle;
-  final String? sectionDescription;
   final VisitPanelKind sectionKind;
 
   @override
@@ -72,7 +70,6 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
     return VisitSectionCard(
       kind: widget.sectionKind,
       title: widget.sectionTitle,
-      description: widget.sectionDescription,
       headerActions: _shelfActions(),
       child: _buildBody(),
     );
@@ -372,10 +369,6 @@ class InvestigationCardView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(investigation.name, style: theme.title(size: 15)),
-                  if (investigation.note != null && investigation.note!.isNotEmpty) ...[
-                    const SizedBox(height: SpacingTokens.xs),
-                    Text(investigation.note!, style: theme.caption()),
-                  ],
                   if (investigation.hasResult) ...[
                     const SizedBox(height: SpacingTokens.sm),
                     Text('Result', style: theme.eyebrow(size: 10)),
@@ -476,7 +469,6 @@ class InvestigationFormView extends ConsumerStatefulWidget {
 class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
   final _formKey = GlobalKey<FormState>();
   final _investigationFieldKey = GlobalKey<CatalogAutocompleteFieldState>();
-  late final TextEditingController _note;
   CatalogFieldSelection _investigationSelection = const CatalogFieldSelection(name: '');
 
   @override
@@ -487,13 +479,6 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
       name: investigation?.name ?? '',
       catalogId: investigation?.investigationId,
     );
-    _note = TextEditingController(text: investigation?.note ?? '');
-  }
-
-  @override
-  void dispose() {
-    _note.dispose();
-    super.dispose();
   }
 
   @override
@@ -526,14 +511,6 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
                 onSearch: (query) => ref.read(visitRepositoryProvider).searchInvestigations(query: query),
                 onSelectionChanged: (selection) => setState(() => _investigationSelection = selection),
                 validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              AppTextField(
-                key: const Key('investigation_note_field'),
-                label: 'Note (optional)',
-                controller: _note,
-                maxLines: 3,
-                enabled: !widget.isSubmitting,
               ),
               const SizedBox(height: SpacingTokens.md),
               Row(
@@ -569,15 +546,6 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
     final name = _investigationFieldKey.currentState?.currentSelection.name ?? _investigationSelection.name;
     final investigationId =
         _investigationFieldKey.currentState?.currentSelection.catalogId ?? _investigationSelection.catalogId;
-    final isEdit = widget.initialInvestigation != null;
-    final trimmedNote = _note.text.trim();
-
-    widget.onSubmit(
-      InvestigationFormData(
-        name: name.trim(),
-        investigationId: investigationId,
-        note: trimmedNote.isEmpty ? (isEdit ? '' : null) : trimmedNote,
-      ),
-    );
+    widget.onSubmit(InvestigationFormData(name: name.trim(), investigationId: investigationId));
   }
 }

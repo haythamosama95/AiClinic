@@ -121,10 +121,8 @@ void expectUniquePhaseAncestor(WidgetTester tester, Key fieldKey, Key phaseKey, 
 }
 
 const encounterPhaseKeys = <Key>[
-  Key('encounter_phase_context'),
   Key('encounter_phase_subjective'),
   Key('encounter_phase_objective'),
-  Key('encounter_phase_assessment'),
   Key('encounter_phase_plan'),
 ];
 

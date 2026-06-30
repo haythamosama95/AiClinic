@@ -75,8 +75,6 @@ DECLARE
   v_allergy_id uuid;
   v_medication_record_id uuid;
   v_condition_id uuid;
-  v_catalog_diag_id uuid;
-  v_visit_diag_id uuid;
   v_visit_updated_at timestamptz;
   v_plan_updated_at timestamptz;
   v_start timestamptz;
@@ -237,7 +235,7 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   -- Patient chronic condition CRUD.
-  v_result := public.create_patient_chronic_condition(v_patient_id, 'Hypertension', NULL, 'Controlled');
+  v_result := public.create_patient_chronic_condition(v_patient_id, 'Hypertension', 'Controlled');
   v_condition_id := (v_result.data ->> 'id')::uuid;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_encounter_crud_results VALUES (
@@ -247,7 +245,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.update_patient_chronic_condition(v_condition_id, 'Essential Hypertension', NULL, 'On medication');
+  v_result := public.update_patient_chronic_condition(v_condition_id, 'Essential Hypertension', 'On medication');
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_encounter_crud_results VALUES (
     'update_patient_chronic_condition',
@@ -313,78 +311,6 @@ BEGIN
         SELECT 1
         FROM public.patient_chronic_conditions pcc
         WHERE pcc.id = v_condition_id AND pcc.is_deleted = true
-      ),
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Diagnosis catalog: explicit create then search (test orgs are not migration-seeded).
-  v_result := public.create_catalog_diagnosis_code('Searchable Diagnosis', 'S99');
-  v_catalog_diag_id := (v_result.data ->> 'id')::uuid;
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_crud_results VALUES (
-    'create_catalog_diagnosis_code_first_insert',
-    v_result.success
-      AND v_catalog_diag_id IS NOT NULL
-      AND COALESCE((v_result.data ->> 'created')::boolean, false) = true,
-    COALESCE(v_result.error_code, 'created=' || COALESCE(v_result.data ->> 'created', '<null>'))
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.create_catalog_diagnosis_code('Searchable Diagnosis', 'S99');
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_crud_results VALUES (
-    'create_catalog_diagnosis_code_idempotent',
-    v_result.success
-      AND (v_result.data ->> 'id')::uuid = v_catalog_diag_id
-      AND COALESCE((v_result.data ->> 'created')::boolean, true) = false,
-    COALESCE(v_result.error_code, 'created=' || COALESCE(v_result.data ->> 'created', '<null>'))
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.search_diagnosis_codes('Searchable', 10);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_crud_results VALUES (
-    'search_diagnosis_codes_prefix',
-    v_result.success
-      AND jsonb_array_length(COALESCE(v_result.data -> 'items', '[]'::jsonb)) >= 1,
-    'count=' || COALESCE(jsonb_array_length(COALESCE(v_result.data -> 'items', '[]'::jsonb))::text, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Visit diagnosis code create/archive.
-  v_result := public.create_visit_diagnosis_code(
-    v_visit_id,
-    'Essential hypertension',
-    'I10',
-    v_catalog_diag_id
-  );
-  v_visit_diag_id := (v_result.data ->> 'visit_diagnosis_code_id')::uuid;
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_crud_results VALUES (
-    'create_visit_diagnosis_code',
-    v_result.success
-      AND v_visit_diag_id IS NOT NULL
-      AND EXISTS (
-        SELECT 1
-        FROM public.visit_diagnosis_codes vdc
-        WHERE vdc.id = v_visit_diag_id
-          AND vdc.visit_id = v_visit_id
-          AND vdc.label = 'Essential hypertension'
-      ),
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.archive_visit_diagnosis_code(v_visit_diag_id);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_crud_results VALUES (
-    'archive_visit_diagnosis_code',
-    v_result.success
-      AND EXISTS (
-        SELECT 1
-        FROM public.visit_diagnosis_codes vdc
-        WHERE vdc.id = v_visit_diag_id AND vdc.is_deleted = true
       ),
     COALESCE(v_result.error_code, '<null>')
   );

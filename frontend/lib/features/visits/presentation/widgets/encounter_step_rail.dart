@@ -33,7 +33,6 @@ class EncounterStepRail extends StatelessWidget {
         key: const Key('encounter_step_rail'),
         titleIcon: Icons.linear_scale_rounded,
         title: Text('Steps', style: theme.title(size: 15)),
-        description: Text('Jump to any phase', style: theme.caption(size: 11.5)),
         body: Padding(
           padding: const EdgeInsets.fromLTRB(SpacingTokens.sm, 0, SpacingTokens.sm, SpacingTokens.md),
           child: Column(

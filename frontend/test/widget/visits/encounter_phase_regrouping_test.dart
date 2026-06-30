@@ -1,8 +1,6 @@
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_documentation_layout.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_assessment.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_objective.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_plan.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_subjective.dart';
@@ -28,12 +26,9 @@ void main() {
         docState: state,
         patientSafety: const PatientSafetyContext(),
         child: EncounterDocumentationLayout(
-          patientId: encounterTestPatientId,
           phases: [
-            EncounterPhaseContext(visit: visit),
             EncounterPhaseSubjective(visitId: encounterTestVisitId, state: state, canEdit: true),
             EncounterPhaseObjective(visitId: encounterTestVisitId, state: state, canEdit: true, onRefresh: () {}),
-            EncounterPhaseAssessment(visitId: encounterTestVisitId, state: state, canEdit: true),
             EncounterPhasePlan(
               visitId: encounterTestVisitId,
               state: state,
@@ -52,8 +47,8 @@ void main() {
       expectUniquePhaseAncestor(
         tester,
         const Key('encounter_context_visit_type'),
-        const Key('encounter_phase_context'),
-        otherPhaseKeysThan(const Key('encounter_phase_context')),
+        const Key('encounter_phase_subjective'),
+        otherPhaseKeysThan(const Key('encounter_phase_subjective')),
       );
       expectUniquePhaseAncestor(
         tester,
@@ -83,8 +78,8 @@ void main() {
       expectUniquePhaseAncestor(
         tester,
         const Key('clinical_note_diagnosis'),
-        const Key('encounter_phase_assessment'),
-        otherPhaseKeysThan(const Key('encounter_phase_assessment')),
+        const Key('encounter_phase_objective'),
+        otherPhaseKeysThan(const Key('encounter_phase_objective')),
       );
       expectUniquePhaseAncestor(
         tester,

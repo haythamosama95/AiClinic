@@ -3,34 +3,31 @@ enum EncounterPhase {
   context,
   subjective,
   objective,
-  assessment,
   plan,
   review;
 
   /// Phases with editable documentation canvases (excludes Review).
-  static const documentationPhases = <EncounterPhase>[context, subjective, objective, assessment, plan];
+  static const documentationPhases = <EncounterPhase>[subjective, objective, plan];
 
   /// Full stepper order including the read-only Review step.
-  static const ordered = <EncounterPhase>[context, subjective, objective, assessment, plan, review];
+  static const ordered = <EncounterPhase>[subjective, objective, plan, review];
 
   bool get isDocumentation => index <= plan.index;
 
   String get label => switch (this) {
-    context => 'Context',
-    subjective => 'Subjective',
-    objective => 'Objective',
-    assessment => 'Assessment',
-    plan => 'Plan',
-    review => 'Review',
+    context => 'Background',
+    subjective => 'Intake',
+    objective => 'Findings & Diagnosis',
+    plan => 'Treatment',
+    review => 'Summary',
   };
 
   String get abbr => switch (this) {
-    context => 'CTX',
-    subjective => 'S',
-    objective => 'O',
-    assessment => 'A',
-    plan => 'P',
-    review => 'R',
+    context => 'BG',
+    subjective => 'IN',
+    objective => 'FD',
+    plan => 'TX',
+    review => 'SM',
   };
 
   int get orderIndex => ordered.indexOf(this);
@@ -41,7 +38,7 @@ enum EncounterPhase {
   };
 
   EncounterPhase? get previous => switch (this) {
-    context => null,
+    subjective => null,
     _ => ordered[orderIndex - 1],
   };
 }

@@ -23,7 +23,6 @@ class TreatmentPlanList extends ConsumerStatefulWidget {
     required this.onChanged,
     required this.sectionTitle,
     required this.sectionKind,
-    this.sectionDescription,
     super.key,
   });
 
@@ -32,7 +31,6 @@ class TreatmentPlanList extends ConsumerStatefulWidget {
   final bool canEdit;
   final VoidCallback onChanged;
   final String sectionTitle;
-  final String? sectionDescription;
   final VisitPanelKind sectionKind;
 
   @override
@@ -72,7 +70,6 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
     return VisitSectionCard(
       kind: widget.sectionKind,
       title: widget.sectionTitle,
-      description: widget.sectionDescription,
       headerActions: _shelfActions(),
       child: _buildBody(),
     );

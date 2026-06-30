@@ -16,10 +16,9 @@ PhaseBadges deriveEncounterPhaseBadges(VisitDocumentationState state) {
 
 PhaseCompletionBadge _badgeForPhase(EncounterPhase phase, VisitDocumentationState state, VisitDetail visit) {
   return switch (phase) {
-    EncounterPhase.context => _contextBadge(visit),
-    EncounterPhase.subjective => _subjectiveBadge(state),
-    EncounterPhase.objective => _objectiveBadge(state),
-    EncounterPhase.assessment => _clinicalTextBadge(state.diagnosis),
+    EncounterPhase.context => PhaseCompletionBadge.empty,
+    EncounterPhase.subjective => _subjectiveBadge(state, visit),
+    EncounterPhase.objective => _findingsAndDiagnosisBadge(state),
     EncounterPhase.plan => _planBadge(state),
     EncounterPhase.review => _reviewBadge(state),
   };
@@ -33,31 +32,21 @@ PhaseCompletionBadge _contextBadge(VisitDetail visit) {
   return PhaseCompletionBadge.empty;
 }
 
-PhaseCompletionBadge _subjectiveBadge(VisitDocumentationState state) {
+PhaseCompletionBadge _subjectiveBadge(VisitDocumentationState state, VisitDetail visit) {
   if (_sectionTooLong(state.complaint) || _sectionTooLong(state.history)) {
     return PhaseCompletionBadge.error;
   }
-  if (_hasText(state.complaint) || _hasText(state.history)) {
+  if (_hasText(state.complaint) || _hasText(state.history) || _contextBadge(visit) == PhaseCompletionBadge.hasContent) {
     return PhaseCompletionBadge.hasContent;
   }
   return PhaseCompletionBadge.empty;
 }
 
-PhaseCompletionBadge _objectiveBadge(VisitDocumentationState state) {
-  if (_sectionTooLong(state.examination)) {
+PhaseCompletionBadge _findingsAndDiagnosisBadge(VisitDocumentationState state) {
+  if (_sectionTooLong(state.examination) || _sectionTooLong(state.diagnosis)) {
     return PhaseCompletionBadge.error;
   }
-  if (_hasText(state.examination) || state.visit.vitalSigns.isNotEmpty) {
-    return PhaseCompletionBadge.hasContent;
-  }
-  return PhaseCompletionBadge.empty;
-}
-
-PhaseCompletionBadge _clinicalTextBadge(String value) {
-  if (_sectionTooLong(value)) {
-    return PhaseCompletionBadge.error;
-  }
-  if (_hasText(value)) {
+  if (_hasText(state.examination) || _hasText(state.diagnosis) || state.visit.vitalSigns.isNotEmpty) {
     return PhaseCompletionBadge.hasContent;
   }
   return PhaseCompletionBadge.empty;
@@ -121,7 +110,7 @@ class EncounterActivePhaseNotifier extends Notifier<EncounterPhase> {
   EncounterActivePhaseNotifier(String _);
 
   @override
-  EncounterPhase build() => EncounterPhase.context;
+  EncounterPhase build() => EncounterPhase.subjective;
 
   void setPhase(EncounterPhase phase) {
     state = phase;

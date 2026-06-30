@@ -3,50 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/patient_safety_rail.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
-/// Documentation layout with a persistent safety rail (014 US3).
+/// Documentation layout stacking encounter phase canvases (014 US3).
 class EncounterDocumentationLayout extends StatelessWidget {
-  const EncounterDocumentationLayout({required this.phases, required this.patientId, this.activePhase, super.key});
+  const EncounterDocumentationLayout({required this.phases, super.key});
 
   final List<Widget> phases;
-  final String patientId;
-  final EncounterPhase? activePhase;
-
-  static const _safetyRailBreakpoint = 960.0;
-  static const safetyRailWidth = 260.0;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final useSideRail = constraints.maxWidth >= _safetyRailBreakpoint;
-        final safetyRail = PatientSafetyRail(patientId: patientId, phase: activePhase);
-
-        if (useSideRail) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _withGaps(phases)),
-              ),
-              const SizedBox(width: VisitPageTokens.sectionGap),
-              SizedBox(width: safetyRailWidth, child: safetyRail),
-            ],
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            safetyRail,
-            const SizedBox(height: VisitPageTokens.sectionGap),
-            ..._withGaps(phases),
-          ],
-        );
-      },
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _withGaps(phases));
   }
 
   List<Widget> _withGaps(List<Widget> items) {

@@ -30,12 +30,12 @@ void main() {
 
       expect(find.byKey(const Key('encounter_workspace_shell')), findsOneWidget);
       expect(find.byKey(const Key('encounter_step_rail')), findsOneWidget);
+      expect(find.byKey(const Key('encounter_phase_subjective')), findsOneWidget);
       expect(find.byKey(const Key('encounter_phase_context')), findsOneWidget);
-      expect(find.byKey(const Key('encounter_phase_subjective')), findsNothing);
       expect(find.byKey(const Key('encounter_sticky_footer')), findsOneWidget);
     });
 
-    testWidgets('non-linear navigation jumps from context to plan', (tester) async {
+    testWidgets('non-linear navigation jumps from subjective to plan', (tester) async {
       final state = sampleEncounterDocState();
 
       await pumpEncounterWidget(
@@ -56,7 +56,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('encounter_phase_plan')), findsOneWidget);
-      expect(find.byKey(const Key('encounter_phase_context')), findsNothing);
+      expect(find.byKey(const Key('encounter_phase_subjective')), findsNothing);
     });
 
     testWidgets('step badges reflect draft content', (tester) async {

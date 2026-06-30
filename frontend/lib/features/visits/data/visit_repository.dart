@@ -8,7 +8,6 @@ import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
-import 'package:ai_clinic/features/visits/domain/visit_diagnosis_code.dart';
 import 'package:ai_clinic/features/visits/domain/visit_list_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
 
@@ -520,19 +519,13 @@ class VisitRepository with AppRpcInvoker {
     await invokeRpc('archive_patient_medication', {'p_medication_record_id': medicationRecordId.trim()});
   }
 
-  Future<String> createPatientChronicCondition({
-    required String patientId,
-    required String name,
-    String? diagnosisCodeId,
-    String? note,
-  }) async {
+  Future<String> createPatientChronicCondition({required String patientId, required String name, String? note}) async {
     _assertNonEmpty('patientId', patientId);
     _assertNonEmpty('name', name);
 
     final result = await invokeRpc('create_patient_chronic_condition', {
       'p_patient_id': patientId.trim(),
       'p_name': name.trim(),
-      if (diagnosisCodeId != null && diagnosisCodeId.trim().isNotEmpty) 'p_diagnosis_code_id': diagnosisCodeId.trim(),
       'p_note': ?note,
     });
 
@@ -543,19 +536,12 @@ class VisitRepository with AppRpcInvoker {
     return id;
   }
 
-  Future<void> updatePatientChronicCondition({
-    required String conditionId,
-    String? name,
-    String? diagnosisCodeId,
-    String? note,
-  }) async {
+  Future<void> updatePatientChronicCondition({required String conditionId, String? name, String? note}) async {
     _assertNonEmpty('conditionId', conditionId);
 
     await invokeRpc('update_patient_chronic_condition', {
       'p_condition_id': conditionId.trim(),
       'p_name': ?name,
-      if (diagnosisCodeId != null)
-        'p_diagnosis_code_id': diagnosisCodeId.trim().isEmpty ? null : diagnosisCodeId.trim(),
       'p_note': ?note,
     });
   }
@@ -563,51 +549,6 @@ class VisitRepository with AppRpcInvoker {
   Future<void> archivePatientChronicCondition({required String conditionId}) async {
     _assertNonEmpty('conditionId', conditionId);
     await invokeRpc('archive_patient_chronic_condition', {'p_condition_id': conditionId.trim()});
-  }
-
-  Future<List<DiagnosisCatalogItem>> searchDiagnosisCodes({String? query, int limit = 20}) async {
-    final result = await invokeRpc('search_diagnosis_codes', {'p_query': query?.trim() ?? '', 'p_limit': limit});
-    return _parseDiagnosisCatalogItems(result.data?['items']);
-  }
-
-  Future<CatalogCreateResult> createCatalogDiagnosisCode({required String name, String? code}) async {
-    _assertNonEmpty('name', name);
-
-    final result = await invokeRpc('create_catalog_diagnosis_code', {'p_name': name.trim(), 'p_code': ?code});
-
-    final created = CatalogCreateResult.fromRpcData(result.data);
-    if (created == null) {
-      throw StateError('Create catalog diagnosis code returned an unexpected shape.');
-    }
-    return created;
-  }
-
-  Future<String> createVisitDiagnosisCode({
-    required String visitId,
-    required String label,
-    String? code,
-    String? diagnosisCodeId,
-  }) async {
-    _assertNonEmpty('visitId', visitId);
-    _assertNonEmpty('label', label);
-
-    final result = await invokeRpc('create_visit_diagnosis_code', {
-      'p_visit_id': visitId.trim(),
-      'p_label': label.trim(),
-      'p_code': ?code,
-      if (diagnosisCodeId != null && diagnosisCodeId.trim().isNotEmpty) 'p_diagnosis_code_id': diagnosisCodeId.trim(),
-    });
-
-    final id = result.data?['visit_diagnosis_code_id']?.toString();
-    if (id == null || id.isEmpty) {
-      throw StateError('Create visit diagnosis code returned an unexpected shape.');
-    }
-    return id;
-  }
-
-  Future<void> archiveVisitDiagnosisCode({required String visitDiagnosisCodeId}) async {
-    _assertNonEmpty('visitDiagnosisCodeId', visitDiagnosisCodeId);
-    await invokeRpc('archive_visit_diagnosis_code', {'p_visit_diagnosis_code_id': visitDiagnosisCodeId.trim()});
   }
 
   Future<PlanDetailsSaveResult> saveVisitPlanDetails({
@@ -664,19 +605,6 @@ class VisitRepository with AppRpcInvoker {
         else if (item is Map)
           ?CatalogItem.fromRow(Map<String, dynamic>.from(item)),
     ].whereType<CatalogItem>().toList(growable: false);
-  }
-
-  List<DiagnosisCatalogItem> _parseDiagnosisCatalogItems(Object? raw) {
-    if (raw is! List) {
-      return const [];
-    }
-    return [
-      for (final item in raw)
-        if (item is Map<String, dynamic>)
-          ?DiagnosisCatalogItem.fromRow(item)
-        else if (item is Map)
-          ?DiagnosisCatalogItem.fromRow(Map<String, dynamic>.from(item)),
-    ].whereType<DiagnosisCatalogItem>().toList(growable: false);
   }
 }
 

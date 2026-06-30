@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspace_mode_toggle.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspace_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,12 +21,19 @@ void main() {
         docState: state,
         size: const Size(1280, 900),
         scrollable: false,
-        child: EncounterWorkspaceShell(
-          visitId: encounterTestVisitId,
-          state: state,
-          canEdit: true,
-          canUploadAttachments: true,
-          onRefresh: () {},
+        child: Column(
+          children: [
+            const Align(alignment: Alignment.centerRight, child: EncounterWorkspaceModeToggle()),
+            Expanded(
+              child: EncounterWorkspaceShell(
+                visitId: encounterTestVisitId,
+                state: state,
+                canEdit: true,
+                canUploadAttachments: true,
+                onRefresh: () {},
+              ),
+            ),
+          ],
         ),
       );
 
@@ -47,7 +55,7 @@ void main() {
       expect(find.text('Persistent headache'), findsOneWidget);
     });
 
-    testWidgets('expert mode renders all five phase sections', (tester) async {
+    testWidgets('expert mode renders all documentation phase sections', (tester) async {
       final state = sampleEncounterDocState();
 
       await pumpEncounterWidget(
@@ -55,12 +63,19 @@ void main() {
         docState: state,
         size: const Size(1280, 900),
         scrollable: false,
-        child: EncounterWorkspaceShell(
-          visitId: encounterTestVisitId,
-          state: state,
-          canEdit: true,
-          canUploadAttachments: true,
-          onRefresh: () {},
+        child: Column(
+          children: [
+            const Align(alignment: Alignment.centerRight, child: EncounterWorkspaceModeToggle()),
+            Expanded(
+              child: EncounterWorkspaceShell(
+                visitId: encounterTestVisitId,
+                state: state,
+                canEdit: true,
+                canUploadAttachments: true,
+                onRefresh: () {},
+              ),
+            ),
+          ],
         ),
       );
 

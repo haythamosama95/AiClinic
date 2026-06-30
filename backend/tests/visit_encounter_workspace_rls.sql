@@ -1,4 +1,4 @@
--- 014 US6/US7 cross-org and cross-branch denial for patient safety, diagnosis catalog, and plan RPCs.
+-- 014 US6/US7 cross-org and cross-branch denial for patient safety and plan RPCs.
 -- Run: psql ... -v ON_ERROR_STOP=1 -f backend/tests/visit_encounter_workspace_rls.sql
 
 BEGIN;
@@ -35,12 +35,9 @@ DECLARE
   v_allergy_a2 uuid := 'b2600000-0000-4000-8000-00000000aa02';
   v_medication_a uuid := 'b2600000-0000-4000-8000-00000000aa03';
   v_condition_a uuid := 'b2600000-0000-4000-8000-00000000aa04';
-  v_diag_code_a uuid := 'b2600000-0000-4000-8000-00000000aa05';
-  v_visit_diag_a uuid := 'b2600000-0000-4000-8000-00000000aa06';
   v_plan_details_a uuid := 'b2600000-0000-4000-8000-00000000aa07';
   v_result public.rpc_result;
   v_visible_count int;
-  v_search_count int;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
@@ -134,18 +131,10 @@ BEGIN
   INSERT INTO public.patient_medications (id, patient_id, name, note, created_by, updated_by)
   VALUES (v_medication_a, v_patient_a, 'Aspirin', 'Daily', v_user_a, v_user_a);
 
-  INSERT INTO public.diagnosis_codes (id, organization_id, code, name, created_by, updated_by)
-  VALUES (v_diag_code_a, v_org_a, 'I10', 'Essential hypertension', v_user_a, v_user_a);
-
   INSERT INTO public.patient_chronic_conditions (
-    id, patient_id, diagnosis_code_id, name, note, created_by, updated_by
+    id, patient_id, name, note, created_by, updated_by
   )
-  VALUES (v_condition_a, v_patient_a, v_diag_code_a, 'Hypertension', 'Stable', v_user_a, v_user_a);
-
-  INSERT INTO public.visit_diagnosis_codes (
-    id, visit_id, diagnosis_code_id, code, label, created_by, updated_by
-  )
-  VALUES (v_visit_diag_a, v_visit_a, v_diag_code_a, 'I10', 'Essential hypertension', v_user_a, v_user_a);
+  VALUES (v_condition_a, v_patient_a, 'Hypertension', 'Stable', v_user_a, v_user_a);
 
   INSERT INTO public.visit_plan_details (
     id, visit_id, follow_up_interval, patient_instructions, created_by, updated_by
@@ -258,7 +247,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.create_patient_chronic_condition(v_patient_a, 'Diabetes', NULL, NULL);
+  v_result := public.create_patient_chronic_condition(v_patient_a, 'Diabetes', NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_encounter_rls_results VALUES (
     'cross_org_create_patient_chronic_condition_denied',
@@ -267,7 +256,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.update_patient_chronic_condition(v_condition_a, 'Hijacked', NULL, NULL);
+  v_result := public.update_patient_chronic_condition(v_condition_a, 'Hijacked', NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_encounter_rls_results VALUES (
     'cross_org_update_patient_chronic_condition_denied',
@@ -285,61 +274,12 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  SELECT count(*)::int INTO v_visible_count FROM public.diagnosis_codes;
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_rls_results VALUES (
-    'cross_org_diagnosis_codes_hidden',
-    v_visible_count = 0,
-    'count=' || v_visible_count::text
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.search_diagnosis_codes('Essential', 10);
-  SELECT count(*)::int
-  INTO v_search_count
-  FROM jsonb_array_elements(COALESCE(v_result.data -> 'items', '[]'::jsonb)) item
-  WHERE (item ->> 'id')::uuid = v_diag_code_a;
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_rls_results VALUES (
-    'cross_org_search_diagnosis_codes_excludes_org_a',
-    v_result.success AND v_search_count = 0,
-    'leaked=' || v_search_count::text
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  SELECT count(*)::int INTO v_visible_count FROM public.visit_diagnosis_codes;
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_rls_results VALUES (
-    'cross_org_visit_diagnosis_codes_hidden',
-    v_visible_count = 0,
-    'count=' || v_visible_count::text
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
   SELECT count(*)::int INTO v_visible_count FROM public.visit_plan_details;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_encounter_rls_results VALUES (
     'cross_org_visit_plan_details_hidden',
     v_visible_count = 0,
     'count=' || v_visible_count::text
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.create_visit_diagnosis_code(v_visit_a, 'Should not create', 'Z99', NULL);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_rls_results VALUES (
-    'cross_org_create_visit_diagnosis_code_denied',
-    NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.archive_visit_diagnosis_code(v_visit_diag_a);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_rls_results VALUES (
-    'cross_org_archive_visit_diagnosis_code_denied',
-    NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
-    COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
@@ -434,19 +374,10 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  v_result := public.create_patient_chronic_condition(v_patient_a2, 'Should not create', NULL, NULL);
+  v_result := public.create_patient_chronic_condition(v_patient_a2, 'Should not create', NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_encounter_rls_results VALUES (
     'cross_branch_create_patient_chronic_condition_denied',
-    NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.create_visit_diagnosis_code(v_visit_a2, 'Should not create', NULL, NULL);
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_rls_results VALUES (
-    'cross_branch_create_visit_diagnosis_code_denied',
     NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
     COALESCE(v_result.error_code, '<null>')
   );

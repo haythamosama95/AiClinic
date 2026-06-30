@@ -65,6 +65,8 @@ class AppTextField extends StatelessWidget {
     this.prefixIcon,
     this.suffixIcon,
     this.inputFormatters,
+    this.textAlignVertical,
+    this.focusNode,
     super.key,
   });
 
@@ -84,6 +86,8 @@ class AppTextField extends StatelessWidget {
   final Widget? prefixIcon;
   final Widget? suffixIcon;
   final List<TextInputFormatter>? inputFormatters;
+  final TextAlignVertical? textAlignVertical;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -105,6 +109,8 @@ class AppTextField extends StatelessWidget {
       textInputAction: textInputAction,
       maxLines: maxLines,
       enabled: enabled,
+      textAlignVertical: textAlignVertical ?? TextAlignVertical.top,
+      focusNode: focusNode,
       onSubmit: onSubmit,
       validator: validator,
       inputFormatters: inputFormatters,
@@ -131,6 +137,7 @@ class AppTextInput extends StatelessWidget {
     this.expands = false,
     this.fillColor,
     this.textAlignVertical,
+    this.focusNode,
     this.onChanged,
     this.prefixIcon,
     this.suffixIcon,
@@ -150,6 +157,7 @@ class AppTextInput extends StatelessWidget {
   final bool expands;
   final Color? fillColor;
   final TextAlignVertical? textAlignVertical;
+  final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
@@ -175,7 +183,8 @@ class AppTextInput extends StatelessWidget {
       minLines: minLines,
       maxLines: maxLines,
       expands: expands,
-      textAlignVertical: textAlignVertical,
+      textAlignVertical: textAlignVertical ?? TextAlignVertical.top,
+      focusNode: focusNode,
       enabled: enabled,
       prefixBuilder: _prefixBuilder(prefixIcon),
       suffixBuilder: _suffixBuilder(suffixIcon),

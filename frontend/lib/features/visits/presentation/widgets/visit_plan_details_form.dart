@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/visit_plan_details.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Structured plan outputs editor (014 US7).
@@ -97,9 +98,8 @@ class _VisitPlanDetailsFormState extends ConsumerState<VisitPlanDetailsForm> {
     final enabled = widget.canEdit && !isSaving;
 
     return VisitSectionCard(
-      kind: VisitPanelKind.clinicalNote,
+      kind: VisitPanelKind.planDetails,
       title: 'Structured plan outputs',
-      description: 'Follow-up, instructions, referral, and certificate data (no document generation)',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -113,7 +113,7 @@ class _VisitPlanDetailsFormState extends ConsumerState<VisitPlanDetailsForm> {
             ),
             const SizedBox(height: SpacingTokens.sm),
           ],
-          AppTextField(
+          VisitTextField(
             label: 'Follow-up interval',
             hintText: 'e.g. in 2 weeks',
             controller: _followUpIntervalController,
@@ -128,7 +128,7 @@ class _VisitPlanDetailsFormState extends ConsumerState<VisitPlanDetailsForm> {
             onPick: notifier.updateFollowUpDate,
           ),
           const SizedBox(height: SpacingTokens.sm),
-          AppTextField(
+          VisitTextField(
             label: 'Patient instructions',
             controller: _instructionsController,
             enabled: enabled,
@@ -136,7 +136,7 @@ class _VisitPlanDetailsFormState extends ConsumerState<VisitPlanDetailsForm> {
             onChanged: notifier.updatePatientInstructions,
           ),
           const SizedBox(height: SpacingTokens.sm),
-          AppTextField(
+          VisitTextField(
             label: 'Referral',
             controller: _referralController,
             enabled: enabled,
@@ -168,7 +168,7 @@ class _VisitPlanDetailsFormState extends ConsumerState<VisitPlanDetailsForm> {
             ],
           ),
           const SizedBox(height: SpacingTokens.sm),
-          AppTextField(
+          VisitTextField(
             label: 'Certificate reason',
             controller: _certificateReasonController,
             enabled: enabled,
@@ -222,10 +222,11 @@ class _DatePickerField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppTextField(
+    return VisitTextField(
       label: label,
       controller: controller,
       enabled: enabled,
+      showEmptyPrompt: false,
       suffixIcon: IconButton(
         icon: const Icon(Icons.calendar_today_outlined, size: 18),
         onPressed: enabled ? () => _pick(context) : null,

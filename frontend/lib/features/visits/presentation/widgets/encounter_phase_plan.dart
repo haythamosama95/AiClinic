@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
-import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
@@ -44,14 +42,9 @@ class EncounterPhasePlan extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const EncounterPhaseHeader(
-            phase: EncounterPhase.plan,
-            description: 'Treatment plan, orders, and visit files',
-          ),
           VisitSectionCard(
-            kind: VisitPanelKind.clinicalNote,
-            title: 'Plan',
-            description: 'Treatment plan, follow-up instructions, and patient advice',
+            kind: VisitPanelKind.plan,
+            title: 'Treatment notes',
             child: ClinicalNoteEditor(
               visitId: visitId,
               state: state,
@@ -71,7 +64,6 @@ class EncounterPhasePlan extends ConsumerWidget {
             onChanged: onRefresh,
             sectionKind: VisitPanelKind.treatment,
             sectionTitle: 'Treatment plans',
-            sectionDescription: 'Search medications, enter custom names, and record dose, frequency, and duration',
           ),
           const SizedBox(height: VisitPageTokens.sectionGap),
           InvestigationList(
@@ -81,7 +73,6 @@ class EncounterPhasePlan extends ConsumerWidget {
             onChanged: onRefresh,
             sectionKind: VisitPanelKind.investigation,
             sectionTitle: 'Investigations',
-            sectionDescription: 'Search investigations catalog or enter custom names with optional notes',
           ),
           const SizedBox(height: VisitPageTokens.sectionGap),
           VisitAttachmentList(
@@ -92,7 +83,6 @@ class EncounterPhasePlan extends ConsumerWidget {
             onChanged: onRefresh,
             sectionKind: VisitPanelKind.attachment,
             sectionTitle: 'Attachments',
-            sectionDescription: 'PDF, Word, JPEG, or PNG files up to 25 MB',
           ),
         ],
       ),

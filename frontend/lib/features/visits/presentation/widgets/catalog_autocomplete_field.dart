@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 
 /// User selection from a debounced catalog search field.
@@ -141,7 +142,7 @@ class CatalogAutocompleteFieldState extends State<CatalogAutocompleteField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AppTextField(
+        VisitTextField(
           key: const Key('catalog_autocomplete_field'),
           label: widget.label,
           controller: _controller,

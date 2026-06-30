@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Capture investigation results for lines ordered on prior visits (014 US8).
@@ -42,9 +43,8 @@ class _InvestigationResultCaptureListState extends ConsumerState<InvestigationRe
     final theme = context.visitTheme;
 
     return VisitSectionCard(
-      kind: VisitPanelKind.clinicalNote,
+      kind: VisitPanelKind.investigationResult,
       title: 'Investigation results',
-      description: 'Record results for investigations ordered on prior visits',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -142,10 +142,6 @@ class _PendingInvestigationTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(investigation.name, style: theme.title(size: 15)),
-                  if (investigation.note != null && investigation.note!.isNotEmpty) ...[
-                    const SizedBox(height: SpacingTokens.xs),
-                    Text(investigation.note!, style: theme.caption()),
-                  ],
                   if (orderedDate != null) ...[
                     const SizedBox(height: SpacingTokens.xs),
                     Text(
@@ -221,7 +217,7 @@ class _InvestigationResultFormState extends State<_InvestigationResultForm> {
           children: [
             Text('Result for ${widget.investigation.name}', style: theme.title(size: 15)),
             const SizedBox(height: SpacingTokens.sm),
-            AppTextInput(
+            VisitTextInput(
               key: Key('investigation_result_field_${widget.investigation.id}'),
               label: 'Result',
               controller: _result,

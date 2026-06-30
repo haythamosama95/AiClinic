@@ -96,13 +96,21 @@ extension VisitThemeContext on BuildContext {
 
 /// Section identity for visit panels.
 enum VisitPanelKind {
-  clinicalNote(Icons.short_text_rounded, 'NOTE'),
-  vitalSigns(Icons.monitor_heart_outlined, 'VITALS'),
-  treatment(Icons.medication_outlined, 'RX'),
-  investigation(Icons.biotech_outlined, 'LABS'),
-  attachment(Icons.attach_file_rounded, 'FILES');
+  subjective(Icons.record_voice_over_outlined),
+  examination(Icons.medical_services_outlined),
+  diagnosis(Icons.medical_information_outlined),
+  plan(Icons.assignment_outlined),
+  vitalSigns(Icons.monitor_heart_outlined),
+  painScore(Icons.sentiment_dissatisfied_outlined),
+  treatment(Icons.medication_outlined),
+  investigation(Icons.biotech_outlined),
+  attachment(Icons.attach_file_rounded),
+  allergy(Icons.coronavirus_outlined),
+  currentMedication(Icons.medication_liquid_outlined),
+  chronicCondition(Icons.healing_outlined),
+  planDetails(Icons.checklist_rtl_outlined),
+  investigationResult(Icons.science_outlined);
 
-  const VisitPanelKind(this.icon, this.tag);
+  const VisitPanelKind(this.icon);
   final IconData icon;
-  final String tag;
 }

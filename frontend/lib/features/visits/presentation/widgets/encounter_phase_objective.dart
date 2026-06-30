@@ -2,21 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
-import 'package:ai_clinic/features/visits/domain/bmi.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
-import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
+import 'package:ai_clinic/features/visits/domain/bmi.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_result_capture_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
-/// Objective phase — vital signs, examination, and derived BMI (014 US2).
+/// Findings & Diagnosis phase — vitals, examination, and diagnosis (014 US2).
 class EncounterPhaseObjective extends ConsumerWidget {
   const EncounterPhaseObjective({
     required this.visitId,
@@ -33,8 +31,6 @@ class EncounterPhaseObjective extends ConsumerWidget {
   final VoidCallback onRefresh;
   final bool showClinicalNoteSaveBar;
 
-  static const _sections = {ClinicalNoteSection.examination};
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return KeyedSubtree(
@@ -42,10 +38,6 @@ class EncounterPhaseObjective extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const EncounterPhaseHeader(
-            phase: EncounterPhase.objective,
-            description: 'Vital signs and physical examination findings',
-          ),
           VitalSignList(
             visitId: visitId,
             vitalSigns: state.visit.vitalSigns,
@@ -54,7 +46,6 @@ class EncounterPhaseObjective extends ConsumerWidget {
             onChanged: onRefresh,
             sectionKind: VisitPanelKind.vitalSigns,
             sectionTitle: 'Vital signs',
-            sectionDescription: 'Record measurements from predefined options or custom entries',
           ),
           PainScoreQuickEntry(
             visitId: visitId,
@@ -72,13 +63,26 @@ class EncounterPhaseObjective extends ConsumerWidget {
           ),
           if (state.visit.pendingInvestigations.isNotEmpty) const SizedBox(height: VisitPageTokens.sectionGap),
           VisitSectionCard(
-            kind: VisitPanelKind.clinicalNote,
+            kind: VisitPanelKind.examination,
             title: 'Examination',
             child: ClinicalNoteEditor(
               visitId: visitId,
               state: state,
               canEdit: canEdit,
-              sections: _sections,
+              sections: const {ClinicalNoteSection.examination},
+              showStaleBanner: false,
+              showSaveBar: showClinicalNoteSaveBar,
+            ),
+          ),
+          const SizedBox(height: VisitPageTokens.sectionGap),
+          VisitSectionCard(
+            kind: VisitPanelKind.diagnosis,
+            title: 'Diagnosis',
+            child: ClinicalNoteEditor(
+              visitId: visitId,
+              state: state,
+              canEdit: canEdit,
+              sections: const {ClinicalNoteSection.diagnosis},
               showStaleBanner: false,
               showSaveBar: showClinicalNoteSaveBar,
             ),
@@ -179,9 +183,15 @@ class EncounterPhaseObjectiveDetail extends StatelessWidget {
         ],
         const SizedBox(height: VisitPageTokens.sectionGap),
         VisitSectionCard(
-          kind: VisitPanelKind.clinicalNote,
+          kind: VisitPanelKind.examination,
           title: 'Examination',
           child: EncounterPhaseExaminationFromVisit(note: visit.documentation),
+        ),
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        VisitSectionCard(
+          kind: VisitPanelKind.diagnosis,
+          title: 'Diagnosis',
+          child: EncounterPhaseDiagnosisFromVisit(note: visit.documentation),
         ),
       ],
     );
@@ -196,6 +206,17 @@ class EncounterPhaseExaminationFromVisit extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return VisitDetailField(label: 'Examination', value: note?.examination ?? '', abbr: 'E');
+  }
+}
+
+class EncounterPhaseDiagnosisFromVisit extends StatelessWidget {
+  const EncounterPhaseDiagnosisFromVisit({required this.note, super.key});
+
+  final VisitClinicalNote? note;
+
+  @override
+  Widget build(BuildContext context) {
+    return VisitDetailField(label: 'Diagnosis', value: note?.diagnosis ?? '', abbr: 'D');
   }
 }
 

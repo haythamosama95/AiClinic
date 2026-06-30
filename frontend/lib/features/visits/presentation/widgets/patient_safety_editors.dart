@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
@@ -10,9 +11,9 @@ import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/diagnosis_autocomplete_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Context-phase editors for patient-level safety records (014 US6).
@@ -57,80 +58,88 @@ class _PatientSafetyEditorsState extends ConsumerState<PatientSafetyEditors> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: VisitPageTokens.sectionGap),
-        _SafetySection(
-          key: const Key('patient_safety_allergies_editor'),
-          title: 'Allergies',
-          description: 'Substance and reaction — no severity field',
-          canEdit: widget.canEdit,
-          showAddForm: _showAllergyForm,
-          onAdd: () => setState(() => _showAllergyForm = true),
-          isSubmitting: _isSubmitting,
-          items: safety.allergies
-              .map(
-                (allergy) => _SafetyListTile(
-                  label: allergy.substance,
-                  detail: allergy.reaction,
-                  canEdit: widget.canEdit,
-                  onArchive: () => _archiveAllergy(allergy.id),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _SafetySection(
+                key: const Key('patient_safety_conditions_editor'),
+                kind: VisitPanelKind.chronicCondition,
+                title: 'Chronic conditions',
+                canEdit: widget.canEdit,
+                showAddForm: _showConditionForm,
+                onAdd: () => setState(() => _showConditionForm = true),
+                isSubmitting: _isSubmitting,
+                items: safety.chronicConditions
+                    .map(
+                      (condition) => _SafetyListTile(
+                        label: condition.name,
+                        canEdit: widget.canEdit,
+                        onArchive: () => _archiveCondition(condition.id),
+                      ),
+                    )
+                    .toList(),
+                addForm: _ConditionForm(
+                  isSubmitting: _isSubmitting,
+                  onSubmit: _createCondition,
+                  onCancel: () => setState(() => _showConditionForm = false),
                 ),
-              )
-              .toList(),
-          addForm: _AllergyForm(
-            isSubmitting: _isSubmitting,
-            onSubmit: _createAllergy,
-            onCancel: () => setState(() => _showAllergyForm = false),
-          ),
-        ),
-        const SizedBox(height: VisitPageTokens.sectionGap),
-        _SafetySection(
-          key: const Key('patient_safety_medications_editor'),
-          title: 'Current medications',
-          description: 'Home or ongoing medications for this patient',
-          canEdit: widget.canEdit,
-          showAddForm: _showMedicationForm,
-          onAdd: () => setState(() => _showMedicationForm = true),
-          isSubmitting: _isSubmitting,
-          items: safety.currentMedications
-              .map(
-                (med) => _SafetyListTile(
-                  label: med.name,
-                  detail: med.note,
-                  canEdit: widget.canEdit,
-                  onArchive: () => _archiveMedication(med.id),
+              ),
+            ),
+            const SizedBox(width: VisitPageTokens.sectionGap),
+            Expanded(
+              child: _SafetySection(
+                key: const Key('patient_safety_medications_editor'),
+                kind: VisitPanelKind.currentMedication,
+                title: 'Current medications',
+                canEdit: widget.canEdit,
+                showAddForm: _showMedicationForm,
+                onAdd: () => setState(() => _showMedicationForm = true),
+                isSubmitting: _isSubmitting,
+                items: safety.currentMedications
+                    .map(
+                      (med) => _SafetyListTile(
+                        label: med.name,
+                        canEdit: widget.canEdit,
+                        onArchive: () => _archiveMedication(med.id),
+                      ),
+                    )
+                    .toList(),
+                addForm: _MedicationForm(
+                  isSubmitting: _isSubmitting,
+                  onSubmit: _createMedication,
+                  onCancel: () => setState(() => _showMedicationForm = false),
                 ),
-              )
-              .toList(),
-          addForm: _MedicationForm(
-            isSubmitting: _isSubmitting,
-            onSubmit: _createMedication,
-            onCancel: () => setState(() => _showMedicationForm = false),
-          ),
-        ),
-        const SizedBox(height: VisitPageTokens.sectionGap),
-        _SafetySection(
-          key: const Key('patient_safety_conditions_editor'),
-          title: 'Chronic conditions',
-          description: 'Problem list entries linked to diagnosis catalog when available',
-          canEdit: widget.canEdit,
-          showAddForm: _showConditionForm,
-          onAdd: () => setState(() => _showConditionForm = true),
-          isSubmitting: _isSubmitting,
-          items: safety.chronicConditions
-              .map(
-                (condition) => _SafetyListTile(
-                  label: condition.name,
-                  detail: condition.note,
-                  canEdit: widget.canEdit,
-                  onArchive: () => _archiveCondition(condition.id),
+              ),
+            ),
+            const SizedBox(width: VisitPageTokens.sectionGap),
+            Expanded(
+              child: _SafetySection(
+                key: const Key('patient_safety_allergies_editor'),
+                kind: VisitPanelKind.allergy,
+                title: 'Allergies',
+                canEdit: widget.canEdit,
+                showAddForm: _showAllergyForm,
+                onAdd: () => setState(() => _showAllergyForm = true),
+                isSubmitting: _isSubmitting,
+                items: safety.allergies
+                    .map(
+                      (allergy) => _SafetyListTile(
+                        label: allergy.substance,
+                        detail: allergy.reaction,
+                        canEdit: widget.canEdit,
+                        onArchive: () => _archiveAllergy(allergy.id),
+                      ),
+                    )
+                    .toList(),
+                addForm: _AllergyForm(
+                  isSubmitting: _isSubmitting,
+                  onSubmit: _createAllergy,
+                  onCancel: () => setState(() => _showAllergyForm = false),
                 ),
-              )
-              .toList(),
-          addForm: _ConditionForm(
-            isSubmitting: _isSubmitting,
-            onSubmit: _createCondition,
-            onCancel: () => setState(() => _showConditionForm = false),
-          ),
+              ),
+            ),
+          ],
         ),
         if (_errorMessage != null) ...[
           const SizedBox(height: SpacingTokens.sm),
@@ -183,7 +192,7 @@ class _PatientSafetyEditorsState extends ConsumerState<PatientSafetyEditors> {
     }
   }
 
-  Future<void> _createMedication(CatalogFieldSelection selection, String? note) async {
+  Future<void> _createMedication(CatalogFieldSelection selection) async {
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
@@ -204,12 +213,7 @@ class _PatientSafetyEditorsState extends ConsumerState<PatientSafetyEditors> {
 
       await ref
           .read(visitRepositoryProvider)
-          .createPatientMedication(
-            patientId: widget.patientId,
-            name: normalized,
-            medicationId: selection.catalogId,
-            note: note?.trim().isEmpty == true ? null : note?.trim(),
-          );
+          .createPatientMedication(patientId: widget.patientId, name: normalized, medicationId: selection.catalogId);
       setState(() => _showMedicationForm = false);
       await _refreshSafety();
     } on RpcFailure catch (error) {
@@ -234,35 +238,21 @@ class _PatientSafetyEditorsState extends ConsumerState<PatientSafetyEditors> {
     }
   }
 
-  Future<void> _createCondition(CatalogFieldSelection selection, String? note) async {
+  Future<void> _createCondition({required String name}) async {
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
     });
     try {
-      final normalized = CatalogNameNormalizer.normalize(selection.name);
+      final normalized = CatalogNameNormalizer.normalize(name);
       if (normalized.isEmpty) {
         setState(() => _errorMessage = 'Condition name is required.');
         return;
       }
 
-      String? diagnosisCodeId = selection.catalogId;
-      if (selection.isCustom) {
-        final save = await SaveToCatalogDialog.show(context, normalizedName: normalized, itemTypeLabel: 'diagnosis');
-        if (save == true) {
-          final created = await ref.read(visitRepositoryProvider).createCatalogDiagnosisCode(name: normalized);
-          diagnosisCodeId = created.id;
-        }
-      }
-
       await ref
           .read(visitRepositoryProvider)
-          .createPatientChronicCondition(
-            patientId: widget.patientId,
-            name: normalized,
-            diagnosisCodeId: diagnosisCodeId,
-            note: note?.trim().isEmpty == true ? null : note?.trim(),
-          );
+          .createPatientChronicCondition(patientId: widget.patientId, name: normalized);
       setState(() => _showConditionForm = false);
       await _refreshSafety();
     } on RpcFailure catch (error) {
@@ -290,8 +280,8 @@ class _PatientSafetyEditorsState extends ConsumerState<PatientSafetyEditors> {
 
 class _SafetySection extends StatelessWidget {
   const _SafetySection({
+    required this.kind,
     required this.title,
-    required this.description,
     required this.canEdit,
     required this.showAddForm,
     required this.onAdd,
@@ -301,8 +291,8 @@ class _SafetySection extends StatelessWidget {
     super.key,
   });
 
+  final VisitPanelKind kind;
   final String title;
-  final String description;
   final bool canEdit;
   final bool showAddForm;
   final VoidCallback onAdd;
@@ -313,19 +303,13 @@ class _SafetySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return VisitSectionCard(
-      kind: VisitPanelKind.clinicalNote,
+      kind: kind,
       title: title,
-      description: description,
       headerActions: canEdit && !showAddForm
           ? [
               AppNotchedCardAction(
                 providesOwnBackground: true,
-                action: AppButton(
-                  label: 'Add',
-                  size: AppFieldSize.sm,
-                  icon: const Icon(Icons.add, size: 18),
-                  onPressed: isSubmitting ? null : onAdd,
-                ),
+                action: _PrimaryAddButton(onPressed: isSubmitting ? null : onAdd),
               ),
             ]
           : null,
@@ -403,9 +387,9 @@ class _AllergyFormState extends State<_AllergyForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AppTextField(label: 'Substance', controller: _substanceController, enabled: !widget.isSubmitting),
+        VisitTextField(label: 'Substance', controller: _substanceController, enabled: !widget.isSubmitting),
         const SizedBox(height: SpacingTokens.sm),
-        AppTextField(label: 'Reaction (optional)', controller: _reactionController, enabled: !widget.isSubmitting),
+        VisitTextField(label: 'Reaction (optional)', controller: _reactionController, enabled: !widget.isSubmitting),
         const SizedBox(height: SpacingTokens.sm),
         Row(
           children: [
@@ -435,7 +419,7 @@ class _MedicationForm extends ConsumerStatefulWidget {
   const _MedicationForm({required this.isSubmitting, required this.onSubmit, required this.onCancel});
 
   final bool isSubmitting;
-  final Future<void> Function(CatalogFieldSelection selection, String? note) onSubmit;
+  final Future<void> Function(CatalogFieldSelection selection) onSubmit;
   final VoidCallback onCancel;
 
   @override
@@ -444,13 +428,6 @@ class _MedicationForm extends ConsumerStatefulWidget {
 
 class _MedicationFormState extends ConsumerState<_MedicationForm> {
   CatalogFieldSelection _selection = const CatalogFieldSelection(name: '');
-  final _noteController = TextEditingController();
-
-  @override
-  void dispose() {
-    _noteController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -463,8 +440,6 @@ class _MedicationFormState extends ConsumerState<_MedicationForm> {
           onSearch: (query) => ref.read(visitRepositoryProvider).searchMedications(query: query),
           onSelectionChanged: (selection) => setState(() => _selection = selection),
         ),
-        const SizedBox(height: SpacingTokens.sm),
-        AppTextField(label: 'Note (optional)', controller: _noteController, enabled: !widget.isSubmitting),
         const SizedBox(height: SpacingTokens.sm),
         Row(
           children: [
@@ -479,7 +454,7 @@ class _MedicationFormState extends ConsumerState<_MedicationForm> {
               label: 'Save medication',
               expand: false,
               isLoading: widget.isSubmitting,
-              onPressed: widget.isSubmitting ? null : () => widget.onSubmit(_selection, _noteController.text),
+              onPressed: widget.isSubmitting ? null : () => widget.onSubmit(_selection),
             ),
           ],
         ),
@@ -488,24 +463,23 @@ class _MedicationFormState extends ConsumerState<_MedicationForm> {
   }
 }
 
-class _ConditionForm extends ConsumerStatefulWidget {
+class _ConditionForm extends StatefulWidget {
   const _ConditionForm({required this.isSubmitting, required this.onSubmit, required this.onCancel});
 
   final bool isSubmitting;
-  final Future<void> Function(CatalogFieldSelection selection, String? note) onSubmit;
+  final Future<void> Function({required String name}) onSubmit;
   final VoidCallback onCancel;
 
   @override
-  ConsumerState<_ConditionForm> createState() => _ConditionFormState();
+  State<_ConditionForm> createState() => _ConditionFormState();
 }
 
-class _ConditionFormState extends ConsumerState<_ConditionForm> {
-  CatalogFieldSelection _selection = const CatalogFieldSelection(name: '');
-  final _noteController = TextEditingController();
+class _ConditionFormState extends State<_ConditionForm> {
+  final _nameController = TextEditingController();
 
   @override
   void dispose() {
-    _noteController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
@@ -514,13 +488,7 @@ class _ConditionFormState extends ConsumerState<_ConditionForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DiagnosisAutocompleteField(
-          enabled: !widget.isSubmitting,
-          onSearchDiagnosisCodes: (query) => ref.read(visitRepositoryProvider).searchDiagnosisCodes(query: query),
-          onSelectionChanged: (selection) => setState(() => _selection = selection),
-        ),
-        const SizedBox(height: SpacingTokens.sm),
-        AppTextField(label: 'Note (optional)', controller: _noteController, enabled: !widget.isSubmitting),
+        VisitTextField(label: 'Condition', controller: _nameController, enabled: !widget.isSubmitting),
         const SizedBox(height: SpacingTokens.sm),
         Row(
           children: [
@@ -535,11 +503,45 @@ class _ConditionFormState extends ConsumerState<_ConditionForm> {
               label: 'Save condition',
               expand: false,
               isLoading: widget.isSubmitting,
-              onPressed: widget.isSubmitting ? null : () => widget.onSubmit(_selection, _noteController.text),
+              onPressed: widget.isSubmitting ? null : () => widget.onSubmit(name: _nameController.text),
             ),
           ],
         ),
       ],
+    );
+  }
+}
+
+class _PrimaryAddButton extends StatelessWidget {
+  const _PrimaryAddButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  static const _size = 32.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.semanticColors;
+    final enabled = onPressed != null;
+
+    return Tooltip(
+      message: 'Add',
+      child: Material(
+        color: enabled ? colors.primary : colors.muted,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: _size,
+            height: _size,
+            child: Center(
+              child: Icon(Icons.add, size: 18, color: enabled ? colors.primaryForeground : colors.mutedForeground),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

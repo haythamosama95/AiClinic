@@ -48,11 +48,10 @@ class PatientMedication {
 /// Patient-level chronic condition / problem-list entry (014 US6).
 @immutable
 class PatientChronicCondition {
-  const PatientChronicCondition({required this.id, required this.name, this.diagnosisCodeId, this.note});
+  const PatientChronicCondition({required this.id, required this.name, this.note});
 
   final String id;
   final String name;
-  final String? diagnosisCodeId;
   final String? note;
 
   static PatientChronicCondition? fromRow(Map<String, dynamic> row) {
@@ -61,12 +60,7 @@ class PatientChronicCondition {
     if (id == null || id.isEmpty || name == null || name.isEmpty) {
       return null;
     }
-    return PatientChronicCondition(
-      id: id,
-      name: name,
-      diagnosisCodeId: optionalVisitString(row['diagnosis_code_id']),
-      note: optionalVisitString(row['note']),
-    );
+    return PatientChronicCondition(id: id, name: name, note: optionalVisitString(row['note']));
   }
 }
 

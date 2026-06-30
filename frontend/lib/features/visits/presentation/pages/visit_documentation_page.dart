@@ -11,6 +11,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_header.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspace_mode_toggle.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspace_shell.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
@@ -48,26 +49,7 @@ class VisitDocumentationPage extends ConsumerWidget {
 
         return VisitPageShell(
           scrollBody: false,
-          headerActions: [
-            VisitDetailActions(visitId: id, status: state.visit.status, canEditDocumentation: canEdit),
-            if (canSubmit && state.visit.status == VisitStatus.inProgress)
-              AppButton(
-                key: const Key('visit_submit_button'),
-                label: 'Submit visit',
-                icon: const Icon(Icons.check_circle_outline, size: 18),
-                onPressed: () => _submitVisit(context, ref, id, state, canEdit: canEdit),
-              )
-            else if (canSubmit && state.visit.status == VisitStatus.completed)
-              AppButton(
-                key: const Key('visit_save_close_button'),
-                label: state.saveStatus == DocumentationSaveStatus.saving ? 'Saving…' : 'Save & close',
-                variant: AppButtonVariant.outline,
-                isLoading: state.saveStatus == DocumentationSaveStatus.saving,
-                onPressed: state.saveStatus == DocumentationSaveStatus.saving
-                    ? null
-                    : () => _saveAndClose(context, ref, id, canEdit: canEdit),
-              ),
-          ],
+          hideTopBar: true,
           onBack: () => _goBack(context, id),
           body: _VisitDocumentationBody(
             visitId: id,
@@ -75,7 +57,9 @@ class VisitDocumentationPage extends ConsumerWidget {
             canEdit: canEdit,
             hasBranchAccess: hasBranchAccess,
             canSubmit: canSubmit,
+            onBack: () => _goBack(context, id),
             onSubmit: () => _submitVisit(context, ref, id, state, canEdit: canEdit),
+            onSaveAndClose: () => _saveAndClose(context, ref, id, canEdit: canEdit),
           ),
         );
       },
@@ -152,7 +136,9 @@ class _VisitDocumentationBody extends ConsumerWidget {
     required this.canEdit,
     required this.hasBranchAccess,
     required this.canSubmit,
+    required this.onBack,
     required this.onSubmit,
+    required this.onSaveAndClose,
   });
 
   final String visitId;
@@ -160,17 +146,57 @@ class _VisitDocumentationBody extends ConsumerWidget {
   final bool canEdit;
   final bool hasBranchAccess;
   final bool canSubmit;
+  final VoidCallback onBack;
   final VoidCallback onSubmit;
+  final VoidCallback onSaveAndClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final visit = state.visit;
     final canUploadAttachments = ref.watch(permissionServiceProvider).canUploadVisitAttachments();
+    final status = visit.status;
+
+    Widget? trailing;
+    if (canSubmit && status == VisitStatus.inProgress) {
+      trailing = AppButton(
+        key: const Key('visit_submit_button'),
+        label: 'Submit visit',
+        icon: const Icon(Icons.check_circle_outline, size: 18),
+        onPressed: onSubmit,
+      );
+    } else if (canSubmit && status == VisitStatus.completed) {
+      trailing = AppButton(
+        key: const Key('visit_save_close_button'),
+        label: state.saveStatus == DocumentationSaveStatus.saving ? 'Saving…' : 'Save & close',
+        variant: AppButtonVariant.outline,
+        isLoading: state.saveStatus == DocumentationSaveStatus.saving,
+        onPressed: state.saveStatus == DocumentationSaveStatus.saving ? null : onSaveAndClose,
+      );
+    }
+
+    if (status == VisitStatus.completed) {
+      final invoiceAction = VisitDetailActions(visitId: visitId, status: status, canEditDocumentation: false);
+      trailing = trailing == null
+          ? invoiceAction
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                invoiceAction,
+                const SizedBox(width: SpacingTokens.sm),
+                trailing,
+              ],
+            );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        EncounterHeader(visit: visit),
+        EncounterHeader(
+          visit: visit,
+          onBack: onBack,
+          beforeTrailing: const EncounterWorkspaceModeToggle(),
+          trailing: trailing,
+        ),
         const SizedBox(height: VisitPageTokens.sectionGap),
         if (!hasBranchAccess) ...[
           const AppAlert(

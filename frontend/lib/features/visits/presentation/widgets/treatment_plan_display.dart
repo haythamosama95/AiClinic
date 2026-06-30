@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
 /// Shared treatment plan presentation for documentation, detail, and list views.
@@ -73,10 +74,6 @@ class TreatmentPlanCardView extends StatelessWidget {
                       runSpacing: SpacingTokens.xs,
                       children: [for (final part in subtitleParts) _DetailTag(label: part)],
                     ),
-                  ],
-                  if (plan.notes != null && plan.notes!.isNotEmpty) ...[
-                    const SizedBox(height: SpacingTokens.sm),
-                    Text(plan.notes!, style: theme.caption()),
                   ],
                 ],
               ),
@@ -208,7 +205,6 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
   late final TextEditingController _dosage;
   late final TextEditingController _frequency;
   late final TextEditingController _duration;
-  late final TextEditingController _notes;
   CatalogFieldSelection _medicationSelection = const CatalogFieldSelection(name: '');
 
   @override
@@ -219,7 +215,6 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
     _dosage = TextEditingController(text: plan?.dosage ?? '');
     _frequency = TextEditingController(text: plan?.frequency ?? '');
     _duration = TextEditingController(text: plan?.duration ?? '');
-    _notes = TextEditingController(text: plan?.notes ?? '');
   }
 
   @override
@@ -227,7 +222,6 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
     _dosage.dispose();
     _frequency.dispose();
     _duration.dispose();
-    _notes.dispose();
     super.dispose();
   }
 
@@ -266,7 +260,7 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
               Row(
                 children: [
                   Expanded(
-                    child: AppTextField(
+                    child: VisitTextField(
                       key: const Key('treatment_plan_dosage_field'),
                       label: 'Dosage *',
                       controller: _dosage,
@@ -276,7 +270,7 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
                   ),
                   const SizedBox(width: SpacingTokens.sm),
                   Expanded(
-                    child: AppTextField(
+                    child: VisitTextField(
                       key: const Key('treatment_plan_frequency_field'),
                       label: 'Frequency *',
                       controller: _frequency,
@@ -287,21 +281,13 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
                 ],
               ),
               const SizedBox(height: SpacingTokens.sm),
-              AppTextField(
+              VisitTextField(
                 key: const Key('treatment_plan_duration_field'),
                 label: 'Duration *',
                 hintText: 'e.g. 7 days, 2 weeks',
                 controller: _duration,
                 enabled: !widget.isSubmitting,
                 validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              AppTextField(
-                key: const Key('treatment_plan_notes_field'),
-                label: 'Notes',
-                controller: _notes,
-                maxLines: 3,
-                enabled: !widget.isSubmitting,
               ),
               const SizedBox(height: SpacingTokens.md),
               Row(
@@ -336,7 +322,6 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
 
     final medicationName = _medicationFieldKey.currentState?.currentSelection.name ?? _medicationSelection.name;
     final medicationId = _medicationFieldKey.currentState?.currentSelection.catalogId ?? _medicationSelection.catalogId;
-    final isEdit = widget.initialPlan != null;
 
     widget.onSubmit(
       TreatmentPlanFormData(
@@ -345,15 +330,7 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
         dosage: _dosage.text.trim(),
         frequency: _frequency.text.trim(),
         duration: _duration.text.trim(),
-        notes: _optionalFieldForSubmit(_notes.text.trim(), isEdit: isEdit),
       ),
     );
-  }
-
-  String? _optionalFieldForSubmit(String trimmed, {required bool isEdit}) {
-    if (trimmed.isEmpty) {
-      return isEdit ? '' : null;
-    }
-    return trimmed;
   }
 }

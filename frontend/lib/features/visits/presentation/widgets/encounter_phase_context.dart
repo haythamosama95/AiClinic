@@ -4,10 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/patient_safety_editors.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_patient_info_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Context phase — visit type, patient snapshot, and safety record editors (014 US2/US6).
@@ -28,7 +26,6 @@ class EncounterPhaseContext extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const EncounterPhaseHeader(phase: EncounterPhase.context, description: 'Visit context and patient snapshot'),
           if (hasVisitType) ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,7 +46,6 @@ class EncounterPhaseContext extends ConsumerWidget {
             ),
             const SizedBox(height: SpacingTokens.md),
           ],
-          VisitPatientBasicInfoCard(patientId: visit.patientId),
           PatientSafetyEditors(patientId: visit.patientId, canEdit: canEdit),
         ],
       ),

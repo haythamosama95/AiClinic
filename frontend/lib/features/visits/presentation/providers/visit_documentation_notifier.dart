@@ -360,7 +360,6 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           doctorName: refreshed.doctorName,
           visitDate: refreshed.visitDate,
           attachments: refreshed.attachments,
-          diagnosisCodes: refreshed.diagnosisCodes,
           planDetails: refreshed.planDetails,
         ),
         predefinedVitalSigns: predefinedVitalSigns,
@@ -484,37 +483,6 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
         ),
       );
     }
-  }
-
-  Future<void> addVisitDiagnosisCode({required String label, String? code, String? diagnosisCodeId}) async {
-    final current = state.value;
-    if (current == null || !_canEditVisit(current.visit)) {
-      return;
-    }
-
-    await ref
-        .read(visitRepositoryProvider)
-        .createVisitDiagnosisCode(
-          visitId: current.visit.id,
-          label: label,
-          code: code,
-          diagnosisCodeId: diagnosisCodeId,
-        );
-
-    final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
-    state = AsyncData(current.copyWith(visit: current.visit.copyWith(diagnosisCodes: refreshed.diagnosisCodes)));
-  }
-
-  Future<void> archiveVisitDiagnosisCode(String visitDiagnosisCodeId) async {
-    final current = state.value;
-    if (current == null || !_canEditVisit(current.visit)) {
-      return;
-    }
-
-    await ref.read(visitRepositoryProvider).archiveVisitDiagnosisCode(visitDiagnosisCodeId: visitDiagnosisCodeId);
-
-    final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
-    state = AsyncData(current.copyWith(visit: current.visit.copyWith(diagnosisCodes: refreshed.diagnosisCodes)));
   }
 
   String? _nullableSection(String value) {

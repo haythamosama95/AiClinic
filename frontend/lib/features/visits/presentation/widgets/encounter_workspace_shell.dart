@@ -7,9 +7,6 @@ import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/workspace_mode_provider.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_documentation_layout.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_assessment.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_objective.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_plan.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_subjective.dart';
@@ -17,7 +14,6 @@ import 'package:ai_clinic/features/visits/presentation/widgets/encounter_review.
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_step_rail.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_sticky_footer.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/expert_mode_accordion.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/patient_safety_rail.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
 /// Three-region encounter workspace with guided/expert modes (014 US4–US5 / FR-014–020).
@@ -42,7 +38,6 @@ class EncounterWorkspaceShell extends ConsumerWidget {
   final bool showSubmit;
 
   static const _wideBreakpoint = 1100.0;
-  static const _safetySideBreakpoint = 960.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -62,7 +57,6 @@ class EncounterWorkspaceShell extends ConsumerWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final showSideStepRail = constraints.maxWidth >= _wideBreakpoint && mode == WorkspaceMode.guided;
-        final showSideSafetyRail = constraints.maxWidth >= _safetySideBreakpoint;
         final phaseEntries = _documentationPhaseEntries(showClinicalNoteSaveBar: mode == WorkspaceMode.expert);
 
         return KeyedSubtree(
@@ -70,14 +64,17 @@ class EncounterWorkspaceShell extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _WorkspaceModeBar(
-                mode: mode,
-                onToggle: () => modeNotifier.toggleMode(),
-                onOpenSteps: showSideStepRail
-                    ? null
-                    : () => _showStepPicker(context, activePhase: activePhase, badges: badges, onSelected: selectPhase),
-              ),
-              const SizedBox(height: SpacingTokens.sm),
+              if (!showSideStepRail && mode == WorkspaceMode.guided) ...[
+                AppButton(
+                  key: const Key('encounter_open_steps_button'),
+                  label: 'Steps',
+                  variant: AppButtonVariant.outline,
+                  icon: const Icon(Icons.linear_scale_rounded, size: 18),
+                  onPressed: () =>
+                      _showStepPicker(context, activePhase: activePhase, badges: badges, onSelected: selectPhase),
+                ),
+                const SizedBox(height: SpacingTokens.sm),
+              ],
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,35 +92,21 @@ class EncounterWorkspaceShell extends ConsumerWidget {
                       const SizedBox(width: VisitPageTokens.sectionGap),
                     ],
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (!showSideSafetyRail) ...[
-                            PatientSafetyRail(patientId: state.visit.patientId, phase: activePhase),
-                            const SizedBox(height: VisitPageTokens.sectionGap),
-                          ],
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: mode == WorkspaceMode.expert
-                                  ? ExpertModeAccordion(
-                                      phases: phaseEntries,
-                                      initiallyExpanded: {
-                                        activePhase.isDocumentation ? activePhase : EncounterPhase.subjective,
-                                      },
-                                    )
-                                  : _guidedCanvas(activePhase, selectPhase),
-                            ),
-                          ),
-                        ],
+                      child: LayoutBuilder(
+                        builder: (context, canvasConstraints) {
+                          return SingleChildScrollView(
+                            child: mode == WorkspaceMode.expert
+                                ? ExpertModeAccordion(
+                                    phases: phaseEntries,
+                                    initiallyExpanded: {
+                                      activePhase.isDocumentation ? activePhase : EncounterPhase.subjective,
+                                    },
+                                  )
+                                : _guidedCanvas(activePhase, selectPhase, canvasHeight: canvasConstraints.maxHeight),
+                          );
+                        },
                       ),
                     ),
-                    if (showSideSafetyRail) ...[
-                      const SizedBox(width: VisitPageTokens.sectionGap),
-                      SizedBox(
-                        width: EncounterDocumentationLayout.safetyRailWidth,
-                        child: PatientSafetyRail(patientId: state.visit.patientId, phase: activePhase),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -142,7 +125,11 @@ class EncounterWorkspaceShell extends ConsumerWidget {
     );
   }
 
-  Widget _guidedCanvas(EncounterPhase activePhase, ValueChanged<EncounterPhase> onEditPhase) {
+  Widget _guidedCanvas(
+    EncounterPhase activePhase,
+    ValueChanged<EncounterPhase> onEditPhase, {
+    required double canvasHeight,
+  }) {
     if (activePhase == EncounterPhase.review) {
       return EncounterReview(
         visitId: visitId,
@@ -157,18 +144,20 @@ class EncounterWorkspaceShell extends ConsumerWidget {
       );
     }
 
-    return _documentationPhaseEntries(
+    final child = _documentationPhaseEntries(
       showClinicalNoteSaveBar: false,
+      canvasHeight: activePhase == EncounterPhase.subjective ? canvasHeight : null,
     ).firstWhere((entry) => entry.phase == activePhase).child;
+
+    if (activePhase == EncounterPhase.subjective) {
+      return SizedBox(height: canvasHeight, child: child);
+    }
+
+    return child;
   }
 
-  List<ExpertModePhaseEntry> _documentationPhaseEntries({required bool showClinicalNoteSaveBar}) {
-    final visit = state.visit;
+  List<ExpertModePhaseEntry> _documentationPhaseEntries({required bool showClinicalNoteSaveBar, double? canvasHeight}) {
     return [
-      ExpertModePhaseEntry(
-        phase: EncounterPhase.context,
-        child: EncounterPhaseContext(visit: visit, canEdit: canEdit),
-      ),
       ExpertModePhaseEntry(
         phase: EncounterPhase.subjective,
         child: EncounterPhaseSubjective(
@@ -176,6 +165,7 @@ class EncounterWorkspaceShell extends ConsumerWidget {
           state: state,
           canEdit: canEdit,
           showClinicalNoteSaveBar: showClinicalNoteSaveBar,
+          canvasHeight: canvasHeight,
         ),
       ),
       ExpertModePhaseEntry(
@@ -185,15 +175,6 @@ class EncounterWorkspaceShell extends ConsumerWidget {
           state: state,
           canEdit: canEdit,
           onRefresh: onRefresh,
-          showClinicalNoteSaveBar: showClinicalNoteSaveBar,
-        ),
-      ),
-      ExpertModePhaseEntry(
-        phase: EncounterPhase.assessment,
-        child: EncounterPhaseAssessment(
-          visitId: visitId,
-          state: state,
-          canEdit: canEdit,
           showClinicalNoteSaveBar: showClinicalNoteSaveBar,
         ),
       ),
@@ -236,95 +217,6 @@ class EncounterWorkspaceShell extends ConsumerWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _WorkspaceModeBar extends StatelessWidget {
-  const _WorkspaceModeBar({required this.mode, required this.onToggle, this.onOpenSteps});
-
-  final WorkspaceMode mode;
-  final VoidCallback onToggle;
-  final VoidCallback? onOpenSteps;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = context.visitTheme;
-    final isGuided = mode == WorkspaceMode.guided;
-
-    return Row(
-      children: [
-        if (onOpenSteps != null) ...[
-          AppButton(
-            key: const Key('encounter_open_steps_button'),
-            label: 'Steps',
-            variant: AppButtonVariant.outline,
-            icon: const Icon(Icons.linear_scale_rounded, size: 18),
-            onPressed: onOpenSteps,
-          ),
-          const SizedBox(width: SpacingTokens.sm),
-        ],
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: theme.tile,
-            borderRadius: BorderRadius.circular(theme.tileRadius),
-            border: Border.all(color: theme.hairlineSoft),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ModeChip(
-                key: const Key('encounter_mode_guided'),
-                label: 'Guided',
-                icon: Icons.view_sidebar_outlined,
-                selected: isGuided,
-                onTap: isGuided ? null : onToggle,
-              ),
-              _ModeChip(
-                key: const Key('encounter_mode_expert'),
-                label: 'Expert',
-                icon: Icons.view_agenda_outlined,
-                selected: !isGuided,
-                onTap: !isGuided ? null : onToggle,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ModeChip extends StatelessWidget {
-  const _ModeChip({required this.label, required this.icon, required this.selected, this.onTap, super.key});
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = context.visitTheme;
-
-    return Material(
-      color: selected ? theme.pulse.withValues(alpha: 0.1) : Colors.transparent,
-      borderRadius: BorderRadius.circular(theme.tileRadius),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(theme.tileRadius),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 16, color: selected ? theme.pulseDeep : theme.mutedInk),
-              const SizedBox(width: SpacingTokens.xs),
-              Text(label, style: theme.bodyStrong(size: 13, color: selected ? theme.pulseDeep : theme.mutedInk)),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
