@@ -13,6 +13,9 @@ import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 /// Clinical note save lifecycle on the visit documentation screen.
 enum DocumentationSaveStatus { idle, saving, saved, stale, error }
 
+/// Plan details save lifecycle (014 US7).
+enum PlanDetailsSaveStatus { idle, saving, saved, stale, error }
+
 /// Whether the clinical note section is in editing or read-only-after-save mode.
 enum DocumentationEditMode { editing, readOnly }
 
@@ -30,6 +33,16 @@ class VisitDocumentationState {
     this.saveStatus = DocumentationSaveStatus.idle,
     this.noteEditMode = DocumentationEditMode.editing,
     this.errorMessage,
+    this.followUpInterval = '',
+    this.followUpDate,
+    this.patientInstructions = '',
+    this.referral = '',
+    this.certificateStartDate,
+    this.certificateEndDate,
+    this.certificateReason = '',
+    this.planDetailsExpectedUpdatedAt,
+    this.planDetailsSaveStatus = PlanDetailsSaveStatus.idle,
+    this.planDetailsErrorMessage,
   });
 
   final VisitDetail visit;
@@ -43,6 +56,16 @@ class VisitDocumentationState {
   final DocumentationSaveStatus saveStatus;
   final DocumentationEditMode noteEditMode;
   final String? errorMessage;
+  final String followUpInterval;
+  final DateTime? followUpDate;
+  final String patientInstructions;
+  final String referral;
+  final DateTime? certificateStartDate;
+  final DateTime? certificateEndDate;
+  final String certificateReason;
+  final DateTime? planDetailsExpectedUpdatedAt;
+  final PlanDetailsSaveStatus planDetailsSaveStatus;
+  final String? planDetailsErrorMessage;
 
   /// Whether the clinical note draft has unsaved changes.
   bool get hasUnsavedDraft {
@@ -71,6 +94,17 @@ class VisitDocumentationState {
     DocumentationEditMode? noteEditMode,
     String? errorMessage,
     bool clearError = false,
+    String? followUpInterval,
+    DateTime? followUpDate,
+    String? patientInstructions,
+    String? referral,
+    DateTime? certificateStartDate,
+    DateTime? certificateEndDate,
+    String? certificateReason,
+    DateTime? planDetailsExpectedUpdatedAt,
+    PlanDetailsSaveStatus? planDetailsSaveStatus,
+    String? planDetailsErrorMessage,
+    bool clearPlanDetailsError = false,
   }) {
     return VisitDocumentationState(
       visit: visit ?? this.visit,
@@ -84,11 +118,22 @@ class VisitDocumentationState {
       saveStatus: saveStatus ?? this.saveStatus,
       noteEditMode: noteEditMode ?? this.noteEditMode,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      followUpInterval: followUpInterval ?? this.followUpInterval,
+      followUpDate: followUpDate ?? this.followUpDate,
+      patientInstructions: patientInstructions ?? this.patientInstructions,
+      referral: referral ?? this.referral,
+      certificateStartDate: certificateStartDate ?? this.certificateStartDate,
+      certificateEndDate: certificateEndDate ?? this.certificateEndDate,
+      certificateReason: certificateReason ?? this.certificateReason,
+      planDetailsExpectedUpdatedAt: planDetailsExpectedUpdatedAt ?? this.planDetailsExpectedUpdatedAt,
+      planDetailsSaveStatus: planDetailsSaveStatus ?? this.planDetailsSaveStatus,
+      planDetailsErrorMessage: clearPlanDetailsError ? null : (planDetailsErrorMessage ?? this.planDetailsErrorMessage),
     );
   }
 
   static VisitDocumentationState fromVisit(VisitDetail visit, {List<CatalogItem> predefinedVitalSigns = const []}) {
     final note = visit.documentation;
+    final plan = visit.planDetails;
     return VisitDocumentationState(
       visit: visit,
       complaint: note?.complaint ?? '',
@@ -98,6 +143,14 @@ class VisitDocumentationState {
       plan: note?.plan ?? '',
       expectedUpdatedAt: note?.updatedAt ?? visit.updatedAt ?? DateTime.now().toUtc(),
       predefinedVitalSigns: predefinedVitalSigns,
+      followUpInterval: plan?.followUpInterval ?? '',
+      followUpDate: plan?.followUpDate,
+      patientInstructions: plan?.patientInstructions ?? '',
+      referral: plan?.referral ?? '',
+      certificateStartDate: plan?.certificateStartDate,
+      certificateEndDate: plan?.certificateEndDate,
+      certificateReason: plan?.certificateReason ?? '',
+      planDetailsExpectedUpdatedAt: plan?.updatedAt ?? visit.updatedAt ?? DateTime.now().toUtc(),
     );
   }
 }
@@ -307,6 +360,8 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           doctorName: refreshed.doctorName,
           visitDate: refreshed.visitDate,
           attachments: refreshed.attachments,
+          diagnosisCodes: refreshed.diagnosisCodes,
+          planDetails: refreshed.planDetails,
         ),
         predefinedVitalSigns: predefinedVitalSigns,
       ),
@@ -321,6 +376,145 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
   Future<void> reloadAfterStale() async {
     state = const AsyncLoading();
     state = AsyncData(await _load());
+  }
+
+  void updateFollowUpInterval(String value) => _updatePlanDraft(followUpInterval: value);
+
+  void updateFollowUpDate(DateTime? value) => _updatePlanDraft(followUpDate: value);
+
+  void updatePatientInstructions(String value) => _updatePlanDraft(patientInstructions: value);
+
+  void updateReferral(String value) => _updatePlanDraft(referral: value);
+
+  void updateCertificateStartDate(DateTime? value) => _updatePlanDraft(certificateStartDate: value);
+
+  void updateCertificateEndDate(DateTime? value) => _updatePlanDraft(certificateEndDate: value);
+
+  void updateCertificateReason(String value) => _updatePlanDraft(certificateReason: value);
+
+  void _updatePlanDraft({
+    String? followUpInterval,
+    DateTime? followUpDate,
+    String? patientInstructions,
+    String? referral,
+    DateTime? certificateStartDate,
+    DateTime? certificateEndDate,
+    String? certificateReason,
+  }) {
+    final current = state.value;
+    if (current == null || !_canEditVisit(current.visit)) {
+      return;
+    }
+    state = AsyncData(
+      current.copyWith(
+        followUpInterval: followUpInterval,
+        followUpDate: followUpDate,
+        patientInstructions: patientInstructions,
+        referral: referral,
+        certificateStartDate: certificateStartDate,
+        certificateEndDate: certificateEndDate,
+        certificateReason: certificateReason,
+        planDetailsSaveStatus: PlanDetailsSaveStatus.idle,
+        clearPlanDetailsError: true,
+      ),
+    );
+  }
+
+  Future<void> savePlanDetails() async {
+    final current = state.value;
+    if (current == null || !_canEditVisit(current.visit)) {
+      return;
+    }
+
+    final expectedAt = current.planDetailsExpectedUpdatedAt;
+    if (expectedAt == null) {
+      return;
+    }
+
+    state = AsyncData(
+      current.copyWith(planDetailsSaveStatus: PlanDetailsSaveStatus.saving, clearPlanDetailsError: true),
+    );
+
+    try {
+      final saved = await ref
+          .read(visitRepositoryProvider)
+          .saveVisitPlanDetails(
+            visitId: current.visit.id,
+            expectedUpdatedAt: expectedAt,
+            followUpInterval: _nullableSection(current.followUpInterval),
+            followUpDate: current.followUpDate,
+            patientInstructions: _nullableSection(current.patientInstructions),
+            referral: _nullableSection(current.referral),
+            certificateStartDate: current.certificateStartDate,
+            certificateEndDate: current.certificateEndDate,
+            certificateReason: _nullableSection(current.certificateReason),
+          );
+
+      final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
+      state = AsyncData(
+        current.copyWith(
+          visit: current.visit.copyWith(planDetails: refreshed.planDetails),
+          planDetailsExpectedUpdatedAt: saved.updatedAt,
+          planDetailsSaveStatus: PlanDetailsSaveStatus.saved,
+        ),
+      );
+    } on RpcFailure catch (error) {
+      final currentAfter = state.value ?? current;
+      if (error.code == 'STALE_PLAN_DETAILS') {
+        state = AsyncData(
+          currentAfter.copyWith(
+            planDetailsSaveStatus: PlanDetailsSaveStatus.stale,
+            planDetailsErrorMessage: visitMessageForRpc(error),
+          ),
+        );
+        return;
+      }
+      state = AsyncData(
+        currentAfter.copyWith(
+          planDetailsSaveStatus: PlanDetailsSaveStatus.error,
+          planDetailsErrorMessage: visitMessageForRpc(error),
+        ),
+      );
+    } catch (error) {
+      final currentAfter = state.value ?? current;
+      state = AsyncData(
+        currentAfter.copyWith(
+          planDetailsSaveStatus: PlanDetailsSaveStatus.error,
+          planDetailsErrorMessage: error.toString(),
+        ),
+      );
+    }
+  }
+
+  Future<void> addVisitDiagnosisCode({required String label, String? code, String? diagnosisCodeId}) async {
+    final current = state.value;
+    if (current == null || !_canEditVisit(current.visit)) {
+      return;
+    }
+
+    await ref
+        .read(visitRepositoryProvider)
+        .createVisitDiagnosisCode(
+          visitId: current.visit.id,
+          label: label,
+          code: code,
+          diagnosisCodeId: diagnosisCodeId,
+        );
+
+    final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
+    state = AsyncData(current.copyWith(visit: current.visit.copyWith(diagnosisCodes: refreshed.diagnosisCodes)));
+  }
+
+  Future<void> archiveVisitDiagnosisCode(String visitDiagnosisCodeId) async {
+    final current = state.value;
+    if (current == null || !_canEditVisit(current.visit)) {
+      return;
+    }
+
+    await ref.read(visitRepositoryProvider).archiveVisitDiagnosisCode(visitDiagnosisCodeId: visitDiagnosisCodeId);
+
+    final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
+    state = AsyncData(current.copyWith(visit: current.visit.copyWith(diagnosisCodes: refreshed.diagnosisCodes)));
   }
 
   String? _nullableSection(String value) {

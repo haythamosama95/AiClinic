@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/visits/presentation/widgets/investigation_lis
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_plan_details_form.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Plan phase — plan prose, treatments, investigations, and attachments (014 US2).
@@ -60,6 +61,8 @@ class EncounterPhasePlan extends ConsumerWidget {
               showSaveBar: showClinicalNoteSaveBar,
             ),
           ),
+          const SizedBox(height: VisitPageTokens.sectionGap),
+          VisitPlanDetailsForm(visitId: visitId, state: state, canEdit: canEdit),
           const SizedBox(height: VisitPageTokens.sectionGap),
           TreatmentPlanList(
             visitId: visitId,

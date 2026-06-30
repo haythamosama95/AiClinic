@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_header.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_diagnosis_code_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
@@ -50,6 +51,8 @@ class EncounterPhaseAssessment extends ConsumerWidget {
               showSaveBar: showClinicalNoteSaveBar,
             ),
           ),
+          const SizedBox(height: VisitPageTokens.sectionGap),
+          VisitDiagnosisCodeList(visitId: visitId, diagnosisCodes: state.visit.diagnosisCodes, canEdit: canEdit),
         ],
       ),
     );

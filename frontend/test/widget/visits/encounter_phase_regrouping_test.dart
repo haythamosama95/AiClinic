@@ -1,3 +1,4 @@
+import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_documentation_layout.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_assessment.dart';
@@ -25,7 +26,9 @@ void main() {
       await pumpEncounterWidget(
         tester,
         docState: state,
+        patientSafety: const PatientSafetyContext(),
         child: EncounterDocumentationLayout(
+          patientId: encounterTestPatientId,
           phases: [
             EncounterPhaseContext(visit: visit),
             EncounterPhaseSubjective(visitId: encounterTestVisitId, state: state, canEdit: true),

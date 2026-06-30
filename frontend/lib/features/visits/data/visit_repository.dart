@@ -5,8 +5,10 @@ import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientP
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
+import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
+import 'package:ai_clinic/features/visits/domain/visit_diagnosis_code.dart';
 import 'package:ai_clinic/features/visits/domain/visit_list_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
 
@@ -20,7 +22,7 @@ class VisitRepository with AppRpcInvoker {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260628140000_visit_documentation_redesign.sql';
+  String get migrationHint => '20260701120000_visit_encounter_workspace.sql';
 
   @override
   String get rpcLogDomain => 'visits';
@@ -420,6 +422,216 @@ class VisitRepository with AppRpcInvoker {
     ].whereType<PatientVisitAttachmentRow>().toList(growable: false);
   }
 
+  Future<PatientSafetyContext> getPatientSafetyContext({required String patientId}) async {
+    _assertNonEmpty('patientId', patientId);
+
+    final result = await invokeRpc('get_patient_safety_context', {'p_patient_id': patientId.trim()});
+    return PatientSafetyContext.fromRpcData(result.data);
+  }
+
+  Future<String> createPatientAllergy({required String patientId, required String substance, String? reaction}) async {
+    _assertNonEmpty('patientId', patientId);
+    _assertNonEmpty('substance', substance);
+
+    final result = await invokeRpc('create_patient_allergy', {
+      'p_patient_id': patientId.trim(),
+      'p_substance': substance.trim(),
+      'p_reaction': ?reaction,
+    });
+
+    final id = result.data?['id']?.toString();
+    if (id == null || id.isEmpty) {
+      throw StateError('Create patient allergy returned an unexpected shape.');
+    }
+    return id;
+  }
+
+  Future<void> updatePatientAllergy({required String allergyId, String? substance, String? reaction}) async {
+    _assertNonEmpty('allergyId', allergyId);
+
+    await invokeRpc('update_patient_allergy', {
+      'p_allergy_id': allergyId.trim(),
+      'p_substance': ?substance,
+      'p_reaction': ?reaction,
+    });
+  }
+
+  Future<void> archivePatientAllergy({required String allergyId}) async {
+    _assertNonEmpty('allergyId', allergyId);
+    await invokeRpc('archive_patient_allergy', {'p_allergy_id': allergyId.trim()});
+  }
+
+  Future<String> createPatientMedication({
+    required String patientId,
+    required String name,
+    String? medicationId,
+    String? note,
+  }) async {
+    _assertNonEmpty('patientId', patientId);
+    _assertNonEmpty('name', name);
+
+    final result = await invokeRpc('create_patient_medication', {
+      'p_patient_id': patientId.trim(),
+      'p_name': name.trim(),
+      if (medicationId != null && medicationId.trim().isNotEmpty) 'p_medication_id': medicationId.trim(),
+      'p_note': ?note,
+    });
+
+    final id = result.data?['id']?.toString();
+    if (id == null || id.isEmpty) {
+      throw StateError('Create patient medication returned an unexpected shape.');
+    }
+    return id;
+  }
+
+  Future<void> updatePatientMedication({
+    required String medicationRecordId,
+    String? name,
+    String? medicationId,
+    String? note,
+  }) async {
+    _assertNonEmpty('medicationRecordId', medicationRecordId);
+
+    await invokeRpc('update_patient_medication', {
+      'p_medication_record_id': medicationRecordId.trim(),
+      'p_name': ?name,
+      if (medicationId != null) 'p_medication_id': medicationId.trim().isEmpty ? null : medicationId.trim(),
+      'p_note': ?note,
+    });
+  }
+
+  Future<void> archivePatientMedication({required String medicationRecordId}) async {
+    _assertNonEmpty('medicationRecordId', medicationRecordId);
+    await invokeRpc('archive_patient_medication', {'p_medication_record_id': medicationRecordId.trim()});
+  }
+
+  Future<String> createPatientChronicCondition({
+    required String patientId,
+    required String name,
+    String? diagnosisCodeId,
+    String? note,
+  }) async {
+    _assertNonEmpty('patientId', patientId);
+    _assertNonEmpty('name', name);
+
+    final result = await invokeRpc('create_patient_chronic_condition', {
+      'p_patient_id': patientId.trim(),
+      'p_name': name.trim(),
+      if (diagnosisCodeId != null && diagnosisCodeId.trim().isNotEmpty) 'p_diagnosis_code_id': diagnosisCodeId.trim(),
+      'p_note': ?note,
+    });
+
+    final id = result.data?['id']?.toString();
+    if (id == null || id.isEmpty) {
+      throw StateError('Create patient chronic condition returned an unexpected shape.');
+    }
+    return id;
+  }
+
+  Future<void> updatePatientChronicCondition({
+    required String conditionId,
+    String? name,
+    String? diagnosisCodeId,
+    String? note,
+  }) async {
+    _assertNonEmpty('conditionId', conditionId);
+
+    await invokeRpc('update_patient_chronic_condition', {
+      'p_condition_id': conditionId.trim(),
+      'p_name': ?name,
+      if (diagnosisCodeId != null)
+        'p_diagnosis_code_id': diagnosisCodeId.trim().isEmpty ? null : diagnosisCodeId.trim(),
+      'p_note': ?note,
+    });
+  }
+
+  Future<void> archivePatientChronicCondition({required String conditionId}) async {
+    _assertNonEmpty('conditionId', conditionId);
+    await invokeRpc('archive_patient_chronic_condition', {'p_condition_id': conditionId.trim()});
+  }
+
+  Future<List<DiagnosisCatalogItem>> searchDiagnosisCodes({String? query, int limit = 20}) async {
+    final result = await invokeRpc('search_diagnosis_codes', {'p_query': query?.trim() ?? '', 'p_limit': limit});
+    return _parseDiagnosisCatalogItems(result.data?['items']);
+  }
+
+  Future<CatalogCreateResult> createCatalogDiagnosisCode({required String name, String? code}) async {
+    _assertNonEmpty('name', name);
+
+    final result = await invokeRpc('create_catalog_diagnosis_code', {'p_name': name.trim(), 'p_code': ?code});
+
+    final created = CatalogCreateResult.fromRpcData(result.data);
+    if (created == null) {
+      throw StateError('Create catalog diagnosis code returned an unexpected shape.');
+    }
+    return created;
+  }
+
+  Future<String> createVisitDiagnosisCode({
+    required String visitId,
+    required String label,
+    String? code,
+    String? diagnosisCodeId,
+  }) async {
+    _assertNonEmpty('visitId', visitId);
+    _assertNonEmpty('label', label);
+
+    final result = await invokeRpc('create_visit_diagnosis_code', {
+      'p_visit_id': visitId.trim(),
+      'p_label': label.trim(),
+      'p_code': ?code,
+      if (diagnosisCodeId != null && diagnosisCodeId.trim().isNotEmpty) 'p_diagnosis_code_id': diagnosisCodeId.trim(),
+    });
+
+    final id = result.data?['visit_diagnosis_code_id']?.toString();
+    if (id == null || id.isEmpty) {
+      throw StateError('Create visit diagnosis code returned an unexpected shape.');
+    }
+    return id;
+  }
+
+  Future<void> archiveVisitDiagnosisCode({required String visitDiagnosisCodeId}) async {
+    _assertNonEmpty('visitDiagnosisCodeId', visitDiagnosisCodeId);
+    await invokeRpc('archive_visit_diagnosis_code', {'p_visit_diagnosis_code_id': visitDiagnosisCodeId.trim()});
+  }
+
+  Future<PlanDetailsSaveResult> saveVisitPlanDetails({
+    required String visitId,
+    required DateTime expectedUpdatedAt,
+    String? followUpInterval,
+    DateTime? followUpDate,
+    String? patientInstructions,
+    String? referral,
+    DateTime? certificateStartDate,
+    DateTime? certificateEndDate,
+    String? certificateReason,
+  }) async {
+    _assertNonEmpty('visitId', visitId);
+
+    final result = await invokeRpc('save_visit_plan_details', {
+      'p_visit_id': visitId.trim(),
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+      'p_follow_up_interval': ?followUpInterval,
+      if (followUpDate != null) 'p_follow_up_date': _formatVisitDate(followUpDate),
+      'p_patient_instructions': ?patientInstructions,
+      'p_referral': ?referral,
+      if (certificateStartDate != null) 'p_certificate_start_date': _formatVisitDate(certificateStartDate),
+      if (certificateEndDate != null) 'p_certificate_end_date': _formatVisitDate(certificateEndDate),
+      'p_certificate_reason': ?certificateReason,
+    });
+
+    final saved = PlanDetailsSaveResult.fromRpcData(result.data);
+    if (saved == null) {
+      throw StateError('Save visit plan details returned an unexpected shape.');
+    }
+    return saved;
+  }
+
+  String _formatVisitDate(DateTime date) {
+    final utc = DateTime.utc(date.year, date.month, date.day);
+    return utc.toIso8601String().split('T').first;
+  }
+
   void _assertNonEmpty(String field, String value) {
     if (value.trim().isEmpty) {
       throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
@@ -437,6 +649,19 @@ class VisitRepository with AppRpcInvoker {
         else if (item is Map)
           ?CatalogItem.fromRow(Map<String, dynamic>.from(item)),
     ].whereType<CatalogItem>().toList(growable: false);
+  }
+
+  List<DiagnosisCatalogItem> _parseDiagnosisCatalogItems(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    return [
+      for (final item in raw)
+        if (item is Map<String, dynamic>)
+          ?DiagnosisCatalogItem.fromRow(item)
+        else if (item is Map)
+          ?DiagnosisCatalogItem.fromRow(Map<String, dynamic>.from(item)),
+    ].whereType<DiagnosisCatalogItem>().toList(growable: false);
   }
 }
 
@@ -495,6 +720,30 @@ class VisitByAppointmentResult {
     }
     final visitId = data['visit_id'];
     return VisitByAppointmentResult(visitId: visitId?.toString(), status: data['status']?.toString());
+  }
+}
+
+/// Result of `save_visit_plan_details`.
+class PlanDetailsSaveResult {
+  const PlanDetailsSaveResult({required this.visitId, required this.updatedAt});
+
+  final String visitId;
+  final DateTime updatedAt;
+
+  static PlanDetailsSaveResult? fromRpcData(Map<String, dynamic>? data) {
+    if (data == null) {
+      return null;
+    }
+    final visitId = data['visit_id']?.toString();
+    final updatedAtRaw = data['updated_at']?.toString();
+    if (visitId == null || visitId.isEmpty || updatedAtRaw == null) {
+      return null;
+    }
+    final updatedAt = DateTime.tryParse(updatedAtRaw);
+    if (updatedAt == null) {
+      return null;
+    }
+    return PlanDetailsSaveResult(visitId: visitId, updatedAt: updatedAt);
   }
 }
 

@@ -143,18 +143,18 @@
 
 ### Backend for User Story 6
 
-- [ ] T033 [US6] Create additive migration with `patient_allergies`, `patient_medications`, `patient_chronic_conditions` tables, RLS, and indexes in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T034 [US6] Implement `get_patient_safety_context` and patient safety CRUD RPCs (`create/update/archive_patient_allergy`, medication, chronic_condition) per `contracts/patient-safety.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T035 [P] [US6] Add patient safety CRUD SQL tests in `backend/tests/visit_encounter_workspace_crud.sql`
-- [ ] T036 [P] [US6] Add patient safety cross-branch/cross-org RLS denial tests in `backend/tests/visit_encounter_workspace_rls.sql`
+- [X] T033 [US6] Create additive migration with `patient_allergies`, `patient_medications`, `patient_chronic_conditions` tables, RLS, and indexes in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T034 [US6] Implement `get_patient_safety_context` and patient safety CRUD RPCs (`create/update/archive_patient_allergy`, medication, chronic_condition) per `contracts/patient-safety.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T035 [P] [US6] Add patient safety CRUD SQL tests in `backend/tests/visit_encounter_workspace_crud.sql`
+- [X] T036 [P] [US6] Add patient safety cross-branch/cross-org RLS denial tests in `backend/tests/visit_encounter_workspace_rls.sql`
 
 ### Frontend for User Story 6
 
-- [ ] T037 [P] [US6] Create `patient_safety.dart` domain models in `frontend/lib/features/visits/domain/patient_safety.dart`
-- [ ] T038 [P] [US6] Create `patient_safety_provider.dart` calling `get_patient_safety_context` in `frontend/lib/features/visits/presentation/providers/patient_safety_provider.dart`
-- [ ] T039 [US6] Add patient safety CRUD repository wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T040 [US6] Add allergy, current-medication, and chronic-condition editors to `encounter_phase_context.dart` reusing `catalog_autocomplete_field.dart` and `save_to_catalog_dialog.dart`
-- [ ] T041 [US6] Upgrade `patient_safety_rail.dart` to render structured allergies/meds/conditions and last prior-visit vitals from `patient_safety_provider.dart`
+- [X] T037 [P] [US6] Create `patient_safety.dart` domain models in `frontend/lib/features/visits/domain/patient_safety.dart`
+- [X] T038 [P] [US6] Create `patient_safety_provider.dart` calling `get_patient_safety_context` in `frontend/lib/features/visits/presentation/providers/patient_safety_provider.dart`
+- [X] T039 [US6] Add patient safety CRUD repository wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T040 [US6] Add allergy, current-medication, and chronic-condition editors to `encounter_phase_context.dart` reusing `catalog_autocomplete_field.dart` and `save_to_catalog_dialog.dart`
+- [X] T041 [US6] Upgrade `patient_safety_rail.dart` to render structured allergies/meds/conditions and last prior-visit vitals from `patient_safety_provider.dart`
 
 **Checkpoint**: US6 independently testable — structured safety records persist and surface across visits
 
@@ -168,23 +168,23 @@
 
 ### Backend for User Story 7
 
-- [ ] T042 [US7] Add `diagnosis_codes`, `visit_diagnosis_codes`, `visit_plan_details` tables and idempotent diagnosis-code seeds to `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T043 [US7] Implement `search_diagnosis_codes`, `create_catalog_diagnosis_code`, `create_visit_diagnosis_code`, `archive_visit_diagnosis_code` per `contracts/diagnosis-catalog.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T044 [US7] Implement `save_visit_plan_details` with `STALE_PLAN_DETAILS` optimistic concurrency per `contracts/visit-plan-and-objective.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T045 [US7] Extend `auth_internal.get_visit` with additive `diagnosis_codes` and `plan_details` keys per `contracts/get-visit-extensions.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T046 [P] [US7] Add diagnosis catalog and plan-details CRUD tests in `backend/tests/visit_encounter_workspace_crud.sql`
+- [X] T042 [US7] Add `diagnosis_codes`, `visit_diagnosis_codes`, `visit_plan_details` tables and idempotent diagnosis-code seeds to `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T043 [US7] Implement `search_diagnosis_codes`, `create_catalog_diagnosis_code`, `create_visit_diagnosis_code`, `archive_visit_diagnosis_code` per `contracts/diagnosis-catalog.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T044 [US7] Implement `save_visit_plan_details` with `STALE_PLAN_DETAILS` optimistic concurrency per `contracts/visit-plan-and-objective.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T045 [US7] Extend `auth_internal.get_visit` with additive `diagnosis_codes` and `plan_details` keys per `contracts/get-visit-extensions.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T046 [P] [US7] Add diagnosis catalog and plan-details CRUD tests in `backend/tests/visit_encounter_workspace_crud.sql`
 
 ### Frontend for User Story 7
 
-- [ ] T047 [P] [US7] Create `visit_diagnosis_code.dart` and `visit_plan_details.dart` domain models in `frontend/lib/features/visits/domain/`
-- [ ] T048 [P] [US7] Create `diagnosis_autocomplete_field.dart` thin wrapper over `catalog_autocomplete_field.dart` in `frontend/lib/features/visits/presentation/widgets/diagnosis_autocomplete_field.dart`
-- [ ] T049 [US7] Extend `visit_detail.dart` and `visit_row_parsing.dart` to parse `diagnosis_codes` and `plan_details` defensively (absent → empty/null)
-- [ ] T050 [US7] Add diagnosis search/create and `save_visit_plan_details` wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
-- [ ] T051 [US7] Extend `visit_documentation_notifier.dart` with plan-details and visit diagnosis-code save/archive flows
-- [ ] T052 [US7] Add `STALE_PLAN_DETAILS` error copy in `frontend/lib/features/visits/application/visit_rpc_messages.dart`
-- [ ] T053 [US7] Add coded-diagnosis UI to `encounter_phase_assessment.dart` (optional alongside free-text)
-- [ ] T054 [US7] Add structured plan output fields (follow-up, instructions, referral, certificate dates/reason) to `encounter_phase_plan.dart`
-- [ ] T055 [US7] Render structured diagnosis codes and plan outputs in `encounter_review.dart` and detail view
+- [X] T047 [P] [US7] Create `visit_diagnosis_code.dart` and `visit_plan_details.dart` domain models in `frontend/lib/features/visits/domain/`
+- [X] T048 [P] [US7] Create `diagnosis_autocomplete_field.dart` thin wrapper over `catalog_autocomplete_field.dart` in `frontend/lib/features/visits/presentation/widgets/diagnosis_autocomplete_field.dart`
+- [X] T049 [US7] Extend `visit_detail.dart` and `visit_row_parsing.dart` to parse `diagnosis_codes` and `plan_details` defensively (absent → empty/null)
+- [X] T050 [US7] Add diagnosis search/create and `save_visit_plan_details` wrappers in `frontend/lib/features/visits/data/visit_repository.dart`
+- [X] T051 [US7] Extend `visit_documentation_notifier.dart` with plan-details and visit diagnosis-code save/archive flows
+- [X] T052 [US7] Add `STALE_PLAN_DETAILS` error copy in `frontend/lib/features/visits/application/visit_rpc_messages.dart`
+- [X] T053 [US7] Add coded-diagnosis UI to `encounter_phase_assessment.dart` (optional alongside free-text)
+- [X] T054 [US7] Add structured plan output fields (follow-up, instructions, referral, certificate dates/reason) to `encounter_phase_plan.dart`
+- [X] T055 [US7] Render structured diagnosis codes and plan outputs in `encounter_review.dart` and detail view
 
 **Checkpoint**: US7 independently testable — coded diagnosis and plan outputs persist and display on Review
 

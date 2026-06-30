@@ -5,6 +5,8 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_detai
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
+import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,6 +54,7 @@ Future<void> pumpEncounterWidget(
   required Widget child,
   VisitDocumentationState? docState,
   PatientDetail? patientDetail,
+  PatientSafetyContext? patientSafety,
   Size size = const Size(1280, 900),
   bool scrollable = true,
 }) async {
@@ -67,6 +70,12 @@ Future<void> pumpEncounterWidget(
   if (docState != null) {
     overrides.add(
       visitDocumentationProvider(encounterTestVisitId).overrideWith(() => _StaticVisitDocumentationNotifier(docState)),
+    );
+  }
+
+  if (patientSafety != null) {
+    overrides.add(
+      patientSafetyProvider(encounterTestPatientId).overrideWith(() => _StaticPatientSafetyNotifier(patientSafety)),
     );
   }
 
@@ -92,6 +101,15 @@ class _StaticVisitDocumentationNotifier extends VisitDocumentationNotifier {
 
   @override
   Future<VisitDocumentationState> build() async => _state;
+}
+
+class _StaticPatientSafetyNotifier extends PatientSafetyNotifier {
+  _StaticPatientSafetyNotifier(this._context) : super(encounterTestPatientId);
+
+  final PatientSafetyContext _context;
+
+  @override
+  Future<PatientSafetyContext> build() async => _context;
 }
 
 void expectUniquePhaseAncestor(WidgetTester tester, Key fieldKey, Key phaseKey, List<Key> otherPhaseKeys) {

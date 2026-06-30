@@ -99,7 +99,7 @@ class EncounterWorkspaceShell extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (!showSideSafetyRail) ...[
-                            PatientSafetyRail(phase: activePhase),
+                            PatientSafetyRail(patientId: state.visit.patientId, phase: activePhase),
                             const SizedBox(height: VisitPageTokens.sectionGap),
                           ],
                           Expanded(
@@ -121,7 +121,7 @@ class EncounterWorkspaceShell extends ConsumerWidget {
                       const SizedBox(width: VisitPageTokens.sectionGap),
                       SizedBox(
                         width: EncounterDocumentationLayout.safetyRailWidth,
-                        child: PatientSafetyRail(phase: activePhase),
+                        child: PatientSafetyRail(patientId: state.visit.patientId, phase: activePhase),
                       ),
                     ],
                   ],
@@ -167,7 +167,7 @@ class EncounterWorkspaceShell extends ConsumerWidget {
     return [
       ExpertModePhaseEntry(
         phase: EncounterPhase.context,
-        child: EncounterPhaseContext(visit: visit),
+        child: EncounterPhaseContext(visit: visit, canEdit: canEdit),
       ),
       ExpertModePhaseEntry(
         phase: EncounterPhase.subjective,

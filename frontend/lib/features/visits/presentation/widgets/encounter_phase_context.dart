@@ -6,14 +6,16 @@ import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/patient_safety_editors.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_patient_info_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
-/// Context phase — visit type and patient snapshot (014 US2).
+/// Context phase — visit type, patient snapshot, and safety record editors (014 US2/US6).
 class EncounterPhaseContext extends ConsumerWidget {
-  const EncounterPhaseContext({required this.visit, super.key});
+  const EncounterPhaseContext({required this.visit, this.canEdit = false, super.key});
 
   final VisitDetail visit;
+  final bool canEdit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -48,6 +50,7 @@ class EncounterPhaseContext extends ConsumerWidget {
             const SizedBox(height: SpacingTokens.md),
           ],
           VisitPatientBasicInfoCard(patientId: visit.patientId),
+          PatientSafetyEditors(patientId: visit.patientId, canEdit: canEdit),
         ],
       ),
     );

@@ -8,9 +8,10 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens
 
 /// Documentation layout with a persistent safety rail (014 US3).
 class EncounterDocumentationLayout extends StatelessWidget {
-  const EncounterDocumentationLayout({required this.phases, this.activePhase, super.key});
+  const EncounterDocumentationLayout({required this.phases, required this.patientId, this.activePhase, super.key});
 
   final List<Widget> phases;
+  final String patientId;
   final EncounterPhase? activePhase;
 
   static const _safetyRailBreakpoint = 960.0;
@@ -21,7 +22,7 @@ class EncounterDocumentationLayout extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final useSideRail = constraints.maxWidth >= _safetyRailBreakpoint;
-        final safetyRail = PatientSafetyRail(phase: activePhase);
+        final safetyRail = PatientSafetyRail(patientId: patientId, phase: activePhase);
 
         if (useSideRail) {
           return Row(

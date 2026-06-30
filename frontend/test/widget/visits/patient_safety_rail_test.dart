@@ -1,3 +1,5 @@
+import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
@@ -16,7 +18,11 @@ import 'visit_encounter_test_support.dart';
 void main() {
   group('patient safety rail', () {
     testWidgets('renders degraded alerts and empty categories', (tester) async {
-      await pumpEncounterWidget(tester, child: const PatientSafetyRail());
+      await pumpEncounterWidget(
+        tester,
+        child: PatientSafetyRail(patientId: encounterTestPatientId),
+        patientSafety: const PatientSafetyContext(),
+      );
 
       expect(find.byKey(const Key('patient_safety_rail')), findsOneWidget);
       expect(find.byKey(const Key('patient_safety_alerts_line')), findsOneWidget);
@@ -35,7 +41,12 @@ void main() {
         await pumpEncounterWidget(
           tester,
           docState: state,
-          child: EncounterDocumentationLayout(activePhase: phase, phases: [_phaseWidget(phase, visit, state)]),
+          patientSafety: const PatientSafetyContext(),
+          child: EncounterDocumentationLayout(
+            patientId: encounterTestPatientId,
+            activePhase: phase,
+            phases: [_phaseWidget(phase, visit, state)],
+          ),
         );
 
         expect(find.byKey(const Key('patient_safety_rail')), findsOneWidget);
