@@ -67,14 +67,14 @@
 
 ### Implementation for User Story 2
 
-- [ ] T009 [P] [US2] Create Context phase shell (visit type, patient snapshot) in `frontend/lib/features/visits/presentation/widgets/encounter_phase_context.dart`
-- [ ] T010 [P] [US2] Create Subjective phase wrapping Complaint + History sections from `clinical_note_editor.dart` in `frontend/lib/features/visits/presentation/widgets/encounter_phase_subjective.dart`
-- [ ] T011 [P] [US2] Create Objective phase co-locating `vital_sign_list.dart` and Examination section plus BMI chip in `frontend/lib/features/visits/presentation/widgets/encounter_phase_objective.dart`
-- [ ] T012 [P] [US2] Create Assessment phase with Diagnosis section in `frontend/lib/features/visits/presentation/widgets/encounter_phase_assessment.dart`
-- [ ] T013 [P] [US2] Create Plan phase co-locating Plan prose, `treatment_plan_list.dart`, `investigation_list.dart`, and `visit_attachment_list.dart` in `frontend/lib/features/visits/presentation/widgets/encounter_phase_plan.dart`
-- [ ] T014 [US2] Replace `visit_documentation_page.dart` body with five phase canvases (single-page layout acceptable before US4 stepper)
-- [ ] T015 [US2] Recompose `visit_detail_page.dart` body with the same five-phase read-only grouping (collapsible groups per FR-009)
-- [ ] T016 [P] [US2] Add widget test asserting all 013 fields reachable under exactly one phase in `frontend/test/widget/visits/encounter_phase_regrouping_test.dart`
+- [X] T009 [P] [US2] Create Context phase shell (visit type, patient snapshot) in `frontend/lib/features/visits/presentation/widgets/encounter_phase_context.dart`
+- [X] T010 [P] [US2] Create Subjective phase wrapping Complaint + History sections from `clinical_note_editor.dart` in `frontend/lib/features/visits/presentation/widgets/encounter_phase_subjective.dart`
+- [X] T011 [P] [US2] Create Objective phase co-locating `vital_sign_list.dart` and Examination section plus BMI chip in `frontend/lib/features/visits/presentation/widgets/encounter_phase_objective.dart`
+- [X] T012 [P] [US2] Create Assessment phase with Diagnosis section in `frontend/lib/features/visits/presentation/widgets/encounter_phase_assessment.dart`
+- [X] T013 [P] [US2] Create Plan phase co-locating Plan prose, `treatment_plan_list.dart`, `investigation_list.dart`, and `visit_attachment_list.dart` in `frontend/lib/features/visits/presentation/widgets/encounter_phase_plan.dart`
+- [X] T014 [US2] Replace `visit_documentation_page.dart` body with five phase canvases (single-page layout acceptable before US4 stepper)
+- [X] T015 [US2] Recompose `visit_detail_page.dart` body with the same five-phase read-only grouping (collapsible groups per FR-009)
+- [X] T016 [P] [US2] Add widget test asserting all 013 fields reachable under exactly one phase in `frontend/test/widget/visits/encounter_phase_regrouping_test.dart`
 
 **Checkpoint**: US2 independently testable — regrouped layout with header (US1) and no stepper required
 
@@ -88,9 +88,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T017 [P] [US3] Create `patient_safety_rail.dart` with degraded alerts/empty-state sections in `frontend/lib/features/visits/presentation/widgets/patient_safety_rail.dart`
-- [ ] T018 [US3] Mount `PatientSafetyRail` persistently across all phase canvases in documentation and detail views
-- [ ] T019 [P] [US3] Add widget test confirming safety rail presence on every phase in `frontend/test/widget/visits/patient_safety_rail_test.dart`
+- [X] T017 [P] [US3] Create `patient_safety_rail.dart` with degraded alerts/empty-state sections in `frontend/lib/features/visits/presentation/widgets/patient_safety_rail.dart`
+- [X] T018 [US3] Mount `PatientSafetyRail` persistently across all phase canvases in documentation and detail views
+- [X] T019 [P] [US3] Add widget test confirming safety rail presence on every phase in `frontend/test/widget/visits/patient_safety_rail_test.dart`
 
 **Checkpoint**: P1 MVP complete (US1 + US2 + US3) — shippable frontend-only slice per quickstart.md P1 validation
 

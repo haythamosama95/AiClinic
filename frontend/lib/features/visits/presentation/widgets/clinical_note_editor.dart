@@ -3,59 +3,86 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
-/// Five-section clinical note editor with chart margin rail (013 US1).
+/// Clinical note editor with optional section filtering for encounter phases (014).
 class ClinicalNoteEditor extends ConsumerWidget {
-  const ClinicalNoteEditor({required this.visitId, required this.state, required this.canEdit, super.key});
+  const ClinicalNoteEditor({
+    required this.visitId,
+    required this.state,
+    required this.canEdit,
+    this.sections,
+    this.showStaleBanner = true,
+    this.showSaveBar = true,
+    this.showEditButton = false,
+    super.key,
+  });
 
   final String visitId;
   final VisitDocumentationState state;
   final bool canEdit;
+  final Set<ClinicalNoteSection>? sections;
+  final bool showStaleBanner;
+  final bool showSaveBar;
+  final bool showEditButton;
+
+  Set<ClinicalNoteSection> get _visibleSections => sections ?? ClinicalNoteSection.values.toSet();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!canEdit) {
-      return _ReadOnlyClinicalNote(state: state);
+      return _ReadOnlyClinicalNote(state: state, sections: _visibleSections);
     }
     if (state.noteEditMode == DocumentationEditMode.readOnly) {
       return _ReadOnlyClinicalNote(
         state: state,
-        showEditButton: true,
+        sections: _visibleSections,
+        showEditButton: showEditButton,
         onEdit: () => ref.read(visitDocumentationProvider(visitId).notifier).enterEditMode(),
       );
     }
-    return _EditableClinicalNote(visitId: visitId, state: state);
+    return _EditableClinicalNote(
+      visitId: visitId,
+      state: state,
+      sections: _visibleSections,
+      showStaleBanner: showStaleBanner,
+      showSaveBar: showSaveBar,
+    );
   }
 }
 
 class _EditableClinicalNote extends ConsumerStatefulWidget {
-  const _EditableClinicalNote({required this.visitId, required this.state});
+  const _EditableClinicalNote({
+    required this.visitId,
+    required this.state,
+    required this.sections,
+    required this.showStaleBanner,
+    required this.showSaveBar,
+  });
 
   final String visitId;
   final VisitDocumentationState state;
+  final Set<ClinicalNoteSection> sections;
+  final bool showStaleBanner;
+  final bool showSaveBar;
 
   @override
   ConsumerState<_EditableClinicalNote> createState() => _EditableClinicalNoteState();
 }
 
 class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
-  late final TextEditingController _complaint;
-  late final TextEditingController _history;
-  late final TextEditingController _examination;
-  late final TextEditingController _diagnosis;
-  late final TextEditingController _plan;
+  late final Map<ClinicalNoteSection, TextEditingController> _controllers;
 
   @override
   void initState() {
     super.initState();
-    _complaint = TextEditingController(text: widget.state.complaint);
-    _history = TextEditingController(text: widget.state.history);
-    _examination = TextEditingController(text: widget.state.examination);
-    _diagnosis = TextEditingController(text: widget.state.diagnosis);
-    _plan = TextEditingController(text: widget.state.plan);
+    _controllers = {
+      for (final section in ClinicalNoteSection.values)
+        section: TextEditingController(text: _textForSection(widget.state, section)),
+    };
   }
 
   @override
@@ -63,21 +90,17 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.state.saveStatus == DocumentationSaveStatus.stale &&
         widget.state.saveStatus != DocumentationSaveStatus.stale) {
-      _complaint.text = widget.state.complaint;
-      _history.text = widget.state.history;
-      _examination.text = widget.state.examination;
-      _diagnosis.text = widget.state.diagnosis;
-      _plan.text = widget.state.plan;
+      for (final section in ClinicalNoteSection.values) {
+        _controllers[section]!.text = _textForSection(widget.state, section);
+      }
     }
   }
 
   @override
   void dispose() {
-    _complaint.dispose();
-    _history.dispose();
-    _examination.dispose();
-    _diagnosis.dispose();
-    _plan.dispose();
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -86,64 +109,12 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
     final state = widget.state;
     final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
     final isSaving = state.saveStatus == DocumentationSaveStatus.saving;
-
-    final fields =
-        <
-          ({
-            String abbr,
-            String label,
-            String? hint,
-            TextEditingController controller,
-            void Function(String) onChanged,
-            Key key,
-          })
-        >[
-          (
-            abbr: 'C',
-            label: 'Complaint',
-            hint: "The patient's main reason for the visit.",
-            controller: _complaint,
-            onChanged: notifier.updateComplaint,
-            key: const Key('clinical_note_complaint'),
-          ),
-          (
-            abbr: 'H',
-            label: 'History',
-            hint: null,
-            controller: _history,
-            onChanged: notifier.updateHistory,
-            key: const Key('clinical_note_history'),
-          ),
-          (
-            abbr: 'E',
-            label: 'Examination',
-            hint: 'Physical examination findings.',
-            controller: _examination,
-            onChanged: notifier.updateExamination,
-            key: const Key('clinical_note_examination'),
-          ),
-          (
-            abbr: 'D',
-            label: 'Diagnosis',
-            hint: 'Clinical assessment or diagnosis.',
-            controller: _diagnosis,
-            onChanged: notifier.updateDiagnosis,
-            key: const Key('clinical_note_diagnosis'),
-          ),
-          (
-            abbr: 'P',
-            label: 'Plan',
-            hint: 'Treatment plan, follow-up instructions, and patient advice.',
-            controller: _plan,
-            onChanged: notifier.updatePlan,
-            key: const Key('clinical_note_plan'),
-          ),
-        ];
+    final orderedSections = ClinicalNoteSection.values.where(widget.sections.contains).toList(growable: false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (state.saveStatus == DocumentationSaveStatus.stale) ...[
+        if (widget.showStaleBanner && state.saveStatus == DocumentationSaveStatus.stale) ...[
           AppAlert(
             key: const Key('clinical_note_stale_banner'),
             title: state.errorMessage ?? 'This visit note was updated elsewhere. Reload and try again.',
@@ -162,86 +133,100 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
           ),
           const SizedBox(height: SpacingTokens.md),
         ],
-        for (var i = 0; i < fields.length; i++) ...[
+        for (var i = 0; i < orderedSections.length; i++) ...[
           _ClinicalNoteField(
-            key: fields[i].key,
-            abbr: fields[i].abbr,
-            label: fields[i].label,
-            hintText: fields[i].hint,
-            controller: fields[i].controller,
+            key: Key('clinical_note_${orderedSections[i].name}'),
+            abbr: orderedSections[i].abbr,
+            label: orderedSections[i].label,
+            hintText: orderedSections[i].hasHint ? orderedSections[i].hint : null,
+            controller: _controllers[orderedSections[i]]!,
             enabled: !isSaving,
-            onChanged: fields[i].onChanged,
-            showDivider: i < fields.length - 1,
+            onChanged: _onChangedForSection(notifier, orderedSections[i]),
+            showDivider: i < orderedSections.length - 1,
           ),
         ],
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: context.visitTheme.tile,
-            borderRadius: BorderRadius.circular(context.visitTheme.tileRadius),
-            border: Border.all(color: context.visitTheme.hairlineSoft),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
-            child: Row(
-              children: [
-                if (state.saveStatus == DocumentationSaveStatus.saved)
-                  Row(
-                    key: const Key('clinical_note_saved_label'),
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle_rounded, size: 15, color: context.visitTheme.pulseDeep),
-                      const SizedBox(width: SpacingTokens.xs),
-                      Text(
-                        'Saved',
-                        style: context.visitTheme.bodyStrong(color: context.visitTheme.pulseDeep, size: 13),
-                      ),
-                    ],
-                  ),
-                if (state.saveStatus == DocumentationSaveStatus.error && state.errorMessage != null)
-                  Expanded(
-                    child: Text(
-                      state.errorMessage!,
-                      key: const Key('clinical_note_error_label'),
-                      style: context.visitTheme.caption(color: context.visitTheme.danger),
+        if (widget.showSaveBar) ...[
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: context.visitTheme.tile,
+              borderRadius: BorderRadius.circular(context.visitTheme.tileRadius),
+              border: Border.all(color: context.visitTheme.hairlineSoft),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
+              child: Row(
+                children: [
+                  if (state.saveStatus == DocumentationSaveStatus.saved)
+                    Row(
+                      key: const Key('clinical_note_saved_label'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle_rounded, size: 15, color: context.visitTheme.pulseDeep),
+                        const SizedBox(width: SpacingTokens.xs),
+                        Text(
+                          'Saved',
+                          style: context.visitTheme.bodyStrong(color: context.visitTheme.pulseDeep, size: 13),
+                        ),
+                      ],
                     ),
-                  )
-                else
-                  const Spacer(),
-                AppButton(
-                  key: const Key('clinical_note_save_button'),
-                  label: isSaving ? 'Saving…' : 'Save clinical note',
-                  icon: const Icon(Icons.save_outlined, size: 18),
-                  isLoading: isSaving,
-                  onPressed: isSaving ? null : () => notifier.save(),
-                ),
-              ],
+                  if (state.saveStatus == DocumentationSaveStatus.error && state.errorMessage != null)
+                    Expanded(
+                      child: Text(
+                        state.errorMessage!,
+                        key: const Key('clinical_note_error_label'),
+                        style: context.visitTheme.caption(color: context.visitTheme.danger),
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                  AppButton(
+                    key: const Key('clinical_note_save_button'),
+                    label: isSaving ? 'Saving…' : 'Save clinical note',
+                    icon: const Icon(Icons.save_outlined, size: 18),
+                    isLoading: isSaving,
+                    onPressed: isSaving ? null : () => notifier.save(),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
+        ],
       ],
     );
+  }
+
+  ValueChanged<String> _onChangedForSection(VisitDocumentationNotifier notifier, ClinicalNoteSection section) {
+    return switch (section) {
+      ClinicalNoteSection.complaint => notifier.updateComplaint,
+      ClinicalNoteSection.history => notifier.updateHistory,
+      ClinicalNoteSection.examination => notifier.updateExamination,
+      ClinicalNoteSection.diagnosis => notifier.updateDiagnosis,
+      ClinicalNoteSection.plan => notifier.updatePlan,
+    };
   }
 }
 
 class _ReadOnlyClinicalNote extends StatelessWidget {
-  const _ReadOnlyClinicalNote({required this.state, this.showEditButton = false, this.onEdit});
+  const _ReadOnlyClinicalNote({required this.state, required this.sections, this.showEditButton = false, this.onEdit});
 
   final VisitDocumentationState state;
+  final Set<ClinicalNoteSection> sections;
   final bool showEditButton;
   final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
-    final values = [state.complaint, state.history, state.examination, state.diagnosis, state.plan];
+    final orderedSections = ClinicalNoteSection.values.where(sections.contains).toList(growable: false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < VisitPageTokens.clinicalSections.length; i++)
+        for (final section in orderedSections)
           _ReadOnlySection(
-            abbr: VisitPageTokens.clinicalSections[i].abbr,
-            label: VisitPageTokens.clinicalSections[i].label,
-            value: values[i],
+            key: Key('visit_detail_${section.name}'),
+            abbr: section.abbr,
+            label: section.label,
+            value: _textForSection(state, section),
           ),
         if (showEditButton && onEdit != null) ...[
           const SizedBox(height: SpacingTokens.sm),
@@ -262,7 +247,7 @@ class _ReadOnlyClinicalNote extends StatelessWidget {
 }
 
 class _ReadOnlySection extends StatelessWidget {
-  const _ReadOnlySection({required this.abbr, required this.label, required this.value});
+  const _ReadOnlySection({required this.abbr, required this.label, required this.value, super.key});
 
   final String abbr;
   final String label;
@@ -333,3 +318,11 @@ class _ClinicalNoteField extends StatelessWidget {
     );
   }
 }
+
+String _textForSection(VisitDocumentationState state, ClinicalNoteSection section) => switch (section) {
+  ClinicalNoteSection.complaint => state.complaint,
+  ClinicalNoteSection.history => state.history,
+  ClinicalNoteSection.examination => state.examination,
+  ClinicalNoteSection.diagnosis => state.diagnosis,
+  ClinicalNoteSection.plan => state.plan,
+};

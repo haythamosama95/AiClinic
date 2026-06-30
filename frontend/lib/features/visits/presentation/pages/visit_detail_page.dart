@@ -7,23 +7,24 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
+import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
-import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
-import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_documentation_layout.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_header.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_assessment.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_objective.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_plan.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_subjective.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_patient_info_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Visit detail — clinical chart workspace with inline editing when permitted (013 US6).
@@ -149,91 +150,66 @@ class _VisitDetailBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final note = visit.documentation;
+
     return Column(
       key: const Key('visit_detail_body'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         EncounterHeader(visit: visit),
         const SizedBox(height: VisitPageTokens.sectionGap),
-        VisitPatientBasicInfoCard(patientId: visit.patientId),
         if (!hasBranchAccess) ...[
-          const SizedBox(height: VisitPageTokens.sectionGap),
           const AppAlert(
             key: Key('visit_branch_access_denied_banner'),
             title: 'This visit belongs to a branch you are not assigned to.',
             subtitle: 'Clinical documentation is read-only.',
             icon: Icon(Icons.lock_outlined),
           ),
+          const SizedBox(height: VisitPageTokens.sectionGap),
         ],
-        const SizedBox(height: VisitPageTokens.sectionGap),
-        VisitSectionCard(
-          kind: VisitPanelKind.clinicalNote,
-          title: 'Clinical note',
-          description: canEdit ? 'Complaint, history, examination, diagnosis, and plan' : null,
-          child: KeyedSubtree(
-            key: const Key('visit_detail_clinical_note_section'),
-            child: canEdit && docState != null
-                ? ClinicalNoteEditor(visitId: visitId, state: docState!, canEdit: canEdit)
-                : _ClinicalNoteReadOnly(note: visit.documentation),
-          ),
-        ),
-        const SizedBox(height: VisitPageTokens.sectionGap),
-        VisitSectionGrid(
-          children: [
-            if (canEdit && docState != null)
-              VitalSignList(
+        EncounterDocumentationLayout(
+          phases: [
+            EncounterPhaseReadGroup(
+              phase: EncounterPhase.context,
+              child: EncounterPhaseContext(visit: visit),
+            ),
+            EncounterPhaseReadGroup(
+              phase: EncounterPhase.subjective,
+              child: EncounterPhaseSubjectiveDetail(visitId: visitId, state: docState, canEdit: canEdit, note: note),
+            ),
+            EncounterPhaseReadGroup(
+              phase: EncounterPhase.objective,
+              child: EncounterPhaseObjectiveDetail(
                 visitId: visitId,
-                vitalSigns: visit.vitalSigns,
-                predefinedVitalSigns: docState!.predefinedVitalSigns,
+                visit: visit,
                 canEdit: canEdit,
-                onChanged: onRefresh,
-                sectionKind: VisitPanelKind.vitalSigns,
-                sectionTitle: 'Vital signs',
-              )
-            else
-              VisitSectionCard(
-                kind: VisitPanelKind.vitalSigns,
-                title: 'Vital signs',
-                child: _VitalSignsReadOnly(vitalSigns: visit.vitalSigns),
+                docState: docState,
+                onRefresh: onRefresh,
               ),
-            if (canEdit)
-              TreatmentPlanList(
-                visitId: visitId,
-                treatmentPlans: visit.treatmentPlans,
-                canEdit: canEdit,
-                onChanged: onRefresh,
-                sectionKind: VisitPanelKind.treatment,
-                sectionTitle: 'Treatment plans',
-              )
-            else
-              VisitSectionCard(
-                kind: VisitPanelKind.treatment,
-                title: 'Treatment plans',
-                child: _TreatmentPlansReadOnly(treatmentPlans: visit.treatmentPlans),
-              ),
-            if (canEdit)
-              InvestigationList(
-                visitId: visitId,
-                investigations: visit.investigations,
-                canEdit: canEdit,
-                onChanged: onRefresh,
-                sectionKind: VisitPanelKind.investigation,
-                sectionTitle: 'Investigations',
-              )
-            else
-              VisitSectionCard(
-                kind: VisitPanelKind.investigation,
-                title: 'Investigations',
-                child: _InvestigationsReadOnly(investigations: visit.investigations),
-              ),
-            VisitAttachmentList(
-              visitId: visitId,
-              branchId: visit.branchId,
-              attachments: visit.attachments,
-              canUpload: canUploadAttachments,
-              onChanged: onRefresh,
-              sectionKind: VisitPanelKind.attachment,
-              sectionTitle: 'Attachments',
+            ),
+            EncounterPhaseReadGroup(
+              phase: EncounterPhase.assessment,
+              child: canEdit && docState != null
+                  ? EncounterPhaseAssessmentReadOnly(visitId: visitId, state: docState!, canEdit: true)
+                  : EncounterPhaseAssessmentFromVisit(note: note),
+            ),
+            EncounterPhaseReadGroup(
+              phase: EncounterPhase.plan,
+              initiallyExpanded: true,
+              child: canEdit && docState != null
+                  ? EncounterPhasePlan(
+                      visitId: visitId,
+                      state: docState!,
+                      canEdit: true,
+                      canUploadAttachments: canUploadAttachments,
+                      onRefresh: onRefresh,
+                    )
+                  : _PlanReadOnly(
+                      visit: visit,
+                      visitId: visitId,
+                      canUploadAttachments: canUploadAttachments,
+                      onRefresh: onRefresh,
+                    ),
             ),
           ],
         ),
@@ -242,69 +218,52 @@ class _VisitDetailBody extends ConsumerWidget {
   }
 }
 
-class _ClinicalNoteReadOnly extends StatelessWidget {
-  const _ClinicalNoteReadOnly({required this.note});
+class _PlanReadOnly extends StatelessWidget {
+  const _PlanReadOnly({
+    required this.visit,
+    required this.visitId,
+    required this.canUploadAttachments,
+    required this.onRefresh,
+  });
 
-  final VisitClinicalNote? note;
+  final VisitDetail visit;
+  final String visitId;
+  final bool canUploadAttachments;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final section in VisitPageTokens.clinicalSections)
-          _ClinicalNoteSection(
-            key: Key('visit_detail_${section.label.toLowerCase()}'),
-            abbr: section.abbr,
-            label: section.label,
-            value: _valueForSection(note, section.label),
-          ),
+        VisitSectionCard(
+          kind: VisitPanelKind.clinicalNote,
+          title: 'Plan',
+          child: VisitDetailField(label: 'Plan', value: visit.documentation?.plan ?? '', abbr: 'P'),
+        ),
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        VisitSectionCard(
+          kind: VisitPanelKind.treatment,
+          title: 'Treatment plans',
+          child: _TreatmentPlansReadOnly(treatmentPlans: visit.treatmentPlans),
+        ),
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        VisitSectionCard(
+          kind: VisitPanelKind.investigation,
+          title: 'Investigations',
+          child: _InvestigationsReadOnly(investigations: visit.investigations),
+        ),
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        VisitAttachmentList(
+          visitId: visitId,
+          branchId: visit.branchId,
+          attachments: visit.attachments,
+          canUpload: canUploadAttachments,
+          onChanged: onRefresh,
+          sectionKind: VisitPanelKind.attachment,
+          sectionTitle: 'Attachments',
+        ),
       ],
-    );
-  }
-
-  String? _valueForSection(VisitClinicalNote? note, String label) => switch (label) {
-    'Complaint' => note?.complaint,
-    'History' => note?.history,
-    'Examination' => note?.examination,
-    'Diagnosis' => note?.diagnosis,
-    'Plan' => note?.plan,
-    _ => null,
-  };
-}
-
-class _ClinicalNoteSection extends StatelessWidget {
-  const _ClinicalNoteSection({required this.abbr, required this.label, required this.value, super.key});
-
-  final String abbr;
-  final String label;
-  final String? value;
-
-  @override
-  Widget build(BuildContext context) {
-    return VisitDetailField(label: label, value: value ?? '', abbr: abbr);
-  }
-}
-
-class _VitalSignsReadOnly extends StatelessWidget {
-  const _VitalSignsReadOnly({required this.vitalSigns});
-
-  final List<VisitVitalSign> vitalSigns;
-
-  @override
-  Widget build(BuildContext context) {
-    if (vitalSigns.isEmpty) {
-      return const VisitEmptyHint(
-        key: Key('visit_detail_vital_signs_empty'),
-        message: 'No vital signs recorded.',
-        icon: Icons.monitor_heart_outlined,
-      );
-    }
-
-    return Wrap(
-      spacing: SpacingTokens.sm,
-      runSpacing: SpacingTokens.sm,
-      children: [for (final sign in vitalSigns) VitalSignCardView(sign: sign)],
     );
   }
 }
