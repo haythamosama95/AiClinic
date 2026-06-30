@@ -115,7 +115,6 @@ class _VisitPlanDetailsFormState extends ConsumerState<VisitPlanDetailsForm> {
           ],
           VisitTextField(
             label: 'Follow-up interval',
-            hintText: 'e.g. in 2 weeks',
             controller: _followUpIntervalController,
             enabled: enabled,
             onChanged: notifier.updateFollowUpInterval,

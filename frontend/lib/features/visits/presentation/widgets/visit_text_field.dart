@@ -71,7 +71,7 @@ class VisitTextInput extends StatefulWidget {
     this.suffixIcon,
     this.emptyIcon = Icons.post_add_outlined,
     this.emptyPromptText,
-    this.showEmptyPrompt = true,
+    this.showEmptyPrompt = false,
     super.key,
   });
 
@@ -108,7 +108,7 @@ class _VisitTextInputState extends State<VisitTextInput> {
       enabled: widget.enabled,
       focusNode: widget.focusNode,
       emptyIcon: widget.emptyIcon,
-      emptyPromptText: widget.emptyPromptText ?? widget.hintText,
+      emptyPromptText: widget.emptyPromptText,
       showEmptyPrompt: widget.showEmptyPrompt,
       onChanged: widget.onChanged,
       builder: (focusNode, onChanged) => AppTextInput(
@@ -157,7 +157,7 @@ class VisitTextField extends StatefulWidget {
     this.focusNode,
     this.emptyIcon = Icons.post_add_outlined,
     this.emptyPromptText,
-    this.showEmptyPrompt = true,
+    this.showEmptyPrompt = false,
     super.key,
   });
 
@@ -195,7 +195,7 @@ class _VisitTextFieldState extends State<VisitTextField> {
       enabled: widget.enabled,
       focusNode: widget.focusNode,
       emptyIcon: widget.emptyIcon,
-      emptyPromptText: widget.emptyPromptText ?? widget.hintText,
+      emptyPromptText: widget.emptyPromptText,
       showEmptyPrompt: widget.showEmptyPrompt,
       onChanged: widget.onChanged,
       builder: (focusNode, onChanged) => AppTextField(

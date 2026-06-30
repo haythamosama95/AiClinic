@@ -157,7 +157,6 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
               key: Key('clinical_note_${orderedSections.first.name}'),
               abbr: orderedSections.first.abbr,
               label: orderedSections.first.label,
-              hintText: orderedSections.first.hasHint ? orderedSections.first.hint : null,
               controller: _controllers[orderedSections.first]!,
               enabled: !isSaving,
               onChanged: _onChangedForSection(notifier, orderedSections.first),
@@ -171,7 +170,6 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
               key: Key('clinical_note_${orderedSections[i].name}'),
               abbr: orderedSections[i].abbr,
               label: orderedSections[i].label,
-              hintText: orderedSections[i].hasHint ? orderedSections[i].hint : null,
               controller: _controllers[orderedSections[i]]!,
               enabled: !isSaving,
               onChanged: _onChangedForSection(notifier, orderedSections[i]),
@@ -338,7 +336,6 @@ class _ClinicalNoteField extends StatelessWidget {
     required this.controller,
     required this.onChanged,
     required this.enabled,
-    this.hintText,
     this.showDivider = true,
     this.showSectionHeader = true,
     this.expand = false,
@@ -347,7 +344,6 @@ class _ClinicalNoteField extends StatelessWidget {
 
   final String abbr;
   final String label;
-  final String? hintText;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final bool enabled;
@@ -361,7 +357,6 @@ class _ClinicalNoteField extends StatelessWidget {
 
     if (!showSectionHeader) {
       return VisitTextInput(
-        hintText: hintText,
         controller: controller,
         enabled: enabled,
         minLines: expand ? null : 3,
@@ -388,7 +383,6 @@ class _ClinicalNoteField extends StatelessWidget {
                     Text(label.toUpperCase(), style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2)),
                     const SizedBox(height: SpacingTokens.xs + 1),
                     VisitTextInput(
-                      hintText: hintText,
                       controller: controller,
                       enabled: enabled,
                       minLines: 3,

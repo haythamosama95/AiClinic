@@ -27,7 +27,6 @@ class CatalogAutocompleteField extends StatefulWidget {
     required this.onSelectionChanged,
     this.initialName,
     this.initialCatalogId,
-    this.hintText,
     this.enabled = true,
     this.validator,
     this.searchDebounce = const Duration(milliseconds: 300),
@@ -39,7 +38,6 @@ class CatalogAutocompleteField extends StatefulWidget {
   final ValueChanged<CatalogFieldSelection> onSelectionChanged;
   final String? initialName;
   final String? initialCatalogId;
-  final String? hintText;
   final bool enabled;
   final String? Function(String?)? validator;
   final Duration searchDebounce;
@@ -146,7 +144,6 @@ class CatalogAutocompleteFieldState extends State<CatalogAutocompleteField> {
           key: const Key('catalog_autocomplete_field'),
           label: widget.label,
           controller: _controller,
-          hintText: widget.hintText ?? 'Type to search or enter a custom name',
           enabled: widget.enabled,
           validator: widget.validator,
           onChanged: (_) {},

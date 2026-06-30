@@ -21,14 +21,4 @@ enum ClinicalNoteSection {
     diagnosis => 'Diagnosis',
     plan => 'Plan',
   };
-
-  String get hint => switch (this) {
-    complaint => "The patient's main reason for the visit.",
-    examination => 'Physical examination findings.',
-    diagnosis => 'Clinical assessment or diagnosis.',
-    plan => 'Treatment plan, follow-up instructions, and patient advice.',
-    _ => '',
-  };
-
-  bool get hasHint => hint.isNotEmpty;
 }

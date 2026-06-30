@@ -251,7 +251,6 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
                 initialName: widget.initialPlan?.medicationName,
                 initialCatalogId: widget.initialPlan?.medicationId,
                 enabled: !widget.isSubmitting,
-                hintText: 'Search medications or enter a custom name',
                 onSearch: (query) => ref.read(visitRepositoryProvider).searchMedications(query: query),
                 onSelectionChanged: (selection) => setState(() => _medicationSelection = selection),
                 validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
@@ -284,7 +283,6 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
               VisitTextField(
                 key: const Key('treatment_plan_duration_field'),
                 label: 'Duration *',
-                hintText: 'e.g. 7 days, 2 weeks',
                 controller: _duration,
                 enabled: !widget.isSubmitting,
                 validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,

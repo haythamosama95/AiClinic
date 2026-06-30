@@ -86,6 +86,8 @@ class AppStepper extends StatefulWidget {
 }
 
 class _AppStepperState extends State<AppStepper> {
+  static const _verticalRailWidth = 228.0;
+
   late int _internalStep;
 
   int get _activeStep => widget._isControlled ? widget.currentStep! : _internalStep;
@@ -152,7 +154,7 @@ class _AppStepperState extends State<AppStepper> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        rail,
+        SizedBox(width: _verticalRailWidth, child: rail),
         const SizedBox(width: SpacingTokens.lg),
         content,
       ],
@@ -351,62 +353,96 @@ class _VerticalStepperRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final shape = context.shapeTokens;
     final markerStyle = _StepMarkerStyle.fromTheme(colors, shape.md + 2);
-    final lineLeft = _AppStepperRail._markerSize / 2 - _AppStepperRail._connectorThickness / 2;
 
-    return Stack(
-      children: [
-        if (steps.length > 1)
-          Positioned(
-            left: lineLeft,
-            top: _AppStepperRail._markerSize / 2,
-            bottom: _AppStepperRail._markerSize / 2,
-            width: _AppStepperRail._connectorThickness,
-            child: _AnimatedStepTrack(
-              activeStep: activeStep,
-              stepCount: steps.length,
-              axis: Axis.vertical,
-              activeColor: colors.primary,
-              inactiveColor: colors.border,
-              thickness: _AppStepperRail._connectorThickness,
-            ),
-          ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = 0; i < steps.length; i++)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _StepMarker(
-                    key: steps[i].stepKey,
-                    state: _AppStepperRail._stepState(i, activeStep),
-                    icon: steps[i].icon,
-                    onTap: onStepSelected == null ? null : () => onStepSelected!(i),
-                    semanticsLabel: steps[i].title,
-                    style: markerStyle,
-                  ),
-                  const SizedBox(width: SpacingTokens.md),
-                  Flexible(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: SpacingTokens.xs),
-                      child: _StepLabels(
-                        step: steps[i],
-                        axis: Axis.vertical,
-                        titleStyle: theme.textTheme.titleSmall?.copyWith(
-                          color: colors.foreground,
-                          fontWeight: FontWeight.w600,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final trackHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : steps.length * (_AppStepperRail._markerSize + SpacingTokens.lg);
+        final labelsWidth = constraints.maxWidth - _AppStepperRail._markerSize - SpacingTokens.sm;
+        final rowHeight = trackHeight / steps.length;
+        final lineTop = rowHeight / 2;
+        final lineHeight = trackHeight - rowHeight;
+        final lineLeft = _AppStepperRail._markerSize / 2 - _AppStepperRail._connectorThickness / 2;
+
+        return SizedBox(
+          height: trackHeight,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: _AppStepperRail._markerSize,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    if (steps.length > 1)
+                      Positioned(
+                        left: lineLeft,
+                        top: lineTop,
+                        height: lineHeight,
+                        width: _AppStepperRail._connectorThickness,
+                        child: _AnimatedStepTrack(
+                          activeStep: activeStep,
+                          stepCount: steps.length,
+                          axis: Axis.vertical,
+                          activeColor: colors.primary,
+                          inactiveColor: colors.border,
+                          thickness: _AppStepperRail._connectorThickness,
                         ),
-                        descriptionStyle: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
                       ),
+                    Column(
+                      children: [
+                        for (var i = 0; i < steps.length; i++)
+                          SizedBox(
+                            height: rowHeight,
+                            child: Center(
+                              child: _StepMarker(
+                                key: steps[i].stepKey,
+                                state: _AppStepperRail._stepState(i, activeStep),
+                                icon: steps[i].icon,
+                                onTap: onStepSelected == null ? null : () => onStepSelected!(i),
+                                semanticsLabel: steps[i].title,
+                                style: markerStyle,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-          ],
-        ),
-      ],
+              const SizedBox(width: SpacingTokens.sm),
+              SizedBox(
+                width: labelsWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < steps.length; i++)
+                      SizedBox(
+                        height: rowHeight,
+                        child: _StepLabelTapTarget(
+                          onTap: onStepSelected == null ? null : () => onStepSelected!(i),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: _StepLabels(
+                              step: steps[i],
+                              axis: Axis.vertical,
+                              titleStyle: theme.textTheme.titleSmall?.copyWith(
+                                color: colors.foreground,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              descriptionStyle: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

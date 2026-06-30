@@ -507,7 +507,6 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
                 initialName: widget.initialInvestigation?.name,
                 initialCatalogId: widget.initialInvestigation?.investigationId,
                 enabled: !widget.isSubmitting,
-                hintText: 'Search investigations or enter a custom name',
                 onSearch: (query) => ref.read(visitRepositoryProvider).searchInvestigations(query: query),
                 onSelectionChanged: (selection) => setState(() => _investigationSelection = selection),
                 validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
