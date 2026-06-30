@@ -24,8 +24,8 @@
 
 **Purpose**: Prepare test scaffolding and confirm 013 foundation before encounter workspace work
 
-- [ ] T001 Create visit encounter workspace test directories `frontend/test/unit/visits/` and `frontend/test/widget/visits/`
-- [ ] T002 [P] Confirm 013 visit routes and permission gating unchanged in `frontend/lib/app/router.dart` and `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T001 Create visit encounter workspace test directories `frontend/test/unit/visits/` and `frontend/test/widget/visits/`
+- [X] T002 [P] Confirm 013 visit routes and permission gating unchanged in `frontend/lib/app/router.dart` and `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
 
 ---
 
@@ -35,9 +35,9 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T003 Create `EncounterPhase` enum, ordering, and completion model in `frontend/lib/features/visits/domain/encounter_phase.dart`
-- [ ] T004 [P] Create pure BMI derivation helpers in `frontend/lib/features/visits/domain/bmi.dart`
-- [ ] T005 [P] Add BMI unit tests in `frontend/test/unit/visits/bmi_test.dart`
+- [X] T003 Create `EncounterPhase` enum, ordering, and completion model in `frontend/lib/features/visits/domain/encounter_phase.dart`
+- [X] T004 [P] Create pure BMI derivation helpers in `frontend/lib/features/visits/domain/bmi.dart`
+- [X] T005 [P] Add BMI unit tests in `frontend/test/unit/visits/bmi_test.dart`
 
 **Checkpoint**: Foundation ready — user story implementation can begin (P1 stories first)
 
@@ -51,9 +51,9 @@
 
 ### Implementation for User Story 1
 
-- [ ] T006 [P] [US1] Create `encounter_header.dart` widget reading `VisitDetail` metadata in `frontend/lib/features/visits/presentation/widgets/encounter_header.dart`
-- [ ] T007 [US1] Mount `EncounterHeader` at the top of `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
-- [ ] T008 [US1] Mount `EncounterHeader` at the top of `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
+- [X] T006 [P] [US1] Create `encounter_header.dart` widget reading `VisitDetail` metadata in `frontend/lib/features/visits/presentation/widgets/encounter_header.dart`
+- [X] T007 [US1] Mount `EncounterHeader` at the top of `frontend/lib/features/visits/presentation/pages/visit_documentation_page.dart`
+- [X] T008 [US1] Mount `EncounterHeader` at the top of `frontend/lib/features/visits/presentation/pages/visit_detail_page.dart`
 
 **Checkpoint**: US1 independently testable — header visible on both screens without other redesign changes
 

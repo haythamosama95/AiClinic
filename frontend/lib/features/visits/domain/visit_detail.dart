@@ -20,6 +20,7 @@ class VisitDetail {
     required this.doctorName,
     required this.visitDate,
     required this.status,
+    this.visitType,
     this.updatedAt,
     this.documentation,
     this.vitalSigns = const [],
@@ -36,6 +37,7 @@ class VisitDetail {
   final String doctorName;
   final DateTime visitDate;
   final VisitStatus status;
+  final String? visitType;
   final DateTime? updatedAt;
   final VisitClinicalNote? documentation;
   final List<VisitVitalSign> vitalSigns;
@@ -87,6 +89,7 @@ class VisitDetail {
       doctorName: doctorName,
       visitDate: visitDate,
       status: status,
+      visitType: optionalVisitString(row['visit_type'] ?? row['visit_type_reason']),
       updatedAt: parseVisitDateTime(row['updated_at']),
       documentation: documentation,
       vitalSigns: _parseVitalSigns(row['vital_signs']),
@@ -161,6 +164,7 @@ class VisitDetail {
     String? doctorName,
     DateTime? visitDate,
     VisitStatus? status,
+    String? visitType,
     Object? updatedAt = copyWithSentinel,
     Object? documentation = copyWithSentinel,
     List<VisitVitalSign>? vitalSigns,
@@ -177,6 +181,7 @@ class VisitDetail {
       doctorName: doctorName ?? this.doctorName,
       visitDate: visitDate ?? this.visitDate,
       status: status ?? this.status,
+      visitType: visitType ?? this.visitType,
       updatedAt: identical(updatedAt, copyWithSentinel) ? this.updatedAt : updatedAt as DateTime?,
       documentation: identical(documentation, copyWithSentinel)
           ? this.documentation
@@ -201,6 +206,7 @@ class VisitDetail {
             doctorName == other.doctorName &&
             visitDate == other.visitDate &&
             status == other.status &&
+            visitType == other.visitType &&
             updatedAt == other.updatedAt &&
             documentation == other.documentation &&
             listEquals(vitalSigns, other.vitalSigns) &&
@@ -219,6 +225,7 @@ class VisitDetail {
     doctorName,
     visitDate,
     status,
+    visitType,
     updatedAt,
     documentation,
     Object.hashAll(vitalSigns),

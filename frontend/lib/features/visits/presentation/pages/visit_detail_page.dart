@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
@@ -152,6 +153,8 @@ class _VisitDetailBody extends ConsumerWidget {
       key: const Key('visit_detail_body'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        EncounterHeader(visit: visit),
+        const SizedBox(height: VisitPageTokens.sectionGap),
         VisitPatientBasicInfoCard(patientId: visit.patientId),
         if (!hasBranchAccess) ...[
           const SizedBox(height: VisitPageTokens.sectionGap),
