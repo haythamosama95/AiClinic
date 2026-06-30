@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 /// Encounter workspace phases (014) — view grouping over existing 013 fields.
 enum EncounterPhase {
   context,
@@ -28,6 +30,14 @@ enum EncounterPhase {
     objective => 'FD',
     plan => 'TX',
     review => 'SM',
+  };
+
+  IconData get icon => switch (this) {
+    context => Icons.info_outline_rounded,
+    subjective => Icons.chat_bubble_outline_rounded,
+    objective => Icons.monitor_heart_outlined,
+    plan => Icons.medical_services_outlined,
+    review => Icons.summarize_outlined,
   };
 
   int get orderIndex => ordered.indexOf(this);

@@ -21,6 +21,7 @@ export 'input/app_text_field.dart';
 export 'layouts/app_card.dart';
 export 'layouts/app_notched_card.dart';
 export 'layouts/tilted_background_icon_stack.dart';
+export 'navigation/app_stepper.dart';
 export 'overlays/app_dialog.dart';
 export 'overlays/app_popover.dart';
 export 'overlays/app_sheets.dart';

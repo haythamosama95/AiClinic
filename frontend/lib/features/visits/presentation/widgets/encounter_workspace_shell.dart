@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
@@ -11,12 +10,11 @@ import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_o
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_plan.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_subjective.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_review.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_step_rail.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_sticky_footer.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/expert_mode_accordion.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
-/// Three-region encounter workspace with guided/expert modes (014 US4–US5 / FR-014–020).
+/// Three-region encounter workspace with guided/expert modes (014 US4-US5 / FR-014-020).
 class EncounterWorkspaceShell extends ConsumerWidget {
   const EncounterWorkspaceShell({
     required this.visitId,
@@ -37,8 +35,6 @@ class EncounterWorkspaceShell extends ConsumerWidget {
   final VoidCallback? onSubmit;
   final bool showSubmit;
 
-  static const _wideBreakpoint = 1100.0;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(workspaceModeProvider);
@@ -56,59 +52,35 @@ class EncounterWorkspaceShell extends ConsumerWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final showSideStepRail = constraints.maxWidth >= _wideBreakpoint && mode == WorkspaceMode.guided;
         final phaseEntries = _documentationPhaseEntries(showClinicalNoteSaveBar: mode == WorkspaceMode.expert);
+        final steps = _encounterSteps(
+          context,
+          badges: badges,
+          selectPhase: selectPhase,
+          canvasHeight: constraints.maxHeight,
+        );
 
         return KeyedSubtree(
           key: const Key('encounter_workspace_shell'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!showSideStepRail && mode == WorkspaceMode.guided) ...[
-                AppButton(
-                  key: const Key('encounter_open_steps_button'),
-                  label: 'Steps',
-                  variant: AppButtonVariant.outline,
-                  icon: const Icon(Icons.linear_scale_rounded, size: 18),
-                  onPressed: () =>
-                      _showStepPicker(context, activePhase: activePhase, badges: badges, onSelected: selectPhase),
-                ),
-                const SizedBox(height: SpacingTokens.sm),
-              ],
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (showSideStepRail) ...[
-                      SizedBox(
-                        width: EncounterStepRail.width,
-                        child: EncounterStepRail(
-                          visitId: visitId,
-                          activePhase: activePhase,
-                          badges: badges,
-                          onPhaseSelected: selectPhase,
+                child: mode == WorkspaceMode.expert
+                    ? SingleChildScrollView(
+                        child: ExpertModeAccordion(
+                          phases: phaseEntries,
+                          initiallyExpanded: {activePhase.isDocumentation ? activePhase : EncounterPhase.subjective},
                         ),
+                      )
+                    : AppStepper(
+                        key: const Key('encounter_stepper'),
+                        axis: Axis.horizontal,
+                        showCard: false,
+                        currentStep: activePhase.orderIndex,
+                        onStepChanged: (index) => selectPhase(EncounterPhase.ordered[index]),
+                        steps: steps,
                       ),
-                      const SizedBox(width: VisitPageTokens.sectionGap),
-                    ],
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, canvasConstraints) {
-                          return SingleChildScrollView(
-                            child: mode == WorkspaceMode.expert
-                                ? ExpertModeAccordion(
-                                    phases: phaseEntries,
-                                    initiallyExpanded: {
-                                      activePhase.isDocumentation ? activePhase : EncounterPhase.subjective,
-                                    },
-                                  )
-                                : _guidedCanvas(activePhase, selectPhase, canvasHeight: canvasConstraints.maxHeight),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
               ),
               if (mode == WorkspaceMode.guided)
                 EncounterStickyFooter(
@@ -125,35 +97,73 @@ class EncounterWorkspaceShell extends ConsumerWidget {
     );
   }
 
-  Widget _guidedCanvas(
-    EncounterPhase activePhase,
-    ValueChanged<EncounterPhase> onEditPhase, {
+  List<AppStepperStep> _encounterSteps(
+    BuildContext context, {
+    required PhaseBadges badges,
+    required ValueChanged<EncounterPhase> selectPhase,
     required double canvasHeight,
   }) {
-    if (activePhase == EncounterPhase.review) {
-      return EncounterReview(
-        visitId: visitId,
-        visit: state.visit,
-        state: state,
-        canEdit: canEdit,
-        canUploadAttachments: canUploadAttachments,
-        onRefresh: onRefresh,
-        onEditPhase: onEditPhase,
-        onSubmit: onSubmit,
-        showSubmit: showSubmit,
+    final theme = context.visitTheme;
+
+    return [
+      for (final phase in EncounterPhase.ordered)
+        AppStepperStep(
+          stepKey: Key('encounter_step_${phase.name}'),
+          title: phase.label,
+          icon: phase.icon,
+          trailing: _phaseBadge(badges[phase] ?? PhaseCompletionBadge.empty, theme),
+          page: _phasePage(phase, canvasHeight, selectPhase),
+        ),
+    ];
+  }
+
+  Widget? _phaseBadge(PhaseCompletionBadge badge, VisitTheme theme) {
+    return switch (badge) {
+      PhaseCompletionBadge.empty => null,
+      PhaseCompletionBadge.hasContent => Icon(
+        Icons.check_circle_outline,
+        size: 16,
+        color: theme.pulseDeep,
+        semanticLabel: 'Has content',
+      ),
+      PhaseCompletionBadge.error => Icon(
+        Icons.error_outline,
+        size: 16,
+        color: theme.danger,
+        semanticLabel: 'Validation error',
+      ),
+    };
+  }
+
+  Widget _phasePage(EncounterPhase phase, double canvasHeight, ValueChanged<EncounterPhase> onEditPhase) {
+    if (phase == EncounterPhase.review) {
+      return SingleChildScrollView(
+        child: EncounterReview(
+          visitId: visitId,
+          visit: state.visit,
+          state: state,
+          canEdit: canEdit,
+          canUploadAttachments: canUploadAttachments,
+          onRefresh: onRefresh,
+          onEditPhase: onEditPhase,
+          onSubmit: onSubmit,
+          showSubmit: showSubmit,
+        ),
       );
     }
 
     final child = _documentationPhaseEntries(
       showClinicalNoteSaveBar: false,
-      canvasHeight: activePhase == EncounterPhase.subjective ? canvasHeight : null,
-    ).firstWhere((entry) => entry.phase == activePhase).child;
+      canvasHeight: canvasHeight,
+    ).firstWhere((entry) => entry.phase == phase).child;
 
-    if (activePhase == EncounterPhase.subjective) {
-      return SizedBox(height: canvasHeight, child: child);
+    if (phase == EncounterPhase.subjective) {
+      return SingleChildScrollView(
+        child: SizedBox(height: canvasHeight, child: child),
+      );
     }
 
-    return child;
+    return SingleChildScrollView(child: child);
   }
 
   List<ExpertModePhaseEntry> _documentationPhaseEntries({required bool showClinicalNoteSaveBar, double? canvasHeight}) {
@@ -190,33 +200,5 @@ class EncounterWorkspaceShell extends ConsumerWidget {
         ),
       ),
     ];
-  }
-
-  Future<void> _showStepPicker(
-    BuildContext context, {
-    required EncounterPhase activePhase,
-    required PhaseBadges badges,
-    required ValueChanged<EncounterPhase> onSelected,
-  }) {
-    return showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(SpacingTokens.md),
-            child: EncounterStepRail(
-              visitId: visitId,
-              activePhase: activePhase,
-              badges: badges,
-              onPhaseSelected: (phase) {
-                Navigator.of(context).pop();
-                onSelected(phase);
-              },
-            ),
-          ),
-        );
-      },
-    );
   }
 }
