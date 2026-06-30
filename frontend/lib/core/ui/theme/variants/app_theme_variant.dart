@@ -8,6 +8,9 @@ enum AppThemeVariant {
 
   /// Med Spectra palette (purple primary, soft UI medical dashboard).
   medSpectra,
+
+  /// eCarely palette (teal primary, mint-grey clinical dashboard).
+  eCarely,
 }
 
 /// Human-readable labels for theme variant selectors.
@@ -15,4 +18,11 @@ String appThemeVariantLabel(AppThemeVariant variant) => switch (variant) {
   AppThemeVariant.clinic => 'Astro Vista',
   AppThemeVariant.parchment => 'Claude+',
   AppThemeVariant.medSpectra => 'Med Spectra',
+  AppThemeVariant.eCarely => 'eCarely',
+};
+
+/// Variants that use soft UI card shadows instead of bordered cards.
+bool appThemeVariantUsesSoftUi(AppThemeVariant variant) => switch (variant) {
+  AppThemeVariant.medSpectra || AppThemeVariant.eCarely => true,
+  _ => false,
 };

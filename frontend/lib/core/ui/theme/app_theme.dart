@@ -7,6 +7,7 @@ import 'shadow_tokens.dart';
 import 'shape_tokens.dart';
 import 'spacing_tokens.dart';
 import 'variants/app_theme_variant.dart';
+import 'variants/ecarely/ecarely_shadow_tokens.dart';
 import 'variants/med_spectra/med_spectra_shadow_tokens.dart';
 import 'variants/theme_palette_resolver.dart';
 
@@ -197,22 +198,41 @@ class AppTheme {
     Brightness brightness,
     BorderRadius borderRadius,
   ) {
-    final isMedSpectra = variant == AppThemeVariant.medSpectra;
+    final shadowStyle = _cardShadowStyle(variant, brightness);
 
     return CardThemeData(
       color: tokens.card,
-      elevation: isMedSpectra ? MedSpectraShadowTokens.cardElevation : 0,
-      shadowColor: isMedSpectra ? MedSpectraShadowTokens.cardShadowColor(brightness) : ShadowTokens.shadowColor,
+      elevation: shadowStyle.elevation,
+      shadowColor: shadowStyle.shadowColor,
       shape: RoundedRectangleBorder(
         borderRadius: borderRadius,
-        side: isMedSpectra ? BorderSide.none : BorderSide(color: tokens.border),
+        side: shadowStyle.noBorder ? BorderSide.none : BorderSide(color: tokens.border),
       ),
       margin: EdgeInsets.zero,
     );
   }
 
+  static ({double elevation, Color shadowColor, bool noBorder}) _cardShadowStyle(
+    AppThemeVariant variant,
+    Brightness brightness,
+  ) {
+    return switch (variant) {
+      AppThemeVariant.medSpectra => (
+        elevation: MedSpectraShadowTokens.cardElevation,
+        shadowColor: MedSpectraShadowTokens.cardShadowColor(brightness),
+        noBorder: true,
+      ),
+      AppThemeVariant.eCarely => (
+        elevation: ECarelyShadowTokens.cardElevation,
+        shadowColor: ECarelyShadowTokens.cardShadowColor(brightness),
+        noBorder: true,
+      ),
+      _ => (elevation: 0, shadowColor: ShadowTokens.shadowColor, noBorder: false),
+    };
+  }
+
   static double _inputRadius(ShapeTokens shapes, AppThemeVariant variant) {
-    if (variant == AppThemeVariant.medSpectra) {
+    if (appThemeVariantUsesSoftUi(variant)) {
       return shapes.lg;
     }
     return shapes.md;

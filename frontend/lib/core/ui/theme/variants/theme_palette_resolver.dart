@@ -6,6 +6,9 @@ import 'app_theme_variant.dart';
 import 'clinic/clinic_color_tokens.dart';
 import 'clinic/clinic_shape_tokens.dart';
 import 'clinic/clinic_typography_tokens.dart';
+import 'ecarely/ecarely_color_tokens.dart';
+import 'ecarely/ecarely_shape_tokens.dart';
+import 'ecarely/ecarely_typography_tokens.dart';
 import 'med_spectra/med_spectra_color_tokens.dart';
 import 'med_spectra/med_spectra_shape_tokens.dart';
 import 'med_spectra/med_spectra_typography_tokens.dart';
@@ -19,12 +22,14 @@ abstract final class ThemePaletteResolver {
     AppThemeVariant.clinic => ClinicColorTokens.forBrightness(brightness),
     AppThemeVariant.parchment => ParchmentColorTokens.forBrightness(brightness),
     AppThemeVariant.medSpectra => MedSpectraColorTokens.forBrightness(brightness),
+    AppThemeVariant.eCarely => ECarelyColorTokens.forBrightness(brightness),
   };
 
   static ShapeTokens shapes(AppThemeVariant variant) => switch (variant) {
     AppThemeVariant.clinic => ClinicShapeTokens.values,
     AppThemeVariant.parchment => ParchmentShapeTokens.values,
     AppThemeVariant.medSpectra => MedSpectraShapeTokens.values,
+    AppThemeVariant.eCarely => ECarelyShapeTokens.values,
   };
 
   static TextTheme typography(AppThemeVariant variant, {required Color foreground, required Color mutedForeground}) =>
@@ -38,6 +43,10 @@ abstract final class ThemePaletteResolver {
           mutedForeground: mutedForeground,
         ),
         AppThemeVariant.medSpectra => MedSpectraTypographyTokens.textTheme(
+          foreground: foreground,
+          mutedForeground: mutedForeground,
+        ),
+        AppThemeVariant.eCarely => ECarelyTypographyTokens.textTheme(
           foreground: foreground,
           mutedForeground: mutedForeground,
         ),
