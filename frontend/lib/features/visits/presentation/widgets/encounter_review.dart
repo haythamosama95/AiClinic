@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/visits/presentation/providers/visit_documenta
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/investigation_result_capture_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
@@ -94,6 +95,14 @@ class EncounterReview extends StatelessWidget {
               children: [
                 _VitalSignsSummary(vitalSigns: visit.vitalSigns),
                 const SizedBox(height: SpacingTokens.sm),
+                if (visit.pendingInvestigations.isNotEmpty) ...[
+                  InvestigationResultCaptureList(
+                    pendingInvestigations: visit.pendingInvestigations,
+                    canEdit: canEdit,
+                    onChanged: onRefresh ?? () {},
+                  ),
+                  const SizedBox(height: SpacingTokens.sm),
+                ],
                 VisitDetailField(label: 'Examination', value: _examination, abbr: 'E'),
               ],
             ),

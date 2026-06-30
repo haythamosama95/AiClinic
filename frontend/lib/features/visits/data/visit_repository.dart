@@ -222,6 +222,7 @@ class VisitRepository with AppRpcInvoker {
     required String value,
     String? unit,
     String? predefinedVitalSignId,
+    DateTime? measuredAt,
   }) async {
     _assertNonEmpty('visitId', visitId);
     _assertNonEmpty('name', name);
@@ -234,6 +235,7 @@ class VisitRepository with AppRpcInvoker {
       'p_unit': ?unit,
       if (predefinedVitalSignId != null && predefinedVitalSignId.trim().isNotEmpty)
         'p_predefined_vital_sign_id': predefinedVitalSignId.trim(),
+      if (measuredAt != null) 'p_measured_at': measuredAt.toUtc().toIso8601String(),
     });
 
     final id = result.data?['vital_sign_id']?.toString();
@@ -249,6 +251,7 @@ class VisitRepository with AppRpcInvoker {
     String? value,
     String? unit,
     String? predefinedVitalSignId,
+    DateTime? measuredAt,
   }) async {
     _assertNonEmpty('vitalSignId', vitalSignId);
 
@@ -258,6 +261,7 @@ class VisitRepository with AppRpcInvoker {
       'p_value': ?value,
       'p_unit': ?unit,
       'p_predefined_vital_sign_id': ?predefinedVitalSignId,
+      if (measuredAt != null) 'p_measured_at': measuredAt.toUtc().toIso8601String(),
     });
   }
 
@@ -339,6 +343,17 @@ class VisitRepository with AppRpcInvoker {
   Future<void> archiveVisitInvestigation({required String investigationLineId}) async {
     _assertNonEmpty('investigationLineId', investigationLineId);
     await invokeRpc('archive_visit_investigation', {'p_investigation_line_id': investigationLineId.trim()});
+  }
+
+  Future<DateTime?> recordInvestigationResult({required String investigationLineId, String? result}) async {
+    _assertNonEmpty('investigationLineId', investigationLineId);
+
+    final rpcResult = await invokeRpc('record_investigation_result', {
+      'p_investigation_line_id': investigationLineId.trim(),
+      'p_result': ?result,
+    });
+
+    return parseVisitDateTime(rpcResult.data?['result_recorded_at']);
   }
 
   Future<String> registerVisitAttachment({

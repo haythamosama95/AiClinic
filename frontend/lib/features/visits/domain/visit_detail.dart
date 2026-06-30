@@ -31,6 +31,7 @@ class VisitDetail {
     this.attachments = const [],
     this.diagnosisCodes = const [],
     this.planDetails,
+    this.pendingInvestigations = const [],
   });
 
   final String id;
@@ -50,6 +51,7 @@ class VisitDetail {
   final List<VisitAttachmentItem> attachments;
   final List<VisitDiagnosisCode> diagnosisCodes;
   final VisitPlanDetails? planDetails;
+  final List<VisitInvestigation> pendingInvestigations;
 
   static VisitDetail? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
@@ -110,6 +112,7 @@ class VisitDetail {
             ? Map<String, dynamic>.from(row['plan_details'] as Map)
             : null,
       ),
+      pendingInvestigations: _parseInvestigations(row['pending_investigations']),
     );
   }
 
@@ -200,6 +203,7 @@ class VisitDetail {
     List<VisitAttachmentItem>? attachments,
     List<VisitDiagnosisCode>? diagnosisCodes,
     Object? planDetails = copyWithSentinel,
+    List<VisitInvestigation>? pendingInvestigations,
   }) {
     return VisitDetail(
       id: id ?? this.id,
@@ -221,6 +225,7 @@ class VisitDetail {
       attachments: attachments ?? this.attachments,
       diagnosisCodes: diagnosisCodes ?? this.diagnosisCodes,
       planDetails: identical(planDetails, copyWithSentinel) ? this.planDetails : planDetails as VisitPlanDetails?,
+      pendingInvestigations: pendingInvestigations ?? this.pendingInvestigations,
     );
   }
 
@@ -245,7 +250,8 @@ class VisitDetail {
             listEquals(treatmentPlans, other.treatmentPlans) &&
             listEquals(attachments, other.attachments) &&
             listEquals(diagnosisCodes, other.diagnosisCodes) &&
-            planDetails == other.planDetails;
+            planDetails == other.planDetails &&
+            listEquals(pendingInvestigations, other.pendingInvestigations);
   }
 
   @override
@@ -267,5 +273,6 @@ class VisitDetail {
     Object.hashAll(attachments),
     Object.hashAll(diagnosisCodes),
     planDetails,
+    Object.hashAll(pendingInvestigations),
   );
 }

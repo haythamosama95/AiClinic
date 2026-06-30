@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_header.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/investigation_result_capture_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
@@ -55,8 +56,21 @@ class EncounterPhaseObjective extends ConsumerWidget {
             sectionTitle: 'Vital signs',
             sectionDescription: 'Record measurements from predefined options or custom entries',
           ),
+          PainScoreQuickEntry(
+            visitId: visitId,
+            vitalSigns: state.visit.vitalSigns,
+            predefinedVitalSigns: state.predefinedVitalSigns,
+            canEdit: canEdit,
+            onChanged: onRefresh,
+          ),
           BmiChip(vitalSigns: state.visit.vitalSigns),
           const SizedBox(height: VisitPageTokens.sectionGap),
+          InvestigationResultCaptureList(
+            pendingInvestigations: state.visit.pendingInvestigations,
+            canEdit: canEdit,
+            onChanged: onRefresh,
+          ),
+          if (state.visit.pendingInvestigations.isNotEmpty) const SizedBox(height: VisitPageTokens.sectionGap),
           VisitSectionCard(
             kind: VisitPanelKind.clinicalNote,
             title: 'Examination',
@@ -155,6 +169,14 @@ class EncounterPhaseObjectiveDetail extends StatelessWidget {
           child: _VitalSignsReadOnly(vitalSigns: visit.vitalSigns),
         ),
         BmiChip(vitalSigns: visit.vitalSigns),
+        if (visit.pendingInvestigations.isNotEmpty) ...[
+          const SizedBox(height: VisitPageTokens.sectionGap),
+          InvestigationResultCaptureList(
+            pendingInvestigations: visit.pendingInvestigations,
+            canEdit: false,
+            onChanged: onRefresh,
+          ),
+        ],
         const SizedBox(height: VisitPageTokens.sectionGap),
         VisitSectionCard(
           kind: VisitPanelKind.clinicalNote,

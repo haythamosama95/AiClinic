@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -14,6 +15,7 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 const _customVitalSignKey = '__custom__';
+const _painScoreName = 'pain score';
 
 /// Editable vital sign list for visit documentation (013 US2).
 class VitalSignList extends ConsumerStatefulWidget {
@@ -173,6 +175,7 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
             value: data.value.trim(),
             unit: _nullableTrim(data.unit),
             predefinedVitalSignId: data.predefinedVitalSignId,
+            measuredAt: data.measuredAt,
           );
 
       if (!mounted) return;
@@ -223,7 +226,8 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
           normalizedName != existing.name ||
           trimmedValue != existing.value ||
           trimmedUnit != existing.unit ||
-          data.predefinedVitalSignId != existing.predefinedVitalSignId;
+          data.predefinedVitalSignId != existing.predefinedVitalSignId ||
+          data.measuredAt != existing.measuredAt;
 
       if (hasChanges) {
         await ref
@@ -234,6 +238,7 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
               value: trimmedValue,
               unit: trimmedUnit,
               predefinedVitalSignId: data.predefinedVitalSignId,
+              measuredAt: data.measuredAt,
             );
       }
 
@@ -402,6 +407,13 @@ class VitalSignCardView extends StatelessWidget {
                   ],
                 ],
               ),
+              if (sign.measuredAt != null) ...[
+                const SizedBox(height: SpacingTokens.xs),
+                Text(
+                  'Measured ${DateFormat.yMMMd().add_jm().format(sign.measuredAt!.toLocal())}',
+                  style: theme.caption(),
+                ),
+              ],
             ],
           ),
         ),
@@ -412,12 +424,19 @@ class VitalSignCardView extends StatelessWidget {
 
 /// Form data for creating or updating a vital sign line.
 class VitalSignFormData {
-  const VitalSignFormData({required this.name, required this.value, this.unit, this.predefinedVitalSignId});
+  const VitalSignFormData({
+    required this.name,
+    required this.value,
+    this.unit,
+    this.predefinedVitalSignId,
+    this.measuredAt,
+  });
 
   final String name;
   final String value;
   final String? unit;
   final String? predefinedVitalSignId;
+  final DateTime? measuredAt;
 }
 
 /// Add/edit form for a vital sign line.
@@ -446,6 +465,7 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
   late final TextEditingController _customName;
   late final TextEditingController _value;
   late final TextEditingController _unit;
+  DateTime? _measuredAt;
 
   @override
   void initState() {
@@ -464,6 +484,7 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
     _customName = TextEditingController(text: initial?.predefinedVitalSignId == null ? (initial?.name ?? '') : '');
     _value = TextEditingController(text: initial?.value ?? '');
     _unit = TextEditingController(text: initial?.unit ?? _defaultUnitForSelection(_selectedKey));
+    _measuredAt = initial?.measuredAt;
   }
 
   @override
@@ -505,6 +526,7 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
       value: _value.text,
       unit: _unit.text,
       predefinedVitalSignId: predefined?.id,
+      measuredAt: _measuredAt,
     );
     await widget.onSubmit(data);
   }
@@ -575,6 +597,15 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
               controller: _unit,
               enabled: !widget.isSubmitting,
             ),
+            const SizedBox(height: SpacingTokens.sm),
+            Text('Measurement time (optional)', style: theme.caption()),
+            const SizedBox(height: SpacingTokens.xs),
+            AppDateTimePicker(
+              key: const Key('vital_sign_measured_at'),
+              value: _measuredAt,
+              use24Hour: true,
+              onChanged: widget.isSubmitting ? null : (value) => setState(() => _measuredAt = value),
+            ),
             const SizedBox(height: SpacingTokens.md),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -591,6 +622,139 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
                   isLoading: widget.isSubmitting,
                   onPressed: widget.isSubmitting ? null : _submit,
                 ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Quick pain score entry using the seeded "Pain Score" predefined vital sign (014 US8).
+class PainScoreQuickEntry extends ConsumerStatefulWidget {
+  const PainScoreQuickEntry({
+    required this.visitId,
+    required this.vitalSigns,
+    required this.predefinedVitalSigns,
+    required this.canEdit,
+    required this.onChanged,
+    super.key,
+  });
+
+  final String visitId;
+  final List<VisitVitalSign> vitalSigns;
+  final List<CatalogItem> predefinedVitalSigns;
+  final bool canEdit;
+  final VoidCallback onChanged;
+
+  @override
+  ConsumerState<PainScoreQuickEntry> createState() => _PainScoreQuickEntryState();
+}
+
+class _PainScoreQuickEntryState extends ConsumerState<PainScoreQuickEntry> {
+  bool _isSubmitting = false;
+  String? _errorMessage;
+
+  CatalogItem? get _painScorePredefined {
+    for (final item in widget.predefinedVitalSigns) {
+      if (item.name.trim().toLowerCase() == _painScoreName) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  VisitVitalSign? get _existingPainScore {
+    for (final sign in widget.vitalSigns) {
+      if (sign.name.trim().toLowerCase() == _painScoreName) {
+        return sign;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _saveScore(String score) async {
+    final predefined = _painScorePredefined;
+    if (predefined == null) return;
+
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final existing = _existingPainScore;
+      if (existing != null) {
+        await ref.read(visitRepositoryProvider).updateVisitVitalSign(vitalSignId: existing.id, value: score);
+      } else {
+        await ref
+            .read(visitRepositoryProvider)
+            .createVisitVitalSign(
+              visitId: widget.visitId,
+              name: predefined.name,
+              value: score,
+              predefinedVitalSignId: predefined.id,
+            );
+      }
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        widget.onChanged();
+      }
+    } on RpcFailure catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _errorMessage = visitMessageForRpc(e);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final predefined = _painScorePredefined;
+    if (predefined == null) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = context.visitTheme;
+    final existing = _existingPainScore;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: SpacingTokens.sm),
+      child: VisitSectionCard(
+        kind: VisitPanelKind.vitalSigns,
+        title: 'Pain score',
+        description: '0 = no pain · 10 = worst pain',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_errorMessage != null) ...[
+              Text(_errorMessage!, style: theme.caption(color: theme.danger)),
+              const SizedBox(height: SpacingTokens.sm),
+            ],
+            Wrap(
+              spacing: SpacingTokens.xs,
+              runSpacing: SpacingTokens.xs,
+              children: [
+                for (var score = 0; score <= 10; score++)
+                  AppButton(
+                    key: Key('pain_score_$score'),
+                    label: score.toString(),
+                    size: AppFieldSize.sm,
+                    variant: existing?.value == score.toString()
+                        ? AppButtonVariant.primary
+                        : AppButtonVariant.secondary,
+                    onPressed: !widget.canEdit || _isSubmitting ? null : () => _saveScore(score.toString()),
+                  ),
               ],
             ),
           ],

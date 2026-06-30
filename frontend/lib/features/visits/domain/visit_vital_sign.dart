@@ -10,6 +10,7 @@ class VisitVitalSign {
     required this.value,
     this.unit,
     this.predefinedVitalSignId,
+    this.measuredAt,
   });
 
   final String id;
@@ -17,6 +18,7 @@ class VisitVitalSign {
   final String value;
   final String? unit;
   final String? predefinedVitalSignId;
+  final DateTime? measuredAt;
 
   static VisitVitalSign? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
@@ -33,6 +35,7 @@ class VisitVitalSign {
       value: value,
       unit: optionalVisitString(row['unit']),
       predefinedVitalSignId: row['predefined_vital_sign_id']?.toString(),
+      measuredAt: parseVisitDateTime(row['measured_at']),
     );
   }
 }

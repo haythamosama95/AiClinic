@@ -28,6 +28,36 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION pg_temp.release_doctor_in_progress(p_doctor_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+
+  UPDATE public.visits v
+  SET
+    status = 'completed',
+    updated_at = now()
+  FROM public.appointments a
+  WHERE v.appointment_id = a.id
+    AND v.is_deleted = false
+    AND v.status = 'in_progress'
+    AND a.doctor_id = p_doctor_id
+    AND a.is_deleted = false;
+
+  UPDATE public.appointments a
+  SET
+    status = 'completed',
+    updated_at = now()
+  WHERE a.doctor_id = p_doctor_id
+    AND a.is_deleted = false
+    AND a.status = 'in_progress';
+
+  PERFORM set_config('role', 'authenticated', true);
+END;
+$$;
+
 DO $$
 DECLARE
   v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
@@ -50,6 +80,12 @@ DECLARE
   v_visit_updated_at timestamptz;
   v_plan_updated_at timestamptz;
   v_start timestamptz;
+  v_vital_sign_id uuid;
+  v_measured_at timestamptz := '2026-06-15 10:30:00+00';
+  v_prior_investigation_line_id uuid;
+  v_followup_visit_id uuid;
+  v_followup_appt_id uuid;
+  v_result_recorded_at timestamptz;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY[v_bootstrap_staff]::uuid[]);
@@ -399,6 +435,128 @@ BEGIN
     'save_visit_plan_details_stale_conflict',
     NOT v_result.success AND v_result.error_code = 'STALE_PLAN_DETAILS',
     COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US8: vital sign measured_at and investigation result capture.
+  v_result := public.create_visit_vital_sign(
+    v_visit_id, 'Heart Rate', '72', 'bpm', NULL, v_measured_at
+  );
+  v_vital_sign_id := (v_result.data ->> 'vital_sign_id')::uuid;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_encounter_crud_results VALUES (
+    'create_visit_vital_sign_measured_at',
+    v_result.success
+      AND v_vital_sign_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM public.visit_vital_signs vvs
+        WHERE vvs.id = v_vital_sign_id
+          AND vvs.measured_at = v_measured_at
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.update_visit_vital_sign(
+    v_vital_sign_id, NULL, NULL, NULL, NULL, v_measured_at + interval '1 hour'
+  );
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_encounter_crud_results VALUES (
+    'update_visit_vital_sign_measured_at',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM public.visit_vital_signs vvs
+        WHERE vvs.id = v_vital_sign_id
+          AND vvs.measured_at = v_measured_at + interval '1 hour'
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Investigation ordered on the current visit (prior relative to follow-up).
+  v_result := public.create_visit_investigation(v_visit_id, 'Complete Blood Count', 'Fasting', NULL);
+  v_prior_investigation_line_id := (v_result.data ->> 'investigation_line_id')::uuid;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_encounter_crud_results VALUES (
+    'create_prior_visit_investigation',
+    v_result.success AND v_prior_investigation_line_id IS NOT NULL,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- Follow-up visit records result against prior investigation.
+  PERFORM pg_temp.release_doctor_in_progress(v_doctor_staff);
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.appointments
+  SET status = 'completed', is_deleted = true, deleted_at = now(), updated_at = now()
+  WHERE id = v_appt_id;
+  UPDATE public.visits SET status = 'completed', updated_at = now() WHERE id = v_visit_id;
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_start := pg_temp.test_appointment_same_day_slot(2);
+  v_result := public.create_appointment(
+    v_branch_main, v_patient_id, v_doctor_staff, 'planned', v_start, 30, NULL, NULL
+  );
+  v_followup_appt_id := (v_result.data ->> 'appointment_id')::uuid;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_encounter_crud_results VALUES (
+    'create_followup_appointment',
+    v_result.success AND v_followup_appt_id IS NOT NULL,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+  v_result := public.update_appointment_status(v_followup_appt_id, 'confirmed');
+  v_result := public.update_appointment_status(v_followup_appt_id, 'checked_in');
+  v_result := public.create_visit(v_followup_appt_id, NULL);
+  v_followup_visit_id := (v_result.data ->> 'visit_id')::uuid;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_encounter_crud_results VALUES (
+    'create_followup_visit',
+    v_result.success AND v_followup_visit_id IS NOT NULL,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.get_visit(v_followup_visit_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_encounter_crud_results VALUES (
+    'get_visit_pending_investigations_before_result',
+    v_result.success
+      AND jsonb_array_length(COALESCE(v_result.data -> 'pending_investigations', '[]'::jsonb)) = 1,
+    'pending=' || COALESCE(jsonb_array_length(COALESCE(v_result.data -> 'pending_investigations', '[]'::jsonb))::text, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.record_investigation_result(
+    v_prior_investigation_line_id,
+    'WBC 7.2, Hgb 14.1 — within normal limits'
+  );
+  v_result_recorded_at := (v_result.data ->> 'result_recorded_at')::timestamptz;
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_encounter_crud_results VALUES (
+    'record_investigation_result',
+    v_result.success
+      AND v_result_recorded_at IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM public.visit_investigations vi
+        WHERE vi.id = v_prior_investigation_line_id
+          AND vi.result LIKE 'WBC 7.2%'
+          AND vi.result_recorded_at IS NOT NULL
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.get_visit(v_followup_visit_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_encounter_crud_results VALUES (
+    'get_visit_pending_investigations_after_result',
+    v_result.success
+      AND jsonb_array_length(COALESCE(v_result.data -> 'pending_investigations', '[]'::jsonb)) = 0,
+    'pending=' || COALESCE(jsonb_array_length(COALESCE(v_result.data -> 'pending_investigations', '[]'::jsonb))::text, '<null>')
   );
   PERFORM set_config('role', 'postgres', true);
 END;

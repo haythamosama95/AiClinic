@@ -198,19 +198,19 @@
 
 ### Backend for User Story 8
 
-- [ ] T056 [US8] ALTER `visit_vital_signs` (+`measured_at`) and `visit_investigations` (+`result`, `result_recorded_at`, `result_recorded_by`) in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T057 [US8] Extend `create_visit_vital_sign` and `update_visit_vital_sign` with optional `p_measured_at` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T058 [US8] Implement `record_investigation_result` RPC per `contracts/visit-plan-and-objective.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T059 [US8] Seed idempotent "Pain Score" predefined vital sign per organization in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T060 [US8] Extend `get_visit` vital_signs and investigations payloads with `measured_at` / `result` / `result_recorded_at` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
-- [ ] T061 [P] [US8] Add vital `measured_at` and investigation result CRUD tests in `backend/tests/visit_encounter_workspace_crud.sql`
+- [X] T056 [US8] ALTER `visit_vital_signs` (+`measured_at`) and `visit_investigations` (+`result`, `result_recorded_at`, `result_recorded_by`) in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T057 [US8] Extend `create_visit_vital_sign` and `update_visit_vital_sign` with optional `p_measured_at` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T058 [US8] Implement `record_investigation_result` RPC per `contracts/visit-plan-and-objective.md` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T059 [US8] Seed idempotent "Pain Score" predefined vital sign per organization in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T060 [US8] Extend `get_visit` vital_signs and investigations payloads with `measured_at` / `result` / `result_recorded_at` in `backend/supabase/migrations/20260701120000_visit_encounter_workspace.sql`
+- [X] T061 [P] [US8] Add vital `measured_at` and investigation result CRUD tests in `backend/tests/visit_encounter_workspace_crud.sql`
 
 ### Frontend for User Story 8
 
-- [ ] T062 [P] [US8] Extend `visit_vital_sign.dart` with `measuredAt` and `visit_investigation.dart` with `result`/`resultRecordedAt` in `frontend/lib/features/visits/domain/`
-- [ ] T063 [US8] Extend `visit_repository.dart` and vital/investigation list widgets for `measured_at` capture and `record_investigation_result`
-- [ ] T064 [US8] Add pain-score entry (predefined vital sign), measurement-time picker, and investigation result capture UI to `encounter_phase_objective.dart`
-- [ ] T065 [US8] Display investigation results and vital `measured_at` on `encounter_review.dart` and detail view
+- [X] T062 [P] [US8] Extend `visit_vital_sign.dart` with `measuredAt` and `visit_investigation.dart` with `result`/`resultRecordedAt` in `frontend/lib/features/visits/domain/`
+- [X] T063 [US8] Extend `visit_repository.dart` and vital/investigation list widgets for `measured_at` capture and `record_investigation_result`
+- [X] T064 [US8] Add pain-score entry (predefined vital sign), measurement-time picker, and investigation result capture UI to `encounter_phase_objective.dart`
+- [X] T065 [US8] Display investigation results and vital `measured_at` on `encounter_review.dart` and detail view
 
 **Checkpoint**: P3 complete — all structured enrichments functional per quickstart.md P3 validation
 
@@ -220,12 +220,12 @@
 
 **Purpose**: Regression, test runner integration, and constitution compliance verification
 
-- [ ] T066 Extend `backend/tests/run_visit_medical_records_tests.sh` to include `visit_encounter_workspace_crud.sql` and `visit_encounter_workspace_rls.sql`
-- [ ] T067 [P] Run `dart analyze` on `frontend/lib/features/visits/` and fix any new issues
-- [ ] T068 [P] Run `flutter test test/unit/visits test/widget/visits` and resolve failures
-- [ ] T069 Run `backend/tests/run_visit_medical_records_tests.sh` and resolve failures
-- [ ] T070 Verify SC-005 (100% 013 fields reachable, none duplicated), SC-008 (attachment regression), and submission rules unchanged per `specs/014-visit-encounter-workspace/quickstart.md`
-- [ ] T071 Verify responsive collapse: step rail and safety rail collapse on narrow windows without hiding active phase or safety affordance (FR-020) in `encounter_workspace_shell.dart`
+- [X] T066 Extend `backend/tests/run_visit_medical_records_tests.sh` to include `visit_encounter_workspace_crud.sql` and `visit_encounter_workspace_rls.sql`
+- [X] T067 [P] Run `dart analyze` on `frontend/lib/features/visits/` and fix any new issues
+- [X] T068 [P] Run `flutter test test/unit/visits test/widget/visits` and resolve failures
+- [X] T069 Run `backend/tests/run_visit_medical_records_tests.sh` and resolve failures
+- [X] T070 Verify SC-005 (100% 013 fields reachable, none duplicated), SC-008 (attachment regression), and submission rules unchanged per `specs/014-visit-encounter-workspace/quickstart.md`
+- [X] T071 Verify responsive collapse: step rail and safety rail collapse on narrow windows without hiding active phase or safety affordance (FR-020) in `encounter_workspace_shell.dart`
 
 ---
 

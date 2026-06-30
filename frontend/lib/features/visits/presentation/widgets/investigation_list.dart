@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -374,6 +375,19 @@ class InvestigationCardView extends StatelessWidget {
                   if (investigation.note != null && investigation.note!.isNotEmpty) ...[
                     const SizedBox(height: SpacingTokens.xs),
                     Text(investigation.note!, style: theme.caption()),
+                  ],
+                  if (investigation.hasResult) ...[
+                    const SizedBox(height: SpacingTokens.sm),
+                    Text('Result', style: theme.eyebrow(size: 10)),
+                    const SizedBox(height: SpacingTokens.xs),
+                    Text(investigation.result!, style: theme.body()),
+                    if (investigation.resultRecordedAt != null) ...[
+                      const SizedBox(height: SpacingTokens.xs),
+                      Text(
+                        'Recorded ${DateFormat.yMMMd().add_jm().format(investigation.resultRecordedAt!.toLocal())}',
+                        style: theme.caption(color: theme.mutedInk),
+                      ),
+                    ],
                   ],
                 ],
               ),

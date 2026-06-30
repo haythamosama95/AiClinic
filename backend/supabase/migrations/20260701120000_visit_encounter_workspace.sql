@@ -411,7 +411,7 @@ BEGIN
           'name', vvs.name,
           'value', vvs.value,
           'unit', vvs.unit,
-          'measured_at', NULL
+          'measured_at', vvs.measured_at
         )
         ORDER BY vvs.created_at ASC
       ),
@@ -1381,7 +1381,255 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- auth_internal.get_visit (add diagnosis_codes + plan_details)
+-- US8: Objective enrichments (measured_at, investigation results, Pain Score)
+-- -----------------------------------------------------------------------------
+
+ALTER TABLE public.visit_vital_signs
+  ADD COLUMN IF NOT EXISTS measured_at timestamptz;
+
+ALTER TABLE public.visit_investigations
+  ADD COLUMN IF NOT EXISTS result text,
+  ADD COLUMN IF NOT EXISTS result_recorded_at timestamptz,
+  ADD COLUMN IF NOT EXISTS result_recorded_by uuid REFERENCES auth.users (id);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'visit_investigations_result_length'
+      AND conrelid = 'public.visit_investigations'::regclass
+  ) THEN
+    ALTER TABLE public.visit_investigations
+      ADD CONSTRAINT visit_investigations_result_length
+      CHECK (result IS NULL OR length(result) <= 10000);
+  END IF;
+END;
+$$;
+
+DROP FUNCTION IF EXISTS auth_internal.create_visit_vital_sign(uuid, text, text, text, uuid);
+DROP FUNCTION IF EXISTS auth_internal.update_visit_vital_sign(uuid, text, text, text, uuid);
+
+CREATE OR REPLACE FUNCTION auth_internal.create_visit_vital_sign(
+  p_visit_id uuid,
+  p_name text,
+  p_value text,
+  p_unit text DEFAULT NULL,
+  p_predefined_vital_sign_id uuid DEFAULT NULL,
+  p_measured_at timestamptz DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_visit public.visits%ROWTYPE;
+  v_org_id uuid;
+  v_id uuid;
+BEGIN
+  PERFORM auth_internal.assert_permission('visits.edit_soap');
+  v_org_id := public.jwt_organization_id();
+
+  BEGIN
+    v_visit := auth_internal.assert_visit_branch_scope(p_visit_id);
+  EXCEPTION
+    WHEN OTHERS THEN
+      IF SQLERRM = 'NOT_FOUND' THEN
+        RETURN public.rpc_error('NOT_FOUND', 'Visit was not found.');
+      END IF;
+      RAISE;
+  END;
+
+  IF NULLIF(trim(p_name), '') IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Vital sign name is required.');
+  END IF;
+
+  IF NULLIF(trim(p_value), '') IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Vital sign value is required.');
+  END IF;
+
+  IF length(trim(p_name)) > 100 OR length(trim(p_value)) > 200 THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Vital sign name or value exceeds maximum length.');
+  END IF;
+
+  IF p_unit IS NOT NULL AND length(trim(p_unit)) > 50 THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Unit must be 50 characters or fewer.');
+  END IF;
+
+  IF p_predefined_vital_sign_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.predefined_vital_signs pvs
+    WHERE pvs.id = p_predefined_vital_sign_id
+      AND pvs.organization_id = v_org_id
+      AND pvs.is_deleted = false
+  ) THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Predefined vital sign was not found.');
+  END IF;
+
+  INSERT INTO public.visit_vital_signs (
+    visit_id, predefined_vital_sign_id, name, value, unit, measured_at, created_by, updated_by
+  )
+  VALUES (
+    p_visit_id, p_predefined_vital_sign_id, trim(p_name), trim(p_value),
+    NULLIF(trim(p_unit), ''), p_measured_at, auth.uid(), auth.uid()
+  )
+  RETURNING id INTO v_id;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
+  VALUES (auth.uid(), v_org_id, 'visit.vital_sign.create', 'visit_vital_signs', v_id,
+    jsonb_build_object('visit_id', p_visit_id, 'vital_sign_id', v_id, 'measured_at', p_measured_at));
+
+  RETURN public.rpc_success(jsonb_build_object('vital_sign_id', v_id));
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage vital signs.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION auth_internal.update_visit_vital_sign(
+  p_vital_sign_id uuid,
+  p_name text DEFAULT NULL,
+  p_value text DEFAULT NULL,
+  p_unit text DEFAULT NULL,
+  p_predefined_vital_sign_id uuid DEFAULT NULL,
+  p_measured_at timestamptz DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.visit_vital_signs%ROWTYPE;
+  v_org_id uuid;
+BEGIN
+  PERFORM auth_internal.assert_permission('visits.edit_soap');
+  v_org_id := public.jwt_organization_id();
+
+  SELECT vvs.* INTO v_row
+  FROM public.visit_vital_signs vvs
+  JOIN public.visits v ON v.id = vvs.visit_id
+  WHERE vvs.id = p_vital_sign_id
+    AND vvs.is_deleted = false
+    AND v.is_deleted = false
+    AND v.branch_id = ANY (public.jwt_branch_ids());
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('NOT_FOUND', 'Vital sign was not found.');
+  END IF;
+
+  IF p_name IS NOT NULL AND NULLIF(trim(p_name), '') IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Vital sign name cannot be empty.');
+  END IF;
+
+  IF p_value IS NOT NULL AND NULLIF(trim(p_value), '') IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Vital sign value cannot be empty.');
+  END IF;
+
+  IF p_predefined_vital_sign_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.predefined_vital_signs pvs
+    WHERE pvs.id = p_predefined_vital_sign_id
+      AND pvs.organization_id = v_org_id
+      AND pvs.is_deleted = false
+  ) THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Predefined vital sign was not found.');
+  END IF;
+
+  UPDATE public.visit_vital_signs vvs
+  SET
+    name = COALESCE(NULLIF(trim(p_name), ''), vvs.name),
+    value = COALESCE(NULLIF(trim(p_value), ''), vvs.value),
+    unit = CASE WHEN p_unit IS NULL THEN vvs.unit ELSE NULLIF(trim(p_unit), '') END,
+    predefined_vital_sign_id = CASE
+      WHEN p_predefined_vital_sign_id IS NULL THEN vvs.predefined_vital_sign_id
+      ELSE p_predefined_vital_sign_id
+    END,
+    measured_at = CASE WHEN p_measured_at IS NULL THEN vvs.measured_at ELSE p_measured_at END,
+    updated_at = now(),
+    updated_by = auth.uid()
+  WHERE vvs.id = p_vital_sign_id;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
+  VALUES (auth.uid(), v_org_id, 'visit.vital_sign.update', 'visit_vital_signs', p_vital_sign_id,
+    jsonb_build_object('vital_sign_id', p_vital_sign_id, 'measured_at', p_measured_at));
+
+  RETURN public.rpc_success(jsonb_build_object('vital_sign_id', p_vital_sign_id));
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage vital signs.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION auth_internal.record_investigation_result(
+  p_investigation_line_id uuid,
+  p_result text DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_row public.visit_investigations%ROWTYPE;
+  v_org_id uuid;
+  v_recorded_at timestamptz;
+BEGIN
+  PERFORM auth_internal.assert_permission('visits.edit_soap');
+  v_org_id := public.jwt_organization_id();
+
+  SELECT vi.* INTO v_row
+  FROM public.visit_investigations vi
+  JOIN public.visits v ON v.id = vi.visit_id
+  WHERE vi.id = p_investigation_line_id
+    AND vi.is_deleted = false
+    AND v.is_deleted = false
+    AND v.branch_id = ANY (public.jwt_branch_ids());
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('NOT_FOUND', 'Investigation was not found.');
+  END IF;
+
+  IF p_result IS NOT NULL AND length(trim(p_result)) > 10000 THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Investigation result exceeds maximum length.');
+  END IF;
+
+  v_recorded_at := now();
+
+  UPDATE public.visit_investigations vi
+  SET
+    result = CASE WHEN p_result IS NULL THEN NULL ELSE NULLIF(trim(p_result), '') END,
+    result_recorded_at = CASE WHEN p_result IS NULL THEN NULL ELSE v_recorded_at END,
+    result_recorded_by = CASE WHEN p_result IS NULL THEN NULL ELSE auth.uid() END,
+    updated_at = now(),
+    updated_by = auth.uid()
+  WHERE vi.id = p_investigation_line_id;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
+  VALUES (
+    auth.uid(), v_org_id, 'visit.investigation.result_record', 'visit_investigations', p_investigation_line_id,
+    jsonb_build_object('investigation_line_id', p_investigation_line_id, 'result_recorded_at', v_recorded_at)
+  );
+
+  RETURN public.rpc_success(jsonb_build_object(
+    'investigation_line_id', p_investigation_line_id,
+    'result_recorded_at', CASE WHEN p_result IS NULL THEN NULL ELSE v_recorded_at END
+  ));
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to record investigation results.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- auth_internal.get_visit (add diagnosis_codes + plan_details + US8 enrichments)
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION auth_internal.get_visit(p_visit_id uuid)
@@ -1405,6 +1653,7 @@ DECLARE
   v_attachments jsonb;
   v_diagnosis_codes jsonb;
   v_plan_details jsonb;
+  v_pending_investigations jsonb;
 BEGIN
   BEGIN
     v_visit := auth_internal.assert_visit_branch_scope(p_visit_id);
@@ -1478,7 +1727,8 @@ BEGIN
           'name', vvs.name,
           'value', vvs.value,
           'unit', vvs.unit,
-          'predefined_vital_sign_id', vvs.predefined_vital_sign_id
+          'predefined_vital_sign_id', vvs.predefined_vital_sign_id,
+          'measured_at', vvs.measured_at
         )
         ORDER BY vvs.created_at ASC
       ),
@@ -1494,7 +1744,9 @@ BEGIN
           'id', vi.id,
           'name', vi.name,
           'note', vi.note,
-          'investigation_id', vi.investigation_id
+          'investigation_id', vi.investigation_id,
+          'result', vi.result,
+          'result_recorded_at', vi.result_recorded_at
         )
         ORDER BY vi.created_at ASC
       ),
@@ -1503,6 +1755,32 @@ BEGIN
     INTO v_investigations
     FROM public.visit_investigations vi
     WHERE vi.visit_id = p_visit_id AND vi.is_deleted = false;
+
+    SELECT COALESCE(
+      jsonb_agg(
+        jsonb_build_object(
+          'id', vi.id,
+          'name', vi.name,
+          'note', vi.note,
+          'investigation_id', vi.investigation_id,
+          'ordered_visit_id', v_prior.id,
+          'ordered_visit_date', v_prior.visit_date,
+          'result', vi.result,
+          'result_recorded_at', vi.result_recorded_at
+        )
+        ORDER BY v_prior.visit_date DESC, vi.created_at ASC
+      ),
+      '[]'::jsonb
+    )
+    INTO v_pending_investigations
+    FROM public.visit_investigations vi
+    JOIN public.visits v_prior ON v_prior.id = vi.visit_id
+    WHERE v_prior.patient_id = v_visit.patient_id
+      AND v_prior.id <> p_visit_id
+      AND v_prior.is_deleted = false
+      AND vi.is_deleted = false
+      AND vi.result IS NULL
+      AND auth_internal.staff_can_access_branch(v_prior.branch_id);
 
     SELECT COALESCE(
       jsonb_agg(
@@ -1591,7 +1869,8 @@ BEGIN
       'treatment_plans', COALESCE(v_treatment_plans, '[]'::jsonb),
       'attachments', COALESCE(v_attachments, '[]'::jsonb),
       'diagnosis_codes', COALESCE(v_diagnosis_codes, '[]'::jsonb),
-      'plan_details', v_plan_details
+      'plan_details', v_plan_details,
+      'pending_investigations', COALESCE(v_pending_investigations, '[]'::jsonb)
     );
   END IF;
 
@@ -1714,6 +1993,41 @@ AS $$
   );
 $$;
 
+DROP FUNCTION IF EXISTS public.create_visit_vital_sign(uuid, text, text, text, uuid);
+DROP FUNCTION IF EXISTS public.update_visit_vital_sign(uuid, text, text, text, uuid);
+
+CREATE OR REPLACE FUNCTION public.create_visit_vital_sign(
+  p_visit_id uuid,
+  p_name text,
+  p_value text,
+  p_unit text DEFAULT NULL,
+  p_predefined_vital_sign_id uuid DEFAULT NULL,
+  p_measured_at timestamptz DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE sql SECURITY INVOKER SET search_path = public, auth_internal
+AS $$ SELECT auth_internal.create_visit_vital_sign(p_visit_id, p_name, p_value, p_unit, p_predefined_vital_sign_id, p_measured_at); $$;
+
+CREATE OR REPLACE FUNCTION public.update_visit_vital_sign(
+  p_vital_sign_id uuid,
+  p_name text DEFAULT NULL,
+  p_value text DEFAULT NULL,
+  p_unit text DEFAULT NULL,
+  p_predefined_vital_sign_id uuid DEFAULT NULL,
+  p_measured_at timestamptz DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE sql SECURITY INVOKER SET search_path = public, auth_internal
+AS $$ SELECT auth_internal.update_visit_vital_sign(p_vital_sign_id, p_name, p_value, p_unit, p_predefined_vital_sign_id, p_measured_at); $$;
+
+CREATE OR REPLACE FUNCTION public.record_investigation_result(
+  p_investigation_line_id uuid,
+  p_result text DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE sql SECURITY INVOKER SET search_path = public, auth_internal
+AS $$ SELECT auth_internal.record_investigation_result(p_investigation_line_id, p_result); $$;
+
 -- -----------------------------------------------------------------------------
 -- Grants
 -- -----------------------------------------------------------------------------
@@ -1737,6 +2051,10 @@ GRANT EXECUTE ON FUNCTION auth_internal.create_visit_diagnosis_code(uuid, text, 
 GRANT EXECUTE ON FUNCTION auth_internal.archive_visit_diagnosis_code(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION auth_internal.save_visit_plan_details(uuid, timestamptz, text, date, text, text, date, date, text) TO authenticated;
 
+GRANT EXECUTE ON FUNCTION auth_internal.create_visit_vital_sign(uuid, text, text, text, uuid, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION auth_internal.update_visit_vital_sign(uuid, text, text, text, uuid, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION auth_internal.record_investigation_result(uuid, text) TO authenticated;
+
 GRANT EXECUTE ON FUNCTION public.get_patient_safety_context(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_patient_allergy(uuid, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.update_patient_allergy(uuid, text, text) TO authenticated;
@@ -1753,6 +2071,10 @@ GRANT EXECUTE ON FUNCTION public.create_catalog_diagnosis_code(text, text) TO au
 GRANT EXECUTE ON FUNCTION public.create_visit_diagnosis_code(uuid, text, text, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.archive_visit_diagnosis_code(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.save_visit_plan_details(uuid, text, date, text, text, date, date, text, timestamptz) TO authenticated;
+
+GRANT EXECUTE ON FUNCTION public.create_visit_vital_sign(uuid, text, text, text, uuid, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_visit_vital_sign(uuid, text, text, text, uuid, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.record_investigation_result(uuid, text) TO authenticated;
 
 -- -----------------------------------------------------------------------------
 -- Diagnosis code seeds (idempotent per organization)
@@ -1779,6 +2101,18 @@ WHERE o.is_deleted = false
   AND NOT EXISTS (
     SELECT 1 FROM public.diagnosis_codes dc
     WHERE dc.organization_id = o.id AND dc.is_deleted = false
+  );
+
+-- Pain Score predefined vital sign (idempotent per organization)
+INSERT INTO public.predefined_vital_signs (organization_id, name, default_unit)
+SELECT o.id, 'Pain Score', NULL
+FROM public.organizations o
+WHERE o.is_deleted = false
+  AND NOT EXISTS (
+    SELECT 1 FROM public.predefined_vital_signs pvs
+    WHERE pvs.organization_id = o.id
+      AND pvs.is_deleted = false
+      AND lower(trim(pvs.name)) = lower('Pain Score')
   );
 
 -- Extend org catalog seed helper for new organizations
@@ -1810,7 +2144,8 @@ BEGIN
       ('Respiratory Rate', '/min'),
       ('Oxygen Saturation', '%'),
       ('Weight', 'kg'),
-      ('Height', 'cm')
+      ('Height', 'cm'),
+      ('Pain Score', NULL)
   ) AS seed(name, default_unit)
   WHERE NOT EXISTS (
     SELECT 1 FROM public.predefined_vital_signs pvs

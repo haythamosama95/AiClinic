@@ -23,7 +23,8 @@ sql_tests=(
   visit_medical_records_crud.sql
   visit_medical_records_rls.sql
   visit_attachment_storage_rls.sql
-  patient_visit_attachments_list.sql
+  visit_encounter_workspace_crud.sql
+  visit_encounter_workspace_rls.sql
 )
 
 for f in "${sql_tests[@]}"; do
