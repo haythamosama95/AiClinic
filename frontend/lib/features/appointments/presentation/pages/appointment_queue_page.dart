@@ -8,7 +8,6 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
@@ -121,11 +120,6 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
                         AppButton(label: 'Retry', variant: AppButtonVariant.secondary, onPressed: controller.refresh),
                       ],
                     ),
-                  ),
-                if (state.realtimeConnection == AppointmentQueueRealtimeConnection.degraded)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(SpacingTokens.lg, 0, SpacingTokens.lg, SpacingTokens.sm),
-                    child: _RealtimeDegradedBanner(onRefresh: controller.refresh),
                   ),
                 Expanded(
                   child: Padding(
@@ -385,46 +379,6 @@ class _QueuePermissionDenied extends StatelessWidget {
               'You need appointment permissions to view the clinic queue.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RealtimeDegradedBanner extends StatelessWidget {
-  const _RealtimeDegradedBanner({required this.onRefresh});
-
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.accent.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.sm),
-        child: Row(
-          children: [
-            Icon(Icons.cloud_off_outlined, size: 18, color: colors.foreground),
-            const SizedBox(width: SpacingTokens.sm),
-            Expanded(
-              child: Text(
-                'Live updates are unavailable. The queue may be out of date.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.foreground),
-              ),
-            ),
-            AppButton(
-              label: 'Refresh',
-              variant: AppButtonVariant.secondary,
-              size: AppFieldSize.sm,
-              onPressed: onRefresh,
             ),
           ],
         ),
