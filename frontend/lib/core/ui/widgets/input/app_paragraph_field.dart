@@ -108,6 +108,7 @@ class AppParagraphField extends StatefulWidget {
     this.controller,
     this.quillController,
     this.richText = false,
+    this.transparentBackground = false,
     this.expands = false,
     this.minLines = 4,
     this.maxLines,
@@ -126,6 +127,10 @@ class AppParagraphField extends StatefulWidget {
   final TextEditingController? controller;
   final QuillController? quillController;
   final bool richText;
+
+  /// When `true`, the rich-text editor chrome is transparent so the parent
+  /// container's background shows through. Ignored in plain mode.
+  final bool transparentBackground;
 
   /// When `false`, height is fixed to [minLines] and content scrolls inside.
   /// When `true`, the field grows vertically as text is added.
@@ -225,6 +230,7 @@ class _AppParagraphFieldState extends State<AppParagraphField> {
             maxHeight: _resolvedMaxHeight,
             focused: _focused,
             hasError: widget.error != null,
+            transparentBackground: widget.transparentBackground,
           )
         : _PlainParagraphEditor(
             controller: _textController,
@@ -291,6 +297,7 @@ class _RichParagraphEditor extends StatelessWidget {
     required this.expands,
     required this.focused,
     required this.hasError,
+    this.transparentBackground = false,
     this.hintText,
     this.maxHeight,
   });
@@ -305,12 +312,15 @@ class _RichParagraphEditor extends StatelessWidget {
   final double? maxHeight;
   final bool focused;
   final bool hasError;
+  final bool transparentBackground;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
     final padding = _paragraphContentPadding(size);
+    final fieldBackground = transparentBackground ? Colors.transparent : colors.background;
+    final toolbarBackground = transparentBackground ? Colors.transparent : colors.muted.withValues(alpha: 0.35);
     final borderColor = hasError
         ? theme.colorScheme.error
         : focused
@@ -339,7 +349,7 @@ class _RichParagraphEditor extends StatelessWidget {
           children: [
             DecoratedBox(
               decoration: BoxDecoration(
-                color: colors.muted.withValues(alpha: 0.35),
+                color: toolbarBackground,
                 border: Border(bottom: BorderSide(color: colors.border)),
               ),
               child: Align(
@@ -371,7 +381,7 @@ class _RichParagraphEditor extends StatelessWidget {
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
         decoration: BoxDecoration(
-          color: colors.background,
+          color: fieldBackground,
           borderRadius: BorderRadius.circular(RadiusTokens.lg),
           border: Border.all(color: borderColor, width: 1),
         ),
@@ -391,6 +401,7 @@ class AppParagraphFormField extends StatefulWidget {
     this.controller,
     this.quillController,
     this.richText = false,
+    this.transparentBackground = false,
     this.expands = false,
     this.minLines = 4,
     this.maxLines,
@@ -409,6 +420,7 @@ class AppParagraphFormField extends StatefulWidget {
   final TextEditingController? controller;
   final QuillController? quillController;
   final bool richText;
+  final bool transparentBackground;
   final bool expands;
   final int minLines;
   final int? maxLines;
@@ -469,6 +481,7 @@ class _AppParagraphFormFieldState extends State<AppParagraphFormField> {
             error: state.errorText,
             quillController: _quillController,
             richText: true,
+            transparentBackground: widget.transparentBackground,
             expands: widget.expands,
             minLines: widget.minLines,
             maxLines: widget.maxLines,
