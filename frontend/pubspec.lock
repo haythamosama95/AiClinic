@@ -350,10 +350,11 @@ packages:
   flutter_quill:
     dependency: "direct main"
     description:
-      name: flutter_quill
-      sha256: "3ee7125b2dd3f3bce3ebdaac722a72f0c8aff3db9aa19053a9d777db12d71c98"
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: "fix/selected-rects-fixed-length-list"
+      resolved-ref: "8fad3a9920d271a8a8bb1b897bc0727a8de2af35"
+      url: "https://github.com/Mounix99/flutter-quill.git"
+    source: git
     version: "11.5.1"
   flutter_quill_delta_from_html:
     dependency: transitive

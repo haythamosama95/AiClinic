@@ -29,6 +29,12 @@ FTextFieldStyleDelta _paragraphFieldStyle(AppFieldSize size, int minLines) => FT
   constraints: BoxConstraints(minHeight: _paragraphMinHeight(size, minLines)),
 );
 
+bool _isQuillDocumentEmpty(QuillController controller) {
+  final raw = controller.document.toPlainText();
+  final text = raw.endsWith('\n') ? raw.substring(0, raw.length - 1) : raw;
+  return text.trim().isEmpty;
+}
+
 DefaultStyles _paragraphEditorStyles(BuildContext context) {
   final theme = Theme.of(context);
   final colors = context.semanticColors;
@@ -109,6 +115,8 @@ class AppParagraphField extends StatefulWidget {
     this.quillController,
     this.richText = false,
     this.transparentBackground = false,
+    this.removeBorder = false,
+    this.fitParent = false,
     this.expands = false,
     this.minLines = 4,
     this.maxLines,
@@ -117,6 +125,9 @@ class AppParagraphField extends StatefulWidget {
     this.size = AppFieldSize.md,
     this.onChanged,
     this.onDocumentChanged,
+    this.toolbarLeading,
+    this.emptyStateIcon,
+    this.emptyStateText,
     super.key,
   });
 
@@ -132,6 +143,13 @@ class AppParagraphField extends StatefulWidget {
   /// container's background shows through. Ignored in plain mode.
   final bool transparentBackground;
 
+  /// When `true` (rich mode only), the outer field border is omitted.
+  final bool removeBorder;
+
+  /// When `true` (rich mode only), the field fills a bounded parent height:
+  /// the toolbar stays pinned and the editor scrolls in the remaining space.
+  final bool fitParent;
+
   /// When `false`, height is fixed to [minLines] and content scrolls inside.
   /// When `true`, the field grows vertically as text is added.
   final bool expands;
@@ -143,6 +161,15 @@ class AppParagraphField extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<Document>? onDocumentChanged;
 
+  /// Optional widget pinned to the left of the rich-text toolbar row.
+  final Widget? toolbarLeading;
+
+  /// When set (rich mode only), shown centered while the document is empty.
+  final IconData? emptyStateIcon;
+
+  /// When set (rich mode only), shown centered while the document is empty.
+  final String? emptyStateText;
+
   @override
   State<AppParagraphField> createState() => _AppParagraphFieldState();
 }
@@ -152,6 +179,7 @@ class _AppParagraphFieldState extends State<AppParagraphField> {
   QuillController? _ownedQuillController;
   final _focusNode = FocusNode();
   var _focused = false;
+  var _emptyStateDismissed = false;
 
   TextEditingController get _textController => widget.controller ?? _ownedTextController!;
 
@@ -196,12 +224,27 @@ class _AppParagraphFieldState extends State<AppParagraphField> {
   void _handleFocusChange() {
     final focused = _focusNode.hasFocus;
     if (focused != _focused) {
-      setState(() => _focused = focused);
+      setState(() {
+        _focused = focused;
+        if (focused) {
+          _emptyStateDismissed = true;
+        } else if (_isQuillDocumentEmpty(_quillController)) {
+          _emptyStateDismissed = false;
+        }
+      });
     }
+  }
+
+  void _handleEmptyStatePressed() {
+    if (!_emptyStateDismissed) {
+      setState(() => _emptyStateDismissed = true);
+    }
+    _focusNode.requestFocus();
   }
 
   void _handleQuillChange() {
     widget.onDocumentChanged?.call(_quillController.document);
+    setState(() {});
   }
 
   double get _resolvedMinHeight => widget.minHeight ?? _paragraphMinHeight(widget.size, widget.minLines);
@@ -215,6 +258,12 @@ class _AppParagraphFieldState extends State<AppParagraphField> {
     }
     return _paragraphMinHeight(widget.size, maxLines);
   }
+
+  bool get _shouldShowEmptyState =>
+      !_emptyStateDismissed &&
+      !_focused &&
+      _isQuillDocumentEmpty(_quillController) &&
+      (widget.emptyStateIcon != null || widget.emptyStateText != null);
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +280,13 @@ class _AppParagraphFieldState extends State<AppParagraphField> {
             focused: _focused,
             hasError: widget.error != null,
             transparentBackground: widget.transparentBackground,
+            removeBorder: widget.removeBorder,
+            fitParent: widget.fitParent,
+            toolbarLeading: widget.toolbarLeading,
+            emptyStateIcon: widget.emptyStateIcon,
+            emptyStateText: widget.emptyStateText,
+            showEmptyState: _shouldShowEmptyState,
+            onEmptyStatePressed: _handleEmptyStatePressed,
           )
         : _PlainParagraphEditor(
             controller: _textController,
@@ -287,6 +343,86 @@ class _PlainParagraphEditor extends StatelessWidget {
   }
 }
 
+/// Rich-text toolbar with a leading fade divider under the button row.
+class _ToolbarWithFadingDivider extends StatelessWidget {
+  const _ToolbarWithFadingDivider({required this.controller, required this.config, required this.dividerColor});
+
+  final QuillController controller;
+  final QuillSimpleToolbarConfig config;
+  final Color dividerColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 1),
+          child: QuillSimpleToolbar(controller: controller, config: config),
+        ),
+        Positioned(left: 0, right: 0, bottom: 0, child: _FadingToolbarDivider(color: dividerColor)),
+      ],
+    );
+  }
+}
+
+/// Horizontal rule under the rich-text toolbar that fades out at the leading edge.
+class _FadingToolbarDivider extends StatelessWidget {
+  const _FadingToolbarDivider({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [color.withValues(alpha: 0), color.withValues(alpha: 0.45), color],
+            stops: const [0, 0.35, 1],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Centered prompt shown in an empty rich-text field.
+class _RichParagraphEmptyState extends StatelessWidget {
+  const _RichParagraphEmptyState({this.icon, this.text});
+
+  final IconData? icon;
+  final String? text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.semanticColors;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 32, color: colors.mutedForeground),
+            if (text != null) const SizedBox(height: SpacingTokens.sm),
+          ],
+          if (text != null)
+            Text(
+              text!,
+              style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
+              textAlign: TextAlign.center,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RichParagraphEditor extends StatelessWidget {
   const _RichParagraphEditor({
     required this.controller,
@@ -298,8 +434,15 @@ class _RichParagraphEditor extends StatelessWidget {
     required this.focused,
     required this.hasError,
     this.transparentBackground = false,
+    this.removeBorder = false,
+    this.fitParent = false,
     this.hintText,
     this.maxHeight,
+    this.toolbarLeading,
+    this.emptyStateIcon,
+    this.emptyStateText,
+    this.showEmptyState = false,
+    this.onEmptyStatePressed,
   });
 
   final QuillController controller;
@@ -313,6 +456,13 @@ class _RichParagraphEditor extends StatelessWidget {
   final bool focused;
   final bool hasError;
   final bool transparentBackground;
+  final bool removeBorder;
+  final bool fitParent;
+  final Widget? toolbarLeading;
+  final IconData? emptyStateIcon;
+  final String? emptyStateText;
+  final bool showEmptyState;
+  final VoidCallback? onEmptyStatePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -327,45 +477,100 @@ class _RichParagraphEditor extends StatelessWidget {
         ? colors.ring
         : colors.input;
 
-    final editorBody = QuillEditor.basic(
-      focusNode: focusNode,
-      controller: controller,
-      config: QuillEditorConfig(
-        placeholder: hintText,
-        padding: padding,
-        minHeight: minHeight - padding.vertical,
-        maxHeight: maxHeight == null ? null : maxHeight! - padding.vertical,
-        scrollable: !expands || maxHeight != null,
-        customStyles: _paragraphEditorStyles(context),
-      ),
+    final editorConfig = QuillEditorConfig(
+      placeholder: hintText,
+      padding: padding,
+      minHeight: fitParent ? 0 : minHeight - padding.vertical,
+      maxHeight: fitParent ? null : (maxHeight == null ? null : maxHeight! - padding.vertical),
+      scrollable: fitParent || !expands || maxHeight != null,
+      customStyles: _paragraphEditorStyles(context),
     );
+
+    final editorBody = QuillEditor.basic(focusNode: focusNode, controller: controller, config: editorConfig);
+
+    final hasEmptyStatePrompt = emptyStateIcon != null || emptyStateText != null;
+    final editorWithEmptyState = hasEmptyStatePrompt
+        ? Stack(
+            fit: StackFit.expand,
+            children: [
+              editorBody,
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: !showEmptyState,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    opacity: showEmptyState ? 1 : 0,
+                    child: Center(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapDown: enabled ? (_) => onEmptyStatePressed?.call() : null,
+                        child: _RichParagraphEmptyState(icon: emptyStateIcon, text: emptyStateText),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          )
+        : editorBody;
+
+    final editorPane = fitParent
+        ? Expanded(child: editorWithEmptyState)
+        : expands
+        ? ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight, maxHeight: maxHeight ?? double.infinity),
+            child: editorWithEmptyState,
+          )
+        : SizedBox(height: minHeight, child: editorWithEmptyState);
+
+    final toolbarConfig = _minimalToolbarConfig(context);
+
+    final toolbarChrome = toolbarLeading == null
+        ? DecoratedBox(
+            decoration: BoxDecoration(
+              color: toolbarBackground,
+              border: Border(bottom: BorderSide(color: colors.border)),
+            ),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: QuillSimpleToolbar(controller: controller, config: toolbarConfig),
+            ),
+          )
+        : DecoratedBox(
+            decoration: BoxDecoration(color: toolbarBackground),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                SpacingTokens.sm,
+                SpacingTokens.xs,
+                SpacingTokens.sm,
+                SpacingTokens.xs,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  toolbarLeading!,
+                  const SizedBox(width: SpacingTokens.md),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: _ToolbarWithFadingDivider(
+                        controller: controller,
+                        config: toolbarConfig,
+                        dividerColor: colors.border,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
 
     final editor = IgnorePointer(
       ignoring: !enabled,
       child: Opacity(
         opacity: enabled ? 1 : 0.55,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: toolbarBackground,
-                border: Border(bottom: BorderSide(color: colors.border)),
-              ),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: QuillSimpleToolbar(controller: controller, config: _minimalToolbarConfig(context)),
-              ),
-            ),
-            if (expands)
-              ConstrainedBox(
-                constraints: BoxConstraints(minHeight: minHeight, maxHeight: maxHeight ?? double.infinity),
-                child: editorBody,
-              )
-            else
-              SizedBox(height: minHeight, child: editorBody),
-          ],
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [toolbarChrome, editorPane]),
       ),
     );
 
@@ -383,7 +588,7 @@ class _RichParagraphEditor extends StatelessWidget {
         decoration: BoxDecoration(
           color: fieldBackground,
           borderRadius: BorderRadius.circular(RadiusTokens.lg),
-          border: Border.all(color: borderColor, width: 1),
+          border: removeBorder ? null : Border.all(color: borderColor, width: 1),
         ),
         clipBehavior: Clip.antiAlias,
         child: editor,
@@ -402,6 +607,7 @@ class AppParagraphFormField extends StatefulWidget {
     this.quillController,
     this.richText = false,
     this.transparentBackground = false,
+    this.removeBorder = false,
     this.expands = false,
     this.minLines = 4,
     this.maxLines,
@@ -411,6 +617,8 @@ class AppParagraphFormField extends StatefulWidget {
     this.validator,
     this.onChanged,
     this.onDocumentChanged,
+    this.emptyStateIcon,
+    this.emptyStateText,
     super.key,
   });
 
@@ -421,6 +629,7 @@ class AppParagraphFormField extends StatefulWidget {
   final QuillController? quillController;
   final bool richText;
   final bool transparentBackground;
+  final bool removeBorder;
   final bool expands;
   final int minLines;
   final int? maxLines;
@@ -430,6 +639,8 @@ class AppParagraphFormField extends StatefulWidget {
   final String? Function(String?)? validator;
   final ValueChanged<String>? onChanged;
   final ValueChanged<Document>? onDocumentChanged;
+  final IconData? emptyStateIcon;
+  final String? emptyStateText;
 
   @override
   State<AppParagraphFormField> createState() => _AppParagraphFormFieldState();
@@ -482,6 +693,7 @@ class _AppParagraphFormFieldState extends State<AppParagraphFormField> {
             quillController: _quillController,
             richText: true,
             transparentBackground: widget.transparentBackground,
+            removeBorder: widget.removeBorder,
             expands: widget.expands,
             minLines: widget.minLines,
             maxLines: widget.maxLines,
@@ -492,6 +704,8 @@ class _AppParagraphFormFieldState extends State<AppParagraphFormField> {
               state.didChange(document.toPlainText());
               widget.onDocumentChanged?.call(document);
             },
+            emptyStateIcon: widget.emptyStateIcon,
+            emptyStateText: widget.emptyStateText,
           );
         },
       );

@@ -1,4 +1,3 @@
-import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_documentation_layout.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_objective.dart';
@@ -24,7 +23,6 @@ void main() {
       await pumpEncounterWidget(
         tester,
         docState: state,
-        patientSafety: const PatientSafetyContext(),
         child: EncounterDocumentationLayout(
           phases: [
             EncounterPhaseSubjective(visitId: encounterTestVisitId, state: state, canEdit: true),
@@ -44,12 +42,6 @@ void main() {
         expect(find.byKey(phaseKey), findsOneWidget);
       }
 
-      expectUniquePhaseAncestor(
-        tester,
-        const Key('encounter_context_visit_type'),
-        const Key('encounter_phase_subjective'),
-        otherPhaseKeysThan(const Key('encounter_phase_subjective')),
-      );
       expectUniquePhaseAncestor(
         tester,
         const Key('clinical_note_complaint'),

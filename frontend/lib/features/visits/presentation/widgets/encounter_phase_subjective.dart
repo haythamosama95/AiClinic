@@ -9,7 +9,6 @@ import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
 /// Subjective phase — Complaint, History, and patient context (014 US2).
@@ -44,28 +43,15 @@ class EncounterPhaseSubjective extends ConsumerWidget {
   }
 
   Widget _buildIntakeLayout({required bool expandField}) {
-    return Row(
-      crossAxisAlignment: expandField ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
-      children: [
-        Expanded(flex: 2, child: _complaintHistoryColumn(expandField: expandField)),
-        const SizedBox(width: VisitPageTokens.sectionGap),
-        Expanded(
-          flex: 1,
-          child: EncounterPhaseContext(
-            visit: state.visit,
-            canEdit: canEdit,
-            safetyAxis: Axis.vertical,
-            expandSafetySections: expandField,
-          ),
-        ),
-      ],
-    );
+    return _complaintHistoryColumn(expandField: expandField);
   }
 
   Widget _complaintHistoryColumn({required bool expandField}) {
     final complaint = _SubjectiveFieldCard(
       title: 'Complaint',
+      titleIcon: Icons.speaker_notes_outlined,
       expandBody: expandField,
+      embedTitleInToolbar: true,
       child: ClinicalNoteEditor(
         visitId: visitId,
         state: state,
@@ -73,15 +59,22 @@ class EncounterPhaseSubjective extends ConsumerWidget {
         sections: const {ClinicalNoteSection.complaint},
         showSectionHeaders: false,
         expandField: expandField,
+        useRichTextParagraph: true,
+        removeBorder: true,
         showStaleBanner: true,
         showSaveBar: showClinicalNoteSaveBar,
         showEditButton: true,
+        toolbarLeading: _SubjectiveToolbarTitle(title: 'Complaint', icon: Icons.speaker_notes_outlined),
+        emptyStateIcon: Icons.speaker_notes_outlined,
+        emptyStateText: 'Start entering the complaint',
       ),
     );
 
     final history = _SubjectiveFieldCard(
       title: 'History',
+      titleIcon: Icons.history_outlined,
       expandBody: expandField,
+      embedTitleInToolbar: true,
       child: ClinicalNoteEditor(
         visitId: visitId,
         state: state,
@@ -89,8 +82,13 @@ class EncounterPhaseSubjective extends ConsumerWidget {
         sections: const {ClinicalNoteSection.history},
         showSectionHeaders: false,
         expandField: expandField,
+        useRichTextParagraph: true,
+        removeBorder: true,
         showStaleBanner: false,
         showSaveBar: false,
+        toolbarLeading: _SubjectiveToolbarTitle(title: 'History', icon: Icons.history_outlined),
+        emptyStateIcon: Icons.history_outlined,
+        emptyStateText: 'Start entering the history',
       ),
     );
 
@@ -139,74 +137,120 @@ class EncounterPhaseSubjectiveDetail extends StatelessWidget {
       return EncounterPhaseSubjective(visitId: visitId, state: state!, canEdit: true);
     }
 
-    final contextVisit = visit ?? state?.visit;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          flex: 2,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _SubjectiveFieldCard(
-                title: 'Complaint',
-                child: _SubjectiveDetailText(value: note?.complaint ?? ''),
-              ),
-              const SizedBox(height: VisitPageTokens.sectionGap),
-              _SubjectiveFieldCard(
-                title: 'History',
-                child: _SubjectiveDetailText(value: note?.history ?? ''),
-              ),
-            ],
-          ),
+        _SubjectiveFieldCard(
+          title: 'Complaint',
+          titleIcon: Icons.speaker_notes_outlined,
+          child: _SubjectiveDetailText(value: note?.complaint ?? ''),
         ),
-        if (contextVisit != null) ...[
-          const SizedBox(width: VisitPageTokens.sectionGap),
-          Expanded(
-            flex: 1,
-            child: EncounterPhaseContext(visit: contextVisit, safetyAxis: Axis.vertical),
-          ),
-        ],
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        _SubjectiveFieldCard(
+          title: 'History',
+          titleIcon: Icons.history_outlined,
+          child: _SubjectiveDetailText(value: note?.history ?? ''),
+        ),
       ],
     );
   }
 }
 
 class _SubjectiveFieldCard extends StatelessWidget {
-  const _SubjectiveFieldCard({required this.title, required this.child, this.expandBody = false});
+  const _SubjectiveFieldCard({
+    required this.title,
+    required this.titleIcon,
+    required this.child,
+    this.expandBody = false,
+    this.embedTitleInToolbar = false,
+  });
 
   final String title;
+  final IconData titleIcon;
   final Widget child;
   final bool expandBody;
+  final bool embedTitleInToolbar;
 
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
     final colors = context.semanticColors;
+    final borderRadius = BorderRadius.circular(context.shapeTokens.lg);
 
-    final body = Padding(
-      padding: const EdgeInsets.fromLTRB(SpacingTokens.md, 0, SpacingTokens.md, SpacingTokens.md),
-      child: child,
-    );
+    final bodyPadding = embedTitleInToolbar
+        ? const EdgeInsets.all(SpacingTokens.md)
+        : const EdgeInsets.fromLTRB(SpacingTokens.md, 0, SpacingTokens.md, SpacingTokens.md);
+
+    final body = Padding(padding: bodyPadding, child: child);
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.card,
-        borderRadius: BorderRadius.circular(context.shapeTokens.lg),
+        borderRadius: borderRadius,
         border: Border.all(color: colors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(SpacingTokens.md, SpacingTokens.md, SpacingTokens.md, SpacingTokens.md),
-            child: Text(title, style: theme.title()),
-          ),
-          if (expandBody) Expanded(child: body) else body,
-        ],
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [theme.pulse.withValues(alpha: 0.12), theme.pulse.withValues(alpha: 0)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                ),
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                if (!embedTitleInToolbar)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      SpacingTokens.md,
+                      SpacingTokens.md,
+                      SpacingTokens.md,
+                      SpacingTokens.md,
+                    ),
+                    child: Row(
+                      spacing: SpacingTokens.sm,
+                      children: [
+                        Icon(titleIcon, size: 20, color: theme.pulse),
+                        Text(title, style: theme.title()),
+                      ],
+                    ),
+                  ),
+                if (expandBody) Expanded(child: body) else body,
+              ],
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _SubjectiveToolbarTitle extends StatelessWidget {
+  const _SubjectiveToolbarTitle({required this.title, required this.icon});
+
+  final String title;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.visitTheme;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: SpacingTokens.sm,
+      children: [
+        Icon(icon, size: 20, color: theme.pulse),
+        Text(title, style: theme.title()),
+      ],
     );
   }
 }

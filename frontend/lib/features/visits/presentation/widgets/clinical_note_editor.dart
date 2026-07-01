@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -21,6 +22,11 @@ class ClinicalNoteEditor extends ConsumerWidget {
     this.showEditButton = false,
     this.showSectionHeaders = true,
     this.expandField = false,
+    this.useRichTextParagraph = false,
+    this.removeBorder = false,
+    this.toolbarLeading,
+    this.emptyStateIcon,
+    this.emptyStateText,
     super.key,
   });
 
@@ -33,6 +39,19 @@ class ClinicalNoteEditor extends ConsumerWidget {
   final bool showEditButton;
   final bool showSectionHeaders;
   final bool expandField;
+
+  /// Uses [AppParagraphField] rich-text mode with a transparent background.
+  final bool useRichTextParagraph;
+
+  /// When `true`, omits the rich-text field border (see [AppParagraphField.removeBorder]).
+  final bool removeBorder;
+
+  /// Pinned to the left of the rich-text toolbar row when [useRichTextParagraph] is true.
+  final Widget? toolbarLeading;
+
+  /// Shown centered in the rich-text field while empty (see [AppParagraphField]).
+  final IconData? emptyStateIcon;
+  final String? emptyStateText;
 
   Set<ClinicalNoteSection> get _visibleSections => sections ?? ClinicalNoteSection.values.toSet();
 
@@ -64,6 +83,11 @@ class ClinicalNoteEditor extends ConsumerWidget {
       showSaveBar: showSaveBar,
       showSectionHeaders: showSectionHeaders,
       expandField: expandField,
+      useRichTextParagraph: useRichTextParagraph,
+      removeBorder: removeBorder,
+      toolbarLeading: toolbarLeading,
+      emptyStateIcon: emptyStateIcon,
+      emptyStateText: emptyStateText,
     );
   }
 }
@@ -77,6 +101,11 @@ class _EditableClinicalNote extends ConsumerStatefulWidget {
     required this.showSaveBar,
     required this.showSectionHeaders,
     required this.expandField,
+    required this.useRichTextParagraph,
+    required this.removeBorder,
+    this.toolbarLeading,
+    this.emptyStateIcon,
+    this.emptyStateText,
   });
 
   final String visitId;
@@ -86,6 +115,11 @@ class _EditableClinicalNote extends ConsumerStatefulWidget {
   final bool showSaveBar;
   final bool showSectionHeaders;
   final bool expandField;
+  final bool useRichTextParagraph;
+  final bool removeBorder;
+  final Widget? toolbarLeading;
+  final IconData? emptyStateIcon;
+  final String? emptyStateText;
 
   @override
   ConsumerState<_EditableClinicalNote> createState() => _EditableClinicalNoteState();
@@ -93,6 +127,7 @@ class _EditableClinicalNote extends ConsumerStatefulWidget {
 
 class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
   late final Map<ClinicalNoteSection, TextEditingController> _controllers;
+  Map<ClinicalNoteSection, QuillController>? _quillControllers;
 
   @override
   void initState() {
@@ -101,6 +136,11 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
       for (final section in ClinicalNoteSection.values)
         section: TextEditingController(text: _textForSection(widget.state, section)),
     };
+    if (widget.useRichTextParagraph) {
+      _quillControllers = {
+        for (final section in widget.sections) section: _quillFromPlainText(_textForSection(widget.state, section)),
+      };
+    }
   }
 
   @override
@@ -111,12 +151,20 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
       for (final section in ClinicalNoteSection.values) {
         _controllers[section]!.text = _textForSection(widget.state, section);
       }
+      if (_quillControllers != null) {
+        for (final section in widget.sections) {
+          _setQuillPlainText(_quillControllers![section]!, _textForSection(widget.state, section));
+        }
+      }
     }
   }
 
   @override
   void dispose() {
     for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _quillControllers?.values ?? const <QuillController>[]) {
       controller.dispose();
     }
     super.dispose();
@@ -158,10 +206,16 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
               abbr: orderedSections.first.abbr,
               label: orderedSections.first.label,
               controller: _controllers[orderedSections.first]!,
+              quillController: _quillControllers?[orderedSections.first],
+              useRichTextParagraph: widget.useRichTextParagraph,
+              removeBorder: widget.removeBorder,
               enabled: !isSaving,
               onChanged: _onChangedForSection(notifier, orderedSections.first),
               showSectionHeader: widget.showSectionHeaders,
               expand: true,
+              toolbarLeading: widget.toolbarLeading,
+              emptyStateIcon: widget.emptyStateIcon,
+              emptyStateText: widget.emptyStateText,
             ),
           )
         else
@@ -171,10 +225,16 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
               abbr: orderedSections[i].abbr,
               label: orderedSections[i].label,
               controller: _controllers[orderedSections[i]]!,
+              quillController: _quillControllers?[orderedSections[i]],
+              useRichTextParagraph: widget.useRichTextParagraph,
+              removeBorder: widget.removeBorder,
               enabled: !isSaving,
               onChanged: _onChangedForSection(notifier, orderedSections[i]),
               showDivider: i < orderedSections.length - 1,
               showSectionHeader: widget.showSectionHeaders,
+              toolbarLeading: i == 0 ? widget.toolbarLeading : null,
+              emptyStateIcon: widget.emptyStateIcon,
+              emptyStateText: widget.emptyStateText,
             ),
           ],
         if (widget.showSaveBar) ...[
@@ -336,26 +396,69 @@ class _ClinicalNoteField extends StatelessWidget {
     required this.controller,
     required this.onChanged,
     required this.enabled,
+    this.quillController,
+    this.useRichTextParagraph = false,
+    this.removeBorder = false,
     this.showDivider = true,
     this.showSectionHeader = true,
     this.expand = false,
+    this.toolbarLeading,
+    this.emptyStateIcon,
+    this.emptyStateText,
     super.key,
   });
 
   final String abbr;
   final String label;
   final TextEditingController controller;
+  final QuillController? quillController;
+  final bool useRichTextParagraph;
+  final bool removeBorder;
   final ValueChanged<String> onChanged;
   final bool enabled;
   final bool showDivider;
   final bool showSectionHeader;
   final bool expand;
+  final Widget? toolbarLeading;
+  final IconData? emptyStateIcon;
+  final String? emptyStateText;
+
+  Widget _richParagraphField({required bool fitParent}) {
+    return AppParagraphField(
+      richText: true,
+      transparentBackground: true,
+      removeBorder: removeBorder,
+      fitParent: fitParent,
+      quillController: quillController,
+      enabled: enabled,
+      minLines: 3,
+      toolbarLeading: toolbarLeading,
+      emptyStateIcon: emptyStateIcon,
+      emptyStateText: emptyStateText,
+      onDocumentChanged: (document) => onChanged(_plainTextFromQuillDocument(document)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
 
     if (!showSectionHeader) {
+      if (useRichTextParagraph && quillController != null) {
+        if (expand) {
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final height = constraints.maxHeight;
+              if (!height.isFinite) {
+                return _richParagraphField(fitParent: false);
+              }
+              return SizedBox(height: height, child: _richParagraphField(fitParent: true));
+            },
+          );
+        }
+        return _richParagraphField(fitParent: false);
+      }
+
       return VisitTextInput(
         controller: controller,
         enabled: enabled,
@@ -408,3 +511,25 @@ String _textForSection(VisitDocumentationState state, ClinicalNoteSection sectio
   ClinicalNoteSection.diagnosis => state.diagnosis,
   ClinicalNoteSection.plan => state.plan,
 };
+
+String _plainTextFromQuillDocument(Document document) {
+  final raw = document.toPlainText();
+  if (raw.endsWith('\n')) {
+    return raw.substring(0, raw.length - 1);
+  }
+  return raw;
+}
+
+QuillController _quillFromPlainText(String text) {
+  final controller = QuillController.basic();
+  if (text.isNotEmpty) {
+    _setQuillPlainText(controller, text);
+  }
+  return controller;
+}
+
+void _setQuillPlainText(QuillController controller, String text) {
+  final current = controller.plainTextEditingValue.text;
+  final deleteLen = current.isEmpty ? 0 : current.length - 1;
+  controller.replaceText(0, deleteLen, text, TextSelection.collapsed(offset: text.length));
+}

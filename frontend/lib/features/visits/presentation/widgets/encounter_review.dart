@@ -8,7 +8,6 @@ import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_result_capture_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
@@ -66,8 +65,6 @@ class EncounterReview extends StatelessWidget {
                 VisitDetailField(label: 'Complaint', value: _complaint, abbr: 'C'),
                 const SizedBox(height: SpacingTokens.sm),
                 VisitDetailField(label: 'History', value: _history, abbr: 'H'),
-                const SizedBox(height: VisitPageTokens.sectionGap),
-                EncounterPhaseContext(visit: visit, canEdit: canEdit),
               ],
             ),
           ),
