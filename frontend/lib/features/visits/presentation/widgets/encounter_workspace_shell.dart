@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
@@ -59,7 +60,17 @@ class EncounterWorkspaceShell extends ConsumerWidget {
                       initiallyExpanded: {activePhase.isDocumentation ? activePhase : EncounterPhase.subjective},
                     ),
                   )
-                : _phasePage(activePhase, selectPhase),
+                : AppPageFadeTransition(
+                    key: const Key('encounter_phase_page_transition'),
+                    index: activePhase.orderIndex,
+                    children: [
+                      for (final phase in EncounterPhase.ordered)
+                        KeyedSubtree(
+                          key: Key('encounter_phase_page_${phase.name}'),
+                          child: _phasePage(phase, selectPhase),
+                        ),
+                    ],
+                  ),
           ),
         ],
       ),

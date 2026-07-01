@@ -68,6 +68,7 @@ void main() {
 
       expect(find.byKey(const Key('encounter_workspace_shell')), findsOneWidget);
       expect(find.byKey(const Key('encounter_stepper')), findsOneWidget);
+      expect(find.byKey(const Key('encounter_phase_page_transition')), findsOneWidget);
       expect(find.byKey(const Key('encounter_phase_subjective')), findsOneWidget);
       expect(find.byKey(const Key('encounter_sticky_footer')), findsNothing);
     });

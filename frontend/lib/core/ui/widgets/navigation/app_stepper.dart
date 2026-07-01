@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/theme/theme.dart';
+import 'package:ai_clinic/core/ui/widgets/navigation/app_page_fade_transition.dart';
 
 /// A single step in [AppStepper] with a title, optional description, and page.
 class AppStepperStep {
@@ -133,7 +134,7 @@ class _AppStepperState extends State<AppStepper> {
     );
 
     final content = Expanded(
-      child: _AppStepperPageTransition(
+      child: AppPageFadeTransition(
         index: _activeStep,
         duration: widget.pageTransitionDuration,
         children: [for (final step in widget.steps) step.page],
@@ -763,100 +764,5 @@ class _StepMarker extends StatelessWidget {
       ),
       _StepVisualState.completed => const SizedBox.shrink(),
     };
-  }
-}
-
-/// Fades the outgoing page out, swaps content, then fades the incoming page in.
-class _AppStepperPageTransition extends StatefulWidget {
-  const _AppStepperPageTransition({required this.index, required this.children, required this.duration});
-
-  final int index;
-  final List<Widget> children;
-  final Duration duration;
-
-  @override
-  State<_AppStepperPageTransition> createState() => _AppStepperPageTransitionState();
-}
-
-class _AppStepperPageTransitionState extends State<_AppStepperPageTransition> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _opacity;
-  late int _visibleIndex;
-  int? _queuedIndex;
-  var _isTransitioning = false;
-
-  static const _curve = Curves.easeInOut;
-
-  @override
-  void initState() {
-    super.initState();
-    _visibleIndex = widget.index;
-    _controller = AnimationController(vsync: this, duration: widget.duration);
-    _opacity = CurvedAnimation(parent: _controller, curve: _curve);
-    _controller.value = 1;
-  }
-
-  @override
-  void didUpdateWidget(covariant _AppStepperPageTransition oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.duration != oldWidget.duration) {
-      _controller.duration = widget.duration;
-    }
-    if (widget.index != _visibleIndex && widget.index != _queuedIndex) {
-      _queueTransition(widget.index);
-    }
-  }
-
-  void _queueTransition(int targetIndex) {
-    if (_isTransitioning) {
-      _queuedIndex = targetIndex;
-      return;
-    }
-    _runTransition(targetIndex);
-  }
-
-  Future<void> _runTransition(int targetIndex) async {
-    _isTransitioning = true;
-    _queuedIndex = null;
-
-    await _controller.reverse();
-    if (!mounted) {
-      return;
-    }
-
-    setState(() => _visibleIndex = targetIndex);
-
-    await _controller.forward();
-    if (!mounted) {
-      return;
-    }
-
-    _isTransitioning = false;
-
-    final queued = _queuedIndex;
-    if (queued != null && queued != _visibleIndex) {
-      _queueTransition(queued);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      key: const Key('app_stepper_page_transition'),
-      animation: _controller,
-      builder: (context, child) {
-        return FadeTransition(
-          opacity: _opacity,
-          child: IgnorePointer(ignoring: _isTransitioning, child: child),
-        );
-      },
-      child: IndexedStack(index: _visibleIndex, children: widget.children),
-    );
   }
 }

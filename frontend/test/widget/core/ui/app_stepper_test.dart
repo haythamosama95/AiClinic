@@ -96,10 +96,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       final fade = tester.widget<FadeTransition>(
-        find.descendant(
-          of: find.byKey(const Key('app_stepper_page_transition')),
-          matching: find.byType(FadeTransition),
-        ),
+        find.descendant(of: find.byKey(const Key('app_page_fade_transition')), matching: find.byType(FadeTransition)),
       );
       expect(fade.opacity.value, lessThan(1));
 
@@ -107,10 +104,7 @@ void main() {
       expect(find.text('Page 2'), findsOneWidget);
 
       final settledFade = tester.widget<FadeTransition>(
-        find.descendant(
-          of: find.byKey(const Key('app_stepper_page_transition')),
-          matching: find.byType(FadeTransition),
-        ),
+        find.descendant(of: find.byKey(const Key('app_page_fade_transition')), matching: find.byType(FadeTransition)),
       );
       expect(settledFade.opacity.value, 1);
     });
