@@ -13,6 +13,7 @@ abstract final class HealthProfileCardTokens {
   static const double addButtonIconSize = 16;
   static const double tileActionIconSize = 16;
   static const double gridTileExtent = 48;
+  static const double emptyMessageMaxWidth = 200;
 }
 
 /// Theme-aware styling for the health profile card — mirrors [VisitTheme] surface tokens

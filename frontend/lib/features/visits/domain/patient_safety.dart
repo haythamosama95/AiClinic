@@ -77,12 +77,11 @@ class PatientChronicCondition {
 /// Single vital from the patient's most recent prior visit (014 US6).
 @immutable
 class PatientSafetyLastVital {
-  const PatientSafetyLastVital({required this.name, required this.value, this.unit, this.measuredAt});
+  const PatientSafetyLastVital({required this.name, required this.value, this.unit});
 
   final String name;
   final String value;
   final String? unit;
-  final DateTime? measuredAt;
 
   static PatientSafetyLastVital? fromRow(Map<String, dynamic> row) {
     final name = row['name']?.toString().trim();
@@ -90,12 +89,7 @@ class PatientSafetyLastVital {
     if (name == null || name.isEmpty || value == null || value.isEmpty) {
       return null;
     }
-    return PatientSafetyLastVital(
-      name: name,
-      value: value,
-      unit: optionalVisitString(row['unit']),
-      measuredAt: parseVisitDateTime(row['measured_at']),
-    );
+    return PatientSafetyLastVital(name: name, value: value, unit: optionalVisitString(row['unit']));
   }
 }
 

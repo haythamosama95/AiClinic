@@ -113,7 +113,6 @@ enum VisitPanelKind {
   diagnosis(Icons.medical_information_outlined),
   plan(Icons.assignment_outlined),
   vitalSigns(Icons.monitor_heart_outlined),
-  painScore(Icons.sentiment_dissatisfied_outlined),
   treatment(Icons.medication_outlined),
   investigation(Icons.biotech_outlined),
   attachment(Icons.attach_file_rounded),

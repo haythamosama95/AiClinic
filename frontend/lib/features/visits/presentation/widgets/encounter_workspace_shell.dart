@@ -87,7 +87,7 @@ class EncounterWorkspaceShell extends ConsumerWidget {
       showClinicalNoteSaveBar: false,
     ).firstWhere((entry) => entry.phase == phase).child;
 
-    if (phase == EncounterPhase.subjective) {
+    if (phase == EncounterPhase.subjective || phase == EncounterPhase.objective) {
       return child;
     }
 

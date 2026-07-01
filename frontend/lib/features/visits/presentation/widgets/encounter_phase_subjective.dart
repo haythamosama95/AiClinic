@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/patient_health_tracking_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
@@ -91,7 +88,7 @@ class EncounterPhaseSubjective extends ConsumerWidget {
   }
 
   Widget _complaintHistoryColumn({required bool expandField}) {
-    final complaint = _SubjectiveFieldCard(
+    final complaint = EncounterFieldCard(
       title: 'Complaint',
       titleIcon: Icons.speaker_notes_outlined,
       expandBody: expandField,
@@ -108,13 +105,13 @@ class EncounterPhaseSubjective extends ConsumerWidget {
         showStaleBanner: true,
         showSaveBar: showClinicalNoteSaveBar,
         showEditButton: true,
-        toolbarLeading: _SubjectiveToolbarTitle(title: 'Complaint', icon: Icons.speaker_notes_outlined),
+        toolbarLeading: const EncounterToolbarTitle(title: 'Complaint', icon: Icons.speaker_notes_outlined),
         emptyStateIcon: Icons.speaker_notes_outlined,
         emptyStateText: 'Start entering the complaint',
       ),
     );
 
-    final history = _SubjectiveFieldCard(
+    final history = EncounterFieldCard(
       title: 'History',
       titleIcon: Icons.history_outlined,
       expandBody: expandField,
@@ -130,7 +127,7 @@ class EncounterPhaseSubjective extends ConsumerWidget {
         removeBorder: true,
         showStaleBanner: false,
         showSaveBar: false,
-        toolbarLeading: _SubjectiveToolbarTitle(title: 'History', icon: Icons.history_outlined),
+        toolbarLeading: const EncounterToolbarTitle(title: 'History', icon: Icons.history_outlined),
         emptyStateIcon: Icons.history_outlined,
         emptyStateText: 'Start entering the history',
       ),
@@ -185,16 +182,16 @@ class EncounterPhaseSubjectiveDetail extends StatelessWidget {
     final readOnlyColumn = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SubjectiveFieldCard(
+        EncounterFieldCard(
           title: 'Complaint',
           titleIcon: Icons.speaker_notes_outlined,
-          child: _SubjectiveDetailText(value: note?.complaint ?? ''),
+          child: EncounterDetailText(value: note?.complaint ?? ''),
         ),
         const SizedBox(height: VisitPageTokens.sectionGap),
-        _SubjectiveFieldCard(
+        EncounterFieldCard(
           title: 'History',
           titleIcon: Icons.history_outlined,
-          child: _SubjectiveDetailText(value: note?.history ?? ''),
+          child: EncounterDetailText(value: note?.history ?? ''),
         ),
       ],
     );
@@ -229,116 +226,5 @@ class EncounterPhaseSubjectiveDetail extends StatelessWidget {
         );
       },
     );
-  }
-}
-
-class _SubjectiveFieldCard extends StatelessWidget {
-  const _SubjectiveFieldCard({
-    required this.title,
-    required this.titleIcon,
-    required this.child,
-    this.expandBody = false,
-    this.embedTitleInToolbar = false,
-  });
-
-  final String title;
-  final IconData titleIcon;
-  final Widget child;
-  final bool expandBody;
-  final bool embedTitleInToolbar;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = context.visitTheme;
-    final colors = context.semanticColors;
-    final borderRadius = BorderRadius.circular(context.shapeTokens.lg);
-
-    final bodyPadding = embedTitleInToolbar
-        ? const EdgeInsets.all(SpacingTokens.md)
-        : const EdgeInsets.fromLTRB(SpacingTokens.md, 0, SpacingTokens.md, SpacingTokens.md);
-
-    final body = Padding(padding: bodyPadding, child: child);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: borderRadius,
-        border: Border.all(color: colors.border),
-      ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(decoration: BoxDecoration(gradient: theme.pulseCardGradient)),
-            ),
-            TiltedBackgroundIconStack(
-              icon: titleIcon,
-              iconSize: VisitPageTokens.subjectiveWatermarkIconSize,
-              iconColor: theme.subjectiveWatermark,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
-                children: [
-                  if (!embedTitleInToolbar)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        SpacingTokens.md,
-                        SpacingTokens.md,
-                        SpacingTokens.md,
-                        SpacingTokens.md,
-                      ),
-                      child: Row(
-                        spacing: SpacingTokens.sm,
-                        children: [
-                          Icon(titleIcon, size: 20, color: theme.pulse),
-                          Text(title, style: theme.title()),
-                        ],
-                      ),
-                    ),
-                  if (expandBody) Expanded(child: body) else body,
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SubjectiveToolbarTitle extends StatelessWidget {
-  const _SubjectiveToolbarTitle({required this.title, required this.icon});
-
-  final String title;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = context.visitTheme;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      spacing: SpacingTokens.sm,
-      children: [
-        Icon(icon, size: 20, color: theme.pulse),
-        Text(title, style: theme.title()),
-      ],
-    );
-  }
-}
-
-class _SubjectiveDetailText extends StatelessWidget {
-  const _SubjectiveDetailText({required this.value});
-
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = context.visitTheme;
-    final display = value.trim().isEmpty ? '—' : value.trim();
-    final isEmpty = value.trim().isEmpty;
-
-    return Text(display, style: theme.body(color: isEmpty ? theme.mutedInk : theme.ink));
   }
 }

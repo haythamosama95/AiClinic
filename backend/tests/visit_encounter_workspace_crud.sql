@@ -78,8 +78,6 @@ DECLARE
   v_visit_updated_at timestamptz;
   v_plan_updated_at timestamptz;
   v_start timestamptz;
-  v_vital_sign_id uuid;
-  v_measured_at timestamptz := '2026-06-15 10:30:00+00';
   v_prior_investigation_line_id uuid;
   v_followup_visit_id uuid;
   v_followup_appt_id uuid;
@@ -364,44 +362,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- US8: vital sign measured_at and investigation result capture.
-  v_result := public.create_visit_vital_sign(
-    v_visit_id, 'Heart Rate', '72', 'bpm', NULL, v_measured_at
-  );
-  v_vital_sign_id := (v_result.data ->> 'vital_sign_id')::uuid;
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_crud_results VALUES (
-    'create_visit_vital_sign_measured_at',
-    v_result.success
-      AND v_vital_sign_id IS NOT NULL
-      AND EXISTS (
-        SELECT 1
-        FROM public.visit_vital_signs vvs
-        WHERE vvs.id = v_vital_sign_id
-          AND vvs.measured_at = v_measured_at
-      ),
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.update_visit_vital_sign(
-    v_vital_sign_id, NULL, NULL, NULL, NULL, v_measured_at + interval '1 hour'
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_crud_results VALUES (
-    'update_visit_vital_sign_measured_at',
-    v_result.success
-      AND EXISTS (
-        SELECT 1
-        FROM public.visit_vital_signs vvs
-        WHERE vvs.id = v_vital_sign_id
-          AND vvs.measured_at = v_measured_at + interval '1 hour'
-      ),
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- Investigation ordered on the current visit (prior relative to follow-up).
+  -- US8: investigation result capture.
   v_result := public.create_visit_investigation(v_visit_id, 'Complete Blood Count', 'Fasting', NULL);
   v_prior_investigation_line_id := (v_result.data ->> 'investigation_line_id')::uuid;
   PERFORM set_config('role', 'postgres', true);

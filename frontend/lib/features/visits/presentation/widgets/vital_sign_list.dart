@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
@@ -10,13 +9,40 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 const _customVitalSignKey = '__custom__';
-const _painScoreName = 'pain score';
+
+/// Opens the add-vital-sign dialog used by [VitalSignList] and [VitalSignsTrackingCard].
+Future<void> showVitalSignAddDialog({
+  required BuildContext context,
+  required String visitId,
+  required List<CatalogItem> predefinedVitalSigns,
+  required VoidCallback onRefresh,
+  String? initialPredefinedId,
+}) {
+  return AppDialog.show<void>(
+    context: context,
+    title: 'Add vital sign',
+    barrierDismissible: false,
+    bodyBuilder: (dialogContext) => _VitalSignAddDialogBody(
+      visitId: visitId,
+      predefinedVitalSigns: predefinedVitalSigns,
+      initialPredefinedId: initialPredefinedId,
+      hostContext: context,
+      onCancel: () => Navigator.of(dialogContext).pop(),
+      onRefresh: onRefresh,
+      onSaved: () {
+        Navigator.of(dialogContext).pop();
+        onRefresh();
+      },
+    ),
+  );
+}
 
 /// Editable vital sign list for visit documentation (013 US2).
 class VitalSignList extends ConsumerStatefulWidget {
@@ -28,6 +54,8 @@ class VitalSignList extends ConsumerStatefulWidget {
     required this.onChanged,
     required this.sectionTitle,
     required this.sectionKind,
+    this.showSectionCard = true,
+    this.embeddedInTrackingCard = false,
     super.key,
   });
 
@@ -38,19 +66,32 @@ class VitalSignList extends ConsumerStatefulWidget {
   final VoidCallback onChanged;
   final String sectionTitle;
   final VisitPanelKind sectionKind;
+  final bool showSectionCard;
+  final bool embeddedInTrackingCard;
 
   @override
   ConsumerState<VitalSignList> createState() => _VitalSignListState();
 }
 
 class _VitalSignListState extends ConsumerState<VitalSignList> {
-  bool _showAddForm = false;
   String? _editingVitalSignId;
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  Future<void> _openAddDialog({String? initialPredefinedId}) async {
+    if (_isSubmitting) return;
+
+    await showVitalSignAddDialog(
+      context: context,
+      visitId: widget.visitId,
+      predefinedVitalSigns: widget.predefinedVitalSigns,
+      onRefresh: widget.onChanged,
+      initialPredefinedId: initialPredefinedId,
+    );
+  }
+
   List<Widget>? _shelfActions() {
-    if (!widget.canEdit || _showAddForm) return null;
+    if (!widget.canEdit || widget.embeddedInTrackingCard) return null;
 
     return [
       AppNotchedCardAction(
@@ -60,12 +101,7 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
           label: 'Add vital sign',
           size: AppFieldSize.sm,
           icon: const Icon(Icons.add, size: 18),
-          onPressed: _isSubmitting
-              ? null
-              : () => setState(() {
-                  _showAddForm = true;
-                  _editingVitalSignId = null;
-                }),
+          onPressed: _isSubmitting ? null : () => _openAddDialog(),
         ),
       ),
     ];
@@ -73,20 +109,75 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
 
   @override
   Widget build(BuildContext context) {
+    final body = _buildBody();
+
+    if (!widget.showSectionCard || widget.embeddedInTrackingCard) {
+      return body;
+    }
+
     return VisitSectionCard(
       kind: widget.sectionKind,
       title: widget.sectionTitle,
       headerActions: _shelfActions(),
-      child: _buildBody(),
+      child: body,
     );
   }
 
   Widget _buildBody() {
     final signs = widget.vitalSigns;
 
+    if (signs.isEmpty && widget.canEdit && widget.embeddedInTrackingCard) {
+      final cardTheme = context.healthProfileCardTheme;
+      final theme = context.visitTheme;
+      return TiltedBackgroundIconStack(
+        icon: widget.sectionKind.icon,
+        iconSize: HealthProfileCardTokens.sectionWatermarkIconSize,
+        iconColor: cardTheme.sectionWatermark(theme.pulse),
+        alignment: Alignment.center,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: HealthProfileCardTokens.emptyMessageMaxWidth),
+                child: Text(
+                  'Blood pressure, heart rate, temperature, and other measurements for this visit.',
+                  key: const Key('vital_sign_empty_message'),
+                  style: cardTheme.emptyMessage.copyWith(fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: SpacingTokens.sm),
+              AppButton(
+                key: const Key('vital_sign_add_button'),
+                label: 'Add vital sign',
+                size: AppFieldSize.sm,
+                icon: const Icon(Icons.add, size: 18),
+                onPressed: _isSubmitting ? null : () => _openAddDialog(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
+        if (!widget.showSectionCard && !widget.embeddedInTrackingCard && widget.canEdit && signs.isNotEmpty) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: AppButton(
+              key: const Key('vital_sign_add_button'),
+              label: 'Add vital sign',
+              size: AppFieldSize.sm,
+              icon: const Icon(Icons.add, size: 18),
+              onPressed: _isSubmitting ? null : () => _openAddDialog(),
+            ),
+          ),
+          const SizedBox(height: SpacingTokens.sm),
+        ],
         if (_errorMessage != null) ...[
           const SizedBox(height: SpacingTokens.sm),
           Text(
@@ -95,13 +186,13 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
             style: context.visitTheme.caption(color: context.visitTheme.danger),
           ),
         ],
-        if (signs.isEmpty && !_showAddForm)
+        if (signs.isEmpty && !widget.embeddedInTrackingCard)
           const VisitEmptyHint(
             key: Key('vital_sign_empty'),
             message: 'No vital signs recorded yet.',
             icon: Icons.monitor_heart_outlined,
           ),
-        if (signs.isNotEmpty && _editingVitalSignId == null && !_showAddForm)
+        if (signs.isNotEmpty && _editingVitalSignId == null)
           Wrap(
             spacing: SpacingTokens.sm,
             runSpacing: SpacingTokens.sm,
@@ -110,10 +201,7 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
                 VitalSignCardView(
                   sign: sign,
                   canEdit: widget.canEdit,
-                  onEdit: () => setState(() {
-                    _editingVitalSignId = sign.id;
-                    _showAddForm = false;
-                  }),
+                  onEdit: () => setState(() => _editingVitalSignId = sign.id),
                   onArchive: () => _archiveSign(sign),
                 ),
             ],
@@ -135,73 +223,8 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
                     : const SizedBox.shrink(),
               ),
             ),
-        if (_showAddForm)
-          Padding(
-            padding: const EdgeInsets.only(top: SpacingTokens.sm),
-            child: VitalSignFormView(
-              key: const Key('vital_sign_add_form'),
-              predefinedVitalSigns: widget.predefinedVitalSigns,
-              isSubmitting: _isSubmitting,
-              onSubmit: _addSign,
-              onCancel: () => setState(() => _showAddForm = false),
-            ),
-          ),
       ],
     );
-  }
-
-  Future<void> _addSign(VitalSignFormData data) async {
-    setState(() {
-      _isSubmitting = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final normalizedName = CatalogNameNormalizer.normalize(data.name);
-      if (normalizedName.isEmpty || data.value.trim().isEmpty) {
-        throw RpcFailure(
-          RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Name and value are required.'),
-        );
-      }
-
-      final isCustom = data.predefinedVitalSignId == null;
-      await ref
-          .read(visitRepositoryProvider)
-          .createVisitVitalSign(
-            visitId: widget.visitId,
-            name: normalizedName,
-            value: data.value.trim(),
-            unit: _nullableTrim(data.unit),
-            predefinedVitalSignId: data.predefinedVitalSignId,
-            measuredAt: data.measuredAt,
-          );
-
-      if (!mounted) return;
-
-      setState(() {
-        _showAddForm = false;
-        _isSubmitting = false;
-      });
-      widget.onChanged();
-
-      if (isCustom && mounted) {
-        await _maybeSaveCustomToCatalog(normalizedName: normalizedName, defaultUnit: _nullableTrim(data.unit));
-      }
-    } on RpcFailure catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-          _errorMessage = visitMessageForRpc(e);
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-          _errorMessage = e.toString();
-        });
-      }
-    }
   }
 
   Future<void> _updateSign(VisitVitalSign existing, VitalSignFormData data) async {
@@ -224,8 +247,7 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
           normalizedName != existing.name ||
           trimmedValue != existing.value ||
           trimmedUnit != existing.unit ||
-          data.predefinedVitalSignId != existing.predefinedVitalSignId ||
-          data.measuredAt != existing.measuredAt;
+          data.predefinedVitalSignId != existing.predefinedVitalSignId;
 
       if (hasChanges) {
         await ref
@@ -236,7 +258,6 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
               value: trimmedValue,
               unit: trimmedUnit,
               predefinedVitalSignId: data.predefinedVitalSignId,
-              measuredAt: data.measuredAt,
             );
       }
 
@@ -316,28 +337,131 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
 
   Future<void> _maybeSaveCustomToCatalog({required String normalizedName, String? defaultUnit}) async {
     if (!mounted) return;
+    await _maybeSaveCustomVitalToCatalog(
+      ref: ref,
+      context: context,
+      normalizedName: normalizedName,
+      defaultUnit: defaultUnit,
+      onCatalogSaved: widget.onChanged,
+    );
+  }
 
-    final save = await SaveToCatalogDialog.show(context, normalizedName: normalizedName, itemTypeLabel: 'vital sign');
-    if (save != true || !mounted) return;
+  String? _nullableTrim(String? value) => _nullableTrimVitalField(value);
+}
+
+/// Add-vital-sign form hosted inside [AppDialog].
+class _VitalSignAddDialogBody extends ConsumerStatefulWidget {
+  const _VitalSignAddDialogBody({
+    required this.visitId,
+    required this.predefinedVitalSigns,
+    required this.hostContext,
+    required this.onCancel,
+    required this.onRefresh,
+    required this.onSaved,
+    this.initialPredefinedId,
+  });
+
+  final String visitId;
+  final List<CatalogItem> predefinedVitalSigns;
+  final BuildContext hostContext;
+  final String? initialPredefinedId;
+  final VoidCallback onCancel;
+  final VoidCallback onRefresh;
+  final VoidCallback onSaved;
+
+  @override
+  ConsumerState<_VitalSignAddDialogBody> createState() => _VitalSignAddDialogBodyState();
+}
+
+class _VitalSignAddDialogBodyState extends ConsumerState<_VitalSignAddDialogBody> {
+  bool _isSubmitting = false;
+
+  Future<void> _submit(VitalSignFormData data) async {
+    setState(() => _isSubmitting = true);
 
     try {
-      await ref.read(visitRepositoryProvider).createPredefinedVitalSign(name: normalizedName, defaultUnit: defaultUnit);
+      final normalizedName = CatalogNameNormalizer.normalize(data.name);
+      if (normalizedName.isEmpty || data.value.trim().isEmpty) {
+        throw RpcFailure(
+          RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Name and value are required.'),
+        );
+      }
+
+      final isCustom = data.predefinedVitalSignId == null;
+      await ref
+          .read(visitRepositoryProvider)
+          .createVisitVitalSign(
+            visitId: widget.visitId,
+            name: normalizedName,
+            value: data.value.trim(),
+            unit: _nullableTrimVitalField(data.unit),
+            predefinedVitalSignId: data.predefinedVitalSignId,
+          );
+
       if (!mounted) return;
-      AppToast.success(context, message: 'Saved "$normalizedName" to your vital sign catalog.');
+
+      if (isCustom) {
+        await _maybeSaveCustomVitalToCatalog(
+          ref: ref,
+          context: widget.hostContext,
+          normalizedName: normalizedName,
+          defaultUnit: _nullableTrimVitalField(data.unit),
+          onCatalogSaved: widget.onRefresh,
+        );
+      }
+
+      widget.onSaved();
     } on RpcFailure catch (e) {
-      if (!mounted) return;
-      AppToast.error(context, message: visitMessageForRpc(e));
+      if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
     } catch (e) {
-      if (!mounted) return;
-      AppToast.error(context, message: e.toString());
+      if (mounted) AppToast.error(context, message: e.toString());
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
-  String? _nullableTrim(String? value) {
-    if (value == null) return null;
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
+  @override
+  Widget build(BuildContext context) {
+    return VitalSignFormView(
+      key: const Key('vital_sign_add_form'),
+      predefinedVitalSigns: widget.predefinedVitalSigns,
+      initialPredefinedId: widget.initialPredefinedId,
+      isSubmitting: _isSubmitting,
+      inDialog: true,
+      onSubmit: _submit,
+      onCancel: widget.onCancel,
+    );
   }
+}
+
+Future<void> _maybeSaveCustomVitalToCatalog({
+  required WidgetRef ref,
+  required BuildContext context,
+  required String normalizedName,
+  required VoidCallback onCatalogSaved,
+  String? defaultUnit,
+}) async {
+  final save = await SaveToCatalogDialog.show(context, normalizedName: normalizedName, itemTypeLabel: 'vital sign');
+  if (save != true || !context.mounted) return;
+
+  try {
+    await ref.read(visitRepositoryProvider).createPredefinedVitalSign(name: normalizedName, defaultUnit: defaultUnit);
+    if (!context.mounted) return;
+    AppToast.success(context, message: 'Saved "$normalizedName" to your vital sign catalog.');
+    onCatalogSaved();
+  } on RpcFailure catch (e) {
+    if (!context.mounted) return;
+    AppToast.error(context, message: visitMessageForRpc(e));
+  } catch (e) {
+    if (!context.mounted) return;
+    AppToast.error(context, message: e.toString());
+  }
+}
+
+String? _nullableTrimVitalField(String? value) {
+  if (value == null) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
 }
 
 /// Read-only vital sign metric tile.
@@ -405,13 +529,6 @@ class VitalSignCardView extends StatelessWidget {
                   ],
                 ],
               ),
-              if (sign.measuredAt != null) ...[
-                const SizedBox(height: SpacingTokens.xs),
-                Text(
-                  'Measured ${DateFormat.yMMMd().add_jm().format(sign.measuredAt!.toLocal())}',
-                  style: theme.caption(),
-                ),
-              ],
             ],
           ),
         ),
@@ -422,19 +539,12 @@ class VitalSignCardView extends StatelessWidget {
 
 /// Form data for creating or updating a vital sign line.
 class VitalSignFormData {
-  const VitalSignFormData({
-    required this.name,
-    required this.value,
-    this.unit,
-    this.predefinedVitalSignId,
-    this.measuredAt,
-  });
+  const VitalSignFormData({required this.name, required this.value, this.unit, this.predefinedVitalSignId});
 
   final String name;
   final String value;
   final String? unit;
   final String? predefinedVitalSignId;
-  final DateTime? measuredAt;
 }
 
 /// Add/edit form for a vital sign line.
@@ -444,13 +554,17 @@ class VitalSignFormView extends StatefulWidget {
     required this.onSubmit,
     required this.onCancel,
     this.initialSign,
+    this.initialPredefinedId,
     this.isSubmitting = false,
+    this.inDialog = false,
     super.key,
   });
 
   final List<CatalogItem> predefinedVitalSigns;
   final VisitVitalSign? initialSign;
+  final String? initialPredefinedId;
   final bool isSubmitting;
+  final bool inDialog;
   final Future<void> Function(VitalSignFormData data) onSubmit;
   final VoidCallback onCancel;
 
@@ -463,7 +577,6 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
   late final TextEditingController _customName;
   late final TextEditingController _value;
   late final TextEditingController _unit;
-  DateTime? _measuredAt;
 
   @override
   void initState() {
@@ -473,6 +586,9 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
       _selectedKey = initial!.predefinedVitalSignId!;
     } else if (initial != null) {
       _selectedKey = _customVitalSignKey;
+    } else if (widget.initialPredefinedId != null &&
+        widget.predefinedVitalSigns.any((item) => item.id == widget.initialPredefinedId)) {
+      _selectedKey = widget.initialPredefinedId!;
     } else {
       _selectedKey = widget.predefinedVitalSigns.isNotEmpty
           ? widget.predefinedVitalSigns.first.id
@@ -482,7 +598,6 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
     _customName = TextEditingController(text: initial?.predefinedVitalSignId == null ? (initial?.name ?? '') : '');
     _value = TextEditingController(text: initial?.value ?? '');
     _unit = TextEditingController(text: initial?.unit ?? _defaultUnitForSelection(_selectedKey));
-    _measuredAt = initial?.measuredAt;
   }
 
   @override
@@ -524,13 +639,94 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
       value: _value.text,
       unit: _unit.text,
       predefinedVitalSignId: predefined?.id,
-      measuredAt: _measuredAt,
     );
     await widget.onSubmit(data);
   }
 
   @override
   Widget build(BuildContext context) {
+    final form = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.predefinedVitalSigns.isNotEmpty)
+          AppSelect<String>(
+            key: const Key('vital_sign_predefined_select'),
+            label: 'Vital sign',
+            items: _selectItems,
+            value: _selectItems.containsValue(_selectedKey) ? _selectedKey : _customVitalSignKey,
+            enabled: !widget.isSubmitting,
+            onChanged: (key) {
+              if (key == null) return;
+              setState(() {
+                _selectedKey = key;
+                if (!_isCustom) {
+                  _customName.clear();
+                  final defaultUnit = _defaultUnitForSelection(key);
+                  if (defaultUnit != null) {
+                    _unit.text = defaultUnit;
+                  }
+                }
+              });
+            },
+          )
+        else
+          VisitTextInput(
+            key: const Key('vital_sign_custom_name'),
+            label: 'Vital sign name',
+            controller: _customName,
+            enabled: !widget.isSubmitting,
+          ),
+        if (_isCustom && widget.predefinedVitalSigns.isNotEmpty) ...[
+          const SizedBox(height: SpacingTokens.sm),
+          VisitTextInput(
+            key: const Key('vital_sign_custom_name'),
+            label: 'Custom name',
+            controller: _customName,
+            enabled: !widget.isSubmitting,
+          ),
+        ],
+        const SizedBox(height: SpacingTokens.sm),
+        VisitTextInput(
+          key: const Key('vital_sign_value'),
+          label: 'Value',
+          controller: _value,
+          enabled: !widget.isSubmitting,
+        ),
+        const SizedBox(height: SpacingTokens.sm),
+        VisitTextInput(
+          key: const Key('vital_sign_unit'),
+          label: 'Unit (optional)',
+          controller: _unit,
+          enabled: !widget.isSubmitting,
+        ),
+        const SizedBox(height: SpacingTokens.md),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            AppButton(
+              label: 'Cancel',
+              variant: AppButtonVariant.secondary,
+              expand: false,
+              onPressed: widget.isSubmitting ? null : widget.onCancel,
+            ),
+            const SizedBox(width: SpacingTokens.sm),
+            AppButton(
+              key: const Key('vital_sign_form_submit'),
+              label: widget.isSubmitting ? 'Saving…' : (widget.initialSign == null ? 'Add' : 'Save'),
+              isLoading: widget.isSubmitting,
+              expand: false,
+              onPressed: widget.isSubmitting ? null : _submit,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    if (widget.inDialog) {
+      return form;
+    }
+
     final theme = context.visitTheme;
 
     return DecoratedBox(
@@ -539,224 +735,7 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
         borderRadius: BorderRadius.circular(theme.tileRadius),
         border: Border.all(color: theme.pulse.withValues(alpha: 0.35)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (widget.predefinedVitalSigns.isNotEmpty)
-              AppSelect<String>(
-                key: const Key('vital_sign_predefined_select'),
-                label: 'Vital sign',
-                items: _selectItems,
-                value: _selectItems.containsValue(_selectedKey) ? _selectedKey : _customVitalSignKey,
-                enabled: !widget.isSubmitting,
-                onChanged: (key) {
-                  if (key == null) return;
-                  setState(() {
-                    _selectedKey = key;
-                    if (!_isCustom) {
-                      _customName.clear();
-                      final defaultUnit = _defaultUnitForSelection(key);
-                      if (defaultUnit != null) {
-                        _unit.text = defaultUnit;
-                      }
-                    }
-                  });
-                },
-              )
-            else
-              VisitTextInput(
-                key: const Key('vital_sign_custom_name'),
-                label: 'Vital sign name',
-                controller: _customName,
-                enabled: !widget.isSubmitting,
-              ),
-            if (_isCustom && widget.predefinedVitalSigns.isNotEmpty) ...[
-              const SizedBox(height: SpacingTokens.sm),
-              VisitTextInput(
-                key: const Key('vital_sign_custom_name'),
-                label: 'Custom name',
-                controller: _customName,
-                enabled: !widget.isSubmitting,
-              ),
-            ],
-            const SizedBox(height: SpacingTokens.sm),
-            VisitTextInput(
-              key: const Key('vital_sign_value'),
-              label: 'Value',
-              controller: _value,
-              enabled: !widget.isSubmitting,
-            ),
-            const SizedBox(height: SpacingTokens.sm),
-            VisitTextInput(
-              key: const Key('vital_sign_unit'),
-              label: 'Unit (optional)',
-              controller: _unit,
-              enabled: !widget.isSubmitting,
-            ),
-            const SizedBox(height: SpacingTokens.sm),
-            Text('Measurement time (optional)', style: theme.caption()),
-            const SizedBox(height: SpacingTokens.xs),
-            AppDateTimePicker(
-              key: const Key('vital_sign_measured_at'),
-              value: _measuredAt,
-              use24Hour: true,
-              onChanged: widget.isSubmitting ? null : (value) => setState(() => _measuredAt = value),
-            ),
-            const SizedBox(height: SpacingTokens.md),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                AppButton(
-                  label: 'Cancel',
-                  variant: AppButtonVariant.secondary,
-                  onPressed: widget.isSubmitting ? null : widget.onCancel,
-                ),
-                const SizedBox(width: SpacingTokens.sm),
-                AppButton(
-                  key: const Key('vital_sign_form_submit'),
-                  label: widget.isSubmitting ? 'Saving…' : (widget.initialSign == null ? 'Add' : 'Save'),
-                  isLoading: widget.isSubmitting,
-                  onPressed: widget.isSubmitting ? null : _submit,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Quick pain score entry using the seeded "Pain Score" predefined vital sign (014 US8).
-class PainScoreQuickEntry extends ConsumerStatefulWidget {
-  const PainScoreQuickEntry({
-    required this.visitId,
-    required this.vitalSigns,
-    required this.predefinedVitalSigns,
-    required this.canEdit,
-    required this.onChanged,
-    super.key,
-  });
-
-  final String visitId;
-  final List<VisitVitalSign> vitalSigns;
-  final List<CatalogItem> predefinedVitalSigns;
-  final bool canEdit;
-  final VoidCallback onChanged;
-
-  @override
-  ConsumerState<PainScoreQuickEntry> createState() => _PainScoreQuickEntryState();
-}
-
-class _PainScoreQuickEntryState extends ConsumerState<PainScoreQuickEntry> {
-  bool _isSubmitting = false;
-  String? _errorMessage;
-
-  CatalogItem? get _painScorePredefined {
-    for (final item in widget.predefinedVitalSigns) {
-      if (item.name.trim().toLowerCase() == _painScoreName) {
-        return item;
-      }
-    }
-    return null;
-  }
-
-  VisitVitalSign? get _existingPainScore {
-    for (final sign in widget.vitalSigns) {
-      if (sign.name.trim().toLowerCase() == _painScoreName) {
-        return sign;
-      }
-    }
-    return null;
-  }
-
-  Future<void> _saveScore(String score) async {
-    final predefined = _painScorePredefined;
-    if (predefined == null) return;
-
-    setState(() {
-      _isSubmitting = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final existing = _existingPainScore;
-      if (existing != null) {
-        await ref.read(visitRepositoryProvider).updateVisitVitalSign(vitalSignId: existing.id, value: score);
-      } else {
-        await ref
-            .read(visitRepositoryProvider)
-            .createVisitVitalSign(
-              visitId: widget.visitId,
-              name: predefined.name,
-              value: score,
-              predefinedVitalSignId: predefined.id,
-            );
-      }
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-        widget.onChanged();
-      }
-    } on RpcFailure catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-          _errorMessage = visitMessageForRpc(e);
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-          _errorMessage = e.toString();
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final predefined = _painScorePredefined;
-    if (predefined == null) {
-      return const SizedBox.shrink();
-    }
-
-    final theme = context.visitTheme;
-    final existing = _existingPainScore;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: SpacingTokens.sm),
-      child: VisitSectionCard(
-        kind: VisitPanelKind.painScore,
-        title: 'Pain score',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_errorMessage != null) ...[
-              Text(_errorMessage!, style: theme.caption(color: theme.danger)),
-              const SizedBox(height: SpacingTokens.sm),
-            ],
-            Wrap(
-              spacing: SpacingTokens.xs,
-              runSpacing: SpacingTokens.xs,
-              children: [
-                for (var score = 0; score <= 10; score++)
-                  AppButton(
-                    key: Key('pain_score_$score'),
-                    label: score.toString(),
-                    size: AppFieldSize.sm,
-                    variant: existing?.value == score.toString()
-                        ? AppButtonVariant.primary
-                        : AppButtonVariant.secondary,
-                    onPressed: !widget.canEdit || _isSubmitting ? null : () => _saveScore(score.toString()),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
+      child: Padding(padding: const EdgeInsets.all(SpacingTokens.md), child: form),
     );
   }
 }
