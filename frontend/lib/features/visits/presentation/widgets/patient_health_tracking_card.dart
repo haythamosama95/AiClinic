@@ -489,9 +489,9 @@ class _HealthGridTile extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: context.semanticColors.card,
-        borderRadius: BorderRadius.circular(theme.tileRadius - 2),
-        border: Border.all(color: accent.withValues(alpha: 0.15)),
+        color: theme.tile,
+        borderRadius: BorderRadius.circular(theme.tileRadius),
+        border: Border.all(color: theme.hairline),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.xs + 2),

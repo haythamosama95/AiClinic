@@ -132,35 +132,48 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
 
   Widget _buildSummaryLayout() {
     final theme = context.visitTheme;
-    final showHeaderUpload = widget.canUpload && !_isUploading && _hasItems;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: SpacingTokens.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Text(
-                  widget.sectionTitle.toUpperCase(),
-                  style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2),
-                ),
-              ),
-              if (showHeaderUpload)
-                AppIconButton(
-                  key: const Key('visit_attachment_upload_button'),
-                  icon: Icon(Icons.upload_file_outlined, size: HealthProfileCardTokens.addIconSize, color: theme.pulse),
-                  tooltip: 'Upload file',
-                  onPressed: _pickAndUpload,
-                ),
-            ],
-          ),
+          Text(widget.sectionTitle.toUpperCase(), style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2)),
           const SizedBox(height: SpacingTokens.xs + 1),
-          _buildBody(),
+          _buildSummaryBody(),
         ],
       ),
+    );
+  }
+
+  Widget _buildSummaryBody() {
+    if (!_hasItems) {
+      return _buildEmptyState();
+    }
+
+    final count = widget.attachments.length;
+    final useBulletList = count > 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_errorMessage != null) ...[
+          Text(
+            _errorMessage!,
+            key: const Key('visit_attachment_error'),
+            style: context.visitTheme.caption(color: context.visitTheme.danger),
+          ),
+          const SizedBox(height: SpacingTokens.sm),
+        ],
+        for (var index = 0; index < count; index++)
+          _SummaryAttachmentRow(
+            attachment: widget.attachments[index],
+            isOpening: _downloadingAttachmentId == widget.attachments[index].id,
+            showBullet: useBulletList,
+            isLast: index == count - 1,
+            onOpen: () => _open(widget.attachments[index]),
+          ),
+      ],
     );
   }
 
@@ -189,6 +202,10 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
   }
 
   Widget _buildBody() {
+    if (widget.summaryMode) {
+      return _buildSummaryBody();
+    }
+
     if (widget.encounterShell && widget.expandBody && _shouldCenterEmptyState()) {
       return _buildEmptyState();
     }
@@ -399,6 +416,68 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
       VisitAttachmentFileType.docx => Icons.description_outlined,
       VisitAttachmentFileType.jpeg || VisitAttachmentFileType.png => Icons.image_outlined,
     };
+  }
+}
+
+class _SummaryAttachmentRow extends StatelessWidget {
+  const _SummaryAttachmentRow({
+    required this.attachment,
+    required this.isOpening,
+    required this.onOpen,
+    this.showBullet = false,
+    this.isLast = true,
+  });
+
+  final VisitAttachmentItem attachment;
+  final bool isOpening;
+  final VoidCallback onOpen;
+  final bool showBullet;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.visitTheme;
+    final title = attachment.label?.trim().isNotEmpty == true ? attachment.label! : attachment.fileType.label;
+    final canOpen = attachment.canDownload && !isOpening;
+    final textStyle = theme.body(color: attachment.canDownload ? theme.pulse : null);
+
+    final content = GestureDetector(
+      onTap: canOpen ? onOpen : null,
+      behavior: HitTestBehavior.opaque,
+      child: MouseRegion(
+        cursor: canOpen ? SystemMouseCursors.click : MouseCursor.defer,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (isOpening) ...[
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: AppCircularProgress(key: Key('visit_attachment_open_progress')),
+              ),
+              const SizedBox(width: SpacingTokens.xs),
+            ],
+            Expanded(
+              child: Text(title, key: Key('visit_attachment_row_${attachment.id}'), style: textStyle),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : SpacingTokens.xs),
+      child: showBullet
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('•', style: theme.body(color: theme.mutedInk)),
+                const SizedBox(width: SpacingTokens.xs),
+                Expanded(child: content),
+              ],
+            )
+          : content,
+    );
   }
 }
 

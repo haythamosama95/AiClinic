@@ -125,7 +125,7 @@ class EncounterReview extends ConsumerWidget {
                   visitId: visitId,
                   branchId: visit.branchId,
                   attachments: visit.attachments,
-                  canUpload: canUploadAttachments,
+                  canUpload: false,
                   onChanged: onRefresh!,
                   sectionKind: VisitPanelKind.attachment,
                   sectionTitle: 'Attachments',
@@ -491,12 +491,40 @@ class _SummaryLinesField extends StatelessWidget {
               key: emptyKey,
               child: Text(emptyMessage, style: theme.body(color: theme.mutedInk)),
             )
+          else if (lines.length == 1)
+            Text(lines.first, style: theme.body())
           else
-            for (final line in lines)
-              Padding(
-                padding: const EdgeInsets.only(bottom: SpacingTokens.xs),
-                child: Text(line, style: theme.body()),
+            for (var index = 0; index < lines.length; index++)
+              _SummaryBulletItem(
+                key: Key('encounter_review_${label.toLowerCase().replaceAll(' ', '_')}_item_$index'),
+                text: lines[index],
+                isLast: index == lines.length - 1,
               ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One row in a multi-item summary list (non-rich-text list-builder fields).
+class _SummaryBulletItem extends StatelessWidget {
+  const _SummaryBulletItem({required this.text, required this.isLast, super.key});
+
+  final String text;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.visitTheme;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : SpacingTokens.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('•', style: theme.body(color: theme.mutedInk)),
+          const SizedBox(width: SpacingTokens.xs),
+          Expanded(child: Text(text, style: theme.body())),
         ],
       ),
     );
