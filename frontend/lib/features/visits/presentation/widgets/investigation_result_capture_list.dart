@@ -142,6 +142,10 @@ class _PendingInvestigationTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(investigation.name, style: theme.title(size: 15)),
+                  if (investigation.note != null && investigation.note!.isNotEmpty) ...[
+                    const SizedBox(height: SpacingTokens.xs),
+                    Text(investigation.note!, style: theme.caption(color: theme.mutedInk)),
+                  ],
                   if (orderedDate != null) ...[
                     const SizedBox(height: SpacingTokens.xs),
                     Text(

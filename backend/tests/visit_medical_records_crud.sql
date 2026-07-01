@@ -716,7 +716,8 @@ BEGIN
     'get_visit_includes_attachments',
     v_result.success
       AND jsonb_array_length(COALESCE(v_result.data -> 'attachments', '[]'::jsonb)) >= 1
-      AND COALESCE((v_result.data -> 'attachments' -> 0 ->> 'can_download')::boolean, false),
+      AND COALESCE((v_result.data -> 'attachments' -> 0 ->> 'can_download')::boolean, false)
+      AND COALESCE((v_result.data -> 'attachments' -> 0 ->> 'can_delete')::boolean, false),
     'count=' || COALESCE(jsonb_array_length(COALESCE(v_result.data -> 'attachments', '[]'::jsonb))::text, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -770,6 +771,26 @@ BEGIN
     )::text,
     true
   );
+
+  -- delete_visit_attachment soft-deletes metadata and removes storage object.
+  v_result := public.delete_visit_attachment(v_attachment_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'delete_visit_attachment',
+    v_result.success
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.visit_attachments va
+        WHERE va.id = v_attachment_id AND va.is_deleted = false
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM storage.objects o
+        WHERE o.bucket_id = 'visit-attachments' AND o.name = v_file_path
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
 
   -- list_patient_visits pagination metadata (multiple completed visits).
   v_start := pg_temp.test_appointment_same_day_slot(8);
@@ -861,6 +882,35 @@ BEGIN
   INSERT INTO visit_crud_results VALUES (
     'create_visit_investigation',
     v_result.success AND v_investigation_line_id IS NOT NULL,
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.get_visit(v_visit_id);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'get_visit_investigation_note_persisted',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(COALESCE(v_result.data -> 'investigations', '[]'::jsonb)) inv
+        WHERE inv ->> 'id' = v_investigation_line_id::text
+          AND inv ->> 'note' = 'Routine panel'
+      ),
+    COALESCE(v_result.error_code, '<null>')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.update_visit_investigation(v_investigation_line_id, NULL, 'Fasting required', NULL);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO visit_crud_results VALUES (
+    'update_visit_investigation_note',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM public.visit_investigations vi
+        WHERE vi.id = v_investigation_line_id AND vi.note = 'Fasting required'
+      ),
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

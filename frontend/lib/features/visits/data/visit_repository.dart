@@ -389,6 +389,11 @@ class VisitRepository with AppRpcInvoker {
     return download;
   }
 
+  Future<void> deleteVisitAttachment({required String attachmentId}) async {
+    _assertNonEmpty('attachmentId', attachmentId);
+    await invokeRpc('delete_visit_attachment', {'p_attachment_id': attachmentId.trim()});
+  }
+
   Future<PatientVisitsPage> listPatientVisits({required String patientId, int limit = 50, int offset = 0}) async {
     _assertNonEmpty('patientId', patientId);
 

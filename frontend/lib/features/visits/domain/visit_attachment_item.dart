@@ -15,6 +15,7 @@ class VisitAttachmentItem {
     required this.sizeBytes,
     required this.createdAt,
     required this.canDownload,
+    required this.canDelete,
   });
 
   final String id;
@@ -25,6 +26,7 @@ class VisitAttachmentItem {
   final int sizeBytes;
   final DateTime createdAt;
   final bool canDownload;
+  final bool canDelete;
 
   static VisitAttachmentItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
@@ -33,6 +35,7 @@ class VisitAttachmentItem {
     final sizeBytes = optionalVisitInt(row['size_bytes']);
     final createdAt = parseVisitDateTime(row['created_at']);
     final canDownloadRaw = row['can_download'];
+    final canDeleteRaw = row['can_delete'];
 
     if (id == null ||
         id.isEmpty ||
@@ -48,6 +51,10 @@ class VisitAttachmentItem {
       bool value => value,
       _ => canDownloadRaw?.toString().trim().toLowerCase() == 'true',
     };
+    final canDelete = switch (canDeleteRaw) {
+      bool value => value,
+      _ => canDeleteRaw?.toString().trim().toLowerCase() == 'true',
+    };
 
     return VisitAttachmentItem(
       id: id,
@@ -58,6 +65,7 @@ class VisitAttachmentItem {
       sizeBytes: sizeBytes,
       createdAt: createdAt,
       canDownload: canDownload,
+      canDelete: canDelete,
     );
   }
 
@@ -70,6 +78,7 @@ class VisitAttachmentItem {
     int? sizeBytes,
     DateTime? createdAt,
     bool? canDownload,
+    bool? canDelete,
   }) {
     return VisitAttachmentItem(
       id: id ?? this.id,
@@ -80,6 +89,7 @@ class VisitAttachmentItem {
       sizeBytes: sizeBytes ?? this.sizeBytes,
       createdAt: createdAt ?? this.createdAt,
       canDownload: canDownload ?? this.canDownload,
+      canDelete: canDelete ?? this.canDelete,
     );
   }
 
@@ -95,9 +105,11 @@ class VisitAttachmentItem {
             uploadedByName == other.uploadedByName &&
             sizeBytes == other.sizeBytes &&
             createdAt == other.createdAt &&
-            canDownload == other.canDownload;
+            canDownload == other.canDownload &&
+            canDelete == other.canDelete;
   }
 
   @override
-  int get hashCode => Object.hash(id, fileType, label, uploadedBy, uploadedByName, sizeBytes, createdAt, canDownload);
+  int get hashCode =>
+      Object.hash(id, fileType, label, uploadedBy, uploadedByName, sizeBytes, createdAt, canDownload, canDelete);
 }

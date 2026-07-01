@@ -1,4 +1,5 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/visits/data/visit_attachment_opener.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show StorageException;
 
@@ -52,6 +53,14 @@ String visitMessageForDownloadError(Object error) {
     }
   }
   return 'Could not download the attachment. Please try again.';
+}
+
+/// User-facing copy when an attachment cannot be opened locally after download.
+String visitMessageForOpenError(Object error) {
+  if (error is VisitAttachmentOpenException) {
+    return error.message;
+  }
+  return visitMessageForDownloadError(error);
 }
 
 /// User-facing copy for visit RPC failures (V1-5).

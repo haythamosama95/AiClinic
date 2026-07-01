@@ -3,19 +3,21 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
+import 'package:ai_clinic/features/visits/data/visit_attachment_opener.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
-import 'package:ai_clinic/features/visits/data/visit_repository.dart' show VisitAttachmentDownloadResult;
+import 'package:ai_clinic/features/visits/data/visit_repository.dart'
+    show VisitAttachmentDownloadResult, visitRepositoryProvider;
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_name_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
@@ -30,10 +32,12 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
     required this.sectionTitle,
     required this.sectionKind,
     this.encounterShell = false,
+    this.summaryMode = false,
     this.expandBody = false,
     this.pickAttachment,
+    this.promptAttachmentLabel,
     this.fetchDownloadBytes,
-    this.saveDownloadedAttachment,
+    this.openDownloadedAttachment,
     super.key,
   });
 
@@ -45,11 +49,14 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
   final String sectionTitle;
   final VisitPanelKind sectionKind;
   final bool encounterShell;
+  final bool summaryMode;
   final bool expandBody;
 
   final Future<VisitAttachmentPickInput?> Function()? pickAttachment;
+  final Future<String?> Function(VisitAttachmentPickInput pick)? promptAttachmentLabel;
   final Future<Uint8List> Function(VisitAttachmentDownloadResult download)? fetchDownloadBytes;
-  final Future<bool> Function(String filename, Uint8List bytes)? saveDownloadedAttachment;
+  final Future<void> Function(VisitAttachmentItem attachment, String filename, Uint8List bytes)?
+  openDownloadedAttachment;
 
   @override
   ConsumerState<VisitAttachmentList> createState() => _VisitAttachmentListState();
@@ -57,12 +64,13 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
 
 class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
   bool _isUploading = false;
-  String? _uploadingFilename;
+  String? _uploadingLabel;
   String? _errorMessage;
   String? _downloadingAttachmentId;
+  String? _deletingAttachmentId;
 
   List<Widget>? _shelfActions() {
-    if (!widget.canUpload || _isUploading || widget.encounterShell) return null;
+    if (!widget.canUpload || _isUploading || widget.encounterShell || widget.summaryMode) return null;
 
     return [
       AppNotchedCardAction(
@@ -92,6 +100,10 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.summaryMode) {
+      return _buildSummaryLayout();
+    }
+
     final body = encounterExpandedSectionBody(
       expandBody: widget.expandBody,
       centerWhenEmpty: widget.encounterShell && _shouldCenterEmptyState(),
@@ -116,12 +128,47 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     );
   }
 
+  Widget _buildSummaryLayout() {
+    final theme = context.visitTheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: SpacingTokens.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  widget.sectionTitle.toUpperCase(),
+                  style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2),
+                ),
+              ),
+              if (widget.canUpload && !_isUploading)
+                AppButton(
+                  key: const Key('visit_attachment_upload_button'),
+                  label: 'Upload file',
+                  variant: AppButtonVariant.ghost,
+                  size: AppFieldSize.sm,
+                  icon: const Icon(Icons.upload_file_outlined, size: 16),
+                  onPressed: _pickAndUpload,
+                ),
+            ],
+          ),
+          const SizedBox(height: SpacingTokens.xs + 1),
+          _buildBody(),
+        ],
+      ),
+    );
+  }
+
   bool _shouldCenterEmptyState() {
     return widget.attachments.isEmpty && !_isUploading && _errorMessage == null;
   }
 
   Widget _buildBody() {
-    final dateFormat = DateFormat.yMMMd().add_jm();
+    final theme = context.visitTheme;
 
     if (widget.encounterShell && widget.expandBody && _shouldCenterEmptyState()) {
       return const VisitEmptyHint(
@@ -146,7 +193,7 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
               const SizedBox(width: SpacingTokens.sm),
               Expanded(
                 child: Text(
-                  'Uploading ${_uploadingFilename ?? 'file'}…',
+                  'Uploading ${_uploadingLabel ?? 'attachment'}…',
                   key: const Key('visit_attachment_upload_status'),
                 ),
               ),
@@ -162,11 +209,16 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
           ),
         ],
         if (widget.attachments.isEmpty && !_isUploading)
-          const VisitEmptyHint(
-            key: Key('visit_attachment_empty'),
-            message: 'No attachments yet.',
-            icon: Icons.attach_file_outlined,
-          ),
+          widget.summaryMode
+              ? KeyedSubtree(
+                  key: const Key('visit_attachment_empty'),
+                  child: Text('No attachments yet.', style: theme.body(color: theme.mutedInk)),
+                )
+              : const VisitEmptyHint(
+                  key: Key('visit_attachment_empty'),
+                  message: 'No attachments yet.',
+                  icon: Icons.attach_file_outlined,
+                ),
         Wrap(
           spacing: SpacingTokens.sm,
           runSpacing: SpacingTokens.sm,
@@ -174,9 +226,10 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
             for (final attachment in widget.attachments)
               _AttachmentTile(
                 attachment: attachment,
-                dateFormat: dateFormat,
-                isDownloading: _downloadingAttachmentId == attachment.id,
-                onDownload: () => _download(attachment.id),
+                isOpening: _downloadingAttachmentId == attachment.id,
+                isDeleting: _deletingAttachmentId == attachment.id,
+                onOpen: () => _open(attachment),
+                onDelete: () => _delete(attachment),
               ),
           ],
         ),
@@ -192,6 +245,14 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
       return;
     }
 
+    final label = widget.promptAttachmentLabel != null
+        ? await widget.promptAttachmentLabel!(pick)
+        : await VisitAttachmentNameDialog.show(context, filename: pick.filename);
+    if (label == null || label.trim().isEmpty || !mounted) {
+      return;
+    }
+    final trimmedLabel = label.trim();
+
     final orgId = ref.read(authSessionProvider).context?.organizationId?.trim();
     if (orgId == null || orgId.isEmpty) {
       setState(() => _errorMessage = 'Organization context is required to upload attachments.');
@@ -200,14 +261,20 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
 
     setState(() {
       _isUploading = true;
-      _uploadingFilename = pick.filename;
+      _uploadingLabel = trimmedLabel;
       _errorMessage = null;
     });
 
     try {
       await ref
           .read(visitAttachmentServiceProvider)
-          .uploadAndRegister(organizationId: orgId, branchId: widget.branchId, visitId: widget.visitId, pick: pick);
+          .uploadAndRegister(
+            organizationId: orgId,
+            branchId: widget.branchId,
+            visitId: widget.visitId,
+            pick: pick,
+            label: trimmedLabel,
+          );
       if (!mounted) return;
       widget.onChanged();
     } catch (error) {
@@ -217,7 +284,7 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
       if (mounted) {
         setState(() {
           _isUploading = false;
-          _uploadingFilename = null;
+          _uploadingLabel = null;
         });
       }
     }
@@ -242,30 +309,35 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     return VisitAttachmentPickInput(filename: name, bytes: bytes);
   }
 
-  Future<void> _download(String attachmentId) async {
+  Future<void> _open(VisitAttachmentItem attachment) async {
+    if (!attachment.canDownload) {
+      return;
+    }
+
     setState(() {
-      _downloadingAttachmentId = attachmentId;
+      _downloadingAttachmentId = attachment.id;
       _errorMessage = null;
     });
 
     try {
       final service = ref.read(visitAttachmentServiceProvider);
-      final download = await service.getVisitAttachmentDownload(attachmentId: attachmentId);
+      final download = await service.getVisitAttachmentDownload(attachmentId: attachment.id);
       final bytes = widget.fetchDownloadBytes != null
           ? await widget.fetchDownloadBytes!(download)
           : await service.downloadAttachmentBytes(download);
-      final saved = widget.saveDownloadedAttachment != null
-          ? await widget.saveDownloadedAttachment!(download.filename, bytes)
-          : await _promptSaveDownload(download.filename, bytes);
-      if (!saved && mounted) {
-        return;
+
+      if (widget.openDownloadedAttachment != null) {
+        await widget.openDownloadedAttachment!(attachment, download.filename, bytes);
+      } else {
+        final preferredName = attachment.label?.trim().isNotEmpty == true ? attachment.label : download.filename;
+        await openVisitAttachmentBytes(bytes: bytes, fileType: attachment.fileType, preferredName: preferredName);
       }
     } on RpcFailure catch (error) {
       if (!mounted) return;
       setState(() => _errorMessage = visitMessageForRpc(error));
     } catch (error) {
       if (!mounted) return;
-      setState(() => _errorMessage = visitMessageForDownloadError(error));
+      setState(() => _errorMessage = visitMessageForOpenError(error));
     } finally {
       if (mounted) {
         setState(() => _downloadingAttachmentId = null);
@@ -273,9 +345,41 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     }
   }
 
-  Future<bool> _promptSaveDownload(String filename, Uint8List bytes) async {
-    final path = await FilePicker.platform.saveFile(dialogTitle: 'Save attachment', fileName: filename, bytes: bytes);
-    return path != null;
+  Future<void> _delete(VisitAttachmentItem attachment) async {
+    final title = attachment.label?.trim().isNotEmpty == true ? attachment.label! : attachment.fileType.label;
+    final remove = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete attachment?'),
+        content: Text('Delete "$title"? This cannot be undone.'),
+        actions: [
+          AppButton(label: 'Cancel', variant: AppButtonVariant.secondary, onPressed: () => Navigator.pop(ctx, false)),
+          AppButton(label: 'Delete', variant: AppButtonVariant.destructive, onPressed: () => Navigator.pop(ctx, true)),
+        ],
+      ),
+    );
+    if (remove != true || !mounted) return;
+
+    setState(() {
+      _deletingAttachmentId = attachment.id;
+      _errorMessage = null;
+    });
+
+    try {
+      await ref.read(visitRepositoryProvider).deleteVisitAttachment(attachmentId: attachment.id);
+      if (!mounted) return;
+      widget.onChanged();
+    } on RpcFailure catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = visitMessageForRpc(error));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _deletingAttachmentId = null);
+      }
+    }
   }
 
   static String _formatSize(int bytes) {
@@ -296,77 +400,87 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
 class _AttachmentTile extends StatelessWidget {
   const _AttachmentTile({
     required this.attachment,
-    required this.dateFormat,
-    required this.isDownloading,
-    required this.onDownload,
+    required this.isOpening,
+    required this.isDeleting,
+    required this.onOpen,
+    required this.onDelete,
   });
 
   final VisitAttachmentItem attachment;
-  final DateFormat dateFormat;
-  final bool isDownloading;
-  final VoidCallback onDownload;
+  final bool isOpening;
+  final bool isDeleting;
+  final VoidCallback onOpen;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
     final title = attachment.label?.trim().isNotEmpty == true ? attachment.label! : attachment.fileType.label;
-    final meta = [
-      _VisitAttachmentListState._formatSize(attachment.sizeBytes),
-      if (attachment.uploadedByName?.trim().isNotEmpty == true) attachment.uploadedByName!,
-      dateFormat.format(attachment.createdAt.toLocal()),
-    ].join(' · ');
+    final meta = _VisitAttachmentListState._formatSize(attachment.sizeBytes);
+    final canOpen = attachment.canDownload && !isOpening && !isDeleting;
 
     return ConstrainedBox(
       key: Key('visit_attachment_row_${attachment.id}'),
       constraints: const BoxConstraints(minWidth: 200, maxWidth: 280),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: theme.tile,
+      child: Material(
+        color: theme.tile,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(theme.tileRadius),
-          border: Border.all(color: theme.hairline),
+          side: BorderSide(color: theme.hairline),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(SpacingTokens.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: theme.pulse.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(theme.tileRadius - 1),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: canOpen ? onOpen : null,
+          mouseCursor: canOpen ? SystemMouseCursors.click : MouseCursor.defer,
+          child: Padding(
+            padding: const EdgeInsets.all(SpacingTokens.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: theme.pulse.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(theme.tileRadius - 1),
+                      ),
+                      alignment: Alignment.center,
+                      child: isOpening
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: AppCircularProgress(key: Key('visit_attachment_open_progress')),
+                            )
+                          : Icon(
+                              _VisitAttachmentListState._iconForType(attachment.fileType),
+                              size: 20,
+                              color: theme.pulseDeep,
+                            ),
                     ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      _VisitAttachmentListState._iconForType(attachment.fileType),
-                      size: 20,
-                      color: theme.pulseDeep,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (attachment.canDownload)
-                    isDownloading
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: AppCircularProgress(key: Key('visit_attachment_download_progress')),
-                          )
-                        : AppIconButton(
-                            key: Key('visit_attachment_download_${attachment.id}'),
-                            tooltip: 'Download',
-                            icon: const Icon(Icons.download_outlined, size: 18),
-                            onPressed: onDownload,
-                          ),
-                ],
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.bodyStrong(size: 14)),
-              const SizedBox(height: SpacingTokens.xs),
-              Text(meta, style: theme.caption(size: 12)),
-            ],
+                    const Spacer(),
+                    if (attachment.canDelete)
+                      isDeleting
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: AppCircularProgress(key: Key('visit_attachment_delete_progress')),
+                            )
+                          : AppIconButton(
+                              key: Key('visit_attachment_delete_${attachment.id}'),
+                              tooltip: 'Delete',
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                              onPressed: isOpening ? null : onDelete,
+                            ),
+                  ],
+                ),
+                const SizedBox(height: SpacingTokens.sm),
+                Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.bodyStrong(size: 14)),
+                const SizedBox(height: SpacingTokens.xs),
+                Text(meta, style: theme.caption(size: 12)),
+              ],
+            ),
           ),
         ),
       ),

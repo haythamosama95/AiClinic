@@ -186,6 +186,7 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
         'success': true,
         'data': {'attachment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},
       },
+      'delete_visit_attachment' => {'success': true, 'data': {'attachment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}},
       'get_visit_attachment_download' => {
         'success': true,
         'data': {

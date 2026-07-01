@@ -83,6 +83,7 @@ DECLARE
   v_result public.rpc_result;
   v_org_id uuid;
   v_branch_id uuid;
+  v_patient_id uuid;
   v_passed boolean;
   v_detail text;
 BEGIN
@@ -114,7 +115,13 @@ BEGIN
 
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO public.patients (branch_id, organization_id, full_name, phone, gender, created_by)
-  VALUES (v_branch_id, v_org_id, 'Reset Patient', '01000000001', 'male', v_bootstrap_user);
+  VALUES (v_branch_id, v_org_id, 'Reset Patient', '01000000001', 'male', v_bootstrap_user)
+  RETURNING id INTO v_patient_id;
+
+  IF to_regclass('public.patient_allergies') IS NOT NULL THEN
+    INSERT INTO public.patient_allergies (patient_id, substance, reaction, created_by, updated_by)
+    VALUES (v_patient_id, 'Penicillin', 'Rash', v_bootstrap_user, v_bootstrap_user);
+  END IF;
 
   PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(

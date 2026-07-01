@@ -20,6 +20,7 @@ void main() {
       expect(item!.fileType, VisitAttachmentFileType.pdf);
       expect(item.label, 'Lab report');
       expect(item.canDownload, isTrue);
+      expect(item.canDelete, isFalse);
       expect(item.sizeBytes, 12345);
     });
 
@@ -33,6 +34,18 @@ void main() {
         'can_download': 'false',
       });
       expect(item!.canDownload, isFalse);
+    });
+
+    test('parses can_delete from string', () {
+      final item = VisitAttachmentItem.fromRow({
+        'id': 'att-1',
+        'file_type': 'jpeg',
+        'uploaded_by': 'staff-1',
+        'size_bytes': 100,
+        'created_at': '2026-05-31T12:00:00Z',
+        'can_delete': 'true',
+      });
+      expect(item!.canDelete, isTrue);
     });
 
     test('returns null for invalid file type', () {

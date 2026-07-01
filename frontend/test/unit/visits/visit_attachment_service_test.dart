@@ -173,6 +173,13 @@ void main() {
       expect(download.filename, 'lab-result.pdf');
     });
 
+    test('deleteAttachment invokes RPC', () async {
+      await service.deleteAttachment(attachmentId: 'att-1');
+      expect(testClient.rpcLog.last, 'delete_visit_attachment');
+      final params = testClient.paramsForFunction('delete_visit_attachment')!;
+      expect(params['p_attachment_id'], 'att-1');
+    });
+
     test('downloadAttachmentBytes reads from storage when file_path is set', () async {
       final storageClient = _AttachmentStorageTestClient(_RecordingStorageBucket());
       final storageBucket = (storageClient.storage as _FakeStorageClient).bucket;

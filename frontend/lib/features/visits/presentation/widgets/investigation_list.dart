@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_ca
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 
 /// Editable investigation list for visit documentation (013 US4).
 class InvestigationList extends ConsumerStatefulWidget {
@@ -420,6 +421,12 @@ class InvestigationCardView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(investigation.name, style: theme.title(size: 15)),
+                  if (investigation.note != null && investigation.note!.isNotEmpty) ...[
+                    const SizedBox(height: SpacingTokens.sm),
+                    Text('Note', style: theme.eyebrow(size: 10)),
+                    const SizedBox(height: SpacingTokens.xs),
+                    Text(investigation.note!, style: theme.body()),
+                  ],
                   if (investigation.hasResult) ...[
                     const SizedBox(height: SpacingTokens.sm),
                     Text('Result', style: theme.eyebrow(size: 10)),
@@ -520,6 +527,7 @@ class InvestigationFormView extends ConsumerStatefulWidget {
 class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
   final _formKey = GlobalKey<FormState>();
   final _investigationFieldKey = GlobalKey<CatalogAutocompleteFieldState>();
+  late final TextEditingController _note;
   CatalogFieldSelection _investigationSelection = const CatalogFieldSelection(name: '');
 
   @override
@@ -530,6 +538,13 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
       name: investigation?.name ?? '',
       catalogId: investigation?.investigationId,
     );
+    _note = TextEditingController(text: investigation?.note ?? '');
+  }
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
   }
 
   @override
@@ -561,6 +576,14 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
                 onSearch: (query) => ref.read(visitRepositoryProvider).searchInvestigations(query: query),
                 onSelectionChanged: (selection) => setState(() => _investigationSelection = selection),
                 validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
+              ),
+              const SizedBox(height: SpacingTokens.sm),
+              VisitTextField(
+                key: const Key('investigation_note_field'),
+                label: 'Note',
+                controller: _note,
+                enabled: !widget.isSubmitting,
+                maxLines: 3,
               ),
               const SizedBox(height: SpacingTokens.md),
               Row(
@@ -596,6 +619,9 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
     final name = _investigationFieldKey.currentState?.currentSelection.name ?? _investigationSelection.name;
     final investigationId =
         _investigationFieldKey.currentState?.currentSelection.catalogId ?? _investigationSelection.catalogId;
-    widget.onSubmit(InvestigationFormData(name: name.trim(), investigationId: investigationId));
+    final note = _note.text.trim();
+    widget.onSubmit(
+      InvestigationFormData(name: name.trim(), investigationId: investigationId, note: note.isEmpty ? '' : note),
+    );
   }
 }

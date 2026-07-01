@@ -9,6 +9,7 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 abstract final class VisitPageTokens {
   static const double sectionGap = SpacingTokens.md;
   static const double marginRailWidth = 34;
+  static const double summaryTitleWidth = 168;
   static const double metricTileMinWidth = 150;
   static const double subjectiveWatermarkIconSize = 250;
   static const double subjectiveWatermarkOpacity = 0.05;

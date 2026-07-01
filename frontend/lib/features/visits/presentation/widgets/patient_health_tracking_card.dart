@@ -146,25 +146,6 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
   Widget build(BuildContext context) {
     final sections = [
       _HealthSectionConfig(
-        kind: VisitPanelKind.allergy,
-        title: 'Allergies',
-        accent: context.visitTheme.danger,
-        items: [
-          for (final allergy in widget.safetyContext.allergies)
-            _HealthItem(
-              id: allergy.id,
-              title: allergy.substance,
-              subtitle: allergy.reaction,
-              onEdit: widget.canEdit ? () => _editAllergy(allergy) : null,
-              onArchive: widget.canEdit ? () => _archiveAllergy(allergy) : null,
-            ),
-        ],
-        canEdit: widget.canEdit,
-        emptyMessage: 'No allergies recorded',
-        addLabel: 'Add allergy',
-        addFormBuilder: (onDone) => _AllergyForm(patientId: widget.patientId, onDone: onDone),
-      ),
-      _HealthSectionConfig(
         kind: VisitPanelKind.chronicCondition,
         title: 'Chronic conditions',
         accent: context.visitTheme.pulse,
@@ -179,7 +160,7 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
             ),
         ],
         canEdit: widget.canEdit,
-        emptyMessage: 'No chronic conditions',
+        emptyMessage: '—',
         addLabel: 'Add condition',
         addFormBuilder: (onDone) => _ConditionForm(patientId: widget.patientId, onDone: onDone),
       ),
@@ -198,9 +179,28 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
             ),
         ],
         canEdit: widget.canEdit,
-        emptyMessage: 'No home medications',
+        emptyMessage: '—',
         addLabel: 'Add medication',
         addFormBuilder: (onDone) => _MedicationForm(patientId: widget.patientId, onDone: onDone),
+      ),
+      _HealthSectionConfig(
+        kind: VisitPanelKind.allergy,
+        title: 'Allergies',
+        accent: context.visitTheme.pulse,
+        items: [
+          for (final allergy in widget.safetyContext.allergies)
+            _HealthItem(
+              id: allergy.id,
+              title: allergy.substance,
+              subtitle: allergy.reaction,
+              onEdit: widget.canEdit ? () => _editAllergy(allergy) : null,
+              onArchive: widget.canEdit ? () => _archiveAllergy(allergy) : null,
+            ),
+        ],
+        canEdit: widget.canEdit,
+        emptyMessage: '—',
+        addLabel: 'Add allergy',
+        addFormBuilder: (onDone) => _AllergyForm(patientId: widget.patientId, onDone: onDone),
       ),
     ];
 

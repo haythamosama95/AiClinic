@@ -68,18 +68,16 @@ class EncounterWorkspaceShell extends ConsumerWidget {
 
   Widget _phasePage(EncounterPhase phase, ValueChanged<EncounterPhase> onEditPhase) {
     if (phase == EncounterPhase.review) {
-      return SingleChildScrollView(
-        child: EncounterReview(
-          visitId: visitId,
-          visit: state.visit,
-          state: state,
-          canEdit: canEdit,
-          canUploadAttachments: canUploadAttachments,
-          onRefresh: onRefresh,
-          onEditPhase: onEditPhase,
-          onSubmit: onSubmit,
-          showSubmit: showSubmit,
-        ),
+      return EncounterReview(
+        visitId: visitId,
+        visit: state.visit,
+        state: state,
+        canEdit: canEdit,
+        canUploadAttachments: canUploadAttachments,
+        onRefresh: onRefresh,
+        onEditPhase: onEditPhase,
+        onSubmit: onSubmit,
+        showSubmit: showSubmit,
       );
     }
 

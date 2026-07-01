@@ -161,6 +161,10 @@ class VisitAttachmentService {
     return _visitRepository.getVisitAttachmentDownload(attachmentId: attachmentId);
   }
 
+  Future<void> deleteAttachment({required String attachmentId}) {
+    return _visitRepository.deleteVisitAttachment(attachmentId: attachmentId);
+  }
+
   /// Downloads attachment bytes after [getVisitAttachmentDownload] authorizes access.
   ///
   /// Uses authenticated storage download when [VisitAttachmentDownloadResult.filePath] is set
