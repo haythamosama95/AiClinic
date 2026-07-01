@@ -10,10 +10,18 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widg
 
 /// Context phase — visit type, patient snapshot, and safety record editors (014 US2/US6).
 class EncounterPhaseContext extends ConsumerWidget {
-  const EncounterPhaseContext({required this.visit, this.canEdit = false, super.key});
+  const EncounterPhaseContext({
+    required this.visit,
+    this.canEdit = false,
+    this.safetyAxis = Axis.horizontal,
+    this.expandSafetySections = false,
+    super.key,
+  });
 
   final VisitDetail visit;
   final bool canEdit;
+  final Axis safetyAxis;
+  final bool expandSafetySections;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,7 +54,17 @@ class EncounterPhaseContext extends ConsumerWidget {
             ),
             const SizedBox(height: SpacingTokens.md),
           ],
-          PatientSafetyEditors(patientId: visit.patientId, canEdit: canEdit),
+          if (expandSafetySections)
+            Expanded(
+              child: PatientSafetyEditors(
+                patientId: visit.patientId,
+                canEdit: canEdit,
+                axis: safetyAxis,
+                expandSections: true,
+              ),
+            )
+          else
+            PatientSafetyEditors(patientId: visit.patientId, canEdit: canEdit, axis: safetyAxis),
         ],
       ),
     );

@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
+import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_context.dart';
@@ -18,7 +19,6 @@ class EncounterPhaseSubjective extends ConsumerWidget {
     required this.state,
     required this.canEdit,
     this.showClinicalNoteSaveBar = true,
-    this.canvasHeight,
     super.key,
   });
 
@@ -26,84 +26,91 @@ class EncounterPhaseSubjective extends ConsumerWidget {
   final VisitDocumentationState state;
   final bool canEdit;
   final bool showClinicalNoteSaveBar;
-  final double? canvasHeight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return KeyedSubtree(
       key: const Key('encounter_phase_subjective'),
-      child: canvasHeight == null ? _buildNaturalLayout() : _buildSizedLayout(canvasHeight!),
-    );
-  }
-
-  Widget _buildNaturalLayout() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _complaintHistoryRow(expandField: false),
-        const SizedBox(height: VisitPageTokens.sectionGap),
-        EncounterPhaseContext(visit: state.visit, canEdit: canEdit),
-      ],
-    );
-  }
-
-  Widget _buildSizedLayout(double height) {
-    return SizedBox(
-      height: height,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(flex: 2, child: _complaintHistoryRow(expandField: true)),
-          const SizedBox(height: VisitPageTokens.sectionGap),
-          Expanded(
-            flex: 1,
-            child: SingleChildScrollView(
-              child: EncounterPhaseContext(visit: state.visit, canEdit: canEdit),
-            ),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final expandField = constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+          if (expandField) {
+            return SizedBox(height: constraints.maxHeight, child: _buildIntakeLayout(expandField: true));
+          }
+          return _buildIntakeLayout(expandField: false);
+        },
       ),
     );
   }
 
-  Widget _complaintHistoryRow({required bool expandField}) {
+  Widget _buildIntakeLayout({required bool expandField}) {
     return Row(
       crossAxisAlignment: expandField ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: _SubjectiveFieldCard(
-            title: 'Complaint',
-            expandBody: expandField,
-            child: ClinicalNoteEditor(
-              visitId: visitId,
-              state: state,
-              canEdit: canEdit,
-              sections: const {ClinicalNoteSection.complaint},
-              showSectionHeaders: false,
-              expandField: expandField,
-              showStaleBanner: true,
-              showSaveBar: showClinicalNoteSaveBar,
-              showEditButton: true,
-            ),
-          ),
-        ),
+        Expanded(flex: 2, child: _complaintHistoryColumn(expandField: expandField)),
         const SizedBox(width: VisitPageTokens.sectionGap),
         Expanded(
-          child: _SubjectiveFieldCard(
-            title: 'History',
-            expandBody: expandField,
-            child: ClinicalNoteEditor(
-              visitId: visitId,
-              state: state,
-              canEdit: canEdit,
-              sections: const {ClinicalNoteSection.history},
-              showSectionHeaders: false,
-              expandField: expandField,
-              showStaleBanner: false,
-              showSaveBar: false,
-            ),
+          flex: 1,
+          child: EncounterPhaseContext(
+            visit: state.visit,
+            canEdit: canEdit,
+            safetyAxis: Axis.vertical,
+            expandSafetySections: expandField,
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _complaintHistoryColumn({required bool expandField}) {
+    final complaint = _SubjectiveFieldCard(
+      title: 'Complaint',
+      expandBody: expandField,
+      child: ClinicalNoteEditor(
+        visitId: visitId,
+        state: state,
+        canEdit: canEdit,
+        sections: const {ClinicalNoteSection.complaint},
+        showSectionHeaders: false,
+        expandField: expandField,
+        showStaleBanner: true,
+        showSaveBar: showClinicalNoteSaveBar,
+        showEditButton: true,
+      ),
+    );
+
+    final history = _SubjectiveFieldCard(
+      title: 'History',
+      expandBody: expandField,
+      child: ClinicalNoteEditor(
+        visitId: visitId,
+        state: state,
+        canEdit: canEdit,
+        sections: const {ClinicalNoteSection.history},
+        showSectionHeaders: false,
+        expandField: expandField,
+        showStaleBanner: false,
+        showSaveBar: false,
+      ),
+    );
+
+    if (!expandField) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          complaint,
+          const SizedBox(height: VisitPageTokens.sectionGap),
+          history,
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: complaint),
+        const SizedBox(height: VisitPageTokens.sectionGap),
+        Expanded(child: history),
       ],
     );
   }
@@ -116,6 +123,7 @@ class EncounterPhaseSubjectiveDetail extends StatelessWidget {
     required this.state,
     required this.canEdit,
     this.note,
+    this.visit,
     super.key,
   });
 
@@ -123,6 +131,7 @@ class EncounterPhaseSubjectiveDetail extends StatelessWidget {
   final VisitDocumentationState? state;
   final bool canEdit;
   final VisitClinicalNote? note;
+  final VisitDetail? visit;
 
   @override
   Widget build(BuildContext context) {
@@ -130,22 +139,35 @@ class EncounterPhaseSubjectiveDetail extends StatelessWidget {
       return EncounterPhaseSubjective(visitId: visitId, state: state!, canEdit: true);
     }
 
+    final contextVisit = visit ?? state?.visit;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: _SubjectiveFieldCard(
-            title: 'Complaint',
-            child: _SubjectiveDetailText(value: note?.complaint ?? ''),
+          flex: 2,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SubjectiveFieldCard(
+                title: 'Complaint',
+                child: _SubjectiveDetailText(value: note?.complaint ?? ''),
+              ),
+              const SizedBox(height: VisitPageTokens.sectionGap),
+              _SubjectiveFieldCard(
+                title: 'History',
+                child: _SubjectiveDetailText(value: note?.history ?? ''),
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: VisitPageTokens.sectionGap),
-        Expanded(
-          child: _SubjectiveFieldCard(
-            title: 'History',
-            child: _SubjectiveDetailText(value: note?.history ?? ''),
+        if (contextVisit != null) ...[
+          const SizedBox(width: VisitPageTokens.sectionGap),
+          Expanded(
+            flex: 1,
+            child: EncounterPhaseContext(visit: contextVisit, safetyAxis: Axis.vertical),
           ),
-        ),
+        ],
       ],
     );
   }

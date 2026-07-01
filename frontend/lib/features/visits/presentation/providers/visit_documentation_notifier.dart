@@ -78,8 +78,35 @@ class VisitDocumentationState {
     return noteEditMode == DocumentationEditMode.editing || saveStatus == DocumentationSaveStatus.idle;
   }
 
+  /// Whether structured plan details differ from the last persisted snapshot.
+  bool get hasUnsavedPlanDetails {
+    if (planDetailsSaveStatus == PlanDetailsSaveStatus.saving) {
+      return false;
+    }
+    if (planDetailsSaveStatus == PlanDetailsSaveStatus.stale) {
+      return true;
+    }
+    if (planDetailsSaveStatus == PlanDetailsSaveStatus.saved) {
+      return false;
+    }
+    return _planDetailsDifferFromPersisted();
+  }
+
+  bool get hasUnsavedChanges => hasUnsavedDraft || hasUnsavedPlanDetails;
+
   /// @deprecated Use [hasUnsavedDraft] with page-level permission gating.
-  bool get needsSaveBeforeLeaving => hasUnsavedDraft;
+  bool get needsSaveBeforeLeaving => hasUnsavedChanges;
+
+  bool _planDetailsDifferFromPersisted() {
+    final persisted = visit.planDetails;
+    return followUpInterval.trim() != (persisted?.followUpInterval ?? '').trim() ||
+        followUpDate != persisted?.followUpDate ||
+        patientInstructions.trim() != (persisted?.patientInstructions ?? '').trim() ||
+        referral.trim() != (persisted?.referral ?? '').trim() ||
+        certificateStartDate != persisted?.certificateStartDate ||
+        certificateEndDate != persisted?.certificateEndDate ||
+        certificateReason.trim() != (persisted?.certificateReason ?? '').trim();
+  }
 
   VisitDocumentationState copyWith({
     VisitDetail? visit,
@@ -264,6 +291,43 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
         clearError: true,
       ),
     );
+  }
+
+  /// Persists all local draft fields (clinical note + plan details).
+  ///
+  /// Returns `false` when a save fails or the state is stale; `true` when
+  /// everything is persisted (or there was nothing to save).
+  Future<bool> saveAll() async {
+    final current = state.value;
+    if (current == null || !_canEditVisit(current.visit)) {
+      return true;
+    }
+
+    if (current.hasUnsavedDraft) {
+      await save();
+      final afterNote = state.value;
+      if (afterNote == null ||
+          afterNote.saveStatus == DocumentationSaveStatus.error ||
+          afterNote.saveStatus == DocumentationSaveStatus.stale) {
+        return false;
+      }
+    }
+
+    final beforePlan = state.value;
+    if (beforePlan == null) {
+      return false;
+    }
+    if (beforePlan.hasUnsavedPlanDetails) {
+      await savePlanDetails();
+      final afterPlan = state.value;
+      if (afterPlan == null ||
+          afterPlan.planDetailsSaveStatus == PlanDetailsSaveStatus.error ||
+          afterPlan.planDetailsSaveStatus == PlanDetailsSaveStatus.stale) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   Future<void> save() async {

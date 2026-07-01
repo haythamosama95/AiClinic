@@ -83,15 +83,9 @@ class VisitDocumentationPage extends ConsumerWidget {
   }) async {
     final notifier = ref.read(visitDocumentationProvider(visitId).notifier);
 
-    if (canEdit && state.hasUnsavedDraft) {
-      await notifier.save();
-      if (!context.mounted) return;
-      final updated = ref.read(visitDocumentationProvider(visitId)).value;
-      if (updated == null ||
-          updated.saveStatus == DocumentationSaveStatus.error ||
-          updated.saveStatus == DocumentationSaveStatus.stale) {
-        return;
-      }
+    if (canEdit && state.hasUnsavedChanges) {
+      final saved = await notifier.saveAll();
+      if (!saved || !context.mounted) return;
     }
 
     final latest = ref.read(visitDocumentationProvider(visitId)).value ?? state;
@@ -109,15 +103,9 @@ class VisitDocumentationPage extends ConsumerWidget {
     final notifier = ref.read(visitDocumentationProvider(visitId).notifier);
     var savedChanges = false;
 
-    if (canEdit && current.hasUnsavedDraft) {
-      await notifier.save();
-      if (!context.mounted) return;
-      final updated = ref.read(visitDocumentationProvider(visitId)).value;
-      if (updated == null ||
-          updated.saveStatus == DocumentationSaveStatus.error ||
-          updated.saveStatus == DocumentationSaveStatus.stale) {
-        return;
-      }
+    if (canEdit && current.hasUnsavedChanges) {
+      final saved = await notifier.saveAll();
+      if (!saved || !context.mounted) return;
       savedChanges = true;
     }
 

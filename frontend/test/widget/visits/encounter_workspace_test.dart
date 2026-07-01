@@ -32,7 +32,7 @@ void main() {
       expect(find.byKey(const Key('encounter_stepper')), findsOneWidget);
       expect(find.byKey(const Key('encounter_phase_subjective')), findsOneWidget);
       expect(find.byKey(const Key('encounter_phase_context')), findsOneWidget);
-      expect(find.byKey(const Key('encounter_sticky_footer')), findsOneWidget);
+      expect(find.byKey(const Key('encounter_sticky_footer')), findsNothing);
     });
 
     testWidgets('non-linear navigation jumps from subjective to plan', (tester) async {

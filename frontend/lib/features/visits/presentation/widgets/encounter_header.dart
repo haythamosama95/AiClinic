@@ -72,12 +72,10 @@ class EncounterHeader extends ConsumerWidget {
                       ],
                     )
                   : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        encounterDetails,
+                        Flexible(child: encounterDetails),
                         _HeaderSectionDivider(theme: theme),
-                        patientDetails,
+                        Flexible(child: patientDetails),
                       ],
                     );
 
@@ -91,8 +89,7 @@ class EncounterHeader extends ConsumerWidget {
                     onPressed: onBack,
                   ),
                   const SizedBox(width: SpacingTokens.md),
-                  if (isCompact) Expanded(child: contextSections) else contextSections,
-                  const Spacer(),
+                  Expanded(child: contextSections),
                   actions,
                 ],
               );
@@ -178,7 +175,13 @@ class _PatientDetailsLine extends StatelessWidget {
           spacing: SpacingTokens.sm,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(name, key: const Key('encounter_header_patient_name'), style: theme.bodyStrong()),
+            Text(
+              name,
+              key: const Key('encounter_header_patient_name'),
+              style: theme.bodyStrong(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             if (ageLabel != null)
               Text(ageLabel!, key: const Key('encounter_header_patient_age'), style: theme.caption()),
           ],
@@ -261,7 +264,9 @@ class _EncounterHeaderItem extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: theme.mutedInk),
         const SizedBox(width: SpacingTokens.xs),
-        Text(value, style: theme.bodyStrong(size: 13)),
+        Flexible(
+          child: Text(value, style: theme.bodyStrong(size: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
       ],
     );
   }
