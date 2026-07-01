@@ -158,23 +158,41 @@ class VisitMarginAbbr extends StatelessWidget {
 
 /// Empty state hint for visit sections.
 class VisitEmptyHint extends StatelessWidget {
-  const VisitEmptyHint({required this.message, this.icon = Icons.inbox_outlined, super.key});
+  const VisitEmptyHint({
+    required this.message,
+    this.icon = Icons.inbox_outlined,
+    this.showIcon = true,
+    this.actionLabel,
+    this.actionIcon = Icons.add,
+    this.onAction,
+    this.actionKey,
+    this.maxMessageWidth,
+    super.key,
+  });
 
   final String message;
   final IconData icon;
+  final bool showIcon;
+  final String? actionLabel;
+  final IconData actionIcon;
+  final VoidCallback? onAction;
+  final Key? actionKey;
+  final double? maxMessageWidth;
 
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
+    final showAction = actionLabel != null && onAction != null;
+
+    final messageWidget = Text(message, textAlign: TextAlign.center, style: theme.caption());
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
-      child: Align(
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (showIcon) ...[
             Container(
               width: 44,
               height: 44,
@@ -183,9 +201,26 @@ class VisitEmptyHint extends StatelessWidget {
               child: Icon(icon, size: 20, color: theme.mutedInk.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: SpacingTokens.sm),
-            Text(message, textAlign: TextAlign.center, style: theme.caption()),
           ],
-        ),
+          if (maxMessageWidth != null)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxMessageWidth!),
+              child: messageWidget,
+            )
+          else
+            messageWidget,
+          if (showAction) ...[
+            const SizedBox(height: SpacingTokens.sm),
+            AppButton(
+              key: actionKey,
+              label: actionLabel!,
+              size: AppFieldSize.sm,
+              variant: AppButtonVariant.ghost,
+              icon: Icon(actionIcon, size: 18, color: theme.pulse),
+              onPressed: onAction,
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -36,28 +36,29 @@ class EncounterStepperHeader extends StatelessWidget {
 
     return KeyedSubtree(
       key: const Key('encounter_stepper'),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (var i = 0; i < phases.length; i++) ...[
-            if (i > 0)
-              SizedBox(
-                width: connectorWidth,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.xs),
-                  child: _StepConnector(
-                    filled: i <= activeIndex,
-                    activeColor: colors.primary,
-                    inactiveColor: colors.border,
-                    thickness: _connectorThickness,
-                    animationDuration: _connectorAnimationDuration,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            for (var i = 0; i < phases.length; i++) ...[
+              if (i > 0)
+                SizedBox(
+                  width: connectorWidth,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.xs),
+                    child: _StepConnector(
+                      filled: i <= activeIndex,
+                      activeColor: colors.primary,
+                      inactiveColor: colors.border,
+                      thickness: _connectorThickness,
+                      animationDuration: _connectorAnimationDuration,
+                    ),
                   ),
                 ),
-              ),
-            Flexible(
-              fit: FlexFit.loose,
-              child: _StepPill(
+              _StepPill(
                 key: Key('encounter_step_${phases[i].name}'),
                 phase: phases[i],
                 state: _stepState(i, activeIndex),
@@ -67,9 +68,9 @@ class EncounterStepperHeader extends StatelessWidget {
                 titleStyle: titleStyle,
                 onTap: () => onPhaseSelected(phases[i]),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -154,6 +155,7 @@ class _StepPill extends StatelessWidget {
   final VoidCallback onTap;
 
   static const _iconSize = 18.0;
+  static const _badgeSize = 16.0;
   static const _borderWidth = 1.0;
   static const _pillHeight = SpacingTokens.sm * 2 + _iconSize + _borderWidth * 2;
 
@@ -163,6 +165,7 @@ class _StepPill extends StatelessWidget {
     final isHighlighted = state != _StepVisualState.inactive;
     final foreground = isHighlighted ? colors.primaryForeground : colors.mutedForeground;
     final stepIcon = state == _StepVisualState.completed ? Icons.check_rounded : phase.icon;
+    final badgeIcon = _badgeIcon(badge, isHighlighted);
 
     return Semantics(
       button: true,
@@ -198,18 +201,8 @@ class _StepPill extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: SpacingTokens.sm),
-                Flexible(
-                  child: Text(
-                    phase.label,
-                    style: titleStyle?.copyWith(color: foreground),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (_badgeIcon(badge, isHighlighted) case final icon?) ...[
-                  const SizedBox(width: SpacingTokens.xs),
-                  icon,
-                ],
+                Text(phase.label, style: titleStyle?.copyWith(color: foreground), maxLines: 1),
+                if (badgeIcon != null) ...[const SizedBox(width: SpacingTokens.xs), badgeIcon],
               ],
             ),
           ),
@@ -219,7 +212,7 @@ class _StepPill extends StatelessWidget {
   }
 
   Widget? _badgeIcon(PhaseCompletionBadge badge, bool onPrimary) {
-    const size = 16.0;
+    const size = _badgeSize;
     return switch (badge) {
       PhaseCompletionBadge.empty => null,
       PhaseCompletionBadge.hasContent => Icon(

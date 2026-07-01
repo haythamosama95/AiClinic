@@ -17,6 +17,28 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 
+/// Opens the add-investigation dialog used by [InvestigationList].
+Future<void> showInvestigationAddDialog({
+  required BuildContext context,
+  required String visitId,
+  required VoidCallback onRefresh,
+}) {
+  return AppDialog.show<void>(
+    context: context,
+    title: 'Add investigation',
+    bodyBuilder: (dialogContext) => _InvestigationAddDialogBody(
+      visitId: visitId,
+      hostContext: context,
+      onCancel: () => Navigator.of(dialogContext).pop(),
+      onRefresh: onRefresh,
+      onSaved: () {
+        Navigator.of(dialogContext).pop();
+        onRefresh();
+      },
+    ),
+  );
+}
+
 /// Editable investigation list for visit documentation (013 US4).
 class InvestigationList extends ConsumerStatefulWidget {
   const InvestigationList({
@@ -45,13 +67,20 @@ class InvestigationList extends ConsumerStatefulWidget {
 }
 
 class _InvestigationListState extends ConsumerState<InvestigationList> {
-  bool _showAddForm = false;
   String? _editingInvestigationId;
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  bool get _hasItems => widget.investigations.isNotEmpty;
+
+  Future<void> _openAddDialog() async {
+    if (_isSubmitting) return;
+
+    await showInvestigationAddDialog(context: context, visitId: widget.visitId, onRefresh: widget.onChanged);
+  }
+
   List<Widget>? _shelfActions() {
-    if (!widget.canEdit || _showAddForm || widget.encounterShell) return null;
+    if (!widget.canEdit || widget.encounterShell || !_hasItems) return null;
 
     return [
       AppNotchedCardAction(
@@ -61,31 +90,21 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
           label: 'Add investigation',
           size: AppFieldSize.sm,
           icon: const Icon(Icons.add, size: 18),
-          onPressed: _isSubmitting
-              ? null
-              : () => setState(() {
-                  _showAddForm = true;
-                  _editingInvestigationId = null;
-                }),
+          onPressed: _isSubmitting ? null : _openAddDialog,
         ),
       ),
     ];
   }
 
   Widget? _encounterHeaderTrailing() {
-    if (!widget.encounterShell || !widget.canEdit || _showAddForm) return null;
+    if (!widget.encounterShell || !widget.canEdit || !_hasItems) return null;
 
     final theme = context.visitTheme;
     return AppIconButton(
       key: const Key('investigation_add_button'),
       icon: Icon(Icons.add_rounded, size: HealthProfileCardTokens.addIconSize, color: theme.pulse),
       tooltip: 'Add investigation',
-      onPressed: _isSubmitting
-          ? null
-          : () => setState(() {
-              _showAddForm = true;
-              _editingInvestigationId = null;
-            }),
+      onPressed: _isSubmitting ? null : _openAddDialog,
     );
   }
 
@@ -116,18 +135,25 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
   }
 
   bool _shouldCenterEmptyState() {
-    return widget.investigations.isEmpty && !_showAddForm && _errorMessage == null;
+    return !_hasItems && _errorMessage == null;
+  }
+
+  Widget _buildEmptyState() {
+    return VisitEmptyHint(
+      key: const Key('investigation_empty'),
+      message: 'No investigations ordered yet.',
+      icon: Icons.biotech_outlined,
+      actionLabel: widget.canEdit ? 'Add investigation' : null,
+      onAction: widget.canEdit ? _openAddDialog : null,
+      actionKey: widget.canEdit ? const Key('investigation_add_button') : null,
+    );
   }
 
   Widget _buildBody() {
     final investigations = widget.investigations;
 
     if (widget.encounterShell && widget.expandBody && _shouldCenterEmptyState()) {
-      return const VisitEmptyHint(
-        key: Key('investigation_empty'),
-        message: 'No investigations ordered yet.',
-        icon: Icons.biotech_outlined,
-      );
+      return _buildEmptyState();
     }
 
     return Column(
@@ -141,12 +167,7 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
             style: context.visitTheme.caption(color: context.visitTheme.danger),
           ),
         ],
-        if (investigations.isEmpty && !_showAddForm)
-          const VisitEmptyHint(
-            key: Key('investigation_empty'),
-            message: 'No investigations ordered yet.',
-            icon: Icons.biotech_outlined,
-          ),
+        if (investigations.isEmpty) _buildEmptyState(),
         ...investigations.map(
           (investigation) => Padding(
             padding: const EdgeInsets.only(top: SpacingTokens.sm),
@@ -161,78 +182,13 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
                 : InvestigationCardView(
                     investigation: investigation,
                     canEdit: widget.canEdit,
-                    onEdit: () => setState(() {
-                      _editingInvestigationId = investigation.id;
-                      _showAddForm = false;
-                    }),
+                    onEdit: () => setState(() => _editingInvestigationId = investigation.id),
                     onArchive: () => _archiveInvestigation(investigation),
                   ),
           ),
         ),
-        if (_showAddForm)
-          Padding(
-            padding: const EdgeInsets.only(top: SpacingTokens.sm),
-            child: InvestigationFormView(
-              key: const Key('investigation_add_form'),
-              isSubmitting: _isSubmitting,
-              onSubmit: _addInvestigation,
-              onCancel: () => setState(() => _showAddForm = false),
-            ),
-          ),
       ],
     );
-  }
-
-  Future<void> _addInvestigation(InvestigationFormData data) async {
-    setState(() {
-      _isSubmitting = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final normalizedName = CatalogNameNormalizer.normalize(data.name);
-      if (normalizedName.isEmpty) {
-        throw RpcFailure(
-          RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Investigation name is required.'),
-        );
-      }
-
-      final isCustom = data.isCustomInvestigation;
-      await ref
-          .read(visitRepositoryProvider)
-          .createVisitInvestigation(
-            visitId: widget.visitId,
-            name: normalizedName,
-            note: _nullableTrim(data.note),
-            investigationId: data.investigationId,
-          );
-
-      if (!mounted) return;
-
-      setState(() {
-        _showAddForm = false;
-        _isSubmitting = false;
-      });
-      widget.onChanged();
-
-      if (isCustom && mounted) {
-        await _maybeSaveCustomToCatalog(normalizedName: normalizedName);
-      }
-    } on RpcFailure catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-          _errorMessage = visitMessageForRpc(e);
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-          _errorMessage = e.toString();
-        });
-      }
-    }
   }
 
   Future<void> _updateInvestigation(VisitInvestigation existing, InvestigationFormData data) async {
@@ -364,12 +320,6 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
       if (!mounted) return;
       AppToast.error(context, message: e.toString());
     }
-  }
-
-  String? _nullableTrim(String? value) {
-    if (value == null) return null;
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
   }
 }
 
@@ -512,6 +462,7 @@ class InvestigationFormView extends ConsumerStatefulWidget {
     required this.isSubmitting,
     required this.onSubmit,
     required this.onCancel,
+    this.inDialog = false,
     super.key,
   });
 
@@ -519,6 +470,7 @@ class InvestigationFormView extends ConsumerStatefulWidget {
   final bool isSubmitting;
   final void Function(InvestigationFormData data) onSubmit;
   final VoidCallback onCancel;
+  final bool inDialog;
 
   @override
   ConsumerState<InvestigationFormView> createState() => _InvestigationFormViewState();
@@ -552,62 +504,70 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
     final theme = context.visitTheme;
     final isEdit = widget.initialInvestigation != null;
 
+    final form = Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!widget.inDialog) ...[
+            Text(isEdit ? 'Edit investigation' : 'New investigation', style: theme.title(size: 15)),
+            const SizedBox(height: SpacingTokens.md),
+          ],
+          CatalogAutocompleteField(
+            key: _investigationFieldKey,
+            label: 'Investigation *',
+            initialName: widget.initialInvestigation?.name,
+            initialCatalogId: widget.initialInvestigation?.investigationId,
+            enabled: !widget.isSubmitting,
+            onSearch: (query) => ref.read(visitRepositoryProvider).searchInvestigations(query: query),
+            onSelectionChanged: (selection) => setState(() => _investigationSelection = selection),
+            validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
+          ),
+          const SizedBox(height: SpacingTokens.sm),
+          VisitTextField(
+            key: const Key('investigation_note_field'),
+            label: 'Note',
+            controller: _note,
+            enabled: !widget.isSubmitting,
+            maxLines: 3,
+          ),
+          const SizedBox(height: SpacingTokens.md),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              AppButton(
+                key: const Key('investigation_cancel_button'),
+                label: 'Cancel',
+                variant: AppButtonVariant.secondary,
+                expand: false,
+                onPressed: widget.isSubmitting ? null : widget.onCancel,
+              ),
+              const SizedBox(width: SpacingTokens.sm),
+              AppButton(
+                key: const Key('investigation_save_button'),
+                label: isEdit ? 'Update' : 'Add',
+                isLoading: widget.isSubmitting,
+                expand: false,
+                onPressed: widget.isSubmitting ? null : _submit,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (widget.inDialog) {
+      return form;
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: theme.tile,
         borderRadius: BorderRadius.circular(theme.tileRadius),
         border: Border.all(color: theme.pulse.withValues(alpha: 0.35)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(isEdit ? 'Edit investigation' : 'New investigation', style: theme.title(size: 15)),
-              const SizedBox(height: SpacingTokens.md),
-              CatalogAutocompleteField(
-                key: _investigationFieldKey,
-                label: 'Investigation *',
-                initialName: widget.initialInvestigation?.name,
-                initialCatalogId: widget.initialInvestigation?.investigationId,
-                enabled: !widget.isSubmitting,
-                onSearch: (query) => ref.read(visitRepositoryProvider).searchInvestigations(query: query),
-                onSelectionChanged: (selection) => setState(() => _investigationSelection = selection),
-                validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              VisitTextField(
-                key: const Key('investigation_note_field'),
-                label: 'Note',
-                controller: _note,
-                enabled: !widget.isSubmitting,
-                maxLines: 3,
-              ),
-              const SizedBox(height: SpacingTokens.md),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  AppButton(
-                    key: const Key('investigation_cancel_button'),
-                    label: 'Cancel',
-                    variant: AppButtonVariant.secondary,
-                    onPressed: widget.isSubmitting ? null : widget.onCancel,
-                  ),
-                  const SizedBox(width: SpacingTokens.sm),
-                  AppButton(
-                    key: const Key('investigation_save_button'),
-                    label: isEdit ? 'Update' : 'Add',
-                    isLoading: widget.isSubmitting,
-                    onPressed: widget.isSubmitting ? null : _submit,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: Padding(padding: const EdgeInsets.all(SpacingTokens.lg), child: form),
     );
   }
 
@@ -622,6 +582,105 @@ class _InvestigationFormViewState extends ConsumerState<InvestigationFormView> {
     final note = _note.text.trim();
     widget.onSubmit(
       InvestigationFormData(name: name.trim(), investigationId: investigationId, note: note.isEmpty ? '' : note),
+    );
+  }
+}
+
+class _InvestigationAddDialogBody extends ConsumerStatefulWidget {
+  const _InvestigationAddDialogBody({
+    required this.visitId,
+    required this.hostContext,
+    required this.onCancel,
+    required this.onRefresh,
+    required this.onSaved,
+  });
+
+  final String visitId;
+  final BuildContext hostContext;
+  final VoidCallback onCancel;
+  final VoidCallback onRefresh;
+  final VoidCallback onSaved;
+
+  @override
+  ConsumerState<_InvestigationAddDialogBody> createState() => _InvestigationAddDialogBodyState();
+}
+
+class _InvestigationAddDialogBodyState extends ConsumerState<_InvestigationAddDialogBody> {
+  bool _isSubmitting = false;
+
+  Future<void> _submit(InvestigationFormData data) async {
+    setState(() => _isSubmitting = true);
+
+    try {
+      final normalizedName = CatalogNameNormalizer.normalize(data.name);
+      if (normalizedName.isEmpty) {
+        throw RpcFailure(
+          RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Investigation name is required.'),
+        );
+      }
+
+      final isCustom = data.isCustomInvestigation;
+      await ref
+          .read(visitRepositoryProvider)
+          .createVisitInvestigation(
+            visitId: widget.visitId,
+            name: normalizedName,
+            note: _nullableTrim(data.note),
+            investigationId: data.investigationId,
+          );
+
+      if (!mounted) return;
+
+      if (isCustom) {
+        await _maybeSaveCustomToCatalog(normalizedName: normalizedName);
+      }
+
+      widget.onSaved();
+    } on RpcFailure catch (e) {
+      if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
+    } catch (e) {
+      if (mounted) AppToast.error(context, message: e.toString());
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _maybeSaveCustomToCatalog({required String normalizedName}) async {
+    final save = await SaveToCatalogDialog.show(
+      widget.hostContext,
+      normalizedName: normalizedName,
+      itemTypeLabel: 'investigation',
+    );
+    if (save != true || !widget.hostContext.mounted) return;
+
+    try {
+      await ref.read(visitRepositoryProvider).createCatalogInvestigation(name: normalizedName);
+      if (!widget.hostContext.mounted) return;
+      AppToast.success(widget.hostContext, message: 'Saved "$normalizedName" to your investigation catalog.');
+      widget.onRefresh();
+    } on RpcFailure catch (e) {
+      if (!widget.hostContext.mounted) return;
+      AppToast.error(widget.hostContext, message: visitMessageForRpc(e));
+    } catch (e) {
+      if (!widget.hostContext.mounted) return;
+      AppToast.error(widget.hostContext, message: e.toString());
+    }
+  }
+
+  String? _nullableTrim(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InvestigationFormView(
+      key: const Key('investigation_add_form'),
+      isSubmitting: _isSubmitting,
+      inDialog: true,
+      onSubmit: _submit,
+      onCancel: widget.onCancel,
     );
   }
 }

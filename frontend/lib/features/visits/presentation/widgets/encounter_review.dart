@@ -99,13 +99,11 @@ class EncounterReview extends ConsumerWidget {
                 label: 'Treatment plans',
                 lines: _formatTreatmentPlans(visit.treatmentPlans),
                 emptyKey: const Key('encounter_review_treatment_plans_empty'),
-                emptyMessage: 'No treatment plans recorded.',
               ),
               _SummaryLinesField(
                 label: 'Investigations',
                 lines: _formatInvestigations(visit.investigations),
                 emptyKey: const Key('encounter_review_investigations_empty'),
-                emptyMessage: 'No investigations ordered.',
               ),
               if (onRefresh != null)
                 VisitAttachmentList(
@@ -329,7 +327,11 @@ class _SummaryLayout extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var index = 0; index < sections.length; index++) ...[
-              if (index > 0) SizedBox(height: boundedHeight ? SpacingTokens.lg : VisitPageTokens.sectionGap),
+              if (index > 0) ...[
+                SizedBox(height: boundedHeight ? SpacingTokens.lg : VisitPageTokens.sectionGap),
+                Divider(height: 1, color: theme.hairlineSoft),
+                SizedBox(height: boundedHeight ? SpacingTokens.lg : VisitPageTokens.sectionGap),
+              ],
               _SummarySectionRow(
                 title: sections[index].title,
                 phase: sections[index].phase,

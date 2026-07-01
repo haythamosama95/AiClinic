@@ -69,8 +69,10 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
   String? _downloadingAttachmentId;
   String? _deletingAttachmentId;
 
+  bool get _hasItems => widget.attachments.isNotEmpty;
+
   List<Widget>? _shelfActions() {
-    if (!widget.canUpload || _isUploading || widget.encounterShell || widget.summaryMode) return null;
+    if (!widget.canUpload || _isUploading || widget.encounterShell || widget.summaryMode || !_hasItems) return null;
 
     return [
       AppNotchedCardAction(
@@ -87,7 +89,7 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
   }
 
   Widget? _encounterHeaderTrailing() {
-    if (!widget.encounterShell || !widget.canUpload || _isUploading) return null;
+    if (!widget.encounterShell || !widget.canUpload || _isUploading || !_hasItems) return null;
 
     final theme = context.visitTheme;
     return AppIconButton(
@@ -130,6 +132,7 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
 
   Widget _buildSummaryLayout() {
     final theme = context.visitTheme;
+    final showHeaderUpload = widget.canUpload && !_isUploading && _hasItems;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: SpacingTokens.md),
@@ -145,13 +148,11 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
                   style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2),
                 ),
               ),
-              if (widget.canUpload && !_isUploading)
-                AppButton(
+              if (showHeaderUpload)
+                AppIconButton(
                   key: const Key('visit_attachment_upload_button'),
-                  label: 'Upload file',
-                  variant: AppButtonVariant.ghost,
-                  size: AppFieldSize.sm,
-                  icon: const Icon(Icons.upload_file_outlined, size: 16),
+                  icon: Icon(Icons.upload_file_outlined, size: HealthProfileCardTokens.addIconSize, color: theme.pulse),
+                  tooltip: 'Upload file',
                   onPressed: _pickAndUpload,
                 ),
             ],
@@ -164,18 +165,32 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
   }
 
   bool _shouldCenterEmptyState() {
-    return widget.attachments.isEmpty && !_isUploading && _errorMessage == null;
+    return !_hasItems && !_isUploading && _errorMessage == null;
+  }
+
+  Widget _buildEmptyState() {
+    if (widget.summaryMode) {
+      final theme = context.visitTheme;
+      return KeyedSubtree(
+        key: const Key('visit_attachment_empty'),
+        child: Text('—', style: theme.body(color: theme.mutedInk)),
+      );
+    }
+
+    return VisitEmptyHint(
+      key: const Key('visit_attachment_empty'),
+      message: 'No attachments yet.',
+      icon: Icons.attach_file_outlined,
+      actionLabel: widget.canUpload && !_isUploading ? 'Upload file' : null,
+      actionIcon: Icons.upload_file_outlined,
+      onAction: widget.canUpload && !_isUploading ? _pickAndUpload : null,
+      actionKey: widget.canUpload ? const Key('visit_attachment_upload_button') : null,
+    );
   }
 
   Widget _buildBody() {
-    final theme = context.visitTheme;
-
     if (widget.encounterShell && widget.expandBody && _shouldCenterEmptyState()) {
-      return const VisitEmptyHint(
-        key: Key('visit_attachment_empty'),
-        message: 'No attachments yet.',
-        icon: Icons.attach_file_outlined,
-      );
+      return _buildEmptyState();
     }
 
     return Column(
@@ -208,17 +223,7 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
             style: context.visitTheme.caption(color: context.visitTheme.danger),
           ),
         ],
-        if (widget.attachments.isEmpty && !_isUploading)
-          widget.summaryMode
-              ? KeyedSubtree(
-                  key: const Key('visit_attachment_empty'),
-                  child: Text('No attachments yet.', style: theme.body(color: theme.mutedInk)),
-                )
-              : const VisitEmptyHint(
-                  key: Key('visit_attachment_empty'),
-                  message: 'No attachments yet.',
-                  icon: Icons.attach_file_outlined,
-                ),
+        if (!_hasItems && !_isUploading) _buildEmptyState(),
         Wrap(
           spacing: SpacingTokens.sm,
           runSpacing: SpacingTokens.sm,

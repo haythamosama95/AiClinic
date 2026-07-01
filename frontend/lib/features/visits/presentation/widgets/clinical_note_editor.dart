@@ -350,8 +350,9 @@ class _ReadOnlyClinicalNote extends StatelessWidget {
             child: AppButton(
               key: const Key('clinical_note_edit_button'),
               label: 'Edit clinical note',
-              variant: AppButtonVariant.outline,
-              icon: const Icon(Icons.edit_outlined, size: 18),
+              size: AppFieldSize.sm,
+              variant: AppButtonVariant.ghost,
+              icon: Icon(Icons.edit_outlined, size: 18, color: context.visitTheme.pulse),
               onPressed: onEdit,
             ),
           ),

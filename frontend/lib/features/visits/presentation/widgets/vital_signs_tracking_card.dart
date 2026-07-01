@@ -164,10 +164,11 @@ class _VitalSignsBody extends StatelessWidget {
       sectionKind: VisitPanelKind.vitalSigns,
       showSectionCard: false,
       embeddedInTrackingCard: true,
+      expandBody: expandBody,
     );
 
     if (vitalSigns.isEmpty) {
-      return expandBody ? Center(child: list) : list;
+      return expandBody ? SizedBox.expand(child: list) : list;
     }
 
     final content = Column(

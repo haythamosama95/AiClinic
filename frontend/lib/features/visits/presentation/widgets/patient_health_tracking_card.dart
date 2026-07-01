@@ -14,6 +14,7 @@ import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_
 import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 
 /// Patient-level chronic conditions, medications, and allergies for the Intake step (014 US6).
@@ -77,7 +78,7 @@ class _HealthProfileShell extends StatelessWidget {
       child: child,
     );
 
-    return DecoratedBox(
+    final card = DecoratedBox(
       decoration: BoxDecoration(
         color: colors.card,
         borderRadius: borderRadius,
@@ -86,41 +87,62 @@ class _HealthProfileShell extends StatelessWidget {
       child: ClipRRect(
         borderRadius: borderRadius,
         child: Stack(
+          fit: expandBody ? StackFit.expand : StackFit.loose,
           children: [
             Positioned.fill(
               child: DecoratedBox(decoration: BoxDecoration(gradient: cardTheme.pulseCardGradient)),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    SpacingTokens.md,
-                    SpacingTokens.md,
-                    SpacingTokens.md,
-                    SpacingTokens.sm,
+            SizedBox(
+              width: double.infinity,
+              height: expandBody ? double.infinity : null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      SpacingTokens.md,
+                      SpacingTokens.md,
+                      SpacingTokens.md,
+                      SpacingTokens.sm,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.health_and_safety_outlined,
+                          size: HealthProfileCardTokens.shellIconSize,
+                          color: theme.pulse,
+                        ),
+                        const SizedBox(width: SpacingTokens.sm),
+                        Expanded(child: Text('Health profile', style: cardTheme.shellTitle)),
+                        Flexible(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              'Tracked across all visits',
+                              style: cardTheme.shellSubtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.health_and_safety_outlined,
-                        size: HealthProfileCardTokens.shellIconSize,
-                        color: theme.pulse,
-                      ),
-                      const SizedBox(width: SpacingTokens.sm),
-                      Expanded(child: Text('Health profile', style: cardTheme.shellTitle)),
-                      Text('Tracked across all visits', style: cardTheme.shellSubtitle),
-                    ],
-                  ),
-                ),
-                if (expandBody) Expanded(child: body) else body,
-              ],
+                  if (expandBody) Expanded(child: body) else body,
+                ],
+              ),
             ),
           ],
         ),
       ),
     );
+
+    if (expandBody) {
+      return SizedBox(width: double.infinity, height: double.infinity, child: card);
+    }
+
+    return card;
   }
 }
 
@@ -160,7 +182,7 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
             ),
         ],
         canEdit: widget.canEdit,
-        emptyMessage: '—',
+        emptyMessage: 'No chronic conditions recorded.',
         addLabel: 'Add condition',
         addFormBuilder: (onDone) => _ConditionForm(patientId: widget.patientId, onDone: onDone),
       ),
@@ -179,7 +201,7 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
             ),
         ],
         canEdit: widget.canEdit,
-        emptyMessage: '—',
+        emptyMessage: 'No current medications recorded.',
         addLabel: 'Add medication',
         addFormBuilder: (onDone) => _MedicationForm(patientId: widget.patientId, onDone: onDone),
       ),
@@ -198,7 +220,7 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
             ),
         ],
         canEdit: widget.canEdit,
-        emptyMessage: '—',
+        emptyMessage: 'No allergies recorded.',
         addLabel: 'Add allergy',
         addFormBuilder: (onDone) => _AllergyForm(patientId: widget.patientId, onDone: onDone),
       ),
@@ -367,7 +389,6 @@ class _HealthSection extends StatelessWidget {
     final cardTheme = context.healthProfileCardTheme;
     final count = config.items.length;
     final hasItems = count > 0;
-    final isEmpty = !hasItems;
 
     final addIconButton = config.canEdit && hasItems
         ? AppIconButton(
@@ -395,16 +416,6 @@ class _HealthSection extends StatelessWidget {
       ],
     );
 
-    final centeredAddButton = config.canEdit && isEmpty
-        ? AppButton(
-            label: config.addLabel,
-            size: AppFieldSize.sm,
-            variant: AppButtonVariant.ghost,
-            icon: Icon(Icons.add, size: HealthProfileCardTokens.addButtonIconSize, color: config.accent),
-            onPressed: () => _showAddDialog(context),
-          )
-        : null;
-
     final itemsBody = hasItems
         ? GridView.builder(
             shrinkWrap: true,
@@ -418,15 +429,30 @@ class _HealthSection extends StatelessWidget {
             itemCount: config.items.length,
             itemBuilder: (context, index) => _HealthGridTile(item: config.items[index], accent: config.accent),
           )
-        : Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(config.emptyMessage, style: cardTheme.emptyMessage),
-                if (centeredAddButton != null) ...[const SizedBox(height: SpacingTokens.sm), centeredAddButton],
-              ],
-            ),
+        : VisitEmptyHint(
+            message: config.emptyMessage,
+            showIcon: false,
+            actionLabel: config.canEdit ? config.addLabel : null,
+            onAction: config.canEdit ? () => _showAddDialog(context) : null,
           );
+
+    final sectionBody = Padding(
+      padding: const EdgeInsets.all(SpacingTokens.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          header,
+          const SizedBox(height: SpacingTokens.sm),
+          if (expandBody)
+            Expanded(
+              child: encounterExpandedSectionBody(expandBody: true, centerWhenEmpty: !hasItems, child: itemsBody),
+            )
+          else
+            itemsBody,
+        ],
+      ),
+    );
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -439,21 +465,8 @@ class _HealthSection extends StatelessWidget {
           icon: config.kind.icon,
           iconSize: HealthProfileCardTokens.sectionWatermarkIconSize,
           iconColor: cardTheme.sectionWatermark(config.accent),
-          child: Padding(
-            padding: const EdgeInsets.all(SpacingTokens.sm),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
-              children: [
-                header,
-                const SizedBox(height: SpacingTokens.sm),
-                if (expandBody)
-                  Expanded(child: hasItems ? SingleChildScrollView(child: itemsBody) : itemsBody)
-                else
-                  itemsBody,
-              ],
-            ),
-          ),
+          fillChild: expandBody,
+          child: sectionBody,
         ),
       ),
     );

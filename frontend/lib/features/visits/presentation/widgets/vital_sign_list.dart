@@ -56,6 +56,7 @@ class VitalSignList extends ConsumerStatefulWidget {
     required this.sectionKind,
     this.showSectionCard = true,
     this.embeddedInTrackingCard = false,
+    this.expandBody = false,
     super.key,
   });
 
@@ -68,6 +69,7 @@ class VitalSignList extends ConsumerStatefulWidget {
   final VisitPanelKind sectionKind;
   final bool showSectionCard;
   final bool embeddedInTrackingCard;
+  final bool expandBody;
 
   @override
   ConsumerState<VitalSignList> createState() => _VitalSignListState();
@@ -129,35 +131,23 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
     if (signs.isEmpty && widget.canEdit && widget.embeddedInTrackingCard) {
       final cardTheme = context.healthProfileCardTheme;
       final theme = context.visitTheme;
+      final emptyHint = VisitEmptyHint(
+        key: const Key('vital_sign_empty'),
+        message: 'Blood pressure, heart rate, temperature, and other measurements for this visit.',
+        icon: widget.sectionKind.icon,
+        maxMessageWidth: HealthProfileCardTokens.emptyMessageMaxWidth,
+        actionLabel: 'Add vital sign',
+        onAction: _isSubmitting ? null : () => _openAddDialog(),
+        actionKey: const Key('vital_sign_add_button'),
+      );
+
       return TiltedBackgroundIconStack(
         icon: widget.sectionKind.icon,
         iconSize: HealthProfileCardTokens.sectionWatermarkIconSize,
         iconColor: cardTheme.sectionWatermark(theme.pulse),
+        fillChild: widget.expandBody,
         alignment: Alignment.center,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: HealthProfileCardTokens.emptyMessageMaxWidth),
-                child: Text(
-                  'Blood pressure, heart rate, temperature, and other measurements for this visit.',
-                  key: const Key('vital_sign_empty_message'),
-                  style: cardTheme.emptyMessage.copyWith(fontSize: 14),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              AppButton(
-                key: const Key('vital_sign_add_button'),
-                label: 'Add vital sign',
-                size: AppFieldSize.sm,
-                icon: const Icon(Icons.add, size: 18),
-                onPressed: _isSubmitting ? null : () => _openAddDialog(),
-              ),
-            ],
-          ),
-        ),
+        child: widget.expandBody ? Center(child: emptyHint) : emptyHint,
       );
     }
 
@@ -172,7 +162,8 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
               key: const Key('vital_sign_add_button'),
               label: 'Add vital sign',
               size: AppFieldSize.sm,
-              icon: const Icon(Icons.add, size: 18),
+              variant: AppButtonVariant.ghost,
+              icon: Icon(Icons.add, size: 18, color: context.visitTheme.pulse),
               onPressed: _isSubmitting ? null : () => _openAddDialog(),
             ),
           ),

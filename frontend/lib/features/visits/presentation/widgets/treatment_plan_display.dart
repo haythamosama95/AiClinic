@@ -187,6 +187,7 @@ class TreatmentPlanFormView extends ConsumerStatefulWidget {
     required this.isSubmitting,
     required this.onSubmit,
     required this.onCancel,
+    this.inDialog = false,
     super.key,
   });
 
@@ -194,6 +195,7 @@ class TreatmentPlanFormView extends ConsumerStatefulWidget {
   final bool isSubmitting;
   final void Function(TreatmentPlanFormData data) onSubmit;
   final VoidCallback onCancel;
+  final bool inDialog;
 
   @override
   ConsumerState<TreatmentPlanFormView> createState() => _TreatmentPlanFormViewState();
@@ -230,86 +232,94 @@ class _TreatmentPlanFormViewState extends ConsumerState<TreatmentPlanFormView> {
     final theme = context.visitTheme;
     final isEdit = widget.initialPlan != null;
 
+    final form = Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!widget.inDialog) ...[
+            Text(isEdit ? 'Edit treatment plan' : 'New treatment plan', style: theme.title(size: 15)),
+            const SizedBox(height: SpacingTokens.md),
+          ],
+          CatalogAutocompleteField(
+            key: _medicationFieldKey,
+            label: 'Medication *',
+            initialName: widget.initialPlan?.medicationName,
+            initialCatalogId: widget.initialPlan?.medicationId,
+            enabled: !widget.isSubmitting,
+            onSearch: (query) => ref.read(visitRepositoryProvider).searchMedications(query: query),
+            onSelectionChanged: (selection) => setState(() => _medicationSelection = selection),
+            validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
+          ),
+          const SizedBox(height: SpacingTokens.sm),
+          Row(
+            children: [
+              Expanded(
+                child: VisitTextField(
+                  key: const Key('treatment_plan_dosage_field'),
+                  label: 'Dosage *',
+                  controller: _dosage,
+                  enabled: !widget.isSubmitting,
+                  validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
+                ),
+              ),
+              const SizedBox(width: SpacingTokens.sm),
+              Expanded(
+                child: VisitTextField(
+                  key: const Key('treatment_plan_frequency_field'),
+                  label: 'Frequency *',
+                  controller: _frequency,
+                  enabled: !widget.isSubmitting,
+                  validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: SpacingTokens.sm),
+          VisitTextField(
+            key: const Key('treatment_plan_duration_field'),
+            label: 'Duration *',
+            controller: _duration,
+            enabled: !widget.isSubmitting,
+            validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
+          ),
+          const SizedBox(height: SpacingTokens.md),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              AppButton(
+                key: const Key('treatment_plan_cancel_button'),
+                label: 'Cancel',
+                variant: AppButtonVariant.secondary,
+                expand: false,
+                onPressed: widget.isSubmitting ? null : widget.onCancel,
+              ),
+              const SizedBox(width: SpacingTokens.sm),
+              AppButton(
+                key: const Key('treatment_plan_save_button'),
+                label: isEdit ? 'Update' : 'Add',
+                isLoading: widget.isSubmitting,
+                expand: false,
+                onPressed: widget.isSubmitting ? null : _submit,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (widget.inDialog) {
+      return form;
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: theme.tile,
         borderRadius: BorderRadius.circular(theme.tileRadius),
         border: Border.all(color: theme.pulse.withValues(alpha: 0.35)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.lg),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(isEdit ? 'Edit treatment plan' : 'New treatment plan', style: theme.title(size: 15)),
-              const SizedBox(height: SpacingTokens.md),
-              CatalogAutocompleteField(
-                key: _medicationFieldKey,
-                label: 'Medication *',
-                initialName: widget.initialPlan?.medicationName,
-                initialCatalogId: widget.initialPlan?.medicationId,
-                enabled: !widget.isSubmitting,
-                onSearch: (query) => ref.read(visitRepositoryProvider).searchMedications(query: query),
-                onSelectionChanged: (selection) => setState(() => _medicationSelection = selection),
-                validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: VisitTextField(
-                      key: const Key('treatment_plan_dosage_field'),
-                      label: 'Dosage *',
-                      controller: _dosage,
-                      enabled: !widget.isSubmitting,
-                      validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
-                    ),
-                  ),
-                  const SizedBox(width: SpacingTokens.sm),
-                  Expanded(
-                    child: VisitTextField(
-                      key: const Key('treatment_plan_frequency_field'),
-                      label: 'Frequency *',
-                      controller: _frequency,
-                      enabled: !widget.isSubmitting,
-                      validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              VisitTextField(
-                key: const Key('treatment_plan_duration_field'),
-                label: 'Duration *',
-                controller: _duration,
-                enabled: !widget.isSubmitting,
-                validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: SpacingTokens.md),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  AppButton(
-                    key: const Key('treatment_plan_cancel_button'),
-                    label: 'Cancel',
-                    variant: AppButtonVariant.secondary,
-                    onPressed: widget.isSubmitting ? null : widget.onCancel,
-                  ),
-                  const SizedBox(width: SpacingTokens.sm),
-                  AppButton(
-                    key: const Key('treatment_plan_save_button'),
-                    label: isEdit ? 'Update' : 'Add',
-                    isLoading: widget.isSubmitting,
-                    onPressed: widget.isSubmitting ? null : _submit,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: Padding(padding: const EdgeInsets.all(SpacingTokens.lg), child: form),
     );
   }
 

@@ -25,8 +25,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('vital_sign_add_button')), findsOneWidget);
-    expect(find.byKey(const Key('vital_sign_empty_message')), findsOneWidget);
-    expect(find.byKey(const Key('vital_sign_empty')), findsNothing);
+    expect(find.byKey(const Key('vital_sign_empty')), findsOneWidget);
     expect(find.byKey(const Key('vital_sign_quick_add')), findsNothing);
   });
 

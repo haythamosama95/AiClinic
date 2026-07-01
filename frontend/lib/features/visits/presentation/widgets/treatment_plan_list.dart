@@ -16,6 +16,28 @@ import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_d
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
 
+/// Opens the add-treatment-plan dialog used by [TreatmentPlanList].
+Future<void> showTreatmentPlanAddDialog({
+  required BuildContext context,
+  required String visitId,
+  required VoidCallback onRefresh,
+}) {
+  return AppDialog.show<void>(
+    context: context,
+    title: 'Add medication',
+    bodyBuilder: (dialogContext) => _TreatmentPlanAddDialogBody(
+      visitId: visitId,
+      hostContext: context,
+      onCancel: () => Navigator.of(dialogContext).pop(),
+      onRefresh: onRefresh,
+      onSaved: () {
+        Navigator.of(dialogContext).pop();
+        onRefresh();
+      },
+    ),
+  );
+}
+
 /// Editable treatment plan list for visit documentation (013 US3).
 class TreatmentPlanList extends ConsumerStatefulWidget {
   const TreatmentPlanList({
@@ -44,13 +66,20 @@ class TreatmentPlanList extends ConsumerStatefulWidget {
 }
 
 class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
-  bool _showAddForm = false;
   String? _editingPlanId;
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  bool get _hasItems => widget.treatmentPlans.isNotEmpty;
+
+  Future<void> _openAddDialog() async {
+    if (_isSubmitting) return;
+
+    await showTreatmentPlanAddDialog(context: context, visitId: widget.visitId, onRefresh: widget.onChanged);
+  }
+
   List<Widget>? _shelfActions() {
-    if (!widget.canEdit || _showAddForm || widget.encounterShell) return null;
+    if (!widget.canEdit || widget.encounterShell || !_hasItems) return null;
 
     return [
       AppNotchedCardAction(
@@ -60,31 +89,21 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
           label: 'Add medication',
           size: AppFieldSize.sm,
           icon: const Icon(Icons.add, size: 18),
-          onPressed: _isSubmitting
-              ? null
-              : () => setState(() {
-                  _showAddForm = true;
-                  _editingPlanId = null;
-                }),
+          onPressed: _isSubmitting ? null : _openAddDialog,
         ),
       ),
     ];
   }
 
   Widget? _encounterHeaderTrailing() {
-    if (!widget.encounterShell || !widget.canEdit || _showAddForm) return null;
+    if (!widget.encounterShell || !widget.canEdit || !_hasItems) return null;
 
     final theme = context.visitTheme;
     return AppIconButton(
       key: const Key('treatment_plan_add_button'),
       icon: Icon(Icons.add_rounded, size: HealthProfileCardTokens.addIconSize, color: theme.pulse),
       tooltip: 'Add medication',
-      onPressed: _isSubmitting
-          ? null
-          : () => setState(() {
-              _showAddForm = true;
-              _editingPlanId = null;
-            }),
+      onPressed: _isSubmitting ? null : _openAddDialog,
     );
   }
 
@@ -115,7 +134,18 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
   }
 
   bool _shouldCenterEmptyState() {
-    return widget.treatmentPlans.isEmpty && !_showAddForm && _errorMessage == null;
+    return !_hasItems && _errorMessage == null;
+  }
+
+  Widget _buildEmptyState() {
+    return VisitEmptyHint(
+      key: const Key('treatment_plan_empty'),
+      message: 'No treatment plans added yet.',
+      icon: Icons.medication_outlined,
+      actionLabel: widget.canEdit ? 'Add medication' : null,
+      onAction: widget.canEdit ? _openAddDialog : null,
+      actionKey: widget.canEdit ? const Key('treatment_plan_add_button') : null,
+    );
   }
 
   Widget _buildBody() {
@@ -123,11 +153,7 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
     final plans = widget.treatmentPlans;
 
     if (widget.encounterShell && widget.expandBody && _shouldCenterEmptyState()) {
-      return const VisitEmptyHint(
-        key: Key('treatment_plan_empty'),
-        message: 'No treatment plans added yet.',
-        icon: Icons.medication_outlined,
-      );
+      return _buildEmptyState();
     }
 
     return Column(
@@ -141,12 +167,7 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.destructive),
           ),
         ],
-        if (plans.isEmpty && !_showAddForm)
-          const VisitEmptyHint(
-            key: Key('treatment_plan_empty'),
-            message: 'No treatment plans added yet.',
-            icon: Icons.medication_outlined,
-          ),
+        if (plans.isEmpty) _buildEmptyState(),
         ...plans.map(
           (plan) => Padding(
             padding: const EdgeInsets.only(top: SpacingTokens.sm),
@@ -161,81 +182,13 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
                 : TreatmentPlanCardView(
                     plan: plan,
                     canEdit: widget.canEdit,
-                    onEdit: () => setState(() {
-                      _editingPlanId = plan.id;
-                      _showAddForm = false;
-                    }),
+                    onEdit: () => setState(() => _editingPlanId = plan.id),
                     onArchive: () => _archivePlan(plan),
                   ),
           ),
         ),
-        if (_showAddForm)
-          Padding(
-            padding: const EdgeInsets.only(top: SpacingTokens.sm),
-            child: TreatmentPlanFormView(
-              key: const Key('treatment_plan_add_form'),
-              isSubmitting: _isSubmitting,
-              onSubmit: _addPlan,
-              onCancel: () => setState(() => _showAddForm = false),
-            ),
-          ),
       ],
     );
-  }
-
-  Future<void> _addPlan(TreatmentPlanFormData data) async {
-    setState(() {
-      _isSubmitting = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final normalizedName = CatalogNameNormalizer.normalize(data.medicationName);
-      if (normalizedName.isEmpty) {
-        throw RpcFailure(
-          RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Medication name is required.'),
-        );
-      }
-
-      final isCustom = data.isCustomMedication;
-      await ref
-          .read(visitRepositoryProvider)
-          .createTreatmentPlan(
-            visitId: widget.visitId,
-            medicationName: normalizedName,
-            medicationId: data.medicationId,
-            dosage: data.dosage,
-            frequency: data.frequency,
-            duration: data.duration,
-            notes: data.notes,
-          );
-
-      if (!mounted) return;
-
-      setState(() {
-        _showAddForm = false;
-        _isSubmitting = false;
-      });
-      widget.onChanged();
-
-      if (isCustom && mounted) {
-        await _maybeSaveCustomToCatalog(normalizedName: normalizedName);
-      }
-    } on RpcFailure catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-          _errorMessage = visitMessageForRpc(e);
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-          _errorMessage = e.toString();
-        });
-      }
-    }
   }
 
   Future<void> _updatePlan(TreatmentPlanItem existing, TreatmentPlanFormData data) async {
@@ -374,5 +327,101 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
       if (!mounted) return;
       AppToast.error(context, message: e.toString());
     }
+  }
+}
+
+class _TreatmentPlanAddDialogBody extends ConsumerStatefulWidget {
+  const _TreatmentPlanAddDialogBody({
+    required this.visitId,
+    required this.hostContext,
+    required this.onCancel,
+    required this.onRefresh,
+    required this.onSaved,
+  });
+
+  final String visitId;
+  final BuildContext hostContext;
+  final VoidCallback onCancel;
+  final VoidCallback onRefresh;
+  final VoidCallback onSaved;
+
+  @override
+  ConsumerState<_TreatmentPlanAddDialogBody> createState() => _TreatmentPlanAddDialogBodyState();
+}
+
+class _TreatmentPlanAddDialogBodyState extends ConsumerState<_TreatmentPlanAddDialogBody> {
+  bool _isSubmitting = false;
+
+  Future<void> _submit(TreatmentPlanFormData data) async {
+    setState(() => _isSubmitting = true);
+
+    try {
+      final normalizedName = CatalogNameNormalizer.normalize(data.medicationName);
+      if (normalizedName.isEmpty) {
+        throw RpcFailure(
+          RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Medication name is required.'),
+        );
+      }
+
+      final isCustom = data.isCustomMedication;
+      await ref
+          .read(visitRepositoryProvider)
+          .createTreatmentPlan(
+            visitId: widget.visitId,
+            medicationName: normalizedName,
+            medicationId: data.medicationId,
+            dosage: data.dosage,
+            frequency: data.frequency,
+            duration: data.duration,
+            notes: data.notes,
+          );
+
+      if (!mounted) return;
+
+      if (isCustom) {
+        await _maybeSaveCustomToCatalog(normalizedName: normalizedName);
+      }
+
+      widget.onSaved();
+    } on RpcFailure catch (e) {
+      if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
+    } catch (e) {
+      if (mounted) AppToast.error(context, message: e.toString());
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _maybeSaveCustomToCatalog({required String normalizedName}) async {
+    final save = await SaveToCatalogDialog.show(
+      widget.hostContext,
+      normalizedName: normalizedName,
+      itemTypeLabel: 'medication',
+    );
+    if (save != true || !widget.hostContext.mounted) return;
+
+    try {
+      await ref.read(visitRepositoryProvider).createCatalogMedication(name: normalizedName);
+      if (!widget.hostContext.mounted) return;
+      AppToast.success(widget.hostContext, message: 'Saved "$normalizedName" to your medication catalog.');
+      widget.onRefresh();
+    } on RpcFailure catch (e) {
+      if (!widget.hostContext.mounted) return;
+      AppToast.error(widget.hostContext, message: visitMessageForRpc(e));
+    } catch (e) {
+      if (!widget.hostContext.mounted) return;
+      AppToast.error(widget.hostContext, message: e.toString());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TreatmentPlanFormView(
+      key: const Key('treatment_plan_add_form'),
+      isSubmitting: _isSubmitting,
+      inDialog: true,
+      onSubmit: _submit,
+      onCancel: widget.onCancel,
+    );
   }
 }
