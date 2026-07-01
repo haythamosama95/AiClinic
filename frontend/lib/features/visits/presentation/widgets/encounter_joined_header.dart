@@ -177,7 +177,7 @@ class _EncounterJoinedHeaderState extends ConsumerState<EncounterJoinedHeader> {
         child: DecoratedBox(
           key: const Key('encounter_header'),
           decoration: BoxDecoration(
-            color: theme.surface,
+            gradient: theme.headerGradient,
             borderRadius: BorderRadius.circular(borderRadius),
             border: Border.all(color: theme.hairlineSoft),
           ),
@@ -209,7 +209,7 @@ class _EncounterJoinedHeaderState extends ConsumerState<EncounterJoinedHeader> {
               ),
               child: DecoratedBox(
                 key: const Key('encounter_header'),
-                decoration: BoxDecoration(color: theme.surface),
+                decoration: BoxDecoration(gradient: theme.headerGradient),
                 child: content,
               ),
             ),

@@ -42,7 +42,7 @@ class EncounterHeader extends ConsumerWidget {
           ? DecoratedBox(
               key: const Key('encounter_header'),
               decoration: BoxDecoration(
-                color: theme.surface,
+                gradient: theme.headerGradient,
                 borderRadius: BorderRadius.circular(theme.tileRadius),
                 border: Border.all(color: theme.hairlineSoft),
               ),

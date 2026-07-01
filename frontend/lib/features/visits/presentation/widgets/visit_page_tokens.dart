@@ -69,6 +69,14 @@ class VisitTheme {
     end: Alignment.centerRight,
   );
 
+  /// Left-to-right primary wash for the encounter header shell.
+  LinearGradient get headerGradient => LinearGradient(
+    colors: [Color.alphaBlend(pulse.withValues(alpha: 0.14), surface), surface],
+    stops: const [0, 0.55],
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+  );
+
   Color get subjectiveWatermark => pulse.withValues(alpha: VisitPageTokens.subjectiveWatermarkOpacity);
 
   // ── Typography ──────────────────────────────────────────────────────────
