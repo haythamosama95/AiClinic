@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/providers/theme_provider.dart';
@@ -20,6 +22,8 @@ class ThemeShowcasePage extends ConsumerStatefulWidget {
 class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
+  final _clinicalNotesController = TextEditingController();
+  late final QuillController _richNotesController;
   var _buttonLoading = false;
   var _checkboxValue = true;
   var _switchValue = false;
@@ -37,8 +41,16 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
   static const _doctors = {'Dr. Ahmed': 'ahmed', 'Dr. Sara': 'sara', 'Dr. Omar': 'omar'};
 
   @override
+  void initState() {
+    super.initState();
+    _richNotesController = QuillController.basic();
+  }
+
+  @override
   void dispose() {
     _usernameController.dispose();
+    _clinicalNotesController.dispose();
+    _richNotesController.dispose();
     super.dispose();
   }
 
@@ -399,6 +411,64 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
                 ],
                 child: AppButton(label: 'Popover menu', variant: AppButtonVariant.outline, onPressed: () {}),
               ),
+              FTooltip(
+                style: AppTooltipOverlayStyle.chromeFree,
+                tipBuilder: (_, _) => AppTooltipContent(
+                  title: 'Plain text',
+                  icon: const Icon(Icons.info_outline),
+                  description: Text(
+                    'A simple paragraph description using default body styling.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: colors.mutedForeground, height: 1.4),
+                  ),
+                ),
+                child: AppButton(label: 'Text tooltip', variant: AppButtonVariant.outline, onPressed: () {}),
+              ),
+              FTooltip(
+                style: AppTooltipOverlayStyle.chromeFree,
+                tipBuilder: (_, _) => AppTooltipContent(
+                  title: 'Status tags',
+                  icon: const Icon(Icons.label_outline),
+                  description: Wrap(
+                    spacing: SpacingTokens.sm,
+                    runSpacing: SpacingTokens.sm,
+                    children: const [
+                      AppBadge(label: 'Premium', variant: AppBadgeVariant.primary),
+                      AppBadge(label: 'Verified', variant: AppBadgeVariant.accent),
+                      AppBadge(label: 'Read-only', variant: AppBadgeVariant.outline),
+                    ],
+                  ),
+                ),
+                child: AppButton(label: 'Badge tooltip', variant: AppButtonVariant.outline, onPressed: () {}),
+              ),
+              FTooltip(
+                style: AppTooltipOverlayStyle.chromeFree,
+                tipBuilder: (_, _) => AppTooltipContent(
+                  title: 'Patient summary',
+                  description: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Last visit: 12 Jun 2026', style: theme.textTheme.bodySmall),
+                      const SizedBox(height: SpacingTokens.xs),
+                      Text('Next appointment: 30 Jun 2026', style: theme.textTheme.bodySmall),
+                      const SizedBox(height: SpacingTokens.sm),
+                      Row(
+                        children: [
+                          Icon(Icons.warning_amber_outlined, size: 16, color: colors.destructive),
+                          const SizedBox(width: SpacingTokens.sm),
+                          Expanded(
+                            child: Text(
+                              'Allergies on file — review before prescribing.',
+                              style: theme.textTheme.labelSmall?.copyWith(color: colors.destructive),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                child: AppButton(label: 'Rich tooltip', variant: AppButtonVariant.outline, onPressed: () {}),
+              ),
             ],
           ),
         ),
@@ -416,6 +486,51 @@ class _ThemeShowcasePageState extends ConsumerState<ThemeShowcasePage> {
               AppButton(label: 'Save', onPressed: () {}),
             ],
             child: Text('Card body content for metrics, lists, or forms.', style: theme.textTheme.bodyMedium),
+          ),
+        ),
+        const SizedBox(height: SpacingTokens.lg),
+        _Section(
+          title: 'Paragraph fields',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AppParagraphField(
+                label: 'Clinical notes',
+                description: 'Fixed height — content scrolls inside the field.',
+                hintText: 'Describe symptoms, findings, and plan…',
+                controller: _clinicalNotesController,
+                minLines: 4,
+              ),
+              const SizedBox(height: SpacingTokens.md),
+              AppParagraphField(
+                label: 'History of present illness',
+                description: 'Expands as you type.',
+                hintText: 'Patient reports…',
+                expands: true,
+                minLines: 3,
+              ),
+              const SizedBox(height: SpacingTokens.md),
+              AppParagraphField(
+                label: 'Assessment (rich text)',
+                description: 'Optional formatting for emphasis and lists.',
+                hintText: 'Summarize diagnosis and rationale…',
+                richText: true,
+                quillController: _richNotesController,
+                minLines: 5,
+              ),
+              const SizedBox(height: SpacingTokens.md),
+              AppParagraphFormField(
+                label: 'Required summary',
+                hintText: 'At least a few words are required.',
+                minLines: 3,
+                validator: (value) {
+                  if (value == null || value.trim().length < 8) {
+                    return 'Enter at least 8 characters.';
+                  }
+                  return null;
+                },
+              ),
+            ],
           ),
         ),
         const SizedBox(height: SpacingTokens.lg),

@@ -69,19 +69,19 @@ class AppTheme {
         contentPadding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.md),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_inputRadius(shapes, variant)),
-          borderSide: BorderSide(color: tokens.border),
+          borderSide: BorderSide(color: tokens.border, width: 1),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_inputRadius(shapes, variant)),
-          borderSide: BorderSide(color: tokens.border),
+          borderSide: BorderSide(color: tokens.border, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_inputRadius(shapes, variant)),
-          borderSide: BorderSide(color: tokens.ring, width: 1.5),
+          borderSide: BorderSide(color: tokens.ring, width: 1),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_inputRadius(shapes, variant)),
-          borderSide: BorderSide(color: tokens.destructive),
+          borderSide: BorderSide(color: tokens.destructive, width: 1),
         ),
         hintStyle: TextStyle(color: tokens.mutedForeground),
       ),
