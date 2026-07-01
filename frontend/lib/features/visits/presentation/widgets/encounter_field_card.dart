@@ -123,16 +123,21 @@ class EncounterToolbarTitle extends StatelessWidget {
 
 /// Read-only text for encounter field cards in detail view.
 class EncounterDetailText extends StatelessWidget {
-  const EncounterDetailText({required this.value, super.key});
+  const EncounterDetailText({required this.value, this.richDelta, super.key});
 
   final String value;
+  final List<dynamic>? richDelta;
 
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
-    final display = value.trim().isEmpty ? '—' : value.trim();
     final isEmpty = value.trim().isEmpty;
 
+    if (!isEmpty && !richDeltaIsEffectivelyEmpty(richDelta)) {
+      return AppRichTextDisplay(plainText: value, deltaJson: richDelta, textStyle: theme.body());
+    }
+
+    final display = isEmpty ? '—' : value.trim();
     return Text(display, style: theme.body(color: isEmpty ? theme.mutedInk : theme.ink));
   }
 }

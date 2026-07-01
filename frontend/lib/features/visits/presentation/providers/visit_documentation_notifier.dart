@@ -5,6 +5,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
+import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
@@ -26,6 +27,7 @@ class VisitDocumentationState {
     required this.diagnosis,
     required this.plan,
     required this.expectedUpdatedAt,
+    this.richTextDrafts = const {},
     this.predefinedVitalSigns = const [],
     this.saveStatus = DocumentationSaveStatus.idle,
     this.noteEditMode = DocumentationEditMode.editing,
@@ -39,6 +41,10 @@ class VisitDocumentationState {
   final String diagnosis;
   final String plan;
   final DateTime expectedUpdatedAt;
+
+  /// In-session Quill delta JSON per section. Preserves rich formatting while
+  /// navigating the encounter workspace; not persisted to the backend.
+  final Map<ClinicalNoteSection, List<dynamic>> richTextDrafts;
   final List<CatalogItem> predefinedVitalSigns;
   final DocumentationSaveStatus saveStatus;
   final DocumentationEditMode noteEditMode;
@@ -68,6 +74,7 @@ class VisitDocumentationState {
     String? diagnosis,
     String? plan,
     DateTime? expectedUpdatedAt,
+    Map<ClinicalNoteSection, List<dynamic>>? richTextDrafts,
     List<CatalogItem>? predefinedVitalSigns,
     DocumentationSaveStatus? saveStatus,
     DocumentationEditMode? noteEditMode,
@@ -82,6 +89,7 @@ class VisitDocumentationState {
       diagnosis: diagnosis ?? this.diagnosis,
       plan: plan ?? this.plan,
       expectedUpdatedAt: expectedUpdatedAt ?? this.expectedUpdatedAt,
+      richTextDrafts: richTextDrafts ?? this.richTextDrafts,
       predefinedVitalSigns: predefinedVitalSigns ?? this.predefinedVitalSigns,
       saveStatus: saveStatus ?? this.saveStatus,
       noteEditMode: noteEditMode ?? this.noteEditMode,
@@ -187,21 +195,45 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     }
   }
 
-  void updateComplaint(String value) => _updateDraft(complaint: value);
+  void updateComplaint(String value, {List<dynamic>? richDelta}) =>
+      _updateDraft(complaint: value, richSection: ClinicalNoteSection.complaint, richDelta: richDelta);
 
-  void updateHistory(String value) => _updateDraft(history: value);
+  void updateHistory(String value, {List<dynamic>? richDelta}) =>
+      _updateDraft(history: value, richSection: ClinicalNoteSection.history, richDelta: richDelta);
 
-  void updateExamination(String value) => _updateDraft(examination: value);
+  void updateExamination(String value, {List<dynamic>? richDelta}) =>
+      _updateDraft(examination: value, richSection: ClinicalNoteSection.examination, richDelta: richDelta);
 
-  void updateDiagnosis(String value) => _updateDraft(diagnosis: value);
+  void updateDiagnosis(String value, {List<dynamic>? richDelta}) =>
+      _updateDraft(diagnosis: value, richSection: ClinicalNoteSection.diagnosis, richDelta: richDelta);
 
-  void updatePlan(String value) => _updateDraft(plan: value);
+  void updatePlan(String value, {List<dynamic>? richDelta}) =>
+      _updateDraft(plan: value, richSection: ClinicalNoteSection.plan, richDelta: richDelta);
 
-  void _updateDraft({String? complaint, String? history, String? examination, String? diagnosis, String? plan}) {
+  void _updateDraft({
+    String? complaint,
+    String? history,
+    String? examination,
+    String? diagnosis,
+    String? plan,
+    ClinicalNoteSection? richSection,
+    List<dynamic>? richDelta,
+  }) {
     final current = state.value;
     if (current == null || !_canEditVisit(current.visit)) {
       return;
     }
+
+    Map<ClinicalNoteSection, List<dynamic>>? nextRichDrafts;
+    if (richSection != null) {
+      nextRichDrafts = Map<ClinicalNoteSection, List<dynamic>>.from(current.richTextDrafts);
+      if (richDelta == null) {
+        nextRichDrafts.remove(richSection);
+      } else {
+        nextRichDrafts[richSection] = richDelta;
+      }
+    }
+
     state = AsyncData(
       current.copyWith(
         complaint: complaint,
@@ -209,6 +241,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
         examination: examination,
         diagnosis: diagnosis,
         plan: plan,
+        richTextDrafts: nextRichDrafts,
         saveStatus: DocumentationSaveStatus.idle,
         clearError: true,
       ),

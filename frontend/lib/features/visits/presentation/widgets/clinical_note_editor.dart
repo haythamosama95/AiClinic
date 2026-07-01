@@ -138,7 +138,8 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
     };
     if (widget.useRichTextParagraph) {
       _quillControllers = {
-        for (final section in widget.sections) section: _quillFromPlainText(_textForSection(widget.state, section)),
+        for (final section in widget.sections)
+          section: _quillFromDraft(widget.state.richTextDrafts[section], _textForSection(widget.state, section)),
       };
     }
   }
@@ -153,7 +154,11 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
       }
       if (_quillControllers != null) {
         for (final section in widget.sections) {
-          _setQuillPlainText(_quillControllers![section]!, _textForSection(widget.state, section));
+          _setQuillFromDraft(
+            _quillControllers![section]!,
+            widget.state.richTextDrafts[section],
+            _textForSection(widget.state, section),
+          );
         }
       }
     }
@@ -210,7 +215,7 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
               useRichTextParagraph: widget.useRichTextParagraph,
               removeBorder: widget.removeBorder,
               enabled: !isSaving,
-              onChanged: _onChangedForSection(notifier, orderedSections.first),
+              onChanged: _onChangedForSection(notifier, orderedSections.first, widget.useRichTextParagraph),
               showSectionHeader: widget.showSectionHeaders,
               expand: true,
               toolbarLeading: widget.toolbarLeading,
@@ -229,7 +234,7 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
               useRichTextParagraph: widget.useRichTextParagraph,
               removeBorder: widget.removeBorder,
               enabled: !isSaving,
-              onChanged: _onChangedForSection(notifier, orderedSections[i]),
+              onChanged: _onChangedForSection(notifier, orderedSections[i], widget.useRichTextParagraph),
               showDivider: i < orderedSections.length - 1,
               showSectionHeader: widget.showSectionHeaders,
               toolbarLeading: i == 0 ? widget.toolbarLeading : null,
@@ -287,13 +292,20 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
     );
   }
 
-  ValueChanged<String> _onChangedForSection(VisitDocumentationNotifier notifier, ClinicalNoteSection section) {
-    return switch (section) {
-      ClinicalNoteSection.complaint => notifier.updateComplaint,
-      ClinicalNoteSection.history => notifier.updateHistory,
-      ClinicalNoteSection.examination => notifier.updateExamination,
-      ClinicalNoteSection.diagnosis => notifier.updateDiagnosis,
-      ClinicalNoteSection.plan => notifier.updatePlan,
+  void Function(String plainText, List<dynamic>? richDelta) _onChangedForSection(
+    VisitDocumentationNotifier notifier,
+    ClinicalNoteSection section,
+    bool useRichText,
+  ) {
+    return (plainText, richDelta) => switch (section) {
+      ClinicalNoteSection.complaint => notifier.updateComplaint(plainText, richDelta: useRichText ? richDelta : null),
+      ClinicalNoteSection.history => notifier.updateHistory(plainText, richDelta: useRichText ? richDelta : null),
+      ClinicalNoteSection.examination => notifier.updateExamination(
+        plainText,
+        richDelta: useRichText ? richDelta : null,
+      ),
+      ClinicalNoteSection.diagnosis => notifier.updateDiagnosis(plainText, richDelta: useRichText ? richDelta : null),
+      ClinicalNoteSection.plan => notifier.updatePlan(plainText, richDelta: useRichText ? richDelta : null),
     };
   }
 }
@@ -415,7 +427,7 @@ class _ClinicalNoteField extends StatelessWidget {
   final QuillController? quillController;
   final bool useRichTextParagraph;
   final bool removeBorder;
-  final ValueChanged<String> onChanged;
+  final void Function(String plainText, List<dynamic>? richDelta) onChanged;
   final bool enabled;
   final bool showDivider;
   final bool showSectionHeader;
@@ -436,7 +448,8 @@ class _ClinicalNoteField extends StatelessWidget {
       toolbarLeading: toolbarLeading,
       emptyStateIcon: emptyStateIcon,
       emptyStateText: emptyStateText,
-      onDocumentChanged: (document) => onChanged(_plainTextFromQuillDocument(document)),
+      onDocumentChanged: (document) =>
+          onChanged(_plainTextFromQuillDocument(document), _richDeltaFromDocument(document)),
     );
   }
 
@@ -466,7 +479,7 @@ class _ClinicalNoteField extends StatelessWidget {
         minLines: expand ? null : 3,
         maxLines: expand ? null : 8,
         expands: expand,
-        onChanged: onChanged,
+        onChanged: (value) => onChanged(value, null),
       );
     }
 
@@ -491,7 +504,7 @@ class _ClinicalNoteField extends StatelessWidget {
                       enabled: enabled,
                       minLines: 3,
                       maxLines: 8,
-                      onChanged: onChanged,
+                      onChanged: (value) => onChanged(value, null),
                     ),
                   ],
                 ),
@@ -519,6 +532,32 @@ String _plainTextFromQuillDocument(Document document) {
     return raw.substring(0, raw.length - 1);
   }
   return raw;
+}
+
+QuillController _quillFromDraft(List<dynamic>? deltaJson, String plainText) {
+  if (deltaJson != null && deltaJson.isNotEmpty) {
+    return QuillController(document: Document.fromJson(deltaJson), selection: const TextSelection.collapsed(offset: 0));
+  }
+  return _quillFromPlainText(plainText);
+}
+
+void _setQuillFromDraft(QuillController controller, List<dynamic>? deltaJson, String plainText) {
+  if (deltaJson != null && deltaJson.isNotEmpty) {
+    controller.document = Document.fromJson(deltaJson);
+    return;
+  }
+  _setQuillPlainText(controller, plainText);
+}
+
+List<dynamic>? _richDeltaFromDocument(Document document) {
+  final delta = document.toDelta().toJson();
+  if (delta.length == 1) {
+    final first = delta.first as Map;
+    if (first['insert'] == '\n' && first['attributes'] == null) {
+      return null;
+    }
+  }
+  return delta;
 }
 
 QuillController _quillFromPlainText(String text) {

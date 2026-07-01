@@ -35,16 +35,16 @@ bool _isQuillDocumentEmpty(QuillController controller) {
   return text.trim().isEmpty;
 }
 
-DefaultStyles _paragraphEditorStyles(BuildContext context) {
+DefaultStyles _paragraphEditorStyles(BuildContext context, {TextStyle? bodyStyle}) {
   final theme = Theme.of(context);
   final colors = context.semanticColors;
-  final bodyStyle = theme.textTheme.bodyLarge!.copyWith(color: colors.foreground, height: 1.5);
+  final resolvedBody = bodyStyle ?? theme.textTheme.bodyLarge!.copyWith(color: colors.foreground, height: 1.5);
   final placeholderStyle = theme.textTheme.bodyLarge!.copyWith(color: colors.mutedForeground, height: 1.5);
 
   return DefaultStyles.getInstance(context).merge(
     DefaultStyles(
       paragraph: DefaultTextBlockStyle(
-        bodyStyle,
+        resolvedBody,
         HorizontalSpacing.zero,
         VerticalSpacing.zero,
         const VerticalSpacing(0, 8),
@@ -59,6 +59,87 @@ DefaultStyles _paragraphEditorStyles(BuildContext context) {
       ),
     ),
   );
+}
+
+/// Read-only display styles that keep every block and inline attribute on [bodyStyle].
+DefaultStyles _displayEditorStyles(TextStyle bodyStyle) {
+  const horizontal = HorizontalSpacing.zero;
+  const vertical = VerticalSpacing.zero;
+  final block = DefaultTextBlockStyle(bodyStyle, horizontal, vertical, vertical, null);
+  final boldBlock = DefaultTextBlockStyle(
+    bodyStyle.copyWith(fontWeight: FontWeight.bold),
+    horizontal,
+    vertical,
+    vertical,
+    null,
+  );
+
+  return DefaultStyles(
+    h1: boldBlock,
+    h2: boldBlock,
+    h3: boldBlock,
+    h4: boldBlock,
+    h5: boldBlock,
+    h6: boldBlock,
+    paragraph: block,
+    lineHeightNormal: block,
+    lineHeightTight: block,
+    lineHeightOneAndHalf: block,
+    lineHeightDouble: block,
+    leading: block,
+    indent: block,
+    align: block,
+    quote: block,
+    lists: DefaultListBlockStyle(bodyStyle, horizontal, vertical, vertical, null, null),
+    bold: bodyStyle.copyWith(fontWeight: FontWeight.bold),
+    italic: bodyStyle.copyWith(fontStyle: FontStyle.italic),
+    underline: bodyStyle.copyWith(decoration: TextDecoration.underline),
+    strikeThrough: bodyStyle.copyWith(decoration: TextDecoration.lineThrough),
+    sizeSmall: bodyStyle,
+    sizeLarge: bodyStyle,
+    sizeHuge: bodyStyle,
+    link: bodyStyle.copyWith(decoration: TextDecoration.underline),
+    placeHolder: block,
+  );
+}
+
+bool richDeltaIsEffectivelyEmpty(List<dynamic>? deltaJson) {
+  if (deltaJson == null || deltaJson.isEmpty) {
+    return true;
+  }
+  if (deltaJson.length == 1) {
+    final first = deltaJson.first;
+    if (first is Map && first['insert'] == '\n' && first['attributes'] == null) {
+      return true;
+    }
+  }
+  return false;
+}
+
+QuillController quillControllerFromDraft(List<dynamic>? deltaJson, String plainText, {bool readOnly = false}) {
+  if (!richDeltaIsEffectivelyEmpty(deltaJson)) {
+    return QuillController(
+      document: Document.fromJson(deltaJson!),
+      selection: const TextSelection.collapsed(offset: 0),
+      readOnly: readOnly,
+    );
+  }
+  final controller = QuillController.basic();
+  controller.readOnly = readOnly;
+  if (plainText.isNotEmpty) {
+    controller.replaceText(0, 0, plainText, TextSelection.collapsed(offset: plainText.length));
+  }
+  return controller;
+}
+
+void setQuillControllerFromDraft(QuillController controller, List<dynamic>? deltaJson, String plainText) {
+  if (!richDeltaIsEffectivelyEmpty(deltaJson)) {
+    controller.document = Document.fromJson(deltaJson!);
+    return;
+  }
+  final current = controller.plainTextEditingValue.text;
+  final deleteLen = current.isEmpty ? 0 : current.length - 1;
+  controller.replaceText(0, deleteLen, plainText, TextSelection.collapsed(offset: plainText.length));
 }
 
 QuillSimpleToolbarConfig _minimalToolbarConfig(BuildContext context) {
@@ -731,6 +812,61 @@ class _AppParagraphFormFieldState extends State<AppParagraphFormField> {
       textAlignVertical: TextAlignVertical.top,
       validator: widget.validator,
       autovalidateMode: AutovalidateMode.onUserInteraction,
+    );
+  }
+}
+
+/// Read-only rich-text body for displaying saved Quill delta JSON.
+class AppRichTextDisplay extends StatefulWidget {
+  const AppRichTextDisplay({required this.plainText, this.deltaJson, this.textStyle, super.key});
+
+  final String plainText;
+  final List<dynamic>? deltaJson;
+  final TextStyle? textStyle;
+
+  @override
+  State<AppRichTextDisplay> createState() => _AppRichTextDisplayState();
+}
+
+class _AppRichTextDisplayState extends State<AppRichTextDisplay> {
+  late final QuillController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = quillControllerFromDraft(widget.deltaJson, widget.plainText, readOnly: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant AppRichTextDisplay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.deltaJson != widget.deltaJson || oldWidget.plainText != widget.plainText) {
+      setQuillControllerFromDraft(_controller, widget.deltaJson, widget.plainText);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bodyStyle = widget.textStyle ?? Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+
+    return DefaultTextStyle(
+      style: bodyStyle,
+      child: QuillEditor.basic(
+        controller: _controller,
+        config: QuillEditorConfig(
+          padding: EdgeInsets.zero,
+          scrollable: false,
+          autoFocus: false,
+          expands: false,
+          customStyles: _displayEditorStyles(bodyStyle),
+        ),
+      ),
     );
   }
 }

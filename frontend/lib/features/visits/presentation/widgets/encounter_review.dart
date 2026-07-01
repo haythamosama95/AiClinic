@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
@@ -48,6 +49,8 @@ class EncounterReview extends ConsumerWidget {
   String get _diagnosis => state?.diagnosis ?? visit.documentation?.diagnosis ?? '';
   String get _plan => state?.plan ?? visit.documentation?.plan ?? '';
 
+  List<dynamic>? _richDelta(ClinicalNoteSection section) => state?.richTextDrafts[section];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final summary = _SummaryLayout(
@@ -58,8 +61,12 @@ class EncounterReview extends ConsumerWidget {
           content: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SummaryField(label: 'Complaint', value: _complaint),
-              _SummaryField(label: 'History', value: _history),
+              _SummaryField(
+                label: 'Complaint',
+                value: _complaint,
+                richDelta: _richDelta(ClinicalNoteSection.complaint),
+              ),
+              _SummaryField(label: 'History', value: _history, richDelta: _richDelta(ClinicalNoteSection.history)),
               _SummaryHealthProfile(patientId: visit.patientId),
             ],
           ),
@@ -70,8 +77,16 @@ class EncounterReview extends ConsumerWidget {
           content: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SummaryField(label: 'Examination', value: _examination),
-              _SummaryField(label: 'Diagnosis', value: _diagnosis),
+              _SummaryField(
+                label: 'Examination',
+                value: _examination,
+                richDelta: _richDelta(ClinicalNoteSection.examination),
+              ),
+              _SummaryField(
+                label: 'Diagnosis',
+                value: _diagnosis,
+                richDelta: _richDelta(ClinicalNoteSection.diagnosis),
+              ),
               if (visit.pendingInvestigations.isNotEmpty) ...[
                 const SizedBox(height: SpacingTokens.sm),
                 InvestigationResultCaptureList(
@@ -94,7 +109,7 @@ class EncounterReview extends ConsumerWidget {
           content: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SummaryField(label: 'Plan', value: _plan),
+              _SummaryField(label: 'Plan', value: _plan, richDelta: _richDelta(ClinicalNoteSection.plan)),
               _SummaryLinesField(
                 label: 'Treatment plans',
                 lines: _formatTreatmentPlans(visit.treatmentPlans),
@@ -428,10 +443,11 @@ class _SummarySectionRow extends StatelessWidget {
 }
 
 class _SummaryField extends StatelessWidget {
-  const _SummaryField({required this.label, required this.value});
+  const _SummaryField({required this.label, required this.value, this.richDelta});
 
   final String label;
   final String value;
+  final List<dynamic>? richDelta;
 
   @override
   Widget build(BuildContext context) {
@@ -444,7 +460,7 @@ class _SummaryField extends StatelessWidget {
         children: [
           Text(label.toUpperCase(), style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2)),
           const SizedBox(height: SpacingTokens.xs + 1),
-          EncounterDetailText(value: value),
+          EncounterDetailText(value: value, richDelta: richDelta),
         ],
       ),
     );
