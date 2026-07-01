@@ -15,12 +15,15 @@ abstract final class AppDialog {
   static Future<T?> show<T>({
     required BuildContext context,
     String? title,
-    required Widget body,
+    Widget? body,
+    Widget Function(BuildContext dialogContext)? bodyBuilder,
     List<Widget>? actions,
     List<Widget> Function(BuildContext dialogContext)? actionsBuilder,
     Axis direction = Axis.horizontal,
     bool barrierDismissible = true,
   }) {
+    assert(body != null || bodyBuilder != null, 'Provide body or bodyBuilder.');
+    assert(body == null || bodyBuilder == null, 'Provide only one of body or bodyBuilder.');
     assert(actions == null || actionsBuilder == null, 'Provide either actions or actionsBuilder, not both.');
     final fTheme = context.theme;
     final materialTheme = Theme.of(context);
@@ -37,7 +40,7 @@ abstract final class AppDialog {
             animation: animation,
             direction: direction,
             title: title == null ? null : Text(title, style: materialTheme.textTheme.titleLarge),
-            body: body,
+            body: body ?? bodyBuilder!(dialogContext),
             actions: actions ?? actionsBuilder?.call(dialogContext) ?? const [],
           ),
         );

@@ -59,6 +59,14 @@ class VisitTheme {
 
   List<BoxShadow> get panelShadow => ShadowTokens.card;
 
+  /// Left-to-right pulse wash used on subjective intake cards (Complaint, History).
+  LinearGradient get pulseCardGradient => LinearGradient(
+    colors: [pulse.withValues(alpha: 0.12), pulse.withValues(alpha: 0)],
+    stops: const [0, 0.32],
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+  );
+
   // ── Typography ──────────────────────────────────────────────────────────
 
   TextStyle title({Color? color, double? size}) =>

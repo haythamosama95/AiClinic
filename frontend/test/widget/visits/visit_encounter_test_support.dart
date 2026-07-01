@@ -5,6 +5,8 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_detai
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
+import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -62,6 +64,7 @@ Future<void> pumpEncounterWidget(
     patientDetailProvider(
       encounterTestPatientId,
     ).overrideWith((ref) async => patientDetail ?? samplePatientDetail(id: encounterTestPatientId)),
+    patientSafetyProvider(encounterTestPatientId).overrideWith(() => _EmptyPatientSafetyNotifier()),
   ];
 
   if (docState != null) {
@@ -92,6 +95,13 @@ class _StaticVisitDocumentationNotifier extends VisitDocumentationNotifier {
 
   @override
   Future<VisitDocumentationState> build() async => _state;
+}
+
+class _EmptyPatientSafetyNotifier extends PatientSafetyNotifier {
+  _EmptyPatientSafetyNotifier() : super(encounterTestPatientId);
+
+  @override
+  Future<PatientSafetyContext> build() async => const PatientSafetyContext();
 }
 
 void expectUniquePhaseAncestor(WidgetTester tester, Key fieldKey, Key phaseKey, List<Key> otherPhaseKeys) {

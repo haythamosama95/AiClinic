@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/patient_health_tracking_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
 /// Subjective phase — Complaint, History, and patient context (014 US2).
@@ -43,7 +44,49 @@ class EncounterPhaseSubjective extends ConsumerWidget {
   }
 
   Widget _buildIntakeLayout({required bool expandField}) {
-    return _complaintHistoryColumn(expandField: expandField);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final useSideBySide = constraints.maxWidth >= 900;
+        final intakeColumn = _complaintHistoryColumn(expandField: expandField);
+
+        final healthCard = PatientHealthTrackingCard(
+          patientId: state.visit.patientId,
+          canEdit: canEdit,
+          expandBody: expandField,
+        );
+
+        if (!useSideBySide) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              intakeColumn,
+              const SizedBox(height: VisitPageTokens.sectionGap),
+              healthCard,
+            ],
+          );
+        }
+
+        if (!expandField) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 3, child: intakeColumn),
+              const SizedBox(width: VisitPageTokens.sectionGap),
+              Expanded(flex: 2, child: healthCard),
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 3, child: intakeColumn),
+            const SizedBox(width: VisitPageTokens.sectionGap),
+            Expanded(flex: 2, child: healthCard),
+          ],
+        );
+      },
+    );
   }
 
   Widget _complaintHistoryColumn({required bool expandField}) {
@@ -137,7 +180,8 @@ class EncounterPhaseSubjectiveDetail extends StatelessWidget {
       return EncounterPhaseSubjective(visitId: visitId, state: state!, canEdit: true);
     }
 
-    return Column(
+    final patientId = visit?.patientId;
+    final readOnlyColumn = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _SubjectiveFieldCard(
@@ -152,6 +196,37 @@ class EncounterPhaseSubjectiveDetail extends StatelessWidget {
           child: _SubjectiveDetailText(value: note?.history ?? ''),
         ),
       ],
+    );
+
+    if (patientId == null || patientId.isEmpty) {
+      return readOnlyColumn;
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final useSideBySide = constraints.maxWidth >= 900;
+        final healthCard = PatientHealthTrackingCard(patientId: patientId, canEdit: false);
+
+        if (!useSideBySide) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              readOnlyColumn,
+              const SizedBox(height: VisitPageTokens.sectionGap),
+              healthCard,
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 3, child: readOnlyColumn),
+            const SizedBox(width: VisitPageTokens.sectionGap),
+            Expanded(flex: 2, child: healthCard),
+          ],
+        );
+      },
     );
   }
 }
@@ -194,15 +269,7 @@ class _SubjectiveFieldCard extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [theme.pulse.withValues(alpha: 0.12), theme.pulse.withValues(alpha: 0)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                ),
-              ),
+              child: DecoratedBox(decoration: BoxDecoration(gradient: theme.pulseCardGradient)),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
