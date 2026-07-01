@@ -63,6 +63,7 @@ class EncounterPhasePlan extends ConsumerWidget {
           visitId: visitId,
           treatmentPlans: visit.treatmentPlans,
           canEdit: canEdit,
+          deferPersistence: canEdit,
           onChanged: onRefresh,
           sectionKind: VisitPanelKind.treatment,
           sectionTitle: 'Treatment plans',
@@ -73,6 +74,7 @@ class EncounterPhasePlan extends ConsumerWidget {
           visitId: visitId,
           investigations: visit.investigations,
           canEdit: canEdit,
+          deferPersistence: canEdit,
           onChanged: onRefresh,
           sectionKind: VisitPanelKind.investigation,
           sectionTitle: 'Investigations',
@@ -84,6 +86,7 @@ class EncounterPhasePlan extends ConsumerWidget {
           branchId: visit.branchId,
           attachments: visit.attachments,
           canUpload: canUploadAttachments,
+          deferPersistence: canEdit,
           onChanged: onRefresh,
           sectionKind: VisitPanelKind.attachment,
           sectionTitle: 'Attachments',
@@ -213,6 +216,7 @@ class EncounterPhasePlanReadOnly extends StatelessWidget {
         docState ??
         VisitDocumentationState(
           visit: visit,
+          persistedVisit: visit,
           complaint: visit.documentation?.complaint ?? '',
           history: visit.documentation?.history ?? '',
           examination: visit.documentation?.examination ?? '',

@@ -202,7 +202,9 @@ class _VisitDocumentationBody extends ConsumerWidget {
             state: state,
             canEdit: canEdit,
             canUploadAttachments: canUploadAttachments,
-            onRefresh: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
+            onRefresh: canEdit
+                ? () {}
+                : () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
             onSubmit: onSubmit,
             showSubmit: canSubmit && state.visit.status == VisitStatus.inProgress,
           ),

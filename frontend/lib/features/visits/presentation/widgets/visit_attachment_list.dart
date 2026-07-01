@@ -8,13 +8,15 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/application/visit_encounter_persistence.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
+import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_opener.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
-import 'package:ai_clinic/features/visits/data/visit_repository.dart'
-    show VisitAttachmentDownloadResult, visitRepositoryProvider;
+import 'package:ai_clinic/features/visits/data/visit_repository.dart' show VisitAttachmentDownloadResult;
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_name_dialog.dart';
@@ -38,6 +40,7 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
     this.promptAttachmentLabel,
     this.fetchDownloadBytes,
     this.openDownloadedAttachment,
+    this.deferPersistence = false,
     super.key,
   });
 
@@ -51,6 +54,7 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
   final bool encounterShell;
   final bool summaryMode;
   final bool expandBody;
+  final bool deferPersistence;
 
   final Future<VisitAttachmentPickInput?> Function()? pickAttachment;
   final Future<String?> Function(VisitAttachmentPickInput pick)? promptAttachmentLabel;
@@ -275,7 +279,30 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     }
     final trimmedLabel = label.trim();
 
-    final orgId = ref.read(authSessionProvider).context?.organizationId?.trim();
+    final session = ref.read(authSessionProvider).context;
+    final orgId = session?.organizationId?.trim();
+    final staffId = session?.staffProfile.staffMemberId.trim();
+    if (widget.deferPersistence) {
+      if (staffId == null || staffId.isEmpty) {
+        setState(() => _errorMessage = 'Staff context is required to stage attachments.');
+        return;
+      }
+      try {
+        await visitEncounterPersistence(ref, visitId: widget.visitId, deferPersistence: true).stageAttachment(
+          pick: pick,
+          label: trimmedLabel,
+          uploadedBy: staffId,
+          uploadedByName: session?.staffProfile.fullName,
+        );
+        if (!mounted) return;
+        widget.onChanged();
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _errorMessage = visitMessageForUploadError(error));
+      }
+      return;
+    }
+
     if (orgId == null || orgId.isEmpty) {
       setState(() => _errorMessage = 'Organization context is required to upload attachments.');
       return;
@@ -288,15 +315,11 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     });
 
     try {
-      await ref
-          .read(visitAttachmentServiceProvider)
-          .uploadAndRegister(
-            organizationId: orgId,
-            branchId: widget.branchId,
-            visitId: widget.visitId,
-            pick: pick,
-            label: trimmedLabel,
-          );
+      await visitEncounterPersistence(
+        ref,
+        visitId: widget.visitId,
+        deferPersistence: false,
+      ).uploadAndRegisterAttachment(organizationId: orgId, branchId: widget.branchId, pick: pick, label: trimmedLabel);
       if (!mounted) return;
       widget.onChanged();
     } catch (error) {
@@ -333,6 +356,18 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
 
   Future<void> _open(VisitAttachmentItem attachment) async {
     if (!attachment.canDownload) {
+      return;
+    }
+
+    if (widget.deferPersistence && isVisitDraftId(attachment.id)) {
+      final bytes = ref
+          .read(visitDocumentationProvider(widget.visitId))
+          .value
+          ?.encounterDraft
+          .pendingAttachmentBytes(attachment.id);
+      if (bytes == null) return;
+      final preferredName = attachment.label?.trim().isNotEmpty == true ? attachment.label : 'attachment';
+      await openVisitAttachmentBytes(bytes: bytes, fileType: attachment.fileType, preferredName: preferredName);
       return;
     }
 
@@ -388,7 +423,11 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     });
 
     try {
-      await ref.read(visitRepositoryProvider).deleteVisitAttachment(attachmentId: attachment.id);
+      await visitEncounterPersistence(
+        ref,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
+      ).deleteVisitAttachment(attachmentId: attachment.id);
       if (!mounted) return;
       widget.onChanged();
     } on RpcFailure catch (error) {

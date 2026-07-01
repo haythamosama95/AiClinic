@@ -23,6 +23,7 @@ class VitalSignsTrackingCard extends ConsumerWidget {
     required this.canEdit,
     required this.onChanged,
     this.expandBody = false,
+    this.deferPersistence = false,
     super.key,
   });
 
@@ -32,6 +33,7 @@ class VitalSignsTrackingCard extends ConsumerWidget {
   final bool canEdit;
   final VoidCallback onChanged;
   final bool expandBody;
+  final bool deferPersistence;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -52,6 +54,7 @@ class VitalSignsTrackingCard extends ConsumerWidget {
                   visitId: visitId,
                   predefinedVitalSigns: predefinedVitalSigns,
                   onRefresh: onChanged,
+                  deferPersistence: deferPersistence,
                 ),
               )
             : null,
@@ -62,6 +65,7 @@ class VitalSignsTrackingCard extends ConsumerWidget {
           canEdit: canEdit,
           onChanged: onChanged,
           expandBody: expandBody,
+          deferPersistence: deferPersistence,
         ),
       ),
     );
@@ -143,6 +147,7 @@ class _VitalSignsBody extends StatelessWidget {
     required this.canEdit,
     required this.onChanged,
     required this.expandBody,
+    required this.deferPersistence,
   });
 
   final String visitId;
@@ -151,6 +156,7 @@ class _VitalSignsBody extends StatelessWidget {
   final bool canEdit;
   final VoidCallback onChanged;
   final bool expandBody;
+  final bool deferPersistence;
 
   @override
   Widget build(BuildContext context) {
@@ -165,6 +171,7 @@ class _VitalSignsBody extends StatelessWidget {
       showSectionCard: false,
       embeddedInTrackingCard: true,
       expandBody: expandBody,
+      deferPersistence: deferPersistence,
     );
 
     if (vitalSigns.isEmpty) {

@@ -6,11 +6,13 @@ import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/application/visit_encounter_persistence.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
@@ -19,10 +21,19 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.
 
 /// Patient-level chronic conditions, medications, and allergies for the Intake step (014 US6).
 class PatientHealthTrackingCard extends ConsumerWidget {
-  const PatientHealthTrackingCard({required this.patientId, required this.canEdit, this.expandBody = false, super.key});
+  const PatientHealthTrackingCard({
+    required this.patientId,
+    required this.canEdit,
+    this.visitId,
+    this.deferPersistence = false,
+    this.expandBody = false,
+    super.key,
+  });
 
   final String patientId;
   final bool canEdit;
+  final String? visitId;
+  final bool deferPersistence;
   final bool expandBody;
 
   @override
@@ -46,15 +57,23 @@ class PatientHealthTrackingCard extends ConsumerWidget {
             ),
           ),
         ),
-        data: (safetyContext) => _HealthProfileShell(
-          expandBody: expandBody,
-          child: _HealthProfileBody(
-            patientId: patientId,
-            canEdit: canEdit,
-            safetyContext: safetyContext,
+        data: (safetyContext) {
+          final effectiveSafety = deferPersistence && visitId != null
+              ? ref.watch(visitDocumentationProvider(visitId!)).value?.effectivePatientSafety(safetyContext) ??
+                    safetyContext
+              : safetyContext;
+          return _HealthProfileShell(
             expandBody: expandBody,
-          ),
-        ),
+            child: _HealthProfileBody(
+              patientId: patientId,
+              visitId: visitId,
+              deferPersistence: deferPersistence && visitId != null,
+              canEdit: canEdit,
+              safetyContext: effectiveSafety,
+              expandBody: expandBody,
+            ),
+          );
+        },
       ),
     );
   }
@@ -152,9 +171,13 @@ class _HealthProfileBody extends ConsumerStatefulWidget {
     required this.canEdit,
     required this.safetyContext,
     required this.expandBody,
+    this.visitId,
+    this.deferPersistence = false,
   });
 
   final String patientId;
+  final String? visitId;
+  final bool deferPersistence;
   final bool canEdit;
   final PatientSafetyContext safetyContext;
   final bool expandBody;
@@ -184,7 +207,12 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
         canEdit: widget.canEdit,
         emptyMessage: 'No chronic conditions recorded.',
         addLabel: 'Add condition',
-        addFormBuilder: (onDone) => _ConditionForm(patientId: widget.patientId, onDone: onDone),
+        addFormBuilder: (onDone) => _ConditionForm(
+          patientId: widget.patientId,
+          visitId: widget.visitId,
+          deferPersistence: widget.deferPersistence,
+          onDone: onDone,
+        ),
       ),
       _HealthSectionConfig(
         kind: VisitPanelKind.currentMedication,
@@ -203,7 +231,12 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
         canEdit: widget.canEdit,
         emptyMessage: 'No current medications recorded.',
         addLabel: 'Add medication',
-        addFormBuilder: (onDone) => _MedicationForm(patientId: widget.patientId, onDone: onDone),
+        addFormBuilder: (onDone) => _MedicationForm(
+          patientId: widget.patientId,
+          visitId: widget.visitId,
+          deferPersistence: widget.deferPersistence,
+          onDone: onDone,
+        ),
       ),
       _HealthSectionConfig(
         kind: VisitPanelKind.allergy,
@@ -222,7 +255,12 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
         canEdit: widget.canEdit,
         emptyMessage: 'No allergies recorded.',
         addLabel: 'Add allergy',
-        addFormBuilder: (onDone) => _AllergyForm(patientId: widget.patientId, onDone: onDone),
+        addFormBuilder: (onDone) => _AllergyForm(
+          patientId: widget.patientId,
+          visitId: widget.visitId,
+          deferPersistence: widget.deferPersistence,
+          onDone: onDone,
+        ),
       ),
     ];
 
@@ -250,15 +288,27 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
   }
 
   Future<void> _refreshSafety() {
+    if (widget.deferPersistence) return Future.value();
     return ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
+  }
+
+  VisitEncounterPersistence? get _persistence {
+    final visitId = widget.visitId;
+    if (!widget.deferPersistence || visitId == null) return null;
+    return visitEncounterPersistence(ref, visitId: visitId, deferPersistence: true);
   }
 
   Future<void> _editAllergy(PatientAllergy allergy) async {
     await AppDialog.show<void>(
       context: context,
       title: 'Edit allergy',
-      bodyBuilder: (dialogContext) =>
-          _AllergyForm(patientId: widget.patientId, allergy: allergy, onDone: () => Navigator.of(dialogContext).pop()),
+      bodyBuilder: (dialogContext) => _AllergyForm(
+        patientId: widget.patientId,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
+        allergy: allergy,
+        onDone: () => Navigator.of(dialogContext).pop(),
+      ),
     );
   }
 
@@ -268,6 +318,8 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
       title: 'Edit condition',
       bodyBuilder: (dialogContext) => _ConditionForm(
         patientId: widget.patientId,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
         condition: condition,
         onDone: () => Navigator.of(dialogContext).pop(),
       ),
@@ -280,6 +332,8 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
       title: 'Edit medication',
       bodyBuilder: (dialogContext) => _MedicationForm(
         patientId: widget.patientId,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
         medication: medication,
         onDone: () => Navigator.of(dialogContext).pop(),
       ),
@@ -290,8 +344,13 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
     final confirmed = await _confirmRemove(context, title: allergy.substance, label: 'allergy');
     if (!confirmed || !mounted) return;
     try {
-      await ref.read(visitRepositoryProvider).archivePatientAllergy(allergyId: allergy.id);
-      await _refreshSafety();
+      final persistence = _persistence;
+      if (persistence != null) {
+        await persistence.archivePatientAllergy(allergyId: allergy.id);
+      } else {
+        await ref.read(visitRepositoryProvider).archivePatientAllergy(allergyId: allergy.id);
+        await _refreshSafety();
+      }
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
     }
@@ -301,8 +360,13 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
     final confirmed = await _confirmRemove(context, title: med.name, label: 'medication');
     if (!confirmed || !mounted) return;
     try {
-      await ref.read(visitRepositoryProvider).archivePatientMedication(medicationRecordId: med.id);
-      await _refreshSafety();
+      final persistence = _persistence;
+      if (persistence != null) {
+        await persistence.archivePatientMedication(medicationRecordId: med.id);
+      } else {
+        await ref.read(visitRepositoryProvider).archivePatientMedication(medicationRecordId: med.id);
+        await _refreshSafety();
+      }
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
     }
@@ -312,8 +376,13 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
     final confirmed = await _confirmRemove(context, title: condition.name, label: 'condition');
     if (!confirmed || !mounted) return;
     try {
-      await ref.read(visitRepositoryProvider).archivePatientChronicCondition(conditionId: condition.id);
-      await _refreshSafety();
+      final persistence = _persistence;
+      if (persistence != null) {
+        await persistence.archivePatientChronicCondition(conditionId: condition.id);
+      } else {
+        await ref.read(visitRepositoryProvider).archivePatientChronicCondition(conditionId: condition.id);
+        await _refreshSafety();
+      }
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
     }
@@ -530,9 +599,17 @@ class _HealthGridTile extends StatelessWidget {
 }
 
 class _AllergyForm extends ConsumerStatefulWidget {
-  const _AllergyForm({required this.patientId, required this.onDone, this.allergy});
+  const _AllergyForm({
+    required this.patientId,
+    required this.onDone,
+    this.visitId,
+    this.deferPersistence = false,
+    this.allergy,
+  });
 
   final String patientId;
+  final String? visitId;
+  final bool deferPersistence;
   final VoidCallback onDone;
   final PatientAllergy? allergy;
 
@@ -607,13 +684,37 @@ class _AllergyFormState extends ConsumerState<_AllergyForm> {
     }
     setState(() => _submitting = true);
     try {
-      final repository = ref.read(visitRepositoryProvider);
+      final visitId = widget.visitId;
+      final persistence = widget.deferPersistence && visitId != null
+          ? visitEncounterPersistence(ref, visitId: visitId, deferPersistence: true)
+          : null;
       if (_isEditing) {
-        await repository.updatePatientAllergy(allergyId: widget.allergy!.id, substance: substance, reaction: _severity);
+        if (persistence != null) {
+          await persistence.updatePatientAllergy(
+            allergyId: widget.allergy!.id,
+            substance: substance,
+            reaction: _severity,
+          );
+        } else {
+          await ref
+              .read(visitRepositoryProvider)
+              .updatePatientAllergy(allergyId: widget.allergy!.id, substance: substance, reaction: _severity);
+          await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
+        }
       } else {
-        await repository.createPatientAllergy(patientId: widget.patientId, substance: substance, reaction: _severity);
+        if (persistence != null) {
+          await persistence.createPatientAllergy(
+            patientId: widget.patientId,
+            substance: substance,
+            reaction: _severity,
+          );
+        } else {
+          await ref
+              .read(visitRepositoryProvider)
+              .createPatientAllergy(patientId: widget.patientId, substance: substance, reaction: _severity);
+          await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
+        }
       }
-      await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
       if (mounted) widget.onDone();
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
@@ -624,9 +725,17 @@ class _AllergyFormState extends ConsumerState<_AllergyForm> {
 }
 
 class _ConditionForm extends ConsumerStatefulWidget {
-  const _ConditionForm({required this.patientId, required this.onDone, this.condition});
+  const _ConditionForm({
+    required this.patientId,
+    required this.onDone,
+    this.visitId,
+    this.deferPersistence = false,
+    this.condition,
+  });
 
   final String patientId;
+  final String? visitId;
+  final bool deferPersistence;
   final VoidCallback onDone;
   final PatientChronicCondition? condition;
 
@@ -690,14 +799,30 @@ class _ConditionFormState extends ConsumerState<_ConditionForm> {
     }
     setState(() => _submitting = true);
     try {
-      final repository = ref.read(visitRepositoryProvider);
       final note = _noteController.text.trim().isEmpty ? null : _noteController.text.trim();
+      final visitId = widget.visitId;
+      final persistence = widget.deferPersistence && visitId != null
+          ? visitEncounterPersistence(ref, visitId: visitId, deferPersistence: true)
+          : null;
       if (_isEditing) {
-        await repository.updatePatientChronicCondition(conditionId: widget.condition!.id, name: name, note: note);
+        if (persistence != null) {
+          await persistence.updatePatientChronicCondition(conditionId: widget.condition!.id, name: name, note: note);
+        } else {
+          await ref
+              .read(visitRepositoryProvider)
+              .updatePatientChronicCondition(conditionId: widget.condition!.id, name: name, note: note);
+          await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
+        }
       } else {
-        await repository.createPatientChronicCondition(patientId: widget.patientId, name: name, note: note);
+        if (persistence != null) {
+          await persistence.createPatientChronicCondition(patientId: widget.patientId, name: name, note: note);
+        } else {
+          await ref
+              .read(visitRepositoryProvider)
+              .createPatientChronicCondition(patientId: widget.patientId, name: name, note: note);
+          await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
+        }
       }
-      await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
       if (mounted) widget.onDone();
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
@@ -708,9 +833,17 @@ class _ConditionFormState extends ConsumerState<_ConditionForm> {
 }
 
 class _MedicationForm extends ConsumerStatefulWidget {
-  const _MedicationForm({required this.patientId, required this.onDone, this.medication});
+  const _MedicationForm({
+    required this.patientId,
+    required this.onDone,
+    this.visitId,
+    this.deferPersistence = false,
+    this.medication,
+  });
 
   final String patientId;
+  final String? visitId;
+  final bool deferPersistence;
   final VoidCallback onDone;
   final PatientMedication? medication;
 
@@ -786,24 +919,50 @@ class _MedicationFormState extends ConsumerState<_MedicationForm> {
     }
     setState(() => _submitting = true);
     try {
-      final repository = ref.read(visitRepositoryProvider);
       final note = _noteController.text.trim().isEmpty ? null : _noteController.text.trim();
+      final visitId = widget.visitId;
+      final persistence = widget.deferPersistence && visitId != null
+          ? visitEncounterPersistence(ref, visitId: visitId, deferPersistence: true)
+          : null;
       if (_isEditing) {
-        await repository.updatePatientMedication(
-          medicationRecordId: widget.medication!.id,
-          name: name,
-          medicationId: selection.catalogId,
-          note: note,
-        );
+        if (persistence != null) {
+          await persistence.updatePatientMedication(
+            medicationRecordId: widget.medication!.id,
+            name: name,
+            medicationId: selection.catalogId,
+            note: note,
+          );
+        } else {
+          await ref
+              .read(visitRepositoryProvider)
+              .updatePatientMedication(
+                medicationRecordId: widget.medication!.id,
+                name: name,
+                medicationId: selection.catalogId,
+                note: note,
+              );
+          await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
+        }
       } else {
-        await repository.createPatientMedication(
-          patientId: widget.patientId,
-          name: name,
-          medicationId: selection.catalogId,
-          note: note,
-        );
+        if (persistence != null) {
+          await persistence.createPatientMedication(
+            patientId: widget.patientId,
+            name: name,
+            medicationId: selection.catalogId,
+            note: note,
+          );
+        } else {
+          await ref
+              .read(visitRepositoryProvider)
+              .createPatientMedication(
+                patientId: widget.patientId,
+                name: name,
+                medicationId: selection.catalogId,
+                note: note,
+              );
+          await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
+        }
       }
-      await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
       if (mounted) widget.onDone();
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));

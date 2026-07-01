@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/application/visit_encounter_persistence.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
@@ -24,6 +25,7 @@ Future<void> showVitalSignAddDialog({
   required List<CatalogItem> predefinedVitalSigns,
   required VoidCallback onRefresh,
   String? initialPredefinedId,
+  bool deferPersistence = false,
 }) {
   return AppDialog.show<void>(
     context: context,
@@ -34,6 +36,7 @@ Future<void> showVitalSignAddDialog({
       predefinedVitalSigns: predefinedVitalSigns,
       initialPredefinedId: initialPredefinedId,
       hostContext: context,
+      deferPersistence: deferPersistence,
       onCancel: () => Navigator.of(dialogContext).pop(),
       onRefresh: onRefresh,
       onSaved: () {
@@ -57,6 +60,7 @@ class VitalSignList extends ConsumerStatefulWidget {
     this.showSectionCard = true,
     this.embeddedInTrackingCard = false,
     this.expandBody = false,
+    this.deferPersistence = false,
     super.key,
   });
 
@@ -70,6 +74,7 @@ class VitalSignList extends ConsumerStatefulWidget {
   final bool showSectionCard;
   final bool embeddedInTrackingCard;
   final bool expandBody;
+  final bool deferPersistence;
 
   @override
   ConsumerState<VitalSignList> createState() => _VitalSignListState();
@@ -89,6 +94,7 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
       predefinedVitalSigns: widget.predefinedVitalSigns,
       onRefresh: widget.onChanged,
       initialPredefinedId: initialPredefinedId,
+      deferPersistence: widget.deferPersistence,
     );
   }
 
@@ -241,15 +247,17 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
           data.predefinedVitalSignId != existing.predefinedVitalSignId;
 
       if (hasChanges) {
-        await ref
-            .read(visitRepositoryProvider)
-            .updateVisitVitalSign(
-              vitalSignId: existing.id,
-              name: normalizedName,
-              value: trimmedValue,
-              unit: trimmedUnit,
-              predefinedVitalSignId: data.predefinedVitalSignId,
-            );
+        await visitEncounterPersistence(
+          ref,
+          visitId: widget.visitId,
+          deferPersistence: widget.deferPersistence,
+        ).updateVisitVitalSign(
+          vitalSignId: existing.id,
+          name: normalizedName,
+          value: trimmedValue,
+          unit: trimmedUnit,
+          predefinedVitalSignId: data.predefinedVitalSignId,
+        );
       }
 
       if (!mounted) return;
@@ -304,7 +312,11 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
     });
 
     try {
-      await ref.read(visitRepositoryProvider).archiveVisitVitalSign(vitalSignId: sign.id);
+      await visitEncounterPersistence(
+        ref,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
+      ).archiveVisitVitalSign(vitalSignId: sign.id);
       if (mounted) {
         setState(() => _isSubmitting = false);
         widget.onChanged();
@@ -350,12 +362,14 @@ class _VitalSignAddDialogBody extends ConsumerStatefulWidget {
     required this.onRefresh,
     required this.onSaved,
     this.initialPredefinedId,
+    this.deferPersistence = false,
   });
 
   final String visitId;
   final List<CatalogItem> predefinedVitalSigns;
   final BuildContext hostContext;
   final String? initialPredefinedId;
+  final bool deferPersistence;
   final VoidCallback onCancel;
   final VoidCallback onRefresh;
   final VoidCallback onSaved;
@@ -379,15 +393,16 @@ class _VitalSignAddDialogBodyState extends ConsumerState<_VitalSignAddDialogBody
       }
 
       final isCustom = data.predefinedVitalSignId == null;
-      await ref
-          .read(visitRepositoryProvider)
-          .createVisitVitalSign(
-            visitId: widget.visitId,
-            name: normalizedName,
-            value: data.value.trim(),
-            unit: _nullableTrimVitalField(data.unit),
-            predefinedVitalSignId: data.predefinedVitalSignId,
-          );
+      await visitEncounterPersistence(
+        ref,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
+      ).createVisitVitalSign(
+        name: normalizedName,
+        value: data.value.trim(),
+        unit: _nullableTrimVitalField(data.unit),
+        predefinedVitalSignId: data.predefinedVitalSignId,
+      );
 
       if (!mounted) return;
 

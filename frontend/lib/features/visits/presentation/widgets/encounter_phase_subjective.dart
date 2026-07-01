@@ -49,6 +49,8 @@ class EncounterPhaseSubjective extends ConsumerWidget {
 
         final healthCard = PatientHealthTrackingCard(
           patientId: state.visit.patientId,
+          visitId: visitId,
+          deferPersistence: canEdit,
           canEdit: canEdit,
           expandBody: expandField,
         );

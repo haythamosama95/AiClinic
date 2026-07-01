@@ -55,6 +55,8 @@ class EncounterPhaseObjective extends ConsumerWidget {
               InvestigationResultCaptureList(
                 pendingInvestigations: pendingInvestigations,
                 canEdit: canEdit,
+                visitId: visitId,
+                deferPersistence: canEdit,
                 onChanged: onRefresh,
               ),
             ],
@@ -75,6 +77,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
           vitalSigns: state.visit.vitalSigns,
           predefinedVitalSigns: state.predefinedVitalSigns,
           canEdit: canEdit,
+          deferPersistence: canEdit,
           onChanged: onRefresh,
           expandBody: expandField,
         );

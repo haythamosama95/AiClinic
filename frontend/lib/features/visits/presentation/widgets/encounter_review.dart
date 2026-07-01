@@ -92,6 +92,8 @@ class EncounterReview extends ConsumerWidget {
                 InvestigationResultCaptureList(
                   pendingInvestigations: visit.pendingInvestigations,
                   canEdit: canEdit,
+                  visitId: visitId,
+                  deferPersistence: canEdit,
                   onChanged: onRefresh ?? () {},
                 ),
               ],

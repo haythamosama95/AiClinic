@@ -56,7 +56,7 @@ class EncounterWorkspaceShell extends ConsumerWidget {
             child: mode == WorkspaceMode.expert
                 ? SingleChildScrollView(
                     child: ExpertModeAccordion(
-                      phases: _documentationPhaseEntries(showClinicalNoteSaveBar: true),
+                      phases: _documentationPhaseEntries(showClinicalNoteSaveBar: !canEdit),
                       initiallyExpanded: {activePhase.isDocumentation ? activePhase : EncounterPhase.subjective},
                     ),
                   )

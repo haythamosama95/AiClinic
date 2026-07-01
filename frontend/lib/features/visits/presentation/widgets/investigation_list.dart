@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/application/visit_encounter_persistence.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
@@ -22,6 +23,7 @@ Future<void> showInvestigationAddDialog({
   required BuildContext context,
   required String visitId,
   required VoidCallback onRefresh,
+  bool deferPersistence = false,
 }) {
   return AppDialog.show<void>(
     context: context,
@@ -29,6 +31,7 @@ Future<void> showInvestigationAddDialog({
     bodyBuilder: (dialogContext) => _InvestigationAddDialogBody(
       visitId: visitId,
       hostContext: context,
+      deferPersistence: deferPersistence,
       onCancel: () => Navigator.of(dialogContext).pop(),
       onRefresh: onRefresh,
       onSaved: () {
@@ -50,6 +53,7 @@ class InvestigationList extends ConsumerStatefulWidget {
     required this.sectionKind,
     this.encounterShell = false,
     this.expandBody = false,
+    this.deferPersistence = false,
     super.key,
   });
 
@@ -61,6 +65,7 @@ class InvestigationList extends ConsumerStatefulWidget {
   final VisitPanelKind sectionKind;
   final bool encounterShell;
   final bool expandBody;
+  final bool deferPersistence;
 
   @override
   ConsumerState<InvestigationList> createState() => _InvestigationListState();
@@ -76,7 +81,12 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
   Future<void> _openAddDialog() async {
     if (_isSubmitting) return;
 
-    await showInvestigationAddDialog(context: context, visitId: widget.visitId, onRefresh: widget.onChanged);
+    await showInvestigationAddDialog(
+      context: context,
+      visitId: widget.visitId,
+      onRefresh: widget.onChanged,
+      deferPersistence: widget.deferPersistence,
+    );
   }
 
   List<Widget>? _shelfActions() {
@@ -215,14 +225,16 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
       final hasChanges = updateParams.name != null || updateParams.investigationId != null || updateParams.note != null;
 
       if (hasChanges) {
-        await ref
-            .read(visitRepositoryProvider)
-            .updateVisitInvestigation(
-              investigationLineId: existing.id,
-              name: updateParams.name,
-              investigationId: updateParams.investigationId,
-              note: updateParams.note,
-            );
+        await visitEncounterPersistence(
+          ref,
+          visitId: widget.visitId,
+          deferPersistence: widget.deferPersistence,
+        ).updateVisitInvestigation(
+          investigationLineId: existing.id,
+          name: updateParams.name,
+          investigationId: updateParams.investigationId,
+          note: updateParams.note,
+        );
       }
 
       if (!mounted) return;
@@ -277,7 +289,11 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
     });
 
     try {
-      await ref.read(visitRepositoryProvider).archiveVisitInvestigation(investigationLineId: investigation.id);
+      await visitEncounterPersistence(
+        ref,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
+      ).archiveVisitInvestigation(investigationLineId: investigation.id);
       if (mounted) {
         setState(() => _isSubmitting = false);
         widget.onChanged();
@@ -593,10 +609,12 @@ class _InvestigationAddDialogBody extends ConsumerStatefulWidget {
     required this.onCancel,
     required this.onRefresh,
     required this.onSaved,
+    this.deferPersistence = false,
   });
 
   final String visitId;
   final BuildContext hostContext;
+  final bool deferPersistence;
   final VoidCallback onCancel;
   final VoidCallback onRefresh;
   final VoidCallback onSaved;
@@ -620,14 +638,15 @@ class _InvestigationAddDialogBodyState extends ConsumerState<_InvestigationAddDi
       }
 
       final isCustom = data.isCustomInvestigation;
-      await ref
-          .read(visitRepositoryProvider)
-          .createVisitInvestigation(
-            visitId: widget.visitId,
-            name: normalizedName,
-            note: _nullableTrim(data.note),
-            investigationId: data.investigationId,
-          );
+      await visitEncounterPersistence(
+        ref,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
+      ).createVisitInvestigation(
+        name: normalizedName,
+        note: _nullableTrim(data.note),
+        investigationId: data.investigationId,
+      );
 
       if (!mounted) return;
 

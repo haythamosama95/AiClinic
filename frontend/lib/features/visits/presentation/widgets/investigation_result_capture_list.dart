@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/application/visit_encounter_persistence.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
@@ -18,12 +19,16 @@ class InvestigationResultCaptureList extends ConsumerStatefulWidget {
     required this.pendingInvestigations,
     required this.canEdit,
     required this.onChanged,
+    this.visitId,
+    this.deferPersistence = false,
     super.key,
   });
 
   final List<VisitInvestigation> pendingInvestigations;
   final bool canEdit;
   final VoidCallback onChanged;
+  final String? visitId;
+  final bool deferPersistence;
 
   @override
   ConsumerState<InvestigationResultCaptureList> createState() => _InvestigationResultCaptureListState();
@@ -86,9 +91,17 @@ class _InvestigationResultCaptureListState extends ConsumerState<InvestigationRe
     });
 
     try {
-      await ref
-          .read(visitRepositoryProvider)
-          .recordInvestigationResult(investigationLineId: investigation.id, result: result.trim());
+      if (widget.deferPersistence && widget.visitId != null) {
+        await visitEncounterPersistence(
+          ref,
+          visitId: widget.visitId!,
+          deferPersistence: true,
+        ).recordInvestigationResult(investigationLineId: investigation.id, result: result.trim());
+      } else {
+        await ref
+            .read(visitRepositoryProvider)
+            .recordInvestigationResult(investigationLineId: investigation.id, result: result.trim());
+      }
       if (!mounted) return;
       setState(() {
         _isSubmitting = false;

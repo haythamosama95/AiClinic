@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/visits/application/visit_encounter_persistence.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
@@ -21,6 +22,7 @@ Future<void> showTreatmentPlanAddDialog({
   required BuildContext context,
   required String visitId,
   required VoidCallback onRefresh,
+  bool deferPersistence = false,
 }) {
   return AppDialog.show<void>(
     context: context,
@@ -28,6 +30,7 @@ Future<void> showTreatmentPlanAddDialog({
     bodyBuilder: (dialogContext) => _TreatmentPlanAddDialogBody(
       visitId: visitId,
       hostContext: context,
+      deferPersistence: deferPersistence,
       onCancel: () => Navigator.of(dialogContext).pop(),
       onRefresh: onRefresh,
       onSaved: () {
@@ -49,6 +52,7 @@ class TreatmentPlanList extends ConsumerStatefulWidget {
     required this.sectionKind,
     this.encounterShell = false,
     this.expandBody = false,
+    this.deferPersistence = false,
     super.key,
   });
 
@@ -60,6 +64,7 @@ class TreatmentPlanList extends ConsumerStatefulWidget {
   final VisitPanelKind sectionKind;
   final bool encounterShell;
   final bool expandBody;
+  final bool deferPersistence;
 
   @override
   ConsumerState<TreatmentPlanList> createState() => _TreatmentPlanListState();
@@ -75,7 +80,12 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
   Future<void> _openAddDialog() async {
     if (_isSubmitting) return;
 
-    await showTreatmentPlanAddDialog(context: context, visitId: widget.visitId, onRefresh: widget.onChanged);
+    await showTreatmentPlanAddDialog(
+      context: context,
+      visitId: widget.visitId,
+      onRefresh: widget.onChanged,
+      deferPersistence: widget.deferPersistence,
+    );
   }
 
   List<Widget>? _shelfActions() {
@@ -224,17 +234,19 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
           updateParams.notes != null;
 
       if (hasChanges) {
-        await ref
-            .read(visitRepositoryProvider)
-            .updateTreatmentPlan(
-              treatmentPlanId: existing.id,
-              medicationName: updateParams.medicationName,
-              medicationId: updateParams.medicationId,
-              dosage: updateParams.dosage,
-              frequency: updateParams.frequency,
-              duration: updateParams.duration,
-              notes: updateParams.notes,
-            );
+        await visitEncounterPersistence(
+          ref,
+          visitId: widget.visitId,
+          deferPersistence: widget.deferPersistence,
+        ).updateTreatmentPlan(
+          treatmentPlanId: existing.id,
+          medicationName: updateParams.medicationName,
+          medicationId: updateParams.medicationId,
+          dosage: updateParams.dosage,
+          frequency: updateParams.frequency,
+          duration: updateParams.duration,
+          notes: updateParams.notes,
+        );
       }
 
       if (!mounted) return;
@@ -288,7 +300,11 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
       _errorMessage = null;
     });
     try {
-      await ref.read(visitRepositoryProvider).archiveTreatmentPlan(treatmentPlanId: plan.id);
+      await visitEncounterPersistence(
+        ref,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
+      ).archiveTreatmentPlan(treatmentPlanId: plan.id);
       if (mounted) {
         setState(() => _isSubmitting = false);
         widget.onChanged();
@@ -337,10 +353,12 @@ class _TreatmentPlanAddDialogBody extends ConsumerStatefulWidget {
     required this.onCancel,
     required this.onRefresh,
     required this.onSaved,
+    this.deferPersistence = false,
   });
 
   final String visitId;
   final BuildContext hostContext;
+  final bool deferPersistence;
   final VoidCallback onCancel;
   final VoidCallback onRefresh;
   final VoidCallback onSaved;
@@ -364,17 +382,18 @@ class _TreatmentPlanAddDialogBodyState extends ConsumerState<_TreatmentPlanAddDi
       }
 
       final isCustom = data.isCustomMedication;
-      await ref
-          .read(visitRepositoryProvider)
-          .createTreatmentPlan(
-            visitId: widget.visitId,
-            medicationName: normalizedName,
-            medicationId: data.medicationId,
-            dosage: data.dosage,
-            frequency: data.frequency,
-            duration: data.duration,
-            notes: data.notes,
-          );
+      await visitEncounterPersistence(
+        ref,
+        visitId: widget.visitId,
+        deferPersistence: widget.deferPersistence,
+      ).createTreatmentPlan(
+        medicationName: normalizedName,
+        medicationId: data.medicationId,
+        dosage: data.dosage,
+        frequency: data.frequency,
+        duration: data.duration,
+        notes: data.notes,
+      );
 
       if (!mounted) return;
 
