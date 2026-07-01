@@ -13,6 +13,7 @@ class TiltedBackgroundIconStack extends StatelessWidget {
     required this.icon,
     required this.child,
     this.alignment = AlignmentDirectional.centerStart,
+    this.fillChild = false,
     this.iconRotation = defaultIconRotation,
     this.iconSize,
     this.minIconSize = 76,
@@ -23,6 +24,7 @@ class TiltedBackgroundIconStack extends StatelessWidget {
   final IconData icon;
   final Widget child;
   final AlignmentGeometry alignment;
+  final bool fillChild;
   final double iconRotation;
 
   /// When set, the watermark uses this size instead of scaling with layout height.
@@ -59,7 +61,7 @@ class TiltedBackgroundIconStack extends StatelessWidget {
                 ),
               ),
             ),
-            Align(alignment: alignment, child: child),
+            if (fillChild) Positioned.fill(child: child) else Align(alignment: alignment, child: child),
           ],
         );
       },

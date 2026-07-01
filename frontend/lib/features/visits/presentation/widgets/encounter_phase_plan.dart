@@ -5,12 +5,11 @@ import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_plan_details_form.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Plan phase — plan prose, treatments, investigations, and attachments (014 US2).
 class EncounterPhasePlan extends ConsumerWidget {
@@ -39,52 +38,151 @@ class EncounterPhasePlan extends ConsumerWidget {
 
     return KeyedSubtree(
       key: const Key('encounter_phase_plan'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          VisitSectionCard(
-            kind: VisitPanelKind.plan,
-            title: 'Treatment notes',
-            child: ClinicalNoteEditor(
-              visitId: visitId,
-              state: state,
-              canEdit: canEdit,
-              sections: _sections,
-              showStaleBanner: false,
-              showSaveBar: showClinicalNoteSaveBar,
-            ),
-          ),
-          const SizedBox(height: VisitPageTokens.sectionGap),
-          VisitPlanDetailsForm(visitId: visitId, state: state, canEdit: canEdit),
-          const SizedBox(height: VisitPageTokens.sectionGap),
-          TreatmentPlanList(
-            visitId: visitId,
-            treatmentPlans: visit.treatmentPlans,
-            canEdit: canEdit,
-            onChanged: onRefresh,
-            sectionKind: VisitPanelKind.treatment,
-            sectionTitle: 'Treatment plans',
-          ),
-          const SizedBox(height: VisitPageTokens.sectionGap),
-          InvestigationList(
-            visitId: visitId,
-            investigations: visit.investigations,
-            canEdit: canEdit,
-            onChanged: onRefresh,
-            sectionKind: VisitPanelKind.investigation,
-            sectionTitle: 'Investigations',
-          ),
-          const SizedBox(height: VisitPageTokens.sectionGap),
-          VisitAttachmentList(
-            visitId: visitId,
-            branchId: visit.branchId,
-            attachments: visit.attachments,
-            canUpload: canUploadAttachments,
-            onChanged: onRefresh,
-            sectionKind: VisitPanelKind.attachment,
-            sectionTitle: 'Attachments',
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final expandField = constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+          if (expandField) {
+            return SizedBox(
+              height: constraints.maxHeight,
+              child: _buildPlanGrid(visit: visit, expandField: true),
+            );
+          }
+          return _buildPlanGrid(visit: visit, expandField: false);
+        },
+      ),
+    );
+  }
+
+  Widget _buildPlanGrid({required VisitDetail visit, required bool expandField}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final useGrid = constraints.maxWidth >= 900;
+
+        final treatmentNotes = _treatmentNotesCard(expandField: expandField);
+        final treatmentPlans = TreatmentPlanList(
+          visitId: visitId,
+          treatmentPlans: visit.treatmentPlans,
+          canEdit: canEdit,
+          onChanged: onRefresh,
+          sectionKind: VisitPanelKind.treatment,
+          sectionTitle: 'Treatment plans',
+          encounterShell: true,
+          expandBody: expandField,
+        );
+        final investigations = InvestigationList(
+          visitId: visitId,
+          investigations: visit.investigations,
+          canEdit: canEdit,
+          onChanged: onRefresh,
+          sectionKind: VisitPanelKind.investigation,
+          sectionTitle: 'Investigations',
+          encounterShell: true,
+          expandBody: expandField,
+        );
+        final attachments = VisitAttachmentList(
+          visitId: visitId,
+          branchId: visit.branchId,
+          attachments: visit.attachments,
+          canUpload: canUploadAttachments,
+          onChanged: onRefresh,
+          sectionKind: VisitPanelKind.attachment,
+          sectionTitle: 'Attachments',
+          encounterShell: true,
+          expandBody: expandField,
+        );
+
+        if (!useGrid) {
+          if (!expandField) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                treatmentNotes,
+                const SizedBox(height: VisitPageTokens.sectionGap),
+                treatmentPlans,
+                const SizedBox(height: VisitPageTokens.sectionGap),
+                investigations,
+                const SizedBox(height: VisitPageTokens.sectionGap),
+                attachments,
+              ],
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: treatmentNotes),
+              const SizedBox(height: VisitPageTokens.sectionGap),
+              Expanded(child: treatmentPlans),
+              const SizedBox(height: VisitPageTokens.sectionGap),
+              Expanded(child: investigations),
+              const SizedBox(height: VisitPageTokens.sectionGap),
+              Expanded(child: attachments),
+            ],
+          );
+        }
+
+        final topRow = Row(
+          crossAxisAlignment: expandField ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
+          children: [
+            Expanded(child: treatmentNotes),
+            const SizedBox(width: VisitPageTokens.sectionGap),
+            Expanded(child: treatmentPlans),
+          ],
+        );
+
+        final bottomRow = Row(
+          crossAxisAlignment: expandField ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
+          children: [
+            Expanded(child: investigations),
+            const SizedBox(width: VisitPageTokens.sectionGap),
+            Expanded(child: attachments),
+          ],
+        );
+
+        if (!expandField) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              topRow,
+              const SizedBox(height: VisitPageTokens.sectionGap),
+              bottomRow,
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: topRow),
+            const SizedBox(height: VisitPageTokens.sectionGap),
+            Expanded(child: bottomRow),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _treatmentNotesCard({required bool expandField}) {
+    return EncounterFieldCard(
+      title: 'Treatment notes',
+      titleIcon: VisitPanelKind.plan.icon,
+      expandBody: expandField,
+      embedTitleInToolbar: true,
+      child: ClinicalNoteEditor(
+        visitId: visitId,
+        state: state,
+        canEdit: canEdit,
+        sections: _sections,
+        showSectionHeaders: false,
+        expandField: expandField,
+        useRichTextParagraph: true,
+        removeBorder: true,
+        showStaleBanner: false,
+        showSaveBar: showClinicalNoteSaveBar,
+        showEditButton: true,
+        toolbarLeading: const EncounterToolbarTitle(title: 'Treatment notes', icon: Icons.assignment_outlined),
+        emptyStateIcon: Icons.assignment_outlined,
+        emptyStateText: 'Start entering the treatment notes',
       ),
     );
   }

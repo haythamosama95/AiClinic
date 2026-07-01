@@ -10,6 +10,8 @@ import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
@@ -23,6 +25,8 @@ class TreatmentPlanList extends ConsumerStatefulWidget {
     required this.onChanged,
     required this.sectionTitle,
     required this.sectionKind,
+    this.encounterShell = false,
+    this.expandBody = false,
     super.key,
   });
 
@@ -32,6 +36,8 @@ class TreatmentPlanList extends ConsumerStatefulWidget {
   final VoidCallback onChanged;
   final String sectionTitle;
   final VisitPanelKind sectionKind;
+  final bool encounterShell;
+  final bool expandBody;
 
   @override
   ConsumerState<TreatmentPlanList> createState() => _TreatmentPlanListState();
@@ -44,7 +50,7 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
   String? _errorMessage;
 
   List<Widget>? _shelfActions() {
-    if (!widget.canEdit || _showAddForm) return null;
+    if (!widget.canEdit || _showAddForm || widget.encounterShell) return null;
 
     return [
       AppNotchedCardAction(
@@ -65,19 +71,64 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
     ];
   }
 
+  Widget? _encounterHeaderTrailing() {
+    if (!widget.encounterShell || !widget.canEdit || _showAddForm) return null;
+
+    final theme = context.visitTheme;
+    return AppIconButton(
+      key: const Key('treatment_plan_add_button'),
+      icon: Icon(Icons.add_rounded, size: HealthProfileCardTokens.addIconSize, color: theme.pulse),
+      tooltip: 'Add medication',
+      onPressed: _isSubmitting
+          ? null
+          : () => setState(() {
+              _showAddForm = true;
+              _editingPlanId = null;
+            }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final body = encounterExpandedSectionBody(
+      expandBody: widget.expandBody,
+      centerWhenEmpty: widget.encounterShell && _shouldCenterEmptyState(),
+      child: _buildBody(),
+    );
+
+    if (widget.encounterShell) {
+      return EncounterFieldCard(
+        title: widget.sectionTitle,
+        titleIcon: widget.sectionKind.icon,
+        expandBody: widget.expandBody,
+        headerTrailing: _encounterHeaderTrailing(),
+        child: body,
+      );
+    }
+
     return VisitSectionCard(
       kind: widget.sectionKind,
       title: widget.sectionTitle,
       headerActions: _shelfActions(),
-      child: _buildBody(),
+      child: body,
     );
+  }
+
+  bool _shouldCenterEmptyState() {
+    return widget.treatmentPlans.isEmpty && !_showAddForm && _errorMessage == null;
   }
 
   Widget _buildBody() {
     final colors = context.semanticColors;
     final plans = widget.treatmentPlans;
+
+    if (widget.encounterShell && widget.expandBody && _shouldCenterEmptyState()) {
+      return const VisitEmptyHint(
+        key: Key('treatment_plan_empty'),
+        message: 'No treatment plans added yet.',
+        icon: Icons.medication_outlined,
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

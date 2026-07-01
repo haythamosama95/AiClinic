@@ -76,7 +76,6 @@ DECLARE
   v_medication_record_id uuid;
   v_condition_id uuid;
   v_visit_updated_at timestamptz;
-  v_plan_updated_at timestamptz;
   v_start timestamptz;
   v_prior_investigation_line_id uuid;
   v_followup_visit_id uuid;
@@ -310,54 +309,6 @@ BEGIN
         FROM public.patient_chronic_conditions pcc
         WHERE pcc.id = v_condition_id AND pcc.is_deleted = true
       ),
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  -- save_visit_plan_details: first save uses visit updated_at as expected timestamp.
-  v_result := public.save_visit_plan_details(
-    v_visit_id,
-    'in 2 weeks',
-    (current_date + 14)::date,
-    'Take medication with food.',
-    'Cardiology referral',
-    NULL,
-    NULL,
-    NULL,
-    v_visit_updated_at
-  );
-  v_plan_updated_at := (v_result.data ->> 'updated_at')::timestamptz;
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_crud_results VALUES (
-    'save_visit_plan_details_first_save',
-    v_result.success
-      AND EXISTS (
-        SELECT 1
-        FROM public.visit_plan_details vpd
-        WHERE vpd.visit_id = v_visit_id
-          AND vpd.is_deleted = false
-          AND vpd.follow_up_interval = 'in 2 weeks'
-          AND vpd.patient_instructions = 'Take medication with food.'
-      ),
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.save_visit_plan_details(
-    v_visit_id,
-    'Stale attempt',
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    v_visit_updated_at - interval '1 second'
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_crud_results VALUES (
-    'save_visit_plan_details_stale_conflict',
-    NOT v_result.success AND v_result.error_code = 'STALE_PLAN_DETAILS',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

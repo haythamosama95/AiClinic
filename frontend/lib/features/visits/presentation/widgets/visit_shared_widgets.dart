@@ -169,13 +169,16 @@ class VisitEmptyHint extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: SpacingTokens.md),
-      child: Center(
+      child: Align(
+        alignment: Alignment.center,
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
               width: 44,
               height: 44,
+              alignment: Alignment.center,
               decoration: BoxDecoration(color: theme.tile, shape: BoxShape.circle),
               child: Icon(icon, size: 20, color: theme.mutedInk.withValues(alpha: 0.7)),
             ),
@@ -186,6 +189,17 @@ class VisitEmptyHint extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Lays out section body content inside an expanded encounter field card.
+Widget encounterExpandedSectionBody({required bool expandBody, required bool centerWhenEmpty, required Widget child}) {
+  if (expandBody && centerWhenEmpty) {
+    return SizedBox.expand(child: Center(child: child));
+  }
+  if (expandBody) {
+    return SingleChildScrollView(child: child);
+  }
+  return child;
 }
 
 /// Responsive two-column grid for visit ancillary sections.

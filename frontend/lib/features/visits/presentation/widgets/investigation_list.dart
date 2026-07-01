@@ -10,6 +10,8 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
@@ -23,6 +25,8 @@ class InvestigationList extends ConsumerStatefulWidget {
     required this.onChanged,
     required this.sectionTitle,
     required this.sectionKind,
+    this.encounterShell = false,
+    this.expandBody = false,
     super.key,
   });
 
@@ -32,6 +36,8 @@ class InvestigationList extends ConsumerStatefulWidget {
   final VoidCallback onChanged;
   final String sectionTitle;
   final VisitPanelKind sectionKind;
+  final bool encounterShell;
+  final bool expandBody;
 
   @override
   ConsumerState<InvestigationList> createState() => _InvestigationListState();
@@ -44,7 +50,7 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
   String? _errorMessage;
 
   List<Widget>? _shelfActions() {
-    if (!widget.canEdit || _showAddForm) return null;
+    if (!widget.canEdit || _showAddForm || widget.encounterShell) return null;
 
     return [
       AppNotchedCardAction(
@@ -65,18 +71,63 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
     ];
   }
 
+  Widget? _encounterHeaderTrailing() {
+    if (!widget.encounterShell || !widget.canEdit || _showAddForm) return null;
+
+    final theme = context.visitTheme;
+    return AppIconButton(
+      key: const Key('investigation_add_button'),
+      icon: Icon(Icons.add_rounded, size: HealthProfileCardTokens.addIconSize, color: theme.pulse),
+      tooltip: 'Add investigation',
+      onPressed: _isSubmitting
+          ? null
+          : () => setState(() {
+              _showAddForm = true;
+              _editingInvestigationId = null;
+            }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final body = encounterExpandedSectionBody(
+      expandBody: widget.expandBody,
+      centerWhenEmpty: widget.encounterShell && _shouldCenterEmptyState(),
+      child: _buildBody(),
+    );
+
+    if (widget.encounterShell) {
+      return EncounterFieldCard(
+        title: widget.sectionTitle,
+        titleIcon: widget.sectionKind.icon,
+        expandBody: widget.expandBody,
+        headerTrailing: _encounterHeaderTrailing(),
+        child: body,
+      );
+    }
+
     return VisitSectionCard(
       kind: widget.sectionKind,
       title: widget.sectionTitle,
       headerActions: _shelfActions(),
-      child: _buildBody(),
+      child: body,
     );
+  }
+
+  bool _shouldCenterEmptyState() {
+    return widget.investigations.isEmpty && !_showAddForm && _errorMessage == null;
   }
 
   Widget _buildBody() {
     final investigations = widget.investigations;
+
+    if (widget.encounterShell && widget.expandBody && _shouldCenterEmptyState()) {
+      return const VisitEmptyHint(
+        key: Key('investigation_empty'),
+        message: 'No investigations ordered yet.',
+        icon: Icons.biotech_outlined,
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

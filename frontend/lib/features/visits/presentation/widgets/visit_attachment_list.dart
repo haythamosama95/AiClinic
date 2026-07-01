@@ -14,6 +14,8 @@ import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart' show VisitAttachmentDownloadResult;
 import 'package:ai_clinic/features/visits/domain/visit_attachment_file_type.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
@@ -27,6 +29,8 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
     required this.onChanged,
     required this.sectionTitle,
     required this.sectionKind,
+    this.encounterShell = false,
+    this.expandBody = false,
     this.pickAttachment,
     this.fetchDownloadBytes,
     this.saveDownloadedAttachment,
@@ -40,6 +44,8 @@ class VisitAttachmentList extends ConsumerStatefulWidget {
   final VoidCallback onChanged;
   final String sectionTitle;
   final VisitPanelKind sectionKind;
+  final bool encounterShell;
+  final bool expandBody;
 
   final Future<VisitAttachmentPickInput?> Function()? pickAttachment;
   final Future<Uint8List> Function(VisitAttachmentDownloadResult download)? fetchDownloadBytes;
@@ -56,7 +62,7 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
   String? _downloadingAttachmentId;
 
   List<Widget>? _shelfActions() {
-    if (!widget.canUpload || _isUploading) return null;
+    if (!widget.canUpload || _isUploading || widget.encounterShell) return null;
 
     return [
       AppNotchedCardAction(
@@ -72,18 +78,58 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
     ];
   }
 
+  Widget? _encounterHeaderTrailing() {
+    if (!widget.encounterShell || !widget.canUpload || _isUploading) return null;
+
+    final theme = context.visitTheme;
+    return AppIconButton(
+      key: const Key('visit_attachment_upload_button'),
+      icon: Icon(Icons.upload_file_outlined, size: HealthProfileCardTokens.addIconSize, color: theme.pulse),
+      tooltip: 'Upload file',
+      onPressed: _pickAndUpload,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final body = encounterExpandedSectionBody(
+      expandBody: widget.expandBody,
+      centerWhenEmpty: widget.encounterShell && _shouldCenterEmptyState(),
+      child: _buildBody(),
+    );
+
+    if (widget.encounterShell) {
+      return EncounterFieldCard(
+        title: widget.sectionTitle,
+        titleIcon: widget.sectionKind.icon,
+        expandBody: widget.expandBody,
+        headerTrailing: _encounterHeaderTrailing(),
+        child: body,
+      );
+    }
+
     return VisitSectionCard(
       kind: widget.sectionKind,
       title: widget.sectionTitle,
       headerActions: _shelfActions(),
-      child: _buildBody(),
+      child: body,
     );
+  }
+
+  bool _shouldCenterEmptyState() {
+    return widget.attachments.isEmpty && !_isUploading && _errorMessage == null;
   }
 
   Widget _buildBody() {
     final dateFormat = DateFormat.yMMMd().add_jm();
+
+    if (widget.encounterShell && widget.expandBody && _shouldCenterEmptyState()) {
+      return const VisitEmptyHint(
+        key: Key('visit_attachment_empty'),
+        message: 'No attachments yet.',
+        icon: Icons.attach_file_outlined,
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

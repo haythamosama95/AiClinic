@@ -13,7 +13,6 @@ import 'package:ai_clinic/features/visits/presentation/widgets/investigation_res
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_plan_details_form.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
@@ -101,8 +100,6 @@ class EncounterReview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 VisitDetailField(label: 'Plan', value: _plan, abbr: 'P'),
-                const SizedBox(height: SpacingTokens.md),
-                VisitPlanDetailsSummary(planDetails: visit.planDetails),
                 const SizedBox(height: SpacingTokens.md),
                 _TreatmentPlansSummary(treatmentPlans: visit.treatmentPlans),
                 const SizedBox(height: SpacingTokens.md),

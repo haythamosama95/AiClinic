@@ -119,7 +119,6 @@ enum VisitPanelKind {
   allergy(Icons.coronavirus_outlined),
   currentMedication(Icons.medication_liquid_outlined),
   chronicCondition(Icons.healing_outlined),
-  planDetails(Icons.checklist_rtl_outlined),
   investigationResult(Icons.science_outlined);
 
   const VisitPanelKind(this.icon);

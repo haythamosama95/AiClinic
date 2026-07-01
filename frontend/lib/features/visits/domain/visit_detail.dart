@@ -3,7 +3,6 @@ import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
-import 'package:ai_clinic/features/visits/domain/visit_plan_details.dart';
 import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
@@ -28,7 +27,6 @@ class VisitDetail {
     this.investigations = const [],
     this.treatmentPlans = const [],
     this.attachments = const [],
-    this.planDetails,
     this.pendingInvestigations = const [],
   });
 
@@ -47,7 +45,6 @@ class VisitDetail {
   final List<VisitInvestigation> investigations;
   final List<TreatmentPlanItem> treatmentPlans;
   final List<VisitAttachmentItem> attachments;
-  final VisitPlanDetails? planDetails;
   final List<VisitInvestigation> pendingInvestigations;
 
   static VisitDetail? fromRow(Map<String, dynamic> row) {
@@ -101,13 +98,6 @@ class VisitDetail {
       investigations: _parseInvestigations(row['investigations']),
       treatmentPlans: _parseTreatmentPlans(row['treatment_plans'], visitId: id, patientId: patientId),
       attachments: _parseAttachments(row['attachments']),
-      planDetails: VisitPlanDetails.fromRow(
-        row['plan_details'] is Map<String, dynamic>
-            ? row['plan_details'] as Map<String, dynamic>
-            : row['plan_details'] is Map
-            ? Map<String, dynamic>.from(row['plan_details'] as Map)
-            : null,
-      ),
       pendingInvestigations: _parseInvestigations(row['pending_investigations']),
     );
   }
@@ -184,7 +174,6 @@ class VisitDetail {
     List<VisitInvestigation>? investigations,
     List<TreatmentPlanItem>? treatmentPlans,
     List<VisitAttachmentItem>? attachments,
-    Object? planDetails = copyWithSentinel,
     List<VisitInvestigation>? pendingInvestigations,
   }) {
     return VisitDetail(
@@ -205,7 +194,6 @@ class VisitDetail {
       investigations: investigations ?? this.investigations,
       treatmentPlans: treatmentPlans ?? this.treatmentPlans,
       attachments: attachments ?? this.attachments,
-      planDetails: identical(planDetails, copyWithSentinel) ? this.planDetails : planDetails as VisitPlanDetails?,
       pendingInvestigations: pendingInvestigations ?? this.pendingInvestigations,
     );
   }
@@ -230,7 +218,6 @@ class VisitDetail {
             listEquals(investigations, other.investigations) &&
             listEquals(treatmentPlans, other.treatmentPlans) &&
             listEquals(attachments, other.attachments) &&
-            planDetails == other.planDetails &&
             listEquals(pendingInvestigations, other.pendingInvestigations);
   }
 
@@ -251,7 +238,6 @@ class VisitDetail {
     Object.hashAll(investigations),
     Object.hashAll(treatmentPlans),
     Object.hashAll(attachments),
-    planDetails,
     Object.hashAll(pendingInvestigations),
   );
 }

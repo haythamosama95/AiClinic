@@ -14,6 +14,7 @@ class EncounterFieldCard extends StatelessWidget {
     required this.child,
     this.expandBody = false,
     this.embedTitleInToolbar = false,
+    this.headerTrailing,
     super.key,
   });
 
@@ -22,6 +23,7 @@ class EncounterFieldCard extends StatelessWidget {
   final Widget child;
   final bool expandBody;
   final bool embedTitleInToolbar;
+  final Widget? headerTrailing;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +37,7 @@ class EncounterFieldCard extends StatelessWidget {
 
     final body = Padding(padding: bodyPadding, child: child);
 
-    return DecoratedBox(
+    final card = DecoratedBox(
       decoration: BoxDecoration(
         color: colors.card,
         borderRadius: borderRadius,
@@ -44,6 +46,7 @@ class EncounterFieldCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: borderRadius,
         child: Stack(
+          fit: expandBody ? StackFit.expand : StackFit.loose,
           children: [
             Positioned.fill(
               child: DecoratedBox(decoration: BoxDecoration(gradient: theme.pulseCardGradient)),
@@ -52,34 +55,47 @@ class EncounterFieldCard extends StatelessWidget {
               icon: titleIcon,
               iconSize: VisitPageTokens.subjectiveWatermarkIconSize,
               iconColor: theme.subjectiveWatermark,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
-                children: [
-                  if (!embedTitleInToolbar)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        SpacingTokens.md,
-                        SpacingTokens.md,
-                        SpacingTokens.md,
-                        SpacingTokens.md,
+              fillChild: expandBody,
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: double.infinity,
+                height: expandBody ? double.infinity : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
+                  children: [
+                    if (!embedTitleInToolbar)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          SpacingTokens.md,
+                          SpacingTokens.md,
+                          SpacingTokens.md,
+                          SpacingTokens.md,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(titleIcon, size: 20, color: theme.pulse),
+                            const SizedBox(width: SpacingTokens.sm),
+                            Expanded(child: Text(title, style: theme.title())),
+                            if (headerTrailing != null) ...[const SizedBox(width: SpacingTokens.xs), headerTrailing!],
+                          ],
+                        ),
                       ),
-                      child: Row(
-                        spacing: SpacingTokens.sm,
-                        children: [
-                          Icon(titleIcon, size: 20, color: theme.pulse),
-                          Text(title, style: theme.title()),
-                        ],
-                      ),
-                    ),
-                  if (expandBody) Expanded(child: body) else body,
-                ],
+                    if (expandBody) Expanded(child: body) else body,
+                  ],
+                ),
               ),
             ),
           ],
         ),
       ),
     );
+
+    if (expandBody) {
+      return SizedBox(width: double.infinity, height: double.infinity, child: card);
+    }
+
+    return card;
   }
 }
 

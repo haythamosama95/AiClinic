@@ -547,43 +547,6 @@ class VisitRepository with AppRpcInvoker {
     await invokeRpc('archive_patient_chronic_condition', {'p_condition_id': conditionId.trim()});
   }
 
-  Future<PlanDetailsSaveResult> saveVisitPlanDetails({
-    required String visitId,
-    required DateTime expectedUpdatedAt,
-    String? followUpInterval,
-    DateTime? followUpDate,
-    String? patientInstructions,
-    String? referral,
-    DateTime? certificateStartDate,
-    DateTime? certificateEndDate,
-    String? certificateReason,
-  }) async {
-    _assertNonEmpty('visitId', visitId);
-
-    final result = await invokeRpc('save_visit_plan_details', {
-      'p_visit_id': visitId.trim(),
-      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
-      'p_follow_up_interval': ?followUpInterval,
-      if (followUpDate != null) 'p_follow_up_date': _formatVisitDate(followUpDate),
-      'p_patient_instructions': ?patientInstructions,
-      'p_referral': ?referral,
-      if (certificateStartDate != null) 'p_certificate_start_date': _formatVisitDate(certificateStartDate),
-      if (certificateEndDate != null) 'p_certificate_end_date': _formatVisitDate(certificateEndDate),
-      'p_certificate_reason': ?certificateReason,
-    });
-
-    final saved = PlanDetailsSaveResult.fromRpcData(result.data);
-    if (saved == null) {
-      throw StateError('Save visit plan details returned an unexpected shape.');
-    }
-    return saved;
-  }
-
-  String _formatVisitDate(DateTime date) {
-    final utc = DateTime.utc(date.year, date.month, date.day);
-    return utc.toIso8601String().split('T').first;
-  }
-
   void _assertNonEmpty(String field, String value) {
     if (value.trim().isEmpty) {
       throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
@@ -659,30 +622,6 @@ class VisitByAppointmentResult {
     }
     final visitId = data['visit_id'];
     return VisitByAppointmentResult(visitId: visitId?.toString(), status: data['status']?.toString());
-  }
-}
-
-/// Result of `save_visit_plan_details`.
-class PlanDetailsSaveResult {
-  const PlanDetailsSaveResult({required this.visitId, required this.updatedAt});
-
-  final String visitId;
-  final DateTime updatedAt;
-
-  static PlanDetailsSaveResult? fromRpcData(Map<String, dynamic>? data) {
-    if (data == null) {
-      return null;
-    }
-    final visitId = data['visit_id']?.toString();
-    final updatedAtRaw = data['updated_at']?.toString();
-    if (visitId == null || visitId.isEmpty || updatedAtRaw == null) {
-      return null;
-    }
-    final updatedAt = DateTime.tryParse(updatedAtRaw);
-    if (updatedAt == null) {
-      return null;
-    }
-    return PlanDetailsSaveResult(visitId: visitId, updatedAt: updatedAt);
   }
 }
 

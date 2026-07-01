@@ -35,7 +35,6 @@ DECLARE
   v_allergy_a2 uuid := 'b2600000-0000-4000-8000-00000000aa02';
   v_medication_a uuid := 'b2600000-0000-4000-8000-00000000aa03';
   v_condition_a uuid := 'b2600000-0000-4000-8000-00000000aa04';
-  v_plan_details_a uuid := 'b2600000-0000-4000-8000-00000000aa07';
   v_result public.rpc_result;
   v_visible_count int;
 BEGIN
@@ -135,11 +134,6 @@ BEGIN
     id, patient_id, name, note, created_by, updated_by
   )
   VALUES (v_condition_a, v_patient_a, 'Hypertension', 'Stable', v_user_a, v_user_a);
-
-  INSERT INTO public.visit_plan_details (
-    id, visit_id, follow_up_interval, patient_instructions, created_by, updated_by
-  )
-  VALUES (v_plan_details_a, v_visit_a, 'in 1 week', 'Rest and fluids.', v_user_a, v_user_a);
 
   -- Cross-org denial as org B administrator.
   PERFORM set_config('role', 'authenticated', true);
@@ -274,34 +268,6 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  SELECT count(*)::int INTO v_visible_count FROM public.visit_plan_details;
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_rls_results VALUES (
-    'cross_org_visit_plan_details_hidden',
-    v_visible_count = 0,
-    'count=' || v_visible_count::text
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.save_visit_plan_details(
-    v_visit_a,
-    'Hijacked interval',
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    now()
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_rls_results VALUES (
-    'cross_org_save_visit_plan_details_denied',
-    NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
   -- Cross-branch within org: doctor assigned only to branch A cannot access branch A2 patient safety.
   PERFORM set_config(
     'request.jwt.claims',
@@ -382,24 +348,6 @@ BEGIN
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
-
-  v_result := public.save_visit_plan_details(
-    v_visit_a2,
-    'Should not save',
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    now()
-  );
-  PERFORM set_config('role', 'postgres', true);
-  INSERT INTO visit_encounter_rls_results VALUES (
-    'cross_branch_save_visit_plan_details_denied',
-    NOT v_result.success AND v_result.error_code = 'NOT_FOUND',
-    COALESCE(v_result.error_code, '<null>')
-  );
 
   PERFORM set_config('role', 'postgres', true);
 END;
