@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/shape_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
@@ -271,28 +272,33 @@ class _SubjectiveFieldCard extends StatelessWidget {
             Positioned.fill(
               child: DecoratedBox(decoration: BoxDecoration(gradient: theme.pulseCardGradient)),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
-              children: [
-                if (!embedTitleInToolbar)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      SpacingTokens.md,
-                      SpacingTokens.md,
-                      SpacingTokens.md,
-                      SpacingTokens.md,
+            TiltedBackgroundIconStack(
+              icon: titleIcon,
+              iconSize: VisitPageTokens.subjectiveWatermarkIconSize,
+              iconColor: theme.subjectiveWatermark,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
+                children: [
+                  if (!embedTitleInToolbar)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        SpacingTokens.md,
+                        SpacingTokens.md,
+                        SpacingTokens.md,
+                        SpacingTokens.md,
+                      ),
+                      child: Row(
+                        spacing: SpacingTokens.sm,
+                        children: [
+                          Icon(titleIcon, size: 20, color: theme.pulse),
+                          Text(title, style: theme.title()),
+                        ],
+                      ),
                     ),
-                    child: Row(
-                      spacing: SpacingTokens.sm,
-                      children: [
-                        Icon(titleIcon, size: 20, color: theme.pulse),
-                        Text(title, style: theme.title()),
-                      ],
-                    ),
-                  ),
-                if (expandBody) Expanded(child: body) else body,
-              ],
+                  if (expandBody) Expanded(child: body) else body,
+                ],
+              ),
             ),
           ],
         ),

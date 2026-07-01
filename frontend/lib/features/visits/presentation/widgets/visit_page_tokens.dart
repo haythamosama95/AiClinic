@@ -10,6 +10,8 @@ abstract final class VisitPageTokens {
   static const double sectionGap = SpacingTokens.md;
   static const double marginRailWidth = 34;
   static const double metricTileMinWidth = 150;
+  static const double subjectiveWatermarkIconSize = 250;
+  static const double subjectiveWatermarkOpacity = 0.05;
 
   static const clinicalSections = <({String abbr, String label})>[
     (abbr: 'C', label: 'Complaint'),
@@ -66,6 +68,8 @@ class VisitTheme {
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
   );
+
+  Color get subjectiveWatermark => pulse.withValues(alpha: VisitPageTokens.subjectiveWatermarkOpacity);
 
   // ── Typography ──────────────────────────────────────────────────────────
 

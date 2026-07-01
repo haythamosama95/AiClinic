@@ -12,7 +12,6 @@ import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/catalog_autocomplete_field.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
@@ -42,7 +41,7 @@ class PatientHealthTrackingCard extends ConsumerWidget {
             padding: const EdgeInsets.all(SpacingTokens.md),
             child: Text(
               'Unable to load health profile.',
-              style: context.visitTheme.caption(color: context.visitTheme.danger),
+              style: context.healthProfileCardTheme.errorMessage(context.visitTheme.danger),
             ),
           ),
         ),
@@ -104,10 +103,14 @@ class _HealthProfileShell extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.health_and_safety_outlined, size: 20, color: theme.pulse),
+                      Icon(
+                        Icons.health_and_safety_outlined,
+                        size: HealthProfileCardTokens.shellIconSize,
+                        color: theme.pulse,
+                      ),
                       const SizedBox(width: SpacingTokens.sm),
-                      Expanded(child: Text('Health profile', style: theme.title())),
-                      Text('Tracked across all visits', style: theme.caption(size: 13)),
+                      Expanded(child: Text('Health profile', style: cardTheme.shellTitle)),
+                      Text('Tracked across all visits', style: cardTheme.shellSubtitle),
                     ],
                   ),
                 ),
@@ -152,13 +155,14 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
               id: allergy.id,
               title: allergy.substance,
               subtitle: allergy.reaction,
+              onEdit: widget.canEdit ? () => _editAllergy(allergy) : null,
               onArchive: widget.canEdit ? () => _archiveAllergy(allergy) : null,
             ),
         ],
         canEdit: widget.canEdit,
         emptyMessage: 'No allergies recorded',
         addLabel: 'Add allergy',
-        addFormBuilder: (onDone) => _AllergyAddForm(patientId: widget.patientId, onDone: onDone),
+        addFormBuilder: (onDone) => _AllergyForm(patientId: widget.patientId, onDone: onDone),
       ),
       _HealthSectionConfig(
         kind: VisitPanelKind.chronicCondition,
@@ -170,13 +174,14 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
               id: condition.id,
               title: condition.name,
               subtitle: condition.note,
+              onEdit: widget.canEdit ? () => _editCondition(condition) : null,
               onArchive: widget.canEdit ? () => _archiveCondition(condition) : null,
             ),
         ],
         canEdit: widget.canEdit,
         emptyMessage: 'No chronic conditions',
         addLabel: 'Add condition',
-        addFormBuilder: (onDone) => _ConditionAddForm(patientId: widget.patientId, onDone: onDone),
+        addFormBuilder: (onDone) => _ConditionForm(patientId: widget.patientId, onDone: onDone),
       ),
       _HealthSectionConfig(
         kind: VisitPanelKind.currentMedication,
@@ -188,13 +193,14 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
               id: med.id,
               title: med.name,
               subtitle: med.note,
+              onEdit: widget.canEdit ? () => _editMedication(med) : null,
               onArchive: widget.canEdit ? () => _archiveMedication(med) : null,
             ),
         ],
         canEdit: widget.canEdit,
         emptyMessage: 'No home medications',
         addLabel: 'Add medication',
-        addFormBuilder: (onDone) => _MedicationAddForm(patientId: widget.patientId, onDone: onDone),
+        addFormBuilder: (onDone) => _MedicationForm(patientId: widget.patientId, onDone: onDone),
       ),
     ];
 
@@ -223,6 +229,39 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
 
   Future<void> _refreshSafety() {
     return ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
+  }
+
+  Future<void> _editAllergy(PatientAllergy allergy) async {
+    await AppDialog.show<void>(
+      context: context,
+      title: 'Edit allergy',
+      bodyBuilder: (dialogContext) =>
+          _AllergyForm(patientId: widget.patientId, allergy: allergy, onDone: () => Navigator.of(dialogContext).pop()),
+    );
+  }
+
+  Future<void> _editCondition(PatientChronicCondition condition) async {
+    await AppDialog.show<void>(
+      context: context,
+      title: 'Edit condition',
+      bodyBuilder: (dialogContext) => _ConditionForm(
+        patientId: widget.patientId,
+        condition: condition,
+        onDone: () => Navigator.of(dialogContext).pop(),
+      ),
+    );
+  }
+
+  Future<void> _editMedication(PatientMedication medication) async {
+    await AppDialog.show<void>(
+      context: context,
+      title: 'Edit medication',
+      bodyBuilder: (dialogContext) => _MedicationForm(
+        patientId: widget.patientId,
+        medication: medication,
+        onDone: () => Navigator.of(dialogContext).pop(),
+      ),
+    );
   }
 
   Future<void> _archiveAllergy(PatientAllergy allergy) async {
@@ -299,11 +338,12 @@ class _HealthSectionConfig {
 
 @immutable
 class _HealthItem {
-  const _HealthItem({required this.id, required this.title, this.subtitle, this.onArchive});
+  const _HealthItem({required this.id, required this.title, this.subtitle, this.onEdit, this.onArchive});
 
   final String id;
   final String title;
   final String? subtitle;
+  final VoidCallback? onEdit;
   final VoidCallback? onArchive;
 }
 
@@ -324,13 +364,14 @@ class _HealthSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
+    final cardTheme = context.healthProfileCardTheme;
     final count = config.items.length;
     final hasItems = count > 0;
     final isEmpty = !hasItems;
 
     final addIconButton = config.canEdit && hasItems
         ? AppIconButton(
-            icon: Icon(Icons.add_rounded, size: 20, color: config.accent),
+            icon: Icon(Icons.add_rounded, size: HealthProfileCardTokens.addIconSize, color: config.accent),
             tooltip: config.addLabel,
             onPressed: () => _showAddDialog(context),
           )
@@ -338,11 +379,9 @@ class _HealthSection extends StatelessWidget {
 
     final header = Row(
       children: [
-        Icon(config.kind.icon, size: 18, color: config.accent),
+        Icon(config.kind.icon, size: HealthProfileCardTokens.sectionIconSize, color: config.accent),
         const SizedBox(width: SpacingTokens.xs),
-        Expanded(
-          child: Text(config.title, style: theme.bodyStrong(size: 13, color: config.accent)),
-        ),
+        Expanded(child: Text(config.title, style: cardTheme.sectionTitle(config.accent))),
         if (count > 0)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -350,7 +389,7 @@ class _HealthSection extends StatelessWidget {
               color: config.accent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(999),
             ),
-            child: Text('$count', style: theme.caption(size: 11, color: config.accent)),
+            child: Text('$count', style: cardTheme.countBadge(config.accent)),
           ),
         ?addIconButton,
       ],
@@ -361,28 +400,29 @@ class _HealthSection extends StatelessWidget {
             label: config.addLabel,
             size: AppFieldSize.sm,
             variant: AppButtonVariant.ghost,
-            icon: Icon(Icons.add, size: 16, color: config.accent),
+            icon: Icon(Icons.add, size: HealthProfileCardTokens.addButtonIconSize, color: config.accent),
             onPressed: () => _showAddDialog(context),
           )
         : null;
 
     final itemsBody = hasItems
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ...config.items.map(
-                (item) => Padding(
-                  padding: const EdgeInsets.only(bottom: SpacingTokens.xs),
-                  child: _HealthItemTile(item: item, accent: config.accent),
-                ),
-              ),
-            ],
+        ? GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: SpacingTokens.xs,
+              mainAxisSpacing: SpacingTokens.xs,
+              mainAxisExtent: HealthProfileCardTokens.gridTileExtent,
+            ),
+            itemCount: config.items.length,
+            itemBuilder: (context, index) => _HealthGridTile(item: config.items[index], accent: config.accent),
           )
         : Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(config.emptyMessage, style: theme.caption()),
+                Text(config.emptyMessage, style: cardTheme.emptyMessage),
                 if (centeredAddButton != null) ...[const SizedBox(height: SpacingTokens.sm), centeredAddButton],
               ],
             ),
@@ -393,27 +433,35 @@ class _HealthSection extends StatelessWidget {
         borderRadius: BorderRadius.circular(theme.tileRadius),
         border: Border.all(color: config.accent.withValues(alpha: 0.18)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(SpacingTokens.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
-          children: [
-            header,
-            const SizedBox(height: SpacingTokens.sm),
-            if (expandBody)
-              Expanded(child: hasItems ? SingleChildScrollView(child: itemsBody) : itemsBody)
-            else
-              itemsBody,
-          ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(theme.tileRadius),
+        child: TiltedBackgroundIconStack(
+          icon: config.kind.icon,
+          iconSize: HealthProfileCardTokens.sectionWatermarkIconSize,
+          iconColor: cardTheme.sectionWatermark(config.accent),
+          child: Padding(
+            padding: const EdgeInsets.all(SpacingTokens.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                header,
+                const SizedBox(height: SpacingTokens.sm),
+                if (expandBody)
+                  Expanded(child: hasItems ? SingleChildScrollView(child: itemsBody) : itemsBody)
+                else
+                  itemsBody,
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _HealthItemTile extends StatelessWidget {
-  const _HealthItemTile({required this.item, required this.accent});
+class _HealthGridTile extends StatelessWidget {
+  const _HealthGridTile({required this.item, required this.accent});
 
   final _HealthItem item;
   final Color accent;
@@ -421,7 +469,10 @@ class _HealthItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
+    final cardTheme = context.healthProfileCardTheme;
     final subtitle = item.subtitle?.trim();
+    final label = subtitle != null && subtitle.isNotEmpty ? '${item.title} - $subtitle' : item.title;
+    final hasActions = item.onEdit != null || item.onArchive != null;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -434,23 +485,30 @@ class _HealthItemTile extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(item.title, style: theme.bodyStrong(size: 13)),
-                  if (subtitle != null && subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(subtitle, style: theme.caption(size: 13)),
-                  ],
-                ],
-              ),
+              child: Text(label, style: cardTheme.itemLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
             ),
-            if (item.onArchive != null)
-              AppIconButton(
-                icon: Icon(Icons.close_rounded, size: 18, color: theme.mutedInk),
-                tooltip: 'Remove',
-                onPressed: item.onArchive,
-              ),
+            if (hasActions) ...[
+              if (item.onEdit != null)
+                AppIconButton(
+                  icon: Icon(
+                    Icons.edit_outlined,
+                    size: HealthProfileCardTokens.tileActionIconSize,
+                    color: theme.mutedInk,
+                  ),
+                  tooltip: 'Edit',
+                  onPressed: item.onEdit,
+                ),
+              if (item.onArchive != null)
+                AppIconButton(
+                  icon: Icon(
+                    Icons.close_rounded,
+                    size: HealthProfileCardTokens.tileActionIconSize,
+                    color: theme.mutedInk,
+                  ),
+                  tooltip: 'Remove',
+                  onPressed: item.onArchive,
+                ),
+            ],
           ],
         ),
       ),
@@ -458,25 +516,38 @@ class _HealthItemTile extends StatelessWidget {
   }
 }
 
-class _AllergyAddForm extends ConsumerStatefulWidget {
-  const _AllergyAddForm({required this.patientId, required this.onDone});
+class _AllergyForm extends ConsumerStatefulWidget {
+  const _AllergyForm({required this.patientId, required this.onDone, this.allergy});
 
   final String patientId;
   final VoidCallback onDone;
+  final PatientAllergy? allergy;
 
   @override
-  ConsumerState<_AllergyAddForm> createState() => _AllergyAddFormState();
+  ConsumerState<_AllergyForm> createState() => _AllergyFormState();
 }
 
-class _AllergyAddFormState extends ConsumerState<_AllergyAddForm> {
-  final _substanceController = TextEditingController();
-  final _reactionController = TextEditingController();
+class _AllergyFormState extends ConsumerState<_AllergyForm> {
+  late final TextEditingController _substanceController;
+  String? _severity;
   bool _submitting = false;
+
+  bool get _isEditing => widget.allergy != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final allergy = widget.allergy;
+    _substanceController = TextEditingController(text: allergy?.substance ?? '');
+    final reaction = allergy?.reaction?.trim();
+    if (reaction != null && AllergySeverityOptions.items.containsValue(reaction)) {
+      _severity = reaction;
+    }
+  }
 
   @override
   void dispose() {
     _substanceController.dispose();
-    _reactionController.dispose();
     super.dispose();
   }
 
@@ -488,7 +559,15 @@ class _AllergyAddFormState extends ConsumerState<_AllergyAddForm> {
       children: [
         VisitTextInput(label: 'Substance *', controller: _substanceController, enabled: !_submitting),
         const SizedBox(height: SpacingTokens.sm),
-        VisitTextInput(label: 'Reaction', controller: _reactionController, enabled: !_submitting),
+        AppSelect<String>(
+          label: 'Severity',
+          hintText: 'Optional',
+          items: AllergySeverityOptions.items,
+          value: _severity,
+          enabled: !_submitting,
+          size: AppFieldSize.sm,
+          onChanged: (value) => setState(() => _severity = value),
+        ),
         const SizedBox(height: SpacingTokens.sm),
         Row(
           children: [
@@ -515,13 +594,12 @@ class _AllergyAddFormState extends ConsumerState<_AllergyAddForm> {
     }
     setState(() => _submitting = true);
     try {
-      await ref
-          .read(visitRepositoryProvider)
-          .createPatientAllergy(
-            patientId: widget.patientId,
-            substance: substance,
-            reaction: _reactionController.text.trim().isEmpty ? null : _reactionController.text.trim(),
-          );
+      final repository = ref.read(visitRepositoryProvider);
+      if (_isEditing) {
+        await repository.updatePatientAllergy(allergyId: widget.allergy!.id, substance: substance, reaction: _severity);
+      } else {
+        await repository.createPatientAllergy(patientId: widget.patientId, substance: substance, reaction: _severity);
+      }
       await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
       if (mounted) widget.onDone();
     } on RpcFailure catch (e) {
@@ -532,20 +610,30 @@ class _AllergyAddFormState extends ConsumerState<_AllergyAddForm> {
   }
 }
 
-class _ConditionAddForm extends ConsumerStatefulWidget {
-  const _ConditionAddForm({required this.patientId, required this.onDone});
+class _ConditionForm extends ConsumerStatefulWidget {
+  const _ConditionForm({required this.patientId, required this.onDone, this.condition});
 
   final String patientId;
   final VoidCallback onDone;
+  final PatientChronicCondition? condition;
 
   @override
-  ConsumerState<_ConditionAddForm> createState() => _ConditionAddFormState();
+  ConsumerState<_ConditionForm> createState() => _ConditionFormState();
 }
 
-class _ConditionAddFormState extends ConsumerState<_ConditionAddForm> {
-  final _nameController = TextEditingController();
-  final _noteController = TextEditingController();
+class _ConditionFormState extends ConsumerState<_ConditionForm> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _noteController;
   bool _submitting = false;
+
+  bool get _isEditing => widget.condition != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.condition?.name ?? '');
+    _noteController = TextEditingController(text: widget.condition?.note ?? '');
+  }
 
   @override
   void dispose() {
@@ -589,13 +677,13 @@ class _ConditionAddFormState extends ConsumerState<_ConditionAddForm> {
     }
     setState(() => _submitting = true);
     try {
-      await ref
-          .read(visitRepositoryProvider)
-          .createPatientChronicCondition(
-            patientId: widget.patientId,
-            name: name,
-            note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-          );
+      final repository = ref.read(visitRepositoryProvider);
+      final note = _noteController.text.trim().isEmpty ? null : _noteController.text.trim();
+      if (_isEditing) {
+        await repository.updatePatientChronicCondition(conditionId: widget.condition!.id, name: name, note: note);
+      } else {
+        await repository.createPatientChronicCondition(patientId: widget.patientId, name: name, note: note);
+      }
       await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
       if (mounted) widget.onDone();
     } on RpcFailure catch (e) {
@@ -606,21 +694,34 @@ class _ConditionAddFormState extends ConsumerState<_ConditionAddForm> {
   }
 }
 
-class _MedicationAddForm extends ConsumerStatefulWidget {
-  const _MedicationAddForm({required this.patientId, required this.onDone});
+class _MedicationForm extends ConsumerStatefulWidget {
+  const _MedicationForm({required this.patientId, required this.onDone, this.medication});
 
   final String patientId;
   final VoidCallback onDone;
+  final PatientMedication? medication;
 
   @override
-  ConsumerState<_MedicationAddForm> createState() => _MedicationAddFormState();
+  ConsumerState<_MedicationForm> createState() => _MedicationFormState();
 }
 
-class _MedicationAddFormState extends ConsumerState<_MedicationAddForm> {
+class _MedicationFormState extends ConsumerState<_MedicationForm> {
   final _medicationFieldKey = GlobalKey<CatalogAutocompleteFieldState>();
-  final _noteController = TextEditingController();
+  late final TextEditingController _noteController;
   CatalogFieldSelection _selection = const CatalogFieldSelection(name: '');
   bool _submitting = false;
+
+  bool get _isEditing => widget.medication != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final medication = widget.medication;
+    _noteController = TextEditingController(text: medication?.note ?? '');
+    if (medication != null) {
+      _selection = CatalogFieldSelection(name: medication.name, catalogId: medication.medicationId);
+    }
+  }
 
   @override
   void dispose() {
@@ -638,6 +739,8 @@ class _MedicationAddFormState extends ConsumerState<_MedicationAddForm> {
           key: _medicationFieldKey,
           label: 'Medication *',
           enabled: !_submitting,
+          initialName: widget.medication?.name,
+          initialCatalogId: widget.medication?.medicationId,
           onSearch: (query) => ref.read(visitRepositoryProvider).searchMedications(query: query),
           onSelectionChanged: (selection) => setState(() => _selection = selection),
         ),
@@ -670,35 +773,29 @@ class _MedicationAddFormState extends ConsumerState<_MedicationAddForm> {
     }
     setState(() => _submitting = true);
     try {
-      await ref
-          .read(visitRepositoryProvider)
-          .createPatientMedication(
-            patientId: widget.patientId,
-            name: name,
-            medicationId: selection.catalogId,
-            note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-          );
+      final repository = ref.read(visitRepositoryProvider);
+      final note = _noteController.text.trim().isEmpty ? null : _noteController.text.trim();
+      if (_isEditing) {
+        await repository.updatePatientMedication(
+          medicationRecordId: widget.medication!.id,
+          name: name,
+          medicationId: selection.catalogId,
+          note: note,
+        );
+      } else {
+        await repository.createPatientMedication(
+          patientId: widget.patientId,
+          name: name,
+          medicationId: selection.catalogId,
+          note: note,
+        );
+      }
       await ref.read(patientSafetyProvider(widget.patientId).notifier).refresh();
       if (mounted) widget.onDone();
-
-      if (mounted && selection.isCustom) {
-        await _maybeSaveToCatalog(name);
-      }
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
-    }
-  }
-
-  Future<void> _maybeSaveToCatalog(String normalizedName) async {
-    final save = await SaveToCatalogDialog.show(context, normalizedName: normalizedName, itemTypeLabel: 'medication');
-    if (save != true || !mounted) return;
-    try {
-      await ref.read(visitRepositoryProvider).createCatalogMedication(name: normalizedName);
-      if (mounted) AppToast.success(context, message: 'Saved "$normalizedName" to your medication catalog.');
-    } on RpcFailure catch (e) {
-      if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
     }
   }
 }

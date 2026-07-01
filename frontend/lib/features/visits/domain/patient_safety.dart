@@ -1,6 +1,16 @@
 import 'package:ai_clinic/features/visits/domain/visit_row_parsing.dart';
 import 'package:flutter/foundation.dart';
 
+/// Known allergy severity values stored in the optional [PatientAllergy.reaction] field.
+abstract final class AllergySeverityOptions {
+  static const items = <String, String>{
+    'Mild': 'Mild',
+    'Moderate': 'Moderate',
+    'Severe': 'Severe',
+    'Life-threatening': 'Life-threatening',
+  };
+}
+
 /// Patient-level allergy record (014 US6).
 @immutable
 class PatientAllergy {

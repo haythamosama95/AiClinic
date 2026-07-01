@@ -14,6 +14,7 @@ class TiltedBackgroundIconStack extends StatelessWidget {
     required this.child,
     this.alignment = AlignmentDirectional.centerStart,
     this.iconRotation = defaultIconRotation,
+    this.iconSize,
     this.minIconSize = 76,
     this.iconColor,
     super.key,
@@ -23,6 +24,9 @@ class TiltedBackgroundIconStack extends StatelessWidget {
   final Widget child;
   final AlignmentGeometry alignment;
   final double iconRotation;
+
+  /// When set, the watermark uses this size instead of scaling with layout height.
+  final double? iconSize;
   final double minIconSize;
   final Color? iconColor;
 
@@ -39,19 +43,19 @@ class TiltedBackgroundIconStack extends StatelessWidget {
         final referenceHeight = constraints.hasBoundedHeight && constraints.maxHeight.isFinite
             ? constraints.maxHeight
             : minIconSize / 1.4;
-        final iconSize = math.max(minIconSize, referenceHeight * 1.4);
+        final resolvedIconSize = iconSize ?? math.max(minIconSize, referenceHeight * 1.4);
 
         return Stack(
           clipBehavior: Clip.none,
           children: [
             PositionedDirectional(
-              end: -iconSize * 0.12,
+              end: -resolvedIconSize * 0.12,
               top: 0,
               bottom: 0,
               child: Center(
                 child: Transform.rotate(
                   angle: iconRotation,
-                  child: Icon(icon, size: iconSize, color: effectiveIconColor),
+                  child: Icon(icon, size: resolvedIconSize, color: effectiveIconColor),
                 ),
               ),
             ),
