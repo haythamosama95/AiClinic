@@ -432,13 +432,13 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
   }
 
   Future<void> reloadVisit() async {
-    state = const AsyncLoading();
-    state = AsyncData(await _load());
+    ref.invalidateSelf();
+    await future;
   }
 
   Future<void> reloadAfterStale() async {
-    state = const AsyncLoading();
-    state = AsyncData(await _load());
+    ref.invalidateSelf();
+    await future;
   }
 
   void updateFollowUpInterval(String value) => _updatePlanDraft(followUpInterval: value);

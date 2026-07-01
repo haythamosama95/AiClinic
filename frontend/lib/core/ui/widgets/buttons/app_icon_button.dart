@@ -32,19 +32,32 @@ class AppIconButton extends StatelessWidget {
       AppIconButtonVariant.muted => (colors.muted, colors.border, colors.mutedForeground),
     };
 
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      icon: icon,
-      style: IconButton.styleFrom(
-        backgroundColor: background,
-        foregroundColor: foreground,
-        side: border == Colors.transparent ? null : BorderSide(color: border),
-        padding: const EdgeInsets.all(SpacingTokens.xs),
-        minimumSize: Size(size, size),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-      ),
+    var style = IconButton.styleFrom(
+      backgroundColor: background,
+      foregroundColor: foreground,
+      surfaceTintColor: variant == AppIconButtonVariant.ghost ? Colors.transparent : null,
+      side: border == Colors.transparent ? null : BorderSide(color: border),
+      padding: const EdgeInsets.all(SpacingTokens.xs),
+      minimumSize: Size(size, size),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
     );
+
+    if (variant == AppIconButtonVariant.ghost) {
+      style = style.copyWith(
+        backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
+        overlayColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return null;
+          if (states.contains(WidgetState.pressed) ||
+              states.contains(WidgetState.hovered) ||
+              states.contains(WidgetState.focused)) {
+            return foreground.withValues(alpha: 0.08);
+          }
+          return Colors.transparent;
+        }),
+      );
+    }
+
+    return IconButton(tooltip: tooltip, onPressed: onPressed, icon: icon, style: style);
   }
 }

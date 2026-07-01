@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
@@ -11,7 +10,6 @@ import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_p
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_subjective.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_review.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/expert_mode_accordion.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
 /// Three-region encounter workspace with guided/expert modes (014 US4-US5 / FR-014-020).
 class EncounterWorkspaceShell extends ConsumerWidget {
@@ -38,7 +36,6 @@ class EncounterWorkspaceShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(workspaceModeProvider);
     final activePhase = ref.watch(encounterActivePhaseProvider(visitId));
-    final badges = ref.watch(encounterPhaseBadgesProvider(visitId));
     final phaseNotifier = ref.read(encounterActivePhaseProvider(visitId).notifier);
     final modeNotifier = ref.read(workspaceModeProvider.notifier);
 
@@ -62,55 +59,11 @@ class EncounterWorkspaceShell extends ConsumerWidget {
                       initiallyExpanded: {activePhase.isDocumentation ? activePhase : EncounterPhase.subjective},
                     ),
                   )
-                : AppStepper(
-                    key: const Key('encounter_stepper'),
-                    axis: Axis.horizontal,
-                    showCard: false,
-                    currentStep: activePhase.orderIndex,
-                    onStepChanged: (index) => selectPhase(EncounterPhase.ordered[index]),
-                    steps: _encounterSteps(context, badges: badges, selectPhase: selectPhase),
-                  ),
+                : _phasePage(activePhase, selectPhase),
           ),
         ],
       ),
     );
-  }
-
-  List<AppStepperStep> _encounterSteps(
-    BuildContext context, {
-    required PhaseBadges badges,
-    required ValueChanged<EncounterPhase> selectPhase,
-  }) {
-    final theme = context.visitTheme;
-
-    return [
-      for (final phase in EncounterPhase.ordered)
-        AppStepperStep(
-          stepKey: Key('encounter_step_${phase.name}'),
-          title: phase.label,
-          icon: phase.icon,
-          trailing: _phaseBadge(badges[phase] ?? PhaseCompletionBadge.empty, theme),
-          page: _phasePage(phase, selectPhase),
-        ),
-    ];
-  }
-
-  Widget? _phaseBadge(PhaseCompletionBadge badge, VisitTheme theme) {
-    return switch (badge) {
-      PhaseCompletionBadge.empty => null,
-      PhaseCompletionBadge.hasContent => Icon(
-        Icons.check_circle_outline,
-        size: 16,
-        color: theme.pulseDeep,
-        semanticLabel: 'Has content',
-      ),
-      PhaseCompletionBadge.error => Icon(
-        Icons.error_outline,
-        size: 16,
-        color: theme.danger,
-        semanticLabel: 'Validation error',
-      ),
-    };
   }
 
   Widget _phasePage(EncounterPhase phase, ValueChanged<EncounterPhase> onEditPhase) {

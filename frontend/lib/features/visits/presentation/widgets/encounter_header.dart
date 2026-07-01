@@ -17,6 +17,7 @@ class EncounterHeader extends ConsumerWidget {
     this.onEdit,
     this.beforeTrailing,
     this.trailing,
+    this.decorated = true,
     super.key,
   });
 
@@ -25,6 +26,7 @@ class EncounterHeader extends ConsumerWidget {
   final VoidCallback? onEdit;
   final Widget? beforeTrailing;
   final Widget? trailing;
+  final bool decorated;
 
   static final _dateFormat = DateFormat.yMMMd();
   static final _timeFormat = DateFormat.jm();
@@ -32,70 +34,79 @@ class EncounterHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = context.visitTheme;
-    final patientAsync = ref.watch(patientDetailProvider(visit.patientId));
+    final inner = _buildInner(context, ref);
 
     return Semantics(
       label: 'Encounter header',
-      child: DecoratedBox(
-        key: const Key('encounter_header'),
-        decoration: BoxDecoration(
-          color: theme.surface,
-          borderRadius: BorderRadius.circular(theme.tileRadius),
-          border: Border.all(color: theme.hairlineSoft),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.sm),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isCompact = constraints.maxWidth < 720;
+      child: decorated
+          ? DecoratedBox(
+              key: const Key('encounter_header'),
+              decoration: BoxDecoration(
+                color: theme.surface,
+                borderRadius: BorderRadius.circular(theme.tileRadius),
+                border: Border.all(color: theme.hairlineSoft),
+              ),
+              child: inner,
+            )
+          : inner,
+    );
+  }
 
-              final encounterDetails = _EncounterDetails(visit: visit);
-              final patientDetails = patientAsync.when(
-                loading: () => const _PatientDetailsLine(name: '…', ageLabel: null),
-                error: (_, _) => const _PatientDetailsLine(name: 'Patient unavailable', ageLabel: null),
-                data: (detail) {
-                  final age = PatientPresentationFormatting.ageYears(detail.dateOfBirth);
-                  return _PatientDetailsLine(name: detail.fullName, ageLabel: age == null ? null : '$age yrs');
-                },
-              );
+  Widget _buildInner(BuildContext context, WidgetRef ref) {
+    final theme = context.visitTheme;
+    final patientAsync = ref.watch(patientDetailProvider(visit.patientId));
 
-              final actions = _HeaderActions(onEdit: onEdit, beforeTrailing: beforeTrailing, trailing: trailing);
-              final contextSections = isCompact
-                  ? Wrap(
-                      spacing: 0,
-                      runSpacing: SpacingTokens.sm,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        encounterDetails,
-                        _HeaderSectionDivider(theme: theme),
-                        patientDetails,
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        Flexible(child: encounterDetails),
-                        _HeaderSectionDivider(theme: theme),
-                        Flexible(child: patientDetails),
-                      ],
-                    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.sm, vertical: SpacingTokens.sm),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 720;
 
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  AppIconButton(
-                    key: const Key('encounter_header_back'),
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    tooltip: 'Back',
-                    onPressed: onBack,
-                  ),
-                  const SizedBox(width: SpacingTokens.md),
-                  Expanded(child: contextSections),
-                  actions,
-                ],
-              );
+          final encounterDetails = _EncounterDetails(visit: visit);
+          final patientDetails = patientAsync.when(
+            loading: () => const _PatientDetailsLine(name: '…', ageLabel: null),
+            error: (_, _) => const _PatientDetailsLine(name: 'Patient unavailable', ageLabel: null),
+            data: (detail) {
+              final age = PatientPresentationFormatting.ageYears(detail.dateOfBirth);
+              return _PatientDetailsLine(name: detail.fullName, ageLabel: age == null ? null : '$age yrs');
             },
-          ),
-        ),
+          );
+
+          final actions = _HeaderActions(onEdit: onEdit, beforeTrailing: beforeTrailing, trailing: trailing);
+          final contextSections = isCompact
+              ? Wrap(
+                  spacing: 0,
+                  runSpacing: SpacingTokens.sm,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    encounterDetails,
+                    _HeaderSectionDivider(theme: theme),
+                    patientDetails,
+                  ],
+                )
+              : Row(
+                  children: [
+                    Flexible(child: encounterDetails),
+                    _HeaderSectionDivider(theme: theme),
+                    Flexible(child: patientDetails),
+                  ],
+                );
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              AppIconButton(
+                key: const Key('encounter_header_back'),
+                icon: const Icon(Icons.arrow_back_rounded),
+                tooltip: 'Back',
+                onPressed: onBack,
+              ),
+              const SizedBox(width: SpacingTokens.md),
+              Expanded(child: contextSections),
+              actions,
+            ],
+          );
+        },
       ),
     );
   }

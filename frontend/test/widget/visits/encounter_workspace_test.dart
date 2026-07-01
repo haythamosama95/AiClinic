@@ -1,9 +1,47 @@
+import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_joined_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspace_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'visit_encounter_test_support.dart';
+
+class _GuidedEncounterWorkspace extends StatelessWidget {
+  const _GuidedEncounterWorkspace({
+    required this.visitId,
+    required this.state,
+    required this.canEdit,
+    required this.canUploadAttachments,
+    required this.onRefresh,
+  });
+
+  final String visitId;
+  final VisitDocumentationState state;
+  final bool canEdit;
+  final bool canUploadAttachments;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        EncounterJoinedHeader(visitId: visitId, visit: state.visit, onBack: () {}),
+        const SizedBox(height: 16),
+        Expanded(
+          child: EncounterWorkspaceShell(
+            visitId: visitId,
+            state: state,
+            canEdit: canEdit,
+            canUploadAttachments: canUploadAttachments,
+            onRefresh: onRefresh,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 void main() {
   group('encounter workspace shell', () {
@@ -19,7 +57,7 @@ void main() {
         docState: state,
         size: const Size(1280, 900),
         scrollable: false,
-        child: EncounterWorkspaceShell(
+        child: _GuidedEncounterWorkspace(
           visitId: encounterTestVisitId,
           state: state,
           canEdit: true,
@@ -42,7 +80,7 @@ void main() {
         docState: state,
         size: const Size(1280, 900),
         scrollable: false,
-        child: EncounterWorkspaceShell(
+        child: _GuidedEncounterWorkspace(
           visitId: encounterTestVisitId,
           state: state,
           canEdit: true,
@@ -67,7 +105,7 @@ void main() {
         docState: state,
         size: const Size(1280, 900),
         scrollable: false,
-        child: EncounterWorkspaceShell(
+        child: _GuidedEncounterWorkspace(
           visitId: encounterTestVisitId,
           state: state,
           canEdit: true,
@@ -87,7 +125,7 @@ void main() {
         docState: state,
         size: const Size(1280, 900),
         scrollable: false,
-        child: EncounterWorkspaceShell(
+        child: _GuidedEncounterWorkspace(
           visitId: encounterTestVisitId,
           state: state,
           canEdit: true,

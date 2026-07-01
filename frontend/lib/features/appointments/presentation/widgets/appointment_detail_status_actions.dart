@@ -27,6 +27,7 @@ import 'package:ai_clinic/features/appointments/presentation/widgets/queue/queue
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/visit_create_dialog.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 extension _AppointmentDetailListItem on AppointmentDetail {
   AppointmentListItem toListItem() {
@@ -106,7 +107,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     }
   }
 
-  Future<void> _refreshVisitLink() async {
+  Future<void> _refreshVisitLink({bool showLoadingGate = true}) async {
     if (!_canCreateVisit || !_canStartVisit) {
       if (mounted) {
         setState(() {
@@ -117,7 +118,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       return;
     }
 
-    if (mounted) {
+    if (mounted && showLoadingGate && _linkedVisitId == null) {
       setState(() => _visitLookupDone = false);
     }
 
@@ -145,11 +146,8 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     if (!mounted) {
       return;
     }
+    ref.invalidate(visitDocumentationProvider(visitId));
     await context.push(AppRoutes.visitDocument(visitId));
-    if (!mounted) {
-      return;
-    }
-    await _refreshVisitLink();
   }
 
   Future<void> _createOrOpenVisit() async {
@@ -164,7 +162,19 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       return;
     }
 
-    await _openVisitDocumentation(created.visitId);
+    final createdVisitId = created.visitId.trim();
+    if (createdVisitId.isEmpty) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _linkedVisitId = createdVisitId;
+        _visitLookupDone = true;
+      });
+    }
+
+    await _openVisitDocumentation(createdVisitId);
   }
 
   String? _visitActionDisabledReason() {

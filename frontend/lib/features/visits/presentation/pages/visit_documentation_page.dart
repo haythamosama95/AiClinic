@@ -10,7 +10,7 @@ import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/encounter_header.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_joined_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspace_mode_toggle.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspace_shell.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
@@ -179,7 +179,8 @@ class _VisitDocumentationBody extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        EncounterHeader(
+        EncounterJoinedHeader(
+          visitId: visitId,
           visit: visit,
           onBack: onBack,
           beforeTrailing: const EncounterWorkspaceModeToggle(),
