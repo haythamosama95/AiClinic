@@ -218,7 +218,9 @@ void main() {
 
       expect(find.byKey(const Key('encounter_review')), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('encounter_review_edit_plan')));
+      final editPlan = find.byKey(const Key('encounter_review_edit_plan'));
+      await tester.ensureVisible(editPlan);
+      await tester.tap(editPlan);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('encounter_review')), findsNothing);

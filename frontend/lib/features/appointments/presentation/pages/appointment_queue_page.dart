@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,7 +29,7 @@ class AppointmentQueuePage extends ConsumerStatefulWidget {
 
 class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
   Timer? _clockTimer;
-  DateTime _now = DateTime.now();
+  DateTime _now = clock.now();
   int _scheduleScrollNonce = 0;
   String? _scrollToAppointmentId;
   bool _routeScrollPrimed = false;
@@ -40,13 +41,13 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
     _bumpScheduleScroll();
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
-        setState(() => _now = DateTime.now());
+        setState(() => _now = clock.now());
       }
     });
   }
 
   void _bumpScheduleScroll() {
-    _scheduleScrollNonce = DateTime.now().millisecondsSinceEpoch;
+    _scheduleScrollNonce = clock.now().millisecondsSinceEpoch;
   }
 
   void _onCheckedInPatientTap(String appointmentId) {

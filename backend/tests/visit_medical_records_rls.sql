@@ -355,7 +355,11 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  SELECT count(*)::int INTO v_visible_count FROM public.medications;
+  SELECT count(*)::int
+  INTO v_visible_count
+  FROM public.medications m
+  WHERE m.organization_id = v_org_a;
+
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_rls_results VALUES (
     'cross_org_medications_catalog_hidden',

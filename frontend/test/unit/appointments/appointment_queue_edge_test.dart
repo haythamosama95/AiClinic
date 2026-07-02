@@ -109,9 +109,11 @@ Future<void> _pumpQueueWidget(WidgetTester tester, {required Widget child, List<
   await tester.pump();
 }
 
-String _scheduleTimeRangeLabel(DateTime start, DateTime end) {
+String _scheduleTimeRangeLabel(DateTime start, DateTime end, {String organizationTimezone = 'UTC'}) {
   final format = DateFormat('h:mm a');
-  return '${format.format(start.toLocal())} - ${format.format(end.toLocal())}';
+  final startWall = appointmentWallClockInOrganizationTimezone(organizationTimezone, start);
+  final endWall = appointmentWallClockInOrganizationTimezone(organizationTimezone, end);
+  return '${format.format(startWall)} - ${format.format(endWall)}';
 }
 
 AppointmentListItem _item({
@@ -360,7 +362,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(_scheduleTimeRangeLabel(start, end)), findsOneWidget);
-      expect(find.text(DateFormat('h:mm a').format(scheduled.startTime.toLocal())), findsOneWidget);
+      expect(
+        find.text(DateFormat('h:mm a').format(appointmentWallClockInOrganizationTimezone('UTC', scheduled.startTime))),
+        findsOneWidget,
+      );
       expect(find.textContaining(' - '), findsOneWidget);
 
       final opacityFinder = find.byWidgetPredicate((widget) => widget is Opacity && widget.opacity == 0.5);

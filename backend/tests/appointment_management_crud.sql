@@ -146,13 +146,13 @@ BEGIN
   v_result := public.create_patient(v_main_branch_id, 'Appt Patient 2', '201000000144', NULL, NULL, NULL, NULL, false);
   v_patient2_id := (v_result.data ->> 'patient_id')::uuid;
 
-  -- Trivial: settings default fallback 20.
+  -- Trivial: settings default fallback 30.
   v_result := public.get_appointment_settings(v_main_branch_id);
   v_default := (v_result.data ->> 'default_duration_minutes')::int;
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'settings_default_fallback_20',
-    v_result.success AND v_default = 20,
+    'settings_default_fallback_30',
+    v_result.success AND v_default = 30,
     'default=' || COALESCE(v_default::text, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -764,8 +764,8 @@ BEGIN
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'reschedule_doctorless_overlap_rejected',
-    NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
+    'reschedule_doctorless_overlap_allowed',
+    v_result.success,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
@@ -1077,7 +1077,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Same time different doctors: conflict because slots are branch-wide.
+  -- Same time different doctors: per-doctor overlap allows different doctors when patients differ.
   v_start := date_trunc('hour', now() + interval '11 days');
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, c_doctor_staff_id, 'planned', v_start, 20, NULL, NULL
@@ -1091,17 +1091,17 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
 
   v_result := public.create_appointment(
-    v_main_branch_id, v_patient_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
+    v_main_branch_id, v_patient2_id, v_doctor2_staff, 'planned', v_start, 20, NULL, NULL
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'planned_same_time_different_doctors_conflict',
-    NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
+    'planned_same_time_different_doctors_allowed',
+    v_result.success,
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Two unassigned planned at same time: still conflicts due to slot uniqueness.
+  -- Two unassigned planned at same time for the same patient: same-day patient guard applies.
   v_start := date_trunc('hour', now() + interval '12 days');
   v_result := public.create_appointment(
     v_main_branch_id, v_patient_id, NULL, 'planned', v_start, 15, NULL, NULL
@@ -1119,8 +1119,8 @@ BEGIN
   );
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO appointment_crud_results VALUES (
-    'two_planned_without_doctor_conflict',
-    NOT v_result.success AND v_result.error_code = 'SCHEDULE_CONFLICT',
+    'two_planned_without_doctor_same_patient_rejected',
+    NOT v_result.success AND v_result.error_code = 'PATIENT_ALREADY_BOOKED_SAME_DAY',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

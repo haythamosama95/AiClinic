@@ -526,6 +526,9 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
+  -- Slot 6 leaves an in_progress visit; release before opening slot 7.
+  PERFORM pg_temp.release_doctor_in_progress(v_doctor_staff);
+
   -- Treatment plan create / update / archive.
   v_start := pg_temp.test_appointment_same_day_slot(7);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 7;

@@ -103,14 +103,15 @@ class StatefulQueueRpcClient extends AppointmentRpcTestClient {
     final row = _items[index];
 
     final start = DateTime.parse(row['start_time'] as String);
+    final detail = appointmentRpcDefaultDetailItem(
+      id: id,
+      patientName: row['patient_name'] as String? ?? 'Test Patient',
+      startLocal: start.toLocal(),
+    );
+    detail['doctor_id'] = row['doctor_id'];
+    detail['doctor_name'] = row['doctor_name'];
     return {
-      ...appointmentRpcDefaultDetailItem(
-        id: id,
-        patientName: row['patient_name'] as String? ?? 'Test Patient',
-        startLocal: start.toLocal(),
-        doctorId: row['doctor_id'] as String? ?? queueTestDoctorAlphaId,
-        doctorName: row['doctor_name'] as String? ?? 'Dr Alpha',
-      ),
+      ...detail,
       'status': row['status'],
       'checked_in_at': row['checked_in_at'],
       'in_progress_at': row['in_progress_at'],
