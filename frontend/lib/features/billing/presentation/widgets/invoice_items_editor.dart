@@ -9,8 +9,10 @@ import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/line_discount_field.dart';
+import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/widgets/invoice_service_selector.dart';
 
-/// Editable line items table for draft invoices (V1-6 US1).
+/// Editable line items table for draft invoices (V1-6 US1 + catalog selection US2).
 class InvoiceItemsEditor extends StatefulWidget {
   const InvoiceItemsEditor({
     required this.invoice,
@@ -18,8 +20,8 @@ class InvoiceItemsEditor extends StatefulWidget {
     required this.canApplyDiscount,
     required this.activeDiscountScope,
     required this.isMutating,
-    required this.onAddItem,
-    required this.onUpdateItem,
+    required this.onAddItemFromService,
+    required this.onUpdateItemQuantity,
     required this.onRemoveItem,
     required this.onApplyLineDiscount,
     required this.onClearLineDiscounts,
@@ -31,8 +33,8 @@ class InvoiceItemsEditor extends StatefulWidget {
   final bool canApplyDiscount;
   final DiscountScope? activeDiscountScope;
   final bool isMutating;
-  final Future<void> Function(String description, String quantity, String unitPrice) onAddItem;
-  final Future<void> Function(String itemId, String description, String quantity, String unitPrice) onUpdateItem;
+  final Future<void> Function(EligibleService service) onAddItemFromService;
+  final Future<void> Function(String itemId, String quantity) onUpdateItemQuantity;
   final Future<void> Function(String itemId) onRemoveItem;
   final Future<void> Function(String itemId, DiscountKind? kind, String? value) onApplyLineDiscount;
   final Future<void> Function() onClearLineDiscounts;
@@ -42,50 +44,35 @@ class InvoiceItemsEditor extends StatefulWidget {
 }
 
 class _InvoiceItemsEditorState extends State<InvoiceItemsEditor> {
-  final _descriptionController = TextEditingController();
   final _quantityController = TextEditingController(text: '1');
-  final _unitPriceController = TextEditingController();
   String? _editingItemId;
 
   @override
   void dispose() {
-    _descriptionController.dispose();
     _quantityController.dispose();
-    _unitPriceController.dispose();
     super.dispose();
   }
 
   void _startEdit(InvoiceItem item) {
     setState(() {
       _editingItemId = item.id;
-      _descriptionController.text = item.description;
       _quantityController.text = item.quantity;
-      _unitPriceController.text = item.unitPrice.wireValue;
     });
   }
 
   void _cancelEdit() {
     setState(() {
       _editingItemId = null;
-      _descriptionController.clear();
       _quantityController.text = '1';
-      _unitPriceController.clear();
     });
   }
 
-  Future<void> _saveItem() async {
-    final description = _descriptionController.text.trim();
+  Future<void> _saveQuantity(InvoiceItem item) async {
     final quantity = _quantityController.text.trim();
-    final unitPrice = _unitPriceController.text.trim();
-    if (description.isEmpty) {
+    if (quantity.isEmpty) {
       return;
     }
-
-    if (_editingItemId != null) {
-      await widget.onUpdateItem(_editingItemId!, description, quantity, unitPrice);
-    } else {
-      await widget.onAddItem(description, quantity, unitPrice);
-    }
+    await widget.onUpdateItemQuantity(item.id, quantity);
     _cancelEdit();
   }
 
@@ -95,6 +82,9 @@ class _InvoiceItemsEditorState extends State<InvoiceItemsEditor> {
     final theme = Theme.of(context);
     final currency = widget.invoice.currency;
     final items = widget.invoice.items;
+    final editingItem = _editingItemId == null
+        ? null
+        : items.cast<InvoiceItem?>().firstWhere((item) => item?.id == _editingItemId, orElse: () => null);
 
     return AppCard(
       title: const Text('Line items'),
@@ -106,7 +96,7 @@ class _InvoiceItemsEditorState extends State<InvoiceItemsEditor> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: SpacingTokens.lg),
               child: Text(
-                'No line items yet. Add services rendered during the visit.',
+                'No line items yet. Add services from the catalog.',
                 style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground),
                 textAlign: TextAlign.center,
               ),
@@ -130,39 +120,53 @@ class _InvoiceItemsEditorState extends State<InvoiceItemsEditor> {
             const SizedBox(height: SpacingTokens.lg),
             const Divider(),
             const SizedBox(height: SpacingTokens.md),
-            Text(
-              _editingItemId == null ? 'Add line item' : 'Edit line item',
-              style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+            InvoiceServiceSelector(
+              branchId: widget.invoice.branchId,
+              currency: currency,
+              enabled: !widget.isMutating,
+              onServiceSelected: widget.onAddItemFromService,
             ),
-            const SizedBox(height: SpacingTokens.md),
-            AppTextField(controller: _descriptionController, label: 'Description'),
-            const SizedBox(height: SpacingTokens.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: AppTextField(controller: _quantityController, label: 'Quantity'),
-                ),
-                const SizedBox(width: SpacingTokens.sm),
-                Expanded(
-                  child: AppTextField(controller: _unitPriceController, label: 'Unit price'),
-                ),
-              ],
-            ),
-            const SizedBox(height: SpacingTokens.md),
-            Row(
-              children: [
-                AppButton(
-                  label: _editingItemId == null ? 'Add item' : 'Save changes',
-                  isLoading: widget.isMutating,
-                  expand: false,
-                  onPressed: _saveItem,
-                ),
-                if (_editingItemId != null) ...[
+            if (editingItem != null) ...[
+              const SizedBox(height: SpacingTokens.lg),
+              Text('Edit quantity', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(height: SpacingTokens.md),
+              Text(editingItem.description, style: theme.textTheme.bodyMedium?.copyWith(color: colors.mutedForeground)),
+              const SizedBox(height: SpacingTokens.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: AppTextField(controller: _quantityController, label: 'Quantity'),
+                  ),
+                  const SizedBox(width: SpacingTokens.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Unit price', style: theme.textTheme.labelMedium),
+                        const SizedBox(height: SpacingTokens.xs),
+                        Text(
+                          BillingFormatting.formatMoney(editingItem.unitPrice, currency: currency),
+                          style: theme.textTheme.bodyLarge,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: SpacingTokens.md),
+              Row(
+                children: [
+                  AppButton(
+                    label: 'Save quantity',
+                    isLoading: widget.isMutating,
+                    expand: false,
+                    onPressed: () => _saveQuantity(editingItem),
+                  ),
                   const SizedBox(width: SpacingTokens.sm),
                   AppButton(label: 'Cancel', variant: AppButtonVariant.ghost, expand: false, onPressed: _cancelEdit),
                 ],
-              ],
-            ),
+              ),
+            ],
           ],
         ],
       ),
@@ -237,7 +241,11 @@ class _ItemRow extends StatelessWidget {
                   ),
                   if (canEdit) ...[
                     const SizedBox(width: SpacingTokens.xs),
-                    AppIconButton(icon: const Icon(Icons.edit_outlined, size: 18), tooltip: 'Edit', onPressed: onEdit),
+                    AppIconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      tooltip: 'Edit quantity',
+                      onPressed: onEdit,
+                    ),
                     AppIconButton(
                       icon: Icon(Icons.delete_outline, size: 18, color: colors.destructive),
                       tooltip: 'Remove',

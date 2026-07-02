@@ -6,6 +6,8 @@ import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/discount_scope.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
+import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
+import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
 
 /// Thrown when optimistic concurrency detects a stale invoice revision.
 class InvoiceStaleException implements Exception {
@@ -59,6 +61,8 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
 
   InvoiceRepository get _repo => ref.read(invoiceRepositoryProvider);
 
+  ServiceCatalogRepository get _catalogRepo => ref.read(serviceCatalogRepositoryProvider);
+
   Future<void> reload() async {
     state = await AsyncValue.guard(() async {
       final invoice = await _repo.getDetail(invoiceId: _invoiceId);
@@ -88,6 +92,30 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
       state = AsyncData(current);
       rethrow;
     }
+  }
+
+  Future<String> addItemFromService(EligibleService service) {
+    return _mutate((invoice) async {
+      final result = await _catalogRepo.addInvoiceItemFromService(
+        invoiceId: invoice.id,
+        expectedUpdatedAt: invoice.updatedAt,
+        serviceId: service.serviceId,
+      );
+      return result.itemId;
+    });
+  }
+
+  Future<void> updateItemQuantity({required String itemId, required String quantity}) {
+    return _mutate((invoice) async {
+      final item = invoice.items.firstWhere((entry) => entry.id == itemId);
+      await _repo.updateItem(
+        itemId: itemId,
+        expectedUpdatedAt: invoice.updatedAt,
+        description: item.description,
+        quantity: quantity,
+        unitPrice: item.unitPrice.wireValue,
+      );
+    });
   }
 
   Future<String> addItem({required String description, required String quantity, required String unitPrice}) {

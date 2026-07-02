@@ -11,6 +11,7 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
+import 'package:ai_clinic/features/service_catalog/application/service_catalog_rpc_messages.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_editor_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/insurance_panel.dart';
@@ -184,6 +185,19 @@ class _InvoiceEditorScaffold extends ConsumerWidget {
     }
   }
 
+  Future<void> _handleCatalogMutation(BuildContext context, WidgetRef ref, Future<void> Function() action) async {
+    try {
+      await action();
+    } on InvoiceStaleException {
+      if (!context.mounted) return;
+      AppToast.error(context, message: 'Invoice was updated elsewhere. Reloading…');
+      ref.invalidate(invoiceEditorProvider(invoiceId));
+    } on RpcFailure catch (error) {
+      if (!context.mounted) return;
+      AppToast.error(context, message: serviceCatalogMessageForRpc(error));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.semanticColors;
@@ -252,15 +266,12 @@ class _InvoiceEditorScaffold extends ConsumerWidget {
                         canApplyDiscount: canApplyDiscount,
                         activeDiscountScope: state.activeDiscountScope,
                         isMutating: state.isMutating,
-                        onAddItem: (d, q, p) => _handleMutation(
+                        onAddItemFromService: (service) =>
+                            _handleCatalogMutation(context, ref, () => notifier.addItemFromService(service)),
+                        onUpdateItemQuantity: (id, quantity) => _handleMutation(
                           context,
                           ref,
-                          () => notifier.addItem(description: d, quantity: q, unitPrice: p),
-                        ),
-                        onUpdateItem: (id, d, q, p) => _handleMutation(
-                          context,
-                          ref,
-                          () => notifier.updateItem(itemId: id, description: d, quantity: q, unitPrice: p),
+                          () => notifier.updateItemQuantity(itemId: id, quantity: quantity),
                         ),
                         onRemoveItem: (id) => _handleMutation(context, ref, () => notifier.removeItem(id)),
                         onApplyLineDiscount: (id, kind, value) => _handleMutation(
