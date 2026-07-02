@@ -212,8 +212,6 @@ CREATE POLICY service_branches_delete ON public.service_branches
 
 INSERT INTO public.roles_permissions (role, permission_key, is_granted)
 VALUES
-  ('owner', 'services.view', true),
-  ('owner', 'services.manage', true),
   ('administrator', 'services.view', true),
   ('administrator', 'services.manage', true),
   ('doctor', 'services.view', false),
