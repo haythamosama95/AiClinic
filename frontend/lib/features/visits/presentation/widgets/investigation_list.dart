@@ -222,7 +222,8 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
       );
       final updateParams = normalizedData.updateParamsFor(existing);
 
-      final hasChanges = updateParams.name != null || updateParams.investigationId != null || updateParams.note != null;
+      final hasChanges =
+          updateParams.name != null || updateParams.investigationIdChanged || updateParams.note != null;
 
       if (hasChanges) {
         await visitEncounterPersistence(
@@ -234,6 +235,7 @@ class _InvestigationListState extends ConsumerState<InvestigationList> {
           name: updateParams.name,
           investigationId: updateParams.investigationId,
           note: updateParams.note,
+          updateInvestigationId: updateParams.investigationIdChanged,
         );
       }
 
@@ -444,11 +446,15 @@ class InvestigationFormData {
 
   bool get isCustomInvestigation => investigationId == null;
 
-  ({String? name, String? investigationId, String? note}) updateParamsFor(VisitInvestigation existing) {
+  ({String? name, String? investigationId, bool investigationIdChanged, String? note}) updateParamsFor(
+    VisitInvestigation existing,
+  ) {
     final trimmedName = name.trim();
+    final investigationIdChanged = investigationId != existing.investigationId;
     return (
       name: trimmedName != existing.name ? trimmedName : null,
-      investigationId: investigationId != existing.investigationId ? investigationId : null,
+      investigationId: investigationIdChanged ? investigationId : null,
+      investigationIdChanged: investigationIdChanged,
       note: _optionalUpdateParam(existing.note, note),
     );
   }

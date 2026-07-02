@@ -16,15 +16,11 @@ CREATE OR REPLACE FUNCTION pg_temp.test_appointment_same_day_slot(p_offset_hours
 RETURNS timestamptz
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  v_tz text := 'UTC';
-  v_day_start timestamptz;
 BEGIN
   IF p_offset_hours < 1 OR p_offset_hours > 23 THEN
     RAISE EXCEPTION 'test_appointment_same_day_slot: offset must be 1..23, got %', p_offset_hours;
   END IF;
-  v_day_start := date_trunc('day', now() AT TIME ZONE v_tz) AT TIME ZONE v_tz;
-  RETURN v_day_start + make_interval(hours => p_offset_hours);
+  RETURN now() + make_interval(hours => p_offset_hours);
 END;
 $$;
 

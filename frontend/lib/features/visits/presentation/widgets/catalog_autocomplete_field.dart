@@ -85,6 +85,10 @@ class CatalogAutocompleteFieldState extends State<CatalogAutocompleteField> {
 
     widget.onSelectionChanged(CatalogFieldSelection(name: text.trim(), catalogId: _selectedCatalogId));
 
+    if (_selectedCatalogId != null && _selectedCatalogName == text) {
+      return;
+    }
+
     _searchDebounce?.cancel();
     _searchDebounce = Timer(widget.searchDebounce, () {
       if (!mounted) {
@@ -123,6 +127,7 @@ class CatalogAutocompleteFieldState extends State<CatalogAutocompleteField> {
   }
 
   void _selectItem(CatalogItem item) {
+    _searchDebounce?.cancel();
     setState(() {
       _selectedCatalogId = item.id;
       _selectedCatalogName = item.name;

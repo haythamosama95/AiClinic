@@ -101,10 +101,6 @@ Future<void> _recordResultOnPendingInvestigation(WidgetTester tester, {required 
   await tester.tap(resultField);
   await tester.pump();
   await tester.enterText(resultField, result);
-  // Form enables Save only on rebuild; controller updates do not call setState.
-  (tester.state<State<StatefulWidget>>(find.byKey(Key('investigation_result_form_$_priorInvestigationLineId')))
-      as dynamic)
-      .setState(() {});
   await tester.pump();
 
   final saveButton = find.byKey(Key('investigation_result_save_$_priorInvestigationLineId'));

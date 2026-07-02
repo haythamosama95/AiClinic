@@ -17,6 +17,7 @@ import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 
 /// Clinical note save lifecycle on the visit documentation screen.
 enum DocumentationSaveStatus { idle, saving, saved, stale, error }
@@ -260,7 +261,8 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     }
 
     final current = state.value ?? initial;
-    final concurrencyToken = expectedUpdatedAt ?? current.expectedUpdatedAt;
+    // Always use post-save refreshed token; caller value may be stale after saveAll/flush.
+    final concurrencyToken = current.expectedUpdatedAt;
 
     try {
       final result = await ref
@@ -270,12 +272,6 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
       state = AsyncData(
         VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns).copyWith(
-          complaint: current.complaint,
-          history: current.history,
-          examination: current.examination,
-          diagnosis: current.diagnosis,
-          plan: current.plan,
-          expectedUpdatedAt: refreshed.documentation?.updatedAt ?? refreshed.updatedAt ?? current.expectedUpdatedAt,
           workspaceEditMode: WorkspaceEditMode.viewing,
           noteEditMode: DocumentationEditMode.readOnly,
           saveStatus: DocumentationSaveStatus.saved,
@@ -697,6 +693,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     String? name,
     String? note,
     String? investigationId,
+    bool updateInvestigationId = false,
   }) {
     final current = state.value;
     if (current == null) return;
@@ -709,7 +706,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
                     id: item.id,
                     name: name ?? item.name,
                     note: note ?? item.note,
-                    investigationId: investigationId ?? item.investigationId,
+                    investigationId: updateInvestigationId ? investigationId : item.investigationId,
                   )
                 : item,
           )
@@ -723,7 +720,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       id: existing.id,
       name: name ?? existing.name,
       note: note ?? existing.note,
-      investigationId: investigationId ?? existing.investigationId,
+      investigationId: updateInvestigationId ? investigationId : existing.investigationId,
       result: existing.result,
       resultRecordedAt: existing.resultRecordedAt,
       orderedVisitId: existing.orderedVisitId,
@@ -738,10 +735,12 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     final current = state.value;
     if (current == null) return;
     final draft = current.encounterDraft;
+    final clearedResults = Map<String, String>.from(draft.investigationResults)..remove(investigationLineId);
     if (isVisitDraftId(investigationLineId)) {
       _applyEncounterDraft(
         draft.copyWith(
           pendingInvestigations: draft.pendingInvestigations.where((item) => item.id != investigationLineId).toList(),
+          investigationResults: clearedResults,
         ),
       );
       return;
@@ -751,6 +750,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
         archivedInvestigationIds: {...draft.archivedInvestigationIds, investigationLineId},
         investigationUpdates: Map<String, VisitInvestigation>.from(draft.investigationUpdates)
           ..remove(investigationLineId),
+        investigationResults: clearedResults,
       ),
     );
   }
@@ -1102,22 +1102,55 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
   }
 
   PatientAllergy? _findAllergyInContext(String id, VisitDocumentationState current) {
-    for (final allergy in current.encounterDraft.patientSafety.pendingAllergies) {
+    final safety = current.encounterDraft.patientSafety;
+    final staged = safety.allergyUpdates[id];
+    if (staged != null) {
+      return staged;
+    }
+    for (final allergy in safety.pendingAllergies) {
       if (allergy.id == id) return allergy;
+    }
+    final base = ref.read(patientSafetyProvider(current.visit.patientId)).value;
+    if (base != null) {
+      for (final allergy in base.allergies) {
+        if (allergy.id == id) return allergy;
+      }
     }
     return null;
   }
 
   PatientMedication? _findMedicationInContext(String id, VisitDocumentationState current) {
-    for (final med in current.encounterDraft.patientSafety.pendingMedications) {
+    final safety = current.encounterDraft.patientSafety;
+    final staged = safety.medicationUpdates[id];
+    if (staged != null) {
+      return staged;
+    }
+    for (final med in safety.pendingMedications) {
       if (med.id == id) return med;
+    }
+    final base = ref.read(patientSafetyProvider(current.visit.patientId)).value;
+    if (base != null) {
+      for (final med in base.currentMedications) {
+        if (med.id == id) return med;
+      }
     }
     return null;
   }
 
   PatientChronicCondition? _findConditionInContext(String id, VisitDocumentationState current) {
-    for (final condition in current.encounterDraft.patientSafety.pendingConditions) {
+    final safety = current.encounterDraft.patientSafety;
+    final staged = safety.conditionUpdates[id];
+    if (staged != null) {
+      return staged;
+    }
+    for (final condition in safety.pendingConditions) {
       if (condition.id == id) return condition;
+    }
+    final base = ref.read(patientSafetyProvider(current.visit.patientId)).value;
+    if (base != null) {
+      for (final condition in base.chronicConditions) {
+        if (condition.id == id) return condition;
+      }
     }
     return null;
   }
@@ -1160,26 +1193,39 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           await repo.archiveVisitInvestigation(investigationLineId: id);
         }
       }
+      final investigationResultIdRemap = <String, String>{};
       for (final investigation in draft.pendingInvestigations) {
-        await repo.createVisitInvestigation(
+        final persistedId = await repo.createVisitInvestigation(
           visitId: current.visit.id,
           name: investigation.name,
           note: investigation.note,
           investigationId: investigation.investigationId,
         );
+        if (isVisitDraftId(investigation.id)) {
+          investigationResultIdRemap[investigation.id] = persistedId;
+        }
       }
       for (final entry in draft.investigationUpdates.entries) {
         if (!isVisitDraftId(entry.key)) {
+          final existing = current.persistedVisit.investigations
+              .where((investigation) => investigation.id == entry.key)
+              .firstOrNull;
+          final investigationIdChanged = existing?.investigationId != entry.value.investigationId;
           await repo.updateVisitInvestigation(
             investigationLineId: entry.key,
             name: entry.value.name,
             note: entry.value.note,
             investigationId: entry.value.investigationId,
+            updateInvestigationId: investigationIdChanged,
           );
         }
       }
       for (final entry in draft.investigationResults.entries) {
-        await repo.recordInvestigationResult(investigationLineId: entry.key, result: entry.value);
+        final investigationLineId = investigationResultIdRemap[entry.key] ?? entry.key;
+        if (isVisitDraftId(investigationLineId)) {
+          continue;
+        }
+        await repo.recordInvestigationResult(investigationLineId: investigationLineId, result: entry.value);
       }
 
       for (final id in draft.archivedTreatmentPlanIds) {
@@ -1212,7 +1258,10 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
         }
       }
 
-      if (orgId != null && orgId.isNotEmpty) {
+      if (draft.pendingAttachments.isNotEmpty) {
+        if (orgId == null || orgId.isEmpty) {
+          throw StateError('Organization context is required to upload attachments.');
+        }
         for (final pending in draft.pendingAttachments) {
           await attachmentService.uploadAndRegister(
             organizationId: orgId,
@@ -1298,6 +1347,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           richTextDrafts: afterNote.richTextDrafts,
           expectedUpdatedAt: afterNote.expectedUpdatedAt,
           noteEditMode: afterNote.noteEditMode,
+          workspaceEditMode: afterNote.workspaceEditMode,
           saveStatus: afterNote.saveStatus,
         ),
       );
@@ -1345,7 +1395,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           expectedUpdatedAt: refreshed.documentation?.updatedAt ?? refreshed.updatedAt ?? afterNote.expectedUpdatedAt,
           noteEditMode: afterNote.noteEditMode,
           workspaceEditMode: afterNote.workspaceEditMode,
-          encounterDraft: const VisitEncounterDraft(),
+          encounterDraft: afterNote.encounterDraft,
           saveStatus: DocumentationSaveStatus.error,
         ),
       );

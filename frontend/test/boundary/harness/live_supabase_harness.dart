@@ -8,6 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ai_clinic/core/config/deployment_profile.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 
+import 'sql_fixture_helper.dart';
+
 /// Probes and initializes a live local Supabase stack for boundary tests.
 class LiveSupabaseHarness {
   LiveSupabaseHarness._();
@@ -36,6 +38,9 @@ class LiveSupabaseHarness {
     WidgetsFlutterBinding.ensureInitialized();
 
     final profile = await _loadProfile();
+    if (!profile.isLocalOnly) {
+      markTestSkipped('Boundary tests require a local deployment profile.');
+    }
     final config = SupabaseConfig.fromDeploymentProfile(profile);
 
     final authOk = await _probe(config.authHealthUrl);
@@ -47,6 +52,8 @@ class LiveSupabaseHarness {
         '(auth=$authOk rest=$restOk). Start backend/local docker compose and apply migrations.',
       );
     }
+
+    await SqlFixtureHelper().ensureLocalDevelopmentEnvironment();
 
     await SupabaseBootstrap.ensureInitialized(config);
     _config = config;

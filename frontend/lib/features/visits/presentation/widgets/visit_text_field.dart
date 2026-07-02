@@ -248,8 +248,8 @@ class _VisitEmptyInputShell extends StatefulWidget {
 }
 
 class _VisitEmptyInputShellState extends State<_VisitEmptyInputShell> {
-  late final FocusNode _focusNode;
-  late final bool _ownsFocusNode;
+  late FocusNode _focusNode;
+  late bool _ownsFocusNode;
   var _hasText = false;
   var _focused = false;
 
@@ -270,6 +270,16 @@ class _VisitEmptyInputShellState extends State<_VisitEmptyInputShell> {
       oldWidget.controller?.removeListener(_syncHasText);
       widget.controller?.addListener(_syncHasText);
       _syncHasText();
+    }
+    if (oldWidget.focusNode != widget.focusNode) {
+      _focusNode.removeListener(_onFocusChanged);
+      if (_ownsFocusNode) {
+        _focusNode.dispose();
+      }
+      _ownsFocusNode = widget.focusNode == null;
+      _focusNode = widget.focusNode ?? FocusNode();
+      _focusNode.addListener(_onFocusChanged);
+      _focused = _focusNode.hasFocus;
     }
   }
 

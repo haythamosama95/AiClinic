@@ -39,7 +39,7 @@ final visitDetailViewProvider = FutureProvider.autoDispose.family<VisitDetailVie
     visit: visit,
     canEditDocumentation: canEditSoap && hasBranchAccess,
     hasBranchAccess: hasBranchAccess,
-    canUploadAttachments: permissions.canUploadVisitAttachments(),
+    canUploadAttachments: permissions.canUploadVisitAttachments() && hasBranchAccess,
   );
 });
 

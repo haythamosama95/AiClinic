@@ -42,8 +42,9 @@ class EncounterPhasePlan extends ConsumerWidget {
       key: const Key('encounter_phase_plan'),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final expandField = isExpertScroll || (constraints.hasBoundedHeight && constraints.maxHeight.isFinite);
-          if (expandField) {
+          final hasBoundedHeight = constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+          final expandField = isExpertScroll || hasBoundedHeight;
+          if (hasBoundedHeight && expandField) {
             return SizedBox(
               height: constraints.maxHeight,
               child: _buildPlanGrid(visit: visit, expandField: true, isExpertScroll: isExpertScroll),

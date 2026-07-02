@@ -53,7 +53,7 @@ class VisitTheme {
 
   Color get mutedInk => _colors.mutedForeground;
   Color get hairline => _colors.border;
-  Color get hairlineSoft => _colors.border;
+  Color get hairlineSoft => _colors.border.withValues(alpha: 0.55);
 
   // ── Shape & elevation ─────────────────────────────────────────────────
 

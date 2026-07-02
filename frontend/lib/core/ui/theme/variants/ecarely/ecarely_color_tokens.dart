@@ -17,7 +17,7 @@ abstract final class ECarelyColorTokens {
     primary: Color(0xFF15847B),
     primaryForeground: Color(0xFFFFFFFF),
     secondary: Color(0xFFF59E0B),
-    secondaryForeground: Color(0xFFFFFFFF),
+    secondaryForeground: Color(0xFF111827),
     muted: Color(0xFFF7F9F8),
     mutedForeground: Color(0xFF6B7280),
     accent: Color(0xFFFFFFFF),

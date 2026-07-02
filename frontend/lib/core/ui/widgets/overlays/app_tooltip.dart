@@ -175,12 +175,12 @@ class _TooltipArrow extends StatelessWidget {
         bottom: BorderSide(color: borderColor),
       ),
       AppTooltipArrowDirection.left => Border(
-        top: BorderSide(color: borderColor),
+        bottom: BorderSide(color: borderColor),
         left: BorderSide(color: borderColor),
       ),
       AppTooltipArrowDirection.right => Border(
+        top: BorderSide(color: borderColor),
         right: BorderSide(color: borderColor),
-        bottom: BorderSide(color: borderColor),
       ),
     };
 

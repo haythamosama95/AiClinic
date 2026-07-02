@@ -25,7 +25,7 @@ Verify:
 ## 2. Run backend verification
 
 ```bash
-./backend/tests/run_visit_medical_records_tests.sh
+./tests/run_visit_medical_records_tests.sh
 ```
 
 Covers (updated):

@@ -286,7 +286,7 @@ class _DocumentationViewState extends ConsumerState<_DocumentationView> {
                           key: _phaseScrollKeys[phases[index].phase],
                           child: EncounterPhaseReadGroup(
                             phase: phases[index].phase,
-                            contentHeight: isExpert ? viewportHeight : viewportHeight,
+                            contentHeight: isExpert ? viewportHeight : null,
                             showPhaseChrome: isExpert,
                             child: phases[index].child,
                           ),

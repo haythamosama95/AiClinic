@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:forui/forui.dart';
 
@@ -109,7 +108,7 @@ bool richDeltaIsEffectivelyEmpty(List<dynamic>? deltaJson) {
   }
   if (deltaJson.length == 1) {
     final first = deltaJson.first;
-    if (first is Map && first['insert'] == '\n' && first['attributes'] == null) {
+    if (first is Map && first['insert'] == '\n') {
       return true;
     }
   }
@@ -308,6 +307,12 @@ class _AppParagraphFieldState extends State<AppParagraphField> {
     super.didUpdateWidget(oldWidget);
     if (widget.richText != oldWidget.richText) {
       throw StateError('AppParagraphField.richText cannot change after mount.');
+    }
+    if (oldWidget.quillController != widget.quillController) {
+      (oldWidget.quillController ?? _ownedQuillController)?.removeListener(_handleQuillChange);
+      if (widget.richText) {
+        _quillController.addListener(_handleQuillChange);
+      }
     }
   }
 
@@ -677,14 +682,10 @@ class _RichParagraphEditor extends StatelessWidget {
       ),
     );
 
-    return Localizations(
+    return Localizations.override(
+      context: context,
       locale: Localizations.localeOf(context),
-      delegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        FlutterQuillLocalizations.delegate,
-      ],
+      delegates: const [FlutterQuillLocalizations.delegate],
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
@@ -762,6 +763,20 @@ class _AppParagraphFormFieldState extends State<AppParagraphFormField> {
     }
     if (widget.richText) {
       _quillController.addListener(_handleQuillChange);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AppParagraphFormField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.richText != oldWidget.richText) {
+      throw StateError('AppParagraphFormField.richText cannot change after mount.');
+    }
+    if (oldWidget.quillController != widget.quillController) {
+      (oldWidget.quillController ?? _ownedQuillController)?.removeListener(_handleQuillChange);
+      if (widget.richText) {
+        _quillController.addListener(_handleQuillChange);
+      }
     }
   }
 

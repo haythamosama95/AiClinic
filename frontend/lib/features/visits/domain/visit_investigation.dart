@@ -28,6 +28,20 @@ class VisitInvestigation {
 
   bool get isPendingFromPriorVisit => orderedVisitId != null;
 
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is VisitInvestigation &&
+            runtimeType == other.runtimeType &&
+            id == other.id &&
+            name == other.name &&
+            note == other.note &&
+            investigationId == other.investigationId;
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, note, investigationId);
+
   static VisitInvestigation? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
     final name = row['name']?.toString().trim();

@@ -505,6 +505,9 @@ class DevClinicSeedService {
     }
 
     final docUpdatedAt = detail.documentation?.updatedAt ?? detail.updatedAt;
+    if (docUpdatedAt == null) {
+      throw StateError('Visit timestamp missing before complete for dev seed release.');
+    }
 
     await _visits.completeVisit(visitId: visitId, expectedUpdatedAt: docUpdatedAt);
   }

@@ -69,6 +69,13 @@ void main() {
       expect(richDeltaIsEffectivelyEmpty(richDeltaEffectivelyEmpty), isTrue);
     });
 
+    test('treats lone formatted newline insert as empty', () {
+      const formattedBlankLine = [
+        {'insert': '\n', 'attributes': {'header': 1}},
+      ];
+      expect(richDeltaIsEffectivelyEmpty(formattedBlankLine), isTrue);
+    });
+
     test('treats formatted text delta as non-empty', () {
       expect(richDeltaIsEffectivelyEmpty(richDeltaBoldText('Headache')), isFalse);
     });

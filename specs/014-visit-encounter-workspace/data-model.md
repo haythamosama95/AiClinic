@@ -166,7 +166,7 @@ Mutations **only** via `auth_internal` SECURITY DEFINER RPCs + `public` wrappers
 | Record investigation result | `visits.edit_soap` |
 | Update vital sign `measured_at` | `visits.edit_soap` (existing RPC extended) |
 
-Post-submit edits on `completed` visits remain allowed when permission held (spec FR-017), consistent with 013.
+Post-submit edits on `completed` visits remain allowed when permission held (spec FR-003), consistent with 013.
 
 ---
 
@@ -226,4 +226,4 @@ Retain all 013/V1-5 error codes. No codes removed.
 
 - `visits` status transitions unchanged from V1-5/013; no new lifecycle.
 - Patient safety records persist at patient level across visits; editable any time with permission.
-- Visit-level structured records (`visit_diagnosis_codes`, `visit_plan_details`, investigation results) editable in both `in_progress` and `completed` states with `visits.edit_soap` (FR-017), consistent with 013.
+- Visit-level structured records (`visit_diagnosis_codes`, `visit_plan_details`, investigation results) editable in both `in_progress` and `completed` states with `visits.edit_soap` (FR-003), consistent with 013.

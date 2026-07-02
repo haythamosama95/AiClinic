@@ -195,11 +195,20 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
           ),
         ],
         if (signs.isEmpty && !widget.embeddedInTrackingCard)
-          EncounterFieldEmptyState(
-            key: const Key('vital_sign_empty'),
-            icon: widget.sectionKind.icon,
-            text: 'No vital signs recorded',
-          ),
+          widget.canEdit
+              ? VisitEmptyHint(
+                  key: const Key('vital_sign_empty'),
+                  message: 'Blood pressure, heart rate, temperature, and other measurements for this visit.',
+                  icon: widget.sectionKind.icon,
+                  actionLabel: 'Add vital sign',
+                  onAction: _isSubmitting ? null : () => _openAddDialog(),
+                  actionKey: const Key('vital_sign_add_button'),
+                )
+              : EncounterFieldEmptyState(
+                  key: const Key('vital_sign_empty'),
+                  icon: widget.sectionKind.icon,
+                  text: 'No vital signs recorded',
+                ),
         if (signs.isNotEmpty && _editingVitalSignId == null)
           Wrap(
             spacing: SpacingTokens.sm,
@@ -599,20 +608,26 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
   void initState() {
     super.initState();
     final initial = widget.initialSign;
-    if (initial?.predefinedVitalSignId != null) {
-      _selectedKey = initial!.predefinedVitalSignId!;
+    final initialPredefinedId = initial?.predefinedVitalSignId;
+    final predefinedInCatalog = initialPredefinedId != null &&
+        widget.predefinedVitalSigns.any((item) => item.id == initialPredefinedId);
+
+    if (predefinedInCatalog) {
+      _selectedKey = initialPredefinedId;
+      _customName = TextEditingController(text: '');
     } else if (initial != null) {
       _selectedKey = _customVitalSignKey;
+      _customName = TextEditingController(text: initial.name);
     } else if (widget.initialPredefinedId != null &&
         widget.predefinedVitalSigns.any((item) => item.id == widget.initialPredefinedId)) {
       _selectedKey = widget.initialPredefinedId!;
+      _customName = TextEditingController(text: '');
     } else {
       _selectedKey = widget.predefinedVitalSigns.isNotEmpty
           ? widget.predefinedVitalSigns.first.id
           : _customVitalSignKey;
+      _customName = TextEditingController(text: '');
     }
-
-    _customName = TextEditingController(text: initial?.predefinedVitalSignId == null ? (initial?.name ?? '') : '');
     _value = TextEditingController(text: initial?.value ?? '');
     _unit = TextEditingController(text: initial?.unit ?? _defaultUnitForSelection(_selectedKey));
   }
@@ -650,7 +665,8 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
 
   Future<void> _submit() async {
     final predefined = _selectedPredefined();
-    final name = _isCustom ? _customName.text : (predefined?.name ?? '');
+    final useCustomName = _isCustom || predefined == null;
+    final name = useCustomName ? _customName.text : predefined.name;
     final data = VitalSignFormData(
       name: name,
       value: _value.text,
@@ -680,9 +696,9 @@ class _VitalSignFormViewState extends State<VitalSignFormView> {
                 if (!_isCustom) {
                   _customName.clear();
                   final defaultUnit = _defaultUnitForSelection(key);
-                  if (defaultUnit != null) {
-                    _unit.text = defaultUnit;
-                  }
+                  _unit.text = defaultUnit ?? '';
+                } else {
+                  _unit.clear();
                 }
               });
             },

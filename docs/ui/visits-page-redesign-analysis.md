@@ -37,7 +37,7 @@ Layout: patient card → full-width clinical-note card → a 2-column grid that 
 Grouped by clinical importance. Items marked **(safety)** are the highest-value gaps.
 
 ### 2.1 Patient safety context — currently absent entirely
-- **Allergies / adverse drug reactions (safety).** There is no allergy field anywhere. A prescribing screen with no allergy surface is the single biggest clinical gap. At minimum: substance, reaction, severity. Should be visible as a persistent banner while prescribing.
+- **Allergies / adverse drug reactions (safety).** There is no allergy field anywhere. A prescribing screen with no allergy surface is the single biggest clinical gap. At minimum: substance and reaction. Should be visible as a persistent banner while prescribing.
 - **Current / home medications (medication reconciliation) (safety).** What the patient already takes — needed to reason about interactions and continuation vs. new scripts.
 - **Chronic conditions / problem list (safety).** Diabetes, hypertension, etc. Today this can only live as prose inside "History," so it is neither structured nor reusable across visits.
 

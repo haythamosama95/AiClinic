@@ -40,8 +40,9 @@ class EncounterPhaseObjective extends ConsumerWidget {
       key: const Key('encounter_phase_objective'),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final expandField = isExpertScroll || (constraints.hasBoundedHeight && constraints.maxHeight.isFinite);
-          final mainLayout = expandField
+          final hasBoundedHeight = constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+          final expandField = isExpertScroll || hasBoundedHeight;
+          final mainLayout = hasBoundedHeight && expandField
               ? SizedBox(height: constraints.maxHeight, child: _buildFindingsLayout(expandField: true))
               : _buildFindingsLayout(expandField: false);
 
@@ -53,7 +54,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (expandField) Expanded(child: mainLayout) else mainLayout,
+              if (hasBoundedHeight && expandField) Expanded(child: mainLayout) else mainLayout,
               const SizedBox(height: VisitPageTokens.sectionGap),
               InvestigationResultCaptureList(
                 pendingInvestigations: pendingInvestigations,

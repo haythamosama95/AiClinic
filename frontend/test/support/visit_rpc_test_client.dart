@@ -143,6 +143,28 @@ class VisitRpcTestClient extends RpcCaptureSupabaseClient {
           'created': true,
         },
       },
+      'search_investigations' => {
+        'success': true,
+        'data': {
+          'items': [
+            {'id': 'iiiiiiii-iiii-4iii-8iii-iiiiiiiiiiii', 'name': 'Complete Blood Count'},
+          ],
+        },
+      },
+      'create_catalog_investigation' => {
+        'success': true,
+        'data': {
+          'id': 'iiiiiiii-iiii-4iii-8iii-iiiiiiiiiiii',
+          'name': lastParams?['p_name'] ?? 'Custom investigation',
+          'created': true,
+        },
+      },
+      'create_visit_investigation' => {
+        'success': true,
+        'data': {'investigation_line_id': 'nnnnnnnn-nnnn-4nnn-8nnn-nnnnnnnnnnnn'},
+      },
+      'update_visit_investigation' => {'success': true, 'data': {}},
+      'archive_visit_investigation' => {'success': true, 'data': {}},
       'dev_seed_medications_catalog' => {
         'success': true,
         'data': {

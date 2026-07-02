@@ -18,6 +18,7 @@ DECLARE
   v_detail text;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
   DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
   DELETE FROM public.app_settings WHERE true;
@@ -88,6 +89,7 @@ DECLARE
   v_detail text;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
   DELETE FROM public.audit_log WHERE organization_id IS NOT NULL;
   DELETE FROM public.app_settings WHERE true;
@@ -153,6 +155,7 @@ DECLARE
   v_passed boolean;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('app.environment', 'development', true);
 
   INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
   VALUES (
@@ -212,6 +215,7 @@ DECLARE
   v_passed boolean;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('app.environment', 'development', true);
   PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
   DELETE FROM public.audit_log WHERE true;
   DELETE FROM public.app_settings WHERE true;

@@ -18,6 +18,21 @@ class VisitVitalSign {
   final String? unit;
   final String? predefinedVitalSignId;
 
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is VisitVitalSign &&
+            runtimeType == other.runtimeType &&
+            id == other.id &&
+            name == other.name &&
+            value == other.value &&
+            unit == other.unit &&
+            predefinedVitalSignId == other.predefinedVitalSignId;
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, value, unit, predefinedVitalSignId);
+
   static VisitVitalSign? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
     final name = row['name']?.toString().trim();

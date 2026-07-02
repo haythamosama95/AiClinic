@@ -36,7 +36,7 @@ class InvestigationResultCaptureList extends ConsumerStatefulWidget {
 
 class _InvestigationResultCaptureListState extends ConsumerState<InvestigationResultCaptureList> {
   String? _editingInvestigationId;
-  bool _isSubmitting = false;
+  String? _submittingInvestigationId;
   String? _errorMessage;
 
   @override
@@ -64,7 +64,7 @@ class _InvestigationResultCaptureListState extends ConsumerState<InvestigationRe
                   ? _InvestigationResultForm(
                       key: Key('investigation_result_form_${investigation.id}'),
                       investigation: investigation,
-                      isSubmitting: _isSubmitting,
+                      isSubmitting: _submittingInvestigationId == investigation.id,
                       onSubmit: (result) => _saveResult(investigation, result),
                       onCancel: () => setState(() => _editingInvestigationId = null),
                     )
@@ -85,40 +85,54 @@ class _InvestigationResultCaptureListState extends ConsumerState<InvestigationRe
   }
 
   Future<void> _saveResult(VisitInvestigation investigation, String result) async {
+    final investigationId = investigation.id;
     setState(() {
-      _isSubmitting = true;
+      _submittingInvestigationId = investigationId;
       _errorMessage = null;
     });
 
     try {
-      if (widget.deferPersistence && widget.visitId != null) {
+      if (widget.deferPersistence) {
+        final visitId = widget.visitId;
+        assert(visitId != null, 'deferPersistence requires visitId');
+        if (visitId == null) {
+          throw StateError('deferPersistence requires visitId');
+        }
         await visitEncounterPersistence(
           ref,
-          visitId: widget.visitId!,
+          visitId: visitId,
           deferPersistence: true,
-        ).recordInvestigationResult(investigationLineId: investigation.id, result: result.trim());
+        ).recordInvestigationResult(investigationLineId: investigationId, result: result.trim());
       } else {
         await ref
             .read(visitRepositoryProvider)
-            .recordInvestigationResult(investigationLineId: investigation.id, result: result.trim());
+            .recordInvestigationResult(investigationLineId: investigationId, result: result.trim());
       }
       if (!mounted) return;
       setState(() {
-        _isSubmitting = false;
-        _editingInvestigationId = null;
+        if (_submittingInvestigationId == investigationId) {
+          _submittingInvestigationId = null;
+        }
+        if (_editingInvestigationId == investigationId) {
+          _editingInvestigationId = null;
+        }
       });
       widget.onChanged();
     } on RpcFailure catch (e) {
       if (mounted) {
         setState(() {
-          _isSubmitting = false;
+          if (_submittingInvestigationId == investigationId) {
+            _submittingInvestigationId = null;
+          }
           _errorMessage = visitMessageForRpc(e);
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _isSubmitting = false;
+          if (_submittingInvestigationId == investigationId) {
+            _submittingInvestigationId = null;
+          }
           _errorMessage = e.toString();
         });
       }
@@ -210,10 +224,16 @@ class _InvestigationResultFormState extends State<_InvestigationResultForm> {
   void initState() {
     super.initState();
     _result = TextEditingController(text: widget.investigation.result ?? '');
+    _result.addListener(_onResultChanged);
+  }
+
+  void _onResultChanged() {
+    setState(() {});
   }
 
   @override
   void dispose() {
+    _result.removeListener(_onResultChanged);
     _result.dispose();
     super.dispose();
   }

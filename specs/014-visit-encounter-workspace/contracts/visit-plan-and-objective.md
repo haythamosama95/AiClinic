@@ -9,7 +9,7 @@ Structured Plan-phase outputs (1:1 with visit) and Objective-phase enrichments (
 | Parameter | Type | Required |
 | --------- | ---- | -------- |
 | `p_visit_id` | uuid | Yes |
-| `p_expected_updated_at` | timestamptz | Yes (null on first save when no row exists → use visit `updated_at`, mirroring `save_visit_documentation`) |
+| `p_expected_updated_at` | timestamptz | Yes — always pass a timestamp (never omit or send SQL `null`; `INVALID_INPUT` if null). On first save when no `visit_plan_details` row exists, pass the visit's `updated_at` from `get_visit` (same as `save_visit_documentation`). On later saves, pass the plan row's `updated_at` from the prior load or save response. |
 | `p_follow_up_interval` | text | No (≤100) |
 | `p_follow_up_date` | date | No |
 | `p_patient_instructions` | text | No (≤10000) |

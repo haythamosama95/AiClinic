@@ -31,6 +31,43 @@ class SqlFixtureHelper {
     }
   }
 
+  /// Ensures local PostgREST sessions see `app.environment=development` for dev_reset RPCs.
+  ///
+  /// Idempotent; safe to call before every boundary campaign on localhost only.
+  Future<void> ensureLocalDevelopmentEnvironment() async {
+    if (host != '127.0.0.1' && host != 'localhost') {
+      throw StateError('Refusing to configure app.environment on non-local host: $host');
+    }
+
+    await execute(r'''
+CREATE OR REPLACE FUNCTION public.local_dev_pre_request()
+RETURNS void
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public
+AS $fn$
+  SELECT set_config('app.environment', 'development', true);
+$fn$;
+
+REVOKE ALL ON FUNCTION public.local_dev_pre_request() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.local_dev_pre_request() TO authenticator, anon, authenticated, service_role;
+''');
+
+    await execute(r'''
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticator') THEN
+    EXECUTE format(
+      'ALTER ROLE authenticator SET pgrst.db_pre_request TO %L',
+      'public.local_dev_pre_request'
+    );
+    PERFORM pg_notify('pgrst', 'reload config');
+  END IF;
+END
+$do$;
+''');
+  }
+
   /// Verifies dev_reset is FORBIDDEN when app.environment=production (same session as RPC).
   Future<void> expectDevResetForbiddenInProduction() async {
     await execute(r'''

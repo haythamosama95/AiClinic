@@ -37,7 +37,7 @@ class CatalogCreateResult {
       return null;
     }
     final id = data['id']?.toString();
-    final name = data['name']?.toString();
+    final name = data['name']?.toString().trim();
     if (id == null || id.isEmpty || name == null || name.isEmpty) {
       return null;
     }

@@ -840,7 +840,12 @@ BEGIN
   INSERT INTO visit_crud_results VALUES (
     'search_medications_prefix',
     v_result.success
-      AND jsonb_array_length(COALESCE(v_result.data -> 'items', '[]'::jsonb)) >= 1,
+      AND jsonb_array_length(COALESCE(v_result.data -> 'items', '[]'::jsonb)) >= 1
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(COALESCE(v_result.data -> 'items', '[]'::jsonb)) elem
+        WHERE elem ->> 'name' = 'Searchable Med'
+      ),
     'count=' || COALESCE(jsonb_array_length(COALESCE(v_result.data -> 'items', '[]'::jsonb))::text, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

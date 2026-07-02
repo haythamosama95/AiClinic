@@ -32,10 +32,15 @@ bool visitHasPersistableDocumentation(VisitDocumentationState state) {
     return true;
   }
 
-  return visit.vitalSigns.isNotEmpty ||
+  if (visit.vitalSigns.isNotEmpty ||
       visit.investigations.isNotEmpty ||
       visit.treatmentPlans.isNotEmpty ||
-      visit.attachments.isNotEmpty;
+      visit.attachments.isNotEmpty) {
+    return true;
+  }
+
+  return visit.pendingInvestigations.any((investigation) => investigation.hasResult) ||
+      state.encounterDraft.investigationResults.values.any((result) => result.trim().isNotEmpty);
 }
 
 bool _clinicalNoteSectionHasContent(VisitDocumentationState state, ClinicalNoteSection section, String value) {

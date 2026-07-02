@@ -95,9 +95,9 @@ class EncounterReview extends ConsumerWidget {
                 const SizedBox(height: SpacingTokens.sm),
                 InvestigationResultCaptureList(
                   pendingInvestigations: effectiveVisit.pendingInvestigations,
-                  canEdit: canEdit,
+                  canEdit: canEdit && onRefresh != null,
                   visitId: visitId,
-                  deferPersistence: canEdit,
+                  deferPersistence: canEdit && onRefresh != null,
                   onChanged: onRefresh ?? () {},
                 ),
               ],

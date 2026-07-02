@@ -21,7 +21,7 @@ class _AppPageFadeTransitionState extends State<AppPageFadeTransition> with Sing
   late final AnimationController _controller;
   late final Animation<double> _opacity;
   late int _visibleIndex;
-  int? _queuedIndex;
+  late int _requestedIndex;
   var _isTransitioning = false;
 
   static const _curve = Curves.easeInOut;
@@ -30,6 +30,7 @@ class _AppPageFadeTransitionState extends State<AppPageFadeTransition> with Sing
   void initState() {
     super.initState();
     _visibleIndex = widget.index;
+    _requestedIndex = widget.index;
     _controller = AnimationController(vsync: this, duration: widget.duration);
     _opacity = CurvedAnimation(parent: _controller, curve: _curve);
     _controller.value = 1;
@@ -41,25 +42,30 @@ class _AppPageFadeTransitionState extends State<AppPageFadeTransition> with Sing
     if (widget.duration != oldWidget.duration) {
       _controller.duration = widget.duration;
     }
-    if (widget.index != _visibleIndex && widget.index != _queuedIndex) {
-      _queueTransition(widget.index);
+    if (widget.index != _requestedIndex) {
+      _requestedIndex = widget.index;
+      _scheduleTransitionToRequested();
     }
   }
 
-  void _queueTransition(int targetIndex) {
-    if (_isTransitioning) {
-      _queuedIndex = targetIndex;
+  void _scheduleTransitionToRequested() {
+    if (_isTransitioning || _visibleIndex == _requestedIndex) {
       return;
     }
-    _runTransition(targetIndex);
+    _runTransition(_requestedIndex);
   }
 
   Future<void> _runTransition(int targetIndex) async {
-    _isTransitioning = true;
-    _queuedIndex = null;
+    setState(() => _isTransitioning = true);
 
     await _controller.reverse();
     if (!mounted) {
+      return;
+    }
+
+    if (_requestedIndex != targetIndex) {
+      setState(() => _isTransitioning = false);
+      _scheduleTransitionToRequested();
       return;
     }
 
@@ -70,11 +76,10 @@ class _AppPageFadeTransitionState extends State<AppPageFadeTransition> with Sing
       return;
     }
 
-    _isTransitioning = false;
+    setState(() => _isTransitioning = false);
 
-    final queued = _queuedIndex;
-    if (queued != null && queued != _visibleIndex) {
-      _queueTransition(queued);
+    if (_visibleIndex != _requestedIndex) {
+      _scheduleTransitionToRequested();
     }
   }
 

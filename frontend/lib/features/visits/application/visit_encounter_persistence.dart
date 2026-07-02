@@ -92,6 +92,7 @@ class VisitEncounterPersistence {
     String? name,
     String? note,
     String? investigationId,
+    bool updateInvestigationId = false,
   }) async {
     if (deferPersistence) {
       _notifier.stageUpdateInvestigation(
@@ -99,6 +100,7 @@ class VisitEncounterPersistence {
         name: name,
         note: note,
         investigationId: investigationId,
+        updateInvestigationId: updateInvestigationId,
       );
       return;
     }
@@ -109,6 +111,7 @@ class VisitEncounterPersistence {
           name: name,
           note: note,
           investigationId: investigationId,
+          updateInvestigationId: updateInvestigationId,
         );
   }
 

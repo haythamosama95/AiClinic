@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,7 +35,16 @@ final workspaceModeProvider = NotifierProvider<WorkspaceModeNotifier, WorkspaceM
 class WorkspaceModeNotifier extends Notifier<WorkspaceMode> {
   @override
   WorkspaceMode build() {
-    _loadPersistedMode();
+    ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+      final prevStaff = previous?.context?.staffProfile.staffMemberId;
+      final nextStaff = next.context?.staffProfile.staffMemberId;
+      if (prevStaff != nextStaff) {
+        state = WorkspaceMode.guided;
+        unawaited(_loadPersistedMode());
+      }
+    });
+    ref.watch(authSessionProvider);
+    Future.microtask(_loadPersistedMode);
     return WorkspaceMode.guided;
   }
 

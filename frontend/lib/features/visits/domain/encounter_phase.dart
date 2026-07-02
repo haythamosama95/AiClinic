@@ -17,7 +17,7 @@ enum EncounterPhase {
   /// All navigable phases including the read-only Summary view.
   static const ordered = <EncounterPhase>[subjective, objective, plan, review];
 
-  bool get isDocumentation => index <= plan.index;
+  bool get isDocumentation => documentationPhases.contains(this);
 
   String get label => switch (this) {
     context => 'Background',
@@ -43,20 +43,39 @@ enum EncounterPhase {
     review => Icons.summarize_outlined,
   };
 
-  /// Index within [stepperPhases]; [review] returns [stepperPhases.length] (all steps complete).
-  int get stepperIndex => this == review ? stepperPhases.length : stepperPhases.indexOf(this);
+  bool get _isInStepper => stepperPhases.contains(this);
+
+  /// Index within [stepperPhases]; [review] and excluded phases return [stepperPhases.length].
+  int get stepperIndex {
+    if (this == review || !_isInStepper) {
+      return stepperPhases.length;
+    }
+    return stepperPhases.indexOf(this);
+  }
 
   int get orderIndex => stepperIndex;
 
-  EncounterPhase? get next => switch (this) {
-    plan || review => null,
-    _ => stepperPhases[stepperIndex + 1],
-  };
+  EncounterPhase? get next {
+    if (this == EncounterPhase.plan || this == EncounterPhase.review || !_isInStepper) {
+      return null;
+    }
+    final idx = stepperIndex;
+    if (idx >= stepperPhases.length - 1) {
+      return null;
+    }
+    return stepperPhases[idx + 1];
+  }
 
-  EncounterPhase? get previous => switch (this) {
-    subjective || review => null,
-    _ => stepperPhases[stepperIndex - 1],
-  };
+  EncounterPhase? get previous {
+    if (this == EncounterPhase.subjective || this == EncounterPhase.review || !_isInStepper) {
+      return null;
+    }
+    final idx = stepperIndex;
+    if (idx <= 0) {
+      return null;
+    }
+    return stepperPhases[idx - 1];
+  }
 }
 
 /// Client-derived step badge state for the guided workspace (014 US4).

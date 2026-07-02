@@ -324,6 +324,7 @@ class VisitRepository with AppRpcInvoker {
     String? name,
     String? note,
     String? investigationId,
+    bool updateInvestigationId = false,
   }) async {
     _assertNonEmpty('investigationLineId', investigationLineId);
 
@@ -331,7 +332,9 @@ class VisitRepository with AppRpcInvoker {
       'p_investigation_line_id': investigationLineId.trim(),
       'p_name': ?name,
       'p_note': ?note,
-      if (investigationId != null) 'p_investigation_id': investigationId.trim().isEmpty ? null : investigationId.trim(),
+      if (updateInvestigationId && investigationId != null)
+        'p_investigation_id': investigationId.trim().isEmpty ? null : investigationId.trim(),
+      if (updateInvestigationId && investigationId == null) 'p_clear_investigation_id': true,
     });
   }
 

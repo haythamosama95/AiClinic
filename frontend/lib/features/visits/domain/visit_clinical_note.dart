@@ -48,5 +48,21 @@ class VisitClinicalNote {
   bool get hasContent =>
       _hasText(complaint) || _hasText(history) || _hasText(examination) || _hasText(diagnosis) || _hasText(plan);
 
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is VisitClinicalNote &&
+            runtimeType == other.runtimeType &&
+            complaint == other.complaint &&
+            history == other.history &&
+            examination == other.examination &&
+            diagnosis == other.diagnosis &&
+            plan == other.plan &&
+            updatedAt == other.updatedAt;
+  }
+
+  @override
+  int get hashCode => Object.hash(complaint, history, examination, diagnosis, plan, updatedAt);
+
   static bool _hasText(String? value) => value != null && value.trim().isNotEmpty;
 }

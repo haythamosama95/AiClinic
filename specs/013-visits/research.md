@@ -18,7 +18,7 @@ Decisions for Phase 0 unknowns. No `NEEDS CLARIFICATION` items remain after spec
 
 ## R2 — Catalog scope and search
 
-**Decision**: Organization-scoped catalogs (`medications`, `investigations`, `predefined_vital_signs`) with `UNIQUE (organization_id, lower(name)) WHERE is_deleted = false`. Search via `search_medications` / `search_investigations` RPC with `ilike` prefix/substring match, `LIMIT 20`, ordered by name.
+**Decision**: Organization-scoped catalogs (`medications`, `investigations`, `predefined_vital_signs`) with `UNIQUE (organization_id, lower(trim(name))) WHERE is_deleted = false`. Search via `search_medications` / `search_investigations` RPC with `ilike` prefix/substring match, `LIMIT 20`, ordered by name.
 
 **Rationale**: Spec clarifications: catalogs shared across branches in an org; fast typing search; matches existing multi-tenant patterns.
 

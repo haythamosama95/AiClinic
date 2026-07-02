@@ -113,7 +113,7 @@ class _ReadOnlyVisitDetailPage extends StatelessWidget {
         canEdit: false,
         hasEditPermission: view.canEditDocumentation,
         hasBranchAccess: view.hasBranchAccess,
-        canUploadAttachments: false,
+        canUploadAttachments: view.canUploadAttachments,
         onRefresh: () {},
         onBack: onBack,
         onEditDocumentation: view.canEditDocumentation

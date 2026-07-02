@@ -356,7 +356,7 @@ class _VisitDocumentationBody extends ConsumerWidget {
             visitId: visitId,
             state: state,
             canEdit: canEditWorkspace,
-            canUploadAttachments: canUploadAttachments,
+            canUploadAttachments: canUploadAttachments && hasBranchAccess,
             onRefresh: canEditWorkspace
                 ? () {}
                 : () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),

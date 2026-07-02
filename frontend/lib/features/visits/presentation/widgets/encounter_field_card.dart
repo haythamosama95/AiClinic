@@ -187,14 +187,14 @@ class EncounterDetailText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.visitTheme;
-    final isEmpty = value.trim().isEmpty;
 
-    if (!isEmpty && !richDeltaIsEffectivelyEmpty(richDelta)) {
+    if (!richDeltaIsEffectivelyEmpty(richDelta)) {
       return AppRichTextDisplay(plainText: value, deltaJson: richDelta, textStyle: theme.body());
     }
 
-    if (!isEmpty) {
-      return Text(value.trim(), style: theme.body());
+    final trimmed = value.trim();
+    if (trimmed.isNotEmpty) {
+      return Text(trimmed, style: theme.body());
     }
 
     return EncounterFieldEmptyState(icon: emptyStateIcon, text: emptyStateText ?? 'Nothing recorded', expand: expand);

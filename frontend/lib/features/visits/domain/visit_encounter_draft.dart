@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/domain/patient_safety.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
@@ -13,7 +15,14 @@ const visitDraftIdPrefix = 'draft:';
 
 bool isVisitDraftId(String id) => id.startsWith(visitDraftIdPrefix);
 
-String newVisitDraftId() => '$visitDraftIdPrefix${DateTime.now().microsecondsSinceEpoch}';
+int _visitDraftIdCounter = 0;
+final _visitDraftIdRandom = Random();
+
+String newVisitDraftId() {
+  final counter = _visitDraftIdCounter++;
+  final entropy = _visitDraftIdRandom.nextInt(0xFFFFFF);
+  return '$visitDraftIdPrefix${DateTime.now().microsecondsSinceEpoch}_${entropy}_$counter';
+}
 
 /// Attachment bytes staged locally until visit submit.
 @immutable
@@ -216,7 +225,8 @@ class VisitEncounterDraft {
   List<VisitInvestigation> _mergePendingInvestigations(List<VisitInvestigation> base) {
     return [
       for (final investigation in base)
-        _withInvestigationResult(investigationUpdates[investigation.id] ?? investigation),
+        if (!archivedInvestigationIds.contains(investigation.id))
+          _withInvestigationResult(investigationUpdates[investigation.id] ?? investigation),
     ];
   }
 

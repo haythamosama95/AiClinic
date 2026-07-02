@@ -43,14 +43,16 @@ abstract final class EncounterJoinedHeaderPath {
     final radius = borderRadius.clamp(0.0, width / 2).clamp(0.0, height / 2).toDouble();
     final fillet = filletRadius.clamp(0.0, stepperDepth / 2).toDouble();
     final headerH = headerHeight.clamp(0.0, height).toDouble();
+    final minWallInset = fillet * 2;
+    final maxWallInset = math.max(minWallInset, (width - fillet * 2) / 2);
     final wallInset = resolvedWallInset(
       stepperDepth: stepperDepth,
       stepperInset: stepperInset,
       filletRadius: filletRadius,
-    ).clamp(fillet * 2, (width - fillet * 2) / 2).toDouble();
+    ).clamp(minWallInset, maxWallInset).toDouble();
     final stepperLeft = wallInset;
     final stepperRight = width - wallInset;
-    final stepperWidth = stepperRight - stepperLeft;
+    final stepperWidth = math.max(0.0, stepperRight - stepperLeft);
     final stepperBottomRadius = radius.clamp(0.0, math.min(stepperWidth / 2, stepperDepth / 2)).toDouble();
     final shelfSpan = shoulderShelfSpan.clamp(0.0, double.infinity);
 

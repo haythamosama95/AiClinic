@@ -366,8 +366,30 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
           ?.encounterDraft
           .pendingAttachmentBytes(attachment.id);
       if (bytes == null) return;
-      final preferredName = attachment.label?.trim().isNotEmpty == true ? attachment.label : 'attachment';
-      await openVisitAttachmentBytes(bytes: bytes, fileType: attachment.fileType, preferredName: preferredName);
+
+      setState(() {
+        _downloadingAttachmentId = attachment.id;
+        _errorMessage = null;
+      });
+
+      try {
+        final filename = attachment.label?.trim().isNotEmpty == true ? attachment.label!.trim() : 'attachment';
+        if (widget.openDownloadedAttachment != null) {
+          await widget.openDownloadedAttachment!(attachment, filename, bytes);
+        } else {
+          await openVisitAttachmentBytes(bytes: bytes, fileType: attachment.fileType, preferredName: filename);
+        }
+      } on RpcFailure catch (error) {
+        if (!mounted) return;
+        setState(() => _errorMessage = visitMessageForRpc(error));
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _errorMessage = visitMessageForOpenError(error));
+      } finally {
+        if (mounted) {
+          setState(() => _downloadingAttachmentId = null);
+        }
+      }
       return;
     }
 
@@ -435,7 +457,7 @@ class _VisitAttachmentListState extends ConsumerState<VisitAttachmentList> {
       setState(() => _errorMessage = visitMessageForRpc(error));
     } catch (error) {
       if (!mounted) return;
-      setState(() => _errorMessage = error.toString());
+      setState(() => _errorMessage = visitMessageForDeleteError(error));
     } finally {
       if (mounted) {
         setState(() => _deletingAttachmentId = null);
@@ -480,27 +502,30 @@ class _SummaryAttachmentRow extends StatelessWidget {
     final canOpen = attachment.canDownload && !isOpening;
     final textStyle = theme.body(color: attachment.canDownload ? theme.pulse : null);
 
-    final content = GestureDetector(
-      onTap: canOpen ? onOpen : null,
-      behavior: HitTestBehavior.opaque,
-      child: MouseRegion(
-        cursor: canOpen ? SystemMouseCursors.click : MouseCursor.defer,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (isOpening) ...[
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: AppCircularProgress(key: Key('visit_attachment_open_progress')),
-              ),
-              const SizedBox(width: SpacingTokens.xs),
-            ],
-            Expanded(
-              child: Text(title, key: Key('visit_attachment_row_${attachment.id}'), style: textStyle),
+    final content = TextButton(
+      onPressed: canOpen ? onOpen : null,
+      style: TextButton.styleFrom(
+        padding: EdgeInsets.zero,
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        alignment: Alignment.centerLeft,
+        foregroundColor: attachment.canDownload ? theme.pulse : null,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isOpening) ...[
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: AppCircularProgress(key: Key('visit_attachment_open_progress')),
             ),
+            const SizedBox(width: SpacingTokens.xs),
           ],
-        ),
+          Expanded(
+            child: Text(title, key: Key('visit_attachment_row_${attachment.id}'), style: textStyle),
+          ),
+        ],
       ),
     );
 

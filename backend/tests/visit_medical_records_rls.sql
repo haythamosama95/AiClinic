@@ -35,6 +35,8 @@ DECLARE
   v_visit_b uuid := 'f2500000-0000-4000-8000-00000000bb01';
   v_attachment_owner uuid := 'f2500000-0000-4000-8000-000000000a01';
   v_attachment_lab uuid := 'f2500000-0000-4000-8000-000000000a02';
+  v_clinical_note_a uuid := 'a2500000-0000-4000-8000-000000000c01';
+  v_medication_a uuid := 'a2500000-0000-4000-8000-000000000d01';
   v_file_owner text;
   v_file_lab text;
   v_result public.rpc_result;
@@ -332,6 +334,31 @@ BEGIN
   );
 
   -- Cross-org denial for new documentation tables (direct SELECT).
+  PERFORM set_config('role', 'postgres', true);
+
+  INSERT INTO public.visit_clinical_notes (
+    id, visit_id, complaint, created_by, updated_by
+  )
+  VALUES (
+    v_clinical_note_a,
+    v_visit_a,
+    'Org A clinical note',
+    v_user_a,
+    v_user_a
+  );
+
+  INSERT INTO public.medications (
+    id, organization_id, name, created_by, updated_by
+  )
+  VALUES (
+    v_medication_a,
+    v_org_a,
+    'Org A Medication',
+    v_user_a,
+    v_user_a
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object(
@@ -353,7 +380,21 @@ BEGIN
     v_visible_count = 0,
     'count=' || v_visible_count::text
   );
+
   PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_user_b::text,
+      'role', 'authenticated',
+      'organization_id', v_org_b::text,
+      'branch_ids', v_branch_b::text,
+      'staff_member_id', v_staff_b::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
 
   SELECT count(*)::int
   INTO v_visible_count

@@ -404,13 +404,9 @@ flowchart TB
 - Deferred persistence: no automated test for navigate-away data loss, partial flush failure, or draft-id collision under rapid create/archive
 - `prepareEncounterReview` + Quill flush: no test that unsubmitted rich-text-only content is reflected in submit readiness
 - Patient-safety-only submit: no integration test exposing FE/BE readiness mismatch
-- Joined header layout: only `encounter_joined_header_path_test.dart` (path geometry); no narrow-width widget regression
-- Completed-visit edit mode: no widget test for `startInEditMode` route param end-to-end
-- Attachment deferred upload: no test for large file staged until submit
 - Concurrent sessions: stale `expectedUpdatedAt` on completed-visit re-edit not widget-tested
 - Backend: CRUD tests run as `postgres` superuser — PostgREST grant enforcement not covered in encounter suite
 - Investigation result on prior visit: limited coverage in frontend tests
-- No E2E test for full guided visit: document → summary → submit → appointment completed
 
 ### Potential bugs
 
@@ -899,7 +895,7 @@ flowchart TB
 
 ---
 
-#### BE-003 — `visit_has_documentation` counts vitals only
+#### BE-003 — `visit_has_documentation` accepts any visit-level documentation
 
 | Field | Value |
 | ----- | ----- |
@@ -907,13 +903,29 @@ flowchart TB
 | **Related commit** | `e465c20` |
 | **Priority** | Critical |
 | **Type** | Backend |
-| **Preconditions** | Visit with single vital sign, empty note |
+| **Preconditions** | See scenarios below |
+
+**Scenario A — vital sign only**
+
+| Preconditions | Visit with single vital sign, empty clinical note |
+| ------------- | ------------------------------------------------- |
 
 **Steps:**
 
 1. Complete visit via RPC.
 
 **Expected result:** Success — vital alone satisfies documentation requirement.
+
+**Scenario B — non-vital documentation only**
+
+| Preconditions | Visit with complaint text in clinical note, no vitals/investigations/plans/attachments |
+| ------------- | ------------------------------------------------------------------------------------ |
+
+**Steps:**
+
+1. Complete visit via RPC.
+
+**Expected result:** Success — clinical note complaint alone satisfies documentation requirement.
 
 ---
 
@@ -1546,14 +1558,13 @@ flutter test test/unit/visits/app_routes_visits_test.dart
 cd backend
 ./tests/run_visit_medical_records_tests.sh
 
-# Backend — individual encounter workspace suites
+# Backend — individual encounter workspace suites (from backend/)
 psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -v ON_ERROR_STOP=1 \
-  -f backend/tests/visit_encounter_workspace_crud.sql
+  -f tests/visit_encounter_workspace_crud.sql
 psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -v ON_ERROR_STOP=1 \
-  -f backend/tests/visit_encounter_workspace_rls.sql
+  -f tests/visit_encounter_workspace_rls.sql
 
 # Apply migrations (dev only)
-cd backend
 supabase db reset
 ```
 

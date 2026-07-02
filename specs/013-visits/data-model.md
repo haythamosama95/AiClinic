@@ -186,7 +186,7 @@ Remove: `visit.soap_save`
 | ---- | ------- |
 | `STALE_DOCUMENTATION` | Optimistic concurrency conflict on clinical note |
 | `DOCUMENTATION_REQUIRED_FOR_COMPLETE` | All five clinical sections empty on submit |
-| `CATALOG_DUPLICATE` | Save-to-catalog name already exists (return existing id or error — implement as success with existing id) |
+| `CATALOG_DUPLICATE` | _(Not returned)_ Idempotent duplicate catalog names are a successful RPC result (`success: true`) with the existing catalog id and `created: false`; clients should not treat this as an error |
 | `DURATION_REQUIRED` | Treatment missing duration |
 
 Retain all V1-5 visit/attachment error codes not listed above as removed.

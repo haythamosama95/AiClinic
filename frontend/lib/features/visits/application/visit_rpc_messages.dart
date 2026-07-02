@@ -63,6 +63,14 @@ String visitMessageForOpenError(Object error) {
   return visitMessageForDownloadError(error);
 }
 
+/// User-facing copy for visit attachment delete failures (V1-5).
+String visitMessageForDeleteError(Object error) {
+  if (error is RpcFailure) {
+    return visitMessageForRpc(error);
+  }
+  return 'Could not delete the attachment. Please try again.';
+}
+
 /// User-facing copy for visit RPC failures (V1-5).
 String visitMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {

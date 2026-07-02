@@ -16,6 +16,9 @@ class VisitAttachmentOpenException implements Exception {
   String toString() => message;
 }
 
+const _attachmentTempSubfolder = 'visit_attachments';
+const _staleAttachmentFileAge = Duration(hours: 24);
+
 /// Writes [bytes] to a temporary file and opens it with the platform default app.
 Future<void> openVisitAttachmentBytes({
   required Uint8List bytes,
@@ -23,10 +26,17 @@ Future<void> openVisitAttachmentBytes({
   String? preferredName,
 }) async {
   final directory = await getTemporaryDirectory();
+  final attachmentDir = Directory('${directory.path}/$_attachmentTempSubfolder');
+  if (!await attachmentDir.exists()) {
+    await attachmentDir.create(recursive: true);
+  }
+
+  await _cleanupStaleAttachmentFiles(attachmentDir);
+
   final extension = _openExtension(fileType);
   final baseName = _sanitizeFilename(preferredName) ?? 'attachment';
   final filename = baseName.toLowerCase().endsWith('.$extension') ? baseName : '$baseName.$extension';
-  final path = '${directory.path}/${DateTime.now().microsecondsSinceEpoch}_$filename';
+  final path = '${attachmentDir.path}/${DateTime.now().microsecondsSinceEpoch}_$filename';
 
   final file = File(path);
   await file.writeAsBytes(bytes, flush: true);
@@ -37,6 +47,25 @@ Future<void> openVisitAttachmentBytes({
     throw VisitAttachmentOpenException(
       message.isNotEmpty ? message : 'Could not open the attachment with the default application.',
     );
+  }
+}
+
+Future<void> _cleanupStaleAttachmentFiles(Directory directory) async {
+  final cutoff = DateTime.now().subtract(_staleAttachmentFileAge);
+
+  await for (final entity in directory.list(followLinks: false)) {
+    if (entity is! File) {
+      continue;
+    }
+
+    try {
+      final modified = await entity.lastModified();
+      if (modified.isBefore(cutoff)) {
+        await entity.delete();
+      }
+    } on FileSystemException {
+      // Best-effort cleanup; ignore files that were removed concurrently.
+    }
   }
 }
 

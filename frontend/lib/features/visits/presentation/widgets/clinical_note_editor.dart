@@ -87,6 +87,7 @@ class ClinicalNoteEditor extends ConsumerWidget {
       );
     }
     return _EditableClinicalNote(
+      key: ValueKey(visitId),
       visitId: visitId,
       state: state,
       sections: _visibleSections,
@@ -117,6 +118,7 @@ class _EditableClinicalNote extends ConsumerStatefulWidget {
     this.toolbarLeading,
     this.emptyStateIcon,
     this.emptyStateText,
+    super.key,
   });
 
   final String visitId;
@@ -153,7 +155,7 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
     };
     if (widget.useRichTextParagraph) {
       _quillControllers = {
-        for (final section in widget.sections)
+        for (final section in ClinicalNoteSection.values)
           section: _quillFromDraft(widget.state.richTextDrafts[section], _textForSection(widget.state, section)),
       };
     }
@@ -173,9 +175,32 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
   @override
   void didUpdateWidget(covariant _EditableClinicalNote oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.visitId != widget.visitId) {
+      _documentationNotifier?.unregisterClinicalNoteFlush(_flushToNotifier);
+      _documentationNotifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
+      _documentationNotifier!.registerClinicalNoteFlush(_flushToNotifier);
+    }
     if (oldWidget.state.saveStatus == DocumentationSaveStatus.stale &&
         widget.state.saveStatus != DocumentationSaveStatus.stale) {
       _syncControllersFromState(widget.state);
+    }
+    if (oldWidget.sections != widget.sections ||
+        oldWidget.useRichTextParagraph != widget.useRichTextParagraph) {
+      _rebuildQuillControllers();
+    }
+  }
+
+  void _rebuildQuillControllers() {
+    for (final controller in _quillControllers?.values ?? const <QuillController>[]) {
+      controller.dispose();
+    }
+    if (widget.useRichTextParagraph) {
+      _quillControllers = {
+        for (final section in ClinicalNoteSection.values)
+          section: _quillFromDraft(widget.state.richTextDrafts[section], _textForSection(widget.state, section)),
+      };
+    } else {
+      _quillControllers = null;
     }
   }
 
@@ -479,6 +504,30 @@ class _ReadOnlySection extends StatelessWidget {
       );
     }
 
+    if (!richDeltaIsEffectivelyEmpty(richDelta)) {
+      final theme = context.visitTheme;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: SpacingTokens.md),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            VisitMarginAbbr(letter: abbr),
+            const SizedBox(width: SpacingTokens.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label.toUpperCase(), style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2)),
+                  const SizedBox(height: SpacingTokens.xs + 1),
+                  AppRichTextDisplay(plainText: value, deltaJson: richDelta, textStyle: theme.body()),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return VisitDetailField(label: label, value: value, abbr: abbr);
   }
 }
@@ -580,13 +629,16 @@ class _ClinicalNoteField extends StatelessWidget {
                   children: [
                     Text(label.toUpperCase(), style: theme.eyebrow(size: 10).copyWith(letterSpacing: 1.2)),
                     const SizedBox(height: SpacingTokens.xs + 1),
-                    VisitTextInput(
-                      controller: controller,
-                      enabled: enabled,
-                      minLines: 3,
-                      maxLines: 8,
-                      onChanged: (value) => onChanged(value, null),
-                    ),
+                    if (useRichTextParagraph && quillController != null)
+                      _richParagraphField(fitParent: false)
+                    else
+                      VisitTextInput(
+                        controller: controller,
+                        enabled: enabled,
+                        minLines: 3,
+                        maxLines: 8,
+                        onChanged: (value) => onChanged(value, null),
+                      ),
                   ],
                 ),
               ),

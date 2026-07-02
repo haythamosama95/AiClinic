@@ -353,6 +353,8 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
       }
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
+    } catch (_) {
+      if (mounted) AppToast.error(context, message: 'Could not remove allergy. Please try again.');
     }
   }
 
@@ -369,6 +371,8 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
       }
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
+    } catch (_) {
+      if (mounted) AppToast.error(context, message: 'Could not remove medication. Please try again.');
     }
   }
 
@@ -385,6 +389,8 @@ class _HealthProfileBodyState extends ConsumerState<_HealthProfileBody> {
       }
     } on RpcFailure catch (e) {
       if (mounted) AppToast.error(context, message: visitMessageForRpc(e));
+    } catch (_) {
+      if (mounted) AppToast.error(context, message: 'Could not remove condition. Please try again.');
     }
   }
 

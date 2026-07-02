@@ -329,10 +329,10 @@ class _TreatmentPlanListState extends ConsumerState<TreatmentPlanList> {
   Future<void> _maybeSaveCustomToCatalog({required String normalizedName}) async {
     if (!mounted) return;
 
-    final save = await SaveToCatalogDialog.show(context, normalizedName: normalizedName, itemTypeLabel: 'medication');
-    if (save != true || !mounted) return;
-
     try {
+      final save = await SaveToCatalogDialog.show(context, normalizedName: normalizedName, itemTypeLabel: 'medication');
+      if (save != true || !mounted) return;
+
       await ref.read(visitRepositoryProvider).createCatalogMedication(name: normalizedName);
       if (!mounted) return;
       AppToast.success(context, message: 'Saved "$normalizedName" to your medication catalog.');
@@ -412,14 +412,14 @@ class _TreatmentPlanAddDialogBodyState extends ConsumerState<_TreatmentPlanAddDi
   }
 
   Future<void> _maybeSaveCustomToCatalog({required String normalizedName}) async {
-    final save = await SaveToCatalogDialog.show(
-      widget.hostContext,
-      normalizedName: normalizedName,
-      itemTypeLabel: 'medication',
-    );
-    if (save != true || !widget.hostContext.mounted) return;
-
     try {
+      final save = await SaveToCatalogDialog.show(
+        widget.hostContext,
+        normalizedName: normalizedName,
+        itemTypeLabel: 'medication',
+      );
+      if (save != true || !widget.hostContext.mounted) return;
+
       await ref.read(visitRepositoryProvider).createCatalogMedication(name: normalizedName);
       if (!widget.hostContext.mounted) return;
       AppToast.success(widget.hostContext, message: 'Saved "$normalizedName" to your medication catalog.');
