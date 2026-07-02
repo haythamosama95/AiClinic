@@ -412,5 +412,395 @@ AS $$
   SELECT auth_internal.set_service_branch_assignment(p_service_id, p_branch_ids, p_assign);
 $$;
 
+-- -----------------------------------------------------------------------------
+-- auth_internal.configure_service_branch
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.configure_service_branch(
+  p_service_id uuid,
+  p_branch_id uuid,
+  p_expected_updated_at timestamptz,
+  p_status text,
+  p_price_override numeric
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_service public.services%ROWTYPE;
+  v_branch public.service_branches%ROWTYPE;
+  v_status public.service_branch_status;
+  v_effective_price numeric(14, 2);
+  v_new_updated_at timestamptz;
+BEGIN
+  PERFORM auth_internal.assert_permission('services.manage');
+  v_org_id := public.jwt_organization_id();
+
+  IF p_service_id IS NULL OR p_branch_id IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Service ID and branch ID are required.');
+  END IF;
+
+  IF p_expected_updated_at IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Expected updated timestamp is required.');
+  END IF;
+
+  IF NOT (p_branch_id = ANY (public.jwt_branch_ids())) THEN
+    RETURN public.rpc_error('BRANCH_NOT_IN_ORG', 'The selected branch is not in your organization.');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.branches b
+    WHERE b.id = p_branch_id
+      AND b.organization_id = v_org_id
+      AND b.is_deleted = false
+  ) THEN
+    RETURN public.rpc_error('BRANCH_NOT_IN_ORG', 'The selected branch is not in your organization.');
+  END IF;
+
+  SELECT *
+  INTO v_service
+  FROM public.services s
+  WHERE s.id = p_service_id
+    AND s.organization_id = v_org_id
+    AND s.is_deleted = false;
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('NOT_FOUND', 'The requested service was not found.');
+  END IF;
+
+  SELECT *
+  INTO v_branch
+  FROM public.service_branches sb
+  WHERE sb.service_id = p_service_id
+    AND sb.branch_id = p_branch_id
+    AND sb.is_deleted = false;
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('BRANCH_NOT_ASSIGNED', 'Configure branch settings only for branches where the service is assigned.');
+  END IF;
+
+  IF v_branch.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RETURN public.rpc_error('STALE_SERVICE_BRANCH', 'Branch configuration was updated elsewhere. Reload and try again.');
+  END IF;
+
+  BEGIN
+    v_status := p_status::public.service_branch_status;
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RETURN public.rpc_error('INVALID_INPUT', 'Branch status must be active or inactive.');
+  END;
+
+  IF p_price_override IS NOT NULL THEN
+    IF p_price_override < 0 THEN
+      RETURN public.rpc_error('INVALID_PRICE', 'Price override must be a non-negative amount.');
+    END IF;
+
+    IF p_price_override <> round(p_price_override, 2) THEN
+      RETURN public.rpc_error('INVALID_PRICE', 'Price override must have at most two decimal places.');
+    END IF;
+  END IF;
+
+  v_effective_price := COALESCE(p_price_override, v_service.default_price);
+
+  IF v_branch.promotion_price IS NOT NULL AND v_effective_price < v_branch.promotion_price THEN
+    RETURN public.rpc_error(
+      'PROMO_EXCEEDS_PRICE',
+      'Promotion price cannot exceed the effective price. Lower the promotion or raise the default/override price.'
+    );
+  END IF;
+
+  UPDATE public.service_branches sb
+  SET
+    status = v_status,
+    price_override = CASE
+      WHEN p_price_override IS NULL THEN NULL
+      ELSE round(p_price_override, 2)
+    END,
+    updated_at = now(),
+    updated_by = auth.uid()
+  WHERE sb.id = v_branch.id
+  RETURNING sb.updated_at INTO v_new_updated_at;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, old_data_json, new_data_json)
+  VALUES (
+    auth.uid(),
+    v_org_id,
+    'service.branch.configure',
+    'service_branches',
+    v_branch.id,
+    jsonb_build_object(
+      'service_id', p_service_id,
+      'branch_id', p_branch_id,
+      'status', v_branch.status::text,
+      'price_override', v_branch.price_override
+    ),
+    jsonb_build_object(
+      'service_id', p_service_id,
+      'branch_id', p_branch_id,
+      'status', v_status::text,
+      'price_override', CASE WHEN p_price_override IS NULL THEN NULL ELSE round(p_price_override, 2) END
+    )
+  );
+
+  RETURN public.rpc_success(
+    jsonb_build_object(
+      'service_branch_id', v_branch.id,
+      'updated_at', v_new_updated_at
+    )
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage the service catalog.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- auth_internal.set_service_promotion
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.set_service_promotion(
+  p_service_id uuid,
+  p_branch_id uuid,
+  p_expected_updated_at timestamptz,
+  p_promotion_price numeric,
+  p_start_date date,
+  p_end_date date
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_service public.services%ROWTYPE;
+  v_branch public.service_branches%ROWTYPE;
+  v_effective_price numeric(14, 2);
+  v_has_promotion boolean;
+  v_new_updated_at timestamptz;
+BEGIN
+  PERFORM auth_internal.assert_permission('services.manage');
+  v_org_id := public.jwt_organization_id();
+
+  IF p_service_id IS NULL OR p_branch_id IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Service ID and branch ID are required.');
+  END IF;
+
+  IF p_expected_updated_at IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Expected updated timestamp is required.');
+  END IF;
+
+  IF NOT (p_branch_id = ANY (public.jwt_branch_ids())) THEN
+    RETURN public.rpc_error('BRANCH_NOT_IN_ORG', 'The selected branch is not in your organization.');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.branches b
+    WHERE b.id = p_branch_id
+      AND b.organization_id = v_org_id
+      AND b.is_deleted = false
+  ) THEN
+    RETURN public.rpc_error('BRANCH_NOT_IN_ORG', 'The selected branch is not in your organization.');
+  END IF;
+
+  SELECT *
+  INTO v_service
+  FROM public.services s
+  WHERE s.id = p_service_id
+    AND s.organization_id = v_org_id
+    AND s.is_deleted = false;
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('NOT_FOUND', 'The requested service was not found.');
+  END IF;
+
+  SELECT *
+  INTO v_branch
+  FROM public.service_branches sb
+  WHERE sb.service_id = p_service_id
+    AND sb.branch_id = p_branch_id
+    AND sb.is_deleted = false;
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('BRANCH_NOT_ASSIGNED', 'Configure branch settings only for branches where the service is assigned.');
+  END IF;
+
+  IF v_branch.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RETURN public.rpc_error('STALE_SERVICE_BRANCH', 'Branch configuration was updated elsewhere. Reload and try again.');
+  END IF;
+
+  IF p_promotion_price IS NULL AND p_start_date IS NULL AND p_end_date IS NULL THEN
+    UPDATE public.service_branches sb
+    SET
+      promotion_price = NULL,
+      promotion_start_date = NULL,
+      promotion_end_date = NULL,
+      updated_at = now(),
+      updated_by = auth.uid()
+    WHERE sb.id = v_branch.id
+    RETURNING sb.updated_at INTO v_new_updated_at;
+
+    INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, old_data_json, new_data_json)
+    VALUES (
+      auth.uid(),
+      v_org_id,
+      'service.promotion.clear',
+      'service_branches',
+      v_branch.id,
+      jsonb_build_object(
+        'service_id', p_service_id,
+        'branch_id', p_branch_id,
+        'promotion_price', v_branch.promotion_price,
+        'promotion_start_date', v_branch.promotion_start_date,
+        'promotion_end_date', v_branch.promotion_end_date
+      ),
+      jsonb_build_object(
+        'service_id', p_service_id,
+        'branch_id', p_branch_id,
+        'promotion_price', NULL,
+        'promotion_start_date', NULL,
+        'promotion_end_date', NULL
+      )
+    );
+
+    RETURN public.rpc_success(
+      jsonb_build_object(
+        'service_branch_id', v_branch.id,
+        'has_promotion', false,
+        'updated_at', v_new_updated_at
+      )
+    );
+  END IF;
+
+  IF p_promotion_price IS NULL OR p_start_date IS NULL OR p_end_date IS NULL THEN
+    RETURN public.rpc_error('PROMO_INCOMPLETE', 'Promotion requires a price and both start and end dates.');
+  END IF;
+
+  IF p_start_date > p_end_date THEN
+    RETURN public.rpc_error('PROMO_DATE_RANGE', 'Promotion start date must be on or before the end date.');
+  END IF;
+
+  IF p_promotion_price < 0 THEN
+    RETURN public.rpc_error('INVALID_PRICE', 'Promotion price must be a non-negative amount.');
+  END IF;
+
+  IF p_promotion_price <> round(p_promotion_price, 2) THEN
+    RETURN public.rpc_error('INVALID_PRICE', 'Promotion price must have at most two decimal places.');
+  END IF;
+
+  v_effective_price := COALESCE(v_branch.price_override, v_service.default_price);
+
+  IF p_promotion_price > v_effective_price THEN
+    RETURN public.rpc_error(
+      'PROMO_EXCEEDS_PRICE',
+      'Promotion price cannot exceed the effective price. Lower the promotion or raise the default/override price.'
+    );
+  END IF;
+
+  UPDATE public.service_branches sb
+  SET
+    promotion_price = round(p_promotion_price, 2),
+    promotion_start_date = p_start_date,
+    promotion_end_date = p_end_date,
+    updated_at = now(),
+    updated_by = auth.uid()
+  WHERE sb.id = v_branch.id
+  RETURNING sb.updated_at INTO v_new_updated_at;
+
+  v_has_promotion := true;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, old_data_json, new_data_json)
+  VALUES (
+    auth.uid(),
+    v_org_id,
+    'service.promotion.set',
+    'service_branches',
+    v_branch.id,
+    jsonb_build_object(
+      'service_id', p_service_id,
+      'branch_id', p_branch_id,
+      'promotion_price', v_branch.promotion_price,
+      'promotion_start_date', v_branch.promotion_start_date,
+      'promotion_end_date', v_branch.promotion_end_date
+    ),
+    jsonb_build_object(
+      'service_id', p_service_id,
+      'branch_id', p_branch_id,
+      'promotion_price', round(p_promotion_price, 2),
+      'promotion_start_date', p_start_date,
+      'promotion_end_date', p_end_date
+    )
+  );
+
+  RETURN public.rpc_success(
+    jsonb_build_object(
+      'service_branch_id', v_branch.id,
+      'has_promotion', v_has_promotion,
+      'updated_at', v_new_updated_at
+    )
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage the service catalog.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.configure_service_branch(
+  p_service_id uuid,
+  p_branch_id uuid,
+  p_expected_updated_at timestamptz,
+  p_status text,
+  p_price_override numeric
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.configure_service_branch(
+    p_service_id,
+    p_branch_id,
+    p_expected_updated_at,
+    p_status,
+    p_price_override
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.set_service_promotion(
+  p_service_id uuid,
+  p_branch_id uuid,
+  p_expected_updated_at timestamptz,
+  p_promotion_price numeric,
+  p_start_date date,
+  p_end_date date
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.set_service_promotion(
+    p_service_id,
+    p_branch_id,
+    p_expected_updated_at,
+    p_promotion_price,
+    p_start_date,
+    p_end_date
+  );
+$$;
+
 GRANT EXECUTE ON FUNCTION public.create_service(text, numeric, text, boolean, uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_service_branch_assignment(uuid, uuid[], boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.configure_service_branch(uuid, uuid, timestamptz, text, numeric) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_service_promotion(uuid, uuid, timestamptz, numeric, date, date) TO authenticated;

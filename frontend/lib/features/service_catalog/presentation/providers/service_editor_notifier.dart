@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
+import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_detail.dart';
@@ -91,5 +92,96 @@ class ServiceEditorNotifier extends AsyncNotifier<ServiceEditorState> {
       state = AsyncData(current);
       rethrow;
     }
+  }
+
+  Future<void> reloadDetail() async {
+    final serviceId = state.value?.detail?.service.id ?? _serviceId;
+    if (serviceId == null || serviceId.isEmpty) {
+      return;
+    }
+    final detail = await _repo.getService(serviceId: serviceId);
+    state = AsyncData(ServiceEditorState(detail: detail));
+  }
+
+  Future<void> configureServiceBranch({
+    required String branchId,
+    required DateTime expectedUpdatedAt,
+    required bool active,
+    String? priceOverride,
+  }) async {
+    final current = state.value;
+    final serviceId = current?.detail?.service.id ?? _serviceId;
+    if (current == null || serviceId == null || serviceId.isEmpty) {
+      throw StateError('Service not loaded.');
+    }
+
+    state = AsyncData(current.copyWith(isSaving: true));
+    try {
+      await _repo.configureServiceBranch(
+        serviceId: serviceId,
+        branchId: branchId,
+        expectedUpdatedAt: expectedUpdatedAt,
+        status: active ? 'active' : 'inactive',
+        priceOverride: priceOverride,
+      );
+      final detail = await _repo.getService(serviceId: serviceId);
+      state = AsyncData(ServiceEditorState(detail: detail));
+    } on RpcFailure catch (error) {
+      if (error.code == 'STALE_SERVICE_BRANCH') {
+        await reloadDetail();
+      }
+      state = AsyncData(current.copyWith(isSaving: false));
+      rethrow;
+    } catch (error) {
+      state = AsyncData(current);
+      rethrow;
+    }
+  }
+
+  Future<void> setServicePromotion({
+    required String branchId,
+    required DateTime expectedUpdatedAt,
+    String? promotionPrice,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final current = state.value;
+    final serviceId = current?.detail?.service.id ?? _serviceId;
+    if (current == null || serviceId == null || serviceId.isEmpty) {
+      throw StateError('Service not loaded.');
+    }
+
+    state = AsyncData(current.copyWith(isSaving: true));
+    try {
+      await _repo.setServicePromotion(
+        serviceId: serviceId,
+        branchId: branchId,
+        expectedUpdatedAt: expectedUpdatedAt,
+        promotionPrice: promotionPrice,
+        startDate: startDate,
+        endDate: endDate,
+      );
+      final detail = await _repo.getService(serviceId: serviceId);
+      state = AsyncData(ServiceEditorState(detail: detail));
+    } on RpcFailure catch (error) {
+      if (error.code == 'STALE_SERVICE_BRANCH') {
+        await reloadDetail();
+      }
+      state = AsyncData(current.copyWith(isSaving: false));
+      rethrow;
+    } catch (error) {
+      state = AsyncData(current);
+      rethrow;
+    }
+  }
+
+  Future<void> clearServicePromotion({required String branchId, required DateTime expectedUpdatedAt}) {
+    return setServicePromotion(
+      branchId: branchId,
+      expectedUpdatedAt: expectedUpdatedAt,
+      promotionPrice: null,
+      startDate: null,
+      endDate: null,
+    );
   }
 }

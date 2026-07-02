@@ -125,16 +125,16 @@ description: "Task list for Service Catalog (015) implementation"
 
 ### Implementation for User Story 3
 
-- [ ] T035 [US3] Implement `configure_service_branch` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: require assigned row (`BRANCH_NOT_ASSIGNED`), concurrency (`STALE_SERVICE_BRANCH`), validate override `>=0` (`INVALID_PRICE`), invariant guard (`PROMO_EXCEEDS_PRICE`), set status/override, audit `service.branch.configure`
-- [ ] T036 [P] [US3] Create domain `frontend/lib/features/service_catalog/domain/service_branch_config.dart` (per-branch status, nullable override, optional promotion)
-- [ ] T037 [US3] Add `configureServiceBranch` method to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
-- [ ] T038 [US3] Create `frontend/lib/features/service_catalog/presentation/widgets/branch_configuration_matrix.dart` (per-branch rows: assigned/active toggle + override input, empty = default) reusing `core/ui`
-- [ ] T039 [US3] Extend `frontend/lib/features/service_catalog/presentation/providers/service_editor_notifier.dart` and `service_editor_page.dart` to load (`get_service`) and mutate branch config via the matrix with optimistic concurrency
+- [X] T035 [US3] Implement `configure_service_branch` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: require assigned row (`BRANCH_NOT_ASSIGNED`), concurrency (`STALE_SERVICE_BRANCH`), validate override `>=0` (`INVALID_PRICE`), invariant guard (`PROMO_EXCEEDS_PRICE`), set status/override, audit `service.branch.configure`
+- [X] T036 [P] [US3] Create domain `frontend/lib/features/service_catalog/domain/service_branch_config.dart` (per-branch status, nullable override, optional promotion)
+- [X] T037 [US3] Add `configureServiceBranch` method to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
+- [X] T038 [US3] Create `frontend/lib/features/service_catalog/presentation/widgets/branch_configuration_matrix.dart` (per-branch rows: assigned/active toggle + override input, empty = default) reusing `core/ui`
+- [X] T039 [US3] Extend `frontend/lib/features/service_catalog/presentation/providers/service_editor_notifier.dart` and `service_editor_page.dart` to load (`get_service`) and mutate branch config via the matrix with optimistic concurrency
 
 ### Tests for User Story 3
 
-- [ ] T040 [P] [US3] Add override-resolution + default-fallback + unassigned-branch-rejection cases to `backend/tests/service_catalog_pricing.sql`, and a `STALE_SERVICE_BRANCH` stale-write case to `backend/tests/service_catalog_concurrency.sql`
-- [ ] T041 [P] [US3] Add widget test for `branch_configuration_matrix` (toggles, override empty=default, validation) in `frontend/test/widget/service_catalog/`
+- [X] T040 [P] [US3] Add override-resolution + default-fallback + unassigned-branch-rejection cases to `backend/tests/service_catalog_pricing.sql`, and a `STALE_SERVICE_BRANCH` stale-write case to `backend/tests/service_catalog_concurrency.sql`
+- [X] T041 [P] [US3] Add widget test for `branch_configuration_matrix` (toggles, override empty=default, validation) in `frontend/test/widget/service_catalog/`
 
 **Checkpoint**: Branch-level activation + override work on top of US1
 
@@ -148,15 +148,15 @@ description: "Task list for Service Catalog (015) implementation"
 
 ### Implementation for User Story 4
 
-- [ ] T042 [US4] Implement `set_service_promotion` (set/replace/clear) in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: require assigned row, concurrency, validate all-three-present (`PROMO_INCOMPLETE`), `start<=end` (`PROMO_DATE_RANGE`), `>=0` (`INVALID_PRICE`), `promotion_price<=effective` (`PROMO_EXCEEDS_PRICE`), overwrite single window, audit `service.promotion.set`/`clear`
-- [ ] T043 [P] [US4] Create domain `frontend/lib/features/service_catalog/domain/service_promotion.dart` value object (price + inclusive start/end) with pure `isActiveOn(date)`
-- [ ] T044 [US4] Add `setServicePromotion` method to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
-- [ ] T045 [US4] Create `frontend/lib/features/service_catalog/presentation/widgets/promotion_editor.dart` (price + inclusive start/end + client-side validation + expired indicator) and wire it into `branch_configuration_matrix.dart`
+- [X] T042 [US4] Implement `set_service_promotion` (set/replace/clear) in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: require assigned row, concurrency, validate all-three-present (`PROMO_INCOMPLETE`), `start<=end` (`PROMO_DATE_RANGE`), `>=0` (`INVALID_PRICE`), `promotion_price<=effective` (`PROMO_EXCEEDS_PRICE`), overwrite single window, audit `service.promotion.set`/`clear`
+- [X] T043 [P] [US4] Create domain `frontend/lib/features/service_catalog/domain/service_promotion.dart` value object (price + inclusive start/end) with pure `isActiveOn(date)`
+- [X] T044 [US4] Add `setServicePromotion` method to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
+- [X] T045 [US4] Create `frontend/lib/features/service_catalog/presentation/widgets/promotion_editor.dart` (price + inclusive start/end + client-side validation + expired indicator) and wire it into `branch_configuration_matrix.dart`
 
 ### Tests for User Story 4
 
-- [ ] T046 [P] [US4] Add promotion cases (inclusive boundaries, promo-over-effective rejection at save and on later default/override lowering, incomplete/invalid dates, single-window replace) to `backend/tests/service_catalog_pricing.sql`
-- [ ] T047 [P] [US4] Add unit test for `service_promotion.isActiveOn` and widget test for `promotion_editor` validation in `frontend/test/`
+- [X] T046 [P] [US4] Add promotion cases (inclusive boundaries, promo-over-effective rejection at save and on later default/override lowering, incomplete/invalid dates, single-window replace) to `backend/tests/service_catalog_pricing.sql`
+- [X] T047 [P] [US4] Add unit test for `service_promotion.isActiveOn` and widget test for `promotion_editor` validation in `frontend/test/`
 
 **Checkpoint**: Promotions layered on branch config (US3)
 

@@ -10,7 +10,9 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/service_catalog/application/service_catalog_rpc_messages.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
+import 'package:ai_clinic/features/service_catalog/domain/service_branch_config.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_editor_notifier.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/widgets/branch_configuration_matrix.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/widgets/service_form.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
 
@@ -112,32 +114,88 @@ class ServiceEditorPage extends ConsumerWidget {
                             ),
                             if (!isCreate && detail != null) ...[
                               const SizedBox(height: SpacingTokens.xl),
-                              Text('Assigned branches', style: Theme.of(context).textTheme.titleSmall),
-                              const SizedBox(height: SpacingTokens.sm),
-                              if (detail.branches.isEmpty)
-                                Text(
-                                  'No branch assignments are visible for your current branch access.',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                )
-                              else
-                                ...detail.branches.map((row) {
-                                  final branchName =
-                                      branches
-                                          .where((branch) => branch.id == row.branchId)
-                                          .map((branch) => branch.name)
-                                          .firstOrNull ??
-                                      row.branchId;
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: SpacingTokens.xs),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(branchName, style: Theme.of(context).textTheme.bodyMedium),
-                                        Text('Status: ${row.status}', style: Theme.of(context).textTheme.bodySmall),
-                                      ],
+                              BranchConfigurationMatrix(
+                                branches: [
+                                  for (final row in detail.branches)
+                                    ServiceBranchConfig.fromRow(
+                                      row,
+                                      branchName:
+                                          branches
+                                              .where((branch) => branch.id == row.branchId)
+                                              .map((branch) => branch.name)
+                                              .firstOrNull ??
+                                          row.branchId,
                                     ),
-                                  );
-                                }),
+                                ],
+                                defaultPrice: detail.service.defaultPrice,
+                                isSaving: editorState.isSaving,
+                                onConfigureBranch: ({required branch, required active, required priceOverride}) async {
+                                  final updatedAt = branch.updatedAt;
+                                  if (updatedAt == null) {
+                                    throw StateError('Branch configuration timestamp is missing.');
+                                  }
+                                  try {
+                                    await ref
+                                        .read(serviceEditorProvider(serviceId).notifier)
+                                        .configureServiceBranch(
+                                          branchId: branch.branchId,
+                                          expectedUpdatedAt: updatedAt,
+                                          active: active,
+                                          priceOverride: priceOverride,
+                                        );
+                                    if (context.mounted) {
+                                      AppToast.success(context, message: 'Branch settings saved.');
+                                    }
+                                  } on RpcFailure catch (error) {
+                                    if (context.mounted) {
+                                      AppToast.error(context, message: serviceCatalogMessageForRpc(error));
+                                    }
+                                  }
+                                },
+                                onSetPromotion:
+                                    ({required branch, required price, required startDate, required endDate}) async {
+                                      final updatedAt = branch.updatedAt;
+                                      if (updatedAt == null) {
+                                        throw StateError('Branch configuration timestamp is missing.');
+                                      }
+                                      try {
+                                        await ref
+                                            .read(serviceEditorProvider(serviceId).notifier)
+                                            .setServicePromotion(
+                                              branchId: branch.branchId,
+                                              expectedUpdatedAt: updatedAt,
+                                              promotionPrice: price,
+                                              startDate: startDate,
+                                              endDate: endDate,
+                                            );
+                                        if (context.mounted) {
+                                          AppToast.success(context, message: 'Promotion saved.');
+                                        }
+                                      } on RpcFailure catch (error) {
+                                        if (context.mounted) {
+                                          AppToast.error(context, message: serviceCatalogMessageForRpc(error));
+                                        }
+                                      }
+                                    },
+                                onClearPromotion: ({required branch}) async {
+                                  final updatedAt = branch.updatedAt;
+                                  if (updatedAt == null) {
+                                    throw StateError('Branch configuration timestamp is missing.');
+                                  }
+                                  try {
+                                    await ref
+                                        .read(serviceEditorProvider(serviceId).notifier)
+                                        .clearServicePromotion(branchId: branch.branchId, expectedUpdatedAt: updatedAt);
+                                    if (context.mounted) {
+                                      AppToast.success(context, message: 'Promotion cleared.');
+                                    }
+                                  } on RpcFailure catch (error) {
+                                    if (context.mounted) {
+                                      AppToast.error(context, message: serviceCatalogMessageForRpc(error));
+                                    }
+                                  }
+                                },
+                              ),
                             ],
                           ],
                         ),

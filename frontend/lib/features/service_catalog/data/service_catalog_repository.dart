@@ -32,6 +32,23 @@ class AddInvoiceItemFromServiceResult {
   final String appliedRule;
 }
 
+/// Result of configuring a branch row.
+class ConfigureServiceBranchResult {
+  const ConfigureServiceBranchResult({required this.serviceBranchId, required this.updatedAt});
+
+  final String serviceBranchId;
+  final DateTime updatedAt;
+}
+
+/// Result of setting or clearing a promotion.
+class SetServicePromotionResult {
+  const SetServicePromotionResult({required this.serviceBranchId, required this.hasPromotion, required this.updatedAt});
+
+  final String serviceBranchId;
+  final bool hasPromotion;
+  final DateTime updatedAt;
+}
+
 /// Service Catalog RPC wrappers (015).
 class ServiceCatalogRepository with AppRpcInvoker {
   ServiceCatalogRepository(this._client);
@@ -125,6 +142,83 @@ class ServiceCatalogRepository with AppRpcInvoker {
       }
     }
     return ids;
+  }
+
+  Future<ConfigureServiceBranchResult> configureServiceBranch({
+    required String serviceId,
+    required String branchId,
+    required DateTime expectedUpdatedAt,
+    required String status,
+    String? priceOverride,
+  }) async {
+    _assertNonEmpty('serviceId', serviceId);
+    _assertNonEmpty('branchId', branchId);
+    _assertNonEmpty('status', status);
+
+    final params = <String, dynamic>{
+      'p_service_id': serviceId.trim(),
+      'p_branch_id': branchId.trim(),
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+      'p_status': status.trim(),
+      'p_price_override': priceOverride?.trim(),
+    };
+
+    final result = await invokeRpc('configure_service_branch', params);
+    final serviceBranchId = result.data?['service_branch_id']?.toString();
+    final updatedAtRaw = result.data?['updated_at']?.toString();
+    final updatedAt = updatedAtRaw == null ? null : DateTime.tryParse(updatedAtRaw);
+    if (serviceBranchId == null || serviceBranchId.isEmpty || updatedAt == null) {
+      throw StateError('configure_service_branch returned an unexpected shape.');
+    }
+
+    return ConfigureServiceBranchResult(serviceBranchId: serviceBranchId, updatedAt: updatedAt);
+  }
+
+  Future<SetServicePromotionResult> setServicePromotion({
+    required String serviceId,
+    required String branchId,
+    required DateTime expectedUpdatedAt,
+    String? promotionPrice,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    _assertNonEmpty('serviceId', serviceId);
+    _assertNonEmpty('branchId', branchId);
+
+    final clearing = promotionPrice == null && startDate == null && endDate == null;
+    if (!clearing && (promotionPrice == null || startDate == null || endDate == null)) {
+      throw RpcFailure(
+        RpcResult(
+          success: false,
+          errorCode: 'PROMO_INCOMPLETE',
+          errorMessage: 'Promotion requires a price and both start and end dates.',
+        ),
+      );
+    }
+
+    final params = <String, dynamic>{
+      'p_service_id': serviceId.trim(),
+      'p_branch_id': branchId.trim(),
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+      'p_promotion_price': promotionPrice?.trim(),
+      'p_start_date': startDate == null ? null : _formatDate(startDate),
+      'p_end_date': endDate == null ? null : _formatDate(endDate),
+    };
+
+    final result = await invokeRpc('set_service_promotion', params);
+    final serviceBranchId = result.data?['service_branch_id']?.toString();
+    final hasPromotion = result.data?['has_promotion'] == true;
+    final updatedAtRaw = result.data?['updated_at']?.toString();
+    final updatedAt = updatedAtRaw == null ? null : DateTime.tryParse(updatedAtRaw);
+    if (serviceBranchId == null || serviceBranchId.isEmpty || updatedAt == null) {
+      throw StateError('set_service_promotion returned an unexpected shape.');
+    }
+
+    return SetServicePromotionResult(
+      serviceBranchId: serviceBranchId,
+      hasPromotion: hasPromotion,
+      updatedAt: updatedAt,
+    );
   }
 
   Future<ServiceEligibility> resolveEffectivePrice({

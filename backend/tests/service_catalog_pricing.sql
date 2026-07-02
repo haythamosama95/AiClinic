@@ -78,6 +78,7 @@ DECLARE
   v_org_id uuid := 'c2800000-0000-4000-8000-0000000000a1';
   v_branch_a uuid := 'd2800000-0000-4000-8000-0000000000a1';
   v_branch_b uuid := 'd2800000-0000-4000-8000-0000000000a2';
+  v_branch_c uuid := 'd2800000-0000-4000-8000-0000000000a3';
   v_user_admin uuid := 'e2800000-0000-4000-8000-0000000000a1';
   v_user_recep uuid := 'e2800000-0000-4000-8000-0000000000a2';
   v_user_doctor uuid := 'e2800000-0000-4000-8000-0000000000a3';
@@ -94,6 +95,10 @@ DECLARE
   v_service_inactive uuid;
   v_service_unassigned uuid;
   v_service_branch_inactive uuid;
+  v_service_consult uuid;
+  v_sb_updated_at timestamptz;
+  v_promo_start date;
+  v_promo_end date;
   v_result public.rpc_result;
   v_resolution jsonb;
   v_item_id uuid;
@@ -102,14 +107,15 @@ DECLARE
   v_description text;
   v_updated_at timestamptz;
   v_search_count int;
+  v_promo_price numeric(14, 2);
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
   DELETE FROM public.audit_log WHERE organization_id = v_org_id;
   DELETE FROM public.invoice_items WHERE invoice_id IN (SELECT id FROM public.invoices WHERE organization_id = v_org_id);
   DELETE FROM public.invoices WHERE organization_id = v_org_id;
-  DELETE FROM public.visits WHERE branch_id IN (v_branch_a, v_branch_b);
-  DELETE FROM public.appointments WHERE branch_id IN (v_branch_a, v_branch_b);
+  DELETE FROM public.visits WHERE branch_id IN (v_branch_a, v_branch_b, v_branch_c);
+  DELETE FROM public.appointments WHERE branch_id IN (v_branch_a, v_branch_b, v_branch_c);
   DELETE FROM public.service_branches
   WHERE service_id IN (SELECT id FROM public.services WHERE organization_id = v_org_id);
   DELETE FROM public.services WHERE organization_id = v_org_id;
@@ -136,7 +142,8 @@ BEGIN
   INSERT INTO public.branches (id, organization_id, name, code, created_by, updated_by)
   VALUES
     (v_branch_a, v_org_id, 'Branch A', 'SPA', v_user_admin, v_user_admin),
-    (v_branch_b, v_org_id, 'Branch B', 'SPB', v_user_admin, v_user_admin);
+    (v_branch_b, v_org_id, 'Branch B', 'SPB', v_user_admin, v_user_admin),
+    (v_branch_c, v_org_id, 'Branch C', 'SPC', v_user_admin, v_user_admin);
 
   INSERT INTO public.staff_members (id, auth_user_id, full_name, role, created_by, updated_by)
   VALUES
@@ -148,6 +155,7 @@ BEGIN
   VALUES
     (v_staff_admin, v_branch_a, v_user_admin, v_user_admin),
     (v_staff_admin, v_branch_b, v_user_admin, v_user_admin),
+    (v_staff_admin, v_branch_c, v_user_admin, v_user_admin),
     (v_staff_recep, v_branch_a, v_user_admin, v_user_admin),
     (v_staff_recep, v_branch_b, v_user_admin, v_user_admin),
     (v_doctor_staff, v_branch_a, v_user_admin, v_user_admin);
@@ -172,7 +180,7 @@ BEGIN
   );
 
   PERFORM set_config('role', 'authenticated', true);
-  PERFORM pg_temp.set_administrator_jwt(v_user_admin, v_staff_admin, v_org_id, format('%s,%s', v_branch_a, v_branch_b));
+  PERFORM pg_temp.set_administrator_jwt(v_user_admin, v_staff_admin, v_org_id, format('%s,%s,%s', v_branch_a, v_branch_b, v_branch_c));
 
   v_result := public.create_service('Default Consult', 200.00, 'active', false, ARRAY[v_branch_a]);
   v_service_default := (v_result.data ->> 'service_id')::uuid;
@@ -330,6 +338,212 @@ BEGIN
   PERFORM pg_temp.service_catalog_pricing_record(
     'add_from_service_ineligible_rejected',
     NOT v_result.success AND v_result.error_code = 'SERVICE_NOT_ELIGIBLE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  PERFORM pg_temp.set_administrator_jwt(
+    v_user_admin, v_staff_admin, v_org_id, format('%s,%s,%s', v_branch_a, v_branch_b, v_branch_c)
+  );
+
+  -- US3: configure_service_branch override, default fallback, inactive, unassigned rejection
+  v_result := public.create_service('Consultation', 200.00, 'active', false, ARRAY[v_branch_a, v_branch_b, v_branch_c]);
+  v_service_consult := (v_result.data ->> 'service_id')::uuid;
+
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_consult AND sb.branch_id = v_branch_b;
+
+  v_result := public.configure_service_branch(
+    v_service_consult, v_branch_b, v_sb_updated_at, 'active', 150.00
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'configure_branch_override',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_consult AND sb.branch_id = v_branch_c;
+
+  v_result := public.configure_service_branch(
+    v_service_consult, v_branch_c, v_sb_updated_at, 'inactive', NULL
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'configure_branch_inactive',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  v_result := public.resolve_effective_service_price(v_service_consult, v_branch_a, current_date);
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'configure_default_fallback',
+    v_result.success AND v_result.data ->> 'unit_price' = '200.00',
+    COALESCE(v_result.data ->> 'unit_price', v_result.error_code)
+  );
+
+  v_result := public.resolve_effective_service_price(v_service_consult, v_branch_b, current_date);
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'configure_override_resolution',
+    v_result.success AND v_result.data ->> 'unit_price' = '150.00',
+    COALESCE(v_result.data ->> 'unit_price', v_result.error_code)
+  );
+
+  v_result := public.resolve_effective_service_price(v_service_consult, v_branch_c, current_date);
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'configure_inactive_not_selectable',
+    v_result.success AND (v_result.data ->> 'eligible')::boolean = false,
+    COALESCE(v_result.data ->> 'reason', v_result.error_code)
+  );
+
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_unassigned AND sb.branch_id = v_branch_b;
+
+  v_result := public.configure_service_branch(
+    v_service_unassigned, v_branch_a, v_sb_updated_at, 'active', NULL
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'configure_unassigned_branch_rejected',
+    NOT v_result.success AND v_result.error_code = 'BRANCH_NOT_ASSIGNED',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  -- US4: promotion inclusive boundaries, rejections, replace
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_consult AND sb.branch_id = v_branch_c;
+
+  v_result := public.configure_service_branch(
+    v_service_consult, v_branch_c, v_sb_updated_at, 'active', 120.00
+  );
+
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_consult AND sb.branch_id = v_branch_c;
+
+  v_promo_start := make_date(extract(year from current_date)::int, 1, 1);
+  v_promo_end := make_date(extract(year from current_date)::int, 1, 31);
+
+  v_result := public.set_service_promotion(
+    v_service_consult, v_branch_c, v_sb_updated_at, 100.00, v_promo_start, v_promo_end
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'set_promotion_success',
+    v_result.success AND (v_result.data ->> 'has_promotion')::boolean = true,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  v_result := public.resolve_effective_service_price(
+    v_service_consult, v_branch_c, make_date(extract(year from current_date)::int, 1, 15)
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'promo_inclusive_mid_window',
+    v_result.success AND v_result.data ->> 'unit_price' = '100.00',
+    COALESCE(v_result.data ->> 'unit_price', v_result.error_code)
+  );
+
+  v_result := public.resolve_effective_service_price(
+    v_service_consult, v_branch_c, make_date(extract(year from current_date)::int, 1, 31)
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'promo_inclusive_end_boundary',
+    v_result.success AND v_result.data ->> 'unit_price' = '100.00',
+    COALESCE(v_result.data ->> 'unit_price', v_result.error_code)
+  );
+
+  v_result := public.resolve_effective_service_price(
+    v_service_consult, v_branch_c, make_date(extract(year from current_date)::int, 2, 1)
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'promo_after_window_uses_override',
+    v_result.success AND v_result.data ->> 'unit_price' = '120.00',
+    COALESCE(v_result.data ->> 'unit_price', v_result.error_code)
+  );
+
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_consult AND sb.branch_id = v_branch_c;
+
+  v_result := public.set_service_promotion(
+    v_service_consult, v_branch_c, v_sb_updated_at, 150.00, v_promo_start, v_promo_end
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'promo_exceeds_effective_rejected',
+    NOT v_result.success AND v_result.error_code = 'PROMO_EXCEEDS_PRICE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_consult AND sb.branch_id = v_branch_c;
+
+  v_result := public.set_service_promotion(
+    v_service_consult, v_branch_c, v_sb_updated_at, 100.00, v_promo_start, NULL
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'promo_incomplete_rejected',
+    NOT v_result.success AND v_result.error_code = 'PROMO_INCOMPLETE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_consult AND sb.branch_id = v_branch_c;
+
+  v_result := public.set_service_promotion(
+    v_service_consult, v_branch_c, v_sb_updated_at, 100.00, v_promo_end, v_promo_start
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'promo_invalid_date_range_rejected',
+    NOT v_result.success AND v_result.error_code = 'PROMO_DATE_RANGE',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_consult AND sb.branch_id = v_branch_c;
+
+  v_result := public.set_service_promotion(
+    v_service_consult, v_branch_c, v_sb_updated_at, 90.00, v_promo_start, v_promo_end
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'promo_single_window_replace',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  SELECT promotion_price
+  INTO v_promo_price
+  FROM public.service_branches
+  WHERE service_id = v_service_consult AND branch_id = v_branch_c;
+
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'promo_single_window_replace_value',
+    v_result.success AND v_promo_price = 90.00,
+    'promotion_price=' || COALESCE(v_promo_price::text, '<null>')
+  );
+
+  SELECT sb.updated_at
+  INTO v_sb_updated_at
+  FROM public.service_branches sb
+  WHERE sb.service_id = v_service_consult AND sb.branch_id = v_branch_c;
+
+  v_result := public.configure_service_branch(
+    v_service_consult, v_branch_c, v_sb_updated_at, 'active', 80.00
+  );
+  PERFORM pg_temp.service_catalog_pricing_record(
+    'configure_lowering_override_violates_promo',
+    NOT v_result.success AND v_result.error_code = 'PROMO_EXCEEDS_PRICE',
     COALESCE(v_result.error_code, '<null>')
   );
 END;
