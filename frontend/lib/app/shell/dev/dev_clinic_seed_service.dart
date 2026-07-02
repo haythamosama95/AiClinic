@@ -456,6 +456,21 @@ class DevClinicSeedService {
       throw StateError('Visit documentation timestamp missing after create for dev seed.');
     }
 
+    final completing = DevClinicSeedSchedule.shouldCompleteVisit(targetStatus);
+    if (completing) {
+      // Treatment plans participate in complete_visit concurrency checks, so create
+      // them before saving documentation to keep saved.updatedAt as the latest token.
+      final treatment = DevClinicSeedSchedule.treatmentPlanFor(branchCode: branchCode, patientIndex: patientIndex);
+      await _visits.createTreatmentPlan(
+        visitId: visit.visitId,
+        medicationName: treatment.medicationName,
+        dosage: treatment.dosage,
+        frequency: treatment.frequency,
+        duration: treatment.duration,
+        notes: treatment.notes,
+      );
+    }
+
     final saved = await _visits.saveVisitDocumentation(
       visitId: visit.visitId,
       expectedUpdatedAt: docUpdatedAt,
@@ -466,16 +481,7 @@ class DevClinicSeedService {
       plan: note.plan.isEmpty ? null : note.plan,
     );
 
-    if (DevClinicSeedSchedule.shouldCompleteVisit(targetStatus)) {
-      final treatment = DevClinicSeedSchedule.treatmentPlanFor(branchCode: branchCode, patientIndex: patientIndex);
-      await _visits.createTreatmentPlan(
-        visitId: visit.visitId,
-        medicationName: treatment.medicationName,
-        dosage: treatment.dosage,
-        frequency: treatment.frequency,
-        duration: treatment.duration,
-        notes: treatment.notes,
-      );
+    if (completing) {
       await _visits.completeVisit(visitId: visit.visitId, expectedUpdatedAt: saved.updatedAt);
       activeVisitByDoctorBranch.remove(doctorBranchKey);
       return;
