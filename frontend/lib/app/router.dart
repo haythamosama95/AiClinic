@@ -20,6 +20,7 @@ import 'package:ai_clinic/features/billing/presentation/pages/insurance_provider
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/pages/service_editor_page.dart';
 import 'package:ai_clinic/features/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
@@ -168,6 +169,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const InsuranceProvidersPage(),
           ),
           GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => const BillingSettingsPage()),
+          GoRoute(path: AppRoutes.settingsServicesNew, builder: (context, state) => const ServiceEditorPage()),
+          GoRoute(
+            path: '/settings/services/:serviceId/edit',
+            builder: (context, state) {
+              final serviceId = state.pathParameters['serviceId'];
+              return ServiceEditorPage(serviceId: serviceId);
+            },
+          ),
 
           // Shifts (V1-7)
           GoRoute(path: AppRoutes.shiftsCalendar, builder: (context, state) => uiPendingPlaceholder('Shifts', state)),
@@ -309,6 +318,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final billingRedirect = AuthRouteGuard.billingRouteRedirect(location: location, auth: auth);
         if (billingRedirect != null) {
           return billingRedirect;
+        }
+
+        final serviceCatalogRedirect = AuthRouteGuard.serviceCatalogRouteRedirect(location: location, auth: auth);
+        if (serviceCatalogRedirect != null) {
+          return serviceCatalogRedirect;
         }
 
         final shiftRedirect = AuthRouteGuard.shiftRouteRedirect(location: location, auth: auth);
