@@ -3,7 +3,6 @@ import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -216,7 +216,6 @@ class AppSelect<T> extends StatelessWidget {
 
       return FSelect<T>.rich(
         format: format!,
-        children: richChildren!,
         control: control,
         size: size.forui,
         label: labelWidget,
@@ -226,6 +225,7 @@ class AppSelect<T> extends StatelessWidget {
         validator: resolvedValidator,
         autovalidateMode: resolvedAutovalidateMode,
         popoverBuilder: popoverBuilder,
+        children: richChildren!,
       );
     }
 
@@ -402,7 +402,6 @@ class AppFilterSelect<T> extends StatelessWidget {
 
       return FSelect<T>.rich(
         format: format!,
-        children: richChildren!,
         control: control,
         size: size.forui,
         label: labelWidget,
@@ -411,6 +410,7 @@ class AppFilterSelect<T> extends StatelessWidget {
         contentGroupId: contentGroupId,
         contentHideRegion: contentHideRegion ?? FPopoverHideRegion.excludeChild,
         popoverBuilder: popoverBuilder,
+        children: richChildren!,
       );
     }
 

@@ -333,7 +333,6 @@ void main() {
 
         expect(client.createAppointmentCalls, hasLength(1));
 
-        final container = ProviderScope.containerOf(tester.element(find.byType(AppointmentQueuePage)));
         for (var i = 0; i < 30; i++) {
           await tester.pump(const Duration(milliseconds: 50));
           if (find.text('Booked Patient').evaluate().isNotEmpty) {

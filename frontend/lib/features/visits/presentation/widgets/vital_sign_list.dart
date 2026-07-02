@@ -417,7 +417,7 @@ class _VitalSignAddDialogBodyState extends ConsumerState<_VitalSignAddDialogBody
 
       if (!mounted) return;
 
-      if (isCustom) {
+      if (isCustom && widget.hostContext.mounted) {
         await _maybeSaveCustomVitalToCatalog(
           ref: ref,
           context: widget.hostContext,

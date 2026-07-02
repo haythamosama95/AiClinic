@@ -6,8 +6,6 @@ import 'package:ai_clinic/app/shell/widgets/shell_nav_single_item.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
 import 'package:ai_clinic/core/ui/widgets/data/app_metric_stat_card.dart';
-import 'package:ai_clinic/core/ui/widgets/layouts/app_notched_card.dart';
-import 'package:ai_clinic/core/ui/widgets/layouts/notched_card_path.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';

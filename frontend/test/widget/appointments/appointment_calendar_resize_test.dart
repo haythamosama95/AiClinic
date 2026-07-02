@@ -1,9 +1,6 @@
-import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:syncfusion_flutter_calendar/calendar.dart';
 
 import '../../helpers/appointment_test_support.dart';
-import '../../support/appointment_calendar_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
 import 'appointment_calendar_test_support.dart';
 

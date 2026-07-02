@@ -7,7 +7,6 @@ import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:ai_clinic/core/ui/widgets/buttons/app_button.dart';
 import 'package:ai_clinic/core/ui/widgets/layouts/app_notched_card.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
-import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';

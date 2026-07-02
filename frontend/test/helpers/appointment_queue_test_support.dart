@@ -11,7 +11,6 @@ import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_schedule_column.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_waiting_column.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
@@ -293,8 +292,8 @@ Map<String, dynamic> queueRpcListItem({
     'id': id,
     'patient_id': patientId,
     'patient_name': patientName,
-    if (doctorId != null) 'doctor_id': doctorId,
-    if (doctorName != null) 'doctor_name': doctorName,
+    'doctor_id': ?doctorId,
+    'doctor_name': ?doctorName,
     'start_time': start.toIso8601String(),
     'end_time': end.toIso8601String(),
     'type': 'planned',

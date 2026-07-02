@@ -1,5 +1,4 @@
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
-import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_header_bar.dart';
 import 'package:flutter/material.dart';

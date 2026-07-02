@@ -11,7 +11,6 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_d
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
-import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_schedule_column.dart';
@@ -39,7 +38,7 @@ import '../../widget/appointments/appointment_calendar_test_support.dart';
 class _MutableAuthSessionNotifier extends TestAuthSessionNotifier {
   _MutableAuthSessionNotifier(this._state);
 
-  AuthSessionState _state;
+  final AuthSessionState _state;
 
   @override
   AuthSessionState build() => _state;

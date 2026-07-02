@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
-import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_calendar_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
 import 'appointment_calendar_test_support.dart';

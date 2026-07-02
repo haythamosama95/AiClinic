@@ -33,21 +33,6 @@ Future<void> pickBookingStartTimeInForm(WidgetTester tester, {DateTime? startTim
   await tester.pumpAndSettle();
 }
 
-Future<void> _selectCalendarDay(WidgetTester tester, DateTime target) async {
-  const maxMonthSteps = 24;
-  for (var step = 0; step < maxMonthSteps; step++) {
-    final dayFinder = find.descendant(of: find.byType(CalendarDatePicker), matching: find.text('${target.day}'));
-    if (dayFinder.evaluate().isNotEmpty) {
-      await tester.tap(dayFinder.last);
-      await tester.pumpAndSettle();
-      return;
-    }
-    await tester.tap(find.byIcon(Icons.chevron_right).first);
-    await tester.pumpAndSettle();
-  }
-  fail('Could not select ${target.year}-${target.month}-${target.day} in date picker.');
-}
-
 Future<void> _selectTimeInPicker(WidgetTester tester, TimeOfDay target) async {
   final dialog = find.byType(TimePickerDialog);
   expect(dialog, findsOneWidget);

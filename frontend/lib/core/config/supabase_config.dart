@@ -115,7 +115,7 @@ class SupabaseBootstrap {
     try {
       await Supabase.initialize(
         url: config.url.toString(),
-        anonKey: config.anonKey,
+        publishableKey: config.anonKey,
         authOptions: const FlutterAuthClientOptions(
           localStorage: EmptyLocalStorage(),
           // Avoid SharedPreferences in headless `flutter test` (boundary suite).

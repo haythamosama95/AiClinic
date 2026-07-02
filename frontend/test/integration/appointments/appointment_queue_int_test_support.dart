@@ -404,8 +404,8 @@ Map<String, dynamic> queueRpcListItem({
     'end_time': end.toUtc().toIso8601String(),
     'type': 'planned',
     'status': status,
-    if (checkedInAt != null) 'checked_in_at': checkedInAt,
-    if (inProgressAt != null) 'in_progress_at': inProgressAt,
+    'checked_in_at': ?checkedInAt,
+    'in_progress_at': ?inProgressAt,
   };
 }
 

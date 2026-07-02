@@ -43,7 +43,6 @@ class _CapturingAppointmentQueueRealtimeClient implements AppointmentQueueRealti
   _CapturingAppointmentQueueRealtimeClient({required this.onSubscribe});
 
   final void Function(AppointmentQueueRealtimeStatusCallback callback) onSubscribe;
-  AppointmentQueueRealtimeStatusCallback? _onConnectionChanged;
 
   @override
   void subscribe({
@@ -51,7 +50,6 @@ class _CapturingAppointmentQueueRealtimeClient implements AppointmentQueueRealti
     required AppointmentQueueRealtimeChangeCallback onAppointmentChange,
     required AppointmentQueueRealtimeStatusCallback onConnectionChanged,
   }) {
-    _onConnectionChanged = onConnectionChanged;
     onSubscribe(onConnectionChanged);
   }
 

@@ -52,10 +52,10 @@ const queueNavItem = ShellNavSingle(
 
 /// Sets logical viewport size via [TestFlutterView.physicalSizeTestValue].
 void setQueueViewport(WidgetTester tester, Size logicalSize) {
-  tester.binding.window.physicalSizeTestValue = logicalSize;
-  tester.binding.window.devicePixelRatioTestValue = 1.0;
-  addTearDown(tester.binding.window.clearPhysicalSizeTestValue);
-  addTearDown(tester.binding.window.clearDevicePixelRatioTestValue);
+  tester.view.physicalSize = logicalSize;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
 }
 
 class StaticQueueNotifier extends AppointmentQueueController {

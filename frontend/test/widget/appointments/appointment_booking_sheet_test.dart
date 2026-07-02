@@ -1,4 +1,3 @@
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_query.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
