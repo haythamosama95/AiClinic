@@ -5,10 +5,11 @@ import 'package:ai_clinic/features/visits/presentation/widgets/encounter_documen
 
 /// Expert single-page mode — documentation phase sections on one scrollable page (014 US5 / FR-019).
 class ExpertModeAccordion extends StatelessWidget {
-  const ExpertModeAccordion({required this.phases, this.phaseCardHeight, super.key});
+  const ExpertModeAccordion({required this.phases, this.phaseCardHeight, this.phaseKeys, super.key});
 
   final List<ExpertModePhaseEntry> phases;
   final double? phaseCardHeight;
+  final Map<EncounterPhase, GlobalKey>? phaseKeys;
 
   @override
   Widget build(BuildContext context) {
@@ -18,11 +19,17 @@ class ExpertModeAccordion extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < phases.length; i++) ...[
-            EncounterPhaseReadGroup(
+            KeyedSubtree(
               key: Key('expert_mode_phase_${phases[i].phase.name}'),
-              phase: phases[i].phase,
-              contentHeight: phaseCardHeight,
-              child: phases[i].child,
+              child: ColoredBox(
+                color: Colors.transparent,
+                key: phaseKeys?[phases[i].phase],
+                child: EncounterPhaseReadGroup(
+                  phase: phases[i].phase,
+                  contentHeight: phaseCardHeight,
+                  child: phases[i].child,
+                ),
+              ),
             ),
             if (i < phases.length - 1) const SizedBox(height: 12),
           ],

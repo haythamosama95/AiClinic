@@ -28,8 +28,6 @@ class EncounterReview extends ConsumerWidget {
     this.canUploadAttachments = false,
     this.onRefresh,
     this.onEditPhase,
-    this.onSubmit,
-    this.showSubmit = false,
     super.key,
   });
 
@@ -40,8 +38,6 @@ class EncounterReview extends ConsumerWidget {
   final bool canUploadAttachments;
   final VoidCallback? onRefresh;
   final ValueChanged<EncounterPhase>? onEditPhase;
-  final VoidCallback? onSubmit;
-  final bool showSubmit;
 
   String get _complaint => state?.complaint ?? visit.documentation?.complaint ?? '';
   String get _history => state?.history ?? visit.documentation?.history ?? '';
@@ -141,32 +137,7 @@ class EncounterReview extends ConsumerWidget {
       onEditPhase: onEditPhase,
     );
 
-    if (!showSubmit || onSubmit == null) {
-      return KeyedSubtree(key: const Key('encounter_review'), child: summary);
-    }
-
-    final isSaving = state?.saveStatus == DocumentationSaveStatus.saving;
-
-    return KeyedSubtree(
-      key: const Key('encounter_review'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: summary),
-          const SizedBox(height: VisitPageTokens.sectionGap),
-          Align(
-            alignment: Alignment.centerRight,
-            child: AppButton(
-              key: const Key('encounter_review_submit_button'),
-              label: isSaving ? 'Saving…' : 'Submit visit',
-              icon: const Icon(Icons.check_circle_outline, size: 18),
-              isLoading: isSaving,
-              onPressed: isSaving ? null : onSubmit,
-            ),
-          ),
-        ],
-      ),
-    );
+    return KeyedSubtree(key: const Key('encounter_review'), child: summary);
   }
 
   static List<String> _formatVitalSigns(List<VisitVitalSign> vitalSigns) {

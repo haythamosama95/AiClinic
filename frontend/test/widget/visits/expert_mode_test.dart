@@ -37,22 +37,18 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byKey(const Key('encounter_step_subjective')));
-      await tester.pumpAndSettle();
-      expect(find.text('Persistent headache'), findsOneWidget);
+      expect(find.byKey(const Key('encounter_phase_subjective')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('encounter_mode_expert')));
       await tester.pumpAndSettle();
 
+      expect(find.byKey(const Key('encounter_mode_transition')), findsOneWidget);
       expect(find.byKey(const Key('expert_mode_accordion')), findsOneWidget);
-      expect(find.text('Persistent headache'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('encounter_mode_guided')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('encounter_step_subjective')));
-      await tester.pumpAndSettle();
-      expect(find.text('Persistent headache'), findsOneWidget);
+      expect(find.byKey(const Key('encounter_phase_subjective')), findsOneWidget);
     });
 
     testWidgets('expert mode renders all documentation phase sections', (tester) async {

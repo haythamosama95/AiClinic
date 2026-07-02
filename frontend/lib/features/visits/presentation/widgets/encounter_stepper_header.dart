@@ -27,8 +27,8 @@ class EncounterStepperHeader extends StatelessWidget {
     final shape = context.shapeTokens;
     final theme = Theme.of(context);
     final visitTheme = context.visitTheme;
-    final phases = EncounterPhase.ordered;
-    final activeIndex = activePhase.orderIndex;
+    final phases = EncounterPhase.stepperPhases;
+    final activeIndex = activePhase.stepperIndex;
 
     final titleStyle = theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600);
     final pillRadius = shape.md + 2;

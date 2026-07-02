@@ -9,7 +9,9 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_joined_header.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspace_mode_toggle.dart';
@@ -177,17 +179,28 @@ class _VisitDocumentationBody extends ConsumerWidget {
     final visit = state.visit;
     final canUploadAttachments = ref.watch(permissionServiceProvider).canUploadVisitAttachments();
     final status = visit.status;
+    final activePhase = ref.watch(encounterActivePhaseProvider(visitId));
+    final isOnSummary = activePhase == EncounterPhase.review;
 
     Widget? trailing;
     if (canSubmit && status == VisitStatus.inProgress) {
       final isSaving = state.saveStatus == DocumentationSaveStatus.saving;
-      trailing = AppButton(
-        key: const Key('visit_submit_button'),
-        label: isSaving ? 'Saving…' : 'Submit visit',
-        icon: const Icon(Icons.check_circle_outline, size: 18),
-        isLoading: isSaving,
-        onPressed: isSaving ? null : onSubmit,
-      );
+      if (isOnSummary) {
+        trailing = AppButton(
+          key: const Key('visit_submit_button'),
+          label: isSaving ? 'Saving…' : 'Submit visit',
+          icon: const Icon(Icons.check_circle_outline, size: 18),
+          isLoading: isSaving,
+          onPressed: isSaving ? null : onSubmit,
+        );
+      } else {
+        trailing = AppButton(
+          key: const Key('visit_finish_button'),
+          label: 'Finish Visit',
+          icon: const Icon(Icons.summarize_outlined, size: 18),
+          onPressed: () => ref.read(encounterActivePhaseProvider(visitId).notifier).setPhase(EncounterPhase.review),
+        );
+      }
     } else if (canSubmit && status == VisitStatus.completed) {
       trailing = AppButton(
         key: const Key('visit_save_close_button'),
@@ -241,8 +254,6 @@ class _VisitDocumentationBody extends ConsumerWidget {
             onRefresh: canEdit
                 ? () {}
                 : () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
-            onSubmit: onSubmit,
-            showSubmit: canSubmit && state.visit.status == VisitStatus.inProgress,
           ),
         ),
       ],

@@ -8,10 +8,13 @@ enum EncounterPhase {
   plan,
   review;
 
-  /// Phases with editable documentation canvases (excludes Review).
+  /// Phases with editable documentation canvases (excludes Summary).
   static const documentationPhases = <EncounterPhase>[subjective, objective, plan];
 
-  /// Full stepper order including the read-only Review step.
+  /// Guided stepper order (excludes Summary — opened via Finish Visit).
+  static const stepperPhases = documentationPhases;
+
+  /// All navigable phases including the read-only Summary view.
   static const ordered = <EncounterPhase>[subjective, objective, plan, review];
 
   bool get isDocumentation => index <= plan.index;
@@ -40,16 +43,19 @@ enum EncounterPhase {
     review => Icons.summarize_outlined,
   };
 
-  int get orderIndex => ordered.indexOf(this);
+  /// Index within [stepperPhases]; [review] returns [stepperPhases.length] (all steps complete).
+  int get stepperIndex => this == review ? stepperPhases.length : stepperPhases.indexOf(this);
+
+  int get orderIndex => stepperIndex;
 
   EncounterPhase? get next => switch (this) {
-    review => null,
-    _ => ordered[orderIndex + 1],
+    plan || review => null,
+    _ => stepperPhases[stepperIndex + 1],
   };
 
   EncounterPhase? get previous => switch (this) {
-    subjective => null,
-    _ => ordered[orderIndex - 1],
+    subjective || review => null,
+    _ => stepperPhases[stepperIndex - 1],
   };
 }
 

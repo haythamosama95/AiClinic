@@ -11,7 +11,7 @@ typedef PhaseBadges = Map<EncounterPhase, PhaseCompletionBadge>;
 PhaseBadges deriveEncounterPhaseBadges(VisitDocumentationState state) {
   final visit = state.visit;
 
-  return {for (final phase in EncounterPhase.ordered) phase: _badgeForPhase(phase, state, visit)};
+  return {for (final phase in EncounterPhase.stepperPhases) phase: _badgeForPhase(phase, state, visit)};
 }
 
 PhaseCompletionBadge _badgeForPhase(EncounterPhase phase, VisitDocumentationState state, VisitDetail visit) {
@@ -20,7 +20,7 @@ PhaseCompletionBadge _badgeForPhase(EncounterPhase phase, VisitDocumentationStat
     EncounterPhase.subjective => _subjectiveBadge(state, visit),
     EncounterPhase.objective => _findingsAndDiagnosisBadge(state),
     EncounterPhase.plan => _planBadge(state),
-    EncounterPhase.review => _reviewBadge(state),
+    EncounterPhase.review => PhaseCompletionBadge.empty,
   };
 }
 
@@ -66,41 +66,11 @@ PhaseCompletionBadge _planBadge(VisitDocumentationState state) {
   return PhaseCompletionBadge.empty;
 }
 
-PhaseCompletionBadge _reviewBadge(VisitDocumentationState state) {
-  final hasClinical =
-      _hasText(state.complaint) ||
-      _hasText(state.history) ||
-      _hasText(state.examination) ||
-      _hasText(state.diagnosis) ||
-      _hasText(state.plan);
-  final visit = state.visit;
-  final hasStructured =
-      visit.vitalSigns.isNotEmpty ||
-      visit.treatmentPlans.isNotEmpty ||
-      visit.investigations.isNotEmpty ||
-      visit.attachments.isNotEmpty;
-
-  if (clinicalSectionLengthError(
-        complaint: state.complaint,
-        history: state.history,
-        examination: state.examination,
-        diagnosis: state.diagnosis,
-        plan: state.plan,
-      ) !=
-      null) {
-    return PhaseCompletionBadge.error;
-  }
-  if (hasClinical || hasStructured) {
-    return PhaseCompletionBadge.hasContent;
-  }
-  return PhaseCompletionBadge.empty;
-}
-
 bool _hasText(String? value) => value != null && value.trim().isNotEmpty;
 
 bool _sectionTooLong(String value) => value.length > kMaxClinicalSectionLength;
 
-PhaseBadges _emptyBadges() => {for (final phase in EncounterPhase.ordered) phase: PhaseCompletionBadge.empty};
+PhaseBadges _emptyBadges() => {for (final phase in EncounterPhase.stepperPhases) phase: PhaseCompletionBadge.empty};
 
 /// Active encounter step for the guided workspace (014 US4).
 final encounterActivePhaseProvider = NotifierProvider.autoDispose

@@ -14,7 +14,7 @@ void main() {
       expect(badges[EncounterPhase.subjective], PhaseCompletionBadge.empty);
       expect(badges[EncounterPhase.objective], PhaseCompletionBadge.empty);
       expect(badges[EncounterPhase.plan], PhaseCompletionBadge.empty);
-      expect(badges[EncounterPhase.review], PhaseCompletionBadge.empty);
+      expect(badges.containsKey(EncounterPhase.review), isFalse);
     });
 
     test('marks subjective has-content when visit type is present', () {
@@ -44,13 +44,11 @@ void main() {
       final badges = deriveEncounterPhaseBadges(sampleEncounterDocState().copyWith(diagnosis: oversized));
 
       expect(badges[EncounterPhase.objective], PhaseCompletionBadge.error);
-      expect(badges[EncounterPhase.review], PhaseCompletionBadge.error);
     });
 
-    test('marks review has-content when any clinical section has text', () {
+    test('marks plan has-content when plan section has text', () {
       final badges = deriveEncounterPhaseBadges(sampleEncounterDocState().copyWith(plan: 'Rest and fluids'));
 
-      expect(badges[EncounterPhase.review], PhaseCompletionBadge.hasContent);
       expect(badges[EncounterPhase.plan], PhaseCompletionBadge.hasContent);
     });
   });
