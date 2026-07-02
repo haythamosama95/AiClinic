@@ -610,10 +610,13 @@ class _RichParagraphEditor extends StatelessWidget {
                     curve: Curves.easeOut,
                     opacity: showEmptyState ? 1 : 0,
                     child: Center(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTapDown: enabled ? (_) => onEmptyStatePressed?.call() : null,
-                        child: _RichParagraphEmptyState(icon: emptyStateIcon, text: emptyStateText),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: enabled ? (_) => onEmptyStatePressed?.call() : null,
+                          child: _RichParagraphEmptyState(icon: emptyStateIcon, text: emptyStateText),
+                        ),
                       ),
                     ),
                   ),
