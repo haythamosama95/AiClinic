@@ -63,6 +63,7 @@ DECLARE
   v_result public.rpc_result;
   v_assigned_count int;
   v_branch_ids uuid[];
+  v_updated_at timestamptz;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
 
@@ -200,6 +201,44 @@ BEGIN
     'get_service_success',
     v_result.success AND (v_result.data -> 'service' ->> 'name') = 'Blood Test',
     COALESCE(v_result.error_code, 'ok')
+  );
+
+  -- US5: edit history stability + soft-delete of referenced service
+  v_result := public.create_service('History Service', 200.00, 'active', false, ARRAY[v_branch_a]);
+  v_service_id := (v_result.data ->> 'service_id')::uuid;
+
+  SELECT updated_at INTO v_updated_at FROM public.services WHERE id = v_service_id;
+
+  v_result := public.update_service(
+    v_service_id, v_updated_at, 'General Consultation', 220.00, 'inactive'
+  );
+  PERFORM pg_temp.service_catalog_crud_record(
+    'update_service_rename_price_status',
+    v_result.success AND (v_result.data ->> 'service_id')::uuid = v_service_id,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.services WHERE id = v_service_id;
+
+  v_result := public.set_service_global_status(v_service_id, v_updated_at, 'inactive');
+  PERFORM pg_temp.service_catalog_crud_record(
+    'set_service_global_status_success',
+    v_result.success AND v_result.data ->> 'global_status' = 'inactive',
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  SELECT updated_at INTO v_updated_at FROM public.services WHERE id = v_service_id;
+  v_result := public.soft_delete_service(v_service_id, v_updated_at);
+  PERFORM pg_temp.service_catalog_crud_record(
+    'soft_delete_service_success',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  PERFORM pg_temp.service_catalog_crud_record(
+    'soft_delete_service_hidden_from_get',
+    NOT (public.get_service(v_service_id)).success,
+    'deleted service should not be readable'
   );
 END;
 $$;

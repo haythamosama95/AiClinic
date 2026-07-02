@@ -8,6 +8,7 @@ import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart'
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_detail.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_eligibility.dart';
+import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart';
 
 /// Result of creating a service with initial branch assignments.
 class CreateServiceResult {
@@ -47,6 +48,31 @@ class SetServicePromotionResult {
   final String serviceBranchId;
   final bool hasPromotion;
   final DateTime updatedAt;
+}
+
+/// Result of updating a service.
+class UpdateServiceResult {
+  const UpdateServiceResult({required this.serviceId, required this.updatedAt});
+
+  final String serviceId;
+  final DateTime updatedAt;
+}
+
+/// Result of setting global status.
+class SetGlobalStatusResult {
+  const SetGlobalStatusResult({required this.serviceId, required this.globalStatus, required this.updatedAt});
+
+  final String serviceId;
+  final GlobalStatus globalStatus;
+  final DateTime updatedAt;
+}
+
+/// Paginated service catalog list page.
+class ServiceListPageResult {
+  const ServiceListPageResult({required this.items, required this.total});
+
+  final List<ServiceListItem> items;
+  final int total;
 }
 
 /// Service Catalog RPC wrappers (015).
@@ -297,6 +323,117 @@ class ServiceCatalogRepository with AppRpcInvoker {
       unitPrice: unitPrice,
       appliedRule: appliedRule,
     );
+  }
+
+  Future<UpdateServiceResult> updateService({
+    required String serviceId,
+    required DateTime expectedUpdatedAt,
+    required String name,
+    required String defaultPrice,
+    required GlobalStatus globalStatus,
+  }) async {
+    _assertNonEmpty('serviceId', serviceId);
+    _assertNonEmpty('name', name);
+    _assertNonEmpty('defaultPrice', defaultPrice);
+
+    final result = await invokeRpc('update_service', {
+      'p_service_id': serviceId.trim(),
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+      'p_name': name.trim(),
+      'p_default_price': defaultPrice.trim(),
+      'p_global_status': globalStatus.wireValue,
+    });
+
+    final updatedServiceId = result.data?['service_id']?.toString();
+    final updatedAtRaw = result.data?['updated_at']?.toString();
+    final updatedAt = updatedAtRaw == null ? null : DateTime.tryParse(updatedAtRaw);
+    if (updatedServiceId == null || updatedServiceId.isEmpty || updatedAt == null) {
+      throw StateError('update_service returned an unexpected shape.');
+    }
+
+    return UpdateServiceResult(serviceId: updatedServiceId, updatedAt: updatedAt);
+  }
+
+  Future<SetGlobalStatusResult> setGlobalStatus({
+    required String serviceId,
+    required DateTime expectedUpdatedAt,
+    required GlobalStatus globalStatus,
+  }) async {
+    _assertNonEmpty('serviceId', serviceId);
+
+    final result = await invokeRpc('set_service_global_status', {
+      'p_service_id': serviceId.trim(),
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+      'p_global_status': globalStatus.wireValue,
+    });
+
+    final updatedServiceId = result.data?['service_id']?.toString();
+    final status = GlobalStatus.tryParse(result.data?['global_status']?.toString());
+    final updatedAtRaw = result.data?['updated_at']?.toString();
+    final updatedAt = updatedAtRaw == null ? null : DateTime.tryParse(updatedAtRaw);
+    if (updatedServiceId == null || updatedServiceId.isEmpty || status == null || updatedAt == null) {
+      throw StateError('set_service_global_status returned an unexpected shape.');
+    }
+
+    return SetGlobalStatusResult(serviceId: updatedServiceId, globalStatus: status, updatedAt: updatedAt);
+  }
+
+  Future<String> softDeleteService({required String serviceId, required DateTime expectedUpdatedAt}) async {
+    _assertNonEmpty('serviceId', serviceId);
+
+    final result = await invokeRpc('soft_delete_service', {
+      'p_service_id': serviceId.trim(),
+      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
+    });
+
+    final deletedServiceId = result.data?['service_id']?.toString();
+    if (deletedServiceId == null || deletedServiceId.isEmpty) {
+      throw StateError('soft_delete_service returned an unexpected shape.');
+    }
+    return deletedServiceId;
+  }
+
+  Future<ServiceListPageResult> listServices({
+    String query = '',
+    GlobalStatus? globalStatus,
+    String? branchId,
+    int limit = 25,
+    int offset = 0,
+  }) async {
+    final params = <String, dynamic>{'p_limit': limit, 'p_offset': offset};
+    final trimmedQuery = query.trim();
+    if (trimmedQuery.isNotEmpty) {
+      params['p_query'] = trimmedQuery;
+    }
+    if (globalStatus != null) {
+      params['p_global_status'] = globalStatus.wireValue;
+    }
+    if (branchId != null && branchId.trim().isNotEmpty) {
+      params['p_branch_id'] = branchId.trim();
+    }
+
+    final result = await invokeRpc('list_services', params);
+    final totalRaw = result.data?['total'];
+    final rawItems = result.data?['items'];
+    final total = totalRaw is num ? totalRaw.toInt() : 0;
+    final items = <ServiceListItem>[];
+    if (rawItems is List) {
+      for (final raw in rawItems) {
+        if (raw is Map<String, dynamic>) {
+          final item = ServiceListItem.fromRow(raw);
+          if (item != null) {
+            items.add(item);
+          }
+        } else if (raw is Map) {
+          final item = ServiceListItem.fromRow(Map<String, dynamic>.from(raw));
+          if (item != null) {
+            items.add(item);
+          }
+        }
+      }
+    }
+
+    return ServiceListPageResult(items: items, total: total);
   }
 
   String _formatDate(DateTime date) {

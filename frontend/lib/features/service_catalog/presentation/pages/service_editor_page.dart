@@ -68,6 +68,8 @@ class ServiceEditorPage extends ConsumerWidget {
                       }
 
                       final detail = editorState.detail;
+                      final activeBranches = branches.where((branch) => branch.isActive).toList(growable: false);
+                      final allBranchIds = activeBranches.map((branch) => branch.id).toList(growable: false);
 
                       return SingleChildScrollView(
                         child: Column(
@@ -76,6 +78,8 @@ class ServiceEditorPage extends ConsumerWidget {
                             ServiceForm(
                               branches: branches,
                               isSaving: editorState.isSaving,
+                              isEditMode: !isCreate,
+                              saveButtonLabel: isCreate ? 'Save service' : 'Save changes',
                               initialName: detail?.service.name ?? '',
                               initialDefaultPrice: detail?.service.defaultPrice.wireValue ?? '',
                               initialGlobalStatus: detail?.service.globalStatus ?? GlobalStatus.active,
@@ -104,6 +108,20 @@ class ServiceEditorPage extends ConsumerWidget {
                                           AppToast.success(context, message: 'Service created.');
                                           context.pop();
                                         }
+                                      } else {
+                                        await ref
+                                            .read(serviceEditorProvider(serviceId).notifier)
+                                            .updateService(
+                                              name: name,
+                                              defaultPrice: defaultPrice,
+                                              globalStatus: globalStatus,
+                                              assignAllBranches: assignAllBranches,
+                                              selectedBranchIds: selectedBranchIds,
+                                              allBranchIds: allBranchIds,
+                                            );
+                                        if (context.mounted) {
+                                          AppToast.success(context, message: 'Service updated.');
+                                        }
                                       }
                                     } on RpcFailure catch (error) {
                                       if (context.mounted) {
@@ -113,6 +131,50 @@ class ServiceEditorPage extends ConsumerWidget {
                                   },
                             ),
                             if (!isCreate && detail != null) ...[
+                              const SizedBox(height: SpacingTokens.md),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: AppButton(
+                                  label: detail.service.globalStatus == GlobalStatus.active
+                                      ? 'Mark inactive'
+                                      : 'Mark active',
+                                  variant: AppButtonVariant.outline,
+                                  expand: false,
+                                  isLoading: editorState.isSaving,
+                                  onPressed: editorState.isSaving
+                                      ? null
+                                      : () async {
+                                          final nextStatus = detail.service.globalStatus == GlobalStatus.active
+                                              ? GlobalStatus.inactive
+                                              : GlobalStatus.active;
+                                          try {
+                                            await ref
+                                                .read(serviceEditorProvider(serviceId).notifier)
+                                                .setGlobalStatus(nextStatus);
+                                            if (context.mounted) {
+                                              AppToast.success(context, message: 'Global status updated.');
+                                            }
+                                          } on RpcFailure catch (error) {
+                                            if (context.mounted) {
+                                              AppToast.error(context, message: serviceCatalogMessageForRpc(error));
+                                            }
+                                          }
+                                        },
+                                ),
+                              ),
+                              const SizedBox(height: SpacingTokens.sm),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: AppButton(
+                                  label: 'Delete service',
+                                  variant: AppButtonVariant.destructive,
+                                  expand: false,
+                                  isLoading: editorState.isSaving,
+                                  onPressed: editorState.isSaving
+                                      ? null
+                                      : () => _confirmDeleteService(context, ref, serviceId),
+                                ),
+                              ),
                               const SizedBox(height: SpacingTokens.xl),
                               BranchConfigurationMatrix(
                                 branches: [
@@ -208,6 +270,28 @@ class ServiceEditorPage extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _confirmDeleteService(BuildContext context, WidgetRef ref, String? serviceId) async {
+    await AppDialog.showConfirmation(
+      context: context,
+      title: 'Delete service',
+      message:
+          'This hides the service from the catalog and invoice selector. Historical invoice lines keep their snapshots.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () async {
+        try {
+          await ref.read(serviceEditorProvider(serviceId).notifier).softDeleteService();
+          if (!context.mounted) return;
+          AppToast.success(context, message: 'Service deleted.');
+          context.pop();
+        } on RpcFailure catch (error) {
+          if (!context.mounted) return;
+          AppToast.error(context, message: serviceCatalogMessageForRpc(error));
+        }
+      },
     );
   }
 }

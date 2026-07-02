@@ -18,6 +18,8 @@ class ServiceForm extends StatefulWidget {
     this.initialAssignAllBranches = true,
     this.initialSelectedBranchIds = const {},
     this.isSaving = false,
+    this.isEditMode = false,
+    this.saveButtonLabel = 'Save service',
   });
 
   final List<BranchListItem> branches;
@@ -36,6 +38,8 @@ class ServiceForm extends StatefulWidget {
   final bool initialAssignAllBranches;
   final Set<String> initialSelectedBranchIds;
   final bool isSaving;
+  final bool isEditMode;
+  final String saveButtonLabel;
 
   @override
   State<ServiceForm> createState() => ServiceFormState();
@@ -187,7 +191,7 @@ class ServiceFormState extends State<ServiceForm> {
           ],
           const SizedBox(height: SpacingTokens.lg),
           AppButton(
-            label: 'Save service',
+            label: widget.saveButtonLabel,
             expand: false,
             isLoading: widget.isSaving,
             onPressed: widget.isSaving ? null : submit,

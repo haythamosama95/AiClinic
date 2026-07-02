@@ -170,17 +170,17 @@ description: "Task list for Service Catalog (015) implementation"
 
 ### Implementation for User Story 5
 
-- [ ] T048 [US5] Implement `update_service` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: lock row, org scope (`NOT_FOUND`), concurrency (`STALE_SERVICE`), name uniqueness (`DUPLICATE_NAME`), price validity (`INVALID_PRICE`), default-price-lowering invariant guard (`PROMO_EXCEEDS_PRICE`), audit `service.update`
-- [ ] T049 [US5] Implement `set_service_global_status` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: concurrency, set status, audit `service.status`
-- [ ] T050 [US5] Implement `soft_delete_service` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: concurrency, soft-delete service + child `service_branches`, never hard delete, audit `service.delete`
-- [ ] T051 [US5] Add `updateService`, `setGlobalStatus`, and `softDeleteService` methods to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
-- [ ] T052 [US5] Extend `service_editor_notifier.dart`/`service_editor_page.dart` for edit + global-status toggle + soft-delete with a destructive-action confirmation dialog and stale-conflict refresh prompt
+- [X] T048 [US5] Implement `update_service` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: lock row, org scope (`NOT_FOUND`), concurrency (`STALE_SERVICE`), name uniqueness (`DUPLICATE_NAME`), price validity (`INVALID_PRICE`), default-price-lowering invariant guard (`PROMO_EXCEEDS_PRICE`), audit `service.update`
+- [X] T049 [US5] Implement `set_service_global_status` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: concurrency, set status, audit `service.status`
+- [X] T050 [US5] Implement `soft_delete_service` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: concurrency, soft-delete service + child `service_branches`, never hard delete, audit `service.delete`
+- [X] T051 [US5] Add `updateService`, `setGlobalStatus`, and `softDeleteService` methods to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
+- [X] T052 [US5] Extend `service_editor_notifier.dart`/`service_editor_page.dart` for edit + global-status toggle + soft-delete with a destructive-action confirmation dialog and stale-conflict refresh prompt
 
 ### Tests for User Story 5
 
-- [ ] T053 [P] [US5] Add edit-history-stability + soft-delete-of-referenced-service cases to `backend/tests/service_catalog_crud.sql`
-- [ ] T054 [P] [US5] Add a `STALE_SERVICE` stale-write case to `backend/tests/service_catalog_concurrency.sql`
-- [ ] T055 [P] [US5] Add Dart unit test for the edit/global-status/soft-delete notifier flows in `frontend/test/unit/service_catalog/`
+- [X] T053 [P] [US5] Add edit-history-stability + soft-delete-of-referenced-service cases to `backend/tests/service_catalog_crud.sql`
+- [X] T054 [P] [US5] Add a `STALE_SERVICE` stale-write case to `backend/tests/service_catalog_concurrency.sql`
+- [X] T055 [P] [US5] Add Dart unit test for the edit/global-status/soft-delete notifier flows in `frontend/test/unit/service_catalog/`
 
 **Checkpoint**: Full catalog maintenance lifecycle with history immutability
 
@@ -194,12 +194,12 @@ description: "Task list for Service Catalog (015) implementation"
 
 ### Implementation for User Story 6
 
-- [ ] T056 [US6] Implement `list_services` read RPC in `backend/supabase/migrations/20260712091000_service_catalog_pricing_rpcs.sql`: assert `services.view`/`services.manage`, org scope, exclude soft-deleted, optional name/status/branch filters (branch adds `branch_summary`), `total` + paginated `items` ordered by name
-- [ ] T057 [P] [US6] Create presentation model `frontend/lib/features/service_catalog/presentation/models/service_list_filters.dart` (name/status/branch filters + pagination)
-- [ ] T058 [US6] Create `frontend/lib/features/service_catalog/presentation/providers/service_catalog_list_notifier.dart` (backend-first list/search/filter with pagination)
-- [ ] T059 [US6] Create `frontend/lib/features/service_catalog/presentation/pages/service_catalog_list_page.dart` (results/empty/loading/error/permission-denied + pagination) and register its route with a `services.view` guard in `frontend/lib/app/app_routes.dart` + `router.dart`
-- [ ] T060 [P] [US6] Add unit tests for `service_list_filters` and `service_catalog_list_notifier` in `frontend/test/unit/service_catalog/`
-- [ ] T061 [P] [US6] Add widget test for `service_catalog_list_page` states (loading/empty/results/filter/permission-denied) in `frontend/test/widget/service_catalog/`
+- [X] T056 [US6] Implement `list_services` read RPC in `backend/supabase/migrations/20260712091000_service_catalog_pricing_rpcs.sql`: assert `services.view`/`services.manage`, org scope, exclude soft-deleted, optional name/status/branch filters (branch adds `branch_summary`), `total` + paginated `items` ordered by name
+- [X] T057 [P] [US6] Create presentation model `frontend/lib/features/service_catalog/presentation/models/service_list_filters.dart` (name/status/branch filters + pagination)
+- [X] T058 [US6] Create `frontend/lib/features/service_catalog/presentation/providers/service_catalog_list_notifier.dart` (backend-first list/search/filter with pagination)
+- [X] T059 [US6] Create `frontend/lib/features/service_catalog/presentation/pages/service_catalog_list_page.dart` (results/empty/loading/error/permission-denied + pagination) and register its route with a `services.view` guard in `frontend/lib/app/app_routes.dart` + `router.dart`
+- [X] T060 [P] [US6] Add unit tests for `service_list_filters` and `service_catalog_list_notifier` in `frontend/test/unit/service_catalog/`
+- [X] T061 [P] [US6] Add widget test for `service_catalog_list_page` states (loading/empty/results/filter/permission-denied) in `frontend/test/widget/service_catalog/`
 
 **Checkpoint**: Manageable, searchable catalog at scale (NFR-003)
 

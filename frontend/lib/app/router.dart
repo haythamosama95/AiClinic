@@ -20,6 +20,7 @@ import 'package:ai_clinic/features/billing/presentation/pages/insurance_provider
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/pages/service_catalog_list_page.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/pages/service_editor_page.dart';
 import 'package:ai_clinic/features/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
@@ -169,6 +170,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const InsuranceProvidersPage(),
           ),
           GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => const BillingSettingsPage()),
+          GoRoute(path: AppRoutes.settingsServices, builder: (context, state) => const ServiceCatalogListPage()),
           GoRoute(path: AppRoutes.settingsServicesNew, builder: (context, state) => const ServiceEditorPage()),
           GoRoute(
             path: '/settings/services/:serviceId/edit',

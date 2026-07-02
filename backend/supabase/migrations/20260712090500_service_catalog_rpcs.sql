@@ -800,7 +800,386 @@ AS $$
   );
 $$;
 
+-- -----------------------------------------------------------------------------
+-- auth_internal.update_service
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.update_service(
+  p_service_id uuid,
+  p_expected_updated_at timestamptz,
+  p_name text,
+  p_default_price numeric,
+  p_global_status text
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_service public.services%ROWTYPE;
+  v_name text;
+  v_status public.service_global_status;
+  v_new_price numeric(14, 2);
+  v_new_updated_at timestamptz;
+BEGIN
+  PERFORM auth_internal.assert_permission('services.manage');
+  v_org_id := public.jwt_organization_id();
+
+  IF p_service_id IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Service ID is required.');
+  END IF;
+
+  IF p_expected_updated_at IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Expected updated timestamp is required.');
+  END IF;
+
+  SELECT *
+  INTO v_service
+  FROM public.services s
+  WHERE s.id = p_service_id
+    AND s.organization_id = v_org_id
+    AND s.is_deleted = false
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('NOT_FOUND', 'The requested service was not found.');
+  END IF;
+
+  IF v_service.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RETURN public.rpc_error('STALE_SERVICE', 'This service was updated elsewhere. Reload and try again.');
+  END IF;
+
+  v_name := NULLIF(btrim(p_name), '');
+  IF v_name IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Service name is required.');
+  END IF;
+
+  IF char_length(v_name) > 200 THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Service name cannot exceed 200 characters.');
+  END IF;
+
+  IF p_default_price IS NULL OR p_default_price < 0 THEN
+    RETURN public.rpc_error('INVALID_PRICE', 'Default price must be a non-negative amount.');
+  END IF;
+
+  IF p_default_price <> round(p_default_price, 2) THEN
+    RETURN public.rpc_error('INVALID_PRICE', 'Default price must have at most two decimal places.');
+  END IF;
+
+  BEGIN
+    v_status := p_global_status::public.service_global_status;
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RETURN public.rpc_error('INVALID_INPUT', 'Global status must be active or inactive.');
+  END;
+
+  IF lower(btrim(v_name)) <> lower(btrim(v_service.name))
+    AND EXISTS (
+      SELECT 1
+      FROM public.services s
+      WHERE s.organization_id = v_org_id
+        AND s.is_deleted = false
+        AND s.id <> p_service_id
+        AND lower(btrim(s.name)) = lower(v_name)
+    )
+  THEN
+    RETURN public.rpc_error('DUPLICATE_NAME', 'A service with this name already exists in your organization.');
+  END IF;
+
+  v_new_price := round(p_default_price, 2);
+
+  IF v_new_price < v_service.default_price
+    AND EXISTS (
+      SELECT 1
+      FROM public.service_branches sb
+      WHERE sb.service_id = p_service_id
+        AND sb.is_deleted = false
+        AND sb.price_override IS NULL
+        AND sb.promotion_price IS NOT NULL
+        AND sb.promotion_price > v_new_price
+    )
+  THEN
+    RETURN public.rpc_error(
+      'PROMO_EXCEEDS_PRICE',
+      'Promotion price cannot exceed the effective price. Lower the promotion or raise the default/override price.'
+    );
+  END IF;
+
+  UPDATE public.services s
+  SET
+    name = v_name,
+    default_price = v_new_price,
+    global_status = v_status,
+    updated_at = now(),
+    updated_by = auth.uid()
+  WHERE s.id = p_service_id
+  RETURNING s.updated_at INTO v_new_updated_at;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, old_data_json, new_data_json)
+  VALUES (
+    auth.uid(),
+    v_org_id,
+    'service.update',
+    'services',
+    p_service_id,
+    jsonb_build_object(
+      'service_id', p_service_id,
+      'name', v_service.name,
+      'default_price', v_service.default_price,
+      'global_status', v_service.global_status::text
+    ),
+    jsonb_build_object(
+      'service_id', p_service_id,
+      'name', v_name,
+      'default_price', v_new_price,
+      'global_status', v_status::text
+    )
+  );
+
+  RETURN public.rpc_success(
+    jsonb_build_object(
+      'service_id', p_service_id,
+      'updated_at', v_new_updated_at
+    )
+  );
+EXCEPTION
+  WHEN unique_violation THEN
+    RETURN public.rpc_error('DUPLICATE_NAME', 'A service with this name already exists in your organization.');
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage the service catalog.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- auth_internal.set_service_global_status
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.set_service_global_status(
+  p_service_id uuid,
+  p_expected_updated_at timestamptz,
+  p_global_status text
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_service public.services%ROWTYPE;
+  v_status public.service_global_status;
+  v_new_updated_at timestamptz;
+BEGIN
+  PERFORM auth_internal.assert_permission('services.manage');
+  v_org_id := public.jwt_organization_id();
+
+  IF p_service_id IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Service ID is required.');
+  END IF;
+
+  IF p_expected_updated_at IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Expected updated timestamp is required.');
+  END IF;
+
+  SELECT *
+  INTO v_service
+  FROM public.services s
+  WHERE s.id = p_service_id
+    AND s.organization_id = v_org_id
+    AND s.is_deleted = false
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('NOT_FOUND', 'The requested service was not found.');
+  END IF;
+
+  IF v_service.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RETURN public.rpc_error('STALE_SERVICE', 'This service was updated elsewhere. Reload and try again.');
+  END IF;
+
+  BEGIN
+    v_status := p_global_status::public.service_global_status;
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RETURN public.rpc_error('INVALID_INPUT', 'Global status must be active or inactive.');
+  END;
+
+  UPDATE public.services s
+  SET
+    global_status = v_status,
+    updated_at = now(),
+    updated_by = auth.uid()
+  WHERE s.id = p_service_id
+  RETURNING s.updated_at INTO v_new_updated_at;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, old_data_json, new_data_json)
+  VALUES (
+    auth.uid(),
+    v_org_id,
+    'service.status',
+    'services',
+    p_service_id,
+    jsonb_build_object('service_id', p_service_id, 'global_status', v_service.global_status::text),
+    jsonb_build_object('service_id', p_service_id, 'global_status', v_status::text)
+  );
+
+  RETURN public.rpc_success(
+    jsonb_build_object(
+      'service_id', p_service_id,
+      'global_status', v_status::text,
+      'updated_at', v_new_updated_at
+    )
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage the service catalog.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- auth_internal.soft_delete_service
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.soft_delete_service(
+  p_service_id uuid,
+  p_expected_updated_at timestamptz
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_service public.services%ROWTYPE;
+BEGIN
+  PERFORM auth_internal.assert_permission('services.manage');
+  v_org_id := public.jwt_organization_id();
+
+  IF p_service_id IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Service ID is required.');
+  END IF;
+
+  IF p_expected_updated_at IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Expected updated timestamp is required.');
+  END IF;
+
+  SELECT *
+  INTO v_service
+  FROM public.services s
+  WHERE s.id = p_service_id
+    AND s.organization_id = v_org_id
+    AND s.is_deleted = false
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN public.rpc_error('NOT_FOUND', 'The requested service was not found.');
+  END IF;
+
+  IF v_service.updated_at IS DISTINCT FROM p_expected_updated_at THEN
+    RETURN public.rpc_error('STALE_SERVICE', 'This service was updated elsewhere. Reload and try again.');
+  END IF;
+
+  UPDATE public.services s
+  SET
+    is_deleted = true,
+    deleted_at = now(),
+    deleted_by = auth.uid(),
+    updated_at = now(),
+    updated_by = auth.uid()
+  WHERE s.id = p_service_id;
+
+  UPDATE public.service_branches sb
+  SET
+    is_deleted = true,
+    deleted_at = now(),
+    deleted_by = auth.uid(),
+    updated_at = now(),
+    updated_by = auth.uid()
+  WHERE sb.service_id = p_service_id
+    AND sb.is_deleted = false;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, old_data_json, new_data_json)
+  VALUES (
+    auth.uid(),
+    v_org_id,
+    'service.delete',
+    'services',
+    p_service_id,
+    jsonb_build_object(
+      'service_id', p_service_id,
+      'name', v_service.name,
+      'default_price', v_service.default_price,
+      'global_status', v_service.global_status::text
+    ),
+    jsonb_build_object('service_id', p_service_id, 'is_deleted', true)
+  );
+
+  RETURN public.rpc_success(jsonb_build_object('service_id', p_service_id));
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage the service catalog.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.update_service(
+  p_service_id uuid,
+  p_expected_updated_at timestamptz,
+  p_name text,
+  p_default_price numeric,
+  p_global_status text
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.update_service(
+    p_service_id,
+    p_expected_updated_at,
+    p_name,
+    p_default_price,
+    p_global_status
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.set_service_global_status(
+  p_service_id uuid,
+  p_expected_updated_at timestamptz,
+  p_global_status text
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.set_service_global_status(p_service_id, p_expected_updated_at, p_global_status);
+$$;
+
+CREATE OR REPLACE FUNCTION public.soft_delete_service(p_service_id uuid, p_expected_updated_at timestamptz)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.soft_delete_service(p_service_id, p_expected_updated_at);
+$$;
+
 GRANT EXECUTE ON FUNCTION public.create_service(text, numeric, text, boolean, uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_service_branch_assignment(uuid, uuid[], boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.configure_service_branch(uuid, uuid, timestamptz, text, numeric) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_service_promotion(uuid, uuid, timestamptz, numeric, date, date) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_service(uuid, timestamptz, text, numeric, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_service_global_status(uuid, timestamptz, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.soft_delete_service(uuid, timestamptz) TO authenticated;

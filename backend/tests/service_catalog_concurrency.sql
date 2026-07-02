@@ -134,6 +134,27 @@ BEGIN
     NOT v_result.success AND v_result.error_code = 'STALE_SERVICE_BRANCH',
     COALESCE(v_result.error_code, '<null>')
   );
+
+  -- US5: stale service write rejection
+  SELECT s.updated_at
+  INTO v_sb_updated_at
+  FROM public.services s
+  WHERE s.id = v_service_id;
+
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.services
+  SET updated_at = '2099-01-03 00:00:00+00'::timestamptz
+  WHERE id = v_service_id;
+  PERFORM set_config('role', 'authenticated', true);
+
+  v_result := public.update_service(
+    v_service_id, v_stale_updated_at, 'Renamed Service', 110.00, 'active'
+  );
+  PERFORM pg_temp.service_catalog_concurrency_record(
+    'stale_service_rejects_update',
+    NOT v_result.success AND v_result.error_code = 'STALE_SERVICE',
+    COALESCE(v_result.error_code, '<null>')
+  );
 END;
 $$;
 

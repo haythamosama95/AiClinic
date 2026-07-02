@@ -13,7 +13,8 @@ class ServiceCatalogSettingsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!ref.watch(permissionServiceProvider).canManageServices()) {
+    final permissions = ref.watch(permissionServiceProvider);
+    if (!permissions.canViewServices() && !permissions.canManageServices()) {
       return const SizedBox.shrink();
     }
 
@@ -21,16 +22,27 @@ class ServiceCatalogSettingsSection extends ConsumerWidget {
       title: 'Service catalog',
       child: SettingsField(
         label: 'Catalog services',
-        description: 'Create organization-wide services and assign them to branches for invoicing.',
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: AppButton(
-            label: 'Add service',
-            variant: AppButtonVariant.outline,
-            icon: const Icon(Icons.medical_services_outlined, size: 18),
-            expand: false,
-            onPressed: () => context.push(AppRoutes.settingsServicesNew),
-          ),
+        description: 'Browse, search, and manage organization-wide services for invoicing.',
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            AppButton(
+              label: 'Browse catalog',
+              variant: AppButtonVariant.outline,
+              icon: const Icon(Icons.medical_services_outlined, size: 18),
+              expand: false,
+              onPressed: () => context.push(AppRoutes.settingsServices),
+            ),
+            if (permissions.canManageServices())
+              AppButton(
+                label: 'Add service',
+                variant: AppButtonVariant.outline,
+                icon: const Icon(Icons.add, size: 18),
+                expand: false,
+                onPressed: () => context.push(AppRoutes.settingsServicesNew),
+              ),
+          ],
         ),
       ),
     );

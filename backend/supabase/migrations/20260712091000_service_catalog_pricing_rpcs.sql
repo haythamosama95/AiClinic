@@ -391,3 +391,179 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION public.search_eligible_services(uuid, text, date, int) TO authenticated;
+
+-- -----------------------------------------------------------------------------
+-- auth_internal.list_services (management surface)
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.list_services(
+  p_query text DEFAULT NULL,
+  p_global_status text DEFAULT NULL,
+  p_branch_id uuid DEFAULT NULL,
+  p_limit int DEFAULT 25,
+  p_offset int DEFAULT 0
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_limit int;
+  v_offset int;
+  v_status public.service_global_status;
+  v_total int;
+  v_items jsonb;
+  v_query text := NULLIF(btrim(p_query), '');
+BEGIN
+  v_org_id := public.jwt_organization_id();
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.roles_permissions rp
+    JOIN public.staff_members sm ON sm.role = rp.role
+    WHERE sm.auth_user_id = auth.uid()
+      AND sm.is_deleted = false
+      AND sm.is_active = true
+      AND rp.permission_key IN ('services.view', 'services.manage')
+      AND rp.is_granted = true
+      AND rp.is_deleted = false
+  ) THEN
+    RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to view the service catalog.');
+  END IF;
+
+  IF p_global_status IS NOT NULL AND btrim(p_global_status) <> '' THEN
+    BEGIN
+      v_status := p_global_status::public.service_global_status;
+    EXCEPTION
+      WHEN invalid_text_representation THEN
+        RETURN public.rpc_error('INVALID_INPUT', 'Global status must be active or inactive.');
+    END;
+  END IF;
+
+  IF p_branch_id IS NOT NULL THEN
+    IF NOT (p_branch_id = ANY (public.jwt_branch_ids())) THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have access to this branch.');
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM public.branches b
+      WHERE b.id = p_branch_id
+        AND b.organization_id = v_org_id
+        AND b.is_deleted = false
+    ) THEN
+      RETURN public.rpc_error('BRANCH_NOT_IN_ORG', 'The branch is not in your organization.');
+    END IF;
+  END IF;
+
+  v_limit := greatest(1, least(coalesce(p_limit, 25), 100));
+  v_offset := greatest(coalesce(p_offset, 0), 0);
+
+  SELECT count(*)::int
+  INTO v_total
+  FROM public.services s
+  WHERE s.organization_id = v_org_id
+    AND s.is_deleted = false
+    AND (v_query IS NULL OR s.name ILIKE '%' || v_query || '%')
+    AND (p_global_status IS NULL OR btrim(p_global_status) = '' OR s.global_status = v_status)
+    AND (
+      p_branch_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM public.service_branches sb
+        WHERE sb.service_id = s.id
+          AND sb.branch_id = p_branch_id
+          AND sb.is_deleted = false
+      )
+    );
+
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_strip_nulls(
+        jsonb_build_object(
+          'service_id', page.service_id,
+          'name', page.name,
+          'default_price', to_char(page.default_price, 'FM9999999990.00'),
+          'global_status', page.global_status::text,
+          'assigned_branch_count', page.assigned_branch_count,
+          'updated_at', page.updated_at,
+          'branch_summary', page.branch_summary
+        )
+      )
+      ORDER BY page.name
+    ),
+    '[]'::jsonb
+  )
+  INTO v_items
+  FROM (
+    SELECT
+      s.id AS service_id,
+      s.name,
+      s.default_price,
+      s.global_status,
+      s.updated_at,
+      (
+        SELECT count(*)::int
+        FROM public.service_branches sb
+        WHERE sb.service_id = s.id
+          AND sb.is_deleted = false
+      ) AS assigned_branch_count,
+      CASE
+        WHEN p_branch_id IS NULL THEN NULL
+        ELSE (
+          SELECT jsonb_build_object(
+            'status', sb.status::text,
+            'effective_price', res.resolution ->> 'unit_price',
+            'on_promotion', (res.resolution ->> 'applied_rule') = 'promo'
+          )
+          FROM public.service_branches sb
+          CROSS JOIN LATERAL (
+            SELECT auth_internal.resolve_effective_service_price(s.id, p_branch_id, current_date) AS resolution
+          ) res
+          WHERE sb.service_id = s.id
+            AND sb.branch_id = p_branch_id
+            AND sb.is_deleted = false
+        )
+      END AS branch_summary
+    FROM public.services s
+    WHERE s.organization_id = v_org_id
+      AND s.is_deleted = false
+      AND (v_query IS NULL OR s.name ILIKE '%' || v_query || '%')
+      AND (p_global_status IS NULL OR btrim(p_global_status) = '' OR s.global_status = v_status)
+      AND (
+        p_branch_id IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM public.service_branches sb
+          WHERE sb.service_id = s.id
+            AND sb.branch_id = p_branch_id
+            AND sb.is_deleted = false
+        )
+      )
+    ORDER BY s.name
+    LIMIT v_limit
+    OFFSET v_offset
+  ) AS page;
+
+  RETURN public.rpc_success(jsonb_build_object('total', v_total, 'items', v_items));
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.list_services(
+  p_query text DEFAULT NULL,
+  p_global_status text DEFAULT NULL,
+  p_branch_id uuid DEFAULT NULL,
+  p_limit int DEFAULT 25,
+  p_offset int DEFAULT 0
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.list_services(p_query, p_global_status, p_branch_id, p_limit, p_offset);
+$$;
+
+GRANT EXECUTE ON FUNCTION public.list_services(text, text, uuid, int, int) TO authenticated;

@@ -47,11 +47,79 @@ void main() {
       final state = container.read(serviceEditorProvider(null));
       expect(state.value?.detail?.service.name, 'Consultation');
     });
+
+    test('updateService calls update RPC and reloads detail', () async {
+      final rpcClient = _ServiceCatalogRpcClient();
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(
+            () => _PresetAuthSessionNotifier(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(
+                  role: StaffRole.administrator,
+                  permissions: {'services.manage', 'services.view'},
+                ),
+              ),
+            ),
+          ),
+          serviceCatalogRepositoryProvider.overrideWithValue(ServiceCatalogRepository(rpcClient)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(serviceEditorProvider('service-1').future);
+
+      await container
+          .read(serviceEditorProvider('service-1').notifier)
+          .updateService(
+            name: 'General Consultation',
+            defaultPrice: '220.00',
+            globalStatus: GlobalStatus.inactive,
+            assignAllBranches: false,
+            selectedBranchIds: const {'branch-1'},
+            allBranchIds: const ['branch-1', 'branch-2'],
+          );
+
+      expect(rpcClient.calls, contains('update_service'));
+      expect(rpcClient.calls.last, 'get_service');
+      final state = container.read(serviceEditorProvider('service-1'));
+      expect(state.value?.detail?.service.name, 'General Consultation');
+    });
+
+    test('softDeleteService calls soft delete RPC', () async {
+      final rpcClient = _ServiceCatalogRpcClient();
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(
+            () => _PresetAuthSessionNotifier(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(
+                  role: StaffRole.administrator,
+                  permissions: {'services.manage', 'services.view'},
+                ),
+              ),
+            ),
+          ),
+          serviceCatalogRepositoryProvider.overrideWithValue(ServiceCatalogRepository(rpcClient)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(serviceEditorProvider('service-1').future);
+      await container.read(serviceEditorProvider('service-1').notifier).softDeleteService();
+
+      expect(rpcClient.calls, contains('soft_delete_service'));
+      final state = container.read(serviceEditorProvider('service-1'));
+      expect(state.value?.detail, isNull);
+    });
   });
 }
 
 class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
   final List<String> calls = <String>[];
+  int _getServiceCalls = 0;
 
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
@@ -68,21 +136,46 @@ class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
           'assigned_branch_ids': ['branch-1', 'branch-2'],
         },
       },
-      'get_service' => {
+      'get_service' => _getServicePayload(),
+      'update_service' => {
         'success': true,
-        'data': {
-          'service': {
-            'id': 'service-1',
-            'name': 'Consultation',
-            'default_price': '200.00',
-            'global_status': 'active',
-            'created_at': '2026-01-01T10:00:00.000Z',
-            'updated_at': '2026-01-01T10:00:00.000Z',
-          },
-          'branches': <dynamic>[],
-        },
+        'data': {'service_id': 'service-1', 'updated_at': '2026-01-02T10:00:00.000Z'},
+      },
+      'soft_delete_service' => {
+        'success': true,
+        'data': {'service_id': 'service-1'},
       },
       _ => {'success': true, 'data': <String, dynamic>{}},
+    };
+  }
+
+  Map<String, dynamic> _getServicePayload() {
+    final call = _getServiceCalls++;
+    final updated = call > 0;
+    return {
+      'success': true,
+      'data': {
+        'service': {
+          'id': 'service-1',
+          'name': updated ? 'General Consultation' : 'Consultation',
+          'default_price': updated ? '220.00' : '200.00',
+          'global_status': updated ? 'inactive' : 'active',
+          'created_at': '2026-01-01T10:00:00.000Z',
+          'updated_at': '2026-01-02T10:00:00.000Z',
+        },
+        'branches': [
+          {
+            'service_branch_id': 'sb-1',
+            'branch_id': 'branch-1',
+            'status': 'active',
+            'price_override': null,
+            'promotion_price': null,
+            'promotion_start_date': null,
+            'promotion_end_date': null,
+            'updated_at': '2026-01-01T10:00:00.000Z',
+          },
+        ],
+      },
     };
   }
 }

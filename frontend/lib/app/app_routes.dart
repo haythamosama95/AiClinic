@@ -102,12 +102,13 @@ abstract final class AppRoutes {
   static const settingsBilling = '/settings/billing';
 
   // V1-8 service catalog (015)
+  static const settingsServices = '/settings/services';
   static const settingsServicesNew = '/settings/services/new';
 
   /// Service editor: `/settings/services/:id/edit`
   static String settingsServiceEdit(String serviceId) => '/settings/services/$serviceId/edit';
 
-  static const serviceCatalogStaticPaths = <String>[settingsServicesNew];
+  static const serviceCatalogStaticPaths = <String>[settingsServices, settingsServicesNew];
 
   /// Invoice detail: `/billing/invoices/:id`
   static String billingInvoiceDetail(String invoiceId) => '$billingInvoices/$invoiceId';

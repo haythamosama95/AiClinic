@@ -184,4 +184,107 @@ class ServiceEditorNotifier extends AsyncNotifier<ServiceEditorState> {
       endDate: null,
     );
   }
+
+  Future<void> updateService({
+    required String name,
+    required String defaultPrice,
+    required GlobalStatus globalStatus,
+    required bool assignAllBranches,
+    required Set<String> selectedBranchIds,
+    required List<String> allBranchIds,
+  }) async {
+    final current = state.value;
+    final detail = current?.detail;
+    final serviceId = detail?.service.id ?? _serviceId;
+    final updatedAt = detail?.service.updatedAt;
+    if (current == null || serviceId == null || serviceId.isEmpty || updatedAt == null) {
+      throw StateError('Service not loaded.');
+    }
+
+    state = AsyncData(current.copyWith(isSaving: true));
+    try {
+      await _repo.updateService(
+        serviceId: serviceId,
+        expectedUpdatedAt: updatedAt,
+        name: name,
+        defaultPrice: defaultPrice,
+        globalStatus: globalStatus,
+      );
+
+      final currentAssigned = {for (final row in detail!.branches) row.branchId};
+      final targetAssigned = assignAllBranches ? allBranchIds.toSet() : selectedBranchIds;
+      final toAssign = targetAssigned.difference(currentAssigned).toList(growable: false);
+      final toUnassign = currentAssigned.difference(targetAssigned).toList(growable: false);
+
+      if (toAssign.isNotEmpty) {
+        await _repo.setBranchAssignment(serviceId: serviceId, branchIds: toAssign, assign: true);
+      }
+      if (toUnassign.isNotEmpty) {
+        await _repo.setBranchAssignment(serviceId: serviceId, branchIds: toUnassign, assign: false);
+      }
+
+      final refreshed = await _repo.getService(serviceId: serviceId);
+      state = AsyncData(ServiceEditorState(detail: refreshed));
+    } on RpcFailure catch (error) {
+      if (error.code == 'STALE_SERVICE') {
+        await reloadDetail();
+      }
+      state = AsyncData(current.copyWith(isSaving: false));
+      rethrow;
+    } catch (error) {
+      state = AsyncData(current);
+      rethrow;
+    }
+  }
+
+  Future<void> setGlobalStatus(GlobalStatus globalStatus) async {
+    final current = state.value;
+    final detail = current?.detail;
+    final serviceId = detail?.service.id ?? _serviceId;
+    final updatedAt = detail?.service.updatedAt;
+    if (current == null || serviceId == null || serviceId.isEmpty || updatedAt == null) {
+      throw StateError('Service not loaded.');
+    }
+
+    state = AsyncData(current.copyWith(isSaving: true));
+    try {
+      await _repo.setGlobalStatus(serviceId: serviceId, expectedUpdatedAt: updatedAt, globalStatus: globalStatus);
+      final refreshed = await _repo.getService(serviceId: serviceId);
+      state = AsyncData(ServiceEditorState(detail: refreshed));
+    } on RpcFailure catch (error) {
+      if (error.code == 'STALE_SERVICE') {
+        await reloadDetail();
+      }
+      state = AsyncData(current.copyWith(isSaving: false));
+      rethrow;
+    } catch (error) {
+      state = AsyncData(current);
+      rethrow;
+    }
+  }
+
+  Future<void> softDeleteService() async {
+    final current = state.value;
+    final detail = current?.detail;
+    final serviceId = detail?.service.id ?? _serviceId;
+    final updatedAt = detail?.service.updatedAt;
+    if (current == null || serviceId == null || serviceId.isEmpty || updatedAt == null) {
+      throw StateError('Service not loaded.');
+    }
+
+    state = AsyncData(current.copyWith(isSaving: true));
+    try {
+      await _repo.softDeleteService(serviceId: serviceId, expectedUpdatedAt: updatedAt);
+      state = AsyncData(const ServiceEditorState());
+    } on RpcFailure catch (error) {
+      if (error.code == 'STALE_SERVICE') {
+        await reloadDetail();
+      }
+      state = AsyncData(current.copyWith(isSaving: false));
+      rethrow;
+    } catch (error) {
+      state = AsyncData(current);
+      rethrow;
+    }
+  }
 }

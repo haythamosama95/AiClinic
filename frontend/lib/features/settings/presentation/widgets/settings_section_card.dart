@@ -39,12 +39,13 @@ class SettingsSectionCard extends StatelessWidget {
     final theme = Theme.of(context);
     final headerActions = _buildHeaderActions(context);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.card,
+    return Material(
+      color: colors.card,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(context.shapeTokens.lg),
-        border: Border.all(color: colors.border),
+        side: BorderSide(color: colors.border),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.max,

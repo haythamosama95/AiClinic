@@ -344,6 +344,7 @@ abstract final class AuthRouteGuard {
     }
 
     final allowed = switch (location) {
+      AppRoutes.settingsServices => canAccessServiceCatalogList(auth),
       AppRoutes.settingsServicesNew => canAccessServiceEditor(auth),
       _ when location.startsWith('/settings/services/') => canAccessServiceEditor(auth),
       _ => false,

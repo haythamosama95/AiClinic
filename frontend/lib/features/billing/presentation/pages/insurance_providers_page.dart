@@ -136,12 +136,13 @@ class _ProvidersList extends StatelessWidget {
       separatorBuilder: (_, _) => const SizedBox(height: SpacingTokens.sm),
       itemBuilder: (context, index) {
         final provider = providers[index];
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.card,
-            border: Border.all(color: colors.border),
+        return Material(
+          color: colors.card,
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
+            side: BorderSide(color: colors.border),
           ),
+          clipBehavior: Clip.antiAlias,
           child: ListTile(
             title: Text(provider.name),
             subtitle: provider.contactInfo == null ? null : Text(provider.contactInfo!),
