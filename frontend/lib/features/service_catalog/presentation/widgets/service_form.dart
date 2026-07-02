@@ -4,7 +4,10 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/service_catalog/application/service_form_validation.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/models/service_form_draft_snapshot.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/settings/presentation/widgets/settings_section_card.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/setup_form_grid.dart';
 
 /// Service create/edit form: name, default price, global status, branch assignment (US1).
 class ServiceForm extends StatefulWidget {
@@ -20,6 +23,8 @@ class ServiceForm extends StatefulWidget {
     this.isSaving = false,
     this.isEditMode = false,
     this.saveButtonLabel = 'Save service',
+    this.showSubmitButton = true,
+    this.onDraftChanged,
   });
 
   final List<BranchListItem> branches;
@@ -40,6 +45,8 @@ class ServiceForm extends StatefulWidget {
   final bool isSaving;
   final bool isEditMode;
   final String saveButtonLabel;
+  final bool showSubmitButton;
+  final ValueChanged<ServiceFormDraftSnapshot>? onDraftChanged;
 
   @override
   State<ServiceForm> createState() => ServiceFormState();
@@ -61,13 +68,26 @@ class ServiceFormState extends State<ServiceForm> {
     _globalStatus = widget.initialGlobalStatus;
     _assignAllBranches = widget.initialAssignAllBranches;
     _selectedBranchIds = Set<String>.from(widget.initialSelectedBranchIds);
+    _priceController.addListener(_notifyDraftChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notifyDraftChanged());
   }
 
   @override
   void dispose() {
+    _priceController.removeListener(_notifyDraftChanged);
     _nameController.dispose();
     _priceController.dispose();
     super.dispose();
+  }
+
+  void _notifyDraftChanged() {
+    widget.onDraftChanged?.call(
+      ServiceFormDraftSnapshot(
+        defaultPrice: _priceController.text.trim(),
+        assignAllBranches: _assignAllBranches,
+        selectedBranchIds: Set<String>.from(_selectedBranchIds),
+      ),
+    );
   }
 
   Future<void> submit() async {
@@ -86,6 +106,7 @@ class ServiceFormState extends State<ServiceForm> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final activeBranches = widget.branches.where((branch) => branch.isActive).toList(growable: false);
     final branchOptions = [
       for (final branch in activeBranches)
@@ -97,105 +118,116 @@ class ServiceFormState extends State<ServiceForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AppTextField(
-            controller: _nameController,
-            label: 'Service name',
-            hintText: 'e.g. Consultation',
-            enabled: !widget.isSaving,
-            validator: ServiceFormValidation.validateName,
-          ),
-          const SizedBox(height: SpacingTokens.md),
-          AppTextField(
-            controller: _priceController,
-            label: 'Default price',
-            hintText: '0.00',
-            enabled: !widget.isSaving,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            validator: ServiceFormValidation.validateDefaultPrice,
-          ),
-          const SizedBox(height: SpacingTokens.md),
-          AppSelectTileGroup<GlobalStatus>(
-            label: 'Global status',
-            mode: AppSelectGroupMode.radio,
-            enabled: !widget.isSaving,
-            options: const [
-              AppSelectOption(value: GlobalStatus.active, label: 'Active'),
-              AppSelectOption(value: GlobalStatus.inactive, label: 'Inactive'),
-            ],
-            values: {_globalStatus},
-            onChanged: (values) {
-              if (values.isNotEmpty) {
-                setState(() => _globalStatus = values.first);
-              }
-            },
-          ),
-          const SizedBox(height: SpacingTokens.lg),
-          Text('Branch assignment', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: SpacingTokens.sm),
-          AppCheckbox(
-            label: 'Assign to all branches',
-            value: _assignAllBranches,
-            enabled: !widget.isSaving,
-            onChanged: (value) {
-              setState(() {
-                _assignAllBranches = value;
-                if (_assignAllBranches) {
-                  _selectedBranchIds = {};
-                }
-              });
-            },
-          ),
-          if (!_assignAllBranches) ...[
-            const SizedBox(height: SpacingTokens.md),
-            if (branchOptions.isEmpty)
-              Text(
-                'No active branches are available. Create or reactivate a branch first.',
-                style: Theme.of(context).textTheme.bodySmall,
-              )
-            else
-              FormField<Set<String>>(
-                initialValue: _selectedBranchIds,
-                autovalidateMode: AutovalidateMode.onUserInteraction,
-                validator: (_) => ServiceFormValidation.validateBranchSelection(
-                  assignAllBranches: _assignAllBranches,
-                  selectedBranchIds: _selectedBranchIds,
+          SettingsSectionCard(
+            title: 'Service info',
+            child: SetupFormGrid(
+              columns: 3,
+              children: [
+                AppTextField(
+                  controller: _nameController,
+                  label: 'Service name',
+                  hintText: 'e.g. Consultation',
+                  enabled: !widget.isSaving,
+                  validator: ServiceFormValidation.validateName,
                 ),
-                builder: (field) {
-                  final theme = Theme.of(context);
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      AppSelectTileGroup<String>(
-                        label: 'Assigned branches',
-                        mode: AppSelectGroupMode.checkbox,
-                        enabled: !widget.isSaving,
-                        options: branchOptions,
-                        values: _selectedBranchIds,
-                        onChanged: (values) {
-                          setState(() => _selectedBranchIds = values);
-                          field.didChange(values);
-                        },
-                      ),
-                      if (field.hasError)
-                        Padding(
-                          padding: const EdgeInsets.only(top: SpacingTokens.xs),
-                          child: Text(
-                            field.errorText!,
-                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-          ],
-          const SizedBox(height: SpacingTokens.lg),
-          AppButton(
-            label: widget.saveButtonLabel,
-            expand: false,
-            isLoading: widget.isSaving,
-            onPressed: widget.isSaving ? null : submit,
+                AppTextField(
+                  controller: _priceController,
+                  label: 'Price',
+                  hintText: '0.00',
+                  enabled: !widget.isSaving,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  validator: ServiceFormValidation.validateDefaultPrice,
+                ),
+                AppSwitch(
+                  label: 'Global status',
+                  description: _globalStatus == GlobalStatus.active ? 'Active' : 'Inactive',
+                  value: _globalStatus == GlobalStatus.active,
+                  enabled: !widget.isSaving,
+                  onChanged: (active) {
+                    setState(() => _globalStatus = active ? GlobalStatus.active : GlobalStatus.inactive);
+                  },
+                ),
+              ],
+            ),
           ),
+          const SizedBox(height: SpacingTokens.lg),
+          SettingsSectionCard(
+            title: 'Branch configuration',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Apply this service to', style: theme.textTheme.labelMedium),
+                const SizedBox(height: SpacingTokens.sm),
+                AppCheckbox(
+                  label: 'Assign to all branches',
+                  value: _assignAllBranches,
+                  enabled: !widget.isSaving,
+                  onChanged: (value) {
+                    setState(() {
+                      _assignAllBranches = value;
+                      if (_assignAllBranches) {
+                        _selectedBranchIds = {};
+                      }
+                    });
+                    _notifyDraftChanged();
+                  },
+                ),
+                if (!_assignAllBranches) ...[
+                  const SizedBox(height: SpacingTokens.md),
+                  if (branchOptions.isEmpty)
+                    Text(
+                      'No active branches are available. Create or reactivate a branch first.',
+                      style: theme.textTheme.bodySmall,
+                    )
+                  else
+                    FormField<Set<String>>(
+                      initialValue: _selectedBranchIds,
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      validator: (_) => ServiceFormValidation.validateBranchSelection(
+                        assignAllBranches: _assignAllBranches,
+                        selectedBranchIds: _selectedBranchIds,
+                      ),
+                      builder: (field) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            AppSelectTileGroup<String>(
+                              label: 'Assigned branches',
+                              mode: AppSelectGroupMode.checkbox,
+                              enabled: !widget.isSaving,
+                              options: branchOptions,
+                              values: _selectedBranchIds,
+                              onChanged: (values) {
+                                setState(() => _selectedBranchIds = values);
+                                field.didChange(values);
+                                _notifyDraftChanged();
+                              },
+                            ),
+                            if (field.hasError)
+                              Padding(
+                                padding: const EdgeInsets.only(top: SpacingTokens.xs),
+                                child: Text(
+                                  field.errorText!,
+                                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                ],
+              ],
+            ),
+          ),
+          if (widget.showSubmitButton) ...[
+            const SizedBox(height: SpacingTokens.lg),
+            AppButton(
+              label: widget.saveButtonLabel,
+              expand: false,
+              isLoading: widget.isSaving,
+              onPressed: widget.isSaving ? null : submit,
+            ),
+          ],
         ],
       ),
     );

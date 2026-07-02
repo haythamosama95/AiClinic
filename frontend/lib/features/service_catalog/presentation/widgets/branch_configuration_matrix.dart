@@ -17,11 +17,13 @@ class BranchConfigurationMatrix extends StatelessWidget {
     required this.onSetPromotion,
     required this.onClearPromotion,
     this.isSaving = false,
+    this.isDraft = false,
   });
 
   final List<ServiceBranchConfig> branches;
   final Money defaultPrice;
   final bool isSaving;
+  final bool isDraft;
   final Future<void> Function({
     required ServiceBranchConfig branch,
     required bool active,
@@ -51,7 +53,9 @@ class BranchConfigurationMatrix extends StatelessWidget {
         Text('Branch configuration', style: theme.textTheme.titleSmall),
         const SizedBox(height: SpacingTokens.xs),
         Text(
-          'Set per-branch activation and price overrides. Leave override empty to use the default price.',
+          isDraft
+              ? 'Optional: set per-branch activation, price overrides, and promotions before saving the service.'
+              : 'Set per-branch activation and price overrides. Leave override empty to use the default price.',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: SpacingTokens.md),
@@ -61,6 +65,7 @@ class BranchConfigurationMatrix extends StatelessWidget {
             branch: branch,
             defaultPrice: defaultPrice,
             isSaving: isSaving,
+            isDraft: isDraft,
             onConfigureBranch: onConfigureBranch,
             onSetPromotion: onSetPromotion,
             onClearPromotion: onClearPromotion,
@@ -77,6 +82,7 @@ class _BranchConfigurationRow extends StatefulWidget {
     required this.branch,
     required this.defaultPrice,
     required this.isSaving,
+    required this.isDraft,
     required this.onConfigureBranch,
     required this.onSetPromotion,
     required this.onClearPromotion,
@@ -85,6 +91,7 @@ class _BranchConfigurationRow extends StatefulWidget {
   final ServiceBranchConfig branch;
   final Money defaultPrice;
   final bool isSaving;
+  final bool isDraft;
   final Future<void> Function({
     required ServiceBranchConfig branch,
     required bool active,
@@ -184,9 +191,9 @@ class _BranchConfigurationRowState extends State<_BranchConfigurationRow> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       AppButton(
-                        label: 'Save branch settings',
+                        label: widget.isDraft ? 'Apply branch settings' : 'Save branch settings',
                         onPressed: widget.isSaving ? null : () => _saveBranch(active: widget.branch.isActive),
-                        isLoading: widget.isSaving,
+                        isLoading: widget.isSaving && !widget.isDraft,
                       ),
                       const SizedBox(height: SpacingTokens.sm),
                       AppButton(
@@ -199,9 +206,9 @@ class _BranchConfigurationRowState extends State<_BranchConfigurationRow> {
                 : Row(
                     children: [
                       AppButton(
-                        label: 'Save branch settings',
+                        label: widget.isDraft ? 'Apply branch settings' : 'Save branch settings',
                         onPressed: widget.isSaving ? null : () => _saveBranch(active: widget.branch.isActive),
-                        isLoading: widget.isSaving,
+                        isLoading: widget.isSaving && !widget.isDraft,
                       ),
                       const SizedBox(width: SpacingTokens.sm),
                       AppButton(

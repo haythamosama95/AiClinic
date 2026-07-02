@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/widgets/create_service_modal.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_section_card.dart';
 
 /// Settings entry point for service catalog administration (015 US1).
@@ -40,7 +41,7 @@ class ServiceCatalogSettingsSection extends ConsumerWidget {
                 variant: AppButtonVariant.outline,
                 icon: const Icon(Icons.add, size: 18),
                 expand: false,
-                onPressed: () => context.push(AppRoutes.settingsServicesNew),
+                onPressed: () => CreateServiceModal.show(context),
               ),
           ],
         ),

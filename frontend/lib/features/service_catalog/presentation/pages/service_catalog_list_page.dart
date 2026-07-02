@@ -17,6 +17,7 @@ import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/models/service_list_filters.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_catalog_list_notifier.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/widgets/copy_configuration_dialog.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/widgets/create_service_modal.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
 
 /// Paginated service catalog management list (015 US6).
@@ -103,7 +104,12 @@ class _ServiceCatalogListPageState extends ConsumerState<ServiceCatalogListPage>
                       label: 'Add service',
                       icon: const Icon(Icons.add, size: 18),
                       expand: false,
-                      onPressed: () => context.push(AppRoutes.settingsServicesNew),
+                      onPressed: () async {
+                        final created = await CreateServiceModal.show(context);
+                        if (created == true && context.mounted) {
+                          ref.invalidate(serviceCatalogListProvider);
+                        }
+                      },
                     ),
                   ],
                 ];

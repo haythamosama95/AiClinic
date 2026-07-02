@@ -1,6 +1,9 @@
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
+import 'package:ai_clinic/features/service_catalog/domain/pending_branch_configuration.dart';
+import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/features/service_catalog/domain/service_promotion.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_editor_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,6 +49,51 @@ void main() {
       expect(rpcClient.calls, ['create_service', 'get_service']);
       final state = container.read(serviceEditorProvider(null));
       expect(state.value?.detail?.service.name, 'Consultation');
+    });
+
+    test('createService applies pending branch overrides and promotions', () async {
+      final rpcClient = _ServiceCatalogRpcClient();
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(
+            () => _PresetAuthSessionNotifier(
+              AuthSessionState(
+                status: AuthSessionStatus.authenticated,
+                context: sampleAuthSessionContext(
+                  role: StaffRole.administrator,
+                  permissions: {'services.manage', 'services.view'},
+                ),
+              ),
+            ),
+          ),
+          serviceCatalogRepositoryProvider.overrideWithValue(ServiceCatalogRepository(rpcClient)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(serviceEditorProvider(null).notifier)
+          .createService(
+            name: 'Consultation',
+            defaultPrice: '200.00',
+            globalStatus: GlobalStatus.active,
+            assignAllBranches: false,
+            selectedBranchIds: const {'branch-1'},
+            pendingBranchConfigs: [
+              PendingBranchConfiguration(
+                branchId: 'branch-1',
+                priceOverride: '150.00',
+                promotion: ServicePromotion(
+                  price: Money.parse('100.00'),
+                  startDate: DateTime(2026, 1, 1),
+                  endDate: DateTime(2026, 1, 31),
+                ),
+              ),
+            ],
+          );
+
+      expect(rpcClient.calls, contains('configure_service_branch'));
+      expect(rpcClient.calls, contains('set_service_promotion'));
     });
 
     test('updateService calls update RPC and reloads detail', () async {
@@ -137,6 +185,14 @@ class _ServiceCatalogRpcClient extends RpcCaptureSupabaseClient {
         },
       },
       'get_service' => _getServicePayload(),
+      'configure_service_branch' => {
+        'success': true,
+        'data': {'service_branch_id': 'sb-1', 'updated_at': '2026-01-02T10:00:00.000Z'},
+      },
+      'set_service_promotion' => {
+        'success': true,
+        'data': {'service_branch_id': 'sb-1', 'has_promotion': true, 'updated_at': '2026-01-03T10:00:00.000Z'},
+      },
       'update_service' => {
         'success': true,
         'data': {'service_id': 'service-1', 'updated_at': '2026-01-02T10:00:00.000Z'},

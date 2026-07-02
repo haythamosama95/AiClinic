@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/features/service_catalog/domain/pending_branch_configuration.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_branch_row.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_promotion.dart';
 
@@ -60,6 +61,20 @@ class ServiceBranchConfig {
       ),
       updatedAt: row.updatedAt,
       branchName: branchName,
+    );
+  }
+
+  /// Local draft row shown while creating a service (no persisted service_branch yet).
+  static ServiceBranchConfig fromPending(PendingBranchConfiguration pending) {
+    return ServiceBranchConfig(
+      serviceBranchId: 'draft-${pending.branchId}',
+      branchId: pending.branchId,
+      status: pending.active ? 'active' : 'inactive',
+      priceOverride: pending.priceOverride == null || pending.priceOverride!.isEmpty
+          ? null
+          : Money.tryParse(pending.priceOverride!),
+      promotion: pending.promotion,
+      branchName: pending.branchName,
     );
   }
 }

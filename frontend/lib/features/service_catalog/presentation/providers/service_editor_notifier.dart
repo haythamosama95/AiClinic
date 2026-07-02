@@ -6,6 +6,7 @@ import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
+import 'package:ai_clinic/features/service_catalog/domain/pending_branch_configuration.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_detail.dart';
 
 @immutable
@@ -56,6 +57,7 @@ class ServiceEditorNotifier extends AsyncNotifier<ServiceEditorState> {
     required GlobalStatus globalStatus,
     required bool assignAllBranches,
     required Set<String> selectedBranchIds,
+    List<PendingBranchConfiguration> pendingBranchConfigs = const [],
   }) async {
     final current = state.value ?? const ServiceEditorState();
     state = AsyncData(current.copyWith(isSaving: true));
@@ -67,13 +69,70 @@ class ServiceEditorNotifier extends AsyncNotifier<ServiceEditorState> {
         assignAllBranches: assignAllBranches,
         branchIds: selectedBranchIds.toList(growable: false),
       );
-      final detail = await _repo.getService(serviceId: result.serviceId);
+      var detail = await _repo.getService(serviceId: result.serviceId);
+      if (pendingBranchConfigs.isNotEmpty) {
+        detail = await _applyPendingBranchConfigurations(
+          serviceId: result.serviceId,
+          detail: detail,
+          pendingBranchConfigs: pendingBranchConfigs,
+        );
+      }
       state = AsyncData(ServiceEditorState(detail: detail));
       return result.serviceId;
     } catch (error) {
       state = AsyncData(current);
       rethrow;
     }
+  }
+
+  Future<ServiceDetail> _applyPendingBranchConfigurations({
+    required String serviceId,
+    required ServiceDetail detail,
+    required List<PendingBranchConfiguration> pendingBranchConfigs,
+  }) async {
+    var currentDetail = detail;
+
+    for (final pending in pendingBranchConfigs) {
+      final row = currentDetail.branches.where((branch) => branch.branchId == pending.branchId).firstOrNull;
+      if (row == null) {
+        continue;
+      }
+
+      if (pending.hasBranchSettingsChange) {
+        final updatedAt = row.updatedAt;
+        if (updatedAt == null) {
+          throw StateError('Branch configuration timestamp is missing.');
+        }
+        await _repo.configureServiceBranch(
+          serviceId: serviceId,
+          branchId: pending.branchId,
+          expectedUpdatedAt: updatedAt,
+          status: pending.active ? 'active' : 'inactive',
+          priceOverride: pending.priceOverride,
+        );
+        currentDetail = await _repo.getService(serviceId: serviceId);
+      }
+
+      if (pending.hasPromotion) {
+        final refreshedRow = currentDetail.branches.where((branch) => branch.branchId == pending.branchId).firstOrNull;
+        final updatedAt = refreshedRow?.updatedAt;
+        if (updatedAt == null) {
+          throw StateError('Branch configuration timestamp is missing.');
+        }
+        final promotion = pending.promotion!;
+        await _repo.setServicePromotion(
+          serviceId: serviceId,
+          branchId: pending.branchId,
+          expectedUpdatedAt: updatedAt,
+          promotionPrice: promotion.wirePrice,
+          startDate: promotion.startDate,
+          endDate: promotion.endDate,
+        );
+        currentDetail = await _repo.getService(serviceId: serviceId);
+      }
+    }
+
+    return currentDetail;
   }
 
   Future<void> setBranchAssignment({required List<String> branchIds, required bool assign}) async {
