@@ -32,11 +32,11 @@ honesty, PHI-redaction). Test tasks are therefore first-class, not optional.
 
 **Purpose**: Create the isolated `ai/` tree and the Python Gateway project skeleton
 
-- [ ] T001 Create the isolated `ai/` tree structure per plan.md (directories: `ai/gateway/src/gateway/{config,api,auth,routing,runners,obs}`, `ai/gateway/{config,scripts,tests/{unit,contract,fixtures}}`, `ai/runners/ollama/`)
-- [ ] T002 Initialize the Gateway Python 3.12 project in `ai/gateway/pyproject.toml` with pinned runtime deps (`fastapi`, `uvicorn`, `httpx`, `pyjwt`, `cryptography`, `pydantic>=2`, `pydantic-settings`, `pyyaml`, `prometheus-client`, `structlog`) and dev deps (`pytest`, `pytest-asyncio`, `respx`, `ruff`)
-- [ ] T003 [P] Configure `ruff` (lint + format) and `pytest`/`pytest-asyncio` settings inside `ai/gateway/pyproject.toml`
-- [ ] T004 [P] Create `ai/README.md` documenting the AI layer overview and the three security invariants (AI proposes only / no clinic-DB creds / manual UI works with AI down)
-- [ ] T005 [P] Create the Gateway `ai/gateway/Dockerfile` (Python 3.12 base, least-privilege non-root user, `restart: always`-friendly entrypoint running Uvicorn on `8090`) per FR-005/FR-022
+- [X] T001 Create the isolated `ai/` tree structure per plan.md (directories: `ai/gateway/src/gateway/{config,api,auth,routing,runners,obs}`, `ai/gateway/{config,scripts,tests/{unit,contract,fixtures}}`, `ai/runners/ollama/`)
+- [X] T002 Initialize the Gateway Python 3.12 project in `ai/gateway/pyproject.toml` with pinned runtime deps (`fastapi`, `uvicorn`, `httpx`, `pyjwt`, `cryptography`, `pydantic>=2`, `pydantic-settings`, `pyyaml`, `prometheus-client`, `structlog`) and dev deps (`pytest`, `pytest-asyncio`, `respx`, `ruff`)
+- [X] T003 [P] Configure `ruff` (lint + format) and `pytest`/`pytest-asyncio` settings inside `ai/gateway/pyproject.toml`
+- [X] T004 [P] Create `ai/README.md` documenting the AI layer overview and the three security invariants (AI proposes only / no clinic-DB creds / manual UI works with AI down)
+- [X] T005 [P] Create the Gateway `ai/gateway/Dockerfile` (Python 3.12 base, least-privilege non-root user, `restart: always`-friendly entrypoint running Uvicorn on `8090`) per FR-005/FR-022
 
 ---
 
@@ -46,14 +46,14 @@ honesty, PHI-redaction). Test tasks are therefore first-class, not optional.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Implement `GatewayConfig`, `RunnerConfig`, and `ModelDef` pydantic-settings models with fail-fast validation (port range, ≥1 of `jwt_secret`/`jwks_url`, no `*` in `allowed_origins`, `internal_shared_secret` required when push enabled, unknown-key/type errors naming the key) in `ai/gateway/src/gateway/config/settings.py` (FR-003/FR-004, data-model §1)
-- [ ] T007 [P] Create `ai/gateway/config/gateway.example.yaml` documenting every §14 config key with its default (data-model §1)
-- [ ] T008 Implement the typed `ErrorEnvelope` (`{error:{code,message,request_id}}`) and FastAPI exception handlers covering `bad_request`/`unauthenticated`/`forbidden`/`not_implemented`/`rate_limited`/`ai_no_capacity`/`ai_timeout` with the §10.4 code↔status map in `ai/gateway/src/gateway/api/errors.py` (FR-020, contracts/error-contract.md)
-- [ ] T009 [P] Implement `structlog` JSON logging to local rotating files with a PHI-redaction processor (active unless `log_verbatim=true`) and the `LogRecord` field set in `ai/gateway/src/gateway/obs/logging.py` (FR-033/FR-034, data-model §7)
-- [ ] T010 [P] Implement Prometheus collectors (request rate, error rate by code, per-runner health/latency, in-flight) in `ai/gateway/src/gateway/obs/metrics.py` (FR-035)
-- [ ] T011 Implement the ASGI app bootstrap in `ai/gateway/src/gateway/main.py`: load config, install exception handlers, CORS allowlist middleware (no wildcard), per-request `request_id` middleware, `lifespan` hook to start/stop the health poller, and mount `GET /metrics` (FR-021/FR-035)
-- [ ] T012 [P] Create the shared test harness `ai/gateway/tests/conftest.py` with an in-process ASGI client (`httpx.ASGITransport`) and config fixtures
-- [ ] T013 [P] Create the scriptable fake runner fixture in `ai/gateway/tests/fixtures/fake_runner.py` that can return `ok(latency,model)`/`loading`/`error`/`timeout` poll outcomes on demand to drive lifecycle walks
+- [X] T006 Implement `GatewayConfig`, `RunnerConfig`, and `ModelDef` pydantic-settings models with fail-fast validation (port range, ≥1 of `jwt_secret`/`jwks_url`, no `*` in `allowed_origins`, `internal_shared_secret` required when push enabled, unknown-key/type errors naming the key) in `ai/gateway/src/gateway/config/settings.py` (FR-003/FR-004, data-model §1)
+- [X] T007 [P] Create `ai/gateway/config/gateway.example.yaml` documenting every §14 config key with its default (data-model §1)
+- [X] T008 Implement the typed `ErrorEnvelope` (`{error:{code,message,request_id}}`) and FastAPI exception handlers covering `bad_request`/`unauthenticated`/`forbidden`/`not_implemented`/`rate_limited`/`ai_no_capacity`/`ai_timeout` with the §10.4 code↔status map in `ai/gateway/src/gateway/api/errors.py` (FR-020, contracts/error-contract.md)
+- [X] T009 [P] Implement `structlog` JSON logging to local rotating files with a PHI-redaction processor (active unless `log_verbatim=true`) and the `LogRecord` field set in `ai/gateway/src/gateway/obs/logging.py` (FR-033/FR-034, data-model §7)
+- [X] T010 [P] Implement Prometheus collectors (request rate, error rate by code, per-runner health/latency, in-flight) in `ai/gateway/src/gateway/obs/metrics.py` (FR-035)
+- [X] T011 Implement the ASGI app bootstrap in `ai/gateway/src/gateway/main.py`: load config, install exception handlers, CORS allowlist middleware (no wildcard), per-request `request_id` middleware, `lifespan` hook to start/stop the health poller, and mount `GET /metrics` (FR-021/FR-035)
+- [X] T012 [P] Create the shared test harness `ai/gateway/tests/conftest.py` with an in-process ASGI client (`httpx.ASGITransport`) and config fixtures
+- [X] T013 [P] Create the scriptable fake runner fixture in `ai/gateway/tests/fixtures/fake_runner.py` that can return `ok(latency,model)`/`loading`/`error`/`timeout` poll outcomes on demand to drive lifecycle walks
 
 **Checkpoint**: Foundation ready — user story implementation can now begin
 

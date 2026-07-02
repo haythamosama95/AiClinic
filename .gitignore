@@ -61,3 +61,13 @@ app.*.map.json
 # Universal OS/editor clutter
 Thumbs.db
 *.tmp
+
+# Python / AI Gateway
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+ai/gateway/logs/
+*.egg
