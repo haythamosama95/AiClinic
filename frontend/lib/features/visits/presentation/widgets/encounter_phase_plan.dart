@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/workspace_mode_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_list.dart';
@@ -20,7 +21,6 @@ class EncounterPhasePlan extends ConsumerWidget {
     required this.canUploadAttachments,
     required this.onRefresh,
     this.showClinicalNoteSaveBar = true,
-    this.expertMode = false,
     super.key,
   });
 
@@ -30,32 +30,32 @@ class EncounterPhasePlan extends ConsumerWidget {
   final bool canUploadAttachments;
   final VoidCallback onRefresh;
   final bool showClinicalNoteSaveBar;
-  final bool expertMode;
 
   static const _sections = {ClinicalNoteSection.plan};
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isExpertScroll = ref.watch(workspaceModeProvider) == WorkspaceMode.expert;
     final visit = state.visit;
 
     return KeyedSubtree(
       key: const Key('encounter_phase_plan'),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final expandField = expertMode || (constraints.hasBoundedHeight && constraints.maxHeight.isFinite);
+          final expandField = isExpertScroll || (constraints.hasBoundedHeight && constraints.maxHeight.isFinite);
           if (expandField) {
             return SizedBox(
               height: constraints.maxHeight,
-              child: _buildPlanGrid(visit: visit, expandField: true),
+              child: _buildPlanGrid(visit: visit, expandField: true, isExpertScroll: isExpertScroll),
             );
           }
-          return _buildPlanGrid(visit: visit, expandField: false);
+          return _buildPlanGrid(visit: visit, expandField: false, isExpertScroll: isExpertScroll);
         },
       ),
     );
   }
 
-  Widget _buildPlanGrid({required VisitDetail visit, required bool expandField}) {
+  Widget _buildPlanGrid({required VisitDetail visit, required bool expandField, required bool isExpertScroll}) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final useGrid = constraints.maxWidth >= 900;
@@ -129,9 +129,9 @@ class EncounterPhasePlan extends ConsumerWidget {
         final topRow = Row(
           crossAxisAlignment: expandField ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
           children: [
-            Expanded(flex: expertMode ? 3 : 1, child: treatmentNotes),
+            Expanded(flex: isExpertScroll ? 3 : 1, child: treatmentNotes),
             const SizedBox(width: VisitPageTokens.sectionGap),
-            Expanded(flex: expertMode ? 2 : 1, child: treatmentPlans),
+            Expanded(flex: isExpertScroll ? 2 : 1, child: treatmentPlans),
           ],
         );
 

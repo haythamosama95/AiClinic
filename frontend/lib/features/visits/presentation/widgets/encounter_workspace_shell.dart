@@ -7,12 +7,11 @@ import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_
 import 'package:ai_clinic/features/visits/presentation/providers/expert_mode_scroll_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/workspace_mode_provider.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_documentation_layout.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_objective.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_plan.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_phase_subjective.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_review.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/expert_mode_accordion.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/expert_mode_scroll_container.dart';
 
 /// Three-region encounter workspace with guided/expert modes (014 US4-US5 / FR-014-020).
 class EncounterWorkspaceShell extends ConsumerWidget {
@@ -83,7 +82,8 @@ class EncounterWorkspaceShell extends ConsumerWidget {
   }
 }
 
-class _DocumentationView extends StatelessWidget {
+/// Single shared documentation tree; guided vs expert only changes visibility and chrome.
+class _DocumentationView extends ConsumerStatefulWidget {
   const _DocumentationView({
     required this.visitId,
     required this.state,
@@ -103,74 +103,185 @@ class _DocumentationView extends StatelessWidget {
   final EncounterPhase activePhase;
 
   @override
-  Widget build(BuildContext context) {
-    return AppPageFadeTransition(
-      key: const Key('encounter_mode_transition'),
-      index: mode == WorkspaceMode.expert ? 1 : 0,
-      children: [
-        AppPageFadeTransition(
-          key: const Key('encounter_phase_page_transition'),
-          index: activePhase.isDocumentation ? activePhase.stepperIndex : 0,
-          children: [
-            for (final phase in EncounterPhase.stepperPhases)
-              KeyedSubtree(key: Key('encounter_phase_page_${phase.name}'), child: _documentationPhasePage(phase)),
-          ],
-        ),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            return ExpertModeScrollContainer(
-              visitId: visitId,
-              phaseCardHeight: constraints.maxHeight,
-              phases: _documentationPhaseEntries(showClinicalNoteSaveBar: !canEdit, expertMode: true),
-            );
-          },
-        ),
-      ],
+  ConsumerState<_DocumentationView> createState() => _DocumentationViewState();
+}
+
+class _DocumentationViewState extends ConsumerState<_DocumentationView> {
+  final _scrollController = ScrollController();
+  late final Map<EncounterPhase, GlobalKey> _phaseScrollKeys = {
+    for (final phase in EncounterPhase.stepperPhases) phase: GlobalKey(),
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _consumePendingScroll());
+  }
+
+  @override
+  void didUpdateWidget(covariant _DocumentationView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activePhase != widget.activePhase && widget.mode == WorkspaceMode.guided) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToPhase(widget.activePhase));
+    }
+    if (oldWidget.mode != widget.mode && widget.mode == WorkspaceMode.expert) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _consumePendingScroll());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _consumePendingScroll({int attempt = 0}) {
+    if (widget.mode != WorkspaceMode.expert) {
+      return;
+    }
+
+    final target = ref.read(expertModeScrollTargetProvider(widget.visitId));
+    if (target == null) {
+      return;
+    }
+
+    if (_scrollToPhase(target)) {
+      ref.read(expertModeScrollTargetProvider(widget.visitId).notifier).clear();
+      return;
+    }
+
+    if (attempt < 8) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _consumePendingScroll(attempt: attempt + 1));
+    }
+  }
+
+  bool _scrollToPhase(EncounterPhase phase) {
+    final targetContext = _phaseScrollKeys[phase]?.currentContext;
+    if (targetContext == null) {
+      return false;
+    }
+
+    Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      alignment: widget.mode == WorkspaceMode.expert ? 0.08 : 0,
     );
+    return true;
   }
 
-  Widget _documentationPhasePage(EncounterPhase phase) {
-    return _documentationPhaseEntries(showClinicalNoteSaveBar: false).firstWhere((entry) => entry.phase == phase).child;
-  }
-
-  List<ExpertModePhaseEntry> _documentationPhaseEntries({
-    required bool showClinicalNoteSaveBar,
-    bool expertMode = false,
-  }) {
+  List<_SharedPhaseEntry> _phaseEntries() {
     return [
-      ExpertModePhaseEntry(
+      _SharedPhaseEntry(
         phase: EncounterPhase.subjective,
+        pageKey: const Key('encounter_phase_page_subjective'),
         child: EncounterPhaseSubjective(
-          visitId: visitId,
-          state: state,
-          canEdit: canEdit,
-          showClinicalNoteSaveBar: showClinicalNoteSaveBar,
-          expertMode: expertMode,
+          visitId: widget.visitId,
+          state: widget.state,
+          canEdit: widget.canEdit,
+          showClinicalNoteSaveBar: false,
         ),
       ),
-      ExpertModePhaseEntry(
+      _SharedPhaseEntry(
         phase: EncounterPhase.objective,
+        pageKey: const Key('encounter_phase_page_objective'),
         child: EncounterPhaseObjective(
-          visitId: visitId,
-          state: state,
-          canEdit: canEdit,
-          onRefresh: onRefresh,
-          showClinicalNoteSaveBar: showClinicalNoteSaveBar,
-          expertMode: expertMode,
+          visitId: widget.visitId,
+          state: widget.state,
+          canEdit: widget.canEdit,
+          onRefresh: widget.onRefresh,
+          showClinicalNoteSaveBar: false,
         ),
       ),
-      ExpertModePhaseEntry(
+      _SharedPhaseEntry(
         phase: EncounterPhase.plan,
+        pageKey: const Key('encounter_phase_page_plan'),
         child: EncounterPhasePlan(
-          visitId: visitId,
-          state: state,
-          canEdit: canEdit,
-          canUploadAttachments: canUploadAttachments,
-          onRefresh: onRefresh,
-          showClinicalNoteSaveBar: showClinicalNoteSaveBar,
-          expertMode: expertMode,
+          visitId: widget.visitId,
+          state: widget.state,
+          canEdit: widget.canEdit,
+          canUploadAttachments: widget.canUploadAttachments,
+          onRefresh: widget.onRefresh,
+          showClinicalNoteSaveBar: false,
         ),
       ),
     ];
   }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(expertModeScrollTargetProvider(widget.visitId), (previous, next) {
+      if (next == null || widget.mode != WorkspaceMode.expert) {
+        return;
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        if (_scrollToPhase(next)) {
+          ref.read(expertModeScrollTargetProvider(widget.visitId).notifier).clear();
+        }
+      });
+    });
+
+    final isExpert = widget.mode == WorkspaceMode.expert;
+    final activeDocumentationPhase = widget.activePhase.isDocumentation
+        ? widget.activePhase
+        : EncounterPhase.subjective;
+    final phases = _phaseEntries();
+
+    return KeyedSubtree(
+      key: const Key('encounter_documentation_layout'),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final viewportHeight = constraints.maxHeight;
+
+          return SingleChildScrollView(
+            key: Key(isExpert ? 'expert_mode_scroll_view' : 'guided_mode_scroll_view'),
+            controller: _scrollController,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              key: isExpert ? const Key('expert_mode_accordion') : const Key('encounter_phase_page_transition'),
+              children: [
+                for (var index = 0; index < phases.length; index++) ...[
+                  if (index > 0 && isExpert) const SizedBox(height: 12),
+                  KeyedSubtree(
+                    key: Key('expert_mode_phase_${phases[index].phase.name}'),
+                    child: Visibility(
+                      visible: isExpert || phases[index].phase == activeDocumentationPhase,
+                      maintainState: true,
+                      maintainAnimation: true,
+                      maintainSize: false,
+                      child: KeyedSubtree(
+                        key: phases[index].pageKey,
+                        child: ColoredBox(
+                          color: Colors.transparent,
+                          key: _phaseScrollKeys[phases[index].phase],
+                          child: EncounterPhaseReadGroup(
+                            phase: phases[index].phase,
+                            contentHeight: isExpert ? viewportHeight : viewportHeight,
+                            showPhaseChrome: isExpert,
+                            child: phases[index].child,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SharedPhaseEntry {
+  const _SharedPhaseEntry({required this.phase, required this.pageKey, required this.child});
+
+  final EncounterPhase phase;
+  final Key pageKey;
+  final Widget child;
 }

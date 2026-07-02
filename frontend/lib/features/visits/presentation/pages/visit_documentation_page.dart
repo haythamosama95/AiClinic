@@ -19,6 +19,8 @@ import 'package:ai_clinic/features/visits/presentation/widgets/encounter_workspa
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
+import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_empty_sections_warning_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submit_dialog.dart';
 
 /// Visit documentation — clinical chart workspace (013).
@@ -87,7 +89,30 @@ class VisitDocumentationPage extends ConsumerWidget {
     final notifier = ref.read(visitDocumentationProvider(visitId).notifier);
 
     try {
-      if (canEdit && state.hasUnsavedChanges) {
+      // Sync Quill controllers and draft overlay into state before validating.
+      // Validation must never run against stale editor content or trigger a save first.
+      notifier.prepareEncounterReview();
+      if (!context.mounted) return;
+
+      final synced = ref.read(visitDocumentationProvider(visitId)).value;
+      if (synced == null) return;
+
+      final readiness = evaluateVisitSubmitReadiness(synced);
+
+      if (!readiness.hasMinimumDocumentation) {
+        AppToast.error(context, message: 'Enter at least one documentation field before submitting this visit.');
+        return;
+      }
+
+      if (readiness.hasEmptySectionWarnings) {
+        final continueToSubmit = await VisitEmptySectionsWarningDialog.show(
+          context,
+          emptyPhases: readiness.emptyPhases,
+        );
+        if (!continueToSubmit || !context.mounted) return;
+      }
+
+      if (canEdit && synced.needsPersistBeforeSubmit) {
         final saved = await notifier.saveAll();
         if (!context.mounted) return;
         if (!saved) {
@@ -100,7 +125,7 @@ class VisitDocumentationPage extends ConsumerWidget {
         }
       }
 
-      final latest = ref.read(visitDocumentationProvider(visitId)).value ?? state;
+      final latest = ref.read(visitDocumentationProvider(visitId)).value ?? synced;
       final result = await VisitSubmitDialog.show(
         context,
         visitId: visitId,

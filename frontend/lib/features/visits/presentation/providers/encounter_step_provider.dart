@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/ui/widgets/input/app_paragraph_field.dart';
+import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
@@ -9,17 +11,17 @@ typedef PhaseBadges = Map<EncounterPhase, PhaseCompletionBadge>;
 
 /// Derives step badges from persisted visit data plus in-progress draft fields.
 PhaseBadges deriveEncounterPhaseBadges(VisitDocumentationState state) {
-  final visit = state.visit;
+  final effectiveVisit = state.effectiveVisit;
 
-  return {for (final phase in EncounterPhase.stepperPhases) phase: _badgeForPhase(phase, state, visit)};
+  return {for (final phase in EncounterPhase.stepperPhases) phase: _badgeForPhase(phase, state, effectiveVisit)};
 }
 
 PhaseCompletionBadge _badgeForPhase(EncounterPhase phase, VisitDocumentationState state, VisitDetail visit) {
   return switch (phase) {
     EncounterPhase.context => PhaseCompletionBadge.empty,
     EncounterPhase.subjective => _subjectiveBadge(state, visit),
-    EncounterPhase.objective => _findingsAndDiagnosisBadge(state),
-    EncounterPhase.plan => _planBadge(state),
+    EncounterPhase.objective => _findingsAndDiagnosisBadge(state, visit),
+    EncounterPhase.plan => _planBadge(state, visit),
     EncounterPhase.review => PhaseCompletionBadge.empty,
   };
 }
@@ -36,28 +38,32 @@ PhaseCompletionBadge _subjectiveBadge(VisitDocumentationState state, VisitDetail
   if (_sectionTooLong(state.complaint) || _sectionTooLong(state.history)) {
     return PhaseCompletionBadge.error;
   }
-  if (_hasText(state.complaint) || _hasText(state.history) || _contextBadge(visit) == PhaseCompletionBadge.hasContent) {
+  if (_sectionHasContent(state, ClinicalNoteSection.complaint, state.complaint) ||
+      _sectionHasContent(state, ClinicalNoteSection.history, state.history) ||
+      _contextBadge(visit) == PhaseCompletionBadge.hasContent ||
+      !state.encounterDraft.patientSafety.isEmpty) {
     return PhaseCompletionBadge.hasContent;
   }
   return PhaseCompletionBadge.empty;
 }
 
-PhaseCompletionBadge _findingsAndDiagnosisBadge(VisitDocumentationState state) {
+PhaseCompletionBadge _findingsAndDiagnosisBadge(VisitDocumentationState state, VisitDetail visit) {
   if (_sectionTooLong(state.examination) || _sectionTooLong(state.diagnosis)) {
     return PhaseCompletionBadge.error;
   }
-  if (_hasText(state.examination) || _hasText(state.diagnosis) || state.visit.vitalSigns.isNotEmpty) {
+  if (_sectionHasContent(state, ClinicalNoteSection.examination, state.examination) ||
+      _sectionHasContent(state, ClinicalNoteSection.diagnosis, state.diagnosis) ||
+      visit.vitalSigns.isNotEmpty) {
     return PhaseCompletionBadge.hasContent;
   }
   return PhaseCompletionBadge.empty;
 }
 
-PhaseCompletionBadge _planBadge(VisitDocumentationState state) {
+PhaseCompletionBadge _planBadge(VisitDocumentationState state, VisitDetail visit) {
   if (_sectionTooLong(state.plan)) {
     return PhaseCompletionBadge.error;
   }
-  final visit = state.visit;
-  if (_hasText(state.plan) ||
+  if (_sectionHasContent(state, ClinicalNoteSection.plan, state.plan) ||
       visit.treatmentPlans.isNotEmpty ||
       visit.investigations.isNotEmpty ||
       visit.attachments.isNotEmpty) {
@@ -66,7 +72,12 @@ PhaseCompletionBadge _planBadge(VisitDocumentationState state) {
   return PhaseCompletionBadge.empty;
 }
 
-bool _hasText(String? value) => value != null && value.trim().isNotEmpty;
+bool _sectionHasContent(VisitDocumentationState state, ClinicalNoteSection section, String value) {
+  if (value.trim().isNotEmpty) {
+    return true;
+  }
+  return !richDeltaIsEffectivelyEmpty(state.richTextDrafts[section]);
+}
 
 bool _sectionTooLong(String value) => value.length > kMaxClinicalSectionLength;
 
@@ -77,12 +88,17 @@ final encounterActivePhaseProvider = NotifierProvider.autoDispose
     .family<EncounterActivePhaseNotifier, EncounterPhase, String>(EncounterActivePhaseNotifier.new);
 
 class EncounterActivePhaseNotifier extends Notifier<EncounterPhase> {
-  EncounterActivePhaseNotifier(String _);
+  EncounterActivePhaseNotifier(this._visitId);
+
+  final String _visitId;
 
   @override
   EncounterPhase build() => EncounterPhase.subjective;
 
   void setPhase(EncounterPhase phase) {
+    if (phase == EncounterPhase.review) {
+      ref.read(visitDocumentationProvider(_visitId).notifier).prepareEncounterReview();
+    }
     state = phase;
   }
 }

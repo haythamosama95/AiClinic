@@ -142,12 +142,15 @@ void setQuillControllerFromDraft(QuillController controller, List<dynamic>? delt
   controller.replaceText(0, deleteLen, plainText, TextSelection.collapsed(offset: plainText.length));
 }
 
+const double _richToolbarIconSize = 12;
+
 QuillSimpleToolbarConfig _minimalToolbarConfig(BuildContext context) {
   final colors = context.semanticColors;
 
   return QuillSimpleToolbarConfig(
     multiRowsDisplay: true,
     toolbarIconAlignment: WrapAlignment.end,
+    toolbarSize: _richToolbarIconSize * 2,
     showDividers: true,
     showFontFamily: false,
     showFontSize: false,
@@ -169,11 +172,18 @@ QuillSimpleToolbarConfig _minimalToolbarConfig(BuildContext context) {
     showLineHeightButton: false,
     showAlignmentButtons: false,
     decoration: const BoxDecoration(),
+    buttonOptions: const QuillSimpleToolbarButtonOptions(
+      base: QuillToolbarBaseButtonOptions(iconSize: _richToolbarIconSize),
+    ),
     iconTheme: QuillIconTheme(
       iconButtonSelectedData: IconButtonData(
+        iconSize: _richToolbarIconSize,
         style: IconButton.styleFrom(foregroundColor: colors.accentForeground, backgroundColor: colors.accent),
       ),
-      iconButtonUnselectedData: IconButtonData(style: IconButton.styleFrom(foregroundColor: colors.mutedForeground)),
+      iconButtonUnselectedData: IconButtonData(
+        iconSize: _richToolbarIconSize,
+        style: IconButton.styleFrom(foregroundColor: colors.mutedForeground),
+      ),
     ),
   );
 }

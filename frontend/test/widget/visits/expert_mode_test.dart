@@ -42,7 +42,7 @@ void main() {
       await tester.tap(find.byKey(const Key('encounter_mode_expert')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('encounter_mode_transition')), findsOneWidget);
+      expect(find.byKey(const Key('encounter_documentation_layout')), findsOneWidget);
       expect(find.byKey(const Key('expert_mode_accordion')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('encounter_mode_guided')));

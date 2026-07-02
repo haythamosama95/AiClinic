@@ -1,5 +1,7 @@
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
+import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
+import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,6 +50,28 @@ void main() {
 
     test('marks plan has-content when plan section has text', () {
       final badges = deriveEncounterPhaseBadges(sampleEncounterDocState().copyWith(plan: 'Rest and fluids'));
+
+      expect(badges[EncounterPhase.plan], PhaseCompletionBadge.hasContent);
+    });
+
+    test('marks plan has-content from staged treatment plan draft', () {
+      final badges = deriveEncounterPhaseBadges(
+        sampleEncounterDocState().copyWith(
+          encounterDraft: VisitEncounterDraft(
+            pendingTreatmentPlans: [
+              TreatmentPlanItem(
+                id: 'draft:1',
+                visitId: encounterTestVisitId,
+                patientId: encounterTestPatientId,
+                medicationName: 'Ibuprofen',
+                dosage: '400mg',
+                frequency: 'daily',
+                duration: '5 days',
+              ),
+            ],
+          ),
+        ),
+      );
 
       expect(badges[EncounterPhase.plan], PhaseCompletionBadge.hasContent);
     });

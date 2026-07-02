@@ -74,6 +74,8 @@ class VisitDocumentationState {
     return _clinicalNoteDiffersFromPersisted();
   }
 
+  bool get clinicalNoteDiffersFromPersisted => _clinicalNoteDiffersFromPersisted();
+
   bool _clinicalNoteDiffersFromPersisted() {
     final persisted = persistedVisit.documentation;
     return complaint.trim() != (persisted?.complaint ?? '').trim() ||
@@ -85,12 +87,18 @@ class VisitDocumentationState {
 
   bool get hasPendingEncounterDraft => !encounterDraft.isEmpty;
 
+  /// Whether local documentation still needs to be written to the server before submit.
+  bool get needsPersistBeforeSubmit => clinicalNoteDiffersFromPersisted || hasPendingEncounterDraft;
+
   bool get hasUnsavedChanges => hasUnsavedDraft || hasPendingEncounterDraft;
 
   /// @deprecated Use [hasUnsavedDraft] with page-level permission gating.
   bool get needsSaveBeforeLeaving => hasUnsavedChanges;
 
   PatientSafetyContext effectivePatientSafety(PatientSafetyContext base) => encounterDraft.patientSafety.applyTo(base);
+
+  /// Persisted visit rows merged with the in-memory encounter draft overlay.
+  VisitDetail get effectiveVisit => encounterDraft.applyTo(persistedVisit);
 
   VisitDocumentationState copyWith({
     VisitDetail? visit,
@@ -151,6 +159,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
   VisitDocumentationNotifier(this._visitId);
 
   final String _visitId;
+  final Set<VoidCallback> _clinicalNoteFlushCallbacks = {};
 
   @override
   Future<VisitDocumentationState> build() async {
@@ -181,11 +190,11 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
 
   /// Completes an in-progress visit. Persists local draft fields and keeps documentation editable afterward.
   Future<CompleteVisitResult> completeVisit() async {
-    final current = state.value;
-    if (current == null) {
+    final initial = state.value;
+    if (initial == null) {
       throw StateError('Visit documentation is not loaded.');
     }
-    if (!canSubmitVisit(current.visit)) {
+    if (!canSubmitVisit(initial.visit)) {
       throw RpcFailure(
         RpcResult(
           success: false,
@@ -195,19 +204,26 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       );
     }
 
-    if (_canEditVisit(current.visit)) {
-      final saved = await saveAll();
-      if (!saved) {
-        final after = state.value ?? current;
-        throw RpcFailure(
-          RpcResult(
-            success: false,
-            errorCode: after.saveStatus == DocumentationSaveStatus.stale ? 'STALE_DOCUMENTATION' : 'INVALID_INPUT',
-            errorMessage: after.errorMessage ?? 'Unable to save visit changes before completing.',
-          ),
-        );
+    if (_canEditVisit(initial.visit)) {
+      prepareEncounterReview();
+
+      final afterFlush = state.value ?? initial;
+      if (afterFlush.needsPersistBeforeSubmit) {
+        final saved = await saveAll();
+        if (!saved) {
+          final after = state.value ?? afterFlush;
+          throw RpcFailure(
+            RpcResult(
+              success: false,
+              errorCode: after.saveStatus == DocumentationSaveStatus.stale ? 'STALE_DOCUMENTATION' : 'INVALID_INPUT',
+              errorMessage: after.errorMessage ?? 'Unable to save visit changes before completing.',
+            ),
+          );
+        }
       }
     }
+
+    final current = state.value ?? initial;
 
     try {
       final result = await ref
@@ -292,12 +308,14 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
   /// Returns `false` when a save fails or the state is stale; `true` when
   /// everything is persisted (or there was nothing to save).
   Future<bool> saveAll() async {
+    prepareEncounterReview();
+
     final current = state.value;
     if (current == null || !_canEditVisit(current.visit)) {
       return true;
     }
 
-    if (!current.hasPendingEncounterDraft && !current.hasUnsavedDraft) {
+    if (!current.needsPersistBeforeSubmit) {
       return true;
     }
 
@@ -311,7 +329,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     }
 
     final afterStructured = state.value ?? current;
-    if (afterStructured.hasUnsavedDraft) {
+    if (afterStructured.clinicalNoteDiffersFromPersisted) {
       await save();
       final afterNote = state.value;
       if (afterNote == null ||
@@ -319,9 +337,21 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           afterNote.saveStatus == DocumentationSaveStatus.stale) {
         return false;
       }
+      return true;
     }
 
+    _settleSaveStatusAfterSuccessfulPersist();
     return true;
+  }
+
+  /// Clears a lingering [DocumentationSaveStatus.saving] after structured-only
+  /// persistence when no clinical note save runs afterward.
+  void _settleSaveStatusAfterSuccessfulPersist() {
+    final current = state.value;
+    if (current == null || current.saveStatus != DocumentationSaveStatus.saving) {
+      return;
+    }
+    state = AsyncData(current.copyWith(saveStatus: DocumentationSaveStatus.saved));
   }
 
   Future<void> save() async {
@@ -427,6 +457,41 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
         clearError: true,
       ),
     );
+  }
+
+  void registerClinicalNoteFlush(VoidCallback callback) {
+    _clinicalNoteFlushCallbacks.add(callback);
+  }
+
+  void unregisterClinicalNoteFlush(VoidCallback callback) {
+    _clinicalNoteFlushCallbacks.remove(callback);
+  }
+
+  void _flushClinicalNoteDrafts() {
+    for (final callback in _clinicalNoteFlushCallbacks) {
+      callback();
+    }
+  }
+
+  /// Pulls cached editor and staged draft input into state before Summary or submit validation.
+  ///
+  /// Sync-only: does not persist. Call before evaluating submit readiness so Quill
+  /// controller content and structured draft overlays are reflected in state.
+  VisitDocumentationState? prepareEncounterReview() {
+    _flushClinicalNoteDrafts();
+    final current = state.value;
+    if (current == null) {
+      return null;
+    }
+
+    // Recover from a prior structured-only save that left saveStatus stuck on saving.
+    final saveStatus = current.saveStatus == DocumentationSaveStatus.saving
+        ? DocumentationSaveStatus.idle
+        : current.saveStatus;
+
+    final synced = current.copyWith(visit: current.effectiveVisit, saveStatus: saveStatus);
+    state = AsyncData(synced);
+    return synced;
   }
 
   VisitVitalSign? _findVitalSign(String id) {

@@ -415,7 +415,7 @@ BEGIN
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- complete_visit allows empty clinical documentation.
+  -- complete_visit rejects empty clinical documentation.
   v_start := pg_temp.test_appointment_same_day_slot(6);
   SELECT patient_id INTO v_sd_patient FROM same_day_slot_patients WHERE slot = 6;
   v_result := public.create_appointment(
@@ -429,15 +429,8 @@ BEGIN
   v_result := public.complete_visit(v_visit_id, NULL);
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO visit_crud_results VALUES (
-    'complete_visit_allows_empty_documentation',
-    v_result.success
-      AND (v_result.data ->> 'visit_status') = 'completed'
-      AND (v_result.data ->> 'appointment_status') = 'completed'
-      AND EXISTS (
-        SELECT 1
-        FROM public.appointments a
-        WHERE a.id = v_appt_id AND a.status = 'completed'
-      ),
+    'complete_visit_rejects_empty_documentation',
+    NOT v_result.success AND v_result.error_code = 'DOCUMENTATION_REQUIRED_FOR_COMPLETE',
     COALESCE(v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);

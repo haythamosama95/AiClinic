@@ -30,7 +30,13 @@ class EncounterDocumentationLayout extends StatelessWidget {
 
 /// Phase section card for expert single-page mode (014 US5 / FR-019).
 class EncounterPhaseReadGroup extends StatelessWidget {
-  const EncounterPhaseReadGroup({required this.phase, required this.child, this.contentHeight, super.key});
+  const EncounterPhaseReadGroup({
+    required this.phase,
+    required this.child,
+    this.contentHeight,
+    this.showPhaseChrome = true,
+    super.key,
+  });
 
   final EncounterPhase phase;
   final Widget child;
@@ -38,8 +44,17 @@ class EncounterPhaseReadGroup extends StatelessWidget {
   /// When set, the card body is given a fixed height in expert mode.
   final double? contentHeight;
 
+  /// When false (guided stepper), omits the outer phase card chrome.
+  final bool showPhaseChrome;
+
   @override
   Widget build(BuildContext context) {
+    final body = contentHeight != null ? SizedBox(height: contentHeight, child: child) : child;
+
+    if (!showPhaseChrome) {
+      return body;
+    }
+
     final theme = context.visitTheme;
 
     return AppCard(
@@ -54,7 +69,7 @@ class EncounterPhaseReadGroup extends StatelessWidget {
           ],
         ),
       ),
-      child: contentHeight != null ? SizedBox(height: contentHeight, child: child) : child,
+      child: body,
     );
   }
 }

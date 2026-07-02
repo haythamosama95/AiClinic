@@ -128,10 +128,14 @@ class _EditableClinicalNote extends ConsumerStatefulWidget {
 class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
   late final Map<ClinicalNoteSection, TextEditingController> _controllers;
   Map<ClinicalNoteSection, QuillController>? _quillControllers;
+  late final VoidCallback _flushToNotifier;
+  VisitDocumentationNotifier? _documentationNotifier;
+  var _flushRegistered = false;
 
   @override
   void initState() {
     super.initState();
+    _flushToNotifier = _flushSectionsToNotifier;
     _controllers = {
       for (final section in ClinicalNoteSection.values)
         section: TextEditingController(text: _textForSection(widget.state, section)),
@@ -145,27 +149,43 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_flushRegistered) {
+      return;
+    }
+    _flushRegistered = true;
+    _documentationNotifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
+    _documentationNotifier!.registerClinicalNoteFlush(_flushToNotifier);
+  }
+
+  @override
   void didUpdateWidget(covariant _EditableClinicalNote oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.state.saveStatus == DocumentationSaveStatus.stale &&
         widget.state.saveStatus != DocumentationSaveStatus.stale) {
-      for (final section in ClinicalNoteSection.values) {
-        _controllers[section]!.text = _textForSection(widget.state, section);
-      }
-      if (_quillControllers != null) {
-        for (final section in widget.sections) {
-          _setQuillFromDraft(
-            _quillControllers![section]!,
-            widget.state.richTextDrafts[section],
-            _textForSection(widget.state, section),
-          );
-        }
+      _syncControllersFromState(widget.state);
+    }
+  }
+
+  void _syncControllersFromState(VisitDocumentationState state) {
+    for (final section in ClinicalNoteSection.values) {
+      _controllers[section]!.text = _textForSection(state, section);
+    }
+    if (_quillControllers != null) {
+      for (final section in widget.sections) {
+        _setQuillFromDraft(
+          _quillControllers![section]!,
+          state.richTextDrafts[section],
+          _textForSection(state, section),
+        );
       }
     }
   }
 
   @override
   void dispose() {
+    _documentationNotifier?.unregisterClinicalNoteFlush(_flushToNotifier);
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -173,6 +193,22 @@ class _EditableClinicalNoteState extends ConsumerState<_EditableClinicalNote> {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  void _flushSectionsToNotifier() {
+    final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
+    for (final section in widget.sections) {
+      final quillController = _quillControllers?[section];
+      if (widget.useRichTextParagraph && quillController != null) {
+        final document = quillController.document;
+        _onChangedForSection(notifier, section, true)(
+          _plainTextFromQuillDocument(document),
+          _richDeltaFromDocument(document),
+        );
+        continue;
+      }
+      _onChangedForSection(notifier, section, false)(_controllers[section]!.text, null);
+    }
   }
 
   @override

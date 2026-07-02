@@ -5,6 +5,7 @@ import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/workspace_mode_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/clinical_note_editor.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/patient_health_tracking_card.dart';
@@ -17,7 +18,6 @@ class EncounterPhaseSubjective extends ConsumerWidget {
     required this.state,
     required this.canEdit,
     this.showClinicalNoteSaveBar = true,
-    this.expertMode = false,
     super.key,
   });
 
@@ -25,15 +25,16 @@ class EncounterPhaseSubjective extends ConsumerWidget {
   final VisitDocumentationState state;
   final bool canEdit;
   final bool showClinicalNoteSaveBar;
-  final bool expertMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isExpertScroll = ref.watch(workspaceModeProvider) == WorkspaceMode.expert;
+
     return KeyedSubtree(
       key: const Key('encounter_phase_subjective'),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final expandField = expertMode || (constraints.hasBoundedHeight && constraints.maxHeight.isFinite);
+          final expandField = isExpertScroll || (constraints.hasBoundedHeight && constraints.maxHeight.isFinite);
           if (expandField) {
             return SizedBox(height: constraints.maxHeight, child: _buildIntakeLayout(expandField: true));
           }

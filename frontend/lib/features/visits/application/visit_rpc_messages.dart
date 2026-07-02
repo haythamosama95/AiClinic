@@ -67,6 +67,7 @@ String visitMessageForOpenError(Object error) {
 String visitMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {
     'STALE_DOCUMENTATION' => 'This visit note was updated elsewhere. Reload and try again.',
+    'DOCUMENTATION_REQUIRED_FOR_COMPLETE' => 'Enter at least one documentation field before submitting this visit.',
     'APPOINTMENT_NOT_ELIGIBLE' => 'Visits can only be started from checked-in or in-progress appointments.',
     'VISIT_ALREADY_EXISTS' => 'A visit already exists for this appointment. Open the existing visit instead.',
     'DOCTOR_REQUIRED' => 'Select a doctor before starting this visit.',

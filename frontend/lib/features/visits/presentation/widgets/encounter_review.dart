@@ -39,16 +39,20 @@ class EncounterReview extends ConsumerWidget {
   final VoidCallback? onRefresh;
   final ValueChanged<EncounterPhase>? onEditPhase;
 
-  String get _complaint => state?.complaint ?? visit.documentation?.complaint ?? '';
-  String get _history => state?.history ?? visit.documentation?.history ?? '';
-  String get _examination => state?.examination ?? visit.documentation?.examination ?? '';
-  String get _diagnosis => state?.diagnosis ?? visit.documentation?.diagnosis ?? '';
-  String get _plan => state?.plan ?? visit.documentation?.plan ?? '';
-
-  List<dynamic>? _richDelta(ClinicalNoteSection section) => state?.richTextDrafts[section];
+  List<dynamic>? _richDelta(VisitDocumentationState? docState, ClinicalNoteSection section) =>
+      docState?.richTextDrafts[section];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final docState = ref.watch(visitDocumentationProvider(visitId)).asData?.value ?? state;
+    final effectiveVisit = docState?.effectiveVisit ?? visit;
+
+    final complaint = docState?.complaint ?? visit.documentation?.complaint ?? '';
+    final history = docState?.history ?? visit.documentation?.history ?? '';
+    final examination = docState?.examination ?? visit.documentation?.examination ?? '';
+    final diagnosis = docState?.diagnosis ?? visit.documentation?.diagnosis ?? '';
+    final plan = docState?.plan ?? visit.documentation?.plan ?? '';
+
     final summary = _SummaryLayout(
       sections: [
         _SummarySectionData(
@@ -59,11 +63,15 @@ class EncounterReview extends ConsumerWidget {
             children: [
               _SummaryField(
                 label: 'Complaint',
-                value: _complaint,
-                richDelta: _richDelta(ClinicalNoteSection.complaint),
+                value: complaint,
+                richDelta: _richDelta(docState, ClinicalNoteSection.complaint),
               ),
-              _SummaryField(label: 'History', value: _history, richDelta: _richDelta(ClinicalNoteSection.history)),
-              _SummaryHealthProfile(patientId: visit.patientId),
+              _SummaryField(
+                label: 'History',
+                value: history,
+                richDelta: _richDelta(docState, ClinicalNoteSection.history),
+              ),
+              _SummaryHealthProfile(patientId: effectiveVisit.patientId, visitId: visitId, docState: docState),
             ],
           ),
         ),
@@ -75,18 +83,18 @@ class EncounterReview extends ConsumerWidget {
             children: [
               _SummaryField(
                 label: 'Examination',
-                value: _examination,
-                richDelta: _richDelta(ClinicalNoteSection.examination),
+                value: examination,
+                richDelta: _richDelta(docState, ClinicalNoteSection.examination),
               ),
               _SummaryField(
                 label: 'Diagnosis',
-                value: _diagnosis,
-                richDelta: _richDelta(ClinicalNoteSection.diagnosis),
+                value: diagnosis,
+                richDelta: _richDelta(docState, ClinicalNoteSection.diagnosis),
               ),
-              if (visit.pendingInvestigations.isNotEmpty) ...[
+              if (effectiveVisit.pendingInvestigations.isNotEmpty) ...[
                 const SizedBox(height: SpacingTokens.sm),
                 InvestigationResultCaptureList(
-                  pendingInvestigations: visit.pendingInvestigations,
+                  pendingInvestigations: effectiveVisit.pendingInvestigations,
                   canEdit: canEdit,
                   visitId: visitId,
                   deferPersistence: canEdit,
@@ -95,7 +103,7 @@ class EncounterReview extends ConsumerWidget {
               ],
               _SummaryLinesField(
                 label: 'Vital signs',
-                lines: _formatVitalSigns(visit.vitalSigns),
+                lines: _formatVitalSigns(effectiveVisit.vitalSigns),
                 emptyKey: const Key('encounter_review_vitals_empty'),
               ),
             ],
@@ -107,22 +115,22 @@ class EncounterReview extends ConsumerWidget {
           content: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SummaryField(label: 'Plan', value: _plan, richDelta: _richDelta(ClinicalNoteSection.plan)),
+              _SummaryField(label: 'Plan', value: plan, richDelta: _richDelta(docState, ClinicalNoteSection.plan)),
               _SummaryLinesField(
                 label: 'Treatment plans',
-                lines: _formatTreatmentPlans(visit.treatmentPlans),
+                lines: _formatTreatmentPlans(effectiveVisit.treatmentPlans),
                 emptyKey: const Key('encounter_review_treatment_plans_empty'),
               ),
               _SummaryLinesField(
                 label: 'Investigations',
-                lines: _formatInvestigations(visit.investigations),
+                lines: _formatInvestigations(effectiveVisit.investigations),
                 emptyKey: const Key('encounter_review_investigations_empty'),
               ),
               if (onRefresh != null)
                 VisitAttachmentList(
                   visitId: visitId,
-                  branchId: visit.branchId,
-                  attachments: visit.attachments,
+                  branchId: effectiveVisit.branchId,
+                  attachments: effectiveVisit.attachments,
                   canUpload: false,
                   onChanged: onRefresh!,
                   sectionKind: VisitPanelKind.attachment,
@@ -218,9 +226,11 @@ class _SummarySectionData {
 }
 
 class _SummaryHealthProfile extends ConsumerWidget {
-  const _SummaryHealthProfile({required this.patientId});
+  const _SummaryHealthProfile({required this.patientId, required this.visitId, this.docState});
 
   final String patientId;
+  final String visitId;
+  final VisitDocumentationState? docState;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -238,11 +248,14 @@ class _SummaryHealthProfile extends ConsumerWidget {
         currentMedications: [],
         loadFailed: true,
       ),
-      data: (safetyContext) => _SummaryHealthProfileFields(
-        allergies: safetyContext.allergies,
-        chronicConditions: safetyContext.chronicConditions,
-        currentMedications: safetyContext.currentMedications,
-      ),
+      data: (safetyContext) {
+        final effectiveSafety = docState?.effectivePatientSafety(safetyContext) ?? safetyContext;
+        return _SummaryHealthProfileFields(
+          allergies: effectiveSafety.allergies,
+          chronicConditions: effectiveSafety.chronicConditions,
+          currentMedications: effectiveSafety.currentMedications,
+        );
+      },
     );
   }
 }
