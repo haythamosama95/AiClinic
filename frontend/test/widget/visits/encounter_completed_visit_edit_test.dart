@@ -51,10 +51,9 @@ VisitDocumentationState _completedViewingDocState({String plan = _originalPlan})
 }
 
 VisitDocumentationState _completedEditingFieldViewDocState({String plan = _originalPlan}) {
-  return _completedViewingDocState(plan: plan).copyWith(
-    workspaceEditMode: WorkspaceEditMode.editing,
-    noteEditMode: DocumentationEditMode.readOnly,
-  );
+  return _completedViewingDocState(
+    plan: plan,
+  ).copyWith(workspaceEditMode: WorkspaceEditMode.editing, noteEditMode: DocumentationEditMode.readOnly);
 }
 
 List<Override> _completedVisitOverrides({
@@ -75,9 +74,7 @@ List<Override> _completedVisitOverrides({
       ),
     ),
     visitRepositoryProvider.overrideWith((ref) => VisitRepository(client)),
-    visitDocumentationProvider(
-      encounterTestVisitId,
-    ).overrideWith(() => _SeededVisitDocumentationNotifier(docState)),
+    visitDocumentationProvider(encounterTestVisitId).overrideWith(() => _SeededVisitDocumentationNotifier(docState)),
     patientDetailProvider(
       encounterTestPatientId,
     ).overrideWith((ref) async => samplePatientDetail(id: encounterTestPatientId)),
@@ -85,7 +82,7 @@ List<Override> _completedVisitOverrides({
   ];
 }
 
-Future<void> pumpCompletedVisitWidget(
+Future<void> _pumpCompletedVisitWidget(
   WidgetTester tester, {
   required Widget child,
   required VisitDocumentationState docState,
@@ -101,14 +98,16 @@ Future<void> pumpCompletedVisitWidget(
       child: MaterialApp(
         theme: AppTheme.light(),
         builder: (context, appChild) => ForuiAppScope(child: appChild ?? const SizedBox.shrink()),
-        home: Scaffold(body: SizedBox(width: size.width, height: size.height, child: child)),
+        home: Scaffold(
+          body: SizedBox(width: size.width, height: size.height, child: child),
+        ),
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
 
-Future<void> pumpCompletedVisitDocumentationPage(
+Future<void> _pumpCompletedVisitDocumentationPage(
   WidgetTester tester, {
   required VisitDocumentationState docState,
   required _CompletedVisitRpcClient client,
@@ -132,10 +131,7 @@ Future<void> pumpCompletedVisitDocumentationPage(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
             builder: (_, state) {
               final edit = state.uri.queryParameters['edit'] == '1';
-              return VisitDocumentationPage(
-                visitId: state.pathParameters['visitId'],
-                startInEditMode: edit,
-              );
+              return VisitDocumentationPage(visitId: state.pathParameters['visitId'], startInEditMode: edit);
             },
           ),
         ],
@@ -164,11 +160,6 @@ ProviderContainer _containerFromWorkspace(WidgetTester tester) {
 
 ProviderContainer _containerFromPlanPhase(WidgetTester tester) {
   return ProviderScope.containerOf(tester.element(find.byKey(const Key('encounter_phase_plan'))));
-}
-
-Future<void> _openPlanPhase(WidgetTester tester) async {
-  await tester.tap(find.byKey(const Key('encounter_step_plan')));
-  await tester.pumpAndSettle();
 }
 
 /// Rebuilds [EncounterPhasePlan] from live documentation state so edit/save toggles reflect notifier updates.
@@ -207,7 +198,7 @@ void main() {
     testWidgets('treatment notes card toggles view → edit → view after save', (tester) async {
       final docState = _completedEditingFieldViewDocState();
 
-      await pumpCompletedVisitWidget(
+      await _pumpCompletedVisitWidget(
         tester,
         docState: docState,
         client: client,
@@ -255,11 +246,7 @@ void main() {
     testWidgets('Edit visit button enters workspace edit mode', (tester) async {
       final docState = _completedViewingDocState();
 
-      await pumpCompletedVisitDocumentationPage(
-        tester,
-        docState: docState,
-        client: client,
-      );
+      await _pumpCompletedVisitDocumentationPage(tester, docState: docState, client: client);
 
       expect(find.byKey(const Key('visit_edit_workspace_button')), findsOneWidget);
       expect(find.byKey(const Key('visit_save_close_button')), findsNothing);
@@ -284,12 +271,7 @@ void main() {
     testWidgets('startInEditMode enters workspace edit mode on load', (tester) async {
       final docState = _completedViewingDocState();
 
-      await pumpCompletedVisitDocumentationPage(
-        tester,
-        docState: docState,
-        client: client,
-        startInEditMode: true,
-      );
+      await _pumpCompletedVisitDocumentationPage(tester, docState: docState, client: client, startInEditMode: true);
 
       expect(find.byKey(const Key('visit_edit_workspace_button')), findsNothing);
       expect(find.byKey(const Key('visit_save_close_button')), findsOneWidget);
@@ -304,21 +286,14 @@ void main() {
     testWidgets('modify plan and Save & close persists while status stays completed', (tester) async {
       final docState = _completedEditingFieldViewDocState();
 
-      await pumpCompletedVisitDocumentationPage(
-        tester,
-        docState: docState,
-        client: client,
-      );
+      await _pumpCompletedVisitDocumentationPage(tester, docState: docState, client: client);
 
       final container = _containerFromWorkspace(tester);
       final notifier = container.read(visitDocumentationProvider(encounterTestVisitId).notifier);
       notifier.updatePlan(_updatedPlan);
       await tester.pumpAndSettle();
 
-      expect(
-        container.read(visitDocumentationProvider(encounterTestVisitId)).requireValue.hasUnsavedChanges,
-        isTrue,
-      );
+      expect(container.read(visitDocumentationProvider(encounterTestVisitId)).requireValue.hasUnsavedChanges, isTrue);
 
       await tester.tap(find.byKey(const Key('visit_save_close_button')));
       await tester.pumpAndSettle();
@@ -372,10 +347,7 @@ class _CompletedVisitRpcClient extends VisitRpcTestClient {
       }
       rpcResults['save_visit_documentation'] = {
         'success': true,
-        'data': {
-          'visit_id': params?['p_visit_id'] ?? encounterTestVisitId,
-          'updated_at': '2026-05-31T10:05:00.000Z',
-        },
+        'data': {'visit_id': params?['p_visit_id'] ?? encounterTestVisitId, 'updated_at': '2026-05-31T10:05:00.000Z'},
       };
     }
     if (fn == 'get_visit') {

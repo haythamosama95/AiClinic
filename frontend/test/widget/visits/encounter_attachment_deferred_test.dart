@@ -104,10 +104,7 @@ List<Override> _deferredAttachmentOverrides({
           context: sampleAuthSessionContext(
             branchIds: [encounterTestBranchId],
             activeBranchId: encounterTestBranchId,
-            permissions: {
-              PermissionKeys.visitsEditSoap,
-              PermissionKeys.visitsUploadAttachment,
-            },
+            permissions: {PermissionKeys.visitsEditSoap, PermissionKeys.visitsUploadAttachment},
           ),
         ),
       ),
@@ -116,9 +113,7 @@ List<Override> _deferredAttachmentOverrides({
     visitAttachmentServiceProvider.overrideWith(
       (ref) => VisitAttachmentService(_AttachmentStorageTestClient(bucket), VisitRepository(client)),
     ),
-    visitDocumentationProvider(
-      encounterTestVisitId,
-    ).overrideWith(() => _SeededVisitDocumentationNotifier(seedState)),
+    visitDocumentationProvider(encounterTestVisitId).overrideWith(() => _SeededVisitDocumentationNotifier(seedState)),
   ];
 }
 
@@ -191,17 +186,15 @@ class _DeferredAttachmentRpcClient extends VisitRpcTestClient {
 }
 
 class _DeferredAttachmentHarness extends ConsumerWidget {
-  const _DeferredAttachmentHarness({
-    required this.pick,
-    required this.label,
-  });
+  const _DeferredAttachmentHarness({required this.pick, required this.label});
 
   final VisitAttachmentPickInput pick;
   final String label;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final attachments = ref.watch(visitDocumentationProvider(encounterTestVisitId)).value?.effectiveVisit.attachments ??
+    final attachments =
+        ref.watch(visitDocumentationProvider(encounterTestVisitId)).value?.effectiveVisit.attachments ??
         const <VisitAttachmentItem>[];
 
     return VisitAttachmentList(
@@ -346,7 +339,10 @@ void main() {
       final notifier = container.read(visitDocumentationProvider(encounterTestVisitId).notifier);
       notifier.stageAttachment(pick: pick, label: 'Lab results', uploadedBy: _testStaffId);
 
-      final draftId = container.read(visitDocumentationProvider(encounterTestVisitId)).requireValue.encounterDraft
+      final draftId = container
+          .read(visitDocumentationProvider(encounterTestVisitId))
+          .requireValue
+          .encounterDraft
           .pendingAttachments
           .single
           .id;
@@ -367,7 +363,10 @@ void main() {
       final notifier = container.read(visitDocumentationProvider(encounterTestVisitId).notifier);
       notifier.stageAttachment(pick: _samplePick(), label: 'Lab results', uploadedBy: _testStaffId);
 
-      final draftId = container.read(visitDocumentationProvider(encounterTestVisitId)).requireValue.encounterDraft
+      final draftId = container
+          .read(visitDocumentationProvider(encounterTestVisitId))
+          .requireValue
+          .encounterDraft
           .pendingAttachments
           .single
           .id;
@@ -395,7 +394,7 @@ void main() {
       expect(client.rpcLog, contains('register_visit_attachment'));
       expect(bucket.uploads, hasLength(1));
       expect(bucket.uploads.single.bytes, pick.bytes);
-      expect(bucket.uploads.single.path, startsWith('$_testOrgId/${encounterTestBranchId}/${encounterTestVisitId}/'));
+      expect(bucket.uploads.single.path, startsWith('$_testOrgId/$encounterTestBranchId/$encounterTestVisitId/'));
 
       final params = client.paramsForFunction('register_visit_attachment')!;
       expect(params['p_visit_id'], encounterTestVisitId);

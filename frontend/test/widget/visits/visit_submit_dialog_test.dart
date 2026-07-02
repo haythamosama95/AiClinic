@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/forui_app_scope.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -20,7 +18,8 @@ const _sampleCompleteVisitResult = CompleteVisitResult(
 );
 
 class _MockCompleteVisitDocumentationNotifier extends VisitDocumentationNotifier {
-  _MockCompleteVisitDocumentationNotifier(this._state, {this.completeDelay = Duration.zero}) : super(encounterTestVisitId);
+  _MockCompleteVisitDocumentationNotifier(this._state, {this.completeDelay = Duration.zero})
+    : super(encounterTestVisitId);
 
   final VisitDocumentationState _state;
   final Duration completeDelay;
@@ -47,9 +46,7 @@ void main() {
     testWidgets('confirming submit calls completeVisit and closes with result', (tester) async {
       final expectedUpdatedAt = DateTime.utc(2026, 5, 31, 10);
       final mockNotifier = _MockCompleteVisitDocumentationNotifier(
-        sampleEncounterDocState(
-          visit: sampleEncounterVisit().copyWith(updatedAt: expectedUpdatedAt),
-        ),
+        sampleEncounterDocState(visit: sampleEncounterVisit().copyWith(updatedAt: expectedUpdatedAt)),
       );
       CompleteVisitResult? dialogResult;
 
@@ -77,11 +74,7 @@ void main() {
       final mockNotifier = _MockCompleteVisitDocumentationNotifier(sampleEncounterDocState());
       var dialogClosed = false;
 
-      await _openSubmitDialog(
-        tester,
-        mockNotifier: mockNotifier,
-        onClosed: (_) => dialogClosed = true,
-      );
+      await _openSubmitDialog(tester, mockNotifier: mockNotifier, onClosed: (_) => dialogClosed = true);
 
       await tester.tap(find.byKey(const Key('visit_submit_cancel_button')));
       await tester.pump();
@@ -139,9 +132,7 @@ Future<void> _openSubmitDialog(
 
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [
-        visitDocumentationProvider(encounterTestVisitId).overrideWith(() => mockNotifier),
-      ],
+      overrides: [visitDocumentationProvider(encounterTestVisitId).overrideWith(() => mockNotifier)],
       child: MaterialApp(
         theme: AppTheme.light(),
         builder: (context, child) => ForuiAppScope(child: child!),
