@@ -154,7 +154,7 @@ class _AppClockTimeFieldState extends State<AppClockTimeField> {
                   child: hasValue
                       ? Text(
                           displayText!,
-                          style: theme.textTheme.bodyLarge?.copyWith(
+                          style: theme.textTheme.bodyMedium?.copyWith(
                             color: _interactive
                                 ? theme.colorScheme.onSurface
                                 : theme.colorScheme.onSurface.withValues(alpha: 0.38),

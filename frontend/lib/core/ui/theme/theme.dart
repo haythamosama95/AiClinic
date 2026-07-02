@@ -6,6 +6,7 @@ export 'app_theme_meta.dart';
 export 'forui_app_scope.dart';
 export 'forui_theme.dart';
 export 'color_tokens.dart';
+export 'density_tokens.dart';
 export 'radius_tokens.dart';
 export 'semantic_colors.dart';
 export 'shadow_tokens.dart';

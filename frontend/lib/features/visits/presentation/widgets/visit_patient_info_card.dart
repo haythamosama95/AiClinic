@@ -45,13 +45,13 @@ class _VisitPatientBasicInfoContent extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              PatientGenderAvatar(gender: detail.gender, size: 64),
+              PatientGenderAvatar(gender: detail.gender, size: 48),
               const SizedBox(width: SpacingTokens.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(detail.fullName, style: theme.title(size: 20)),
+                    Text(detail.fullName, style: theme.title()),
                     const SizedBox(height: SpacingTokens.xs),
                     Text('ID ${PatientPresentationFormatting.displayId(detail.id)}', style: theme.caption()),
                   ],
@@ -63,12 +63,12 @@ class _VisitPatientBasicInfoContent extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Text('Basic information', style: theme.title(size: 15))),
+              Expanded(child: Text('Basic information', style: theme.title(size: 13))),
               const SizedBox(width: SpacingTokens.sm),
               Flexible(
                 child: Text(
                   'Registered ${PatientPresentationFormatting.dateTime.format(detail.createdAt)}',
-                  style: theme.caption(size: 11.5),
+                  style: theme.caption(),
                   textAlign: TextAlign.end,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -127,8 +127,8 @@ class _VisitPatientBasicInfoLoading extends StatelessWidget {
         Row(
           children: [
             Container(
-              width: 64,
-              height: 64,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(color: theme.tile, shape: BoxShape.circle),
             ),
             const SizedBox(width: SpacingTokens.md),

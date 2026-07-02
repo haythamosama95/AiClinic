@@ -172,7 +172,7 @@ class _AppointmentHeroCard extends StatelessWidget {
                       detail.patientName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: SpacingTokens.xs),
                     Text(
@@ -607,7 +607,7 @@ class _AppointmentDetailScaffold extends StatelessWidget {
                       title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     if (subtitle != null)
                       Text(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../color_tokens.dart';
+import '../density_tokens.dart';
 import '../shape_tokens.dart';
 import 'app_theme_variant.dart';
 import 'clinic/clinic_color_tokens.dart';
@@ -32,23 +33,26 @@ abstract final class ThemePaletteResolver {
     AppThemeVariant.eCarely => ECarelyShapeTokens.values,
   };
 
-  static TextTheme typography(AppThemeVariant variant, {required Color foreground, required Color mutedForeground}) =>
-      switch (variant) {
-        AppThemeVariant.clinic => ClinicTypographyTokens.textTheme(
-          foreground: foreground,
-          mutedForeground: mutedForeground,
-        ),
-        AppThemeVariant.parchment => ParchmentTypographyTokens.textTheme(
-          foreground: foreground,
-          mutedForeground: mutedForeground,
-        ),
-        AppThemeVariant.medSpectra => MedSpectraTypographyTokens.textTheme(
-          foreground: foreground,
-          mutedForeground: mutedForeground,
-        ),
-        AppThemeVariant.eCarely => ECarelyTypographyTokens.textTheme(
-          foreground: foreground,
-          mutedForeground: mutedForeground,
-        ),
-      };
+  static TextTheme typography(AppThemeVariant variant, {required Color foreground, required Color mutedForeground}) {
+    final variantTheme = switch (variant) {
+      AppThemeVariant.clinic => ClinicTypographyTokens.textTheme(
+        foreground: foreground,
+        mutedForeground: mutedForeground,
+      ),
+      AppThemeVariant.parchment => ParchmentTypographyTokens.textTheme(
+        foreground: foreground,
+        mutedForeground: mutedForeground,
+      ),
+      AppThemeVariant.medSpectra => MedSpectraTypographyTokens.textTheme(
+        foreground: foreground,
+        mutedForeground: mutedForeground,
+      ),
+      AppThemeVariant.eCarely => ECarelyTypographyTokens.textTheme(
+        foreground: foreground,
+        mutedForeground: mutedForeground,
+      ),
+    };
+
+    return DensityTokens.compactTextTheme(variantTheme);
+  }
 }

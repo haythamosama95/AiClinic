@@ -429,7 +429,7 @@ class _PatientProfileCard extends StatelessWidget {
 class _ProfileStatsWithFloatingAvatar extends StatelessWidget {
   const _ProfileStatsWithFloatingAvatar({required this.gender, required this.pastCount, required this.upcomingCount});
 
-  static const _avatarSize = 96.0;
+  static const _avatarSize = 72.0;
 
   final PatientGender? gender;
   final int pastCount;
@@ -651,7 +651,7 @@ class _PatientDetailPreviewLayout extends StatelessWidget {
               padding: const EdgeInsets.all(SpacingTokens.lg),
               child: Row(
                 children: [
-                  PatientGenderAvatar(gender: preview.gender, size: 72),
+                  PatientGenderAvatar(gender: preview.gender, size: 56),
                   const SizedBox(width: SpacingTokens.md),
                   Expanded(
                     child: Column(
@@ -1035,7 +1035,7 @@ class _PatientDetailInfoRow extends StatelessWidget {
       children: [
         Text(label, style: theme.textTheme.labelMedium?.copyWith(color: colors.mutedForeground)),
         const SizedBox(height: SpacingTokens.xs),
-        Text(value, style: theme.textTheme.bodyLarge?.copyWith(color: colors.foreground)),
+        Text(value, style: theme.textTheme.bodyMedium?.copyWith(color: colors.foreground)),
       ],
     );
   }

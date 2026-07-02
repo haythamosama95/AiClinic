@@ -45,7 +45,7 @@ class AppMetricStatCard extends StatelessWidget {
       builder: (context, constraints) {
         final cardHeight = constraints.hasBoundedHeight && constraints.maxHeight.isFinite
             ? constraints.maxHeight
-            : 108.0;
+            : 94.0;
         final watermarkSize = math.max(72.0, cardHeight * 0.95);
 
         return DecoratedBox(
@@ -114,7 +114,7 @@ class AppMetricStatCard extends StatelessWidget {
                           Flexible(
                             child: Text(
                               value,
-                              style: textTheme.headlineMedium?.copyWith(
+                              style: textTheme.titleMedium?.copyWith(
                                 color: colors.foreground,
                                 fontWeight: FontWeight.w700,
                                 height: 1,

@@ -383,7 +383,7 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
         Text(
           isEditMode ? 'Edit patient' : 'Register patient',
           textAlign: TextAlign.center,
-          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: SpacingTokens.lg),
         Text(
@@ -411,7 +411,7 @@ class _CreatePatientModalState extends ConsumerState<CreatePatientModal> {
           Text(
             isEditMode ? 'Edit patient' : 'Register patient',
             textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: SpacingTokens.sm),
           Text(

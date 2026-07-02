@@ -156,7 +156,7 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
       style: widget.dialogStyle,
       animation: widget.animation,
       direction: Axis.horizontal,
-      title: Text('Move appointment?', style: theme.textTheme.titleLarge),
+      title: Text('Move appointment?', style: theme.textTheme.titleMedium),
       body: Form(
         key: _formKey,
         child: Column(

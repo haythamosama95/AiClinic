@@ -39,7 +39,7 @@ abstract final class AppDialog {
             style: style,
             animation: animation,
             direction: direction,
-            title: title == null ? null : Text(title, style: materialTheme.textTheme.titleLarge),
+            title: title == null ? null : Text(title, style: materialTheme.textTheme.titleMedium),
             body: body ?? bodyBuilder!(dialogContext),
             actions: actions ?? actionsBuilder?.call(dialogContext) ?? const [],
           ),
@@ -76,7 +76,7 @@ abstract final class AppDialog {
             style: style,
             animation: animation,
             direction: Axis.horizontal,
-            title: Text(title, style: materialTheme.textTheme.titleLarge),
+            title: Text(title, style: materialTheme.textTheme.titleMedium),
             body: Text(message, style: materialTheme.textTheme.bodyMedium),
             actions: [
               _action(

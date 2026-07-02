@@ -327,7 +327,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                     const SizedBox(width: SpacingTokens.sm),
                     Text(
                       'AI Clinic',
-                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.4),
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.4),
                     ),
                     const Spacer(),
                     ListenableBuilder(
@@ -355,7 +355,7 @@ class _SetupModalState extends ConsumerState<SetupModal> {
                 Text(
                   "Let's get you started",
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: SpacingTokens.sm),
                 Text(

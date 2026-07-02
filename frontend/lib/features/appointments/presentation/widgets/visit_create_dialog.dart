@@ -139,7 +139,7 @@ class _VisitCreateDialogState extends ConsumerState<VisitCreateDialog> {
       style: widget.dialogStyle,
       animation: widget.animation,
       direction: Axis.horizontal,
-      title: Text('Start visit', style: theme.textTheme.titleLarge),
+      title: Text('Start visit', style: theme.textTheme.titleMedium),
       body: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,

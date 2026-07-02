@@ -124,7 +124,7 @@ class _PatientsTableState extends State<PatientsTable> {
   }
 
   TextStyle? _cellStyle(BuildContext context) {
-    return Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 12.5);
+    return Theme.of(context).textTheme.bodySmall;
   }
 }
 
@@ -142,8 +142,8 @@ class _PatientCell extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = context.semanticColors;
 
-    final nameStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: 13);
-    final idStyle = theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground, fontSize: 11);
+    final nameStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600);
+    final idStyle = theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground);
     final labels = Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,16 +186,14 @@ class _PatientAvatar extends StatelessWidget {
         border: Border.all(color: colors.border),
       ),
       child: SizedBox(
-        width: 30,
-        height: 30,
+        width: 28,
+        height: 28,
         child: Center(
           child: Text(
             initials,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colors.secondaryForeground,
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: colors.secondaryForeground, fontWeight: FontWeight.w700),
           ),
         ),
       ),

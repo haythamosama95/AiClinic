@@ -194,11 +194,11 @@ class VisitEmptyHint extends StatelessWidget {
         children: [
           if (showIcon) ...[
             Container(
-              width: 44,
-              height: 44,
+              width: 36,
+              height: 36,
               alignment: Alignment.center,
               decoration: BoxDecoration(color: theme.tile, shape: BoxShape.circle),
-              child: Icon(icon, size: 20, color: theme.mutedInk.withValues(alpha: 0.7)),
+              child: Icon(icon, size: 17, color: theme.mutedInk.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: SpacingTokens.sm),
           ],

@@ -209,7 +209,7 @@ class _CreateBranchModalState extends ConsumerState<CreateBranchModal> {
                   Text(
                     'Add branch',
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: SpacingTokens.sm),
                   Text(

@@ -126,7 +126,7 @@ class _ShellNavItemRowState extends State<ShellNavItemRow> {
                               widget.label,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelLarge?.copyWith(
+                              style: theme.textTheme.labelMedium?.copyWith(
                                 color: iconColor,
                                 fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
                               ),

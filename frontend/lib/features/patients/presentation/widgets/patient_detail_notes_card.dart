@@ -172,7 +172,7 @@ class _PatientDetailNotesCardState extends ConsumerState<PatientDetailNotesCard>
               Expanded(
                 child: Text(
                   'Created by ${PatientPresentationFormatting.orDash(widget.detail.createdByDisplay)}',
-                  style: theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground, fontSize: 11),
+                  style: theme.textTheme.labelSmall?.copyWith(color: colors.mutedForeground),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),

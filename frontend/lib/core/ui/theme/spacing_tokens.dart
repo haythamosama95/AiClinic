@@ -6,7 +6,7 @@ abstract final class SpacingTokens {
   static const double xs = unit;
   static const double sm = unit * 2;
   static const double md = unit * 4;
-  static const double lg = unit * 6;
-  static const double xl = unit * 8;
-  static const double xxl = unit * 12;
+  static const double lg = unit * 5;
+  static const double xl = unit * 6;
+  static const double xxl = unit * 9;
 }

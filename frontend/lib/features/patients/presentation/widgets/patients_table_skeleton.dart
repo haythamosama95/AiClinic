@@ -22,7 +22,7 @@ class PatientsTableSkeleton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md),
           child: Row(
             children: [
-              const AppSkeletonCircle(size: 30),
+              const AppSkeletonCircle(size: 28),
               const SizedBox(width: SpacingTokens.sm),
               const Expanded(
                 child: Column(

@@ -59,7 +59,7 @@ class _AppointmentCancelDialogState extends State<AppointmentCancelDialog> {
       style: widget.dialogStyle,
       animation: widget.animation,
       direction: Axis.horizontal,
-      title: Text('Cancel appointment?', style: theme.textTheme.titleLarge),
+      title: Text('Cancel appointment?', style: theme.textTheme.titleMedium),
       body: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

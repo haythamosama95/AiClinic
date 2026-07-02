@@ -13,6 +13,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_display
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_tokens.dart';
 
 /// Checked-in patients waiting to be seen, sorted by appointment time.
 class AppointmentQueueWaitingColumn extends StatelessWidget {
@@ -56,7 +57,11 @@ class AppointmentQueueWaitingColumn extends StatelessWidget {
         ),
       ],
       body: items.isEmpty
-          ? const Padding(padding: EdgeInsets.all(SpacingTokens.md), child: _NoCheckedInPlaceholder())
+          ? const AppointmentQueuePanelEmptyState(
+              icon: Icons.how_to_reg_outlined,
+              title: 'No patients checked in',
+              message: 'Checked-in patients will appear here in appointment order.',
+            )
           : ListView.separated(
               shrinkWrap: !bodyScrollable,
               physics: bodyScrollable ? null : const NeverScrollableScrollPhysics(),
@@ -146,15 +151,14 @@ class _CheckedInPatientRow extends StatelessWidget {
                 ),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.md),
+                padding: AppointmentQueueRowTokens.rowPadding,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      flex: 7,
+                      flex: 3,
                       child: TiltedBackgroundIconStack(
                         icon: Icons.assignment_ind_outlined,
-                        minIconSize: 60,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -177,12 +181,12 @@ class _CheckedInPatientRow extends StatelessWidget {
                         ),
                       ),
                     ),
-                    _QueueSectionDivider(color: colors.border),
-                    Expanded(
-                      flex: 3,
+                    AppointmentQueueSectionDivider(color: colors.border),
+                    SizedBox(
+                      width: AppointmentQueueRowTokens.timeColumnWidth,
                       child: TiltedBackgroundIconStack(
                         icon: Icons.schedule_outlined,
-                        minIconSize: 60,
+                        minIconSize: AppointmentQueueRowTokens.timeIconMinSize,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -211,67 +215,6 @@ class _CheckedInPatientRow extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _QueueSectionDivider extends StatelessWidget {
-  const _QueueSectionDivider({required this.color});
-
-  final Color color;
-
-  static const _gap = SpacingTokens.md;
-  static const _lineHeight = 40.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: _gap * 2 + 1,
-      child: Center(
-        child: SizedBox(
-          height: _lineHeight,
-          child: VerticalDivider(width: 1, thickness: 1, color: color.withValues(alpha: 1)),
-        ),
-      ),
-    );
-  }
-}
-
-class _NoCheckedInPlaceholder extends StatelessWidget {
-  const _NoCheckedInPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.muted.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(SpacingTokens.lg),
-        border: Border.all(color: colors.border, style: BorderStyle.solid),
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(SpacingTokens.lg),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.how_to_reg_outlined, size: 48, color: colors.mutedForeground),
-              const SizedBox(height: SpacingTokens.md),
-              Text(
-                'No patients checked in',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              Text(
-                'Checked-in patients will appear here in appointment order.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-              ),
-            ],
           ),
         ),
       ),

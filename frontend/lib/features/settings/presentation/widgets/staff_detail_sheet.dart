@@ -400,7 +400,7 @@ class _StaffDetailSheetState extends ConsumerState<StaffDetailSheet> {
         final theme = Theme.of(dialogContext);
 
         return AlertDialog(
-          title: Text('Reset password?', style: theme.textTheme.titleLarge),
+          title: Text('Reset password?', style: theme.textTheme.titleMedium),
           content: Form(
             key: formKey,
             child: Column(
@@ -794,7 +794,7 @@ class _SheetHeader extends StatelessWidget {
                     Expanded(
                       child: Text(
                         member.fullName,
-                        style: theme.textTheme.titleLarge?.copyWith(color: colors.foreground),
+                        style: theme.textTheme.titleMedium?.copyWith(color: colors.foreground),
                       ),
                     ),
                   ],
@@ -872,7 +872,7 @@ class _DetailInfoRow extends StatelessWidget {
       children: [
         Text(label, style: theme.textTheme.labelMedium?.copyWith(color: colors.mutedForeground)),
         const SizedBox(height: SpacingTokens.xs),
-        Text(value, style: theme.textTheme.bodyLarge?.copyWith(color: colors.foreground)),
+        Text(value, style: theme.textTheme.bodyMedium?.copyWith(color: colors.foreground)),
       ],
     );
   }
@@ -923,7 +923,7 @@ class _BlurredCredentialField extends StatelessWidget {
                       children: [
                         SelectableText(
                           value,
-                          style: theme.textTheme.bodyLarge?.copyWith(fontFamily: 'monospace', letterSpacing: 0.5),
+                          style: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace', letterSpacing: 0.5),
                         ),
                         if (showBlurred)
                           Positioned.fill(
