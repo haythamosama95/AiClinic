@@ -13,7 +13,7 @@ import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 
 /// Syncfusion calendar default header row height.
-const appointmentCalendarHeaderRowHeight = 40.0;
+const appointmentCalendarHeaderRowHeight = 34.0;
 
 const appointmentCalendarHeaderTopPadding = SpacingTokens.sm;
 const appointmentCalendarHeaderRightPadding = SpacingTokens.sm;

@@ -13,6 +13,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_shift_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_tokens.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_schedule_column.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_session_column.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_stats_banner.dart';
@@ -146,13 +147,10 @@ class _AppointmentQueuePageState extends ConsumerState<AppointmentQueuePage> {
 }
 
 /// Minimum notched-card heights when the queue fills the viewport (wide layout).
-abstract final class _QueuePanelHeights {
-  static const schedule = 320.0;
-  static const session = 220.0;
-  static const waiting = 220.0;
-  static const statsBannerWide = 108.0;
-  static const statsBannerCompact = 224.0;
-}
+typedef _QueuePanelHeights = AppointmentQueuePanelHeights;
+
+/// Below this viewport height the page scrolls and column lists expand (shrink-wrap).
+const _minViewportHeightForColumnScrolling = 560.0;
 
 class _QueueBody extends ConsumerWidget {
   const _QueueBody({
@@ -195,7 +193,8 @@ class _QueueBody extends ConsumerWidget {
             : _QueuePanelHeights.statsBannerWide;
         final minColumnsHeight = _minColumnsHeight(isWide);
         final minBodyHeight = statsHeightEstimate + SpacingTokens.lg + minColumnsHeight;
-        final fillsViewport = constraints.maxHeight >= minBodyHeight;
+        final fillsViewport =
+            constraints.maxHeight >= minBodyHeight && constraints.maxHeight >= _minViewportHeightForColumnScrolling;
 
         final scheduleColumn = AppointmentQueueScheduleColumn(
           items: partition.schedule,
@@ -371,9 +370,9 @@ class _QueuePermissionDenied extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.lock_outline, size: 48, color: colors.mutedForeground),
+            Icon(Icons.lock_outline, size: 36, color: colors.mutedForeground),
             const SizedBox(height: SpacingTokens.md),
-            Text('Queue access required', style: Theme.of(context).textTheme.titleLarge),
+            Text('Queue access required', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: SpacingTokens.sm),
             Text(
               'You need appointment permissions to view the clinic queue.',

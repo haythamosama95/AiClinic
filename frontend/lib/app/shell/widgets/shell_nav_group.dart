@@ -88,7 +88,7 @@ class _ShellNavGroupWidgetState extends State<ShellNavGroupWidget> with SingleTi
             onTap: () => widget.onToggle(widget.group.id),
             trailing: RotationTransition(
               turns: _chevronRotation,
-              child: Icon(Icons.keyboard_arrow_down, size: 20, color: colors.mutedForeground),
+              child: Icon(Icons.keyboard_arrow_down, size: 18, color: colors.mutedForeground),
             ),
           ),
         if (isNavCollapsed)

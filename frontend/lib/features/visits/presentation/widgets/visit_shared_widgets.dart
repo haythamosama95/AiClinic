@@ -173,10 +173,10 @@ class VisitEmptyHint extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 44,
-              height: 44,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(color: theme.tile, shape: BoxShape.circle),
-              child: Icon(icon, size: 20, color: theme.mutedInk.withValues(alpha: 0.7)),
+              child: Icon(icon, size: 17, color: theme.mutedInk.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: SpacingTokens.sm),
             Text(message, textAlign: TextAlign.center, style: theme.caption()),

@@ -20,9 +20,9 @@ class UiPendingPlaceholderPage extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(featureName, style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
+              Text(featureName, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              Text(routeName, style: theme.textTheme.bodyLarge, textAlign: TextAlign.center),
+              Text(routeName, style: theme.textTheme.bodyMedium, textAlign: TextAlign.center),
               const SizedBox(height: 24),
               Text('UI Pending Migration', style: theme.textTheme.titleMedium),
             ],

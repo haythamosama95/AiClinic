@@ -5,7 +5,7 @@ import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 
 /// Circular patient portrait using gender-specific avatar artwork.
 class PatientGenderAvatar extends StatelessWidget {
-  const PatientGenderAvatar({required this.gender, this.size = 88, super.key});
+  const PatientGenderAvatar({required this.gender, this.size = 72, super.key});
 
   final PatientGender? gender;
   final double size;

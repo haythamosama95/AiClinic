@@ -22,6 +22,7 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_status_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_tokens.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
@@ -68,8 +69,8 @@ class _AppointmentQueueScheduleColumnState extends ConsumerState<AppointmentQueu
   static const _timelineGutterWidth = 28.0;
   static const _timelineBubbleSize = 12.0;
   static const _timelineLineWidth = 2.0;
-  static const _rowGap = SpacingTokens.sm;
-  static const _estimatedRowHeight = 92.0;
+  static const _rowGap = AppointmentQueueRowTokens.rowSeparatorGap;
+  static const _estimatedRowHeight = AppointmentQueueRowTokens.estimatedRowHeight;
   static const _maxScrollAttempts = 16;
 
   final _scrollTargetRowKey = GlobalKey();
@@ -434,15 +435,15 @@ class _AppointmentRowState extends State<_AppointmentRow> with SingleTickerProvi
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.md),
+                  padding: AppointmentQueueRowTokens.rowPadding,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
-                        width: 72,
+                        width: AppointmentQueueRowTokens.timeColumnWidth,
                         child: TiltedBackgroundIconStack(
                           icon: Icons.schedule_outlined,
-                          minIconSize: 60,
+                          minIconSize: AppointmentQueueRowTokens.timeIconMinSize,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
@@ -470,7 +471,7 @@ class _AppointmentRowState extends State<_AppointmentRow> with SingleTickerProvi
                           ),
                         ),
                       ),
-                      _QueueSectionDivider(color: colors.border),
+                      AppointmentQueueSectionDivider(color: colors.border),
                       Expanded(
                         flex: 3,
                         child: TiltedBackgroundIconStack(
@@ -483,7 +484,7 @@ class _AppointmentRowState extends State<_AppointmentRow> with SingleTickerProvi
                           ),
                         ),
                       ),
-                      _QueueSectionDivider(color: colors.border),
+                      AppointmentQueueSectionDivider(color: colors.border),
                       Expanded(
                         flex: 3,
                         child: TiltedBackgroundIconStack(
@@ -495,7 +496,7 @@ class _AppointmentRowState extends State<_AppointmentRow> with SingleTickerProvi
                           ),
                         ),
                       ),
-                      _QueueSectionDivider(color: colors.border),
+                      AppointmentQueueSectionDivider(color: colors.border),
                       Padding(
                         padding: const EdgeInsets.only(top: SpacingTokens.xs),
                         child: AppointmentQueueRowStatusButton(item: item),
@@ -588,29 +589,6 @@ class _PersonColumn extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-/// Centered vertical divider between queue appointment row sections.
-class _QueueSectionDivider extends StatelessWidget {
-  const _QueueSectionDivider({required this.color});
-
-  final Color color;
-
-  static const _gap = SpacingTokens.md;
-  static const _lineHeight = 40.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: _gap * 2 + 1,
-      child: Center(
-        child: SizedBox(
-          height: _lineHeight,
-          child: VerticalDivider(width: 1, thickness: 1, color: color.withValues(alpha: 1)),
-        ),
-      ),
     );
   }
 }
@@ -842,7 +820,7 @@ class _ScheduleEmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.event_note_outlined, size: 40, color: colors.mutedForeground),
+            Icon(Icons.event_note_outlined, size: 32, color: colors.mutedForeground),
             const SizedBox(height: SpacingTokens.md),
             Text(
               'No appointments today',

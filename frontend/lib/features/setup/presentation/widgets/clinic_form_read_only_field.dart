@@ -23,7 +23,7 @@ class ClinicFormReadOnlyField extends StatelessWidget {
         Text(
           hasDisplay ? display : 'This value has not been set before.',
           style: hasDisplay
-              ? theme.textTheme.bodyLarge
+              ? theme.textTheme.bodyMedium
               : theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
       ],

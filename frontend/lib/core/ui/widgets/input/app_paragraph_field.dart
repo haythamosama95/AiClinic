@@ -9,16 +9,16 @@ import 'app_field_size.dart';
 import 'app_label.dart';
 
 EdgeInsets _paragraphContentPadding(AppFieldSize size) => switch (size) {
-  AppFieldSize.sm => const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-  AppFieldSize.md => const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-  AppFieldSize.lg => const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+  AppFieldSize.sm => const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+  AppFieldSize.md => const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+  AppFieldSize.lg => const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
 };
 
 double _paragraphMinHeight(AppFieldSize size, int minLines) {
   final lineHeight = switch (size) {
-    AppFieldSize.sm => 18.0,
-    AppFieldSize.md => 20.0,
-    AppFieldSize.lg => 22.0,
+    AppFieldSize.sm => 16.0,
+    AppFieldSize.md => 18.0,
+    AppFieldSize.lg => 20.0,
   };
   final padding = _paragraphContentPadding(size);
   return padding.vertical + (lineHeight * minLines);
@@ -32,8 +32,8 @@ FTextFieldStyleDelta _paragraphFieldStyle(AppFieldSize size, int minLines) => FT
 DefaultStyles _paragraphEditorStyles(BuildContext context) {
   final theme = Theme.of(context);
   final colors = context.semanticColors;
-  final bodyStyle = theme.textTheme.bodyLarge!.copyWith(color: colors.foreground, height: 1.5);
-  final placeholderStyle = theme.textTheme.bodyLarge!.copyWith(color: colors.mutedForeground, height: 1.5);
+  final bodyStyle = theme.textTheme.bodyMedium!.copyWith(color: colors.foreground, height: 1.45);
+  final placeholderStyle = theme.textTheme.bodyMedium!.copyWith(color: colors.mutedForeground, height: 1.45);
 
   return DefaultStyles.getInstance(context).merge(
     DefaultStyles(

@@ -17,9 +17,9 @@ class SetupCompleteStep extends StatelessWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(Icons.check_circle_outline, size: 56, color: theme.colorScheme.primary),
+          Icon(Icons.check_circle_outline, size: 40, color: theme.colorScheme.primary),
           const SizedBox(height: SpacingTokens.lg),
-          Text('Clinic setup is complete', style: theme.textTheme.headlineSmall, textAlign: TextAlign.center),
+          Text('Clinic setup is complete', style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
           const SizedBox(height: SpacingTokens.sm),
           Text(
             'Your organization, first branch, and staff account are ready. Open the clinic shell to get started.',

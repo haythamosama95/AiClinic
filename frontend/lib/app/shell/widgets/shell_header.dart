@@ -31,7 +31,7 @@ class ShellHeader extends StatelessWidget {
                   pageTitle!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleLarge?.copyWith(color: colors.foreground),
+                  style: theme.textTheme.titleMedium?.copyWith(color: colors.foreground),
                 ),
               )
             else

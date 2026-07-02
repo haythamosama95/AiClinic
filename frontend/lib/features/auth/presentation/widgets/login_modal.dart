@@ -265,7 +265,7 @@ class _BrandingPanel extends StatelessWidget {
           children: [
             Text(
               'AI Clinic',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: _LoginModalPalette.brandCoral,
                 letterSpacing: -0.5,
@@ -391,11 +391,7 @@ class _LoginFormSection extends StatelessWidget {
           Text(
             'Login',
             textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF0F172A),
-            ),
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFF0F172A)),
           ),
           const SizedBox(height: SpacingTokens.xl),
           AppTextField(

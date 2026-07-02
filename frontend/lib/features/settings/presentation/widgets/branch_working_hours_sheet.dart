@@ -322,7 +322,7 @@ class _SheetHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Working hours', style: theme.textTheme.titleLarge?.copyWith(color: colors.foreground)),
+                Text('Working hours', style: theme.textTheme.titleMedium?.copyWith(color: colors.foreground)),
                 const SizedBox(height: SpacingTokens.xs),
                 Text(
                   'Control how this branch operates at different times of day.',

@@ -8,8 +8,8 @@ import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 /// Visit-page layout constants.
 abstract final class VisitPageTokens {
   static const double sectionGap = SpacingTokens.md;
-  static const double marginRailWidth = 34;
-  static const double metricTileMinWidth = 150;
+  static const double marginRailWidth = 28;
+  static const double metricTileMinWidth = 130;
 
   static const clinicalSections = <({String abbr, String label})>[
     (abbr: 'C', label: 'Complaint'),
@@ -63,7 +63,7 @@ class VisitTheme {
 
   TextStyle title({Color? color, double? size}) =>
       _text.titleMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: size, color: color ?? ink) ??
-      TextStyle(fontSize: size ?? 17, fontWeight: FontWeight.w600, color: color ?? ink);
+      TextStyle(fontSize: size ?? 15, fontWeight: FontWeight.w600, color: color ?? ink);
 
   TextStyle eyebrow({Color? color, double? size}) =>
       _text.labelSmall?.copyWith(
@@ -72,21 +72,21 @@ class VisitTheme {
         fontWeight: FontWeight.w600,
         color: color ?? mutedInk,
       ) ??
-      TextStyle(fontSize: size ?? 11, letterSpacing: 1.2, fontWeight: FontWeight.w600, color: color ?? mutedInk);
+      TextStyle(fontSize: size ?? 10, letterSpacing: 1.2, fontWeight: FontWeight.w600, color: color ?? mutedInk);
 
   TextStyle readout({Color? color, double? size}) =>
       _text.labelMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: size, color: color ?? ink) ??
-      TextStyle(fontSize: size ?? 16, fontWeight: FontWeight.w600, color: color ?? ink);
+      TextStyle(fontSize: size ?? 14, fontWeight: FontWeight.w600, color: color ?? ink);
 
   TextStyle body({Color? color, double? size, FontWeight weight = FontWeight.w400}) =>
       _text.bodyMedium?.copyWith(fontSize: size, fontWeight: weight, color: color ?? ink) ??
-      TextStyle(fontSize: size ?? 14.5, fontWeight: weight, color: color ?? ink);
+      TextStyle(fontSize: size ?? 12.5, fontWeight: weight, color: color ?? ink);
 
   TextStyle bodyStrong({Color? color, double? size}) => body(color: color, size: size, weight: FontWeight.w600);
 
   TextStyle caption({Color? color, double? size}) =>
       _text.bodySmall?.copyWith(fontSize: size, color: color ?? mutedInk) ??
-      TextStyle(fontSize: size ?? 12.5, color: color ?? mutedInk);
+      TextStyle(fontSize: size ?? 11, color: color ?? mutedInk);
 }
 
 /// Convenience accessor for [VisitTheme] from a [BuildContext].

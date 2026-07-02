@@ -1542,7 +1542,7 @@ class _CalendarPermissionDenied extends StatelessWidget {
         child: Text(
           'You do not have permission to view appointments.',
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyLarge,
+          style: Theme.of(context).textTheme.bodyMedium,
         ),
       ),
     );

@@ -208,7 +208,7 @@ class _CreateStaffModalState extends ConsumerState<CreateStaffModal> {
                   Text(
                     'New staff member',
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: SpacingTokens.sm),
                   Text(

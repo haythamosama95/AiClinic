@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 
 import 'color_tokens.dart';
+import 'density_tokens.dart';
 import 'forui_accent_colors.dart';
 import 'forui_style_overrides.dart';
 import 'variants/app_theme_variant.dart';
@@ -12,7 +13,7 @@ abstract final class ForuiTheme {
   static FThemeData dataFor(Brightness brightness, {AppThemeVariant variant = AppThemeVariant.parchment}) {
     final tokens = ThemePaletteResolver.colors(variant, brightness);
     final colors = _colorsFromTokens(tokens, brightness);
-    final typography = FTypography.inherit(colors: colors, touch: false);
+    final typography = FTypography.inherit(colors: colors, touch: false).scale(sizeScalar: DensityTokens.textScale);
     final icons = FIcons.lucide();
     final style = FStyle.inherit(colors: colors, typography: typography, touch: false);
 

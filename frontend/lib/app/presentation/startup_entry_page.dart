@@ -30,11 +30,11 @@ class StartupEntryPage extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('AiClinic', style: theme.textTheme.headlineLarge, textAlign: TextAlign.center),
+                Text('AiClinic', style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
                 const SizedBox(height: SpacingTokens.sm),
                 Text(
                   'Clinic workstation foundation',
-                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: SpacingTokens.xxl),

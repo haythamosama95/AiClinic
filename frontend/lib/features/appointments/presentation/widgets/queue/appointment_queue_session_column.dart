@@ -11,6 +11,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_queue_display
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_shift_doctors.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_scale_down_text.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/queue/appointment_queue_row_tokens.dart';
 
 /// Column 3 — doctors on the current shift.
 class AppointmentQueueSessionColumn extends StatelessWidget {
@@ -55,7 +56,11 @@ class AppointmentQueueSessionColumn extends StatelessWidget {
       body: doctorsLoading
           ? const Center(child: CircularProgressIndicator())
           : doctorsOnShift.isEmpty
-          ? const Padding(padding: EdgeInsets.all(SpacingTokens.md), child: _NoDoctorsOnShiftPlaceholder())
+          ? const AppointmentQueuePanelEmptyState(
+              icon: Icons.medical_services_outlined,
+              title: 'No doctors on shift',
+              message: 'Assign doctors to an active shift for this branch.',
+            )
           : ListView.separated(
               shrinkWrap: !bodyScrollable,
               physics: bodyScrollable ? null : const NeverScrollableScrollPhysics(),
@@ -131,14 +136,14 @@ class _DoctorOnShiftRow extends StatelessWidget {
                 ),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: SpacingTokens.md),
+                padding: AppointmentQueueRowTokens.rowPadding,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
+                      flex: 3,
                       child: TiltedBackgroundIconStack(
                         icon: Icons.medical_services_outlined,
-                        minIconSize: 60,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -161,11 +166,11 @@ class _DoctorOnShiftRow extends StatelessWidget {
                         ),
                       ),
                     ),
-                    _QueueSectionDivider(color: colors.border),
+                    AppointmentQueueSectionDivider(color: colors.border),
                     Expanded(
+                      flex: 3,
                       child: TiltedBackgroundIconStack(
                         icon: Icons.assignment_ind_outlined,
-                        minIconSize: 60,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -198,68 +203,6 @@ class _DoctorOnShiftRow extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Centered vertical divider between queue card sections.
-class _QueueSectionDivider extends StatelessWidget {
-  const _QueueSectionDivider({required this.color});
-
-  final Color color;
-
-  static const _gap = SpacingTokens.md;
-  static const _lineHeight = 40.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: _gap * 2 + 1,
-      child: Center(
-        child: SizedBox(
-          height: _lineHeight,
-          child: VerticalDivider(width: 1, thickness: 1, color: color.withValues(alpha: 1)),
-        ),
-      ),
-    );
-  }
-}
-
-class _NoDoctorsOnShiftPlaceholder extends StatelessWidget {
-  const _NoDoctorsOnShiftPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.muted.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(SpacingTokens.lg),
-        border: Border.all(color: colors.border, style: BorderStyle.solid),
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(SpacingTokens.lg),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.medical_services_outlined, size: 48, color: colors.mutedForeground),
-              const SizedBox(height: SpacingTokens.md),
-              Text(
-                'No doctors on shift',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: SpacingTokens.sm),
-              Text(
-                'Assign doctors to an active shift for this branch.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.mutedForeground),
-              ),
-            ],
           ),
         ),
       ),

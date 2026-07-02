@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_theme_meta.dart';
 import 'color_tokens.dart';
+import 'density_tokens.dart';
 import 'semantic_colors.dart';
 import 'shadow_tokens.dart';
 import 'shape_tokens.dart';
@@ -63,10 +64,15 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(shapes.xl))),
       ),
+      iconTheme: const IconThemeData(size: 18),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: tokens.input,
-        contentPadding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: SpacingTokens.md),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: DensityTokens.controlPaddingHorizontal,
+          vertical: DensityTokens.controlPaddingVertical,
+        ),
+        isDense: true,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_inputRadius(shapes, variant)),
           borderSide: BorderSide(color: tokens.border, width: 1),
@@ -89,8 +95,12 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: tokens.primary,
           foregroundColor: tokens.primaryForeground,
-          minimumSize: const Size(0, 44),
-          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: 14),
+          minimumSize: const Size(0, DensityTokens.controlHeight),
+          padding: const EdgeInsets.symmetric(
+            horizontal: DensityTokens.controlPaddingHorizontal,
+            vertical: DensityTokens.controlPaddingVertical,
+          ),
+          textStyle: textTheme.labelLarge,
           shape: RoundedRectangleBorder(borderRadius: borderRadius),
           elevation: 0,
         ),
@@ -99,16 +109,24 @@ class AppTheme {
         style: FilledButton.styleFrom(
           backgroundColor: tokens.primary,
           foregroundColor: tokens.primaryForeground,
-          minimumSize: const Size(0, 44),
-          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: 14),
+          minimumSize: const Size(0, DensityTokens.controlHeight),
+          padding: const EdgeInsets.symmetric(
+            horizontal: DensityTokens.controlPaddingHorizontal,
+            vertical: DensityTokens.controlPaddingVertical,
+          ),
+          textStyle: textTheme.labelLarge,
           shape: RoundedRectangleBorder(borderRadius: borderRadius),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: tokens.foreground,
-          minimumSize: const Size(0, 44),
-          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg, vertical: 14),
+          minimumSize: const Size(0, DensityTokens.controlHeight),
+          padding: const EdgeInsets.symmetric(
+            horizontal: DensityTokens.controlPaddingHorizontal,
+            vertical: DensityTokens.controlPaddingVertical,
+          ),
+          textStyle: textTheme.labelLarge,
           side: BorderSide(color: tokens.border),
           shape: RoundedRectangleBorder(borderRadius: borderRadius),
         ),
@@ -116,8 +134,12 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: tokens.primary,
-          minimumSize: const Size(0, 44),
-          padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.md, vertical: 14),
+          minimumSize: const Size(0, DensityTokens.controlHeight),
+          padding: const EdgeInsets.symmetric(
+            horizontal: DensityTokens.controlPaddingHorizontal,
+            vertical: DensityTokens.controlPaddingVertical,
+          ),
+          textStyle: textTheme.labelLarge,
           shape: RoundedRectangleBorder(borderRadius: borderRadius),
         ),
       ),
@@ -136,8 +158,8 @@ class AppTheme {
       progressIndicatorTheme: ProgressIndicatorThemeData(color: tokens.primary),
       dividerTheme: DividerThemeData(color: tokens.border, space: SpacingTokens.lg),
       dataTableTheme: DataTableThemeData(
-        headingTextStyle: TextStyle(fontWeight: FontWeight.w600, color: tokens.foreground),
-        dataTextStyle: TextStyle(color: tokens.foreground),
+        headingTextStyle: textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600, color: tokens.foreground),
+        dataTextStyle: textTheme.bodySmall?.copyWith(color: tokens.foreground),
         dividerThickness: 1,
       ),
       navigationRailTheme: NavigationRailThemeData(
