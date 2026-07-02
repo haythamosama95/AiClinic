@@ -5,6 +5,7 @@ import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/presentation/pages/billing_settings_page.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/widgets/service_catalog_settings_section.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/idle_timeout_settings_card.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_cards_grid.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_section_card.dart';
@@ -61,6 +62,7 @@ class GeneralSettingsTab extends ConsumerWidget {
             ),
             const IdleTimeoutSettingsCard(),
             const BillingSettingsSection(),
+            const ServiceCatalogSettingsSection(),
           ],
         ),
       ],

@@ -70,20 +70,20 @@ description: "Task list for Service Catalog (015) implementation"
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Implement `create_service` (`auth_internal` + `public` wrapper) in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: assert `services.manage`, trim/validate unique name (`DUPLICATE_NAME`), `default_price>=0` (`INVALID_PRICE`), insert service, expand assignment (all-branches or validated `p_branch_ids` → `BRANCH_NOT_IN_ORG`) into `service_branches`, audit `service.create` + `service.branch.assign` (contract: service-management.md)
-- [ ] T013 [US1] Implement `set_service_branch_assignment` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: assign (upsert/reactivate soft-deleted rows) or unassign (soft-delete rows), audit `service.branch.assign`/`unassign`
-- [ ] T014 [US1] Implement `get_service` read RPC in `backend/supabase/migrations/20260712091000_service_catalog_pricing_rpcs.sql`: assert `services.view`/`services.manage`, return service + its non-deleted `service_branches` rows scoped to `jwt_branch_ids()` (editor backend-first load, FR-028)
-- [ ] T015 [US1] Add `createService`, `setBranchAssignment`, and `getService` methods to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
-- [ ] T016 [US1] Create `frontend/lib/features/service_catalog/presentation/providers/service_editor_notifier.dart` (AsyncNotifier) handling create + branch-assignment submission and error mapping
-- [ ] T017 [US1] Create `frontend/lib/features/service_catalog/presentation/widgets/service_form.dart`: name, default price (Money), global status, and branch-assignment (all/selected) with inline validation
-- [ ] T018 [US1] Create `frontend/lib/features/service_catalog/presentation/pages/service_editor_page.dart` composing `service_form` with loading/saving/error/permission-denied states via `core/ui`
-- [ ] T019 [US1] Register the service editor route with a `services.manage` guard in `frontend/lib/app/app_routes.dart` and `frontend/lib/app/router.dart` (reuse `core/auth/auth_route_guard.dart`)
+- [X] T012 [US1] Implement `create_service` (`auth_internal` + `public` wrapper) in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: assert `services.manage`, trim/validate unique name (`DUPLICATE_NAME`), `default_price>=0` (`INVALID_PRICE`), insert service, expand assignment (all-branches or validated `p_branch_ids` → `BRANCH_NOT_IN_ORG`) into `service_branches`, audit `service.create` + `service.branch.assign` (contract: service-management.md)
+- [X] T013 [US1] Implement `set_service_branch_assignment` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: assign (upsert/reactivate soft-deleted rows) or unassign (soft-delete rows), audit `service.branch.assign`/`unassign`
+- [X] T014 [US1] Implement `get_service` read RPC in `backend/supabase/migrations/20260712091000_service_catalog_pricing_rpcs.sql`: assert `services.view`/`services.manage`, return service + its non-deleted `service_branches` rows scoped to `jwt_branch_ids()` (editor backend-first load, FR-028)
+- [X] T015 [US1] Add `createService`, `setBranchAssignment`, and `getService` methods to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
+- [X] T016 [US1] Create `frontend/lib/features/service_catalog/presentation/providers/service_editor_notifier.dart` (AsyncNotifier) handling create + branch-assignment submission and error mapping
+- [X] T017 [US1] Create `frontend/lib/features/service_catalog/presentation/widgets/service_form.dart`: name, default price (Money), global status, and branch-assignment (all/selected) with inline validation
+- [X] T018 [US1] Create `frontend/lib/features/service_catalog/presentation/pages/service_editor_page.dart` composing `service_form` with loading/saving/error/permission-denied states via `core/ui`
+- [X] T019 [US1] Register the service editor route with a `services.manage` guard in `frontend/lib/app/app_routes.dart` and `frontend/lib/app/router.dart` (reuse `core/auth/auth_route_guard.dart`)
 
 ### Tests for User Story 1
 
-- [ ] T020 [P] [US1] Add create + branch-assignment CRUD cases (duplicate-name, negative-price, all/selected expansion, org scope) to `backend/tests/service_catalog_crud.sql`
-- [ ] T021 [P] [US1] Add RLS cases (cross-org SELECT denial, direct INSERT/UPDATE/DELETE denial) to `backend/tests/service_catalog_rls.sql`
-- [ ] T022 [P] [US1] Add Dart unit tests for Service model parsing, `service_editor_notifier` create flow, and `service_form` validation in `frontend/test/unit/service_catalog/`
+- [X] T020 [P] [US1] Add create + branch-assignment CRUD cases (duplicate-name, negative-price, all/selected expansion, org scope) to `backend/tests/service_catalog_crud.sql`
+- [X] T021 [P] [US1] Add RLS cases (cross-org SELECT denial, direct INSERT/UPDATE/DELETE denial) to `backend/tests/service_catalog_rls.sql`
+- [X] T022 [P] [US1] Add Dart unit tests for Service model parsing, `service_editor_notifier` create flow, and `service_form` validation in `frontend/test/unit/service_catalog/`
 
 **Checkpoint**: US1 delivers a governed, org-scoped, branch-assigned catalog — independently testable
 
