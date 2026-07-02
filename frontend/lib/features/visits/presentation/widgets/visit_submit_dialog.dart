@@ -11,9 +11,10 @@ import 'package:ai_clinic/features/visits/presentation/providers/visit_documenta
 
 /// Confirms visit submission and completes the linked appointment (V1-5 US6).
 class VisitSubmitDialog extends ConsumerStatefulWidget {
-  const VisitSubmitDialog({required this.visitId, this.expectedUpdatedAt, super.key});
+  const VisitSubmitDialog({required this.visitId, required this.dialogContext, this.expectedUpdatedAt, super.key});
 
   final String visitId;
+  final BuildContext dialogContext;
   final DateTime? expectedUpdatedAt;
 
   static Future<CompleteVisitResult?> show(
@@ -21,10 +22,16 @@ class VisitSubmitDialog extends ConsumerStatefulWidget {
     required String visitId,
     DateTime? expectedUpdatedAt,
   }) {
-    return showDialog<CompleteVisitResult>(
+    return AppDialog.show<CompleteVisitResult>(
       context: context,
+      title: 'Submit visit',
       barrierDismissible: false,
-      builder: (context) => VisitSubmitDialog(visitId: visitId, expectedUpdatedAt: expectedUpdatedAt),
+      bodyBuilder: (dialogContext) => VisitSubmitDialog(
+        key: const Key('visit_submit_dialog'),
+        visitId: visitId,
+        expectedUpdatedAt: expectedUpdatedAt,
+        dialogContext: dialogContext,
+      ),
     );
   }
 
@@ -45,10 +52,10 @@ class _VisitSubmitDialogState extends ConsumerState<VisitSubmitDialog> {
     try {
       final result = await ref.read(visitDocumentationProvider(widget.visitId).notifier).completeVisit();
 
-      if (!mounted) {
+      if (!mounted || !widget.dialogContext.mounted) {
         return;
       }
-      Navigator.of(context).pop(result);
+      Navigator.of(widget.dialogContext).pop(result);
     } on RpcFailure catch (error) {
       if (!mounted) {
         return;
@@ -70,46 +77,49 @@ class _VisitSubmitDialogState extends ConsumerState<VisitSubmitDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const Key('visit_submit_dialog'),
-      title: const Text('Submit visit'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    final theme = Theme.of(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Submitting completes this visit and marks the linked appointment as completed. '
+          'After submission, documentation remains editable for users with edit permission.',
+          style: theme.textTheme.bodyMedium,
+        ),
+        if (_formError != null) ...[
+          const SizedBox(height: SpacingTokens.md),
+          AppAlert(
+            key: const Key('visit_submit_error_label'),
+            title: _formError!,
+            variant: AppAlertVariant.destructive,
+          ),
+        ],
+        if (_isSubmitting) ...[
+          const SizedBox(height: SpacingTokens.lg),
+          const Center(key: Key('visit_submit_submitting'), child: AppCircularProgress()),
+        ],
+        const SizedBox(height: SpacingTokens.lg),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            const Text(
-              'Submitting completes this visit and marks the linked appointment as completed. '
-              'At least one clinical note section (complaint, history, examination, diagnosis, or plan) must contain text. '
-              'After submission, documentation remains editable for users with edit permission.',
+            AppButton(
+              key: const Key('visit_submit_cancel_button'),
+              label: 'Cancel',
+              variant: AppButtonVariant.secondary,
+              expand: false,
+              onPressed: _isSubmitting ? null : () => Navigator.of(widget.dialogContext).pop(),
             ),
-            if (_formError != null) ...[
-              const SizedBox(height: SpacingTokens.md),
-              AppAlert(
-                key: const Key('visit_submit_error_label'),
-                title: _formError!,
-                variant: AppAlertVariant.destructive,
-              ),
-            ],
-            if (_isSubmitting) ...[
-              const SizedBox(height: SpacingTokens.lg),
-              const Center(key: Key('visit_submit_submitting'), child: AppCircularProgress()),
-            ],
+            const SizedBox(width: SpacingTokens.sm),
+            AppButton(
+              key: const Key('visit_submit_confirm_button'),
+              label: 'Submit visit',
+              expand: false,
+              isLoading: _isSubmitting,
+              onPressed: _isSubmitting ? null : _submit,
+            ),
           ],
-        ),
-      ),
-      actions: [
-        AppButton(
-          key: const Key('visit_submit_cancel_button'),
-          label: 'Cancel',
-          variant: AppButtonVariant.secondary,
-          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-        ),
-        AppButton(
-          key: const Key('visit_submit_confirm_button'),
-          label: 'Submit visit',
-          isLoading: _isSubmitting,
-          onPressed: _isSubmitting ? null : _submit,
         ),
       ],
     );

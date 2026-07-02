@@ -27,7 +27,6 @@ import 'package:ai_clinic/features/appointments/presentation/widgets/queue/queue
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/visit_create_dialog.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
-import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 extension _AppointmentDetailListItem on AppointmentDetail {
   AppointmentListItem toListItem() {
@@ -65,8 +64,15 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
 
   bool get _isBusy => _busyActionKey != null;
 
-  bool get _canStartVisit =>
+  bool get _canCreateNewVisit =>
       detail.status == AppointmentStatus.checkedIn || detail.status == AppointmentStatus.inProgress;
+
+  bool get _canAccessVisitWorkflow =>
+      detail.status == AppointmentStatus.checkedIn ||
+      detail.status == AppointmentStatus.inProgress ||
+      detail.status == AppointmentStatus.completed;
+
+  bool get _hasLinkedVisit => _linkedVisitId != null && _linkedVisitId!.isNotEmpty;
 
   String get _organizationTimezone =>
       ref.read(authSessionProvider).context?.organizationTimezone?.trim().isNotEmpty == true
@@ -108,7 +114,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   }
 
   Future<void> _refreshVisitLink({bool showLoadingGate = true}) async {
-    if (!_canCreateVisit || !_canStartVisit) {
+    if (!_canCreateVisit || !_canAccessVisitWorkflow) {
       if (mounted) {
         setState(() {
           _linkedVisitId = null;
@@ -146,8 +152,12 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     if (!mounted) {
       return;
     }
-    ref.invalidate(visitDocumentationProvider(visitId));
     await context.push(AppRoutes.visitDocument(visitId));
+    if (!mounted) {
+      return;
+    }
+    ref.invalidate(appointmentDetailProvider(detail.id));
+    await _refreshVisitLink(showLoadingGate: false);
   }
 
   Future<void> _createOrOpenVisit() async {
@@ -181,11 +191,14 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     if (!_canCreateVisit) {
       return 'You do not have permission to manage visits.';
     }
-    if (!_canStartVisit) {
+    if (!_canAccessVisitWorkflow) {
       return 'Visits can be opened after the patient is checked in.';
     }
     if (!_visitLookupDone) {
       return 'Loading visit link…';
+    }
+    if (!_hasLinkedVisit && !_canCreateNewVisit) {
+      return 'This appointment has no linked visit.';
     }
     return _busyBlockedReason('visit');
   }
@@ -556,7 +569,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     final visitKey = _linkedVisitId != null
         ? const Key('appointment_control_open_visit')
         : const Key('appointment_control_create_visit');
-    final showVisitAction = _canCreateVisit && _canStartVisit;
+    final showVisitAction = _canCreateVisit && _canAccessVisitWorkflow && (_hasLinkedVisit || _canCreateNewVisit);
 
     final specs = <_StatusActionSpec>[
       if (showVisitAction)

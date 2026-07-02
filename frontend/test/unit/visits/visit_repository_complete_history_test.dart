@@ -36,17 +36,21 @@ void main() {
       expect(client.lastParams?.containsKey('p_expected_updated_at'), isFalse);
     });
 
-    test('invalid state: DOCUMENTATION_REQUIRED_FOR_COMPLETE surfaces from RPC', () async {
+    test('advanced: completes visit when RPC succeeds without documentation content', () async {
       client.rpcResults['complete_visit'] = {
-        'success': false,
-        'error_code': 'DOCUMENTATION_REQUIRED_FOR_COMPLETE',
-        'error_message': 'Documentation required',
+        'success': true,
+        'data': {
+          'visit_id': 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          'visit_status': 'completed',
+          'appointment_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          'appointment_status': 'completed',
+        },
       };
 
-      expect(
-        () => repository.completeVisit(visitId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'),
-        throwsA(isA<RpcFailure>().having((e) => e.code, 'code', 'DOCUMENTATION_REQUIRED_FOR_COMPLETE')),
-      );
+      final result = await repository.completeVisit(visitId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
+
+      expect(result.visitStatus, 'completed');
+      expect(result.appointmentStatus, 'completed');
     });
 
     test('stupid usage: blank visit id throws INVALID_INPUT before RPC', () async {

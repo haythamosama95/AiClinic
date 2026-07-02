@@ -71,8 +71,6 @@ String visitMessageForRpc(RpcFailure failure) {
     'VISIT_ALREADY_EXISTS' => 'A visit already exists for this appointment. Open the existing visit instead.',
     'DOCTOR_REQUIRED' => 'Select a doctor before starting this visit.',
     'INVALID_DOCTOR' => 'The selected doctor is not available at this branch.',
-    'DOCUMENTATION_REQUIRED_FOR_COMPLETE' =>
-      'Enter at least one clinical section (complaint, history, examination, diagnosis, or plan) before submitting the visit.',
     'DURATION_REQUIRED' => 'Duration is required for each treatment line.',
     'APPOINTMENT_NOT_IN_PROGRESS' => 'The linked appointment is no longer in progress. Reload the visit and try again.',
     'VISIT_REQUIRED_FOR_COMPLETION' => 'Complete the visit documentation to finish this appointment.',

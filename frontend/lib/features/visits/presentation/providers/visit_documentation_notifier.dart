@@ -71,7 +71,16 @@ class VisitDocumentationState {
     if (saveStatus == DocumentationSaveStatus.stale) {
       return true;
     }
-    return noteEditMode == DocumentationEditMode.editing || saveStatus == DocumentationSaveStatus.idle;
+    return _clinicalNoteDiffersFromPersisted();
+  }
+
+  bool _clinicalNoteDiffersFromPersisted() {
+    final persisted = persistedVisit.documentation;
+    return complaint.trim() != (persisted?.complaint ?? '').trim() ||
+        history.trim() != (persisted?.history ?? '').trim() ||
+        examination.trim() != (persisted?.examination ?? '').trim() ||
+        diagnosis.trim() != (persisted?.diagnosis ?? '').trim() ||
+        plan.trim() != (persisted?.plan ?? '').trim();
   }
 
   bool get hasPendingEncounterDraft => !encounterDraft.isEmpty;
@@ -186,6 +195,20 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       );
     }
 
+    if (_canEditVisit(current.visit)) {
+      final saved = await saveAll();
+      if (!saved) {
+        final after = state.value ?? current;
+        throw RpcFailure(
+          RpcResult(
+            success: false,
+            errorCode: after.saveStatus == DocumentationSaveStatus.stale ? 'STALE_DOCUMENTATION' : 'INVALID_INPUT',
+            errorMessage: after.errorMessage ?? 'Unable to save visit changes before completing.',
+          ),
+        );
+      }
+    }
+
     try {
       final result = await ref
           .read(visitRepositoryProvider)
@@ -206,13 +229,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
         ),
       );
       return result;
-    } on RpcFailure catch (error) {
-      if (error.code == 'DOCUMENTATION_REQUIRED_FOR_COMPLETE') {
-        final currentAfter = state.value ?? current;
-        state = AsyncData(
-          currentAfter.copyWith(saveStatus: DocumentationSaveStatus.error, errorMessage: visitMessageForRpc(error)),
-        );
-      }
+    } on RpcFailure {
       rethrow;
     }
   }
@@ -279,6 +296,12 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     if (current == null || !_canEditVisit(current.visit)) {
       return true;
     }
+
+    if (!current.hasPendingEncounterDraft && !current.hasUnsavedDraft) {
+      return true;
+    }
+
+    state = AsyncData(current.copyWith(saveStatus: DocumentationSaveStatus.saving, clearError: true));
 
     if (current.hasPendingEncounterDraft) {
       final flushed = await _flushEncounterDraft(current);

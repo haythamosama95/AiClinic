@@ -504,20 +504,9 @@ class DevClinicSeedService {
       return;
     }
 
-    var docUpdatedAt = detail.documentation?.updatedAt;
-    if (detail.documentation?.hasContent != true) {
-      if (docUpdatedAt == null) {
-        throw StateError('Visit documentation timestamp missing while releasing dev seed doctor slot.');
-      }
-      final saved = await _visits.saveVisitDocumentation(
-        visitId: visitId,
-        expectedUpdatedAt: docUpdatedAt,
-        complaint: 'Dev seed auto-completed to free doctor slot.',
-      );
-      docUpdatedAt = saved.updatedAt;
-    }
+    final docUpdatedAt = detail.documentation?.updatedAt ?? detail.updatedAt;
 
-    await _visits.completeVisit(visitId: visitId, expectedUpdatedAt: docUpdatedAt!);
+    await _visits.completeVisit(visitId: visitId, expectedUpdatedAt: docUpdatedAt);
   }
 
   Future<void> _assignBootstrapAdminToBranches(String staffMemberId, List<String> branchIds) async {

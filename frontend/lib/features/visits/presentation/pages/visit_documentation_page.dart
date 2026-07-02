@@ -6,6 +6,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/core/ui/widgets/feedback/app_full_page_loading.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
@@ -83,17 +84,42 @@ class VisitDocumentationPage extends ConsumerWidget {
   }) async {
     final notifier = ref.read(visitDocumentationProvider(visitId).notifier);
 
-    if (canEdit && state.hasUnsavedChanges) {
-      final saved = await notifier.saveAll();
-      if (!saved || !context.mounted) return;
+    try {
+      if (canEdit && state.hasUnsavedChanges) {
+        final saved = await notifier.saveAll();
+        if (!context.mounted) return;
+        if (!saved) {
+          final latest = ref.read(visitDocumentationProvider(visitId)).value;
+          AppToast.error(
+            context,
+            message: latest?.errorMessage ?? 'Unable to save changes before submitting. Fix any errors and try again.',
+          );
+          return;
+        }
+      }
+
+      final latest = ref.read(visitDocumentationProvider(visitId)).value ?? state;
+      final result = await VisitSubmitDialog.show(
+        context,
+        visitId: visitId,
+        expectedUpdatedAt: latest.expectedUpdatedAt,
+      );
+
+      if (result == null || !context.mounted) return;
+
+      final appointmentId = state.visit.appointmentId.trim();
+      if (appointmentId.isNotEmpty) {
+        ref.invalidate(appointmentDetailProvider(appointmentId));
+      }
+
+      AppToast.success(context, message: 'Visit submitted. The linked appointment is now completed.');
+    } catch (error) {
+      if (!context.mounted) return;
+      AppToast.error(
+        context,
+        message: error is RpcFailure ? visitMessageForRpc(error) : 'Unable to submit visit. Try again.',
+      );
     }
-
-    final latest = ref.read(visitDocumentationProvider(visitId)).value ?? state;
-    final result = await VisitSubmitDialog.show(context, visitId: visitId, expectedUpdatedAt: latest.expectedUpdatedAt);
-
-    if (result == null || !context.mounted) return;
-
-    AppToast.success(context, message: 'Visit submitted. The linked appointment is now completed.');
   }
 
   Future<void> _saveAndClose(BuildContext context, WidgetRef ref, String visitId, {required bool canEdit}) async {
@@ -105,7 +131,15 @@ class VisitDocumentationPage extends ConsumerWidget {
 
     if (canEdit && current.hasUnsavedChanges) {
       final saved = await notifier.saveAll();
-      if (!saved || !context.mounted) return;
+      if (!context.mounted) return;
+      if (!saved) {
+        final latest = ref.read(visitDocumentationProvider(visitId)).value;
+        AppToast.error(
+          context,
+          message: latest?.errorMessage ?? 'Unable to save changes. Fix any errors and try again.',
+        );
+        return;
+      }
       savedChanges = true;
     }
 
@@ -146,11 +180,13 @@ class _VisitDocumentationBody extends ConsumerWidget {
 
     Widget? trailing;
     if (canSubmit && status == VisitStatus.inProgress) {
+      final isSaving = state.saveStatus == DocumentationSaveStatus.saving;
       trailing = AppButton(
         key: const Key('visit_submit_button'),
-        label: 'Submit visit',
+        label: isSaving ? 'Saving…' : 'Submit visit',
         icon: const Icon(Icons.check_circle_outline, size: 18),
-        onPressed: onSubmit,
+        isLoading: isSaving,
+        onPressed: isSaving ? null : onSubmit,
       );
     } else if (canSubmit && status == VisitStatus.completed) {
       trailing = AppButton(

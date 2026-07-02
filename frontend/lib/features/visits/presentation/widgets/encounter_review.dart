@@ -145,6 +145,8 @@ class EncounterReview extends ConsumerWidget {
       return KeyedSubtree(key: const Key('encounter_review'), child: summary);
     }
 
+    final isSaving = state?.saveStatus == DocumentationSaveStatus.saving;
+
     return KeyedSubtree(
       key: const Key('encounter_review'),
       child: Column(
@@ -156,9 +158,10 @@ class EncounterReview extends ConsumerWidget {
             alignment: Alignment.centerRight,
             child: AppButton(
               key: const Key('encounter_review_submit_button'),
-              label: 'Submit visit',
+              label: isSaving ? 'Saving…' : 'Submit visit',
               icon: const Icon(Icons.check_circle_outline, size: 18),
-              onPressed: onSubmit,
+              isLoading: isSaving,
+              onPressed: isSaving ? null : onSubmit,
             ),
           ),
         ],
