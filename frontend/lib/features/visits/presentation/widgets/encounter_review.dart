@@ -137,7 +137,22 @@ class EncounterReview extends ConsumerWidget {
       onEditPhase: onEditPhase,
     );
 
-    return KeyedSubtree(key: const Key('encounter_review'), child: summary);
+    return KeyedSubtree(
+      key: const Key('encounter_review'),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final expandBody =
+              constraints.hasBoundedHeight && constraints.maxHeight.isFinite && constraints.maxHeight > 0;
+
+          return EncounterFieldCard(
+            title: EncounterPhase.review.label,
+            titleIcon: EncounterPhase.review.icon,
+            expandBody: expandBody,
+            child: summary,
+          );
+        },
+      ),
+    );
   }
 
   static List<String> _formatVitalSigns(List<VisitVitalSign> vitalSigns) {
