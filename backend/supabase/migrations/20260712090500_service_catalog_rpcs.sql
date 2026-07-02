@@ -1176,6 +1176,371 @@ AS $$
   SELECT auth_internal.soft_delete_service(p_service_id, p_expected_updated_at);
 $$;
 
+-- -----------------------------------------------------------------------------
+-- auth_internal.copy_service_branch_configuration
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.copy_service_branch_configuration(
+  p_source_branch_id uuid,
+  p_target_branch_id uuid,
+  p_mode text,
+  p_service_ids uuid[] DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_mode text;
+  v_source_row record;
+  v_target_exists boolean;
+  v_effective_price numeric(14, 2);
+  v_affected_ids uuid[] := '{}'::uuid[];
+  v_created_count int := 0;
+  v_overwritten_count int := 0;
+BEGIN
+  PERFORM auth_internal.assert_permission('services.manage');
+  v_org_id := public.jwt_organization_id();
+
+  IF p_source_branch_id IS NULL OR p_target_branch_id IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Source and target branch IDs are required.');
+  END IF;
+
+  IF p_source_branch_id = p_target_branch_id THEN
+    RETURN public.rpc_error('INVALID_COPY_TARGET', 'Source and target branches must differ.');
+  END IF;
+
+  IF NOT (p_source_branch_id = ANY (public.jwt_branch_ids()))
+    OR NOT (p_target_branch_id = ANY (public.jwt_branch_ids())) THEN
+    RETURN public.rpc_error('BRANCH_NOT_IN_ORG', 'One or more selected branches are not in your organization.');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.branches b
+    WHERE b.id = p_source_branch_id
+      AND b.organization_id = v_org_id
+      AND b.is_deleted = false
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM public.branches b
+    WHERE b.id = p_target_branch_id
+      AND b.organization_id = v_org_id
+      AND b.is_deleted = false
+  ) THEN
+    RETURN public.rpc_error('BRANCH_NOT_IN_ORG', 'One or more selected branches are not in your organization.');
+  END IF;
+
+  v_mode := lower(btrim(p_mode));
+  IF v_mode NOT IN ('merge', 'replace') THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Copy mode must be merge or replace.');
+  END IF;
+
+  FOR v_source_row IN
+    SELECT
+      sb.service_id,
+      sb.status,
+      sb.price_override,
+      sb.promotion_price,
+      sb.promotion_start_date,
+      sb.promotion_end_date,
+      s.default_price
+    FROM public.service_branches sb
+    JOIN public.services s
+      ON s.id = sb.service_id
+    WHERE sb.branch_id = p_source_branch_id
+      AND sb.is_deleted = false
+      AND s.organization_id = v_org_id
+      AND s.is_deleted = false
+      AND (
+        p_service_ids IS NULL
+        OR cardinality(p_service_ids) = 0
+        OR sb.service_id = ANY (p_service_ids)
+      )
+  LOOP
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.service_branches sb
+      WHERE sb.service_id = v_source_row.service_id
+        AND sb.branch_id = p_target_branch_id
+        AND sb.is_deleted = false
+    )
+    INTO v_target_exists;
+
+    IF v_mode = 'merge' AND v_target_exists THEN
+      CONTINUE;
+    END IF;
+
+    v_effective_price := COALESCE(v_source_row.price_override, v_source_row.default_price);
+
+    IF v_source_row.promotion_price IS NOT NULL AND v_effective_price < v_source_row.promotion_price THEN
+      RETURN public.rpc_error(
+        'PROMO_EXCEEDS_PRICE',
+        'Promotion price cannot exceed the effective price. Lower the promotion or raise the default/override price.'
+      );
+    END IF;
+
+    IF v_target_exists THEN
+      UPDATE public.service_branches sb
+      SET
+        status = v_source_row.status,
+        price_override = v_source_row.price_override,
+        promotion_price = v_source_row.promotion_price,
+        promotion_start_date = v_source_row.promotion_start_date,
+        promotion_end_date = v_source_row.promotion_end_date,
+        updated_at = now(),
+        updated_by = auth.uid()
+      WHERE sb.service_id = v_source_row.service_id
+        AND sb.branch_id = p_target_branch_id
+        AND sb.is_deleted = false;
+
+      v_overwritten_count := v_overwritten_count + 1;
+    ELSE
+      UPDATE public.service_branches sb
+      SET
+        is_deleted = false,
+        deleted_at = NULL,
+        deleted_by = NULL,
+        status = v_source_row.status,
+        price_override = v_source_row.price_override,
+        promotion_price = v_source_row.promotion_price,
+        promotion_start_date = v_source_row.promotion_start_date,
+        promotion_end_date = v_source_row.promotion_end_date,
+        updated_at = now(),
+        updated_by = auth.uid()
+      WHERE sb.service_id = v_source_row.service_id
+        AND sb.branch_id = p_target_branch_id
+        AND sb.is_deleted = true;
+
+      IF NOT FOUND THEN
+        INSERT INTO public.service_branches (
+          service_id,
+          branch_id,
+          status,
+          price_override,
+          promotion_price,
+          promotion_start_date,
+          promotion_end_date,
+          created_by,
+          updated_by
+        )
+        VALUES (
+          v_source_row.service_id,
+          p_target_branch_id,
+          v_source_row.status,
+          v_source_row.price_override,
+          v_source_row.promotion_price,
+          v_source_row.promotion_start_date,
+          v_source_row.promotion_end_date,
+          auth.uid(),
+          auth.uid()
+        );
+      END IF;
+
+      v_created_count := v_created_count + 1;
+    END IF;
+
+    v_affected_ids := array_append(v_affected_ids, v_source_row.service_id);
+  END LOOP;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
+  VALUES (
+    auth.uid(),
+    v_org_id,
+    'service.branch.copy',
+    'service_branches',
+    p_target_branch_id,
+    jsonb_build_object(
+      'source_branch_id', p_source_branch_id,
+      'target_branch_id', p_target_branch_id,
+      'mode', v_mode,
+      'affected_service_ids', v_affected_ids
+    )
+  );
+
+  RETURN public.rpc_success(
+    jsonb_build_object(
+      'affected_service_ids', v_affected_ids,
+      'created_count', v_created_count,
+      'overwritten_count', v_overwritten_count
+    )
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage the service catalog.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- auth_internal.setup_new_branch_services
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION auth_internal.setup_new_branch_services(
+  p_target_branch_id uuid,
+  p_method text,
+  p_service_ids uuid[] DEFAULT NULL,
+  p_source_branch_id uuid DEFAULT NULL,
+  p_mode text DEFAULT 'merge'
+)
+RETURNS public.rpc_result
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_method text;
+  v_service_id uuid;
+  v_assigned_ids uuid[] := '{}'::uuid[];
+  v_copy_result public.rpc_result;
+BEGIN
+  PERFORM auth_internal.assert_permission('services.manage');
+  v_org_id := public.jwt_organization_id();
+
+  IF p_target_branch_id IS NULL THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Target branch ID is required.');
+  END IF;
+
+  IF NOT (p_target_branch_id = ANY (public.jwt_branch_ids())) THEN
+    RETURN public.rpc_error('BRANCH_NOT_IN_ORG', 'The selected branch is not in your organization.');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.branches b
+    WHERE b.id = p_target_branch_id
+      AND b.organization_id = v_org_id
+      AND b.is_deleted = false
+  ) THEN
+    RETURN public.rpc_error('BRANCH_NOT_IN_ORG', 'The selected branch is not in your organization.');
+  END IF;
+
+  v_method := lower(btrim(p_method));
+  IF v_method NOT IN ('select', 'copy_all', 'copy_modify') THEN
+    RETURN public.rpc_error('INVALID_INPUT', 'Setup method must be select, copy_all, or copy_modify.');
+  END IF;
+
+  IF v_method = 'select' THEN
+    IF p_service_ids IS NULL OR cardinality(p_service_ids) = 0 THEN
+      RETURN public.rpc_error('INVALID_INPUT', 'Select at least one service to assign.');
+    END IF;
+
+    FOREACH v_service_id IN ARRAY p_service_ids LOOP
+      IF NOT EXISTS (
+        SELECT 1
+        FROM public.services s
+        WHERE s.id = v_service_id
+          AND s.organization_id = v_org_id
+          AND s.is_deleted = false
+      ) THEN
+        RETURN public.rpc_error('NOT_FOUND', 'One or more selected services were not found.');
+      END IF;
+
+      v_copy_result := auth_internal.set_service_branch_assignment(v_service_id, ARRAY[p_target_branch_id], true);
+      IF NOT v_copy_result.success THEN
+        RETURN v_copy_result;
+      END IF;
+
+      v_assigned_ids := array_append(v_assigned_ids, v_service_id);
+    END LOOP;
+  ELSE
+    IF p_source_branch_id IS NULL THEN
+      RETURN public.rpc_error('INVALID_INPUT', 'Source branch ID is required for copy setup.');
+    END IF;
+
+    v_copy_result := auth_internal.copy_service_branch_configuration(
+      p_source_branch_id,
+      p_target_branch_id,
+      COALESCE(NULLIF(btrim(p_mode), ''), 'merge'),
+      NULL
+    );
+
+    IF NOT v_copy_result.success THEN
+      RETURN v_copy_result;
+    END IF;
+
+    v_assigned_ids := COALESCE(
+      ARRAY(
+        SELECT jsonb_array_elements_text(v_copy_result.data -> 'affected_service_ids')::uuid
+      ),
+      '{}'::uuid[]
+    );
+  END IF;
+
+  INSERT INTO public.audit_log (user_id, organization_id, action, table_name, record_id, new_data_json)
+  VALUES (
+    auth.uid(),
+    v_org_id,
+    'service.branch.setup',
+    'service_branches',
+    p_target_branch_id,
+    jsonb_build_object(
+      'target_branch_id', p_target_branch_id,
+      'method', v_method,
+      'assigned_service_ids', v_assigned_ids
+    )
+  );
+
+  RETURN public.rpc_success(
+    jsonb_build_object(
+      'target_branch_id', p_target_branch_id,
+      'assigned_service_ids', v_assigned_ids
+    )
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLERRM = 'FORBIDDEN' THEN
+      RETURN public.rpc_error('FORBIDDEN', 'You do not have permission to manage the service catalog.');
+    END IF;
+    RAISE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.copy_service_branch_configuration(
+  p_source_branch_id uuid,
+  p_target_branch_id uuid,
+  p_mode text,
+  p_service_ids uuid[] DEFAULT NULL
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.copy_service_branch_configuration(
+    p_source_branch_id,
+    p_target_branch_id,
+    p_mode,
+    p_service_ids
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.setup_new_branch_services(
+  p_target_branch_id uuid,
+  p_method text,
+  p_service_ids uuid[] DEFAULT NULL,
+  p_source_branch_id uuid DEFAULT NULL,
+  p_mode text DEFAULT 'merge'
+)
+RETURNS public.rpc_result
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = public, auth_internal
+AS $$
+  SELECT auth_internal.setup_new_branch_services(
+    p_target_branch_id,
+    p_method,
+    p_service_ids,
+    p_source_branch_id,
+    p_mode
+  );
+$$;
+
 GRANT EXECUTE ON FUNCTION public.create_service(text, numeric, text, boolean, uuid[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_service_branch_assignment(uuid, uuid[], boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.configure_service_branch(uuid, uuid, timestamptz, text, numeric) TO authenticated;
@@ -1183,3 +1548,5 @@ GRANT EXECUTE ON FUNCTION public.set_service_promotion(uuid, uuid, timestamptz, 
 GRANT EXECUTE ON FUNCTION public.update_service(uuid, timestamptz, text, numeric, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_service_global_status(uuid, timestamptz, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.soft_delete_service(uuid, timestamptz) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.copy_service_branch_configuration(uuid, uuid, text, uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.setup_new_branch_services(uuid, text, uuid[], uuid, text) TO authenticated;

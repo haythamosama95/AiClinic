@@ -75,6 +75,27 @@ class ServiceListPageResult {
   final int total;
 }
 
+/// Result of copying branch configuration between branches.
+class CopyConfigurationResult {
+  const CopyConfigurationResult({
+    required this.affectedServiceIds,
+    required this.createdCount,
+    required this.overwrittenCount,
+  });
+
+  final List<String> affectedServiceIds;
+  final int createdCount;
+  final int overwrittenCount;
+}
+
+/// Result of new-branch service setup.
+class SetupNewBranchServicesResult {
+  const SetupNewBranchServicesResult({required this.targetBranchId, required this.assignedServiceIds});
+
+  final String targetBranchId;
+  final List<String> assignedServiceIds;
+}
+
 /// Service Catalog RPC wrappers (015).
 class ServiceCatalogRepository with AppRpcInvoker {
   ServiceCatalogRepository(this._client);
@@ -434,6 +455,92 @@ class ServiceCatalogRepository with AppRpcInvoker {
     }
 
     return ServiceListPageResult(items: items, total: total);
+  }
+
+  Future<CopyConfigurationResult> copyConfiguration({
+    required String sourceBranchId,
+    required String targetBranchId,
+    required String mode,
+    List<String> serviceIds = const [],
+  }) async {
+    _assertNonEmpty('sourceBranchId', sourceBranchId);
+    _assertNonEmpty('targetBranchId', targetBranchId);
+    _assertNonEmpty('mode', mode);
+
+    final params = <String, dynamic>{
+      'p_source_branch_id': sourceBranchId.trim(),
+      'p_target_branch_id': targetBranchId.trim(),
+      'p_mode': mode.trim(),
+    };
+    if (serviceIds.isNotEmpty) {
+      params['p_service_ids'] = serviceIds;
+    }
+
+    final result = await invokeRpc('copy_service_branch_configuration', params);
+    return _parseCopyConfigurationResult(result.data);
+  }
+
+  Future<SetupNewBranchServicesResult> setupNewBranchServices({
+    required String targetBranchId,
+    required String method,
+    List<String> serviceIds = const [],
+    String? sourceBranchId,
+    String mode = 'merge',
+  }) async {
+    _assertNonEmpty('targetBranchId', targetBranchId);
+    _assertNonEmpty('method', method);
+
+    final params = <String, dynamic>{
+      'p_target_branch_id': targetBranchId.trim(),
+      'p_method': method.trim(),
+      'p_mode': mode.trim(),
+    };
+    if (serviceIds.isNotEmpty) {
+      params['p_service_ids'] = serviceIds;
+    }
+    if (sourceBranchId != null && sourceBranchId.trim().isNotEmpty) {
+      params['p_source_branch_id'] = sourceBranchId.trim();
+    }
+
+    final result = await invokeRpc('setup_new_branch_services', params);
+    final targetId = result.data?['target_branch_id']?.toString();
+    if (targetId == null || targetId.isEmpty) {
+      throw StateError('setup_new_branch_services returned an unexpected shape.');
+    }
+
+    return SetupNewBranchServicesResult(
+      targetBranchId: targetId,
+      assignedServiceIds: _parseStringList(result.data?['assigned_service_ids']),
+    );
+  }
+
+  CopyConfigurationResult _parseCopyConfigurationResult(Object? data) {
+    if (data is! Map) {
+      throw StateError('copy_service_branch_configuration returned an unexpected shape.');
+    }
+
+    final createdRaw = data['created_count'];
+    final overwrittenRaw = data['overwritten_count'];
+
+    return CopyConfigurationResult(
+      affectedServiceIds: _parseStringList(data['affected_service_ids']),
+      createdCount: createdRaw is num ? createdRaw.toInt() : 0,
+      overwrittenCount: overwrittenRaw is num ? overwrittenRaw.toInt() : 0,
+    );
+  }
+
+  List<String> _parseStringList(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    final ids = <String>[];
+    for (final item in raw) {
+      final id = item?.toString();
+      if (id != null && id.isNotEmpty) {
+        ids.add(id);
+      }
+    }
+    return ids;
   }
 
   String _formatDate(DateTime date) {

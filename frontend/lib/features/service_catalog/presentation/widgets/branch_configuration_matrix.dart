@@ -150,64 +150,104 @@ class _BranchConfigurationRowState extends State<_BranchConfigurationRow> {
       margin: const EdgeInsets.only(bottom: SpacingTokens.sm),
       child: Padding(
         padding: const EdgeInsets.all(SpacingTokens.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text(branchName, style: theme.textTheme.titleSmall)),
-                AppSwitch(
-                  label: 'Active',
-                  value: widget.branch.isActive,
-                  enabled: !widget.isSaving,
-                  onChanged: (active) => _saveBranch(active: active),
-                ),
-              ],
-            ),
-            const SizedBox(height: SpacingTokens.sm),
-            AppTextField(
-              label: 'Price override',
-              controller: _overrideController,
-              enabled: !widget.isSaving,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-              description: 'Empty uses default (${widget.defaultPrice.wireValue}).',
-            ),
-            const SizedBox(height: SpacingTokens.sm),
-            Row(
-              children: [
-                AppButton(
-                  label: 'Save branch settings',
-                  onPressed: widget.isSaving ? null : () => _saveBranch(active: widget.branch.isActive),
-                  isLoading: widget.isSaving,
-                ),
-                const SizedBox(width: SpacingTokens.sm),
-                AppButton(
-                  label: _showPromotion ? 'Hide promotion' : 'Promotion',
-                  variant: AppButtonVariant.secondary,
-                  onPressed: widget.isSaving ? null : () => setState(() => _showPromotion = !_showPromotion),
-                ),
-              ],
-            ),
-            if (_showPromotion) ...[
-              const SizedBox(height: SpacingTokens.md),
-              PromotionEditor(
-                key: ValueKey('promo-${widget.branch.serviceBranchId}-${widget.branch.promotion?.wirePrice}'),
-                effectivePrice: _effectivePrice,
-                initialPromotion: widget.branch.promotion,
-                isSaving: widget.isSaving,
-                onSave: ({required price, required startDate, required endDate}) {
-                  return widget.onSetPromotion(
-                    branch: widget.branch,
-                    price: price,
-                    startDate: startDate,
-                    endDate: endDate,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 560;
+            final header = isCompact
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(branchName, style: theme.textTheme.titleSmall),
+                      const SizedBox(height: SpacingTokens.sm),
+                      AppSwitch(
+                        label: 'Active',
+                        value: widget.branch.isActive,
+                        enabled: !widget.isSaving,
+                        onChanged: (active) => _saveBranch(active: active),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: Text(branchName, style: theme.textTheme.titleSmall)),
+                      AppSwitch(
+                        label: 'Active',
+                        value: widget.branch.isActive,
+                        enabled: !widget.isSaving,
+                        onChanged: (active) => _saveBranch(active: active),
+                      ),
+                    ],
                   );
-                },
-                onClear: () => widget.onClearPromotion(branch: widget.branch),
-              ),
-            ],
-          ],
+
+            final actions = isCompact
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      AppButton(
+                        label: 'Save branch settings',
+                        onPressed: widget.isSaving ? null : () => _saveBranch(active: widget.branch.isActive),
+                        isLoading: widget.isSaving,
+                      ),
+                      const SizedBox(height: SpacingTokens.sm),
+                      AppButton(
+                        label: _showPromotion ? 'Hide promotion' : 'Promotion',
+                        variant: AppButtonVariant.secondary,
+                        onPressed: widget.isSaving ? null : () => setState(() => _showPromotion = !_showPromotion),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      AppButton(
+                        label: 'Save branch settings',
+                        onPressed: widget.isSaving ? null : () => _saveBranch(active: widget.branch.isActive),
+                        isLoading: widget.isSaving,
+                      ),
+                      const SizedBox(width: SpacingTokens.sm),
+                      AppButton(
+                        label: _showPromotion ? 'Hide promotion' : 'Promotion',
+                        variant: AppButtonVariant.secondary,
+                        onPressed: widget.isSaving ? null : () => setState(() => _showPromotion = !_showPromotion),
+                      ),
+                    ],
+                  );
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                header,
+                const SizedBox(height: SpacingTokens.sm),
+                AppTextField(
+                  label: 'Price override',
+                  controller: _overrideController,
+                  enabled: !widget.isSaving,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                  description: 'Empty uses default (${widget.defaultPrice.wireValue}).',
+                ),
+                const SizedBox(height: SpacingTokens.sm),
+                actions,
+                if (_showPromotion) ...[
+                  const SizedBox(height: SpacingTokens.md),
+                  PromotionEditor(
+                    key: ValueKey('promo-${widget.branch.serviceBranchId}-${widget.branch.promotion?.wirePrice}'),
+                    effectivePrice: _effectivePrice,
+                    initialPromotion: widget.branch.promotion,
+                    isSaving: widget.isSaving,
+                    onSave: ({required price, required startDate, required endDate}) {
+                      return widget.onSetPromotion(
+                        branch: widget.branch,
+                        price: price,
+                        startDate: startDate,
+                        endDate: endDate,
+                      );
+                    },
+                    onClear: () => widget.onClearPromotion(branch: widget.branch),
+                  ),
+                ],
+              ],
+            );
+          },
         ),
       ),
     );

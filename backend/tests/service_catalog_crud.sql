@@ -240,6 +240,110 @@ BEGIN
     NOT (public.get_service(v_service_id)).success,
     'deleted service should not be readable'
   );
+
+  -- US7: copy branch configuration (merge/replace + audit)
+  v_result := public.create_service('Copy Source', 200.00, 'active', false, ARRAY[v_branch_a]);
+  v_service_id := (v_result.data ->> 'service_id')::uuid;
+
+  SELECT updated_at INTO v_updated_at
+  FROM public.service_branches
+  WHERE service_id = v_service_id AND branch_id = v_branch_a;
+
+  v_result := public.configure_service_branch(v_service_id, v_branch_a, v_updated_at, 'active', 150.00);
+  PERFORM pg_temp.service_catalog_crud_record(
+    'copy_setup_source_branch_override',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  v_result := public.copy_service_branch_configuration(v_branch_a, v_branch_a3, 'merge', ARRAY[v_service_id]);
+  PERFORM pg_temp.service_catalog_crud_record(
+    'copy_merge_to_empty_target',
+    v_result.success AND jsonb_array_length(v_result.data -> 'affected_service_ids') = 1,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  PERFORM pg_temp.service_catalog_crud_record(
+    'copy_merge_creates_matching_override',
+    EXISTS (
+      SELECT 1
+      FROM public.service_branches sb
+      WHERE sb.service_id = v_service_id
+        AND sb.branch_id = v_branch_a3
+        AND sb.is_deleted = false
+        AND sb.price_override = 150.00
+    ),
+    'target override after merge'
+  );
+
+  SELECT updated_at INTO v_updated_at
+  FROM public.service_branches
+  WHERE service_id = v_service_id AND branch_id = v_branch_a3;
+
+  v_result := public.configure_service_branch(v_service_id, v_branch_a3, v_updated_at, 'active', 175.00);
+  PERFORM pg_temp.service_catalog_crud_record(
+    'copy_merge_modify_target_before_second_merge',
+    v_result.success,
+    COALESCE(v_result.error_code, 'ok')
+  );
+
+  v_result := public.copy_service_branch_configuration(v_branch_a, v_branch_a3, 'merge', ARRAY[v_service_id]);
+  PERFORM pg_temp.service_catalog_crud_record(
+    'copy_merge_leaves_existing_target_untouched',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM public.service_branches sb
+        WHERE sb.service_id = v_service_id
+          AND sb.branch_id = v_branch_a3
+          AND sb.is_deleted = false
+          AND sb.price_override = 175.00
+      ),
+    'merge should not overwrite existing target row'
+  );
+
+  v_result := public.copy_service_branch_configuration(v_branch_a, v_branch_a3, 'replace', ARRAY[v_service_id]);
+  PERFORM pg_temp.service_catalog_crud_record(
+    'copy_replace_overwrites_target',
+    v_result.success
+      AND EXISTS (
+        SELECT 1
+        FROM public.service_branches sb
+        WHERE sb.service_id = v_service_id
+          AND sb.branch_id = v_branch_a3
+          AND sb.is_deleted = false
+          AND sb.price_override = 150.00
+      ),
+    'replace should match source'
+  );
+
+  PERFORM pg_temp.service_catalog_crud_record(
+    'copy_replace_audit_payload',
+    EXISTS (
+      SELECT 1
+      FROM public.audit_log al
+      WHERE al.organization_id = v_org_id
+        AND al.action = 'service.branch.copy'
+        AND al.new_data_json ->> 'mode' = 'replace'
+        AND al.new_data_json ? 'affected_service_ids'
+        AND (al.new_data_json -> 'affected_service_ids') @> to_jsonb(ARRAY[v_service_id::text])
+    ),
+    'audit includes affected services'
+  );
+
+  v_result := public.copy_service_branch_configuration(v_branch_a, v_branch_a, 'merge', NULL);
+  PERFORM pg_temp.service_catalog_crud_record(
+    'copy_same_branch_rejected',
+    NOT v_result.success AND v_result.error_code = 'INVALID_COPY_TARGET',
+    COALESCE(v_result.error_code, '<null>')
+  );
+
+  v_result := public.setup_new_branch_services(v_branch_a3, 'select', ARRAY[v_service_id], NULL, 'merge');
+  PERFORM pg_temp.service_catalog_crud_record(
+    'setup_new_branch_services_select',
+    v_result.success AND (v_result.data -> 'assigned_service_ids') @> to_jsonb(ARRAY[v_service_id::text]),
+    COALESCE(v_result.error_code, 'ok')
+  );
 END;
 $$;
 

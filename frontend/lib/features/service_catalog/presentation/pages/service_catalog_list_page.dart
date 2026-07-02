@@ -16,6 +16,7 @@ import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/models/service_list_filters.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_catalog_list_notifier.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/widgets/copy_configuration_dialog.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
 
 /// Paginated service catalog management list (015 US6).
@@ -69,24 +70,76 @@ class _ServiceCatalogListPageState extends ConsumerState<ServiceCatalogListPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                AppIconButton(icon: const Icon(Icons.arrow_back), tooltip: 'Back', onPressed: () => context.pop()),
-                const SizedBox(width: SpacingTokens.sm),
-                Expanded(
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isCompact = constraints.maxWidth < 720;
+                final title = Expanded(
                   child: Text(
                     'Service catalog',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                ),
-                if (canManage)
-                  AppButton(
-                    label: 'Add service',
-                    icon: const Icon(Icons.add, size: 18),
-                    expand: false,
-                    onPressed: () => context.push(AppRoutes.settingsServicesNew),
-                  ),
-              ],
+                );
+
+                final actions = <Widget>[
+                  if (canManage) ...[
+                    AppButton(
+                      label: 'Copy branch config',
+                      variant: AppButtonVariant.outline,
+                      expand: false,
+                      onPressed: () async {
+                        final branches = await ref.read(clinicSetupBranchesProvider.future);
+                        if (!context.mounted) {
+                          return;
+                        }
+                        final copied = await CopyConfigurationDialog.show(context, branches: branches);
+                        if (copied == true && context.mounted) {
+                          ref.invalidate(serviceCatalogListProvider);
+                          AppToast.success(context, message: 'Branch configuration copied.');
+                        }
+                      },
+                    ),
+                    const SizedBox(width: SpacingTokens.sm),
+                    AppButton(
+                      label: 'Add service',
+                      icon: const Icon(Icons.add, size: 18),
+                      expand: false,
+                      onPressed: () => context.push(AppRoutes.settingsServicesNew),
+                    ),
+                  ],
+                ];
+
+                if (isCompact) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          AppIconButton(
+                            icon: const Icon(Icons.arrow_back),
+                            tooltip: 'Back',
+                            onPressed: () => context.pop(),
+                          ),
+                          const SizedBox(width: SpacingTokens.sm),
+                          title,
+                        ],
+                      ),
+                      if (canManage) ...[
+                        const SizedBox(height: SpacingTokens.sm),
+                        Wrap(spacing: SpacingTokens.sm, runSpacing: SpacingTokens.sm, children: actions),
+                      ],
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    AppIconButton(icon: const Icon(Icons.arrow_back), tooltip: 'Back', onPressed: () => context.pop()),
+                    const SizedBox(width: SpacingTokens.sm),
+                    title,
+                    ...actions,
+                  ],
+                );
+              },
             ),
             const SizedBox(height: SpacingTokens.md),
             _ServiceCatalogListToolbar(

@@ -213,16 +213,16 @@ description: "Task list for Service Catalog (015) implementation"
 
 ### Implementation for User Story 7
 
-- [ ] T062 [US7] Implement `copy_service_branch_configuration` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: both branches in org/`jwt_branch_ids()`, source≠target (`INVALID_COPY_TARGET`), `merge` (create missing only) vs `replace` (overwrite; server idempotent), re-validate invariant, audit `service.branch.copy` with `{source, target, mode, affected_service_ids}`
-- [ ] T063 [US7] Implement `setup_new_branch_services` (FR-031) in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: `select` assigns listed services; `copy_all`/`copy_modify` delegate to `copy_service_branch_configuration`; audit `service.branch.setup`
-- [ ] T064 [US7] Add `copyConfiguration` and `setupNewBranchServices` methods to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
-- [ ] T065 [US7] Create `frontend/lib/features/service_catalog/presentation/widgets/copy_configuration_dialog.dart` (source/target pickers + mode + explicit replace-confirmation, no changes on cancel)
-- [ ] T066 [US7] Create `frontend/lib/features/service_catalog/presentation/widgets/new_branch_service_setup.dart` (select / copy-entire / copy-then-modify) and hook it into the branch-creation flow from `003-org-branch-management`
+- [X] T062 [US7] Implement `copy_service_branch_configuration` in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: both branches in org/`jwt_branch_ids()`, source≠target (`INVALID_COPY_TARGET`), `merge` (create missing only) vs `replace` (overwrite; server idempotent), re-validate invariant, audit `service.branch.copy` with `{source, target, mode, affected_service_ids}`
+- [X] T063 [US7] Implement `setup_new_branch_services` (FR-031) in `backend/supabase/migrations/20260712090500_service_catalog_rpcs.sql`: `select` assigns listed services; `copy_all`/`copy_modify` delegate to `copy_service_branch_configuration`; audit `service.branch.setup`
+- [X] T064 [US7] Add `copyConfiguration` and `setupNewBranchServices` methods to `frontend/lib/features/service_catalog/data/service_catalog_repository.dart`
+- [X] T065 [US7] Create `frontend/lib/features/service_catalog/presentation/widgets/copy_configuration_dialog.dart` (source/target pickers + mode + explicit replace-confirmation, no changes on cancel)
+- [X] T066 [US7] Create `frontend/lib/features/service_catalog/presentation/widgets/new_branch_service_setup.dart` (select / copy-entire / copy-then-modify) and hook it into the branch-creation flow from `003-org-branch-management`
 
 ### Tests for User Story 7
 
-- [ ] T067 [P] [US7] Add copy cases (`merge` leaves existing untouched, `replace` overwrites, audit payload with affected services) to `backend/tests/service_catalog_crud.sql`
-- [ ] T068 [P] [US7] Add widget test for `copy_configuration_dialog` (replace confirmation + cancel makes no change) in `frontend/test/widget/service_catalog/`
+- [X] T067 [P] [US7] Add copy cases (`merge` leaves existing untouched, `replace` overwrites, audit payload with affected services) to `backend/tests/service_catalog_crud.sql`
+- [X] T068 [P] [US7] Add widget test for `copy_configuration_dialog` (replace confirmation + cancel makes no change) in `frontend/test/widget/service_catalog/`
 
 **Checkpoint**: All seven stories independently functional
 
@@ -232,13 +232,13 @@ description: "Task list for Service Catalog (015) implementation"
 
 **Purpose**: Quality, verification, and constitution compliance across stories
 
-- [ ] T069 [P] Run `dart analyze lib/features/service_catalog` (from `frontend/`) and resolve all findings
-- [ ] T070 Run `bash backend/tests/run_service_catalog_tests.sh` and `flutter test test/unit/service_catalog test/widget/service_catalog`; fix failures
-- [ ] T071 [P] Add unit tests for the new `services.view`/`services.manage` checks in `frontend/test/unit/` covering `permission_service.dart`
-- [ ] T072 [P] Verify responsive collapse for narrow desktop windows and keyboard navigation/empty-loading-error-permission states across catalog list, editor, matrix, and selector (NFR-009)
-- [ ] T073 Execute the `specs/015-service-catalog/quickstart.md` manual verification walkthrough (US1–US7 + new-branch FR-031)
-- [ ] T074 [P] Cross-link the delivered feature in `docs/service_catalog_feature.md` and confirm `specs/015-service-catalog/` artifacts are consistent
-- [ ] T075 Final constitution compliance review (backend authority, RLS defense-in-depth, audit coverage, no AI dependency, additive billing change)
+- [X] T069 [P] Run `dart analyze lib/features/service_catalog` (from `frontend/`) and resolve all findings
+- [X] T070 Run `bash backend/tests/run_service_catalog_tests.sh` and `flutter test test/unit/service_catalog test/widget/service_catalog`; fix failures
+- [X] T071 [P] Add unit tests for the new `services.view`/`services.manage` checks in `frontend/test/unit/` covering `permission_service.dart`
+- [X] T072 [P] Verify responsive collapse for narrow desktop windows and keyboard navigation/empty-loading-error-permission states across catalog list, editor, matrix, and selector (NFR-009)
+- [X] T073 Execute the `specs/015-service-catalog/quickstart.md` manual verification walkthrough (US1–US7 + new-branch FR-031)
+- [X] T074 [P] Cross-link the delivered feature in `docs/service_catalog_feature.md` and confirm `specs/015-service-catalog/` artifacts are consistent
+- [X] T075 Final constitution compliance review (backend authority, RLS defense-in-depth, audit coverage, no AI dependency, additive billing change)
 
 ---
 

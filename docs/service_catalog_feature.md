@@ -253,3 +253,20 @@ A null promotion indicates that no promotional pricing is currently configured.
 | TotalPrice | Snapshot of the calculated total |
 
 ---
+
+## Implementation (015)
+
+Delivered in feature branch `015-service-catalog`. Authoritative design artifacts:
+
+- Specification: [`specs/015-service-catalog/spec.md`](../specs/015-service-catalog/spec.md)
+- Plan & tasks: [`specs/015-service-catalog/plan.md`](../specs/015-service-catalog/plan.md), [`specs/015-service-catalog/tasks.md`](../specs/015-service-catalog/tasks.md)
+- RPC contracts: [`specs/015-service-catalog/contracts/`](../specs/015-service-catalog/contracts/)
+- Verification walkthrough: [`specs/015-service-catalog/quickstart.md`](../specs/015-service-catalog/quickstart.md)
+
+Key code locations:
+
+- Backend migrations: `backend/supabase/migrations/20260712090000_service_catalog.sql` through `20260712091500_service_catalog_billing_integration.sql`
+- Backend tests: `backend/tests/service_catalog_*.sql`
+- Flutter feature: `frontend/lib/features/service_catalog/`
+- Branch copy UI: `copy_configuration_dialog.dart` on the catalog list page
+- New-branch setup (FR-031): `new_branch_service_setup.dart` shown after branch creation in settings
