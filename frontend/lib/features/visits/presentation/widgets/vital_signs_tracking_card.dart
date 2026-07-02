@@ -8,10 +8,10 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/domain/bmi.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/vital_sign_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
 /// Visit vital signs card for the Findings & Diagnosis step (014 US2) — mirrors the
 /// right-column [PatientHealthTrackingCard] shell on Intake.
@@ -195,18 +195,19 @@ class _VitalSignsBody extends StatelessWidget {
 
 /// Read-only vital signs for the detail view right column.
 class VitalSignsTrackingCardReadOnly extends StatelessWidget {
-  const VitalSignsTrackingCardReadOnly({required this.vitalSigns, super.key});
+  const VitalSignsTrackingCardReadOnly({required this.vitalSigns, this.expandBody = false, super.key});
 
   final List<VisitVitalSign> vitalSigns;
+  final bool expandBody;
 
   @override
   Widget build(BuildContext context) {
     return _VitalSignsShell(
-      expandBody: false,
+      expandBody: expandBody,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _VitalSignsReadOnly(vitalSigns: vitalSigns),
+          _VitalSignsReadOnly(vitalSigns: vitalSigns, expandBody: expandBody),
           BmiChip(vitalSigns: vitalSigns),
         ],
       ),
@@ -263,17 +264,19 @@ class BmiChip extends StatelessWidget {
 }
 
 class _VitalSignsReadOnly extends StatelessWidget {
-  const _VitalSignsReadOnly({required this.vitalSigns});
+  const _VitalSignsReadOnly({required this.vitalSigns, this.expandBody = false});
 
   final List<VisitVitalSign> vitalSigns;
+  final bool expandBody;
 
   @override
   Widget build(BuildContext context) {
     if (vitalSigns.isEmpty) {
-      return const VisitEmptyHint(
-        key: Key('visit_detail_vital_signs_empty'),
-        message: 'No vital signs recorded.',
-        icon: Icons.monitor_heart_outlined,
+      return EncounterFieldEmptyState(
+        key: const Key('visit_detail_vital_signs_empty'),
+        icon: VisitPanelKind.vitalSigns.icon,
+        text: 'No vital signs recorded',
+        expand: expandBody,
       );
     }
 

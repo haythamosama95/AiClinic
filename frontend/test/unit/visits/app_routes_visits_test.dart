@@ -6,6 +6,7 @@ void main() {
     test('visit path builders match spec segments', () {
       const visitId = '550e8400-e29b-41d4-a716-446655440000';
       expect(AppRoutes.visitDocument(visitId), '/visits/$visitId/document');
+      expect(AppRoutes.visitDocument(visitId, startEditing: true), '/visits/$visitId/document?edit=1');
       expect(AppRoutes.visitDetail(visitId), '/visits/$visitId/detail');
     });
 

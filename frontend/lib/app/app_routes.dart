@@ -88,7 +88,10 @@ abstract final class AppRoutes {
   static const visitDetailSegment = 'detail';
 
   /// Visit documentation: `/visits/:visitId/document`
-  static String visitDocument(String visitId) => '$visits/$visitId/$visitDocumentSegment';
+  static String visitDocument(String visitId, {bool startEditing = false}) {
+    final base = '$visits/$visitId/$visitDocumentSegment';
+    return startEditing ? '$base?edit=1' : base;
+  }
 
   /// Visit clinical detail: `/visits/:visitId/detail`
   static String visitDetail(String visitId) => '$visits/$visitId/$visitDetailSegment';

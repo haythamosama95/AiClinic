@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_name_normalizer.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/health_profile_card_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/save_to_catalog_dialog.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
@@ -134,26 +135,36 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
   Widget _buildBody() {
     final signs = widget.vitalSigns;
 
-    if (signs.isEmpty && widget.canEdit && widget.embeddedInTrackingCard) {
+    if (signs.isEmpty && widget.embeddedInTrackingCard) {
       final cardTheme = context.healthProfileCardTheme;
       final theme = context.visitTheme;
-      final emptyHint = VisitEmptyHint(
-        key: const Key('vital_sign_empty'),
-        message: 'Blood pressure, heart rate, temperature, and other measurements for this visit.',
-        icon: widget.sectionKind.icon,
-        maxMessageWidth: HealthProfileCardTokens.emptyMessageMaxWidth,
-        actionLabel: 'Add vital sign',
-        onAction: _isSubmitting ? null : () => _openAddDialog(),
-        actionKey: const Key('vital_sign_add_button'),
-      );
 
-      return TiltedBackgroundIconStack(
+      if (widget.canEdit) {
+        final emptyHint = VisitEmptyHint(
+          key: const Key('vital_sign_empty'),
+          message: 'Blood pressure, heart rate, temperature, and other measurements for this visit.',
+          icon: widget.sectionKind.icon,
+          maxMessageWidth: HealthProfileCardTokens.emptyMessageMaxWidth,
+          actionLabel: 'Add vital sign',
+          onAction: _isSubmitting ? null : () => _openAddDialog(),
+          actionKey: const Key('vital_sign_add_button'),
+        );
+
+        return TiltedBackgroundIconStack(
+          icon: widget.sectionKind.icon,
+          iconSize: HealthProfileCardTokens.sectionWatermarkIconSize,
+          iconColor: cardTheme.sectionWatermark(theme.pulse),
+          fillChild: widget.expandBody,
+          alignment: Alignment.center,
+          child: widget.expandBody ? Center(child: emptyHint) : emptyHint,
+        );
+      }
+
+      return EncounterFieldEmptyState(
+        key: const Key('vital_sign_empty'),
         icon: widget.sectionKind.icon,
-        iconSize: HealthProfileCardTokens.sectionWatermarkIconSize,
-        iconColor: cardTheme.sectionWatermark(theme.pulse),
-        fillChild: widget.expandBody,
-        alignment: Alignment.center,
-        child: widget.expandBody ? Center(child: emptyHint) : emptyHint,
+        text: 'No vital signs recorded',
+        expand: widget.expandBody,
       );
     }
 
@@ -184,10 +195,10 @@ class _VitalSignListState extends ConsumerState<VitalSignList> {
           ),
         ],
         if (signs.isEmpty && !widget.embeddedInTrackingCard)
-          const VisitEmptyHint(
-            key: Key('vital_sign_empty'),
-            message: 'No vital signs recorded yet.',
-            icon: Icons.monitor_heart_outlined,
+          EncounterFieldEmptyState(
+            key: const Key('vital_sign_empty'),
+            icon: widget.sectionKind.icon,
+            text: 'No vital signs recorded',
           ),
         if (signs.isNotEmpty && _editingVitalSignId == null)
           Wrap(

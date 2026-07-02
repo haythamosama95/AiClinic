@@ -121,12 +121,68 @@ class EncounterToolbarTitle extends StatelessWidget {
   }
 }
 
+/// Centered empty placeholder for encounter field cards (read-only / view mode).
+class EncounterFieldEmptyState extends StatelessWidget {
+  const EncounterFieldEmptyState({this.icon, this.text, this.expand = false, super.key});
+
+  final IconData? icon;
+  final String? text;
+  final bool expand;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.visitTheme;
+
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: SpacingTokens.lg),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 32, color: theme.mutedInk),
+            if (text != null) const SizedBox(height: SpacingTokens.sm),
+          ],
+          if (text != null)
+            Text(
+              text!,
+              style: theme.body(color: theme.mutedInk),
+              textAlign: TextAlign.center,
+            ),
+        ],
+      ),
+    );
+
+    if (expand) {
+      return SizedBox(
+        width: double.infinity,
+        height: double.infinity,
+        child: Center(child: content),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: SpacingTokens.xl),
+      child: Center(child: content),
+    );
+  }
+}
+
 /// Read-only text for encounter field cards in detail view.
 class EncounterDetailText extends StatelessWidget {
-  const EncounterDetailText({required this.value, this.richDelta, super.key});
+  const EncounterDetailText({
+    required this.value,
+    this.richDelta,
+    this.emptyStateIcon,
+    this.emptyStateText,
+    this.expand = false,
+    super.key,
+  });
 
   final String value;
   final List<dynamic>? richDelta;
+  final IconData? emptyStateIcon;
+  final String? emptyStateText;
+  final bool expand;
 
   @override
   Widget build(BuildContext context) {
@@ -137,7 +193,10 @@ class EncounterDetailText extends StatelessWidget {
       return AppRichTextDisplay(plainText: value, deltaJson: richDelta, textStyle: theme.body());
     }
 
-    final display = isEmpty ? '—' : value.trim();
-    return Text(display, style: theme.body(color: isEmpty ? theme.mutedInk : theme.ink));
+    if (!isEmpty) {
+      return Text(value.trim(), style: theme.body());
+    }
+
+    return EncounterFieldEmptyState(icon: emptyStateIcon, text: emptyStateText ?? 'Nothing recorded', expand: expand);
   }
 }

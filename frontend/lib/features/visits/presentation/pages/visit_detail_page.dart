@@ -82,12 +82,14 @@ class _EditableVisitDetailPage extends ConsumerWidget {
           visitId: visitId,
           visit: docState.visit,
           state: docState,
-          canEdit: true,
+          canEdit: view.visit.status != VisitStatus.completed,
+          hasEditPermission: view.canEditDocumentation,
           hasBranchAccess: view.hasBranchAccess,
           canUploadAttachments: view.canUploadAttachments,
           onRefresh: () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
           onBack: onBack,
-          onEditDocumentation: () => context.go(AppRoutes.visitDocument(visitId)),
+          onEditDocumentation: () =>
+              context.go(AppRoutes.visitDocument(visitId, startEditing: view.visit.status == VisitStatus.completed)),
         ),
       ),
     );
@@ -109,10 +111,14 @@ class _ReadOnlyVisitDetailPage extends StatelessWidget {
         visitId: view.visit.id,
         visit: view.visit,
         canEdit: false,
+        hasEditPermission: view.canEditDocumentation,
         hasBranchAccess: view.hasBranchAccess,
         canUploadAttachments: false,
         onRefresh: () {},
         onBack: onBack,
+        onEditDocumentation: view.canEditDocumentation
+            ? () => context.go(AppRoutes.visitDocument(view.visit.id, startEditing: true))
+            : null,
       ),
     );
   }
@@ -123,6 +129,7 @@ class _VisitDetailBody extends ConsumerWidget {
     required this.visitId,
     required this.visit,
     required this.canEdit,
+    required this.hasEditPermission,
     required this.hasBranchAccess,
     required this.canUploadAttachments,
     required this.onRefresh,
@@ -134,6 +141,7 @@ class _VisitDetailBody extends ConsumerWidget {
   final String visitId;
   final VisitDetail visit;
   final bool canEdit;
+  final bool hasEditPermission;
   final bool hasBranchAccess;
   final bool canUploadAttachments;
   final VoidCallback onRefresh;
@@ -144,7 +152,7 @@ class _VisitDetailBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final trailing = visit.status == VisitStatus.completed
-        ? VisitDetailActions(visitId: visitId, status: visit.status, canEditDocumentation: false)
+        ? VisitDetailActions(visitId: visitId, status: visit.status, canEditDocumentation: hasEditPermission)
         : null;
 
     return Column(
@@ -154,7 +162,7 @@ class _VisitDetailBody extends ConsumerWidget {
         EncounterHeader(
           visit: visit,
           onBack: onBack,
-          onEdit: canEdit && onEditDocumentation != null ? onEditDocumentation : null,
+          onEdit: hasEditPermission && onEditDocumentation != null ? onEditDocumentation : null,
           trailing: trailing,
         ),
         const SizedBox(height: VisitPageTokens.sectionGap),

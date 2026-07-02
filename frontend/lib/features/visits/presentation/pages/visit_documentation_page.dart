@@ -24,14 +24,22 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_empty_secti
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submit_dialog.dart';
 
 /// Visit documentation — clinical chart workspace (013).
-class VisitDocumentationPage extends ConsumerWidget {
-  const VisitDocumentationPage({required this.visitId, super.key});
+class VisitDocumentationPage extends ConsumerStatefulWidget {
+  const VisitDocumentationPage({required this.visitId, this.startInEditMode = false, super.key});
 
   final String? visitId;
+  final bool startInEditMode;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final id = visitId?.trim();
+  ConsumerState<VisitDocumentationPage> createState() => _VisitDocumentationPageState();
+}
+
+class _VisitDocumentationPageState extends ConsumerState<VisitDocumentationPage> {
+  var _appliedStartEditing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final id = widget.visitId?.trim();
     if (id == null || id.isEmpty) {
       return const _VisitNotFound(message: 'Visit not found.');
     }
@@ -49,8 +57,20 @@ class VisitDocumentationPage extends ConsumerWidget {
       ),
       data: (state) {
         final hasBranchAccess = auth.context?.branchIds.contains(state.visit.branchId) ?? false;
-        final canEdit = canEditSoap && hasBranchAccess;
-        final canSubmit = canEdit;
+        final hasEditPermission = canEditSoap && hasBranchAccess;
+        final canEditWorkspace = state.canEditWorkspace(hasEditPermission);
+        final canSubmit = hasEditPermission;
+
+        if (widget.startInEditMode &&
+            !_appliedStartEditing &&
+            hasEditPermission &&
+            state.visit.status == VisitStatus.completed &&
+            !canEditWorkspace) {
+          _appliedStartEditing = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ref.read(visitDocumentationProvider(id).notifier).enterWorkspaceEditMode();
+          });
+        }
 
         return VisitPageShell(
           scrollBody: false,
@@ -59,12 +79,14 @@ class VisitDocumentationPage extends ConsumerWidget {
           body: _VisitDocumentationBody(
             visitId: id,
             state: state,
-            canEdit: canEdit,
+            hasEditPermission: hasEditPermission,
+            canEditWorkspace: canEditWorkspace,
             hasBranchAccess: hasBranchAccess,
             canSubmit: canSubmit,
             onBack: () => _goBack(context, id),
-            onSubmit: () => _submitVisit(context, ref, id, state, canEdit: canEdit),
-            onSaveAndClose: () => _saveAndClose(context, ref, id, canEdit: canEdit),
+            onSubmit: () => _submitVisit(context, ref, id, state, canEdit: canEditWorkspace),
+            onSaveAndClose: () => _saveAndClose(context, ref, id, canEdit: canEditWorkspace),
+            onEnterEditMode: () => ref.read(visitDocumentationProvider(id).notifier).enterWorkspaceEditMode(),
           ),
         );
       },
@@ -182,22 +204,26 @@ class _VisitDocumentationBody extends ConsumerWidget {
   const _VisitDocumentationBody({
     required this.visitId,
     required this.state,
-    required this.canEdit,
+    required this.hasEditPermission,
+    required this.canEditWorkspace,
     required this.hasBranchAccess,
     required this.canSubmit,
     required this.onBack,
     required this.onSubmit,
     required this.onSaveAndClose,
+    required this.onEnterEditMode,
   });
 
   final String visitId;
   final VisitDocumentationState state;
-  final bool canEdit;
+  final bool hasEditPermission;
+  final bool canEditWorkspace;
   final bool hasBranchAccess;
   final bool canSubmit;
   final VoidCallback onBack;
   final VoidCallback onSubmit;
   final VoidCallback onSaveAndClose;
+  final VoidCallback onEnterEditMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -226,7 +252,7 @@ class _VisitDocumentationBody extends ConsumerWidget {
           onPressed: () => ref.read(encounterActivePhaseProvider(visitId).notifier).setPhase(EncounterPhase.review),
         );
       }
-    } else if (canSubmit && status == VisitStatus.completed) {
+    } else if (canSubmit && status == VisitStatus.completed && canEditWorkspace) {
       trailing = AppButton(
         key: const Key('visit_save_close_button'),
         label: state.saveStatus == DocumentationSaveStatus.saving ? 'Saving…' : 'Save & close',
@@ -237,7 +263,26 @@ class _VisitDocumentationBody extends ConsumerWidget {
     }
 
     if (status == VisitStatus.completed) {
-      final invoiceAction = VisitDetailActions(visitId: visitId, status: status, canEditDocumentation: false);
+      final completedActions = <Widget>[
+        if (hasEditPermission && !canEditWorkspace)
+          AppButton(
+            key: const Key('visit_edit_workspace_button'),
+            label: 'Edit visit',
+            variant: AppButtonVariant.outline,
+            icon: const Icon(Icons.edit_note_outlined, size: 18),
+            onPressed: onEnterEditMode,
+          ),
+        VisitDetailActions(visitId: visitId, status: status, canEditDocumentation: false),
+      ];
+      final invoiceAction = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < completedActions.length; i++) ...[
+            if (i > 0) const SizedBox(width: SpacingTokens.sm),
+            completedActions[i],
+          ],
+        ],
+      );
       trailing = trailing == null
           ? invoiceAction
           : Row(
@@ -274,9 +319,9 @@ class _VisitDocumentationBody extends ConsumerWidget {
           child: EncounterWorkspaceShell(
             visitId: visitId,
             state: state,
-            canEdit: canEdit,
+            canEdit: canEditWorkspace,
             canUploadAttachments: canUploadAttachments,
-            onRefresh: canEdit
+            onRefresh: canEditWorkspace
                 ? () {}
                 : () => ref.read(visitDocumentationProvider(visitId).notifier).refreshVisitPreservingDraft(),
           ),

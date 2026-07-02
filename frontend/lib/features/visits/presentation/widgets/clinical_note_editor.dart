@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_text_field.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_shared_widgets.dart';
 
@@ -27,6 +28,7 @@ class ClinicalNoteEditor extends ConsumerWidget {
     this.toolbarLeading,
     this.emptyStateIcon,
     this.emptyStateText,
+    this.readOnlyEmptyStateText,
     super.key,
   });
 
@@ -53,6 +55,9 @@ class ClinicalNoteEditor extends ConsumerWidget {
   final IconData? emptyStateIcon;
   final String? emptyStateText;
 
+  /// Centered empty placeholder copy in read-only mode (defaults per section label).
+  final String? readOnlyEmptyStateText;
+
   Set<ClinicalNoteSection> get _visibleSections => sections ?? ClinicalNoteSection.values.toSet();
 
   @override
@@ -63,6 +68,9 @@ class ClinicalNoteEditor extends ConsumerWidget {
         sections: _visibleSections,
         showSectionHeaders: showSectionHeaders,
         expandField: expandField,
+        useRichTextParagraph: useRichTextParagraph,
+        emptyStateIcon: emptyStateIcon,
+        readOnlyEmptyStateText: readOnlyEmptyStateText,
       );
     }
     if (state.noteEditMode == DocumentationEditMode.readOnly) {
@@ -72,6 +80,9 @@ class ClinicalNoteEditor extends ConsumerWidget {
         showEditButton: showEditButton,
         showSectionHeaders: showSectionHeaders,
         expandField: expandField,
+        useRichTextParagraph: useRichTextParagraph,
+        emptyStateIcon: emptyStateIcon,
+        readOnlyEmptyStateText: readOnlyEmptyStateText,
         onEdit: () => ref.read(visitDocumentationProvider(visitId).notifier).enterEditMode(),
       );
     }
@@ -353,6 +364,9 @@ class _ReadOnlyClinicalNote extends StatelessWidget {
     this.showEditButton = false,
     this.showSectionHeaders = true,
     this.expandField = false,
+    this.useRichTextParagraph = false,
+    this.emptyStateIcon,
+    this.readOnlyEmptyStateText,
     this.onEdit,
   });
 
@@ -361,7 +375,27 @@ class _ReadOnlyClinicalNote extends StatelessWidget {
   final bool showEditButton;
   final bool showSectionHeaders;
   final bool expandField;
+  final bool useRichTextParagraph;
+  final IconData? emptyStateIcon;
+  final String? readOnlyEmptyStateText;
   final VoidCallback? onEdit;
+
+  String _emptyTextFor(ClinicalNoteSection section) =>
+      readOnlyEmptyStateText ?? 'No ${section.label.toLowerCase()} recorded';
+
+  Widget _readOnlySection(ClinicalNoteSection section) {
+    return _ReadOnlySection(
+      key: Key('visit_detail_${section.name}'),
+      abbr: section.abbr,
+      label: section.label,
+      value: _textForSection(state, section),
+      richDelta: useRichTextParagraph ? state.richTextDrafts[section] : null,
+      showSectionHeader: showSectionHeaders,
+      expand: expandField,
+      emptyStateIcon: emptyStateIcon,
+      emptyStateText: _emptyTextFor(section),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -371,26 +405,9 @@ class _ReadOnlyClinicalNote extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (expandField && orderedSections.length == 1)
-          Expanded(
-            child: SingleChildScrollView(
-              child: _ReadOnlySection(
-                key: Key('visit_detail_${orderedSections.first.name}'),
-                abbr: orderedSections.first.abbr,
-                label: orderedSections.first.label,
-                value: _textForSection(state, orderedSections.first),
-                showSectionHeader: showSectionHeaders,
-              ),
-            ),
-          )
+          Expanded(child: _readOnlySection(orderedSections.first))
         else
-          for (final section in orderedSections)
-            _ReadOnlySection(
-              key: Key('visit_detail_${section.name}'),
-              abbr: section.abbr,
-              label: section.label,
-              value: _textForSection(state, section),
-              showSectionHeader: showSectionHeaders,
-            ),
+          for (final section in orderedSections) _readOnlySection(section),
         if (showEditButton && onEdit != null) ...[
           const SizedBox(height: SpacingTokens.sm),
           Align(
@@ -415,23 +432,51 @@ class _ReadOnlySection extends StatelessWidget {
     required this.abbr,
     required this.label,
     required this.value,
+    this.richDelta,
     this.showSectionHeader = true,
+    this.expand = false,
+    this.emptyStateIcon,
+    this.emptyStateText,
     super.key,
   });
 
   final String abbr;
   final String label;
   final String value;
+  final List<dynamic>? richDelta;
   final bool showSectionHeader;
+  final bool expand;
+  final IconData? emptyStateIcon;
+  final String? emptyStateText;
+
+  bool get _isEmpty => value.trim().isEmpty && richDeltaIsEffectivelyEmpty(richDelta);
 
   @override
   Widget build(BuildContext context) {
     if (!showSectionHeader) {
       final theme = context.visitTheme;
-      final display = value.trim().isEmpty ? '—' : value.trim();
-      final isEmpty = value.trim().isEmpty;
 
-      return Text(display, style: theme.body(color: isEmpty ? theme.mutedInk : theme.ink));
+      if (!_isEmpty && !richDeltaIsEffectivelyEmpty(richDelta)) {
+        return AppRichTextDisplay(plainText: value, deltaJson: richDelta, textStyle: theme.body());
+      }
+
+      if (!_isEmpty) {
+        return Text(value.trim(), style: theme.body());
+      }
+
+      return EncounterFieldEmptyState(
+        icon: emptyStateIcon,
+        text: emptyStateText ?? 'No ${label.toLowerCase()} recorded',
+        expand: expand,
+      );
+    }
+
+    if (_isEmpty) {
+      return EncounterFieldEmptyState(
+        icon: emptyStateIcon,
+        text: emptyStateText ?? 'No ${label.toLowerCase()} recorded',
+        expand: expand,
+      );
     }
 
     return VisitDetailField(label: label, value: value, abbr: abbr);

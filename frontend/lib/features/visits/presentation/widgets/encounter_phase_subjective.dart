@@ -97,7 +97,7 @@ class EncounterPhaseSubjective extends ConsumerWidget {
       title: 'Complaint',
       titleIcon: Icons.speaker_notes_outlined,
       expandBody: expandField,
-      embedTitleInToolbar: true,
+      embedTitleInToolbar: canEdit,
       child: ClinicalNoteEditor(
         visitId: visitId,
         state: state,
@@ -120,7 +120,7 @@ class EncounterPhaseSubjective extends ConsumerWidget {
       title: 'History',
       titleIcon: Icons.history_outlined,
       expandBody: expandField,
-      embedTitleInToolbar: true,
+      embedTitleInToolbar: canEdit,
       child: ClinicalNoteEditor(
         visitId: visitId,
         state: state,
@@ -190,13 +190,21 @@ class EncounterPhaseSubjectiveDetail extends StatelessWidget {
         EncounterFieldCard(
           title: 'Complaint',
           titleIcon: Icons.speaker_notes_outlined,
-          child: EncounterDetailText(value: note?.complaint ?? ''),
+          child: EncounterDetailText(
+            value: note?.complaint ?? '',
+            emptyStateIcon: Icons.speaker_notes_outlined,
+            emptyStateText: 'No complaint recorded',
+          ),
         ),
         const SizedBox(height: VisitPageTokens.sectionGap),
         EncounterFieldCard(
           title: 'History',
           titleIcon: Icons.history_outlined,
-          child: EncounterDetailText(value: note?.history ?? ''),
+          child: EncounterDetailText(
+            value: note?.history ?? '',
+            emptyStateIcon: Icons.history_outlined,
+            emptyStateText: 'No history recorded',
+          ),
         ),
       ],
     );

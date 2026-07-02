@@ -23,6 +23,9 @@ enum DocumentationSaveStatus { idle, saving, saved, stale, error }
 /// Whether the clinical note section is in editing or read-only-after-save mode.
 enum DocumentationEditMode { editing, readOnly }
 
+/// Whether the encounter workspace allows mutations (completed visits default to viewing).
+enum WorkspaceEditMode { viewing, editing }
+
 @immutable
 class VisitDocumentationState {
   const VisitDocumentationState({
@@ -39,6 +42,7 @@ class VisitDocumentationState {
     this.encounterDraft = const VisitEncounterDraft(),
     this.saveStatus = DocumentationSaveStatus.idle,
     this.noteEditMode = DocumentationEditMode.editing,
+    this.workspaceEditMode = WorkspaceEditMode.editing,
     this.errorMessage,
   });
 
@@ -61,7 +65,19 @@ class VisitDocumentationState {
   final VisitEncounterDraft encounterDraft;
   final DocumentationSaveStatus saveStatus;
   final DocumentationEditMode noteEditMode;
+  final WorkspaceEditMode workspaceEditMode;
   final String? errorMessage;
+
+  /// Whether the workspace UI should allow edits (permission + lifecycle + edit mode).
+  bool canEditWorkspace(bool hasEditPermission) {
+    if (!hasEditPermission) {
+      return false;
+    }
+    if (visit.status != VisitStatus.completed) {
+      return true;
+    }
+    return workspaceEditMode == WorkspaceEditMode.editing;
+  }
 
   /// Whether the clinical note draft has unsaved changes.
   bool get hasUnsavedDraft {
@@ -114,6 +130,7 @@ class VisitDocumentationState {
     VisitEncounterDraft? encounterDraft,
     DocumentationSaveStatus? saveStatus,
     DocumentationEditMode? noteEditMode,
+    WorkspaceEditMode? workspaceEditMode,
     String? errorMessage,
     bool clearError = false,
   }) {
@@ -131,12 +148,16 @@ class VisitDocumentationState {
       encounterDraft: encounterDraft ?? this.encounterDraft,
       saveStatus: saveStatus ?? this.saveStatus,
       noteEditMode: noteEditMode ?? this.noteEditMode,
+      workspaceEditMode: workspaceEditMode ?? this.workspaceEditMode,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 
   static VisitDocumentationState fromVisit(VisitDetail visit, {List<CatalogItem> predefinedVitalSigns = const []}) {
     final note = visit.documentation;
+    final workspaceEditMode = visit.status == VisitStatus.completed
+        ? WorkspaceEditMode.viewing
+        : WorkspaceEditMode.editing;
     return VisitDocumentationState(
       visit: visit,
       persistedVisit: visit,
@@ -147,6 +168,10 @@ class VisitDocumentationState {
       plan: note?.plan ?? '',
       expectedUpdatedAt: note?.updatedAt ?? visit.updatedAt ?? DateTime.now().toUtc(),
       predefinedVitalSigns: predefinedVitalSigns,
+      workspaceEditMode: workspaceEditMode,
+      noteEditMode: workspaceEditMode == WorkspaceEditMode.editing
+          ? DocumentationEditMode.editing
+          : DocumentationEditMode.readOnly,
     );
   }
 }
@@ -183,6 +208,16 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     final branchIds = ref.read(authSessionProvider).context?.branchIds ?? const <String>[];
     // Post-submit editing allowed on completed visits (013 FR-017, V1-5 parity).
     return permissions.canEditVisitSoap() && branchIds.contains(visit.branchId);
+  }
+
+  bool _canMutateVisit(VisitDocumentationState current) {
+    if (!_canEditVisit(current.visit)) {
+      return false;
+    }
+    if (current.visit.status == VisitStatus.completed && current.workspaceEditMode != WorkspaceEditMode.editing) {
+      return false;
+    }
+    return true;
   }
 
   /// Whether the visit can be submitted (in-progress only, with edit permission).
@@ -239,7 +274,8 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
           diagnosis: current.diagnosis,
           plan: current.plan,
           expectedUpdatedAt: refreshed.documentation?.updatedAt ?? refreshed.updatedAt ?? current.expectedUpdatedAt,
-          noteEditMode: DocumentationEditMode.editing,
+          workspaceEditMode: WorkspaceEditMode.viewing,
+          noteEditMode: DocumentationEditMode.readOnly,
           saveStatus: DocumentationSaveStatus.saved,
           clearError: true,
         ),
@@ -275,7 +311,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     List<dynamic>? richDelta,
   }) {
     final current = state.value;
-    if (current == null || !_canEditVisit(current.visit)) {
+    if (current == null || !_canMutateVisit(current)) {
       return;
     }
 
@@ -311,7 +347,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     prepareEncounterReview();
 
     final current = state.value;
-    if (current == null || !_canEditVisit(current.visit)) {
+    if (current == null || !_canMutateVisit(current)) {
       return true;
     }
 
@@ -359,7 +395,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     if (current == null) {
       return;
     }
-    if (!_canEditVisit(current.visit)) {
+    if (!_canMutateVisit(current)) {
       return;
     }
 
@@ -400,6 +436,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
             plan: current.plan,
             expectedUpdatedAt: saved.updatedAt,
             saveStatus: DocumentationSaveStatus.saved,
+            workspaceEditMode: current.workspaceEditMode,
             noteEditMode: DocumentationEditMode.readOnly,
           );
       state = AsyncData(next);
@@ -428,6 +465,21 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     state = AsyncData(current.copyWith(noteEditMode: DocumentationEditMode.editing));
   }
 
+  /// Enables editing across the encounter workspace (required for completed visits).
+  void enterWorkspaceEditMode() {
+    final current = state.value;
+    if (current == null || !_canEditVisit(current.visit)) {
+      return;
+    }
+    state = AsyncData(
+      current.copyWith(
+        workspaceEditMode: WorkspaceEditMode.editing,
+        noteEditMode: DocumentationEditMode.editing,
+        clearError: true,
+      ),
+    );
+  }
+
   /// Refreshes visit metadata without discarding unsaved clinical note draft.
   Future<void> refreshVisitPreservingDraft() async {
     final current = state.value;
@@ -440,13 +492,18 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     final predefinedVitalSigns = await repo.listPredefinedVitalSigns();
     final mergedVisit = current.encounterDraft.applyTo(refreshed);
     state = AsyncData(
-      current.copyWith(visit: mergedVisit, persistedVisit: refreshed, predefinedVitalSigns: predefinedVitalSigns),
+      current.copyWith(
+        visit: mergedVisit,
+        persistedVisit: refreshed,
+        predefinedVitalSigns: predefinedVitalSigns,
+        workspaceEditMode: current.workspaceEditMode,
+      ),
     );
   }
 
   void _applyEncounterDraft(VisitEncounterDraft draft) {
     final current = state.value;
-    if (current == null || !_canEditVisit(current.visit)) {
+    if (current == null || !_canMutateVisit(current)) {
       return;
     }
     state = AsyncData(

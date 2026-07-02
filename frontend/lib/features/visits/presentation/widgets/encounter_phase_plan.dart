@@ -87,7 +87,7 @@ class EncounterPhasePlan extends ConsumerWidget {
           visitId: visitId,
           branchId: visit.branchId,
           attachments: visit.attachments,
-          canUpload: canUploadAttachments,
+          canUpload: canUploadAttachments && canEdit,
           deferPersistence: canEdit,
           onChanged: onRefresh,
           sectionKind: VisitPanelKind.attachment,
@@ -172,7 +172,7 @@ class EncounterPhasePlan extends ConsumerWidget {
       title: 'Treatment notes',
       titleIcon: VisitPanelKind.plan.icon,
       expandBody: expandField,
-      embedTitleInToolbar: true,
+      embedTitleInToolbar: canEdit,
       child: ClinicalNoteEditor(
         visitId: visitId,
         state: state,
@@ -188,6 +188,7 @@ class EncounterPhasePlan extends ConsumerWidget {
         toolbarLeading: const EncounterToolbarTitle(title: 'Treatment notes', icon: Icons.assignment_outlined),
         emptyStateIcon: Icons.assignment_outlined,
         emptyStateText: 'Start entering the treatment notes',
+        readOnlyEmptyStateText: 'No treatment notes recorded',
       ),
     );
   }

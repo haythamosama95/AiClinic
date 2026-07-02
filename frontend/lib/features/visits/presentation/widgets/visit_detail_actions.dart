@@ -36,7 +36,8 @@ class VisitDetailActions extends ConsumerWidget {
           label: status == VisitStatus.inProgress ? 'Edit documentation' : 'Edit visit',
           variant: AppButtonVariant.outline,
           icon: const Icon(Icons.edit_note_outlined, size: 18),
-          onPressed: () => context.push(AppRoutes.visitDocument(visitId)),
+          onPressed: () =>
+              context.push(AppRoutes.visitDocument(visitId, startEditing: status == VisitStatus.completed)),
         ),
       );
     }

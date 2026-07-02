@@ -124,7 +124,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
       title: 'Examination',
       titleIcon: Icons.medical_services_outlined,
       expandBody: expandField,
-      embedTitleInToolbar: true,
+      embedTitleInToolbar: canEdit,
       child: ClinicalNoteEditor(
         visitId: visitId,
         state: state,
@@ -147,7 +147,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
       title: 'Diagnosis',
       titleIcon: Icons.medical_information_outlined,
       expandBody: expandField,
-      embedTitleInToolbar: true,
+      embedTitleInToolbar: canEdit,
       child: ClinicalNoteEditor(
         visitId: visitId,
         state: state,
@@ -216,13 +216,21 @@ class EncounterPhaseObjectiveDetail extends StatelessWidget {
         EncounterFieldCard(
           title: 'Examination',
           titleIcon: Icons.medical_services_outlined,
-          child: EncounterDetailText(value: visit.documentation?.examination ?? ''),
+          child: EncounterDetailText(
+            value: visit.documentation?.examination ?? '',
+            emptyStateIcon: Icons.medical_services_outlined,
+            emptyStateText: 'No examination recorded',
+          ),
         ),
         const SizedBox(height: VisitPageTokens.sectionGap),
         EncounterFieldCard(
           title: 'Diagnosis',
           titleIcon: Icons.medical_information_outlined,
-          child: EncounterDetailText(value: visit.documentation?.diagnosis ?? ''),
+          child: EncounterDetailText(
+            value: visit.documentation?.diagnosis ?? '',
+            emptyStateIcon: Icons.medical_information_outlined,
+            emptyStateText: 'No diagnosis recorded',
+          ),
         ),
       ],
     );
