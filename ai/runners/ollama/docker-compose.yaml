@@ -6,8 +6,10 @@ services:
       - "127.0.0.1:11434:11434"
     volumes:
       - ollama_models:/root/.ollama
+    # Bind inside the container on all interfaces; host ports below restrict
+    # access to 127.0.0.1 only (AI-internal, not LAN-client-routable).
     environment:
-      - OLLAMA_HOST=127.0.0.1:11434
+      - OLLAMA_HOST=0.0.0.0:11434
 
 volumes:
   ollama_models:

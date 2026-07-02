@@ -1,0 +1,52 @@
+# Local dev gateway config — Ollama co-located on 127.0.0.1:11434.
+# Production: copy gateway.example.yaml and adjust runners, jwt_secret, origins.
+
+port: 8090
+
+runners:
+  - id: ollama-local
+    base_url: http://127.0.0.1:11434
+    capabilities:
+      - json_grammar
+    models:
+      - name: qwen3:4b
+        source: qwen3:4b
+        digest: sha256:3e4cb14174460404e7a233e531675303b2fbf7749c02f91864fe311ab6344e4f
+        context_tokens: 8192
+        capabilities:
+          - json_grammar
+
+health_poll_interval_s: 10
+unreachable_after_failures: 3
+
+queue_max_depth: 16
+queue_max_wait_s: 20
+max_inflight_per_caller: 2
+timeout_total_s: 45
+timeout_first_token_s: 15
+confidence_threshold: 0.6
+
+jwt_secret: dev-secret
+jwks_url: null
+
+allowed_origins:
+  - http://localhost:3000
+  - http://localhost:8090
+
+log_verbatim: false
+enable_push_registration: false
+internal_shared_secret: null
+
+streaming_enabled: true
+enable_multi_command_plans: false
+model_swap_first_token_timeout_s: 60
+
+models_dir: null
+
+role_ai_access:
+  administrator: true
+  doctor: true
+  receptionist: false
+  lab_staff: false
+
+log_dir: ./logs

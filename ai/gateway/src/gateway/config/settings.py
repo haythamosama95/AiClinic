@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -115,8 +117,25 @@ class GatewayConfig(BaseSettings):
         return cls.model_validate(data)
 
 
-def load_config(path: str | None = None) -> GatewayConfig:
-    """Load gateway config from YAML file or environment."""
+def _gateway_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _resolve_config_path(path: str | None) -> Path | None:
     if path:
-        return GatewayConfig.from_yaml(path)
+        return Path(path)
+    env_path = os.environ.get("GATEWAY_CONFIG_PATH")
+    if env_path:
+        return Path(env_path)
+    default = _gateway_root() / "config" / "gateway.yaml"
+    if default.is_file():
+        return default
+    return None
+
+
+def load_config(path: str | None = None) -> GatewayConfig:
+    """Load gateway config from YAML (if present) or environment variables."""
+    config_path = _resolve_config_path(path)
+    if config_path is not None:
+        return GatewayConfig.from_yaml(str(config_path))
     return GatewayConfig()

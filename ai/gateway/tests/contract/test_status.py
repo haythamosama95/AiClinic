@@ -16,9 +16,11 @@ from gateway.routing.lifecycle import RunnerStatus
 GATEWAY_KEYS = frozenset({"version", "ready", "phase_active", "uptime_s"})
 CONFIG_SAFE_KEYS = frozenset(
     {
+        "port",
         "health_poll_interval_s",
         "unreachable_after_failures",
         "allowed_origins",
+        "log_dir",
         "streaming_enabled",
         "enable_multi_command_plans",
         "enable_push_registration",
@@ -36,6 +38,7 @@ RUNNER_KEYS = frozenset(
         "consecutive_failures",
         "in_flight",
         "declared_capabilities",
+        "declared_models",
         "loaded_model",
     }
 )
@@ -102,14 +105,17 @@ async def test_status_response_shape(status_client) -> None:
     response = await client.get("/v1/status")
     body = response.json()
 
-    assert GATEWAY_KEYS <= set(body["gateway"].keys())
-    assert CONFIG_SAFE_KEYS <= set(body["config_safe"].keys())
+    assert set(body["gateway"].keys()) >= GATEWAY_KEYS
+    assert set(body["config_safe"].keys()) >= CONFIG_SAFE_KEYS
     assert isinstance(body["runners"], list)
     assert isinstance(body["endpoints"], list)
+    assert "architecture" in body
+    assert "poller" in body
+    assert body["poller"]["estimated_failover_s"] == 60
 
     assert body["gateway"]["phase_active"] == 3
     assert isinstance(body["gateway"]["ready"], bool)
-    assert isinstance(body["gateway"]["uptime_s"], (int, float))
+    assert isinstance(body["gateway"]["uptime_s"], int | float)
     assert body["gateway"]["uptime_s"] >= 0
 
     assert body["config_safe"]["health_poll_interval_s"] == 15
@@ -144,15 +150,16 @@ async def test_status_runners_present_and_match_registry(status_client) -> None:
 
     assert len(body["runners"]) == 1
     runner = body["runners"][0]
-    assert RUNNER_KEYS <= set(runner.keys())
+    assert set(runner.keys()) >= RUNNER_KEYS
     assert runner["id"] == "runner-a"
+    assert isinstance(runner["declared_models"], list)
     assert runner["base_url"] == "http://127.0.0.1:11434"
     assert runner["status"] == RunnerStatus.READY.value
     assert runner["in_flight"] == 1
     assert isinstance(runner["declared_capabilities"], list)
 
     loaded_model = runner["loaded_model"]
-    assert loaded_model is None or LOADED_MODEL_KEYS <= set(loaded_model.keys())
+    assert loaded_model is None or set(loaded_model.keys()) >= LOADED_MODEL_KEYS
 
 
 @pytest.mark.asyncio
@@ -163,7 +170,7 @@ async def test_status_endpoints_catalog_present(status_client) -> None:
 
     assert len(body["endpoints"]) > 0
     for entry in body["endpoints"]:
-        assert ENDPOINT_KEYS <= set(entry.keys())
+        assert set(entry.keys()) >= ENDPOINT_KEYS
         assert entry["path"].startswith("/")
         assert entry["method"] in {"GET", "POST", "PUT", "PATCH", "DELETE"}
         assert isinstance(entry["phase"], int)
@@ -174,3 +181,4 @@ async def test_status_endpoints_catalog_present(status_client) -> None:
     assert "/ready" in paths
     assert "/metrics" in paths
     assert "/v1/status" in paths
+    assert "/v1/runners/runner-a/models" in paths

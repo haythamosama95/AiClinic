@@ -22,6 +22,19 @@ The dashboard polls the gateway on the same origin (no extra CORS setup):
 | Source | Purpose |
 | --- | --- |
 | `GET /v1/status` | Gateway snapshot, safe config, runners, endpoint catalog |
+| `GET /v1/runners/{id}/models` | On-demand proxy of runner `GET /v1/models` (control plane) |
+
+## Panels (Phases 1–3)
+
+| Panel | Phase | Maps to `phase-capabilities.md` |
+| --- | --- | --- |
+| Architecture | 1 | Gateway vs runner addresses, client-routability |
+| Overview | 2–3 | `/health`, `/ready` (incl. `ai_no_capacity`) |
+| Runners | 3 | Registry, lifecycle, poller timing, `/v1/models` poll |
+| Metrics | 2–3 | `/metrics`, request rate, status codes, runner health/latency |
+| Endpoint explorer | 2–3 | Try-it for all live routes |
+| Phase coverage | 1–3 | Live checklist vs this document |
+| Security | 1–3 | Invariants, error envelope, safe config (`log_dir`, CORS, poller) |
 | `GET /health` | Liveness badge |
 | `GET /ready` | Readiness badge |
 | `GET /metrics` | Prometheus counters for inline charts |

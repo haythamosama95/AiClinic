@@ -14,16 +14,22 @@
   /** Phase descriptor — maps phases to DOM sections and optional capability probes. */
   const PHASES = {
     1: {
-      label: 'Foundation',
-      sections: ['security-panel', 'endpoint-explorer'],
+      label: 'Setup',
+      sections: ['architecture-panel'],
     },
     2: {
-      label: 'Health & Registry',
-      sections: ['runners-panel'],
+      label: 'Foundational',
+      sections: ['security-panel', 'error-envelope-panel'],
     },
     3: {
-      label: 'Observability',
-      sections: ['overview-section', 'metrics-panel'],
+      label: 'Health spine',
+      sections: [
+        'overview-section',
+        'runners-panel',
+        'metrics-panel',
+        'endpoint-explorer',
+        'phase-coverage-panel',
+      ],
     },
     4: {
       label: 'Auth',
@@ -40,6 +46,52 @@
       sections: [],
     },
   };
+
+  const ERROR_CODES = [
+    { code: 'bad_request', http: 400, phaseActive: true },
+    { code: 'ai_no_capacity', http: 503, phaseActive: true },
+    { code: 'ai_timeout', http: 504, phaseActive: true },
+    { code: 'unauthenticated', http: 401, phaseActive: false },
+    { code: 'forbidden', http: 403, phaseActive: false },
+    { code: 'not_implemented', http: 501, phaseActive: false },
+    { code: 'rate_limited', http: 429, phaseActive: false },
+  ];
+
+  /** Checklist aligned with docs/ai/phase-capabilities.md Phases 1–3. */
+  const PHASE_COVERAGE = [
+    { phase: 1, label: 'Isolated ai/ project skeleton', mode: 'static' },
+    { phase: 1, label: 'Gateway + Ollama runner layout', mode: 'live', check: (s) => !!s.status?.architecture },
+    { phase: 1, label: 'Docker image & dev tooling (ruff, pytest)', mode: 'static' },
+    { phase: 2, label: 'Boot gateway with typed config', mode: 'live', check: (s) => !!s.status?.config_safe },
+    { phase: 2, label: 'GET /health liveness', mode: 'live', check: (s) => s.health.ok },
+    { phase: 2, label: 'GET /metrics Prometheus scrape', mode: 'live', check: (s) => !!s.metricsParsed },
+    { phase: 2, label: 'Uniform error envelope', mode: 'live', check: (s) => hasErrorEnvelopeSample(s) },
+    { phase: 2, label: 'Structured JSON logs (log_dir)', mode: 'live', check: (s) => !!s.status?.config_safe?.log_dir },
+    { phase: 2, label: 'X-Request-ID correlation header', mode: 'live', check: (s) => !!s.lastRequestId },
+    { phase: 2, label: 'CORS allowlist', mode: 'live', check: (s) => Array.isArray(s.status?.config_safe?.allowed_origins) },
+    { phase: 3, label: 'GET /ready honest readiness', mode: 'live', check: (s) => s.ready.status != null },
+    { phase: 3, label: 'Runner lifecycle state machine', mode: 'live', check: (s) => (s.status?.runners?.length || 0) > 0 },
+    { phase: 3, label: 'In-memory runner registry', mode: 'live', check: (s) => Array.isArray(s.status?.runners) },
+    { phase: 3, label: 'Background health poller', mode: 'live', check: (s) => !!s.status?.poller },
+    { phase: 3, label: 'Model discovery GET /v1/models', mode: 'live', check: (s) => hasModelDiscovery(s) },
+    { phase: 3, label: 'Runners not client-routable', mode: 'static' },
+    { phase: 3, label: 'Isolation scan CI gate', mode: 'static', hint: 'cd ai/gateway && .venv/bin/python scripts/isolation_scan.py' },
+    { phase: 3, label: 'Failover timing (~poll × failures)', mode: 'live', check: (s) => s.status?.poller?.estimated_failover_s != null },
+    { phase: 3, label: 'Control plane dashboard', mode: 'live', check: () => true },
+  ];
+
+  function hasErrorEnvelopeSample(s) {
+    const readyErr = s.ready.body?.error;
+    if (readyErr?.code && readyErr?.request_id) return true;
+    const parsed = s.metricsParsed;
+    if (!parsed) return false;
+    return Object.values(parsed.counters).some((e) => e.name === 'gateway_errors_total');
+  }
+
+  function hasModelDiscovery(s) {
+    if (Object.keys(s.runnerModelsPolls).length > 0) return true;
+    return (s.status?.runners || []).some((r) => r.loaded_model?.name);
+  }
 
   const GATEWAY_ROOT = '';
 
@@ -67,6 +119,8 @@
     prevCounters: null,
     phaseProbes: {},
     lastTryResult: null,
+    runnerModelsPolls: {},
+    lastRequestId: null,
   };
 
   function $(id) {
@@ -127,6 +181,10 @@
     return `${d.slice(0, 8)}…${d.slice(-6)}`;
   }
 
+  function runnerModelsPath(runnerId) {
+    return `/v1/runners/${encodeURIComponent(runnerId)}/models`;
+  }
+
   function formatCount(n) {
     if (n == null || Number.isNaN(n)) return '—';
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -155,7 +213,7 @@
     } else {
       body = await res.text();
     }
-    return { ok: res.ok, status: res.status, body, headers: res.headers };
+    return { ok: res.ok, status: res.status, body, headers: res.headers, requestId: res.headers.get('X-Request-ID') };
   }
 
   function parsePrometheus(text) {
@@ -246,6 +304,16 @@
       if (entry.name !== baseName) continue;
       const key = entry.labels[label] || 'unknown';
       groups[key] = (groups[key] || 0) + entry.value;
+    }
+    return groups;
+  }
+
+  function gaugesByName(parsed, baseName, labelKey) {
+    const groups = {};
+    for (const entry of Object.values(parsed.gauges)) {
+      if (entry.name !== baseName) continue;
+      const key = entry.labels[labelKey] || 'unknown';
+      groups[key] = entry.value;
     }
     return groups;
   }
@@ -436,7 +504,7 @@
       'metric-readiness',
       'metric-readiness-hint',
       state.ready.ok ? 'READY' : 'NOT READY',
-      state.ready.status ? `HTTP ${state.ready.status}` : '/ready',
+      readinessHint(),
       state.ready.ok ? 'ok' : 'warn'
     );
 
@@ -476,6 +544,135 @@
       totalErrors != null ? `${formatCount(totalErrors)} total errors` : 'session delta',
       errState
     );
+  }
+
+  function readinessHint() {
+    if (state.ready.ok) {
+      return state.ready.status ? `HTTP ${state.ready.status}` : '/ready';
+    }
+    const err = state.ready.body?.error;
+    if (err?.code) {
+      return `HTTP ${state.ready.status || 503} · ${err.code}`;
+    }
+    return state.ready.status ? `HTTP ${state.ready.status}` : '/ready';
+  }
+
+  function renderArchitecture() {
+    const arch = state.status?.architecture;
+    const cfg = state.status?.config_safe;
+    const port = cfg?.port ?? arch?.gateway?.default_port ?? 8090;
+    const origin = window.location.origin || `http://localhost:${port}`;
+
+    setText($('arch-gateway-url'), `${origin.replace(/:\d+$/, '')}:${port}`);
+    setText($('arch-gateway-reach'), arch?.gateway?.reachable_by || 'clinic clients on the LAN');
+
+    const runnerUrl =
+      arch?.runners?.configured_base_urls?.[0] ||
+      arch?.runners?.default_base_url ||
+      'http://127.0.0.1:11434';
+    setText($('arch-runner-url'), runnerUrl);
+    setText($('arch-runner-reach'), arch?.runners?.reachable_by || 'gateway only — not client-routable');
+  }
+
+  function renderPollerMeta() {
+    const poller = state.status?.poller;
+    const el = $('poller-meta');
+    if (!el) return;
+    if (!poller) {
+      setText(el, '—');
+      return;
+    }
+    setText(
+      el,
+      `Health poller every ${poller.health_poll_interval_s}s · UNREACHABLE after ${poller.unreachable_after_failures} failures · ~${poller.estimated_failover_s}s failover`
+    );
+  }
+
+  function digestStatus(runner) {
+    const declared = runner.declared_models || [];
+    const loaded = runner.loaded_model;
+    if (!declared.length || !loaded?.digest) return null;
+    const pinned = declared[0].digest;
+    if (!pinned || pinned.includes('REPLACE')) return null;
+    return pinned === loaded.digest ? 'match' : 'mismatch';
+  }
+
+  function renderPhaseCoverage() {
+    const grid = $('phase-coverage-grid');
+    if (!grid) return;
+
+    let currentPhase = 0;
+    const rows = [];
+
+    for (const item of PHASE_COVERAGE) {
+      if (item.phase !== currentPhase) {
+        currentPhase = item.phase;
+        rows.push(`<div class="coverage-phase"><h3 class="coverage-phase__title">Phase ${currentPhase}</h3></div>`);
+      }
+
+      let stateName = 'static';
+      let symbol = '◆';
+      if (item.mode === 'live') {
+        const ok = item.check ? item.check(state) : false;
+        stateName = ok ? 'live' : 'partial';
+        symbol = ok ? '✓' : '…';
+      }
+
+      const hint = item.hint ? `<p class="coverage-item__hint">${escapeHtml(item.hint)}</p>` : '';
+
+      rows.push(`
+        <article class="coverage-item" role="listitem">
+          <span class="coverage-item__badge" data-state="${stateName}" aria-hidden="true">${symbol}</span>
+          <p class="coverage-item__label">${escapeHtml(item.label)}</p>
+          <span class="coverage-item__phase">P${item.phase}</span>
+          ${hint}
+        </article>`);
+    }
+
+    grid.innerHTML = rows.join('');
+  }
+
+  function seenErrorCodes() {
+    const seen = new Set();
+    const readyCode = state.ready.body?.error?.code;
+    if (readyCode) seen.add(readyCode);
+    if (state.metricsParsed) {
+      for (const entry of Object.values(state.metricsParsed.counters)) {
+        if (entry.name === 'gateway_errors_total' && entry.labels.code) {
+          seen.add(entry.labels.code);
+        }
+      }
+    }
+    return seen;
+  }
+
+  function renderErrorEnvelope() {
+    const tbody = $('error-code-list');
+    const sample = $('error-envelope-sample');
+    if (!tbody) return;
+
+    const seen = seenErrorCodes();
+    tbody.innerHTML = ERROR_CODES.map((row) => {
+      const isSeen = seen.has(row.code);
+      return `
+        <tr data-seen="${isSeen ? 'true' : 'false'}" data-phase-active="${row.phaseActive ? 'true' : 'false'}">
+          <td class="mono">${escapeHtml(row.code)}</td>
+          <td>${row.http}</td>
+          <td>${row.phaseActive ? 'yes' : 'Phase 4+'}</td>
+          <td>${isSeen ? 'yes' : '—'}</td>
+        </tr>`;
+    }).join('');
+
+    const readyErr = state.ready.body?.error;
+    if (sample) {
+      if (readyErr) {
+        sample.hidden = false;
+        sample.textContent = JSON.stringify({ error: readyErr }, null, 2);
+      } else {
+        sample.hidden = true;
+        sample.textContent = '';
+      }
+    }
   }
 
   function normalizeLifecycleStatus(status) {
@@ -543,9 +740,38 @@
     const model = runner.loaded_model || {};
     const caps = runner.declared_capabilities || [];
     const features = model.features || [];
+    const poll = state.runnerModelsPolls[runner.id];
 
     const capChips = caps.map((c) => `<span class="chip chip--cap">${escapeHtml(c)}</span>`).join('');
     const featChips = features.map((f) => `<span class="chip chip--feature">${escapeHtml(f)}</span>`).join('');
+    const digestMatch = digestStatus(runner);
+    const declared = runner.declared_models || [];
+    const pinnedDigest = declared[0]?.digest;
+    const digestClass =
+      digestMatch === 'match' ? 'digest--match' : digestMatch === 'mismatch' ? 'digest--mismatch' : '';
+    const digestNote =
+      digestMatch === 'mismatch'
+        ? ' <span class="digest-note text-warn">pin mismatch</span>'
+        : digestMatch === 'match'
+          ? ' <span class="digest-note">pinned</span>'
+          : '';
+
+    let pollBlock = '';
+    if (poll) {
+      const pollStatus = poll.error
+        ? 'error'
+        : poll.status >= 200 && poll.status < 300
+          ? 'ok'
+          : 'warn';
+      pollBlock = `
+        <div class="runner-card__poll" data-poll-state="${pollStatus}">
+          <div class="runner-card__poll-header">
+            <span class="runner-card__poll-label">GET /v1/models</span>
+            <span class="runner-card__poll-meta">${poll.status ? `HTTP ${poll.status}` : 'Error'}${poll.latencyMs != null ? ` · ${poll.latencyMs.toFixed(1)} ms` : ''}</span>
+          </div>
+          <pre class="runner-card__poll-body mono" tabindex="0">${escapeHtml(truncate(formatBody(poll.body), 4000))}</pre>
+        </div>`;
+    }
 
     return `
       <article class="runner-card" role="listitem" data-runner-id="${escapeHtml(runner.id)}" data-status="${escapeHtml(runner.status)}">
@@ -555,7 +781,8 @@
         </header>
         <dl class="runner-card__details">
           <div class="runner-card__row"><dt>Base URL</dt><dd class="mono">${escapeHtml(runner.base_url || '—')}</dd></div>
-          <div class="runner-card__row"><dt>Model</dt><dd>${escapeHtml(model.name || '—')} <span class="digest mono">${escapeHtml(shortDigest(model.digest))}</span></dd></div>
+          <div class="runner-card__row"><dt>Gateway probe</dt><dd class="mono">${escapeHtml(runnerModelsPath(runner.id))}</dd></div>
+          <div class="runner-card__row"><dt>Model</dt><dd>${escapeHtml(model.name || '—')} <span class="digest mono ${digestClass}">${escapeHtml(shortDigest(model.digest || pinnedDigest))}</span>${digestNote}</dd></div>
           <div class="runner-card__row"><dt>Context</dt><dd>${model.context_tokens != null ? `${formatCount(model.context_tokens)} tokens` : '—'}</dd></div>
           <div class="runner-card__row"><dt>Last latency</dt><dd>${runner.last_latency_ms != null ? `${runner.last_latency_ms.toFixed(1)} ms` : '—'}</dd></div>
           <div class="runner-card__row"><dt>Avg latency</dt><dd>${runner.avg_latency_ms != null ? `${runner.avg_latency_ms.toFixed(1)} ms` : '—'}</dd></div>
@@ -565,7 +792,60 @@
         </dl>
         ${caps.length ? `<div class="runner-card__chips"><span class="runner-card__chips-label">Capabilities</span>${capChips}</div>` : ''}
         ${features.length ? `<div class="runner-card__chips"><span class="runner-card__chips-label">Features</span>${featChips}</div>` : ''}
+        <footer class="runner-card__actions">
+          <button type="button" class="btn btn--probe" data-runner-id="${escapeHtml(runner.id)}" aria-label="Poll ${escapeHtml(runner.id)} via GET /v1/models">
+            Poll /v1/models
+          </button>
+        </footer>
+        ${pollBlock}
       </article>`;
+  }
+
+  async function pollRunnerModels(runnerId, btn) {
+    const path = runnerModelsPath(runnerId);
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Polling…';
+    }
+    try {
+      const result = await fetchEndpoint(path);
+      const latencyMs = result.body?.poll?.latency_ms ?? null;
+      state.runnerModelsPolls[runnerId] = {
+        status: result.status,
+        body: result.body,
+        latencyMs,
+        error: !result.ok,
+      };
+      if (result.requestId) state.lastRequestId = result.requestId;
+      state.lastTryResult = {
+        path,
+        method: 'GET',
+        status: result.status,
+        body: result.body,
+        requestId: result.requestId,
+      };
+    } catch (err) {
+      state.runnerModelsPolls[runnerId] = {
+        status: 0,
+        body: String(err.message || err),
+        latencyMs: null,
+        error: true,
+      };
+      state.lastTryResult = { path, method: 'GET', status: 0, body: String(err.message || err) };
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Poll /v1/models';
+      }
+      renderRunners();
+      renderEndpointExplorer();
+    }
+  }
+
+  function bindRunnerCardActions(container) {
+    $qa('.btn--probe', container).forEach((btn) => {
+      btn.addEventListener('click', () => pollRunnerModels(btn.dataset.runnerId, btn));
+    });
   }
 
   function renderRunners() {
@@ -574,6 +854,10 @@
     const runners = state.status?.runners || [];
 
     setText($('runners-count'), `${runners.length} registered`);
+    const pollAllBtn = $('poll-all-runners-btn');
+    if (pollAllBtn) {
+      pollAllBtn.hidden = runners.length === 0;
+    }
     renderLifecycleRail(runners);
 
     if (!container) return;
@@ -589,6 +873,7 @@
     if (!runners.length) return;
 
     container.insertAdjacentHTML('beforeend', runners.map(renderRunnerCard).join(''));
+    bindRunnerCardActions(container);
   }
 
   function updateRequestHistory(parsed) {
@@ -653,6 +938,25 @@
 
     renderBarChartSvg($('chart-runner-latency'), latencyItems, { labelWidth: 72 });
 
+    const healthGauges = gaugesByName(parsed, 'gateway_runner_health', 'runner_id');
+    let healthItems = Object.entries(healthGauges)
+      .map(([runnerId, value]) => ({
+        label: runnerId,
+        value,
+        color: value >= 1 ? 'var(--status-2xx)' : 'var(--coral)',
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    if (!healthItems.length && state.status?.runners) {
+      healthItems = state.status.runners.map((r) => ({
+        label: r.id,
+        value: r.status === 'READY' || r.status === 'BUSY' ? 1 : 0,
+        color: r.status === 'READY' || r.status === 'BUSY' ? 'var(--status-2xx)' : 'var(--coral)',
+      }));
+    }
+
+    renderBarChartSvg($('chart-runner-health'), healthItems, { labelWidth: 72 });
+
     const errorGroups = groupCountersByLabel(parsed, 'gateway_errors_total', 'code');
     const errorItems = Object.entries(errorGroups)
       .sort((a, b) => b[1] - a[1])
@@ -676,13 +980,20 @@
   function renderEndpointRow(ep) {
     const disabled = !ep.available;
     const result = state.lastTryResult?.path === ep.path ? state.lastTryResult : null;
-    const statusText = disabled ? `Phase ${ep.phase}` : result ? `HTTP ${result.status}` : '—';
+    const statusText = disabled
+      ? `Phase ${ep.phase}`
+      : result
+        ? `HTTP ${result.status}`
+        : '—';
     const methodClass = ep.method.toLowerCase();
+    const runnerNote = ep.runner_id
+      ? `<span class="explorer-table__runner" title="Proxies runner /v1/models">runner ${escapeHtml(ep.runner_id)}</span>`
+      : '';
 
     return `
       <tr class="explorer-table__row${disabled ? ' explorer-table__row--disabled' : ''}" data-path="${escapeHtml(ep.path)}">
         <td><code class="method method--${methodClass}">${escapeHtml(ep.method)}</code></td>
-        <td class="mono">${escapeHtml(ep.path)}</td>
+        <td class="mono">${escapeHtml(ep.path)}${runnerNote}</td>
         <td><span class="phase-tag">P${ep.phase}</span></td>
         <td class="explorer-table__status">${escapeHtml(statusText)}</td>
         <td>
@@ -708,6 +1019,16 @@
       statusEl.dataset.status = String(result.status || 0);
     }
     setText($('endpoint-response-path'), `${result.method || 'GET'} ${result.path}`);
+    const reqIdEl = $('endpoint-response-request-id');
+    if (reqIdEl) {
+      if (result.requestId) {
+        reqIdEl.hidden = false;
+        reqIdEl.textContent = result.requestId;
+      } else {
+        reqIdEl.hidden = true;
+        reqIdEl.textContent = '';
+      }
+    }
     setText($('endpoint-response-body'), truncate(formatBody(result.body), 8000));
   }
 
@@ -747,8 +1068,9 @@
     return `${str.slice(0, max)}\n… (truncated)`;
   }
 
-  function showResponsePanel(path, method, status, body) {
-    state.lastTryResult = { path, method: method || 'GET', status, body };
+  function showResponsePanel(path, method, status, body, requestId) {
+    state.lastTryResult = { path, method: method || 'GET', status, body, requestId: requestId || null };
+    if (requestId) state.lastRequestId = requestId;
     renderEndpointResponsePanel();
   }
 
@@ -759,7 +1081,8 @@
     }
     try {
       const result = await fetchEndpoint(path, { method: method || 'GET' });
-      showResponsePanel(path, method, result.status, result.body);
+      if (result.requestId) state.lastRequestId = result.requestId;
+      showResponsePanel(path, method, result.status, result.body, result.requestId);
     } catch (err) {
       showResponsePanel(path, method, 0, String(err.message || err));
     } finally {
@@ -779,6 +1102,8 @@
     setText($('gateway-version'), gw?.version ? `· v${gw.version}` : '');
 
     const fields = [
+      ['config-port', cfg?.port ?? '—'],
+      ['config-log-dir', cfg?.log_dir ?? '—'],
       ['config-health-poll', cfg?.health_poll_interval_s != null ? `${cfg.health_poll_interval_s}s` : '—'],
       ['config-unreachable-after', cfg?.unreachable_after_failures ?? '—'],
       [
@@ -867,9 +1192,11 @@
           break;
         case 'health':
           state.health = { ok: data.ok, status: data.status, body: data.body };
+          if (data.requestId) state.lastRequestId = data.requestId;
           break;
         case 'ready':
           state.ready = { ok: data.ok, status: data.status, body: data.body };
+          if (data.requestId) state.lastRequestId = data.requestId;
           break;
         case 'metrics':
           state.metricsRaw = typeof data.body === 'string' ? data.body : '';
@@ -882,11 +1209,15 @@
     if (anySuccess) state.lastSuccessAt = Date.now();
 
     renderHeader();
+    renderArchitecture();
     renderOverview();
+    renderPollerMeta();
     renderRunners();
     renderMetrics();
     renderEndpointExplorer();
+    renderPhaseCoverage();
     renderSecurity();
+    renderErrorEnvelope();
     await updatePhaseGating();
   }
 
@@ -933,6 +1264,20 @@
       intervalInput.addEventListener('input', () => {
         clearTimeout(intervalInput._debounce);
         intervalInput._debounce = setTimeout(() => setPollInterval(intervalInput.value), 400);
+      });
+    }
+
+    const pollAllBtn = $('poll-all-runners-btn');
+    if (pollAllBtn) {
+      pollAllBtn.addEventListener('click', async () => {
+        const runners = state.status?.runners || [];
+        pollAllBtn.disabled = true;
+        pollAllBtn.textContent = 'Polling…';
+        for (const runner of runners) {
+          await pollRunnerModels(runner.id);
+        }
+        pollAllBtn.disabled = false;
+        pollAllBtn.textContent = 'Poll all /v1/models';
       });
     }
 

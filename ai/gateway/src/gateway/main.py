@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from gateway.api.errors import install_exception_handlers
 from gateway.api.health import router as health_router
 from gateway.api.metrics import router as metrics_router
+from gateway.api.runners import router as runners_router
 from gateway.api.status import router as status_router
 from gateway.config.settings import GatewayConfig, load_config
 from gateway.obs import logging as obs_logging
@@ -95,6 +96,7 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(metrics_router)
+    app.include_router(runners_router)
     app.include_router(status_router)
 
     dashboard_path = _resolve_dashboard_dir(cfg)

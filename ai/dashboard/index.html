@@ -57,6 +57,29 @@
     </header>
 
     <main class="dashboard-main">
+      <!-- Architecture (Phase 1) -->
+      <section class="panel panel--architecture" id="architecture-panel" aria-labelledby="architecture-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="architecture-heading">Architecture</h2>
+          <p class="panel__desc">Phase 1 — isolated AI layer layout · gateway is the only client-facing URL</p>
+        </header>
+        <div class="architecture-grid" id="architecture-grid">
+          <article class="arch-card arch-card--gateway">
+            <h3 class="arch-card__title">AI Gateway</h3>
+            <p class="arch-card__addr mono" id="arch-gateway-url">—</p>
+            <p class="arch-card__reach" id="arch-gateway-reach">—</p>
+          </article>
+          <article class="arch-card arch-card--runner">
+            <h3 class="arch-card__title">Model Runner (Ollama)</h3>
+            <p class="arch-card__addr mono" id="arch-runner-url">—</p>
+            <p class="arch-card__reach" id="arch-runner-reach">—</p>
+          </article>
+        </div>
+        <p class="architecture-note" id="arch-isolation-note">
+          Runners are polled internally; clinic clients never reach Ollama directly in production.
+        </p>
+      </section>
+
       <!-- Overview cards -->
       <section class="panel panel--overview" id="overview-section" aria-labelledby="overview-heading">
         <header class="panel__header">
@@ -102,9 +125,14 @@
         <header class="panel__header panel__header--split">
           <div>
             <h2 class="panel__title" id="runners-heading">Runners</h2>
-            <p class="panel__desc">Registry snapshot &amp; lifecycle state</p>
+            <p class="panel__desc">Registry snapshot, lifecycle state &amp; model discovery via <code>/v1/models</code>
+            </p>
           </div>
           <span class="panel__count" id="runners-count" aria-live="polite">0 registered</span>
+          <p class="panel__poller-meta mono" id="poller-meta" aria-live="polite">—</p>
+          <button type="button" class="btn btn--probe-all" id="poll-all-runners-btn" hidden>
+            Poll all /v1/models
+          </button>
         </header>
 
         <div class="lifecycle-rail" id="lifecycle-state-machine" aria-label="Runner lifecycle states">
@@ -137,9 +165,11 @@
 
         <div class="runner-cards" id="runner-cards" role="list" aria-label="Registered model runners">
           <div class="empty-state" id="runners-empty">
-            <p class="empty-state__title">No runners yet</p>
-            <p class="empty-state__body">Runner cards populate from <code>/v1/status</code> when the gateway polls
-              Ollama.</p>
+            <p class="empty-state__title">No runners configured</p>
+            <p class="empty-state__body">Add runners to <code>gateway.yaml</code>, restart the gateway, then use
+              <code>GET /v1/runners/&lt;id&gt;/models</code> to inspect the same OpenAI-compatible discovery response
+              the health poller uses.
+            </p>
           </div>
         </div>
       </section>
@@ -181,6 +211,16 @@
               <svg class="chart-svg" id="chart-runner-latency" viewBox="0 0 320 120" role="img"
                 aria-labelledby="chart-runner-latency-label">
                 <title id="chart-runner-latency-label">Runner poll latency bars</title>
+              </svg>
+            </div>
+          </figure>
+
+          <figure class="chart-card" id="chart-runner-health-wrap">
+            <figcaption class="chart-card__title">Runner health (Prometheus)</figcaption>
+            <div class="chart-card__body">
+              <svg class="chart-svg" id="chart-runner-health" viewBox="0 0 320 120" role="img"
+                aria-labelledby="chart-runner-health-label">
+                <title id="chart-runner-health-label">gateway_runner_health gauge</title>
               </svg>
             </div>
           </figure>
@@ -231,8 +271,20 @@
           <header class="response-panel__header">
             <span class="response-panel__status" id="endpoint-response-status">—</span>
             <span class="response-panel__path" id="endpoint-response-path"></span>
+            <span class="response-panel__request-id mono" id="endpoint-response-request-id" hidden></span>
           </header>
           <pre class="response-panel__body" id="endpoint-response-body" tabindex="0"></pre>
+        </div>
+      </section>
+
+      <!-- Phase 1–3 capability coverage -->
+      <section class="panel panel--coverage" id="phase-coverage-panel" aria-labelledby="coverage-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="coverage-heading">Phase coverage</h2>
+          <p class="panel__desc">Live checklist mapped to <code>docs/ai/phase-capabilities.md</code> (Phases 1–3)</p>
+        </header>
+        <div class="coverage-grid" id="phase-coverage-grid" role="list" aria-label="Phase capability checklist">
+          <!-- app.js populates -->
         </div>
       </section>
 
@@ -271,12 +323,46 @@
                     is stopped. AI is strictly additive.</p>
                 </div>
               </li>
+              <li class="invariant-card" id="invariant-runners-internal">
+                <span class="invariant-card__index" aria-hidden="true">04</span>
+                <div class="invariant-card__content">
+                  <strong class="invariant-card__name">Runners are not client-routable</strong>
+                  <p class="invariant-card__text">Model runners bind to localhost / AI-internal addresses. LAN clients
+                    reach the gateway only; direct <code>:11434</code> access must be refused.</p>
+                </div>
+              </li>
             </ol>
+          </div>
+
+          <div class="error-envelope" id="error-envelope-panel">
+            <h3 class="error-envelope__title">Error envelope <span class="phase-tag">P2</span></h3>
+            <p class="error-envelope__desc">Uniform JSON failures · every response includes <code>X-Request-ID</code>
+            </p>
+            <table class="error-table" id="error-code-table">
+              <thead>
+                <tr>
+                  <th scope="col">Code</th>
+                  <th scope="col">HTTP</th>
+                  <th scope="col">Phase 1–3</th>
+                  <th scope="col">Seen</th>
+                </tr>
+              </thead>
+              <tbody id="error-code-list"></tbody>
+            </table>
+            <pre class="error-envelope__sample mono" id="error-envelope-sample" hidden></pre>
           </div>
 
           <div class="config-summary" id="config-summary">
             <h3 class="config-summary__title">Safe config</h3>
             <dl class="config-dl" id="config-dl">
+              <div class="config-dl__row" data-key="port">
+                <dt>Gateway port</dt>
+                <dd id="config-port">—</dd>
+              </div>
+              <div class="config-dl__row" data-key="log_dir">
+                <dt>Log directory</dt>
+                <dd id="config-log-dir" class="mono">—</dd>
+              </div>
               <div class="config-dl__row" data-key="health_poll_interval_s">
                 <dt>Health poll interval</dt>
                 <dd id="config-health-poll">—</dd>

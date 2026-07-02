@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from gateway.config.settings import GatewayConfig, ModelDef, RunnerConfig
+from gateway.config.settings import GatewayConfig, ModelDef, RunnerConfig, load_config
 
 
 def test_valid_config_parses_with_defaults() -> None:
@@ -72,3 +72,14 @@ def test_push_registration_requires_internal_secret() -> None:
             internal_shared_secret=None,
         )
     assert "internal_shared_secret" in str(exc.value)
+
+
+def test_load_config_from_yaml_path(tmp_path) -> None:
+    config_file = tmp_path / "gateway.yaml"
+    config_file.write_text(
+        "jwt_secret: from-file\nport: 9001\nrunners: []\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(str(config_file))
+    assert cfg.jwt_secret == "from-file"
+    assert cfg.port == 9001

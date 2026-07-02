@@ -7,7 +7,7 @@ reporting can pin integrity (FR-008, §11.6).
 
 | Model tag  | Digest (sha256)              | Notes |
 | ---------- | ---------------------------- | ----- |
-| `qwen3:4b` | `sha256:REPLACE_AFTER_PULL`  | Update after `ollama pull qwen3:4b` |
+| `qwen3:4b` | `sha256:3e4cb14174460404e7a233e531675303b2fbf7749c02f91864fe311ab6344e4f` | Q4_K_M via `ollama pull qwen3:4b` |
 
 ### How to capture the digest
 

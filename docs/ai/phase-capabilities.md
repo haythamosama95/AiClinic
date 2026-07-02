@@ -125,7 +125,7 @@ Modelfile + operator runbook.
 | **Run isolation scan** | `cd ai/gateway && .venv/bin/python scripts/isolation_scan.py` |
 | **Run full dev/CI gate** | `cd ai/gateway && ./scripts/run_tests.sh` |
 | **Observe runner failover** | Stop Ollama → within ~3 polls (~30 s) `/ready` → `503`; restart → recovers |
-| **Open control plane dashboard** | Start Gateway → [http://localhost:8090/dashboard](http://localhost:8090/dashboard) (see `ai/dashboard/README.md`) |
+| **Open control plane dashboard** | Start Gateway → [http://localhost:8090/dashboard](http://localhost:8090/dashboard) (see `ai/dashboard/README.md`) — covers Phases 1–3 checklist, architecture, endpoints, runners, `/v1/models` probe, metrics, and error envelope |
 
 ### Endpoints available after Phase 3
 
@@ -467,6 +467,28 @@ Feature 015 intentionally delivers the **control plane only**. Even when Phase 6
 - Clinic Flutter app has **no built-in AI UI** until a separate client feature ships.
 
 Real model inference via the Gateway requires **feature 016** (AI generation layer).
+
+---
+
+## Dashboard coverage (Phases 1–3)
+
+The control plane at `/dashboard` maps to this document:
+
+| Phase | Capability | Dashboard panel |
+| --- | --- | --- |
+| 1 | Gateway vs runner architecture | **Architecture** |
+| 1 | Isolated `ai/` layout | **Phase coverage** checklist |
+| 2 | `GET /health` | **Overview** + **Endpoint explorer** |
+| 2 | `GET /metrics` | **Metrics** + **Endpoint explorer** |
+| 2 | Typed config / CORS / logs | **Security → Safe config** |
+| 2 | Error envelope + `X-Request-ID` | **Security → Error envelope** + explorer response headers |
+| 3 | `GET /ready` (`ai_no_capacity`) | **Overview** readiness card |
+| 3 | Runner registry & lifecycle | **Runners** panel |
+| 3 | Health poller / failover timing | **Runners** poller caption |
+| 3 | `GET /v1/models` discovery | **Runners → Poll /v1/models** + `GET /v1/runners/{id}/models` in explorer |
+| 3 | Digest pinning | Runner card declared vs live digest |
+| 3 | `gateway_runner_health` metric | **Metrics → Runner health** chart |
+| 3 | Isolation scan | **Phase coverage** (operator runs locally) |
 
 ---
 
