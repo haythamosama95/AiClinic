@@ -20,6 +20,7 @@ class EncounterPhasePlan extends ConsumerWidget {
     required this.canUploadAttachments,
     required this.onRefresh,
     this.showClinicalNoteSaveBar = true,
+    this.expertMode = false,
     super.key,
   });
 
@@ -29,6 +30,7 @@ class EncounterPhasePlan extends ConsumerWidget {
   final bool canUploadAttachments;
   final VoidCallback onRefresh;
   final bool showClinicalNoteSaveBar;
+  final bool expertMode;
 
   static const _sections = {ClinicalNoteSection.plan};
 
@@ -40,7 +42,7 @@ class EncounterPhasePlan extends ConsumerWidget {
       key: const Key('encounter_phase_plan'),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final expandField = constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+          final expandField = expertMode || (constraints.hasBoundedHeight && constraints.maxHeight.isFinite);
           if (expandField) {
             return SizedBox(
               height: constraints.maxHeight,
@@ -127,9 +129,9 @@ class EncounterPhasePlan extends ConsumerWidget {
         final topRow = Row(
           crossAxisAlignment: expandField ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
           children: [
-            Expanded(child: treatmentNotes),
+            Expanded(flex: expertMode ? 3 : 1, child: treatmentNotes),
             const SizedBox(width: VisitPageTokens.sectionGap),
-            Expanded(child: treatmentPlans),
+            Expanded(flex: expertMode ? 2 : 1, child: treatmentPlans),
           ],
         );
 

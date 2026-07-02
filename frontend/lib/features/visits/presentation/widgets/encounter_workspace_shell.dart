@@ -54,11 +54,15 @@ class EncounterWorkspaceShell extends ConsumerWidget {
         children: [
           Expanded(
             child: mode == WorkspaceMode.expert
-                ? SingleChildScrollView(
-                    child: ExpertModeAccordion(
-                      phases: _documentationPhaseEntries(showClinicalNoteSaveBar: !canEdit),
-                      initiallyExpanded: {activePhase.isDocumentation ? activePhase : EncounterPhase.subjective},
-                    ),
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        child: ExpertModeAccordion(
+                          phaseCardHeight: constraints.maxHeight,
+                          phases: _documentationPhaseEntries(showClinicalNoteSaveBar: !canEdit, expertMode: true),
+                        ),
+                      );
+                    },
                   )
                 : AppPageFadeTransition(
                     key: const Key('encounter_phase_page_transition'),
@@ -103,7 +107,10 @@ class EncounterWorkspaceShell extends ConsumerWidget {
     return SingleChildScrollView(child: child);
   }
 
-  List<ExpertModePhaseEntry> _documentationPhaseEntries({required bool showClinicalNoteSaveBar}) {
+  List<ExpertModePhaseEntry> _documentationPhaseEntries({
+    required bool showClinicalNoteSaveBar,
+    bool expertMode = false,
+  }) {
     return [
       ExpertModePhaseEntry(
         phase: EncounterPhase.subjective,
@@ -112,6 +119,7 @@ class EncounterWorkspaceShell extends ConsumerWidget {
           state: state,
           canEdit: canEdit,
           showClinicalNoteSaveBar: showClinicalNoteSaveBar,
+          expertMode: expertMode,
         ),
       ),
       ExpertModePhaseEntry(
@@ -122,6 +130,7 @@ class EncounterWorkspaceShell extends ConsumerWidget {
           canEdit: canEdit,
           onRefresh: onRefresh,
           showClinicalNoteSaveBar: showClinicalNoteSaveBar,
+          expertMode: expertMode,
         ),
       ),
       ExpertModePhaseEntry(
@@ -133,6 +142,7 @@ class EncounterWorkspaceShell extends ConsumerWidget {
           canUploadAttachments: canUploadAttachments,
           onRefresh: onRefresh,
           showClinicalNoteSaveBar: showClinicalNoteSaveBar,
+          expertMode: expertMode,
         ),
       ),
     ];

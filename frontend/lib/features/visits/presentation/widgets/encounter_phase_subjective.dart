@@ -17,6 +17,7 @@ class EncounterPhaseSubjective extends ConsumerWidget {
     required this.state,
     required this.canEdit,
     this.showClinicalNoteSaveBar = true,
+    this.expertMode = false,
     super.key,
   });
 
@@ -24,6 +25,7 @@ class EncounterPhaseSubjective extends ConsumerWidget {
   final VisitDocumentationState state;
   final bool canEdit;
   final bool showClinicalNoteSaveBar;
+  final bool expertMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -31,7 +33,7 @@ class EncounterPhaseSubjective extends ConsumerWidget {
       key: const Key('encounter_phase_subjective'),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final expandField = constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+          final expandField = expertMode || (constraints.hasBoundedHeight && constraints.maxHeight.isFinite);
           if (expandField) {
             return SizedBox(height: constraints.maxHeight, child: _buildIntakeLayout(expandField: true));
           }

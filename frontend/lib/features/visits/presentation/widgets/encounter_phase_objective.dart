@@ -22,6 +22,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
     required this.canEdit,
     required this.onRefresh,
     this.showClinicalNoteSaveBar = true,
+    this.expertMode = false,
     super.key,
   });
 
@@ -30,6 +31,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
   final bool canEdit;
   final VoidCallback onRefresh;
   final bool showClinicalNoteSaveBar;
+  final bool expertMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -37,7 +39,7 @@ class EncounterPhaseObjective extends ConsumerWidget {
       key: const Key('encounter_phase_objective'),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final expandField = constraints.hasBoundedHeight && constraints.maxHeight.isFinite;
+          final expandField = expertMode || (constraints.hasBoundedHeight && constraints.maxHeight.isFinite);
           final mainLayout = expandField
               ? SizedBox(height: constraints.maxHeight, child: _buildFindingsLayout(expandField: true))
               : _buildFindingsLayout(expandField: false);

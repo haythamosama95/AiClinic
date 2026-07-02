@@ -115,11 +115,10 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
 
   Future<void> _refreshVisitLink({bool showLoadingGate = true}) async {
     if (!_canCreateVisit || !_canAccessVisitWorkflow) {
+      _linkedVisitId = null;
+      _visitLookupDone = true;
       if (mounted) {
-        setState(() {
-          _linkedVisitId = null;
-          _visitLookupDone = true;
-        });
+        setState(() {});
       }
       return;
     }
@@ -128,23 +127,18 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       setState(() => _visitLookupDone = false);
     }
 
+    String? nextVisitId;
     try {
       final link = await ref.read(visitRepositoryProvider).getVisitByAppointment(appointmentId: detail.id);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _linkedVisitId = link.visitId?.trim().isNotEmpty == true ? link.visitId : null;
-        _visitLookupDone = true;
-      });
+      nextVisitId = link.visitId?.trim().isNotEmpty == true ? link.visitId : null;
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _linkedVisitId = null;
-        _visitLookupDone = true;
-      });
+      nextVisitId = null;
+    }
+
+    _linkedVisitId = nextVisitId;
+    _visitLookupDone = true;
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -157,7 +151,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       return;
     }
     ref.invalidate(appointmentDetailProvider(detail.id));
-    await _refreshVisitLink(showLoadingGate: false);
+    _refreshVisitLink(showLoadingGate: false);
   }
 
   Future<void> _createOrOpenVisit() async {
@@ -322,8 +316,9 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     try {
       await action();
     } finally {
+      _busyActionKey = null;
       if (mounted) {
-        setState(() => _busyActionKey = null);
+        setState(() {});
       }
     }
   }
@@ -578,8 +573,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
           icon: Icons.medical_services_outlined,
           label: visitLabel,
           disabledReason: _disabledReasonFor('visit', _visitActionDisabledReason()),
-          isLoading: _busyActionKey == 'visit',
-          onPressed: () => _runAction('visit', _createOrOpenVisit),
+          onPressed: _createOrOpenVisit,
         ),
       _StatusActionSpec(
         key: const Key('appointment_control_advance_status'),
