@@ -107,6 +107,8 @@ class _DocumentationView extends ConsumerStatefulWidget {
 }
 
 class _DocumentationViewState extends ConsumerState<_DocumentationView> {
+  static const _maxScrollAttempts = 24;
+
   final _scrollController = ScrollController();
   late final Map<EncounterPhase, GlobalKey> _phaseScrollKeys = {
     for (final phase in EncounterPhase.stepperPhases) phase: GlobalKey(),
@@ -150,9 +152,35 @@ class _DocumentationViewState extends ConsumerState<_DocumentationView> {
       return;
     }
 
-    if (attempt < 8) {
+    if (attempt < _maxScrollAttempts) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _consumePendingScroll(attempt: attempt + 1));
+      return;
     }
+
+    if (_scrollToPhaseFallback(target)) {
+      ref.read(expertModeScrollTargetProvider(widget.visitId).notifier).clear();
+    }
+  }
+
+  bool _scrollToPhaseFallback(EncounterPhase phase) {
+    if (!_scrollController.hasClients) {
+      return false;
+    }
+
+    final phases = _phaseEntries();
+    final index = phases.indexWhere((entry) => entry.phase == phase);
+    if (index < 0) {
+      return false;
+    }
+
+    final position = _scrollController.position;
+    final targetOffset = (position.maxScrollExtent / phases.length) * index;
+    _scrollController.animateTo(
+      targetOffset.clamp(0, position.maxScrollExtent),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    return true;
   }
 
   bool _scrollToPhase(EncounterPhase phase) {
@@ -219,9 +247,7 @@ class _DocumentationViewState extends ConsumerState<_DocumentationView> {
         if (!mounted) {
           return;
         }
-        if (_scrollToPhase(next)) {
-          ref.read(expertModeScrollTargetProvider(widget.visitId).notifier).clear();
-        }
+        _consumePendingScroll();
       });
     });
 

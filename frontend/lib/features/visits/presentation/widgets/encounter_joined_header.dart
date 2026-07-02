@@ -41,6 +41,7 @@ class EncounterJoinedHeader extends ConsumerStatefulWidget {
 class _EncounterJoinedHeaderState extends ConsumerState<EncounterJoinedHeader> {
   /// Horizontal bleed on each side of the stepper shelf divider (fraction of stepper width).
   static const _dividerSideBleedFraction = 0.1;
+  static const _maxMeasurementAttempts = 12;
 
   final GlobalKey _headerMeasureKey = GlobalKey();
   final GlobalKey _stepperMeasureKey = GlobalKey();
@@ -59,17 +60,33 @@ class _EncounterJoinedHeaderState extends ConsumerState<EncounterJoinedHeader> {
   @override
   void didUpdateWidget(covariant EncounterJoinedHeader oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.visit.id != widget.visit.id ||
+        oldWidget.trailing != widget.trailing ||
+        oldWidget.beforeTrailing != widget.beforeTrailing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _updateMeasurements());
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     WidgetsBinding.instance.addPostFrameCallback((_) => _updateMeasurements());
   }
 
-  void _updateMeasurements() {
+  void _updateMeasurements({int attempt = 0}) {
     final headerBox = _headerMeasureKey.currentContext?.findRenderObject() as RenderBox?;
     final stepperBox = _stepperMeasureKey.currentContext?.findRenderObject() as RenderBox?;
     final stepperContentBox = _stepperContentMeasureKey.currentContext?.findRenderObject() as RenderBox?;
 
-    final nextHeaderHeight = headerBox?.size.height;
-    final nextStepperHeight = stepperBox?.size.height;
-    final nextStepperContentWidth = stepperContentBox?.size.width;
+    final nextHeaderHeight = headerBox?.hasSize == true ? headerBox!.size.height : null;
+    final nextStepperHeight = stepperBox?.hasSize == true ? stepperBox!.size.height : null;
+    final nextStepperContentWidth = stepperContentBox?.hasSize == true ? stepperContentBox!.size.width : null;
+
+    final measurementsPending = nextHeaderHeight == null || nextStepperHeight == null || nextStepperContentWidth == null;
+    if (measurementsPending && attempt < _maxMeasurementAttempts) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _updateMeasurements(attempt: attempt + 1));
+      return;
+    }
 
     if (nextHeaderHeight == _headerHeight &&
         nextStepperHeight == _stepperHeight &&
@@ -84,6 +101,10 @@ class _EncounterJoinedHeaderState extends ConsumerState<EncounterJoinedHeader> {
       _stepperHeight = nextStepperHeight;
       _stepperContentWidth = nextStepperContentWidth;
     });
+
+    if (measurementsPending && attempt + 1 < _maxMeasurementAttempts) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _updateMeasurements(attempt: attempt + 1));
+    }
   }
 
   @override

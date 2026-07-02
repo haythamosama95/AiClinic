@@ -18,11 +18,10 @@ PhaseBadges deriveEncounterPhaseBadges(VisitDocumentationState state) {
 
 PhaseCompletionBadge _badgeForPhase(EncounterPhase phase, VisitDocumentationState state, VisitDetail visit) {
   return switch (phase) {
-    EncounterPhase.context => PhaseCompletionBadge.empty,
     EncounterPhase.subjective => _subjectiveBadge(state, visit),
-    EncounterPhase.objective => _findingsAndDiagnosisBadge(state, visit),
-    EncounterPhase.plan => _planBadge(state, visit),
-    EncounterPhase.review => PhaseCompletionBadge.empty,
+    EncounterPhase.objective => _findingsAndDiagnosisBadge(state),
+    EncounterPhase.plan => _planBadge(state),
+    EncounterPhase.review || EncounterPhase.context => PhaseCompletionBadge.empty,
   };
 }
 
@@ -47,7 +46,8 @@ PhaseCompletionBadge _subjectiveBadge(VisitDocumentationState state, VisitDetail
   return PhaseCompletionBadge.empty;
 }
 
-PhaseCompletionBadge _findingsAndDiagnosisBadge(VisitDocumentationState state, VisitDetail visit) {
+PhaseCompletionBadge _findingsAndDiagnosisBadge(VisitDocumentationState state) {
+  final visit = state.effectiveVisit;
   if (_sectionTooLong(state.examination) || _sectionTooLong(state.diagnosis)) {
     return PhaseCompletionBadge.error;
   }
@@ -59,7 +59,8 @@ PhaseCompletionBadge _findingsAndDiagnosisBadge(VisitDocumentationState state, V
   return PhaseCompletionBadge.empty;
 }
 
-PhaseCompletionBadge _planBadge(VisitDocumentationState state, VisitDetail visit) {
+PhaseCompletionBadge _planBadge(VisitDocumentationState state) {
+  final visit = state.effectiveVisit;
   if (_sectionTooLong(state.plan)) {
     return PhaseCompletionBadge.error;
   }

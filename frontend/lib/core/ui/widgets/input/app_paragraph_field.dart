@@ -116,6 +116,18 @@ bool richDeltaIsEffectivelyEmpty(List<dynamic>? deltaJson) {
   return false;
 }
 
+/// Plain-text fallback for a stored Quill delta when editor flush callbacks are unavailable.
+String plainTextFromRichDelta(List<dynamic>? deltaJson) {
+  if (richDeltaIsEffectivelyEmpty(deltaJson)) {
+    return '';
+  }
+  final raw = Document.fromJson(deltaJson!).toPlainText();
+  if (raw.endsWith('\n')) {
+    return raw.substring(0, raw.length - 1);
+  }
+  return raw;
+}
+
 QuillController quillControllerFromDraft(List<dynamic>? deltaJson, String plainText, {bool readOnly = false}) {
   if (!richDeltaIsEffectivelyEmpty(deltaJson)) {
     return QuillController(

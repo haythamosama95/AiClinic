@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -72,25 +74,59 @@ class _VisitDocumentationPageState extends ConsumerState<VisitDocumentationPage>
           });
         }
 
-        return VisitPageShell(
-          scrollBody: false,
-          hideTopBar: true,
-          onBack: () => _goBack(context, id),
-          body: _VisitDocumentationBody(
-            visitId: id,
-            state: state,
-            hasEditPermission: hasEditPermission,
-            canEditWorkspace: canEditWorkspace,
-            hasBranchAccess: hasBranchAccess,
-            canSubmit: canSubmit,
-            onBack: () => _goBack(context, id),
-            onSubmit: () => _submitVisit(context, ref, id, state, canEdit: canEditWorkspace),
-            onSaveAndClose: () => _saveAndClose(context, ref, id, canEdit: canEditWorkspace),
-            onEnterEditMode: () => ref.read(visitDocumentationProvider(id).notifier).enterWorkspaceEditMode(),
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) {
+              return;
+            }
+            unawaited(_handleBack(context, ref, id, canEdit: canEditWorkspace));
+          },
+          child: VisitPageShell(
+            scrollBody: false,
+            hideTopBar: true,
+            onBack: () => unawaited(_handleBack(context, ref, id, canEdit: canEditWorkspace)),
+            body: _VisitDocumentationBody(
+              visitId: id,
+              state: state,
+              hasEditPermission: hasEditPermission,
+              canEditWorkspace: canEditWorkspace,
+              hasBranchAccess: hasBranchAccess,
+              canSubmit: canSubmit,
+              onBack: () => unawaited(_handleBack(context, ref, id, canEdit: canEditWorkspace)),
+              onSubmit: () => _submitVisit(context, ref, id, state, canEdit: canEditWorkspace),
+              onSaveAndClose: () => _saveAndClose(context, ref, id, canEdit: canEditWorkspace),
+              onEnterEditMode: () => ref.read(visitDocumentationProvider(id).notifier).enterWorkspaceEditMode(),
+            ),
           ),
         );
       },
     );
+  }
+
+  static Future<void> _handleBack(
+    BuildContext context,
+    WidgetRef ref,
+    String visitId, {
+    required bool canEdit,
+  }) async {
+    final current = ref.read(visitDocumentationProvider(visitId)).value;
+    if (canEdit && current != null && current.hasUnsavedChanges) {
+      final discard = await _confirmDiscardUnsavedChanges(context);
+      if (!discard || !context.mounted) {
+        return;
+      }
+    }
+    _goBack(context, visitId);
+  }
+
+  static Future<bool> _confirmDiscardUnsavedChanges(BuildContext context) {
+    return AppDialog.show<bool>(
+      context: context,
+      title: 'Discard changes?',
+      barrierDismissible: false,
+      bodyBuilder: (dialogContext) => _DiscardUnsavedChangesDialog(dialogContext: dialogContext),
+    ).then((value) => value ?? false);
   }
 
   static void _goBack(BuildContext context, String visitId) {
@@ -364,5 +400,45 @@ class _VisitNotFound extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(child: Text(message));
+  }
+}
+
+class _DiscardUnsavedChangesDialog extends StatelessWidget {
+  const _DiscardUnsavedChangesDialog({required this.dialogContext});
+
+  final BuildContext dialogContext;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('You have unsaved changes. Are you sure you want to leave?', style: theme.textTheme.bodyMedium),
+        const SizedBox(height: SpacingTokens.lg),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            AppButton(
+              key: const Key('visit_discard_changes_keep_editing_button'),
+              label: 'Keep editing',
+              variant: AppButtonVariant.secondary,
+              expand: false,
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+            ),
+            const SizedBox(width: SpacingTokens.sm),
+            AppButton(
+              key: const Key('visit_discard_changes_confirm_button'),
+              label: 'Discard',
+              variant: AppButtonVariant.destructive,
+              expand: false,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 }

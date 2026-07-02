@@ -50,7 +50,9 @@ class _VisitSubmitDialogState extends ConsumerState<VisitSubmitDialog> {
     });
 
     try {
-      final result = await ref.read(visitDocumentationProvider(widget.visitId).notifier).completeVisit();
+      final result = await ref
+          .read(visitDocumentationProvider(widget.visitId).notifier)
+          .completeVisit(expectedUpdatedAt: widget.expectedUpdatedAt);
 
       if (!mounted || !widget.dialogContext.mounted) {
         return;

@@ -23,8 +23,11 @@ sql_tests=(
   visit_medical_records_crud.sql
   visit_medical_records_rls.sql
   visit_attachment_storage_rls.sql
+  visit_attachment_delete_storage.sql
   visit_encounter_workspace_crud.sql
   visit_encounter_workspace_rls.sql
+  visit_predefined_vital_signs_backfill.sql
+  visit_documentation_complete_validation.sql
 )
 
 for f in "${sql_tests[@]}"; do

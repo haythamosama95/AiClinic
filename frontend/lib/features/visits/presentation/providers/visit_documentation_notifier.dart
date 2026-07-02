@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/core/ui/widgets/input/app_paragraph_field.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/catalog_item.dart';
@@ -224,7 +225,7 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
   bool canSubmitVisit(VisitDetail visit) => _canEditVisit(visit) && visit.status == VisitStatus.inProgress;
 
   /// Completes an in-progress visit. Persists local draft fields and keeps documentation editable afterward.
-  Future<CompleteVisitResult> completeVisit() async {
+  Future<CompleteVisitResult> completeVisit({DateTime? expectedUpdatedAt}) async {
     final initial = state.value;
     if (initial == null) {
       throw StateError('Visit documentation is not loaded.');
@@ -259,11 +260,12 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
     }
 
     final current = state.value ?? initial;
+    final concurrencyToken = expectedUpdatedAt ?? current.expectedUpdatedAt;
 
     try {
       final result = await ref
           .read(visitRepositoryProvider)
-          .completeVisit(visitId: current.visit.id, expectedUpdatedAt: current.expectedUpdatedAt);
+          .completeVisit(visitId: current.visit.id, expectedUpdatedAt: concurrencyToken);
 
       final refreshed = await ref.read(visitRepositoryProvider).getVisit(visitId: current.visit.id);
       state = AsyncData(
@@ -541,14 +543,33 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       return null;
     }
 
-    // Recover from a prior structured-only save that left saveStatus stuck on saving.
-    final saveStatus = current.saveStatus == DocumentationSaveStatus.saving
-        ? DocumentationSaveStatus.idle
-        : current.saveStatus;
+    final syncedPlainText = _syncPlainTextFromRichDrafts(current);
 
-    final synced = current.copyWith(visit: current.effectiveVisit, saveStatus: saveStatus);
+    // Recover from a prior structured-only save that left saveStatus stuck on saving.
+    final saveStatus = syncedPlainText.saveStatus == DocumentationSaveStatus.saving
+        ? DocumentationSaveStatus.idle
+        : syncedPlainText.saveStatus;
+
+    final synced = syncedPlainText.copyWith(visit: syncedPlainText.effectiveVisit, saveStatus: saveStatus);
     state = AsyncData(synced);
     return synced;
+  }
+
+  VisitDocumentationState _syncPlainTextFromRichDrafts(VisitDocumentationState current) {
+    String syncSection(String plain, ClinicalNoteSection section) {
+      if (plain.trim().isNotEmpty) {
+        return plain;
+      }
+      return plainTextFromRichDelta(current.richTextDrafts[section]);
+    }
+
+    return current.copyWith(
+      complaint: syncSection(current.complaint, ClinicalNoteSection.complaint),
+      history: syncSection(current.history, ClinicalNoteSection.history),
+      examination: syncSection(current.examination, ClinicalNoteSection.examination),
+      diagnosis: syncSection(current.diagnosis, ClinicalNoteSection.diagnosis),
+      plan: syncSection(current.plan, ClinicalNoteSection.plan),
+    );
   }
 
   VisitVitalSign? _findVitalSign(String id) {
@@ -1282,17 +1303,54 @@ class VisitDocumentationNotifier extends AsyncNotifier<VisitDocumentationState> 
       );
       return true;
     } on RpcFailure catch (error) {
+      await _recoverEncounterDraftAfterFlushFailure(current);
       final currentAfter = state.value ?? current;
+      final baseMessage = visitMessageForRpc(error);
       state = AsyncData(
-        currentAfter.copyWith(saveStatus: DocumentationSaveStatus.error, errorMessage: visitMessageForRpc(error)),
+        currentAfter.copyWith(
+          saveStatus: DocumentationSaveStatus.error,
+          errorMessage: '$baseMessage Some changes may have been saved — review the visit before retrying.',
+        ),
       );
       return false;
     } catch (error) {
+      await _recoverEncounterDraftAfterFlushFailure(current);
       final currentAfter = state.value ?? current;
       state = AsyncData(
-        currentAfter.copyWith(saveStatus: DocumentationSaveStatus.error, errorMessage: error.toString()),
+        currentAfter.copyWith(
+          saveStatus: DocumentationSaveStatus.error,
+          errorMessage: '${error.toString()} Some changes may have been saved — review the visit before retrying.',
+        ),
       );
       return false;
+    }
+  }
+
+  /// Reloads persisted visit rows after a partial structured flush so the UI matches the server.
+  ///
+  /// Clears the encounter draft overlay to avoid duplicate creates on retry.
+  Future<void> _recoverEncounterDraftAfterFlushFailure(VisitDocumentationState current) async {
+    try {
+      final repo = ref.read(visitRepositoryProvider);
+      final refreshed = await repo.getVisit(visitId: current.visit.id);
+      final afterNote = state.value ?? current;
+      state = AsyncData(
+        VisitDocumentationState.fromVisit(refreshed, predefinedVitalSigns: current.predefinedVitalSigns).copyWith(
+          complaint: afterNote.complaint,
+          history: afterNote.history,
+          examination: afterNote.examination,
+          diagnosis: afterNote.diagnosis,
+          plan: afterNote.plan,
+          richTextDrafts: afterNote.richTextDrafts,
+          expectedUpdatedAt: refreshed.documentation?.updatedAt ?? refreshed.updatedAt ?? afterNote.expectedUpdatedAt,
+          noteEditMode: afterNote.noteEditMode,
+          workspaceEditMode: afterNote.workspaceEditMode,
+          encounterDraft: const VisitEncounterDraft(),
+          saveStatus: DocumentationSaveStatus.error,
+        ),
+      );
+    } catch (_) {
+      // Keep the pre-recovery state when refresh fails.
     }
   }
 
