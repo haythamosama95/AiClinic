@@ -69,24 +69,24 @@ honesty, PHI-redaction). Test tasks are therefore first-class, not optional.
 
 > Write these tests FIRST and confirm they FAIL before implementation.
 
-- [ ] T014 [P] [US1] Isolation-scan contract test asserting a clean tree passes and a planted DB credential/driver import fails, in `ai/gateway/tests/contract/test_isolation.py` (SC-005, FR-002)
-- [ ] T015 [P] [US1] Liveness/readiness contract test: `/health` = 200 always; `/ready` = 200 only when ≥1 runner READY, else 503 envelope, in `ai/gateway/tests/contract/test_health.py` (SC-002)
-- [ ] T016 [P] [US1] Runner non-routability contract test asserting the runner binds AI-internal only and refuses a client-subnet origin, in `ai/gateway/tests/contract/test_runner_contract.py` (SC-008, FR-010)
-- [ ] T017 [P] [US1] Lifecycle transition unit tests for the pure `(status, outcome, counters, config) → next_status` function incl. `UNKNOWN→STARTING→READY` and `→UNREACHABLE` after 3 failures, in `ai/gateway/tests/unit/test_lifecycle.py` (FR-025, data-model §3)
-- [ ] T018 [P] [US1] Config fail-fast unit test: valid config parses with defaults; invalid key/type and missing auth material fail fast naming the key, in `ai/gateway/tests/unit/test_config.py` (SC-009, FR-004)
+- [X] T014 [P] [US1] Isolation-scan contract test asserting a clean tree passes and a planted DB credential/driver import fails, in `ai/gateway/tests/contract/test_isolation.py` (SC-005, FR-002)
+- [X] T015 [P] [US1] Liveness/readiness contract test: `/health` = 200 always; `/ready` = 200 only when ≥1 runner READY, else 503 envelope, in `ai/gateway/tests/contract/test_health.py` (SC-002)
+- [X] T016 [P] [US1] Runner non-routability contract test asserting the runner binds AI-internal only and refuses a client-subnet origin, in `ai/gateway/tests/contract/test_runner_contract.py` (SC-008, FR-010)
+- [X] T017 [P] [US1] Lifecycle transition unit tests for the pure `(status, outcome, counters, config) → next_status` function incl. `UNKNOWN→STARTING→READY` and `→UNREACHABLE` after 3 failures, in `ai/gateway/tests/unit/test_lifecycle.py` (FR-025, data-model §3)
+- [X] T018 [P] [US1] Config fail-fast unit test: valid config parses with defaults; invalid key/type and missing auth material fail fast naming the key, in `ai/gateway/tests/unit/test_config.py` (SC-009, FR-004)
 
 ### Implementation for User Story 1
 
-- [ ] T019 [P] [US1] Implement the OpenAI-compatible runner poll client (`GET /v1/models` and optional `/health`, bounded ≤2s timeout, capture loaded model id+digest+context) in `ai/gateway/src/gateway/runners/openai_client.py` (FR-006/FR-013, contracts/runner-poll.md)
-- [ ] T020 [P] [US1] Implement the pure runner lifecycle transition function (`UNKNOWN→STARTING→READY→UNREACHABLE`, failure counting) in `ai/gateway/src/gateway/routing/lifecycle.py` (FR-025)
-- [ ] T021 [US1] Implement the in-memory `RunnerRegistryEntry` registry (status, last-seen, latency, loaded model, consecutive failures) with atomic reads and a `ready == any(READY)` derivation in `ai/gateway/src/gateway/routing/registry.py` (FR-023/FR-024, data-model §2)
-- [ ] T022 [US1] Implement the pull-based health poller loop (per-runner cadence `health_poll_interval_s`, updates registry via lifecycle+poll client) in `ai/gateway/src/gateway/routing/health_poller.py`, started from the `main.py` lifespan (FR-023)
-- [ ] T023 [US1] Implement `GET /health` (unauthenticated liveness) and `GET /ready` (readiness = ≥1 READY runner, else 503 envelope) in `ai/gateway/src/gateway/api/health.py` (FR-014)
-- [ ] T024 [US1] Implement the isolation scan (static import + secret/service-role pattern scan over `ai/`, non-zero exit on any hit) in `ai/gateway/scripts/isolation_scan.py` (FR-002, SC-005)
-- [ ] T025 [P] [US1] Create `ai/runners/ollama/docker-compose.yaml` binding Ollama to `127.0.0.1:11434` with `restart: always` (FR-010/FR-005)
-- [ ] T026 [P] [US1] Create `ai/runners/ollama/Modelfile` defining the default Qwen3-4B Q4_K_M model (FR-008)
-- [ ] T027 [P] [US1] Create `ai/runners/ollama/digests.md` recording the pinned model `sha256:` digest (FR-008, §11.6)
-- [ ] T028 [P] [US1] Create `ai/runners/README.md` runbook: model install via pull and via local GGUF path, model store location, and digest pinning (FR-012)
+- [X] T019 [P] [US1] Implement the OpenAI-compatible runner poll client (`GET /v1/models` and optional `/health`, bounded ≤2s timeout, capture loaded model id+digest+context) in `ai/gateway/src/gateway/runners/openai_client.py` (FR-006/FR-013, contracts/runner-poll.md)
+- [X] T020 [P] [US1] Implement the pure runner lifecycle transition function (`UNKNOWN→STARTING→READY→UNREACHABLE`, failure counting) in `ai/gateway/src/gateway/routing/lifecycle.py` (FR-025)
+- [X] T021 [US1] Implement the in-memory `RunnerRegistryEntry` registry (status, last-seen, latency, loaded model, consecutive failures) with atomic reads and a `ready == any(READY)` derivation in `ai/gateway/src/gateway/routing/registry.py` (FR-023/FR-024, data-model §2)
+- [X] T022 [US1] Implement the pull-based health poller loop (per-runner cadence `health_poll_interval_s`, updates registry via lifecycle+poll client) in `ai/gateway/src/gateway/routing/health_poller.py`, started from the `main.py` lifespan (FR-023)
+- [X] T023 [US1] Implement `GET /health` (unauthenticated liveness) and `GET /ready` (readiness = ≥1 READY runner, else 503 envelope) in `ai/gateway/src/gateway/api/health.py` (FR-014)
+- [X] T024 [US1] Implement the isolation scan (static import + secret/service-role pattern scan over `ai/`, non-zero exit on any hit) in `ai/gateway/scripts/isolation_scan.py` (FR-002, SC-005)
+- [X] T025 [P] [US1] Create `ai/runners/ollama/docker-compose.yaml` binding Ollama to `127.0.0.1:11434` with `restart: always` (FR-010/FR-005)
+- [X] T026 [P] [US1] Create `ai/runners/ollama/Modelfile` defining the default Qwen3-4B Q4_K_M model (FR-008)
+- [X] T027 [P] [US1] Create `ai/runners/ollama/digests.md` recording the pinned model `sha256:` digest (FR-008, §11.6)
+- [X] T028 [P] [US1] Create `ai/runners/README.md` runbook: model install via pull and via local GGUF path, model store location, and digest pinning (FR-012)
 
 **Checkpoint**: US1 is independently deployable and testable — the isolated AI spine is up and honest.
 

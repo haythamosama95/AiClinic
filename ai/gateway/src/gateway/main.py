@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from gateway.api.errors import install_exception_handlers
+from gateway.api.health import router as health_router
 from gateway.api.metrics import router as metrics_router
+from gateway.api.status import router as status_router
 from gateway.config.settings import GatewayConfig, load_config
 from gateway.obs import logging as obs_logging
 from gateway.obs.metrics import record_request
 from gateway.routing.health_poller import HealthPoller
+from gateway.routing.registry import RunnerRegistry
 
 _config: GatewayConfig | None = None
 _poller: HealthPoller | None = None
+_registry: RunnerRegistry | None = None
 
 
 def get_config() -> GatewayConfig:
@@ -27,14 +33,26 @@ def get_config() -> GatewayConfig:
     return _config
 
 
+def get_registry() -> RunnerRegistry:
+    if _registry is None:
+        raise RuntimeError("Gateway not initialized")
+    return _registry
+
+
 def get_poller() -> HealthPoller | None:
     return _poller
+
+
+def _resolve_dashboard_dir(cfg: GatewayConfig) -> Path:
+    if cfg.dashboard_dir:
+        return Path(cfg.dashboard_dir)
+    return Path(__file__).resolve().parents[3] / "dashboard"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global _poller
-    _poller = HealthPoller(app.state.config)
+    _poller = HealthPoller(app.state.config, app.state.registry)
     await _poller.start()
     yield
     if _poller is not None:
@@ -44,14 +62,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app(config: GatewayConfig | None = None) -> FastAPI:
     """Factory for the FastAPI application (used by tests and production)."""
-    global _config
+    global _config, _registry
     cfg = config or load_config()
     _config = cfg
+    _registry = RunnerRegistry(cfg)
 
     obs_logging.configure_logging(cfg.log_dir, cfg.log_verbatim)
 
     app = FastAPI(title="AI Gateway", version="0.1.0", lifespan=lifespan)
     app.state.config = cfg
+    app.state.registry = _registry
+    app.state.started_monotonic = time.monotonic()
 
     install_exception_handlers(app)
 
@@ -72,11 +93,19 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
         record_request(request.method, request.url.path, response.status_code)
         return response
 
-    @app.get("/health")
-    async def health() -> JSONResponse:
-        return JSONResponse({"status": "ok"})
-
+    app.include_router(health_router)
     app.include_router(metrics_router)
+    app.include_router(status_router)
+
+    dashboard_path = _resolve_dashboard_dir(cfg)
+    dashboard_mounted = dashboard_path.is_dir()
+    app.state.dashboard_mounted = dashboard_mounted
+    if dashboard_mounted:
+        app.mount(
+            "/dashboard",
+            StaticFiles(directory=str(dashboard_path), html=True),
+            name="dashboard",
+        )
 
     return app
 

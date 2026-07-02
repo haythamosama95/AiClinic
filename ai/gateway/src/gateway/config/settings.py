@@ -81,6 +81,7 @@ class GatewayConfig(BaseSettings):
     models_dir: str | None = None
     role_ai_access: dict[str, bool] = Field(default_factory=lambda: dict(RoleAiAccessMap.DEFAULTS))
     log_dir: str = "./logs"
+    dashboard_dir: str | None = None
 
     @field_validator("allowed_origins")
     @classmethod

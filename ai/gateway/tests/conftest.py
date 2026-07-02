@@ -34,7 +34,9 @@ def gateway_config_jwks() -> GatewayConfig:
 
 @pytest.fixture
 async def app(gateway_config: GatewayConfig):
-    return create_app(gateway_config)
+    application = create_app(gateway_config)
+    async with application.router.lifespan_context(application):
+        yield application
 
 
 @pytest.fixture

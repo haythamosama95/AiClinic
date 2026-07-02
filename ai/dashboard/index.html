@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AI Gateway control plane — live health, runners, and metrics">
+  <title>AI Control Plane</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <header class="hero" id="dashboard-header">
+      <div class="hero__grid-bg" aria-hidden="true"></div>
+
+      <div class="hero__content">
+        <div class="hero__identity">
+          <p class="hero__eyebrow">AiClinic · Gateway</p>
+          <h1 class="hero__title">Control Plane</h1>
+          <p class="hero__subtitle">Phases 1–3 · health spine &amp; runner registry</p>
+        </div>
+
+        <div class="hero__status-bar">
+          <div class="hero__badges">
+            <span class="badge badge--live" id="connection-indicator" data-state="unknown" role="status"
+              aria-live="polite">
+              <span class="badge__dot" aria-hidden="true"></span>
+              <span class="badge__label" id="connection-label">Connecting…</span>
+            </span>
+
+            <span class="badge badge--readiness" id="readiness-badge" data-ready="unknown" role="status">
+              <span class="badge__icon" aria-hidden="true">◆</span>
+              <span class="badge__label" id="readiness-label">Readiness unknown</span>
+            </span>
+
+            <span class="pill pill--phase" id="phase-pill" title="Active implementation phases">
+              Phases 1–3 active
+            </span>
+          </div>
+
+          <div class="hero__actions">
+            <label class="hero__poll-label" for="poll-interval">
+              Poll
+              <input type="number" class="hero__poll-input" id="poll-interval" min="2" max="60" value="5"
+                aria-label="Poll interval in seconds">
+              s
+            </label>
+            <span class="hero__last-refresh" id="last-refresh" aria-live="polite">—</span>
+            <button type="button" class="btn btn--refresh" id="refresh-btn" aria-label="Refresh dashboard data">
+              <span class="btn__icon" aria-hidden="true">↻</span>
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard-main">
+      <!-- Overview cards -->
+      <section class="panel panel--overview" id="overview-section" aria-labelledby="overview-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="overview-heading">Overview</h2>
+          <p class="panel__desc">Gateway vitals at a glance</p>
+        </header>
+        <div class="overview-grid" id="overview-cards">
+          <article class="stat-card" data-metric="liveness" id="card-liveness">
+            <span class="stat-card__label">Liveness</span>
+            <span class="stat-card__value" id="metric-liveness">—</span>
+            <span class="stat-card__hint" id="metric-liveness-hint">/health</span>
+          </article>
+          <article class="stat-card" data-metric="readiness" id="card-readiness">
+            <span class="stat-card__label">Readiness</span>
+            <span class="stat-card__value" id="metric-readiness">—</span>
+            <span class="stat-card__hint" id="metric-readiness-hint">/ready</span>
+          </article>
+          <article class="stat-card" data-metric="total-runners" id="card-total-runners">
+            <span class="stat-card__label">Total runners</span>
+            <span class="stat-card__value" id="metric-total-runners">—</span>
+            <span class="stat-card__hint" id="metric-total-runners-delta"></span>
+          </article>
+          <article class="stat-card stat-card--accent" data-metric="ready-runners" id="card-ready-runners">
+            <span class="stat-card__label">READY runners</span>
+            <span class="stat-card__value" id="metric-ready-runners">—</span>
+            <span class="stat-card__hint" id="metric-ready-runners-hint">registry</span>
+          </article>
+          <article class="stat-card" data-metric="total-requests" id="card-total-requests">
+            <span class="stat-card__label">API requests</span>
+            <span class="stat-card__value stat-card__value--mono" id="metric-total-requests">—</span>
+            <span class="stat-card__hint" id="metric-total-requests-delta"></span>
+          </article>
+          <article class="stat-card" data-metric="error-rate" id="card-error-rate">
+            <span class="stat-card__label">Error rate</span>
+            <span class="stat-card__value stat-card__value--mono" id="metric-error-rate">—</span>
+            <span class="stat-card__hint" id="metric-error-rate-hint">session delta</span>
+          </article>
+        </div>
+      </section>
+
+      <!-- Runners + lifecycle -->
+      <section class="panel panel--runners" id="runners-panel" aria-labelledby="runners-heading">
+        <header class="panel__header panel__header--split">
+          <div>
+            <h2 class="panel__title" id="runners-heading">Runners</h2>
+            <p class="panel__desc">Registry snapshot &amp; lifecycle state</p>
+          </div>
+          <span class="panel__count" id="runners-count" aria-live="polite">0 registered</span>
+        </header>
+
+        <div class="lifecycle-rail" id="lifecycle-state-machine" aria-label="Runner lifecycle states">
+          <div class="lifecycle-rail__track" aria-hidden="true"></div>
+          <ol class="lifecycle-rail__states">
+            <li class="lifecycle-node" data-state="UNKNOWN" id="lifecycle-unknown">
+              <span class="lifecycle-node__ring"></span>
+              <span class="lifecycle-node__label">Unknown</span>
+            </li>
+            <li class="lifecycle-node" data-state="STARTING" id="lifecycle-starting">
+              <span class="lifecycle-node__ring"></span>
+              <span class="lifecycle-node__label">Starting</span>
+            </li>
+            <li class="lifecycle-node lifecycle-node--primary" data-state="READY" id="lifecycle-ready">
+              <span class="lifecycle-node__ring"></span>
+              <span class="lifecycle-node__label">Ready</span>
+            </li>
+            <li class="lifecycle-node" data-state="DEGRADED" id="lifecycle-degraded">
+              <span class="lifecycle-node__ring"></span>
+              <span class="lifecycle-node__label">Degraded</span>
+            </li>
+            <li class="lifecycle-node" data-state="UNREACHABLE" id="lifecycle-unreachable">
+              <span class="lifecycle-node__ring"></span>
+              <span class="lifecycle-node__label">Unreachable</span>
+            </li>
+          </ol>
+          <p class="lifecycle-rail__caption" id="lifecycle-caption">Current aggregate state appears when runners load
+          </p>
+        </div>
+
+        <div class="runner-cards" id="runner-cards" role="list" aria-label="Registered model runners">
+          <div class="empty-state" id="runners-empty">
+            <p class="empty-state__title">No runners yet</p>
+            <p class="empty-state__body">Runner cards populate from <code>/v1/status</code> when the gateway polls
+              Ollama.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Metrics charts -->
+      <section class="panel panel--metrics" id="metrics-panel" aria-labelledby="metrics-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="metrics-heading">Metrics</h2>
+          <p class="panel__desc">Parsed from <code>/metrics</code> — request rate excludes health/dashboard polls</p>
+        </header>
+
+        <div class="metrics-grid">
+          <figure class="chart-card" id="chart-request-rate-wrap">
+            <figcaption class="chart-card__title">Request rate</figcaption>
+            <div class="chart-card__body chart-card__body--sparkline">
+              <svg class="chart-svg" id="chart-request-rate" viewBox="0 0 320 80" preserveAspectRatio="none" role="img"
+                aria-labelledby="chart-request-rate-label">
+                <title id="chart-request-rate-label">Request rate sparkline</title>
+                <line class="chart-placeholder-line" x1="0" y1="40" x2="320" y2="40"></line>
+              </svg>
+            </div>
+            <p class="chart-card__stat" id="chart-request-rate-value">— req/s</p>
+          </figure>
+
+          <figure class="chart-card" id="chart-status-codes-wrap">
+            <figcaption class="chart-card__title">Status codes</figcaption>
+            <div class="chart-card__body">
+              <svg class="chart-svg" id="chart-status-codes" viewBox="0 0 320 120" role="img"
+                aria-labelledby="chart-status-codes-label">
+                <title id="chart-status-codes-label">HTTP status code distribution</title>
+              </svg>
+            </div>
+            <ul class="chart-legend" id="chart-status-codes-legend" aria-hidden="true"></ul>
+          </figure>
+
+          <figure class="chart-card" id="chart-runner-latency-wrap">
+            <figcaption class="chart-card__title">Per-runner latency</figcaption>
+            <div class="chart-card__body">
+              <svg class="chart-svg" id="chart-runner-latency" viewBox="0 0 320 120" role="img"
+                aria-labelledby="chart-runner-latency-label">
+                <title id="chart-runner-latency-label">Runner poll latency bars</title>
+              </svg>
+            </div>
+          </figure>
+
+          <figure class="chart-card" id="chart-error-codes-wrap">
+            <figcaption class="chart-card__title">Error breakdown</figcaption>
+            <div class="chart-card__body">
+              <svg class="chart-svg" id="chart-error-codes" viewBox="0 0 320 120" role="img"
+                aria-labelledby="chart-error-codes-label">
+                <title id="chart-error-codes-label">Gateway error code breakdown</title>
+              </svg>
+            </div>
+            <ul class="chart-legend" id="chart-error-codes-legend" aria-hidden="true"></ul>
+          </figure>
+        </div>
+      </section>
+
+      <!-- Endpoint explorer -->
+      <section class="panel panel--explorer" id="endpoint-explorer" aria-labelledby="explorer-heading">
+        <header class="panel__header panel__header--split">
+          <div>
+            <h2 class="panel__title" id="explorer-heading">Endpoint explorer</h2>
+            <p class="panel__desc">Try live routes · future phases shown greyed</p>
+          </div>
+        </header>
+
+        <div class="explorer-table-wrap">
+          <table class="explorer-table" id="endpoint-table">
+            <thead>
+              <tr>
+                <th scope="col">Method</th>
+                <th scope="col">Path</th>
+                <th scope="col">Phase</th>
+                <th scope="col">Status</th>
+                <th scope="col"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="endpoint-list">
+              <!-- app.js populates from endpoints[] catalog -->
+            </tbody>
+          </table>
+          <div class="empty-state empty-state--compact" id="endpoint-empty">
+            <p class="empty-state__body">Endpoint rows load from the gateway catalog.</p>
+          </div>
+        </div>
+
+        <div class="response-panel" id="endpoint-response-panel" hidden>
+          <header class="response-panel__header">
+            <span class="response-panel__status" id="endpoint-response-status">—</span>
+            <span class="response-panel__path" id="endpoint-response-path"></span>
+          </header>
+          <pre class="response-panel__body" id="endpoint-response-body" tabindex="0"></pre>
+        </div>
+      </section>
+
+      <!-- Security / isolation -->
+      <section class="panel panel--security" id="security-panel" aria-labelledby="security-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="security-heading">Security &amp; isolation</h2>
+          <p class="panel__desc">Non-negotiable invariants · safe config summary</p>
+        </header>
+
+        <div class="security-grid">
+          <div class="invariants" id="security-invariants">
+            <h3 class="invariants__title">Invariants</h3>
+            <ol class="invariant-list">
+              <li class="invariant-card" id="invariant-proposes-only">
+                <span class="invariant-card__index" aria-hidden="true">01</span>
+                <div class="invariant-card__content">
+                  <strong class="invariant-card__name">AI proposes only</strong>
+                  <p class="invariant-card__text">The AI layer never writes to the clinic database. Protected writes go
+                    through Supabase RPC with human approval.</p>
+                </div>
+              </li>
+              <li class="invariant-card" id="invariant-no-db-creds">
+                <span class="invariant-card__index" aria-hidden="true">02</span>
+                <div class="invariant-card__content">
+                  <strong class="invariant-card__name">No clinic-DB credentials</strong>
+                  <p class="invariant-card__text">Nothing under <code>ai/</code> imports Postgres drivers, holds
+                    service-role keys, or references Supabase connection strings.</p>
+                </div>
+              </li>
+              <li class="invariant-card" id="invariant-ui-works">
+                <span class="invariant-card__index" aria-hidden="true">03</span>
+                <div class="invariant-card__content">
+                  <strong class="invariant-card__name">Manual UI works with AI down</strong>
+                  <p class="invariant-card__text">The clinic application remains fully usable when the entire AI layer
+                    is stopped. AI is strictly additive.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <div class="config-summary" id="config-summary">
+            <h3 class="config-summary__title">Safe config</h3>
+            <dl class="config-dl" id="config-dl">
+              <div class="config-dl__row" data-key="health_poll_interval_s">
+                <dt>Health poll interval</dt>
+                <dd id="config-health-poll">—</dd>
+              </div>
+              <div class="config-dl__row" data-key="unreachable_after_failures">
+                <dt>Unreachable after failures</dt>
+                <dd id="config-unreachable-after">—</dd>
+              </div>
+              <div class="config-dl__row" data-key="allowed_origins">
+                <dt>Allowed origins</dt>
+                <dd id="config-allowed-origins">—</dd>
+              </div>
+              <div class="config-dl__row" data-key="streaming_enabled">
+                <dt>Streaming</dt>
+                <dd id="config-streaming">—</dd>
+              </div>
+              <div class="config-dl__row" data-key="enable_multi_command_plans">
+                <dt>Multi-command plans</dt>
+                <dd id="config-multi-command">—</dd>
+              </div>
+              <div class="config-dl__row" data-key="enable_push_registration">
+                <dt>Push registration</dt>
+                <dd id="config-push-reg">—</dd>
+              </div>
+              <div class="config-dl__row" data-key="log_verbatim">
+                <dt>Log verbatim</dt>
+                <dd id="config-log-verbatim">—</dd>
+              </div>
+            </dl>
+            <p class="config-summary__uptime">
+              Gateway uptime: <span class="config-summary__mono" id="gateway-uptime">—</span>
+              <span class="config-summary__version" id="gateway-version"></span>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Phase-gated future panels -->
+      <section class="panel panel--future" id="capabilities-section" data-phase-section="capabilities-section"
+        aria-labelledby="capabilities-heading" aria-hidden="true">
+        <header class="panel__header">
+          <h2 class="panel__title" id="capabilities-heading">Capabilities</h2>
+          <p class="panel__desc">Live runner model discovery · Phase 5</p>
+        </header>
+        <p class="empty-state__body" id="capabilities-placeholder">Probes <code>/v1/capabilities</code> when Phase 5
+          ships.</p>
+      </section>
+
+      <section class="panel panel--future" id="generate-section" data-phase-section="generate-section"
+        aria-labelledby="generate-heading" aria-hidden="true">
+        <header class="panel__header">
+          <h2 class="panel__title" id="generate-heading">Generate</h2>
+          <p class="panel__desc">Inference stub · Phase 5</p>
+        </header>
+        <p class="empty-state__body" id="generate-placeholder">Enables when <code>POST /v1/ai/generate</code> stops
+          returning 501.</p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>AI Control Plane · served same-origin from gateway <code>/dashboard</code></p>
+    </footer>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+
+</html>
