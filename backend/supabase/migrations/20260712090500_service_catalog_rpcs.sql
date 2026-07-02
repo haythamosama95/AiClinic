@@ -1,0 +1,4 @@
+-- =============================================================================
+-- Service Catalog (015): service management + branch configuration RPCs
+-- Populated in user-story phases (US1, US3, US4, US5, US7).
+-- =============================================================================

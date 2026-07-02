@@ -37,9 +37,9 @@ description: "Task list for Service Catalog (015) implementation"
 
 **Purpose**: Architecture-safe module scaffolding and empty artifact files
 
-- [ ] T001 Create the feature module tree `frontend/lib/features/service_catalog/{domain,data,application,presentation/{models,providers,pages,widgets}}/` and test dirs `frontend/test/unit/service_catalog/` and `frontend/test/widget/service_catalog/`
-- [ ] T002 [P] Create the four empty migration files with correct sort-after prefixes in `backend/supabase/migrations/`: `20260712090000_service_catalog.sql`, `20260712090500_service_catalog_rpcs.sql`, `20260712091000_service_catalog_pricing_rpcs.sql`, `20260712091500_service_catalog_billing_integration.sql`
-- [ ] T003 [P] Create backend test runner `backend/tests/run_service_catalog_tests.sh` (mirroring the billing harness) and register it in `backend/tests/run_all_backend_tests.sh`
+- [X] T001 Create the feature module tree `frontend/lib/features/service_catalog/{domain,data,application,presentation/{models,providers,pages,widgets}}/` and test dirs `frontend/test/unit/service_catalog/` and `frontend/test/widget/service_catalog/`
+- [X] T002 [P] Create the four empty migration files with correct sort-after prefixes in `backend/supabase/migrations/`: `20260712090000_service_catalog.sql`, `20260712090500_service_catalog_rpcs.sql`, `20260712091000_service_catalog_pricing_rpcs.sql`, `20260712091500_service_catalog_billing_integration.sql`
+- [X] T003 [P] Create backend test runner `backend/tests/run_service_catalog_tests.sh` (mirroring the billing harness) and register it in `backend/tests/run_all_backend_tests.sh`
 
 ---
 
@@ -49,14 +49,14 @@ description: "Task list for Service Catalog (015) implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Author base schema in `backend/supabase/migrations/20260712090000_service_catalog.sql`: enums (`service_global_status`, `service_branch_status`, `service_copy_mode`), tables `public.services` and `public.service_branches` with all columns, CHECK constraints (name length, `default_price>=0`, override/promotion `>=0`, promotion all-or-nothing + `start<=end`), partial unique indexes (`services_org_name_unique`, `service_branches_service_branch_unique`), secondary indexes, and `apply_standard_audit_triggers` on both tables per `specs/015-service-catalog/data-model.md`
-- [ ] T005 Add RLS to both tables in `backend/supabase/migrations/20260712090000_service_catalog.sql`: authenticated-only, org isolation via `jwt_organization_id()`, branch scoping for `service_branches`, read helper `auth_internal.staff_has_services_read_access()` allowing `invoices.create` selection reads, exclusion of soft-deleted rows, and denial of direct INSERT/UPDATE/DELETE (mutations only via RPC)
-- [ ] T006 Seed permission keys `services.view` and `services.manage` to `owner` and `administrator` in `backend/supabase/migrations/20260712090000_service_catalog.sql` using the billing `INSERT ... ON CONFLICT (role, permission_key) DO UPDATE` idiom
-- [ ] T007 [P] Add `servicesView` (`services.view`) and `servicesManage` (`services.manage`) constants to `frontend/lib/features/auth/domain/permission_keys.dart`
-- [ ] T008 [P] Expose the new keys through `frontend/lib/core/auth/permission_service.dart` (helpers/`canManageServices`/`canViewServices` as appropriate to that file's pattern)
-- [ ] T009 [P] Create shared domain primitives `frontend/lib/features/service_catalog/domain/service.dart` (Service model: id, name, `defaultPrice: Money`, `globalStatus`, timestamps) and `frontend/lib/features/service_catalog/domain/global_status.dart` (enum active/inactive), no framework/SDK imports
-- [ ] T010 [P] Create repository skeleton `frontend/lib/features/service_catalog/data/service_catalog_repository.dart` using the `AppRpcInvoker` mixin and returning `RpcResult`/`RpcFailure` (methods added per story)
-- [ ] T011 [P] Create `frontend/lib/features/service_catalog/application/service_catalog_rpc_messages.dart` mapping RPC error codes (`STALE_SERVICE`, `STALE_SERVICE_BRANCH`, `DUPLICATE_NAME`, `INVALID_PRICE`, `BRANCH_NOT_IN_ORG`, `BRANCH_NOT_ASSIGNED`, `PROMO_EXCEEDS_PRICE`, `PROMO_INCOMPLETE`, `PROMO_DATE_RANGE`, `INVALID_COPY_TARGET`, `SERVICE_NOT_ELIGIBLE`, `NOT_FOUND`, `FORBIDDEN`) to user-facing messages
+- [X] T004 Author base schema in `backend/supabase/migrations/20260712090000_service_catalog.sql`: enums (`service_global_status`, `service_branch_status`, `service_copy_mode`), tables `public.services` and `public.service_branches` with all columns, CHECK constraints (name length, `default_price>=0`, override/promotion `>=0`, promotion all-or-nothing + `start<=end`), partial unique indexes (`services_org_name_unique`, `service_branches_service_branch_unique`), secondary indexes, and `apply_standard_audit_triggers` on both tables per `specs/015-service-catalog/data-model.md`
+- [X] T005 Add RLS to both tables in `backend/supabase/migrations/20260712090000_service_catalog.sql`: authenticated-only, org isolation via `jwt_organization_id()`, branch scoping for `service_branches`, read helper `auth_internal.staff_has_services_read_access()` allowing `invoices.create` selection reads, exclusion of soft-deleted rows, and denial of direct INSERT/UPDATE/DELETE (mutations only via RPC)
+- [X] T006 Seed permission keys `services.view` and `services.manage` to `owner` and `administrator` in `backend/supabase/migrations/20260712090000_service_catalog.sql` using the billing `INSERT ... ON CONFLICT (role, permission_key) DO UPDATE` idiom
+- [X] T007 [P] Add `servicesView` (`services.view`) and `servicesManage` (`services.manage`) constants to `frontend/lib/features/auth/domain/permission_keys.dart`
+- [X] T008 [P] Expose the new keys through `frontend/lib/core/auth/permission_service.dart` (helpers/`canManageServices`/`canViewServices` as appropriate to that file's pattern)
+- [X] T009 [P] Create shared domain primitives `frontend/lib/features/service_catalog/domain/service.dart` (Service model: id, name, `defaultPrice: Money`, `globalStatus`, timestamps) and `frontend/lib/features/service_catalog/domain/global_status.dart` (enum active/inactive), no framework/SDK imports
+- [X] T010 [P] Create repository skeleton `frontend/lib/features/service_catalog/data/service_catalog_repository.dart` using the `AppRpcInvoker` mixin and returning `RpcResult`/`RpcFailure` (methods added per story)
+- [X] T011 [P] Create `frontend/lib/features/service_catalog/application/service_catalog_rpc_messages.dart` mapping RPC error codes (`STALE_SERVICE`, `STALE_SERVICE_BRANCH`, `DUPLICATE_NAME`, `INVALID_PRICE`, `BRANCH_NOT_IN_ORG`, `BRANCH_NOT_ASSIGNED`, `PROMO_EXCEEDS_PRICE`, `PROMO_INCOMPLETE`, `PROMO_DATE_RANGE`, `INVALID_COPY_TARGET`, `SERVICE_NOT_ELIGIBLE`, `NOT_FOUND`, `FORBIDDEN`) to user-facing messages
 
 **Checkpoint**: Schema live, RLS + permissions enforced, client primitives available — user stories can begin
 

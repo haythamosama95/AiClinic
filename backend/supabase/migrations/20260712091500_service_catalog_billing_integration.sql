@@ -1,0 +1,4 @@
+-- =============================================================================
+-- Service Catalog (015): invoice_items extension + add_invoice_item_from_service
+-- Populated in user-story phase US2.
+-- =============================================================================
