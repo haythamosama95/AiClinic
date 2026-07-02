@@ -10,28 +10,28 @@
 
 ## Workflow Automation System
 
-> **Note:** Workflow automation is defined architecturally for future reference but is not included in the current project phases. It will be implemented in a future iteration.
+> **Note:** Workflow automation is defined architecturally for future reference but is **not implemented**. There are **no** `workflow_rules`, `workflow_executions`, or `workflow_event_queue` tables in migrations. No PostgreSQL emit triggers and no Flutter engine exist.
 
-### Architecture
+### Architecture (Planned)
 
-The workflow system is a lightweight, configurable trigger-action engine. It is intentionally simple -- no DAGs, no complex branching, no conditional logic trees.
+The workflow system is intended as a lightweight, configurable trigger-action engine — no DAGs, no complex branching.
 
 ```
 Event occurs (e.g., appointment created)
         │
         ▼
-PostgreSQL trigger fires
-  → inserts record into `workflow_event_queue` table
+PostgreSQL trigger or RPC hook (planned)
+  → inserts record into a workflow event queue table (NOT YET CREATED)
         │
         ▼
-Flutter app polls `workflow_event_queue` (or receives via Realtime subscription)
+Flutter app polls queue or receives via Realtime subscription (planned)
         │
         ▼
 Workflow Engine (in Flutter service layer) evaluates matching rules
         │
         ▼
 For each matching rule, executes the action:
-  - In-app notification: insert into notifications table
+  - In-app notification: insert into notifications table (table not yet created)
   - WhatsApp message: HTTP call to third-party API
   - Status update: supabase.rpc() call
         │
@@ -39,9 +39,9 @@ For each matching rule, executes the action:
 Log execution result to `workflow_executions`
 ```
 
-### Trigger Events
+**Current state:** Nothing from this design exists in the database or Flutter app. Do not reference `workflow_event_queue` — it was never migrated.
 
-Triggers are database-level events emitted by PostgreSQL triggers into a `workflow_event_queue` table:
+### Trigger Events (Planned)
 
 | Trigger Event                | Fired When                                                          |
 | ---------------------------- | ------------------------------------------------------------------- |
@@ -54,7 +54,7 @@ Triggers are database-level events emitted by PostgreSQL triggers into a `workfl
 | `shift.assigned`             | Staff member assigned to a shift                                    |
 | `visit.completed`            | Visit status set to completed                                       |
 
-### Action Types
+### Action Types (Planned)
 
 | Action Type           | Mechanism                         | Config Schema                                                          |
 | --------------------- | --------------------------------- | ---------------------------------------------------------------------- |
@@ -64,11 +64,11 @@ Triggers are database-level events emitted by PostgreSQL triggers into a `workfl
 
 ### Rule Configuration
 
-Rules are stored in the `workflow_rules` table and managed via a settings UI. Each rule defines:
+Rules would be stored in a future `workflow_rules` table and managed via a settings UI. Each rule defines:
 
 - Which trigger event to listen for
 - Which action to execute
 - A JSON configuration for the action (templates, target fields)
 - Whether the rule applies to a specific branch or all branches
 
----
+See `specs/future/offline-cache-strategy.md` and V3 roadmap for when automation may be scheduled.

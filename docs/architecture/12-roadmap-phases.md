@@ -26,8 +26,8 @@ V1 delivers a fully functional clinic management system with no AI. This is the 
 | V1-3: Patient Management                 | **Complete** |
 | V1-4: Appointments                       | **Complete** |
 | V1-5: Visits and Medical Records         | **Complete** |
-| V1-6: Billing                            | **Complete** |
-| V1-7: Shifts                             | Pending      |
+| V1-6: Billing                            | **Backend complete**; frontend presentation pending |
+| V1-7: Shifts                             | **Backend complete**; frontend pending      |
 | V1-8: Deployment and Installer           | Pending      |
 
 ### V1-0: Project Scaffolding
@@ -78,12 +78,12 @@ Backend deliverables:
 - `get_custom_claims` PostgreSQL function (populates JWT with org_id, branch_ids, role)
 - GoTrue hook configuration to call `get_custom_claims` on login
 - RLS policies for `organizations`, `branches`, `staff_members`, `staff_branch_assignments`, `roles_permissions`
-- Seed data: default role-permission mappings for all five roles
+- Seed data: default role-permission mappings for four roles (`administrator`, `doctor`, `receptionist`, `lab_staff`)
 - Backend test utilities to verify auth flow and RLS enforcement
 
 Frontend deliverables:
-- Login page (email + password)
-- Session management (auto-refresh, persist session)
+- Login page (username + password)
+- Session management: **no persistence across restarts** (`EmptyLocalStorage`); idle timeout auto-sign-out
 - Auth state provider (Riverpod)
 - Route guard: redirect to login if unauthenticated
 - Post-login: fetch staff profile, set active branch, cache permissions
@@ -171,30 +171,28 @@ Frontend deliverables:
 ### V1-5: Visits and Medical Records
 
 Required architecture docs:
-- `docs/architecture/04-backend.md` → `Business Logic Distribution`, `Supabase Edge Functions (Cloud-Only, Optional)`, `API Access Patterns`
-- `docs/architecture/05-database.md` → `Core Schema Domains`, `Visits & Medical Records`, `Row Level Security (RLS) Strategy`, `PostgreSQL Functions (RPC Layer)`
-- `docs/architecture/07-frontend.md`
-- `docs/architecture/09-security-rbac.md` → `Audit Trail`
-- `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
+- `docs/architecture/14-visits-encounter-workspace.md`
+- `docs/architecture/05-database.md` → Visits & Medical Records, RPC layer
+- `docs/architecture/07-frontend.md`, `09-security-rbac.md`
 
 Required specs:
-- `specs/operations/visits.spec.md`
+- `specs/013-visits/spec.md` (documentation redesign)
+- `specs/014-visit-encounter-workspace/spec.md` (encounter workspace UI + patient safety)
 
 Backend deliverables:
-- Database migration: `visits`, `soap_notes`, `treatment_plans`, `visit_attachments` tables
-- RPC functions: `create_visit` (from **checked_in** or **in_progress** appointments; visit submit completes the linked appointment), `save_soap_note`, `complete_visit`, treatment plans, attachments
-- Supabase Storage bucket configuration for visit attachments
-- RLS policies (branch-scoped, doctor-specific for SOAP)
-- Indexes on visit lookups by patient and by branch/date
-- Backend test utilities to verify visit creation and attachment storage
+- Migrations: `visits`, `visit_clinical_notes`, vitals/investigations/catalogs, patient safety tables, attachments
+- Legacy `soap_notes` backfilled and dropped
+- RPCs: `create_visit`, `get_visit`, `save_visit_documentation`, `complete_visit`, treatment/vital/investigation/attachment/safety RPCs
+- Storage bucket `visit-attachments` with org/branch/visit path RLS
+- Tests: `run_visit_medical_records_tests.sh` (includes 014 encounter workspace tests)
 
 Frontend deliverables:
-- Visit creation from checked-in or in-progress appointments (explicit action; not from completed-only appointments)
-- SOAP note editor (structured form with S/O/A/P sections)
-- Specialty form support (JSON-schema-driven dynamic forms)
-- Treatment plan CRUD within visit context
-- Visit attachment upload/download (lab PDFs, scans, examination documents)
-- Visit history view within patient profile
+- `features/visits/`: encounter workspace (stepper + expert mode), clinical note sections, catalogs, safety rail, deferred attachments
+- Routes: `/visits/:id/document`, `/visits/:id/detail`
+- Permissions: `visits.create`, `visits.edit_soap`, `visits.upload_attachment`
+- Online-only save semantics; optimistic concurrency on clinical note
+
+**Schema note:** Spec 014 P3 added then removed `diagnosis_codes`, `visit_diagnosis_codes`, and `visit_plan_details`. Current code uses free-text diagnosis and treatment plans only.
 
 ### V1-6: Billing
 
@@ -218,13 +216,13 @@ Backend deliverables:
 - Tests: `backend/tests/billing_crud.sql`, `billing_rls.sql`, `billing_concurrency.sql` via `run_billing_tests.sh`
 
 Frontend deliverables:
-- `frontend/lib/features/billing/` module (editor, detail, list, insurance providers, receipt print)
-- Visit detail **Create invoice** / **Open invoice** action; patient profile billing tab; org settings partial-payments toggle
-- Permission-gated discount, payment, refund, void, and settings surfaces
+- `frontend/lib/features/billing/` — **repositories and domain models complete**; presentation layer not yet built (router placeholders)
+- Planned: invoice editor, detail, list, insurance providers, receipt print, org settings partial-payments toggle
+- Visit detail **Create invoice** / **Open invoice** action; patient profile billing tab (pending UI)
 
 Operator notes (Billing):
 - Set `branches.code` before issuing invoices (e.g. `MAIN` → `INV-MAIN-000001`). Missing code surfaces `branch_code_missing` on issue.
-- **Allow partial payments** defaults **off**; only owner/administrator can toggle it under Settings → Billing. Receptionist can record full patient-tender payments or insurance settlements; partial patient payments require the toggle.
+- **Allow partial payments** defaults **off**; only administrator can toggle it under Settings → Billing (`settings.billing.manage`).
 - Line-level and invoice-level discounts are mutually exclusive on draft invoices; clear one scope before applying the other.
 - Payments are append-only — corrections use refunds, not edits. Void `paid` invoices only after net payments are refunded.
 - Operator verification walkthrough: `specs/007-billing/quickstart.md`
@@ -239,15 +237,15 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/operations/shifts.spec.md`
+- `specs/008-shift-management/spec.md`
 
-Backend deliverables:
+Backend deliverables (**complete**):
 - Database migration: `shifts`, `shift_assignments` tables
-- RPC functions: `create_shift` (with overlap detection), `assign_staff_to_shift`
-- RLS policies (branch-scoped)
-- Backend test utilities to verify shift creation and overlap detection
+- RPC functions: `create_shift`, `list_shifts`, `get_shift_detail`, `modify_shift_assignments`, `update_shift`, `cancel_shift`
+- Overlap detection for staff at same branch
+- Tests: `run_shift_management_tests.sh`
 
-Frontend deliverables:
+Frontend deliverables (**pending**):
 - Shift calendar view (branch-specific, weekly/monthly)
 - Shift creation form (date, time range, staff assignment)
 - Staff assignment UI (multi-select staff for a shift)
@@ -270,7 +268,7 @@ Deliverables:
 - First-run setup wizard:
   - Deployment mode selection (local / cloud)
   - Supabase URL configuration (auto-detect local or manual entry)
-  - Admin account creation (first organization + owner user)
+  - Admin account creation (first organization + administrator staff via setup wizard)
   - Branch creation
 - Documentation: installation guide for clinic IT staff
 

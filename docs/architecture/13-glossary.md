@@ -31,3 +31,12 @@
 | **Working schedule**     | JSON on `branches.working_schedule` defining per-weekday open/close times. Required for branch create/update; appointments must fit within it. |
 | **Phone confirmation**   | Reception advances a planned appointment from `scheduled` to `confirmed` after calling the patient; required before check-in in V1-4.          |
 | **Branch slot conflict** | V1-4 rule: no overlapping appointment times at the same branch regardless of doctor assignment (enforced in `appointment_has_overlap`).        |
+| **Encounter workspace**  | Spec 014 UI shell: phased visit documentation (Intake → Findings → Treatment → Summary) with stepper and expert accordion modes.               |
+| **visit_clinical_notes** | Sectioned clinical documentation table (`complaint`, `history`, `examination`, `diagnosis`, `plan`); replaced legacy `soap_notes`.              |
+| **EmptyLocalStorage**    | Supabase Flutter auth storage adapter that never persists sessions to disk — staff must sign in on every app launch.                            |
+| **Deferred attachment**  | Pattern: file held in `VisitEncounterDraft` until save; then Storage upload + `register_visit_attachment` RPC. |
+| **ForUI**                | Third-party Flutter UI kit integrated via `core/ui/theme/forui_theme.dart` alongside custom `App*` components. |
+| **Expert mode**          | Encounter workspace accordion layout toggled via `workspace_mode_provider`; preference cached per staff in SharedPreferences. |
+| **STALE_DOCUMENTATION**  | RPC error when `save_visit_documentation` detects `updated_at` mismatch (optimistic concurrency). |
+| **uiPendingPlaceholder** | Router pattern rendering "coming soon" shell for routes whose presentation layer is not yet built (billing, shifts). |
+| **Bootstrap finish setup** | Atomic RPC `bootstrap_finish_setup` provisioning org, branch, and initial staff in one transaction via `features/setup/`. |

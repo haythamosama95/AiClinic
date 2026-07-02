@@ -43,6 +43,44 @@ Implementation agents do **not** read the entire architecture set by default.
 
 ## Specification Directory Structure
 
+Implemented features use **numbered directories** as the authoritative spec source:
+
+```text
+specs/
+├── 002-auth-rbac/              # spec.md, plan.md, tasks.md, contracts/, data-model.md
+├── 003-org-branch-management/
+├── 004-patient-management/
+├── 005-appointment-management/
+├── 006-visit-medical-records/  # superseded by 013 for documentation model
+├── 007-billing/
+├── 008-shift-management/
+├── 010-app-notched-card/       # design system component
+├── 013-visits/                 # visit documentation redesign
+├── 014-visit-encounter-workspace/
+├── future/                     # deferred designs (e.g. offline-cache-strategy.md)
+│
+├── common/                     # PLACEHOLDERS — referenced by roadmap, largely unauthored
+│   ├── auth.spec.md
+│   └── ...
+│
+├── operations/                 # PLACEHOLDERS — use numbered specs instead when they exist
+│   ├── patients.spec.md
+│   └── ...
+│
+├── ai/                         # future V2 specs
+└── analytics/
+```
+
+**Rule:** When both `specs/NNN-feature/` and `specs/operations/feature.spec.md` exist, the **numbered directory** is authoritative for implemented work. Roadmap entries (e.g. V1-4 → `005-appointment-management`) point to numbered specs.
+
+### Numbering convention
+
+- `NNN` = sequential feature ID (often aligned with delivery order, not strict).
+- Each directory contains at minimum: `spec.md`, `plan.md`, `tasks.md`, plus optional `contracts/`, `data-model.md`, `quickstart.md`, `research.md`.
+- Spec-kit commands (`/speckit-specify`, `/speckit-plan`, `/speckit-tasks`, `/speckit-implement`) operate on one numbered directory at a time.
+
+### Legacy layout (reference only)
+
 ```text
 specs/
 ├── README.md
@@ -66,11 +104,7 @@ specs/
 │
 ├── ai/
 │   ├── ai_service.spec.md
-│   ├── ai_chat_frontend.spec.md
-│   ├── scheduling_agent.spec.md
-│   ├── billing_agent.spec.md
-│   ├── soap_summarizer.spec.md
-│   └── analytics_agent.spec.md
+│   └── ...
 │
 └── analytics/
     └── dashboards.spec.md

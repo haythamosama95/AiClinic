@@ -10,6 +10,19 @@
 
 ## Deployment Architecture
 
+> **Implementation status:** Only Tier 1 exists today, and only as a local development/reference setup — there is no installer, no packaged Windows build, and no backup scheduler in the codebase yet (V1-8 "Deployment and Installer" is still Pending; see `docs/architecture/12-roadmap-phases.md`). Tier 2 and Tier 3 are fully aspirational: no cloud backup code, no Supabase Cloud project config, and no offline write-queue exist. The sections below describe the target design; the "Current Repository Reality" callout marks what is actually runnable today.
+
+### Current Repository Reality
+
+The repository contains **two independent Supabase stacks**, easy to confuse:
+
+| Stack | Location | Purpose | Managed by |
+| --- | --- | --- | --- |
+| Dev stack | `backend/supabase/` (`config.toml`, `migrations/`, `seed.sql`) | Local development and CI; what `specs/*/plan.md` and this doc set assume when they say "local Supabase on port 54322" | Supabase CLI (`supabase start`) |
+| Deployment stack | `backend/local/` (`docker-compose.yml`, `kong.yml`, `init.sql`, `.env.example`) | Hand-authored Docker Compose stack intended to become the actual Tier 1 clinic-server package | `docker compose` directly, no Supabase CLI |
+
+Both use the same port convention (`54321` API / `54322` Postgres / `54323` Studio) and the same image set (`postgres`, `gotrue`, `postgrest`, `storage-api`, `realtime`, `kong`, `studio`), but they are **not the same running instance**. `backend/local/init.sql` only bootstraps the `anon`/`authenticated`/`service_role` roles and the `auth`/`storage` schemas — it does **not** run any of the 149+ files in `backend/supabase/migrations/`. There is currently no documented or scripted path to apply the application schema to the `backend/local` Compose stack, so that stack cannot yet serve a real clinic database as-is. This is tracked as a gap in `docs/architecture/ARCHITECTURAL_FLAWS.md`.
+
 ### Deployment Tiers
 
 All tiers share the same application code, the same database schema, and the same PostgreSQL functions. The only variable is where Supabase runs and whether cloud connectivity is used.
@@ -71,7 +84,7 @@ Identical to Tier 1, plus:
 - Supabase Cloud is the primary database. No local Supabase instance needed.
 - AI Service still runs locally on the LAN (AI inference remains local regardless of tier).
 - Supports remote access and centralized analytics.
-- Internet required for all database operations. Connectivity loss degrades gracefully: Flutter queues writes locally and retries (V2+ enhancement).
+- Internet required for all database operations. Connectivity loss shows a degraded-state banner; **writes are blocked** in V1 (no local write queue). Write queuing on reconnect is a V2+ enhancement.
 
 ### Hardware Requirements
 
@@ -92,19 +105,25 @@ Notes:
 
 ### Docker Composition (Receptionist PC, Tier 1/2)
 
-The self-hosted Supabase stack is deployed as a Docker Compose configuration with these services:
+The self-hosted Supabase stack lives at `backend/local/docker-compose.yml` and is deployed as Docker Compose with these services:
 
-| Service           | Image                | Port  | Purpose                          |
-| ----------------- | -------------------- | ----- | -------------------------------- |
-| postgres          | supabase/postgres    | 5432  | Database engine                  |
-| rest              | postgrest/postgrest  | 3000  | Auto-generated REST API          |
-| auth              | supabase/gotrue      | 9999  | Authentication (JWT-based)       |
-| storage           | supabase/storage-api | 5000  | File storage API                 |
-| realtime          | supabase/realtime    | 4000  | Realtime subscriptions           |
-| kong              | kong                 | 54321 | API gateway (single entry point) |
-| studio (optional) | supabase/studio      | 54323 | Admin dashboard                  |
+| Service           | Image                | Host port (default) | Internal | Purpose                          |
+| ----------------- | -------------------- | ----------------- | -------- | -------------------------------- |
+| postgres          | supabase/postgres    | 54322             | 5432     | Database engine                  |
+| rest              | postgrest/postgrest  | —                 | 3000     | Auto-generated REST API          |
+| auth              | supabase/gotrue      | —                 | 9999     | Authentication (JWT-based)       |
+| storage           | supabase/storage-api | —                 | 5000     | File storage API                 |
+| realtime          | supabase/realtime    | —                 | 4000     | Realtime subscriptions           |
+| kong              | kong                 | 54321             | 8000     | API gateway (single entry point) |
+| studio            | supabase/studio      | 54323             | 3000     | Admin dashboard (dev/local)      |
 
-All services are exposed to the LAN through Kong on port 54321. The Flutter app connects to `http://<receptionist-ip>:54321`.
+Environment defaults are in `backend/local/.env.example` (`SUPABASE_HTTP_PORT=54321`, `SUPABASE_DB_PORT=54322`, `SUPABASE_STUDIO_PORT=54323`).
+
+All API services are exposed to the LAN through Kong on port **54321**. The Flutter app connects to `http://<receptionist-ip>:54321`.
+
+PostgREST is configured with `PGRST_DB_PRE_REQUEST: public.local_dev_pre_request` for local development only.
+
+> **AI service:** not included in this compose file. When implemented (V2), Ollama + HTTP wrapper runs as a separate LAN service (default port 8090).
 
 ---
 

@@ -19,8 +19,8 @@ There is no custom backend server. Supabase provides the entire backend:
 | **GoTrue (Auth)**  | Staff authentication via username + password (usernames stored in GoTrue's `email` field without `@`), JWT token issuance, session management |
 | **PostgREST**      | Auto-generated REST API from the database schema. Handles CRUD for all tables. Enforces RLS on every request.                                 |
 | **PostgreSQL RPC** | Complex business logic exposed as database functions callable via `supabase.rpc()`. This is the primary mechanism for domain operations.      |
-| **Storage API**    | File uploads/downloads for visit attachments (PDFs, scans, lab reports, examination documents)                                                |
-| **Realtime**       | WebSocket subscriptions for live UI updates (appointment queue changes, new patient check-ins)                                                |
+| **Storage API**    | File uploads/downloads for visit attachments in the `visit-attachments` bucket (PDF, DOCX, JPEG, PNG; 25 MB limit per file) |
+| **Realtime**       | WebSocket subscriptions for live UI updates. Currently used for the appointments queue only (`features/appointments/data/appointment_queue_realtime.dart`); no other feature subscribes to Realtime yet. |
 | **RLS Policies**   | Row-level authorization. Every table has policies that restrict access based on the authenticated user's organization, branch, and role.      |
 
 ### Business Logic Distribution
@@ -36,7 +36,7 @@ Responsibilities:
 - Appointment slot conflict detection (branch-wide), same-day patient limits, and branch working-hours validation
 - Invoice generation and validation
 - Shift overlap validation and creation
-- Visit creation linked to appointments
+- Visit documentation (clinical notes, vitals, investigations, patient safety), attachment registration, and completion
 - Patient deduplication checks (phone match, name+DOB match)
 - Permission-gated discount application
 - Staff account provisioning (username-based, server-side password hashing)
@@ -80,7 +80,22 @@ Responsibilities:
 
 The Flutter service layer NEVER contains canonical business rules. If a rule matters for data integrity, it lives in a PostgreSQL function.
 
-### Supabase Edge Functions (Cloud-Only, Optional)
+### Storage: Visit Attachments
+
+Visit files use Supabase Storage bucket `visit-attachments`:
+
+| Aspect | Detail |
+| ------ | ------ |
+| Path pattern | `{organization_id}/{branch_id}/{visit_id}/{filename}` |
+| Allowed types | PDF, DOCX, JPEG, PNG |
+| Size limit | 25 MB per file (26,214,400 bytes) |
+| Register | `register_visit_attachment` RPC after Storage upload |
+| Download | `get_visit_attachment_download` → signed URL (1-hour expiry) |
+| Delete | `delete_visit_attachment` removes DB row and storage object |
+
+Storage RLS policies parse org/branch from the object path. The Flutter visit module supports deferred attachment upload during in-progress documentation.
+
+### Supabase Edge Functions (Cloud-Only, Optional, Not Yet Implemented)
 
 For Tier 3 (cloud-connected) deployments, Supabase Edge Functions (Deno-based serverless functions) may be used for:
 
@@ -88,7 +103,7 @@ For Tier 3 (cloud-connected) deployments, Supabase Edge Functions (Deno-based se
 - Scheduled jobs (e.g., subscription validation, overdue invoice checks)
 - Third-party API integrations that require server-side secrets
 
-Edge Functions are NOT used for core business logic. They are supplementary. The system must function fully without them (Tier 1/2 proof).
+Edge Functions are NOT used for core business logic. They are supplementary. The system must function fully without them (Tier 1/2 proof). No Edge Functions exist in the repository today (`backend/supabase/functions/` is absent) — this section documents intended future use only.
 
 ### API Access Patterns
 

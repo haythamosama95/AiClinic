@@ -10,6 +10,8 @@
 
 ## Sync and Data Resilience
 
+> **Implementation status:** Backup schedulers, encrypted cloud upload, and subscription validation flows described below are **design targets** for V1-8 (Deployment and Installer). The `subscription_cache` table exists; no Flutter scheduler or installer automation is in the repo yet.
+
 ### Backup Strategy by Tier
 
 #### Tier 1 -- Local Backups Only
@@ -34,7 +36,7 @@ Everything from Tier 1, plus:
 
 - **Primary database**: Supabase Cloud. Supabase handles its own backup infrastructure (point-in-time recovery on paid plans).
 - **Additional backups**: Organization can optionally enable periodic `pg_dump` exports to Supabase Storage for extra redundancy.
-- **Connectivity loss**: Flutter shows degraded mode indicator. Read operations may use locally cached data. Write operations are queued and retried (V2+ enhancement).
+- **Connectivity loss**: Flutter shows degraded mode indicator. Cached reads may still display. **Write operations are blocked** until connectivity returns in V1 (no local queue). Write queuing on reconnect is a V2+ enhancement.
 
 ### Subscription Validation
 

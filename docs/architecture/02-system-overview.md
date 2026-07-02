@@ -49,7 +49,9 @@ The system is composed of four distinct layers. Each layer has a single responsi
 | AI Service   | Natural language parsing, intent extraction, structured command generation, SOAP summarization, analytics query generation                                | Ollama + HTTP wrapper           | Presentation Layer only (responds to HTTP requests)   |
 | Data         | Schema definition, referential integrity, triggers, audit field population, complex domain validation functions                                           | PostgreSQL 15+                  | Accessed exclusively through Backend Layer            |
 
-### Critical Data Flow: AI Command Execution
+> **Implementation status:** The AI Service Layer shown below is a target-architecture placeholder. As of this writing there is no AI service, no chat UI, and no HTTP client code for it anywhere in the codebase. The diagram and flow describe the intended shape for V2 (`docs/architecture/12-roadmap-phases.md`), not current behavior. Everything else on this page (Presentation, Backend, Data layers and their two data flows below) is implemented and current.
+
+### Critical Data Flow: AI Command Execution (target design — not implemented)
 
 ```
 User types prompt in Flutter AI chat
@@ -135,10 +137,48 @@ Navigate to Login page → user signs in with username + password
 Decode JWT custom claims → build AuthSessionContext
   (organizationId, branchIds, role, permissions, setupRequired)
         │
-        ├── setupRequired = true → navigate to Bootstrap flow
+        ├── setupRequired = true → navigate to `/bootstrap` (SetupPage wizard)
+        │       │
+        │       ▼
+        │   Organization step → Branch step → Staff accounts step → Review
+        │       │
+        │       ▼
+        │   Single RPC: bootstrap_finish_setup(...) creates org + branch + all
+        │   staff accounts transactionally, then refreshSession() re-issues the JWT
         │
         ▼ (normal)
 Navigate to authenticated shell (sidebar + content area)
 ```
+
+> **Note on bootstrap:** early migrations exposed separate `bootstrap_create_organization` / `bootstrap_create_branch` / `create_staff_account` RPCs called in sequence by the wizard. The current wizard (`frontend/lib/features/setup/`) calls a single consolidated `bootstrap_finish_setup(...)` RPC (introduced in `backend/supabase/migrations/20260611140000_allow_admin_create_owner_and_atomic_bootstrap_setup.sql`, refined by later migrations) that creates the organization, first branch, and all staff accounts (including the bootstrap admin's real login) in one transaction. The older multi-step RPCs still exist in the schema for backward compatibility/tests but are not the primary path.
+
+### Critical Data Flow: Visit Encounter Documentation
+
+```
+Doctor opens visit from appointment queue or patient history
+        │
+        ▼
+Flutter loads get_visit + get_patient_safety_context via RPC
+        │
+        ▼
+Encounter workspace (guided stepper or expert accordion mode)
+  → Subjective: visit_clinical_notes sections + patient safety rail
+  → Objective: vital signs, investigations, attachments
+  → Plan: catalog-driven medications/investigations
+        │
+        ▼
+Edits either persist immediately (line-item RPCs) or stage in-memory
+  when deferPersistence=true (in-session draft only)
+        │
+        ▼
+Submit: save_visit_documentation + complete_visit
+  → server validates documentation completeness rules
+  → completes linked appointment (in_progress cannot skip via status RPC)
+        │
+        ▼
+UI returns to visit detail / patient profile
+```
+
+Visit mutations require live Supabase connectivity. Deferred persistence is not durable offline storage.
 
 ---

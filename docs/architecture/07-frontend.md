@@ -21,6 +21,7 @@ frontend/lib/
 │   ├── app.dart                        # MaterialApp, ProviderScope
 │   ├── router.dart                     # GoRouter with auth/startup redirects
 │   ├── app_routes.dart                 # Route path constants
+│   ├── providers/                      # auth_session, connectivity, theme, branch_selection
 │   └── session_activity_scope.dart     # Wraps app for idle-timeout tracking
 │
 ├── core/
@@ -40,7 +41,9 @@ frontend/lib/
 │   │   └── app_log.dart                # Structured logging
 │   ├── rpc/
 │   │   └── rpc_result.dart             # Typed wrapper for rpc_result composite
-│   ├── widgets/                        # Shared UI widgets (buttons, cards, dialogs, form fields, etc.)
+│   ├── ui/                             # Design system (AppButton, AppStepper, tokens, theme variants)
+│   │   ├── theme/                      # spacing, density, color/typography tokens, Forui integration
+│   │   └── widgets/                    # buttons, inputs, overlays, navigation, data display
 │   └── ...
 │
 ├── features/
@@ -136,6 +139,39 @@ frontend/lib/
 │   │       ├── providers/                  # calendar + queue providers (Realtime-aware)
 │   │       └── widgets/                    # status actions, reschedule/cancel dialogs, conflict banner
 │   │
+│   ├── visits/                             # V1-5 + 013/014 encounter workspace
+│   │   ├── data/
+│   │   │   ├── visit_repository.dart           # get_visit, save_documentation, complete, catalogs, safety
+│   │   │   ├── visit_attachment_service.dart   # Storage upload + deferred register
+│   │   │   └── visit_attachment_opener.dart
+│   │   ├── domain/
+│   │   │   ├── visit_detail.dart, visit_clinical_note.dart, encounter_phase.dart
+│   │   │   ├── visit_vital_sign.dart, visit_investigation.dart, patient_safety.dart
+│   │   │   ├── visit_encounter_draft.dart, visit_submit_readiness.dart, bmi.dart
+│   │   │   └── catalog_item.dart, clinical_note_section.dart
+│   │   ├── application/
+│   │   │   ├── visit_encounter_persistence.dart
+│   │   │   └── visit_rpc_messages.dart
+│   │   └── presentation/
+│   │       ├── pages/                      # visit_documentation_page, visit_detail_page
+│   │       ├── providers/                  # visit_documentation_notifier, encounter_step, safety, workspace mode
+│   │       └── widgets/                    # encounter_workspace_shell, phase canvases, safety rail, catalogs
+│   │
+│   ├── billing/                            # V1-6 — data/domain only; presentation pending
+│   │   ├── data/                           # invoice, payment, insurance, settings repositories
+│   │   ├── domain/                         # invoice DTOs, money, status enums
+│   │   └── application/billing_rpc_messages.dart
+│   │
+│   ├── shifts/                             # V1-7 — data/domain only; presentation pending
+│   │   ├── data/shift_repository.dart
+│   │   ├── domain/                         # shift_list_item, shift_detail, overlap DTOs
+│   │   └── application/shift_rpc_messages.dart
+│   │
+│   ├── setup/                              # Bootstrap wizard (atomic finish_setup)
+│   │   ├── data/                           # bootstrap + provisioning repositories
+│   │   ├── domain/usecases/                # finish_bootstrap_setup, create_organization, etc.
+│   │   └── presentation/                   # SetupPage, step widgets, setup_notifier
+│   │
 │   ├── settings/                           # Organization, branch, staff, permissions, idle timeout
 │   │   ├── data/
 │   │   │   ├── organization_repository.dart    # OrganizationRepositoryImpl
@@ -187,13 +223,27 @@ frontend/lib/
 │   └── foundation_demo/                    # Dev-only: widget catalog/theme demonstration
 │       └── presentation/pages/
 │
-└── shared/
-    └── providers/
-        ├── auth_session_provider.dart      # Global auth session state
-        ├── startup_session_provider.dart    # Startup lifecycle state
-        ├── connectivity_provider.dart       # Network/Supabase health monitoring
-        └── theme_provider.dart             # Theme state
+└── app/providers/                        # Global Riverpod providers (not shared/)
+    ├── auth_session_provider.dart      # AuthSessionContext, permissions cache
+    ├── startup_session_provider.dart   # Startup lifecycle state
+    ├── connectivity_provider.dart      # Network/Supabase health monitoring
+    ├── theme_provider.dart             # Theme state
+    └── branch_selection_notifier.dart  # Active branch selection
 ```
+
+### Layering Inconsistency (Intentional)
+
+The **target pattern** is presentation → use cases → repository interfaces → `*Impl`. In practice:
+
+| Feature | Pattern | Notes |
+| ------- | ------- | ----- |
+| patients, settings, auth (sign-in) | Full use-case clean architecture | Reference implementation |
+| setup | Use cases + `SetupNotifier` | Atomic `bootstrap_finish_setup` |
+| appointments | Repositories + presentation notifiers | Realtime queue via `StreamProvider` |
+| visits | `application/` + `VisitDocumentationNotifier` | Notifier calls repository/persistence directly; orchestration-heavy |
+| billing, shifts | data/domain/application only | Presentation pending |
+
+`auth_session_provider` and visit notifiers are **documented exceptions** — infrastructure or orchestration-heavy modules that trade strict layering for cohesion.
 
 ### Layer Responsibilities (Per Feature)
 
@@ -203,7 +253,7 @@ frontend/lib/
 | **Domain**       | `domain/`       | Value objects, enums, DTOs, abstract repository interfaces (`repositories/`), use cases (`usecases/`) | Nothing (innermost layer)        |
 | **Data**         | `data/`         | Concrete repository implementations (`*Impl`), RPC call logic, error mapping                          | Domain interfaces, Supabase SDK  |
 
-Implementation note: The project uses **full clean architecture** with abstract repository interfaces in `domain/repositories/` and single-responsibility use case classes in `domain/usecases/`. Each use case has a single public `call()` method. Concrete repository classes (suffixed `Impl`) live in `data/` and implement the domain interface. Presentation-layer notifiers inject use cases via Riverpod providers, not repositories directly. The `auth_session_provider.dart` in `shared/providers/` is an exception — it uses repositories directly as infrastructure-level code.
+Implementation note: The project uses **full clean architecture** where practical (patients, settings). Presentation-layer notifiers inject use cases via Riverpod providers. Exceptions: `app/providers/auth_session_provider.dart` (infrastructure), visits/billing orchestration notifiers, and appointments queue notifiers that call repositories directly. See **Layering Inconsistency** above.
 
 ### State Management with Riverpod
 
@@ -215,7 +265,7 @@ Implementation note: The project uses **full clean architecture** with abstract 
 | `FutureProvider`        | One-shot async data fetching             | `patientByIdProvider(id)`                                    |
 | `StreamProvider`        | Realtime data (Supabase subscriptions)   | `appointmentQueueProvider(branchId)`                         |
 | `AsyncNotifierProvider` | Mutable async state with actions         | `appointmentListNotifierProvider` (load, create, cancel)     |
-| `NotifierProvider`      | Synchronous mutable state                | `selectedBranchProvider`, `themeProvider`                    |
+| `NotifierProvider`      | Synchronous mutable state                | `branchSelectionProvider`, `themeProvider`                    |
 
 #### State Architecture Pattern
 
@@ -240,14 +290,14 @@ Supabase SDK (data source)
 
 #### Branch Context
 
-A global `activeBranchProvider` holds the currently selected branch. All branch-scoped data providers depend on this. When the user switches branches, all dependent providers automatically refresh.
+A global `branchSelectionProvider` (`app/providers/branch_selection_notifier.dart`) reflects the active branch from `AuthSessionContext`. Branch switches call `AuthSessionNotifier.setActiveBranch`; branch-scoped providers watch session context and refresh.
 
 ```dart
 // Simplified example
-final activeBranchProvider = NotifierProvider<ActiveBranchNotifier, Branch>(...);
+final branchSelectionProvider = NotifierProvider<BranchSelectionNotifier, String?>(...);
 
 final appointmentListProvider = AsyncNotifierProvider<AppointmentListNotifier, List<Appointment>>(() {
-  // Watches activeBranchProvider internally
+  // Watches auth session activeBranchId
   // Re-fetches when branch changes
 });
 ```
@@ -297,7 +347,7 @@ Health probes run before Supabase SDK initialization to provide clear error mess
 | **Operational speed**      | Prefetched dropdown data, debounced search, optimistic UI updates, minimal navigation depth                                           |
 | **Receptionist workflows** | Appointment queue as a persistent sidebar, quick patient search with recent patients, one-click check-in                              |
 | **Modern design**          | Material 3 theming, consistent spacing, professional typography, subtle animations                                                    |
-| **Window management**      | Responsive to window resizing, minimum window size constraints, state persisted across sessions                                       |
+| **Window management**      | Responsive to window resizing, minimum window size constraints; **no auth session persistence** across app restarts                    |
 
 ### Navigation Architecture
 
@@ -328,10 +378,38 @@ Navigation is router-based (GoRouter). Deep links are supported for future web d
 
 | Path                               | Screen                                    |
 | ---------------------------------- | ----------------------------------------- |
-| `/appointments`                    | Hub (links to book, queue, calendar)      |
-| `/appointments/book`               | Planned booking form                      |
-| `/appointments/queue`              | Today's queue (Realtime + manual refresh) |
-| `/appointments/calendar`           | Day/week calendar                         |
-| `/appointments/schedule/:doctorId` | Doctor schedule filter                    |
+| `/appointments`                    | **Placeholder** — no hub page exists (`uiPendingPlaceholder` in `router.dart`) |
+| `/appointments/book`               | **Placeholder** — no booking form page exists yet, despite `create_appointment` RPC being complete |
+| `/appointments/queue`              | `AppointmentQueuePage` — today's queue (Realtime + manual refresh) — built |
+| `/appointments/calendar`           | `AppointmentCalendarPage` — day/week calendar — built |
+| `/appointments/:appointmentId`     | `AppointmentDetailPage` — built |
+| `/appointments/schedule/:doctorId` | **Placeholder** — doctor schedule filter not built |
+
+**Visit routes** (permission: `visits.edit_soap` / `visits.create`):
+
+| Path                               | Screen                                    |
+| ---------------------------------- | ----------------------------------------- |
+| `/visits/:visitId/document`        | `VisitDocumentationPage` — encounter workspace (active visit) — built |
+| `/visits/:visitId/detail`          | `VisitDetailPage` — visit detail / history — built |
+
+**Billing routes** (defined; UI placeholders until presentation layer ships):
+
+| Path                               | Screen                                    |
+| ---------------------------------- | ----------------------------------------- |
+| `/billing/invoices`                | Invoice list (pending)                    |
+| `/billing/invoices/:invoiceId`     | Invoice detail (pending)                  |
+| `/settings/billing`                | Billing settings (pending)                  |
+
+See `docs/architecture/14-visits-encounter-workspace.md` and `15-billing.md` for domain detail.
+
+### Design System (`core/ui/`)
+
+Shared visual language used across features (spec `010-app-notched-card`):
+
+- **Tokens:** `spacing_tokens.dart`, `density_tokens.dart`, color/typography/shape per theme variant (`med_spectra`, `ecarely`, `clinic`, `parchment`).
+- **Components:** `AppButton`, `AppTextField`, `AppParagraphField`, `AppStepper`, `AppNotchedCard`, `AppDialog`, `AppToast`, `AppDataTable`.
+- **Theme:** Material 3 + Forui overrides via `forui_theme.dart`; variant selected at app scope.
+
+Feature-specific tokens (e.g. `visit_page_tokens.dart`, `health_profile_card_tokens.dart`) extend the core system for visit workspace density.
 
 ---

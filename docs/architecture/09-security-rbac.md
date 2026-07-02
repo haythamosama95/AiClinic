@@ -22,12 +22,15 @@
 
 ### Bootstrap Flow
 
-A special `is_bootstrap_admin` flag on the first staff_members row enables first-time clinic setup:
+A special `is_bootstrap_admin` flag on the seeded staff_members row enables first-time clinic setup:
+
 1. Bootstrap admin signs in → JWT contains `setup_required: true` (no org exists yet).
-2. Admin calls `bootstrap_create_organization(...)` to create the clinic organization.
-3. Admin calls `bootstrap_create_branch(...)` to create the first branch (auto-assigned).
-4. Admin calls `create_staff_account(...)` to provision the first owner account.
-5. After setup, `refreshSession()` updates the JWT with real org/branch claims.
+2. Flutter navigates to `/bootstrap` (`features/setup/presentation/pages/setup_page.dart`).
+3. Wizard collects organization, first branch (with `working_schedule`), and staff accounts (including the admin's real login).
+4. Single atomic RPC: `bootstrap_finish_setup(...)` creates org + branch + all staff in one transaction.
+5. `refreshSession()` re-issues JWT with real `organization_id`, `branch_ids`, and `setup_required: false`.
+
+> **Legacy path:** older migrations exposed separate `bootstrap_create_organization`, `bootstrap_create_branch`, and sequential `create_staff_account` calls. The current wizard uses only `bootstrap_finish_setup`. Legacy RPCs may still exist for tests but are not the primary setup contract.
 
 ### Role-Based Access Control (RBAC)
 
@@ -35,11 +38,12 @@ A special `is_bootstrap_admin` flag on the first staff_members row enables first
 
 | Role            | Description                      | Typical Permissions                                                               |
 | --------------- | -------------------------------- | --------------------------------------------------------------------------------- |
-| `owner`         | Organization owner. Full access. | All operations. Manage organization settings, billing, staff.                     |
-| `administrator` | Branch or organization admin.    | Manage staff, branches, settings. Full operational access.                        |
-| `doctor`        | Clinical staff.                  | View own schedule, manage visits/SOAP/treatment plans, view patients.             |
-| `receptionist`  | Front desk staff.                | Manage appointments, check-in, create invoices, register patients.                |
-| `lab_staff`     | Laboratory staff.                | Upload visit attachments (lab reports, examination PDFs), view assigned patients. |
+| `administrator` | Organization/clinic admin. Full operational access including staff and branch management. | All permission keys when granted in matrix; bootstrap admin is an administrator with `is_bootstrap_admin`. |
+| `doctor`        | Clinical staff.                  | Patients, appointments, visits/clinical documentation, attachments, AI (future). |
+| `receptionist`  | Front desk staff.                | Appointments, patients, invoices/payments (no clinical edit).                     |
+| `lab_staff`     | Laboratory staff.                | View patients, upload visit attachments.                                          |
+
+> **Note:** The `owner` role was removed. Former owner accounts were migrated to `administrator`. RPC helper `assert_owner_or_administrator()` means administrator or bootstrap admin.
 
 #### Permission Model
 
@@ -47,20 +51,16 @@ Permissions are stored in the `roles_permissions` table as key-value pairs:
 
 ```
 permission_key examples:
-  patients.create
-  patients.view
-  patients.edit
-  patients.delete
-  appointments.create
-  appointments.cancel
-  invoices.create
-  invoices.apply_discount
-  invoices.apply_discount_above_threshold
-  visits.create
-  visits.edit_soap
-  shifts.manage
   settings.manage_staff
   settings.manage_branches
+  settings.billing.manage
+  patients.view / patients.create / patients.edit / patients.delete
+  appointments.create / appointments.cancel / appointments.read
+  visits.create / visits.edit_soap / visits.upload_attachment
+  invoices.view / invoices.create / invoices.apply_discount / invoices.void
+  payments.record / payments.refund
+  insurance.manage
+  shifts.manage
   analytics.view
   ai.access
 ```
@@ -110,7 +110,7 @@ Logged operations include:
 - Patient creation, modification, deletion
 - Appointment creation, reschedule, cancellation, status changes (including `confirmed` phone confirmation)
 - Invoice creation, payment, discount application
-- SOAP note creation and modification
+- Visit clinical documentation save and modification (`visit_clinical_notes` via `save_visit_documentation`)
 - Staff role/permission changes
 - Settings changes
 
