@@ -15,6 +15,11 @@ import 'package:ai_clinic/features/appointments/presentation/pages/appointment_q
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
 import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
 import 'package:ai_clinic/features/visits/presentation/pages/visit_documentation_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/billing_settings_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/insurance_providers_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
 import 'package:ai_clinic/features/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
 import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
@@ -137,20 +142,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
 
           // Billing (V1-6)
-          GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => uiPendingPlaceholder('Billing', state)),
+          GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => const InvoiceListPage()),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceEditSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            builder: (context, state) {
+              final invoiceId = state.pathParameters['invoiceId'];
+              if (invoiceId == null || invoiceId.isEmpty) {
+                return const InvoiceListPage();
+              }
+              return InvoiceEditorPage(invoiceId: invoiceId);
+            },
           ),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId',
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            builder: (context, state) {
+              final invoiceId = state.pathParameters['invoiceId'];
+              if (invoiceId == null || invoiceId.isEmpty) {
+                return const InvoiceListPage();
+              }
+              return InvoiceDetailPage(invoiceId: invoiceId);
+            },
           ),
           GoRoute(
             path: AppRoutes.billingInsuranceProviders,
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            builder: (context, state) => const InsuranceProvidersPage(),
           ),
-          GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => uiPendingPlaceholder('Billing', state)),
+          GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => const BillingSettingsPage()),
 
           // Shifts (V1-7)
           GoRoute(path: AppRoutes.shiftsCalendar, builder: (context, state) => uiPendingPlaceholder('Shifts', state)),
