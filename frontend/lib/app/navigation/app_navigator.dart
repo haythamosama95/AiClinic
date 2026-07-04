@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
-import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 
@@ -40,8 +39,11 @@ class AppNavigator {
   void pushPatientEdit(String id) => _context.push(AppRoutes.patientEdit(id));
   void goPatientRegister() => _context.push(AppRoutes.patientsNew);
 
-  /// Opens the blurred patient registration modal over the current route.
-  Future<String?> showPatientRegister() => CreatePatientModal.show(_context);
+  /// Navigates to patient registration; returns when the route is popped.
+  Future<String?> showPatientRegister() async {
+    await _context.push<String?>(AppRoutes.patientsNew);
+    return null;
+  }
 
   // Appointments (V1-4)
   void goAppointments() => _context.go(AppRoutes.appointments);

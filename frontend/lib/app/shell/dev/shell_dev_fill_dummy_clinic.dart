@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_notifier.dart';
-import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 
 /// Dev Options nav item and handlers for filling dummy clinic data.
 abstract final class ShellDevFillDummyClinic {
@@ -40,14 +39,21 @@ abstract final class ShellDevFillDummyClinic {
       return;
     }
 
-    await AppDialog.showConfirmation(
+    final confirmed = await showDialog<bool>(
       context: context,
-      title: confirmationTitle,
-      message: confirmationMessage,
-      confirmLabel: 'Fill dummy data',
-      cancelLabel: 'Cancel',
-      onConfirm: () => unawaited(_run(context, ref, onSuccess: onSuccess)),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(confirmationTitle),
+        content: const Text(confirmationMessage),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Fill dummy data')),
+        ],
+      ),
     );
+
+    if (confirmed == true && context.mounted) {
+      await _run(context, ref, onSuccess: onSuccess);
+    }
   }
 
   static Future<void> _run(BuildContext context, WidgetRef ref, {VoidCallback? onSuccess}) async {
@@ -57,14 +63,14 @@ abstract final class ShellDevFillDummyClinic {
     }
 
     if (ok) {
-      AppToast.success(context, message: 'Dummy clinic data created.');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dummy clinic data created.')));
       onSuccess?.call();
       return;
     }
 
     final errorMessage = ref.read(devClinicSeedProvider).errorMessage;
     if (errorMessage != null) {
-      AppToast.error(context, message: errorMessage);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
     }
   }
 }

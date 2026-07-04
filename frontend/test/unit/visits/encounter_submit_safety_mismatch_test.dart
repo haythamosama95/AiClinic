@@ -6,7 +6,7 @@ import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../widget/visits/visit_encounter_test_support.dart';
+import '../../support/visit_encounter_test_support.dart';
 
 VisitDocumentationState _patientSafetyOnlyDocState() {
   return sampleEncounterDocState().copyWith(

@@ -20,7 +20,7 @@ void main() {
         return;
       }
 
-      final childIds = ShellDevNav.footerGroup.children.map((child) => child.id).toList();
+      final childIds = ShellDevNav.footerItemIds;
       expect(childIds, contains(ShellDevFillDummyClinic.itemId));
     });
 

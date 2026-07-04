@@ -1,120 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/app/shell/config/shell_nav_config.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
-import 'package:ai_clinic/app/shell/shell_tokens.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_content_panel.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_header.dart';
-import 'package:ai_clinic/app/shell/widgets/shell_nav.dart';
-import 'package:ai_clinic/core/ui/theme/semantic_colors.dart';
-import 'package:ai_clinic/core/ui/theme/spacing_tokens.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 
-/// Authenticated route shell: header, left nav, and feature content regions.
-///
-/// Navigation contracts and route definitions remain in [AppRoutes] and
-/// [appRouterProvider]. Nav selection is local UI state until wired to routes.
-class AuthenticatedShell extends ConsumerStatefulWidget {
+/// Minimal authenticated route shell: passes feature routes through while preserving
+/// shell warm-up and dev-only integration hooks.
+class AuthenticatedShell extends ConsumerWidget {
   const AuthenticatedShell({required this.child, super.key});
 
   final Widget child;
 
   @override
-  ConsumerState<AuthenticatedShell> createState() => _AuthenticatedShellState();
-}
-
-class _AuthenticatedShellState extends ConsumerState<AuthenticatedShell> {
-  late String _selectedItemId;
-  late Set<String> _expandedGroupIds;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedItemId = ShellNavConfig.defaultSelectedId();
-    _expandedGroupIds = ShellNavConfig.defaultExpandedGroupIds();
-  }
-
-  void _onItemSelected(String itemId) {
-    setState(() {
-      _selectedItemId = itemId;
-      final groupId = ShellNavConfig.groupIdFor(itemId);
-      if (groupId != null) {
-        _expandedGroupIds = {..._expandedGroupIds, groupId};
-      }
-    });
-
-    final route = ShellNavConfig.routeFor(itemId);
-    if (route != null) {
-      context.go(route);
-    }
-  }
-
-  String? _pageTitleForLocation(String location, String? selectedItemId) {
-    if (ShellNavConfig.isSettingsLocation(location)) {
-      return 'Settings';
-    }
-    return selectedItemId != null ? ShellNavConfig.labelFor(selectedItemId) : null;
-  }
-
-  String? _selectedItemIdForLocation(String location) {
-    if (ShellNavConfig.isSettingsLocation(location)) {
-      return null;
-    }
-    return ShellNavConfig.itemIdForLocation(location) ?? _selectedItemId;
-  }
-
-  void _onGroupToggled(String groupId) {
-    setState(() {
-      if (_expandedGroupIds.contains(groupId)) {
-        _expandedGroupIds = {..._expandedGroupIds}..remove(groupId);
-      } else {
-        _expandedGroupIds = {..._expandedGroupIds, groupId};
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.semanticColors;
-    final location = GoRouterState.of(context).matchedLocation;
-    final selectedItemId = _selectedItemIdForLocation(location);
-    final pageTitle = _pageTitleForLocation(location, selectedItemId);
+  Widget build(BuildContext context, WidgetRef ref) {
     if (ref.watch(permissionServiceProvider).canAccessAppointments()) {
       ref.watch(appointmentQueueShellWarmProvider);
     }
 
-    return ShellDevShellWrapper(
-      child: ColoredBox(
-        color: colors.accent,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ShellNav(
-              selectedItemId: selectedItemId,
-              expandedGroupIds: _expandedGroupIds,
-              onItemSelected: _onItemSelected,
-              onGroupToggled: _onGroupToggled,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ShellHeader(pageTitle: pageTitle),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(ShellTokens.contentPanelInset, SpacingTokens.sm, 0, 0),
-                      child: ShellContentPanel(child: widget.child),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return ShellDevShellWrapper(child: child);
   }
 }

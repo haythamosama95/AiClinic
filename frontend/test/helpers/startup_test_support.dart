@@ -14,7 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'appointment_queue_test_support.dart';
+import '../support/appointment_queue_test_overrides.dart';
 
 /// Valid local profile used by startup widget and integration tests.
 DeploymentProfile sampleDeploymentProfile({String? sourcePath}) {

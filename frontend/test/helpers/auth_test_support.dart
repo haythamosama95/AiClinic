@@ -74,3 +74,18 @@ class TestAuthSessionNotifier extends AuthSessionNotifier {
     setUnauthenticated(failureMessage: kIdleTimeoutSignOutMessage);
   }
 }
+
+/// Auth notifier with a replaceable session state for provider unit tests.
+class MutableAuthSessionNotifier extends AuthSessionNotifier {
+  MutableAuthSessionNotifier(this._state);
+
+  AuthSessionState _state;
+
+  @override
+  AuthSessionState build() => _state;
+
+  void replace(AuthSessionState next) {
+    _state = next;
+    state = next;
+  }
+}

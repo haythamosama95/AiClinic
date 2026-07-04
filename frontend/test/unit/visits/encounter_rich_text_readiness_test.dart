@@ -1,4 +1,4 @@
-import 'package:ai_clinic/core/ui/widgets/input/app_paragraph_field.dart';
+import 'package:ai_clinic/features/visits/domain/rich_text_draft_utils.dart';
 import 'package:ai_clinic/features/visits/domain/clinical_note_section.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';
@@ -7,7 +7,7 @@ import 'package:ai_clinic/features/visits/presentation/providers/visit_documenta
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../widget/visits/visit_encounter_test_support.dart';
+import '../../support/visit_encounter_test_support.dart';
 
 /// Quill delta JSON for formatted text without a synced plain-text field (EDGE-002).
 List<dynamic> richDeltaBoldText(String text) => [

@@ -2,8 +2,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
-import 'package:ai_clinic/features/dashboard/presentation/pages/dashboard_page.dart';
+import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,7 +67,7 @@ void main() {
       await settleRouterRedirects(tester);
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.login);
-      expect(find.byType(LoginPage), findsOneWidget);
+      expect(find.byType(UiPendingPlaceholderPage), findsOneWidget);
     });
 
     testWidgets('REG-008: unauthenticated /patients redirects to login', (tester) async {
@@ -80,7 +79,7 @@ void main() {
       await settleRouterRedirects(tester);
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.login);
-      expect(find.byType(LoginPage), findsOneWidget);
+      expect(find.byType(UiPendingPlaceholderPage), findsOneWidget);
     });
 
     testWidgets('authenticated setup-complete user reaches home from login', (tester) async {
@@ -93,8 +92,8 @@ void main() {
       await settleRouterRedirects(tester);
 
       expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
-      expect(find.byType(DashboardPage), findsOneWidget);
-      expect(find.byType(LoginPage), findsNothing);
+      expect(find.byType(UiPendingPlaceholderPage), findsOneWidget);
+      expect(find.text('Dashboard'), findsOneWidget);
     });
 
     testWidgets('authenticated user navigating to login bounces to home', (tester) async {

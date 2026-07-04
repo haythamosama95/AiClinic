@@ -9,7 +9,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/auth_test_support.dart';
 import '../../support/appointment_calendar_test_support.dart';
 import '../../support/appointment_rpc_test_client.dart';
-import '../../widget/appointments/appointment_calendar_test_support.dart';
 
 class _PresetAuthSessionNotifier extends TestAuthSessionNotifier {
   _PresetAuthSessionNotifier(this.initial);

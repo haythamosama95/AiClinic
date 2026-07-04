@@ -1,7 +1,7 @@
 import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/effective_price.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_eligibility.dart';
-import 'package:ai_clinic/features/service_catalog/presentation/widgets/service_price_preview.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/utils/service_price_preview.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
