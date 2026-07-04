@@ -2,11 +2,13 @@ import { DevLocaleControls } from '@/components/showcase/DevLocaleControls'
 import { DevSectionLayout } from '@/components/showcase/DevSectionLayout'
 import { FoundationsContent, FoundationsSubNav } from '@/pages/FoundationsPage'
 import { ComponentsPage, ComponentsSubNav } from '@/pages/ComponentsPage'
+import { GuidelinesPage, GuidelinesSubNav } from '@/pages/GuidelinesPage'
+import { PatternsPage, PatternsSubNav } from '@/pages/PatternsPage'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Tabs } from '@/components/navigation/Tabs'
 import { useHashRoute } from '@/router/useHashRoute'
 
-export type DevSection = 'foundations' | 'components'
+export type DevSection = 'foundations' | 'components' | 'patterns' | 'guidelines'
 
 export function DevPage({ section }: { section: DevSection }) {
   const { navigate } = useHashRoute()
@@ -21,6 +23,8 @@ export function DevPage({ section }: { section: DevSection }) {
             items={[
               { id: 'foundations', label: 'Foundations' },
               { id: 'components', label: 'Components' },
+              { id: 'patterns', label: 'Patterns' },
+              { id: 'guidelines', label: 'Guidelines' },
             ]}
             value={section}
             onChange={(id) => navigate(`dev/${id}`)}
@@ -33,7 +37,17 @@ export function DevPage({ section }: { section: DevSection }) {
       </div>
       <div className="mt-8">
         <DevSectionLayout
-          nav={section === 'foundations' ? <FoundationsSubNav /> : <ComponentsSubNav />}
+          nav={
+            section === 'foundations' ? (
+              <FoundationsSubNav />
+            ) : section === 'components' ? (
+              <ComponentsSubNav />
+            ) : section === 'patterns' ? (
+              <PatternsSubNav />
+            ) : (
+              <GuidelinesSubNav />
+            )
+          }
         >
           {section === 'foundations' ? (
             <div className="space-y-16">
@@ -46,8 +60,12 @@ export function DevPage({ section }: { section: DevSection }) {
               </div>
               <FoundationsContent />
             </div>
-          ) : (
+          ) : section === 'components' ? (
             <ComponentsPage />
+          ) : section === 'patterns' ? (
+            <PatternsPage />
+          ) : (
+            <GuidelinesPage />
           )}
         </DevSectionLayout>
       </div>

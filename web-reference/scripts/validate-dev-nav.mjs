@@ -41,6 +41,15 @@ const registryFiles = [
   'showcase/components/layout/index.ts',
 ]
 
+const patternIndex = readFileSync(join(root, 'showcase/patterns/index.ts'), 'utf8')
+const patternIds = [...patternIndex.matchAll(/id:\s*['"]([^'"]+)['"]/g)].map((m) => m[1])
+
+const guidelinesIndex = readFileSync(join(root, 'showcase/guidelines/AccessibilityGuidelinesShowcase.tsx'), 'utf8')
+const guidelineIds = [
+  'guidelines-voice',
+  ...[...guidelinesIndex.matchAll(/id=["']([^"']+)["']/g)].map((m) => m[1]),
+]
+
 const sectionIds = registryFiles.flatMap((relativePath) => {
   const content = readFileSync(join(root, relativePath), 'utf8')
   return [...content.matchAll(/id:\s*['"]([^'"]+)['"]/g)].map((match) => match[1])
@@ -53,6 +62,8 @@ const navTargets = [
   ...foundationSections,
   ...groupIds.map((group) => `group-${group}`),
   ...sectionIds,
+  ...patternIds,
+  ...guidelineIds,
 ]
 
 const missing = []

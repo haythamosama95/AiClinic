@@ -1,7 +1,9 @@
 import { Languages } from 'lucide-react'
 import { SegmentedControl } from '@/components/actions/SegmentedControl'
+import { Switch } from '@/components/ui/switch/Switch'
 import { useDensity, type Density } from '@/providers/DensityProvider'
 import { useDirection, type Direction, type Locale } from '@/providers/DirectionProvider'
+import { useCallback, useEffect, useState } from 'react'
 
 const DIRECTION_OPTIONS: { value: Direction; label: string }[] = [
   { value: 'ltr', label: 'LTR' },
@@ -27,6 +29,24 @@ function toDevDensity(density: Density): DevDensity {
 export function DevLocaleControls() {
   const { direction, locale, setDirection, setLocale } = useDirection()
   const { density, setDensity } = useDensity()
+  const [reducedMotion, setReducedMotion] = useState(
+    () => document.documentElement.dataset.reducedMotion === 'true',
+  )
+
+  const toggleReducedMotion = useCallback((on: boolean) => {
+    setReducedMotion(on)
+    document.documentElement.dataset.reducedMotion = String(on)
+  }, [])
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sync = () => {
+      if (mq.matches) toggleReducedMotion(true)
+    }
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [toggleReducedMotion])
 
   return (
     <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border-default bg-surface-default p-4">
@@ -56,6 +76,14 @@ export function DevLocaleControls() {
           onChange={setLocale}
           options={LOCALE_OPTIONS}
         />
+        <label className="flex items-center gap-2 border-s border-border-subtle ps-3">
+          <Switch
+            checked={reducedMotion}
+            onCheckedChange={toggleReducedMotion}
+            aria-label="Reduce motion"
+          />
+          <span className="text-caption text-text-secondary">Reduce motion</span>
+        </label>
       </div>
     </div>
   )

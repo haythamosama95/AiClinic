@@ -66,7 +66,10 @@ export const ROUTE_REGISTRY: Record<string, RouteDefinition> = Object.fromEntrie
 )
 
 export function resolveDevSection(segments: string[]): DevSection {
-  if (segments[1] === 'foundations') return 'foundations'
+  const section = segments[1]
+  if (section === 'foundations') return 'foundations'
+  if (section === 'patterns') return 'patterns'
+  if (section === 'guidelines') return 'guidelines'
   return 'components'
 }
 
@@ -86,7 +89,7 @@ export function resolveRoute(segments: string[]): {
     return {
       content: <DevPage section={section} />,
       meta,
-      fullWidth: section === 'components',
+      fullWidth: section === 'components' || section === 'patterns',
     }
   }
 
@@ -115,7 +118,10 @@ export function breadcrumbLabel(segments: string[]): string {
   const root = segments[0] ?? 'home'
   if (root === 'dev') {
     const section = resolveDevSection(segments)
-    return section === 'foundations' ? 'Foundations' : 'Components'
+    if (section === 'foundations') return 'Foundations'
+    if (section === 'patterns') return 'Patterns'
+    if (section === 'guidelines') return 'Guidelines'
+    return 'Components'
   }
   return metaForNavId(root).title
 }
