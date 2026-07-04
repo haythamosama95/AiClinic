@@ -1,3 +1,4 @@
+import { DevSectionLink } from '@/components/showcase/DevSectionLink'
 import { cn } from '@/lib/cn'
 import {
   componentSections,
@@ -9,7 +10,7 @@ export function ComponentsPage() {
   return (
     <div className="space-y-16">
       <div>
-        <p className="text-overline text-text-tertiary">Milestone 3</p>
+        <p className="text-overline text-text-tertiary">Milestone 4</p>
         <h2 className="text-h2 text-text-primary">Components</h2>
         <p className="mt-2 max-w-2xl text-body-lg text-text-secondary">
           Shared primitives with full variant and state matrices. Toggle theme, direction, language,
@@ -22,13 +23,13 @@ export function ComponentsPage() {
           const count = groupedComponentSections[group.id].length
           if (count === 0) return null
           return (
-            <a
+            <DevSectionLink
               key={group.id}
-              href={`#group-${group.id}`}
+              sectionId={`group-${group.id}`}
               className="focus-ring rounded-md px-3 py-1.5 text-body-sm text-text-link hover:bg-surface-hover"
             >
               {group.title}
-            </a>
+            </DevSectionLink>
           )
         })}
       </nav>
@@ -78,38 +79,32 @@ export function ComponentsSubNav() {
 
           return (
             <li key={group.id}>
-              <a
-                href={`#group-${group.id}`}
+              <DevSectionLink
+                sectionId={`group-${group.id}`}
                 className="focus-ring block rounded-md px-2 py-1 text-body-sm text-text-link hover:bg-surface-hover"
               >
                 {group.title}
                 <span className="ms-1 text-caption text-text-tertiary">
                   ({readyCount}/{sections.length})
                 </span>
-              </a>
-              {group.id === 'display' ||
-              group.id === 'actions' ||
-              group.id === 'inputs' ||
-              group.id === 'navigation' ||
-              group.id === 'layout' ? (
-                <ul className="mt-1 space-y-0.5 border-s-2 border-border-subtle ps-3">
-                  {sections.map((section) => (
-                    <li key={section.id}>
-                      <a
-                        href={`#${section.id}`}
-                        className={cn(
-                          'focus-ring block rounded-sm py-0.5 text-caption hover:text-text-link',
-                          section.status === 'ready'
-                            ? 'text-text-secondary'
-                            : 'text-text-tertiary italic',
-                        )}
-                      >
-                        {section.title}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              </DevSectionLink>
+              <ul className="mt-1 space-y-0.5 border-s-2 border-border-subtle ps-3">
+                {sections.map((section) => (
+                  <li key={section.id}>
+                    <DevSectionLink
+                      sectionId={section.id}
+                      className={cn(
+                        'focus-ring block rounded-sm py-0.5 text-caption hover:text-text-link',
+                        section.status === 'ready'
+                          ? 'text-text-secondary'
+                          : 'text-text-tertiary italic',
+                      )}
+                    >
+                      {section.title}
+                    </DevSectionLink>
+                  </li>
+                ))}
+              </ul>
             </li>
           )
         })}

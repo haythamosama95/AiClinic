@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
+import { DevSectionLink } from '@/components/showcase/DevSectionLink'
 import { DevLocaleControls } from '@/components/showcase/DevLocaleControls'
 import { contrastRatio, formatContrast, meetsAA } from '@/lib/contrast'
 import {
@@ -42,6 +43,14 @@ const MOTION_PRESET_LIST: MotionPreset[] = [
   'row-enter',
 ]
 
+export const FOUNDATION_SECTIONS = [
+  { id: 'colors', label: 'Color' },
+  { id: 'typography', label: 'Typography' },
+  { id: 'spacing', label: 'Spacing & elevation' },
+  { id: 'motion', label: 'Motion' },
+  { id: 'signal', label: 'The Signal' },
+] as const
+
 function Section({
   id,
   title,
@@ -54,7 +63,7 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section id={id} className="scroll-mt-8">
+    <section id={id} className="scroll-mt-24">
       <div className="mb-6 border-b border-border-subtle pb-4">
         <h2 className="text-h2 text-text-primary">{title}</h2>
         {description ? (
@@ -406,18 +415,38 @@ function SignalSection() {
   )
 }
 
+export function FoundationsSubNav() {
+  return (
+    <div>
+      <p className="text-overline text-text-tertiary mb-2">Foundations</p>
+      <ul className="space-y-0.5">
+        {FOUNDATION_SECTIONS.map((section) => (
+          <li key={section.id}>
+            <DevSectionLink
+              sectionId={section.id}
+              className="focus-ring block rounded-md px-2 py-1 text-body-sm text-text-link hover:bg-surface-hover"
+            >
+              {section.label}
+            </DevSectionLink>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function FoundationsContent() {
   return (
     <>
-      <nav aria-label="Foundation sections" className="flex flex-wrap gap-2">
-        {['colors', 'typography', 'spacing', 'motion', 'signal'].map((id) => (
-          <a
-            key={id}
-            href={`#${id}`}
-            className="focus-ring rounded-md px-3 py-1.5 text-body-sm text-text-link hover:bg-surface-hover capitalize"
+      <nav aria-label="Foundation sections" className="mb-8 flex flex-wrap gap-2 lg:hidden">
+        {FOUNDATION_SECTIONS.map((section) => (
+          <DevSectionLink
+            key={section.id}
+            sectionId={section.id}
+            className="focus-ring rounded-md px-3 py-1.5 text-body-sm text-text-link hover:bg-surface-hover"
           >
-            {id}
-          </a>
+            {section.label}
+          </DevSectionLink>
         ))}
       </nav>
 
@@ -454,13 +483,25 @@ export function FoundationsPage({ embedded = false }: { embedded?: boolean }) {
         </div>
       </header>
 
-      <main id="main" className="mx-auto max-w-5xl space-y-16 px-6 py-10">
-        <p className="text-body-lg text-text-secondary max-w-2xl">
+      <main id="main" className="mx-auto max-w-5xl px-6 py-10">
+        <p className="mb-10 max-w-2xl text-body-lg text-text-secondary">
           Calm Clinical Precision — the design system foundation for AiClinic. Tokens, typography,
           motion, and The Signal.
         </p>
 
-        <FoundationsContent />
+        <div className="flex gap-8 lg:gap-12">
+          <aside className="hidden w-52 shrink-0 lg:block">
+            <nav
+              aria-label="Foundation sections"
+              className="sticky top-24 max-h-[calc(100dvh-8rem)] overflow-y-auto pe-2"
+            >
+              <FoundationsSubNav />
+            </nav>
+          </aside>
+          <div className="min-w-0 flex-1 space-y-16">
+            <FoundationsContent />
+          </div>
+        </div>
       </main>
 
       <footer className="border-t border-border-subtle py-6 text-center text-caption text-text-tertiary">

@@ -1,9 +1,10 @@
 import { actionsSections } from './actions'
+import { aiSections } from './ai'
 import { displaySections } from './display'
+import { feedbackSections } from './feedback'
 import { inputsSections } from './inputs'
 import { layoutSections } from './layout'
 import { navigationSections } from './navigation'
-import { aiSections, feedbackSections } from './placeholders'
 import {
   buildComponentSections,
   sectionsByGroup,

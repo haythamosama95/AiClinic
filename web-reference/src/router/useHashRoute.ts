@@ -1,20 +1,36 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { scrollToDevSection } from '@/components/showcase/DevSectionLink'
 
 const DEFAULT_ROUTE = 'home'
 
-function parseHash(): string {
-  const hash = window.location.hash
+function parseRouteHash(hash: string): string | null {
   if (!hash || hash === '#' || hash === '#/') return DEFAULT_ROUTE
-  const path = hash.startsWith('#/') ? hash.slice(2) : hash.slice(1)
-  const normalized = path.replace(/^\/+|\/+$/g, '')
+  if (!hash.startsWith('#/')) return null
+  const normalized = hash.slice(2).replace(/^\/+|\/+$/g, '')
   return normalized || DEFAULT_ROUTE
 }
 
 export function useHashRoute() {
-  const [route, setRoute] = useState(() => parseHash())
+  const [route, setRoute] = useState(() => parseRouteHash(window.location.hash) ?? DEFAULT_ROUTE)
+  const routeRef = useRef(route)
+  routeRef.current = route
 
   useEffect(() => {
-    const onHashChange = () => setRoute(parseHash())
+    const onHashChange = () => {
+      const parsed = parseRouteHash(window.location.hash)
+      if (parsed !== null) {
+        setRoute(parsed)
+        return
+      }
+
+      const sectionId = window.location.hash.slice(1)
+      window.history.replaceState(null, '', `#/${routeRef.current}`)
+      if (sectionId) {
+        requestAnimationFrame(() => {
+          scrollToDevSection(sectionId)
+        })
+      }
+    }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])

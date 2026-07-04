@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { TooltipProvider } from '@/components/tooltip/Tooltip'
+import { ToastProvider } from '@/components/toast/Toast'
 import { AiModeProvider } from './AiModeProvider'
 import { CommandBarProvider } from './CommandBarProvider'
 import { DensityProvider } from './DensityProvider'
@@ -31,9 +32,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <DirectionProvider>
           <AiModeProvider>
             <CommandBarProvider>
-              <TooltipProvider>
-                <ReducedMotionSync>{children}</ReducedMotionSync>
-              </TooltipProvider>
+              <ToastProvider>
+                <TooltipProvider>
+                  <ReducedMotionSync>{children}</ReducedMotionSync>
+                </TooltipProvider>
+              </ToastProvider>
             </CommandBarProvider>
           </AiModeProvider>
         </DirectionProvider>

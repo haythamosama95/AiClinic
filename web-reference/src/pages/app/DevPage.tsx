@@ -1,6 +1,7 @@
 import { DevLocaleControls } from '@/components/showcase/DevLocaleControls'
-import { FoundationsContent } from '@/pages/FoundationsPage'
-import { ComponentsPage } from '@/pages/ComponentsPage'
+import { DevSectionLayout } from '@/components/showcase/DevSectionLayout'
+import { FoundationsContent, FoundationsSubNav } from '@/pages/FoundationsPage'
+import { ComponentsPage, ComponentsSubNav } from '@/pages/ComponentsPage'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Tabs } from '@/components/navigation/Tabs'
 import { useHashRoute } from '@/router/useHashRoute'
@@ -31,20 +32,24 @@ export function DevPage({ section }: { section: DevSection }) {
         <DevLocaleControls />
       </div>
       <div className="mt-8">
-        {section === 'foundations' ? (
-          <div className="space-y-16">
-            <div>
-              <p className="text-overline text-text-tertiary">Milestone 1</p>
-              <h2 className="text-h2 text-text-primary">Foundations</h2>
-              <p className="mt-2 max-w-2xl text-body-lg text-text-secondary">
-                Tokens, typography, spacing, motion, and The Signal.
-              </p>
+        <DevSectionLayout
+          nav={section === 'foundations' ? <FoundationsSubNav /> : <ComponentsSubNav />}
+        >
+          {section === 'foundations' ? (
+            <div className="space-y-16">
+              <div>
+                <p className="text-overline text-text-tertiary">Milestone 1</p>
+                <h2 className="text-h2 text-text-primary">Foundations</h2>
+                <p className="mt-2 max-w-2xl text-body-lg text-text-secondary">
+                  Tokens, typography, spacing, motion, and The Signal.
+                </p>
+              </div>
+              <FoundationsContent />
             </div>
-            <FoundationsContent />
-          </div>
-        ) : (
-          <ComponentsPage />
-        )}
+          ) : (
+            <ComponentsPage />
+          )}
+        </DevSectionLayout>
       </div>
     </>
   )
