@@ -27,6 +27,7 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         {topBar}
         <main
+          id="main"
           className={cn(
             'flex-1 overflow-y-auto',
             contentClassName,

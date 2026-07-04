@@ -20,10 +20,12 @@ const DensityContext = createContext<DensityContextValue | null>(null)
 const STORAGE_KEY = 'aiclinic-density'
 
 function getInitialDensity(): Density {
-  if (typeof window === 'undefined') return 'default'
+  if (typeof window === 'undefined') return 'comfortable'
   const stored = localStorage.getItem(STORAGE_KEY) as Density | null
-  if (stored === 'compact' || stored === 'default' || stored === 'comfortable') return stored
-  return 'default'
+  if (stored === 'compact' || stored === 'default' || stored === 'comfortable') {
+    return stored === 'default' ? 'comfortable' : stored
+  }
+  return 'comfortable'
 }
 
 export function DensityProvider({ children }: { children: ReactNode }) {

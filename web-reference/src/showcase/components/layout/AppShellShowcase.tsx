@@ -15,7 +15,6 @@ import {
   MOCK_USER,
 } from '@/components/navigation/nav-model'
 import { Skeleton } from '@/components/skeleton'
-import { ShowcaseToolbar } from '@/components/showcase/ShowcaseToolbar'
 import { ShowcaseDemo, ShowcaseSection } from '../../ShowcasePrimitives'
 
 export function AppShellShowcase() {
@@ -63,7 +62,6 @@ export function AppShellShowcase() {
                 onBranchChange={setBranchId}
                 user={MOCK_USER}
                 notificationCount={MOCK_NOTIFICATION_COUNT}
-                toolbarSlot={<ShowcaseToolbar />}
               />
             }
           >

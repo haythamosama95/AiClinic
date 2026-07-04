@@ -26,10 +26,16 @@ foundation, so quality here compounds and weaknesses here propagate.
 
 ## 2. Global chrome of the Showcase
 
-- **App shell** matching `05`: sidebar navigation of sections, top bar with a live **theme toggle
-  (light/dark)**, **direction toggle (LTR/RTL)**, **language toggle (EN/AR)**, and a **density
-  toggle** — all switching the entire Showcase live.
-- A working **Command Bar (`⌘K`)** to jump between Showcase sections (dogfoods the hero).
+The reference app uses the **real clinic app shell** (`05` / `G7`), not a separate showcase frame.
+The design-system catalog lives under the **Dev** footer nav item.
+
+- **App shell:** sidebar clinic navigation + top bar as in production. Placeholder routes for
+  every clinic domain; Dev is the design-system area.
+- **Top bar (app-wide):** working **Command Bar (`⌘K`)** to jump anywhere; **theme toggle**
+  (light/dark) as an icon button.
+- **Dev page controls:** on `/dev` only, a **DevLocaleControls** strip offers **density**
+  (compact / comfortable), **direction** (LTR / RTL), and **language** (EN / AR) — all switching
+  the entire app live. Foundations and Components are tabs within Dev.
 - Every example shows its **token/component name** and, where useful, the props/variants that
   produced it. Copy-to-reference affordances are welcome.
 - A persistent **"reduced motion"** switch (in addition to honoring the OS setting) to demo the

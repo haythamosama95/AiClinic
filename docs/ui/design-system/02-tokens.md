@@ -272,7 +272,7 @@ In dark theme, elevation is carried mostly by a lighter `surface-*` plus a subtl
 | Token | Light value | Use |
 |-------|-------------|-----|
 | `elevation-0` | none (rely on `border-subtle`) | flat cards, table |
-| `elevation-1` | `0 1px 2px rgba(16,21,28,.06), 0 1px 1px rgba(16,21,28,.04)` | resting cards, sticky header |
+| `elevation-1` | `0 1px 2px rgba(16,21,28,.06), 0 1px 1px rgba(16,21,28,.04)` | resting cards |
 | `elevation-2` | `0 4px 12px rgba(16,21,28,.10)` | dropdowns, popovers, tooltips |
 | `elevation-3` | `0 12px 32px rgba(16,21,28,.16)` | modals, Command Bar |
 
@@ -323,8 +323,8 @@ and the AI "thinking" pulse. Nowhere else.
 | Token | Value |
 |-------|-------|
 | `z-base` | 0 |
-| `z-dropdown` | 1000 |
-| `z-sticky` | 1100 |
+| `z-sticky` | 1000 |
+| `z-dropdown` | 1100 |
 | `z-backdrop` | 1200 |
 | `z-modal` | 1300 |
 | `z-popover` | 1400 |
@@ -334,7 +334,22 @@ and the AI "thinking" pulse. Nowhere else.
 
 ---
 
-## 11. Iconography
+## 11. Shell component tokens
+
+Density-scoped tokens that keep sidebar header and top bar aligned. Set on `html[data-density]`;
+default app density is `comfortable`.
+
+| Token | `compact` | `default` | `comfortable` |
+|-------|-----------|-------------|---------------|
+| `shell-topbar-height` | 48px | 56px | 64px |
+| `shell-nav-item-height` | 32px | 36px | 40px |
+
+The sidebar org header uses `shell-topbar-height` so its bottom border lines up with the top bar.
+Sticky chrome (top bar, sidebar header) uses `border-subtle` only — no elevation or frost.
+
+---
+
+## 12. Iconography
 
 - **Library:** Lucide (matches the web stack; consistent 1.5px stroke, geometric, calm).
 - **Sizes:** `icon-sm` 16 · `icon-md` 20 (default, aligns with 14px text) · `icon-lg` 24 ·
@@ -347,7 +362,7 @@ and the AI "thinking" pulse. Nowhere else.
 
 ---
 
-## 12. Breakpoints (summary — full rules in `06`)
+## 13. Breakpoints (summary — full rules in `06`)
 
 Desktop-first. Primary design target is `xl` (≥1280). Below that we adapt, not redesign.
 

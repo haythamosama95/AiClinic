@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
-import { ShowcaseToolbar } from '@/components/showcase/ShowcaseToolbar'
+import { DevLocaleControls } from '@/components/showcase/DevLocaleControls'
 import { contrastRatio, formatContrast, meetsAA } from '@/lib/contrast'
 import {
   motionPresets,
@@ -450,7 +450,7 @@ export function FoundationsPage({ embedded = false }: { embedded?: boolean }) {
             <p className="text-overline text-text-tertiary">Milestone 1</p>
             <h1 className="text-h1 text-text-primary">Foundations</h1>
           </div>
-          <ShowcaseToolbar />
+          <DevLocaleControls />
         </div>
       </header>
 

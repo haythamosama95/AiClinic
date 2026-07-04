@@ -1,14 +1,15 @@
-import { Bell, Search } from 'lucide-react'
+import { Bell, Moon, Search, Sun } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { IconButton } from '@/components/actions/IconButton'
-import { Badge } from '@/components/badge/Badge'
 import { Kbd } from '@/components/kbd'
 import { useCommandBar } from '@/providers/CommandBarProvider'
+import { useTheme } from '@/providers/ThemeProvider'
 import { cn } from '@/lib/cn'
-import { AiModeToggle } from './AiModeToggle'
 import { BranchSwitcher } from './BranchSwitcher'
 import { UserMenu, type UserMenuUser } from './UserMenu'
 import type { Branch } from './nav-model'
+
+const TOPBAR_ICON_CLASS = '[&_span]:[--icon-btn-size:24px]'
 
 export type AppTopBarProps = {
   pageContext?: ReactNode
@@ -35,6 +36,7 @@ export function AppTopBar({
   toolbarSlot,
 }: AppTopBarProps) {
   const { openCommandBar, registerTrigger } = useCommandBar()
+  const { theme, toggleTheme } = useTheme()
   const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export function AppTopBar({
   return (
     <header
       className={cn(
-        'sticky top-0 z-[var(--z-sticky)] flex shrink-0 items-center gap-3 border-b border-border-subtle bg-surface-default/95 px-4 shadow-elevation-1 backdrop-blur-sm',
+        'sticky top-0 z-[var(--z-sticky)] flex shrink-0 items-center gap-3 border-b border-border-subtle bg-surface-default px-4',
         'h-[var(--shell-topbar-height)]',
         className,
       )}
@@ -54,15 +56,16 @@ export function AppTopBar({
         {pageContext ? (
           <div className="hidden min-w-0 sm:block">{pageContext}</div>
         ) : null}
+      </div>
 
+      <div className="flex shrink-0 justify-center px-2">
         <button
           ref={triggerRef}
           type="button"
           onClick={openCommandBar}
           className={cn(
-            'focus-ring flex min-w-0 flex-1 items-center gap-2 rounded-md border border-border-default bg-surface-sunken px-3 py-1.5 text-start transition-colors hover:bg-surface-hover',
+            'focus-ring flex w-[min(28rem,42vw)] items-center gap-2 rounded-md border border-border-default bg-surface-sunken px-3 py-1.5 text-start transition-colors hover:bg-surface-hover',
             'data-[density=compact]:py-1 data-[density=comfortable]:py-2',
-            'max-w-md',
           )}
           aria-label="Open command bar"
         >
@@ -74,7 +77,7 @@ export function AppTopBar({
         </button>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
         {toolbarSlot}
 
         <div className="hidden md:block">
@@ -85,24 +88,39 @@ export function AppTopBar({
           />
         </div>
 
-        <AiModeToggle className="hidden sm:inline-flex" />
-
         <div className="relative">
           <IconButton
             label={`Notifications${notificationCount > 0 ? `, ${notificationCount} unread` : ''}`}
             variant="ghost"
-            size="md"
+            size="lg"
+            className={TOPBAR_ICON_CLASS}
             onClick={onNotificationsClick}
-            icon={<Bell size={20} strokeWidth={1.5} />}
+            icon={<Bell size={24} strokeWidth={1.5} />}
           />
           {notificationCount > 0 ? (
-            <span className="absolute end-1 top-1">
-              <Badge variant="solid" color="danger" size="sm">
-                {notificationCount > 9 ? '9+' : notificationCount}
-              </Badge>
+            <span
+              aria-hidden
+              className="pointer-events-none absolute end-1.5 top-1.5 flex size-4 min-w-4 items-center justify-center rounded-full bg-status-danger-fg px-0.5 text-[10px] font-semibold leading-none text-text-inverse"
+            >
+              {notificationCount > 9 ? '9+' : notificationCount}
             </span>
           ) : null}
         </div>
+
+        <IconButton
+          label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+          variant="ghost"
+          size="lg"
+          className={TOPBAR_ICON_CLASS}
+          onClick={toggleTheme}
+          icon={
+            theme === 'light' ? (
+              <Moon size={24} strokeWidth={1.5} />
+            ) : (
+              <Sun size={24} strokeWidth={1.5} />
+            )
+          }
+        />
 
         <UserMenu user={user} />
       </div>

@@ -79,8 +79,7 @@ export function AppSidebar({
     >
       <div
         className={cn(
-          'flex items-center gap-2 border-b border-border-subtle px-3 py-3',
-          'data-[density=compact]:py-2 data-[density=comfortable]:py-4',
+          'flex h-[var(--shell-topbar-height)] shrink-0 items-center gap-2 border-b border-border-subtle px-3',
           collapsed && 'justify-center px-2',
         )}
       >

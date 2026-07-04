@@ -12,7 +12,7 @@ The persistent frame every authenticated screen lives in.
 
 ```text
 ┌───────────────────────────────────────────────────────────────┐
-│  Top Bar:  [breadcrumb/title]        [⌘K]  [branch▾] [AI] [◔] [@]│
+│  Top Bar:  [breadcrumb]    [⌘K search]    [branch▾] [◔] [☾] [@]│
 ├──────────┬────────────────────────────────────────────────────┤
 │          │                                                      │
 │ Sidebar  │   Content region (page)                              │
@@ -29,8 +29,8 @@ The persistent frame every authenticated screen lives in.
 
 - **Sidebar** (`C1`): primary navigation, collapsible to an icon rail; org/branch context at top;
   the Signal marks the active item. In RTL it moves to the right.
-- **Top Bar** (`C2`): location + the Command Bar trigger (`⌘K`), branch switcher, AI mode toggle,
-  notifications, user menu. Sticky.
+- **Top Bar** (`C2`): page context + centered Command Bar trigger (`⌘K`), branch switcher,
+  notifications (compact count dot), theme toggle, user menu. Sticky; flat chrome (border only).
 - **Content region:** scrolls independently; max content width for readability on very wide
   screens, but tables/workspaces may go full-width.
 - **Overlay layers:** Command Bar, modals, drawers, popovers, toasts — ordered by `z-index` (`02`).

@@ -144,9 +144,12 @@ messaging; presets (Today, This week, This month).
   the indicator; collapse persists; keyboard navigable; RTL puts it on the right.
 
 ### C2. Top Bar / App Bar (`AppTopBar`)
-- **Anatomy:** page context (breadcrumb/title), global **Command Bar** trigger (`⌘K`), branch
-  switcher, AI mode toggle, notifications, user menu.
-- **Behavior:** sticky (`z-sticky`, `elevation-1` on scroll); condenses at narrow widths.
+- **Anatomy:** three-zone layout — page context (breadcrumb/title, inline-start), centered
+  **Command Bar** trigger (`⌘K`), inline-end cluster (branch switcher, notifications with compact
+  count dot, theme toggle icon button, user menu).
+- **Behavior:** sticky (`z-sticky`); `shell-topbar-height`; flat `surface-default` + `border-subtle`
+  (no elevation or frost on chrome); command trigger is a fixed-width sunken field centered in the
+  bar; condenses at narrow widths (branch switcher hides below `md`).
 
 ### C3. Breadcrumb — hierarchical location; last item is current (not a link); truncates middle on
 overflow; separator mirrors in RTL.
@@ -182,6 +185,7 @@ upcoming states, back/next, per-step validation.
 shows org context; changing branch re-scopes data (with clear feedback).
 
 ### C10. User Menu — avatar → menu (profile, theme toggle, language EN/AR, sign out, app version).
+  Theme is also available as a top-bar icon button (`C2`) for quick access.
 
 ---
 

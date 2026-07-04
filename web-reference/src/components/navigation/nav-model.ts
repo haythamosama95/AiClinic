@@ -4,6 +4,7 @@ import {
   Calendar,
   ClipboardList,
   FileText,
+  FlaskConical,
   Home,
   LayoutGrid,
   Receipt,
@@ -82,6 +83,7 @@ export const CLINIC_NAV_GROUPS: NavGroup[] = [
 
 export const CLINIC_NAV_FOOTER: NavItem[] = [
   { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'dev', label: 'Dev', icon: FlaskConical },
 ]
 
 export const ALL_NAV_ITEMS: NavItem[] = [
