@@ -15,6 +15,8 @@ import 'package:ai_clinic/features/visits/presentation/providers/visit_documenta
 import 'package:ai_clinic/features/visits/presentation/widgets/encounter_field_card.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/investigation_result_capture_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/treatment_plan_display.dart';
+import 'package:ai_clinic/features/visits/domain/visit_status.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_detail_actions.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_attachment_list.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_page_tokens.dart';
 
@@ -152,11 +154,26 @@ class EncounterReview extends ConsumerWidget {
           final expandBody =
               constraints.hasBoundedHeight && constraints.maxHeight.isFinite && constraints.maxHeight > 0;
 
-          return EncounterFieldCard(
+          final card = EncounterFieldCard(
             title: EncounterPhase.review.label,
             titleIcon: EncounterPhase.review.icon,
             expandBody: expandBody,
             child: summary,
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // When [expandBody] is true the card fills its height via a
+              // SizedBox.expand, which requires a bounded height. A Column gives
+              // non-flex children unbounded height, so it must be wrapped in
+              // Expanded to receive the LayoutBuilder's bounded constraints.
+              if (expandBody) Expanded(child: card) else card,
+              if (visit.status == VisitStatus.completed) ...[
+                const SizedBox(height: VisitPageTokens.sectionGap),
+                VisitBillingPromptCard(visitId: visitId),
+              ],
+            ],
           );
         },
       ),

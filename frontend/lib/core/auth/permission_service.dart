@@ -82,6 +82,10 @@ class PermissionService {
 
   bool canManageShifts() => hasPermission(PermissionKeys.shiftsManage);
 
+  bool canViewServices() => hasPermission(PermissionKeys.servicesView);
+
+  bool canManageServices() => hasPermission(PermissionKeys.servicesManage);
+
   /// Branch assignment is sufficient for read-only shift calendar/detail access.
   bool canViewShifts() {
     final context = _context;

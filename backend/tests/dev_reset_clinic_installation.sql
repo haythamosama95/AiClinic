@@ -290,6 +290,70 @@ BEGIN
 END;
 $$;
 
+-- Organizations must be removed before auth.users when created_by references a deleted staff user.
+DO $$
+DECLARE
+  v_bootstrap_user uuid := 'a0000000-0000-4000-8000-000000000001';
+  v_creator_user uuid := 'e2700000-0000-4000-8000-0000000000a1';
+  v_org_id uuid := 'e2800000-0000-4000-8000-0000000000a1';
+  v_result public.rpc_result;
+  v_passed boolean;
+BEGIN
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('app.environment', 'development', true);
+  PERFORM auth_internal.delete_clinic_test_fixtures(ARRAY['b0000000-0000-4000-8000-000000000001']::uuid[]);
+  DELETE FROM public.audit_log WHERE true;
+  DELETE FROM public.app_settings WHERE true;
+  DELETE FROM public.subscription_cache WHERE true;
+  DELETE FROM public.organizations WHERE true;
+  DELETE FROM public.branches WHERE true;
+
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
+  VALUES (
+    v_creator_user,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'former-owner@example.test',
+    extensions.crypt('test-password', extensions.gen_salt('bf')),
+    now(),
+    now(),
+    now()
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.organizations (id, name, currency_code, timezone, created_by)
+  VALUES (v_org_id, 'Legacy Creator Org', 'EGP', 'UTC', v_creator_user)
+  ON CONFLICT (id) DO UPDATE
+  SET created_by = EXCLUDED.created_by,
+      name = EXCLUDED.name;
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,
+    true
+  );
+
+  v_result := public.dev_reset_clinic_installation();
+
+  PERFORM set_config('role', 'postgres', true);
+  v_passed := v_result.success
+    AND NOT auth_internal.organization_exists()
+    AND NOT EXISTS (
+      SELECT 1
+      FROM auth.users u
+      WHERE u.id = v_creator_user
+    );
+
+  INSERT INTO dev_reset_results VALUES (
+    'dev_reset_deletes_orgs_before_auth_users',
+    v_passed,
+    COALESCE(v_result.error_code, 'ok')
+  );
+END;
+$$;
+
 DO $$
 DECLARE
   v_failures int;
