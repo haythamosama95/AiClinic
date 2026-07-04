@@ -12,6 +12,7 @@ import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_overlay.dart';
 ///
 /// **Removal:** delete the entire `lib/app/shell/dev/` directory, then remove:
 /// - [ShellDevShellWrapper] in [AuthenticatedShell]
+/// - [ShellDevDesignSystemLauncher] in [AiClinicApp]
 /// - [shellDevListenForRouterRefresh] and [shellDevSuppressAuthRedirect] in [appRouterProvider]
 /// - [ShellDevNavFooter] call site in [ShellNav] (and dev entries in [ShellNavConfig])
 abstract final class ShellDevIntegration {

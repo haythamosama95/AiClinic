@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
+import 'package:ai_clinic/core/ui/showcase/design_system_showcase_page.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
@@ -47,15 +48,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
       GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
       GoRoute(path: AppRoutes.staffPasswordReset, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
+      GoRoute(path: AppRoutes.foundationDemo, builder: (context, state) => const DesignSystemShowcasePage()),
 
       // Authenticated shell — shared navigation wraps all feature routes
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
         routes: [
-          GoRoute(
-            path: AppRoutes.foundationDemo,
-            builder: (context, state) => uiPendingPlaceholder('Foundation', state),
-          ),
           GoRoute(path: AppRoutes.home, builder: (context, state) => uiPendingPlaceholder('Dashboard', state)),
 
           // Patient management
@@ -190,6 +188,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final setup = ref.read(setupNotifierProvider);
       final location = state.matchedLocation;
 
+      // Design-system showcase is always reachable (dev presentation reference).
+      if (location == AppRoutes.foundationDemo) {
+        return null;
+      }
+
       if (shellDevSuppressAuthRedirect(ref, auth)) {
         return null;
       }
@@ -235,7 +238,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
 
           // Legacy landing routes remain registered but are not reachable in normal flow.
-          if (location == AppRoutes.startupEntry || location == AppRoutes.foundationDemo) {
+          if (location == AppRoutes.startupEntry) {
             return AppRoutes.login;
           }
 

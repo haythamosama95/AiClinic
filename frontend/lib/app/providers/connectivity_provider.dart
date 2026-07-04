@@ -14,9 +14,10 @@ final connectivityHealthResultProvider = Provider<StartupHealthResult?>((ref) {
 });
 
 /// User-facing connectivity label for status surfaces.
-String connectivityStatusLabel(StartupConnectivityStatus status) => switch (status) {
-  StartupConnectivityStatus.unknown => 'Unknown',
-  StartupConnectivityStatus.healthy => 'Healthy',
-  StartupConnectivityStatus.degraded => 'Degraded',
-  StartupConnectivityStatus.unreachable => 'Unreachable',
-};
+String connectivityStatusLabel(StartupConnectivityStatus status) =>
+    switch (status) {
+      StartupConnectivityStatus.unknown => 'Unknown',
+      StartupConnectivityStatus.healthy => 'Healthy',
+      StartupConnectivityStatus.degraded => 'Degraded',
+      StartupConnectivityStatus.unreachable => 'Unreachable',
+    };

@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
 
 /// Temporary route target shown while feature UI is being rebuilt.
 class UiPendingPlaceholderPage extends StatelessWidget {
@@ -25,6 +28,14 @@ class UiPendingPlaceholderPage extends StatelessWidget {
               Text(routeName, style: theme.textTheme.bodyMedium, textAlign: TextAlign.center),
               const SizedBox(height: 24),
               Text('UI Pending Migration', style: theme.textTheme.titleMedium),
+              if (kDebugMode) ...[
+                const SizedBox(height: 32),
+                OutlinedButton.icon(
+                  onPressed: () => context.nav.goFoundationDemo(),
+                  icon: const Icon(Icons.science_outlined),
+                  label: const Text('Design System'),
+                ),
+              ],
             ],
           ),
         ),

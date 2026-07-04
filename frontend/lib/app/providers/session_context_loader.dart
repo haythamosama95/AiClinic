@@ -34,20 +34,31 @@ class SessionContextLoader {
     }
 
     if (staffRow['is_active'] != true) {
-      throw StateError('This staff account is inactive. Contact your clinic administrator.');
+      throw StateError(
+        'This staff account is inactive. Contact your clinic administrator.',
+      );
     }
 
     final role =
-        StaffRole.tryParse(staffRow['role']?.toString()) ?? StaffRole.tryParse(claims['staff_role']?.toString());
+        StaffRole.tryParse(staffRow['role']?.toString()) ??
+        StaffRole.tryParse(claims['staff_role']?.toString());
     if (role == null) {
       throw StateError('Authenticated session is missing a valid staff role.');
     }
 
     final branchIdsRaw = claims['branch_ids']?.toString() ?? '';
-    final branchIds = branchIdsRaw.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
+    final branchIds = branchIdsRaw
+        .split(',')
+        .map((v) => v.trim())
+        .where((v) => v.isNotEmpty)
+        .toList();
 
-    final permissions = await _permissionRepository.loadGrantedPermissions(role);
-    final setupRequired = claims['setup_required'] == true || claims['setup_required']?.toString() == 'true';
+    final permissions = await _permissionRepository.loadGrantedPermissions(
+      role,
+    );
+    final setupRequired =
+        claims['setup_required'] == true ||
+        claims['setup_required']?.toString() == 'true';
 
     String? primaryBranchId;
     if (branchIds.isNotEmpty) {
@@ -66,7 +77,11 @@ class SessionContextLoader {
     String? organizationTimezone;
     final organizationId = claims['organization_id']?.toString();
     if (organizationId != null && organizationId.isNotEmpty) {
-      final orgRow = await _client.from('organizations').select('timezone').eq('id', organizationId).maybeSingle();
+      final orgRow = await _client
+          .from('organizations')
+          .select('timezone')
+          .eq('id', organizationId)
+          .maybeSingle();
       organizationTimezone = orgRow?['timezone']?.toString();
     }
 

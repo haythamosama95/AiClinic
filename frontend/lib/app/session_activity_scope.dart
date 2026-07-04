@@ -13,7 +13,9 @@ class SessionActivityScope extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final idle = ref.watch(idleTimeoutServiceProvider);
-    final trackKeyboard = ref.watch(authSessionProvider.select((session) => session.isAuthenticated));
+    final trackKeyboard = ref.watch(
+      authSessionProvider.select((session) => session.isAuthenticated),
+    );
 
     final pointerScope = Listener(
       behavior: HitTestBehavior.translucent,

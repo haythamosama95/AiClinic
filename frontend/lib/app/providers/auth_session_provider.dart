@@ -18,15 +18,21 @@ import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 enum AuthSessionStatus { unknown, unauthenticated, loading, authenticated }
 
 class AuthSessionState {
-  const AuthSessionState({required this.status, this.context, this.failureMessage});
+  const AuthSessionState({
+    required this.status,
+    this.context,
+    this.failureMessage,
+  });
 
-  factory AuthSessionState.initial() => const AuthSessionState(status: AuthSessionStatus.unknown);
+  factory AuthSessionState.initial() =>
+      const AuthSessionState(status: AuthSessionStatus.unknown);
 
   final AuthSessionStatus status;
   final AuthSessionContext? context;
   final String? failureMessage;
 
-  bool get isAuthenticated => status == AuthSessionStatus.authenticated && context != null;
+  bool get isAuthenticated =>
+      status == AuthSessionStatus.authenticated && context != null;
 
   AuthSessionState copyWith({
     AuthSessionStatus? status,
@@ -38,18 +44,25 @@ class AuthSessionState {
     return AuthSessionState(
       status: status ?? this.status,
       context: clearContext ? null : (context ?? this.context),
-      failureMessage: clearFailure ? null : (failureMessage ?? this.failureMessage),
+      failureMessage: clearFailure
+          ? null
+          : (failureMessage ?? this.failureMessage),
     );
   }
 }
 
-final authSessionProvider = NotifierProvider<AuthSessionNotifier, AuthSessionState>(AuthSessionNotifier.new);
+final authSessionProvider =
+    NotifierProvider<AuthSessionNotifier, AuthSessionState>(
+      AuthSessionNotifier.new,
+    );
 
 final idleTimeoutServiceProvider = Provider<IdleTimeoutService>((ref) {
   late final IdleTimeoutService service;
   service = IdleTimeoutService(
     onIdleTimeout: () {
-      unawaited(ref.read(authSessionProvider.notifier).signOutDueToInactivity());
+      unawaited(
+        ref.read(authSessionProvider.notifier).signOutDueToInactivity(),
+      );
     },
   );
   ref.onDispose(service.dispose);
@@ -69,13 +82,15 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     });
 
     ref.listen<StartupSessionState>(startupSessionProvider, (previous, next) {
-      if (next.configurationStatus == StartupConfigurationStatus.valid && next.deploymentProfile != null) {
+      if (next.configurationStatus == StartupConfigurationStatus.valid &&
+          next.deploymentProfile != null) {
         unawaited(_ensureSupabaseReady(next));
       }
     });
 
     final startup = ref.read(startupSessionProvider);
-    if (startup.configurationStatus == StartupConfigurationStatus.valid && startup.deploymentProfile != null) {
+    if (startup.configurationStatus == StartupConfigurationStatus.valid &&
+        startup.deploymentProfile != null) {
       Future<void>.microtask(() => _ensureSupabaseReady(startup));
     }
 
@@ -98,23 +113,34 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
         return;
       }
 
-      state = state.copyWith(status: AuthSessionStatus.loading, clearFailure: true);
+      state = state.copyWith(
+        status: AuthSessionStatus.loading,
+        clearFailure: true,
+      );
 
       // Run once per process so cold start never restores a prior workstation session.
       if (!_clearedPersistedSessionOnColdStart) {
-        await ref.read(authRepositoryProvider).clearPersistedSessionOnColdStart();
+        await ref
+            .read(authRepositoryProvider)
+            .clearPersistedSessionOnColdStart();
         _clearedPersistedSessionOnColdStart = true;
       }
 
       await _bindAuthListener();
 
-      if (state.status == AuthSessionStatus.unknown || state.status == AuthSessionStatus.loading) {
+      if (state.status == AuthSessionStatus.unknown ||
+          state.status == AuthSessionStatus.loading) {
         await _syncFromCurrentSession();
       }
     } catch (error) {
       _ensureSupabaseReadyTask = null;
-      AppLog.warning('auth.session.bootstrap_failed reason=${error.runtimeType}');
-      state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
+      AppLog.warning(
+        'auth.session.bootstrap_failed reason=${error.runtimeType}',
+      );
+      state = AuthSessionState(
+        status: AuthSessionStatus.unauthenticated,
+        failureMessage: error.toString(),
+      );
     }
   }
 
@@ -130,47 +156,73 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   }
 
   Future<void> _handleAuthState(AuthState authState) async {
-    if (authState.event == AuthChangeEvent.signedOut || authState.session == null) {
+    if (authState.event == AuthChangeEvent.signedOut ||
+        authState.session == null) {
       _setUnauthenticatedAfterExternalSignOut();
       return;
     }
 
-    if (authState.event == AuthChangeEvent.tokenRefreshed && authState.session != null) {
+    if (authState.event == AuthChangeEvent.tokenRefreshed &&
+        authState.session != null) {
       if (state.isAuthenticated) {
         try {
           final context = await _loadSessionContext(authState.session!);
-          state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+          state = AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: context,
+          );
         } catch (error) {
-          AppLog.warning('auth.session.token_refresh_context_failed reason=${_contextFailureReason(error)}');
+          AppLog.warning(
+            'auth.session.token_refresh_context_failed reason=${_contextFailureReason(error)}',
+          );
           await ref.read(authRepositoryProvider).signOut();
-          state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: kSessionEndedMessage);
+          state = AuthSessionState(
+            status: AuthSessionStatus.unauthenticated,
+            failureMessage: kSessionEndedMessage,
+          );
           _syncIdleMonitoring();
         }
       }
       return;
     }
 
-    state = state.copyWith(status: AuthSessionStatus.loading, clearFailure: true);
+    state = state.copyWith(
+      status: AuthSessionStatus.loading,
+      clearFailure: true,
+    );
     try {
       final context = await _loadSessionContext(authState.session!);
-      state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+      state = AuthSessionState(
+        status: AuthSessionStatus.authenticated,
+        context: context,
+      );
       _syncIdleMonitoring();
       AppLog.fine(
         'auth.session.authenticated role=${context.staffProfile.role.wireValue} '
         'setup=${context.setupRequired}',
       );
     } catch (error) {
-      AppLog.warning('auth.session.context_failed reason=${_contextFailureReason(error)}');
+      AppLog.warning(
+        'auth.session.context_failed reason=${_contextFailureReason(error)}',
+      );
       await ref.read(authRepositoryProvider).signOut();
-      state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
+      state = AuthSessionState(
+        status: AuthSessionStatus.unauthenticated,
+        failureMessage: error.toString(),
+      );
       _syncIdleMonitoring();
     }
   }
 
   void _setUnauthenticatedAfterExternalSignOut() {
     final wasAuthenticated = state.isAuthenticated;
-    final failureMessage = _intentionalSignOut || !wasAuthenticated ? null : kSessionEndedMessage;
-    state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: failureMessage);
+    final failureMessage = _intentionalSignOut || !wasAuthenticated
+        ? null
+        : kSessionEndedMessage;
+    state = AuthSessionState(
+      status: AuthSessionStatus.unauthenticated,
+      failureMessage: failureMessage,
+    );
     _syncIdleMonitoring();
   }
 
@@ -187,9 +239,13 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   Future<void> _enableIdleWithPersistedDuration(IdleTimeoutService idle) async {
     Duration duration;
     try {
-      duration = await ref.read(idleTimeoutPreferencesStoreProvider).loadIdleDuration();
+      duration = await ref
+          .read(idleTimeoutPreferencesStoreProvider)
+          .loadIdleDuration();
     } catch (error) {
-      AppLog.warning('auth.session.idle_duration_load_failed reason=${error.runtimeType}');
+      AppLog.warning(
+        'auth.session.idle_duration_load_failed reason=${error.runtimeType}',
+      );
       duration = kIdleTimeoutDuration;
     }
 
@@ -201,7 +257,8 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     idle.enable(resetTimer: true);
   }
 
-  static String _contextFailureReason(Object error) => SessionContextLoader.contextFailureReason(error);
+  static String _contextFailureReason(Object error) =>
+      SessionContextLoader.contextFailureReason(error);
 
   Future<void> _syncFromCurrentSession() async {
     if (!SupabaseBootstrap.isReady) {
@@ -218,10 +275,13 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     await _handleAuthState(AuthState(AuthChangeEvent.initialSession, session));
   }
 
-  SessionContextLoader get _contextLoader =>
-      SessionContextLoader(ref.read(supabaseClientProvider), ref.read(permissionRepositoryProvider));
+  SessionContextLoader get _contextLoader => SessionContextLoader(
+    ref.read(supabaseClientProvider),
+    ref.read(permissionRepositoryProvider),
+  );
 
-  Future<AuthSessionContext> _loadSessionContext(Session session) => _contextLoader.load(session);
+  Future<AuthSessionContext> _loadSessionContext(Session session) =>
+      _contextLoader.load(session);
 
   void setActiveBranch(String branchId) {
     final context = state.context;
@@ -260,7 +320,10 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     } finally {
       _intentionalSignOut = false;
     }
-    state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: kIdleTimeoutSignOutMessage);
+    state = AuthSessionState(
+      status: AuthSessionStatus.unauthenticated,
+      failureMessage: kIdleTimeoutSignOutMessage,
+    );
     _syncIdleMonitoring();
   }
 
@@ -291,12 +354,20 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     // away from deep-linked settings pages (e.g. role permissions matrix).
     try {
       final context = await _loadSessionContext(session);
-      state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+      state = AuthSessionState(
+        status: AuthSessionStatus.authenticated,
+        context: context,
+      );
       _syncIdleMonitoring();
     } catch (error) {
-      AppLog.warning('auth.session.refresh_failed reason=${_contextFailureReason(error)}');
+      AppLog.warning(
+        'auth.session.refresh_failed reason=${_contextFailureReason(error)}',
+      );
       await ref.read(authRepositoryProvider).signOut();
-      state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: kSessionEndedMessage);
+      state = AuthSessionState(
+        status: AuthSessionStatus.unauthenticated,
+        failureMessage: kSessionEndedMessage,
+      );
       _syncIdleMonitoring();
     }
   }
@@ -304,7 +375,8 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   /// Waits until startup config is loaded and the Supabase client is ready for password sign-in.
   Future<void> ensureReadyForSignIn() async {
     final startup = ref.read(startupSessionProvider);
-    if (startup.configurationStatus != StartupConfigurationStatus.valid || startup.deploymentProfile == null) {
+    if (startup.configurationStatus != StartupConfigurationStatus.valid ||
+        startup.deploymentProfile == null) {
       throw StateError('Startup configuration is not ready for sign-in.');
     }
 

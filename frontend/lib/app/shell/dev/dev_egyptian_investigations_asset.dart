@@ -18,7 +18,9 @@ abstract final class DevEgyptianInvestigationsAsset {
 
     final namesRaw = decoded['names'];
     if (namesRaw is! List) {
-      throw StateError('Egyptian investigation asset is missing a "names" array.');
+      throw StateError(
+        'Egyptian investigation asset is missing a "names" array.',
+      );
     }
 
     return [
@@ -27,7 +29,10 @@ abstract final class DevEgyptianInvestigationsAsset {
     ];
   }
 
-  static List<List<String>> batchesFor(List<String> names, {int batchSize = batchSize}) {
+  static List<List<String>> batchesFor(
+    List<String> names, {
+    int batchSize = batchSize,
+  }) {
     if (names.isEmpty || batchSize <= 0) {
       return const [];
     }
@@ -35,7 +40,9 @@ abstract final class DevEgyptianInvestigationsAsset {
     final batches = <List<String>>[];
     for (var index = 0; index < names.length; index += batchSize) {
       final end = index + batchSize;
-      batches.add(names.sublist(index, end > names.length ? names.length : end));
+      batches.add(
+        names.sublist(index, end > names.length ? names.length : end),
+      );
     }
     return batches;
   }

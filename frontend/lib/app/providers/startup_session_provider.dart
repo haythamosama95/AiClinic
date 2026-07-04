@@ -16,7 +16,12 @@ const Object _noChange = Object();
 enum StartupConfigurationStatus { unknown, valid, missing, invalid }
 
 /// Drives which safe pre-auth screen the router should expose.
-enum StartupCurrentView { startupCheck, unauthenticatedEntry, setupGuidance, protectedRouteBlocked }
+enum StartupCurrentView {
+  startupCheck,
+  unauthenticatedEntry,
+  setupGuidance,
+  protectedRouteBlocked,
+}
 
 @immutable
 /// Aggregates the startup state needed by the router and bootstrap UI.
@@ -70,13 +75,21 @@ class StartupSessionState {
       connectivityStatus: connectivityStatus ?? this.connectivityStatus,
       currentView: currentView ?? this.currentView,
       themeMode: themeMode ?? this.themeMode,
-      blockedReason: identical(blockedReason, _noChange) ? this.blockedReason : blockedReason as String?,
-      lastHealthCheck: identical(lastHealthCheck, _noChange) ? this.lastHealthCheck : lastHealthCheck as DateTime?,
+      blockedReason: identical(blockedReason, _noChange)
+          ? this.blockedReason
+          : blockedReason as String?,
+      lastHealthCheck: identical(lastHealthCheck, _noChange)
+          ? this.lastHealthCheck
+          : lastHealthCheck as DateTime?,
       deploymentProfile: identical(deploymentProfile, _noChange)
           ? this.deploymentProfile
           : deploymentProfile as DeploymentProfile?,
-      failure: identical(failure, _noChange) ? this.failure : failure as AppFailure?,
-      healthResult: identical(healthResult, _noChange) ? this.healthResult : healthResult as StartupHealthResult?,
+      failure: identical(failure, _noChange)
+          ? this.failure
+          : failure as AppFailure?,
+      healthResult: identical(healthResult, _noChange)
+          ? this.healthResult
+          : healthResult as StartupHealthResult?,
     );
   }
 }
@@ -92,9 +105,10 @@ final startupHealthServiceProvider = Provider<StartupHealthService>((ref) {
 });
 
 /// Owns the startup state machine for bootstrap, retry, theming, and route guards.
-final startupSessionProvider = NotifierProvider<StartupSessionNotifier, StartupSessionState>(
-  StartupSessionNotifier.new,
-);
+final startupSessionProvider =
+    NotifierProvider<StartupSessionNotifier, StartupSessionState>(
+      StartupSessionNotifier.new,
+    );
 
 class StartupSessionNotifier extends Notifier<StartupSessionState> {
   @override
@@ -103,20 +117,26 @@ class StartupSessionNotifier extends Notifier<StartupSessionState> {
   /// Re-runs startup from scratch, loading config first and then probing connectivity.
   Future<void> bootstrap() async {
     final preservedThemeMode = state.themeMode;
-    state = StartupSessionState.initial().copyWith(themeMode: preservedThemeMode);
+    state = StartupSessionState.initial().copyWith(
+      themeMode: preservedThemeMode,
+    );
 
     try {
       final profile = await ref.read(deploymentProfileStoreProvider).load();
       final supabaseConfig = SupabaseConfig.fromDeploymentProfile(profile);
       await ref.read(supabaseInitializerProvider).initialize(supabaseConfig);
-      final healthResult = await ref.read(startupHealthServiceProvider).check(supabaseConfig);
+      final healthResult = await ref
+          .read(startupHealthServiceProvider)
+          .check(supabaseConfig);
 
       // A valid profile always advances to the startup dashboard, even if health is degraded.
       state = state.copyWith(
         configurationStatus: StartupConfigurationStatus.valid,
         connectivityStatus: healthResult.status,
         currentView: StartupCurrentView.unauthenticatedEntry,
-        blockedReason: healthResult.status == StartupConnectivityStatus.healthy ? null : healthResult.userMessage,
+        blockedReason: healthResult.status == StartupConnectivityStatus.healthy
+            ? null
+            : healthResult.userMessage,
         lastHealthCheck: healthResult.checkedAt,
         deploymentProfile: profile,
         failure: healthResult.status == StartupConnectivityStatus.healthy
@@ -126,18 +146,28 @@ class StartupSessionNotifier extends Notifier<StartupSessionState> {
       );
       // Known configuration errors always send the user to setup guidance.
     } on MissingDeploymentProfileException catch (error) {
-      _applyConfigurationFailure(status: StartupConfigurationStatus.missing, error: error);
+      _applyConfigurationFailure(
+        status: StartupConfigurationStatus.missing,
+        error: error,
+      );
     } on InvalidDeploymentProfileException catch (error) {
-      _applyConfigurationFailure(status: StartupConfigurationStatus.invalid, error: error);
+      _applyConfigurationFailure(
+        status: StartupConfigurationStatus.invalid,
+        error: error,
+      );
     } on DeploymentProfileException catch (error) {
-      _applyConfigurationFailure(status: StartupConfigurationStatus.invalid, error: error);
+      _applyConfigurationFailure(
+        status: StartupConfigurationStatus.invalid,
+        error: error,
+      );
     } catch (error) {
       // Unknown bootstrap failures are treated as unsafe configuration problems.
       state = state.copyWith(
         configurationStatus: StartupConfigurationStatus.invalid,
         connectivityStatus: StartupConnectivityStatus.unknown,
         currentView: StartupCurrentView.setupGuidance,
-        blockedReason: 'Startup stopped because configuration could not be resolved safely.',
+        blockedReason:
+            'Startup stopped because configuration could not be resolved safely.',
         lastHealthCheck: null,
         deploymentProfile: null,
         failure: mapExceptionToFailure(error),
@@ -158,7 +188,8 @@ class StartupSessionNotifier extends Notifier<StartupSessionState> {
   void blockProtectedRoute(String attemptedLocation) {
     state = state.copyWith(
       currentView: StartupCurrentView.protectedRouteBlocked,
-      blockedReason: 'Protected route `$attemptedLocation` is unavailable until authenticated workflows exist.',
+      blockedReason:
+          'Protected route `$attemptedLocation` is unavailable until authenticated workflows exist.',
     );
   }
 

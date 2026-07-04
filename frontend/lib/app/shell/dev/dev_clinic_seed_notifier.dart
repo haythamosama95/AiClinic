@@ -18,7 +18,11 @@ import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.d
 
 @immutable
 class DevClinicSeedState {
-  const DevClinicSeedState({this.inProgress = false, this.progressMessage, this.errorMessage});
+  const DevClinicSeedState({
+    this.inProgress = false,
+    this.progressMessage,
+    this.errorMessage,
+  });
 
   final bool inProgress;
   final String? progressMessage;
@@ -33,7 +37,9 @@ class DevClinicSeedState {
   }) {
     return DevClinicSeedState(
       inProgress: inProgress ?? this.inProgress,
-      progressMessage: clearProgress ? null : (progressMessage ?? this.progressMessage),
+      progressMessage: clearProgress
+          ? null
+          : (progressMessage ?? this.progressMessage),
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
@@ -52,7 +58,10 @@ final devClinicSeedServiceProvider = Provider<DevClinicSeedService>((ref) {
   );
 });
 
-final devClinicSeedProvider = NotifierProvider<DevClinicSeedNotifier, DevClinicSeedState>(DevClinicSeedNotifier.new);
+final devClinicSeedProvider =
+    NotifierProvider<DevClinicSeedNotifier, DevClinicSeedState>(
+      DevClinicSeedNotifier.new,
+    );
 
 class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
   @override
@@ -65,16 +74,25 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
 
     final auth = ref.read(authSessionProvider).context;
     if (auth == null) {
-      state = state.copyWith(errorMessage: 'Sign in before filling dummy clinic data.');
+      state = state.copyWith(
+        errorMessage: 'Sign in before filling dummy clinic data.',
+      );
       return false;
     }
 
     if (!auth.staffProfile.isBootstrapAdmin) {
-      state = state.copyWith(errorMessage: 'Only the bootstrap administrator can fill dummy clinic data.');
+      state = state.copyWith(
+        errorMessage:
+            'Only the bootstrap administrator can fill dummy clinic data.',
+      );
       return false;
     }
 
-    state = state.copyWith(inProgress: true, clearError: true, progressMessage: 'Preparing…');
+    state = state.copyWith(
+      inProgress: true,
+      clearError: true,
+      progressMessage: 'Preparing…',
+    );
     AppLog.info('dev_clinic_seed.start');
 
     try {
@@ -82,7 +100,8 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
           .read(devClinicSeedServiceProvider)
           .run(
             auth: auth,
-            refreshSession: () => ref.read(authSessionProvider.notifier).refreshSessionContext(),
+            refreshSession: () =>
+                ref.read(authSessionProvider.notifier).refreshSessionContext(),
             onProgress: (message) {
               state = state.copyWith(progressMessage: message);
             },

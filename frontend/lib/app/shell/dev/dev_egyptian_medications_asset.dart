@@ -27,7 +27,10 @@ abstract final class DevEgyptianMedicationsAsset {
     ];
   }
 
-  static List<List<String>> batchesFor(List<String> names, {int batchSize = batchSize}) {
+  static List<List<String>> batchesFor(
+    List<String> names, {
+    int batchSize = batchSize,
+  }) {
     if (names.isEmpty || batchSize <= 0) {
       return const [];
     }
@@ -35,7 +38,9 @@ abstract final class DevEgyptianMedicationsAsset {
     final batches = <List<String>>[];
     for (var index = 0; index < names.length; index += batchSize) {
       final end = index + batchSize;
-      batches.add(names.sublist(index, end > names.length ? names.length : end));
+      batches.add(
+        names.sublist(index, end > names.length ? names.length : end),
+      );
     }
     return batches;
   }

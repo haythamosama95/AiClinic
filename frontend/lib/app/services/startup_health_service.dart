@@ -29,7 +29,11 @@ class StartupDependencyCheck {
 @immutable
 /// Aggregate health snapshot returned after startup probes complete.
 class StartupHealthResult {
-  const StartupHealthResult({required this.status, required this.checkedAt, required this.checks});
+  const StartupHealthResult({
+    required this.status,
+    required this.checkedAt,
+    required this.checks,
+  });
 
   final StartupConnectivityStatus status;
   final DateTime checkedAt;
@@ -37,7 +41,8 @@ class StartupHealthResult {
 
   /// User-facing summary derived from the aggregate connectivity status.
   String get userMessage => switch (status) {
-    StartupConnectivityStatus.unknown => 'Startup health has not been checked yet.',
+    StartupConnectivityStatus.unknown =>
+      'Startup health has not been checked yet.',
     StartupConnectivityStatus.healthy => 'Clinic-local services are reachable.',
     StartupConnectivityStatus.degraded =>
       'Some clinic-local services responded, but sign-in may not work until all probes succeed.',
@@ -51,7 +56,9 @@ class StartupHealthResult {
 }
 
 /// Classifies startup probe results: auth and REST must both respond for a healthy clinic-local stack.
-StartupConnectivityStatus classifyStartupConnectivity(List<StartupDependencyCheck> checks) {
+StartupConnectivityStatus classifyStartupConnectivity(
+  List<StartupDependencyCheck> checks,
+) {
   final byName = {for (final check in checks) check.name: check};
   final auth = byName['auth'];
   final api = byName['api'];
@@ -99,7 +106,8 @@ class StartupHealthService {
         apiKey: config.anonKey,
       );
 
-      if (!authCheck.reachable && authCheck.statusCode == _badGatewayStatusCode) {
+      if (!authCheck.reachable &&
+          authCheck.statusCode == _badGatewayStatusCode) {
         await Future<void>.delayed(authRetryDelay);
         authCheck = await _probeEndpoint(
           client: httpClient,
@@ -137,7 +145,12 @@ class StartupHealthService {
     required String apiKey,
   }) {
     final httpClient = client ?? http.Client();
-    return _probeEndpoint(client: httpClient, name: name, uri: uri, apiKey: apiKey);
+    return _probeEndpoint(
+      client: httpClient,
+      name: name,
+      uri: uri,
+      apiKey: apiKey,
+    );
   }
 
   Future<StartupDependencyCheck> _probeEndpoint({
@@ -148,7 +161,14 @@ class StartupHealthService {
   }) async {
     try {
       final response = await client
-          .get(uri, headers: {'Accept': 'application/json', 'apikey': apiKey, 'Authorization': 'Bearer $apiKey'})
+          .get(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'apikey': apiKey,
+              'Authorization': 'Bearer $apiKey',
+            },
+          )
           .timeout(timeout);
 
       final statusCode = response.statusCode;
@@ -167,9 +187,19 @@ class StartupHealthService {
         detail: 'Timed out after ${timeout.inSeconds}s',
       );
     } on http.ClientException catch (error) {
-      return StartupDependencyCheck(name: name, uri: uri, reachable: false, detail: error.message);
+      return StartupDependencyCheck(
+        name: name,
+        uri: uri,
+        reachable: false,
+        detail: error.message,
+      );
     } on Exception catch (error) {
-      return StartupDependencyCheck(name: name, uri: uri, reachable: false, detail: error.toString());
+      return StartupDependencyCheck(
+        name: name,
+        uri: uri,
+        reachable: false,
+        detail: error.toString(),
+      );
     }
   }
 }

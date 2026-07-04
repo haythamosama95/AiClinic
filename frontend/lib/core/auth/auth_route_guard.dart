@@ -14,14 +14,14 @@ abstract final class AuthRouteGuard {
         location == AppRoutes.setupGuidance ||
         location == AppRoutes.protectedBlocked ||
         location == AppRoutes.login ||
-        location == AppRoutes.forgotPassword;
+        location == AppRoutes.forgotPassword ||
+        location == AppRoutes.foundationDemo;
   }
 
   /// Routes that require a signed-in staff session.
   static bool requiresAuthentication(String location) {
     return location == AppRoutes.home ||
         location == AppRoutes.bootstrap ||
-        location == AppRoutes.foundationDemo ||
         isSettingsRoute(location) ||
         isPatientRoute(location) ||
         isAppointmentRoute(location) ||

@@ -31,13 +31,16 @@ abstract final class AppRoutes {
   static const settingsPermissions = '/settings/permissions';
 
   /// Edit branch: `/settings/branches/:id/edit`
-  static String settingsBranchEdit(String branchId) => '$settingsBranches/$branchId/edit';
+  static String settingsBranchEdit(String branchId) =>
+      '$settingsBranches/$branchId/edit';
 
   /// Staff detail: `/settings/staff/:id`
-  static String settingsStaffDetail(String staffId) => '$settingsStaff/$staffId';
+  static String settingsStaffDetail(String staffId) =>
+      '$settingsStaff/$staffId';
 
   /// Staff password reset: `/settings/staff/:id/reset-password`
-  static String settingsStaffResetPassword(String staffId) => '$settingsStaff/$staffId/reset-password';
+  static String settingsStaffResetPassword(String staffId) =>
+      '$settingsStaff/$staffId/reset-password';
 
   /// All V1-2 admin settings paths (static + parameterized builders).
   static const adminSettingsPaths = <String>[
@@ -69,10 +72,12 @@ abstract final class AppRoutes {
   static const appointmentsCalendar = '/appointments/calendar';
 
   /// Doctor schedule: `/appointments/schedule/:doctorId`
-  static String appointmentsSchedule(String doctorId) => '$appointments/schedule/$doctorId';
+  static String appointmentsSchedule(String doctorId) =>
+      '$appointments/schedule/$doctorId';
 
   /// Appointment detail: `/appointments/:appointmentId`
-  static String appointmentDetail(String appointmentId) => '$appointments/$appointmentId';
+  static String appointmentDetail(String appointmentId) =>
+      '$appointments/$appointmentId';
 
   /// Static appointment hub paths (hub, book, queue, calendar).
   static const appointmentStaticPaths = <String>[
@@ -94,7 +99,8 @@ abstract final class AppRoutes {
   }
 
   /// Visit clinical detail: `/visits/:visitId/detail`
-  static String visitDetail(String visitId) => '$visits/$visitId/$visitDetailSegment';
+  static String visitDetail(String visitId) =>
+      '$visits/$visitId/$visitDetailSegment';
 
   // V1-6 billing
   static const billingInvoices = '/billing/invoices';
@@ -106,20 +112,30 @@ abstract final class AppRoutes {
   static const settingsServicesNew = '/settings/services/new';
 
   /// Service editor: `/settings/services/:id/edit`
-  static String settingsServiceEdit(String serviceId) => '/settings/services/$serviceId/edit';
+  static String settingsServiceEdit(String serviceId) =>
+      '/settings/services/$serviceId/edit';
 
-  static const serviceCatalogStaticPaths = <String>[settingsServices, settingsServicesNew];
+  static const serviceCatalogStaticPaths = <String>[
+    settingsServices,
+    settingsServicesNew,
+  ];
 
   /// Invoice detail: `/billing/invoices/:id`
-  static String billingInvoiceDetail(String invoiceId) => '$billingInvoices/$invoiceId';
+  static String billingInvoiceDetail(String invoiceId) =>
+      '$billingInvoices/$invoiceId';
 
   static const billingInvoiceEditSegment = 'edit';
 
   /// Draft invoice editor: `/billing/invoices/:id/edit`
-  static String billingInvoiceEdit(String invoiceId) => '$billingInvoices/$invoiceId/$billingInvoiceEditSegment';
+  static String billingInvoiceEdit(String invoiceId) =>
+      '$billingInvoices/$invoiceId/$billingInvoiceEditSegment';
 
   /// Static billing hub paths.
-  static const billingStaticPaths = <String>[billingInvoices, billingInsuranceProviders, settingsBilling];
+  static const billingStaticPaths = <String>[
+    billingInvoices,
+    billingInsuranceProviders,
+    settingsBilling,
+  ];
 
   // V1-7 shift management
   static const shiftsCalendar = '/shifts/calendar';

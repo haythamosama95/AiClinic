@@ -28,4 +28,7 @@ class BranchSelectionNotifier extends Notifier<String?> {
   }
 }
 
-final branchSelectionProvider = NotifierProvider<BranchSelectionNotifier, String?>(BranchSelectionNotifier.new);
+final branchSelectionProvider =
+    NotifierProvider<BranchSelectionNotifier, String?>(
+      BranchSelectionNotifier.new,
+    );

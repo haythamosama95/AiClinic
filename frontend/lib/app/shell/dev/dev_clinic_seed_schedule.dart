@@ -24,7 +24,10 @@ abstract final class DevClinicSeedSchedule {
     AppointmentStatus.noShow,
   ];
 
-  static const seedablePatientGenders = <PatientGender>[PatientGender.male, PatientGender.female];
+  static const seedablePatientGenders = <PatientGender>[
+    PatientGender.male,
+    PatientGender.female,
+  ];
 
   static const seedableMaritalStatuses = PatientMaritalStatus.values;
 
@@ -43,7 +46,10 @@ abstract final class DevClinicSeedSchedule {
     return seedableMaritalStatuses[seedKey % seedableMaritalStatuses.length];
   }
 
-  static String patientNotes({required String branchCode, required int patientIndex}) {
+  static String patientNotes({
+    required String branchCode,
+    required int patientIndex,
+  }) {
     return 'Dev seed patient $branchCode #$patientIndex — allergies reviewed, emergency contact on file.';
   }
 
@@ -52,7 +58,9 @@ abstract final class DevClinicSeedSchedule {
   /// - Before today: completed, cancelled, or no-show only.
   /// - Today: confirmed and queue-active statuses.
   /// - After today: scheduled, confirmed, or cancelled only.
-  static List<AppointmentStatus> allowedStatusesForCalendarDayRelation(DevClinicSeedCalendarDayRelation relation) {
+  static List<AppointmentStatus> allowedStatusesForCalendarDayRelation(
+    DevClinicSeedCalendarDayRelation relation,
+  ) {
     return switch (relation) {
       DevClinicSeedCalendarDayRelation.past => const [
         AppointmentStatus.completed,
@@ -107,7 +115,11 @@ abstract final class DevClinicSeedSchedule {
     required String timezone,
     DateTime? referenceUtc,
   }) {
-    final relation = calendarDayRelationFor(startTimeUtc: startTimeUtc, timezone: timezone, referenceUtc: referenceUtc);
+    final relation = calendarDayRelationFor(
+      startTimeUtc: startTimeUtc,
+      timezone: timezone,
+      referenceUtc: referenceUtc,
+    );
     return allowedStatusesForCalendarDayRelation(relation);
   }
 
@@ -128,7 +140,8 @@ abstract final class DevClinicSeedSchedule {
 
   /// Deterministic appointment length in [minAppointmentDurationMinutes, maxAppointmentDurationMinutes].
   static int appointmentDurationMinutesFor(int seedKey) {
-    final span = maxAppointmentDurationMinutes - minAppointmentDurationMinutes + 1;
+    final span =
+        maxAppointmentDurationMinutes - minAppointmentDurationMinutes + 1;
     return minAppointmentDurationMinutes + (seedKey % span);
   }
 
@@ -148,19 +161,33 @@ abstract final class DevClinicSeedSchedule {
   }
 
   /// Day offsets for shift seeding (today through five days ahead; past dates are read-only).
-  static List<int> get shiftDayOffsets => appointmentDayOffsets.where((offset) => offset >= 0).toList(growable: false);
+  static List<int> get shiftDayOffsets => appointmentDayOffsets
+      .where((offset) => offset >= 0)
+      .toList(growable: false);
 
-  static DateTime shiftDateLocal({required String timezone, required int dayOffset, DateTime? referenceUtc}) {
+  static DateTime shiftDateLocal({
+    required String timezone,
+    required int dayOffset,
+    DateTime? referenceUtc,
+  }) {
     ensureAppointmentTimezonesInitialized();
     final ref = (referenceUtc ?? DateTime.now()).toUtc();
     final location = tz.getLocation(timezone);
     final localNow = tz.TZDateTime.from(ref, location);
-    final day = tz.TZDateTime(location, localNow.year, localNow.month, localNow.day).add(Duration(days: dayOffset));
+    final day = tz.TZDateTime(
+      location,
+      localNow.year,
+      localNow.month,
+      localNow.day,
+    ).add(Duration(days: dayOffset));
     return DateTime(day.year, day.month, day.day);
   }
 
   /// Doctors staffed on a branch shift — matches appointment doctor assignment options.
-  static List<String> shiftDoctorIdsForBranch({required String primaryDoctorId, required String? secondaryDoctorId}) {
+  static List<String> shiftDoctorIdsForBranch({
+    required String primaryDoctorId,
+    required String? secondaryDoctorId,
+  }) {
     final primary = primaryDoctorId.trim();
     final ids = <String>[primary];
     final secondary = secondaryDoctorId?.trim();
@@ -170,12 +197,17 @@ abstract final class DevClinicSeedSchedule {
     return ids;
   }
 
-  static String shiftNotes({required String branchCode, required int dayOffset}) {
+  static String shiftNotes({
+    required String branchCode,
+    required int dayOffset,
+  }) {
     return 'Dev seed shift for $branchCode (day $dayOffset).';
   }
 
   /// Visit-eligible statuses require a doctor; keep unassigned appointments bookable only.
-  static AppointmentStatus appointmentTargetWithoutDoctor(AppointmentStatus target) {
+  static AppointmentStatus appointmentTargetWithoutDoctor(
+    AppointmentStatus target,
+  ) {
     return switch (target) {
       AppointmentStatus.checkedIn ||
       AppointmentStatus.inProgress ||
@@ -188,7 +220,10 @@ abstract final class DevClinicSeedSchedule {
   ///
   /// The backend rejects any overlapping slot in the same branch (regardless of doctor),
   /// so appointments must be packed sequentially rather than on parallel doctor tracks.
-  static int minutesBeforePatient({required int dayOffset, required int patientIndex}) {
+  static int minutesBeforePatient({
+    required int dayOffset,
+    required int patientIndex,
+  }) {
     var total = 0;
     for (var i = 1; i < patientIndex; i++) {
       total += appointmentDurationMinutesFor(i + dayOffset);
@@ -199,7 +234,9 @@ abstract final class DevClinicSeedSchedule {
   /// Whether a visit row should be created for the target appointment status.
   static bool shouldSeedVisit(AppointmentStatus status) {
     return switch (status) {
-      AppointmentStatus.checkedIn || AppointmentStatus.inProgress || AppointmentStatus.completed => true,
+      AppointmentStatus.checkedIn ||
+      AppointmentStatus.inProgress ||
+      AppointmentStatus.completed => true,
       _ => false,
     };
   }
@@ -221,7 +258,9 @@ abstract final class DevClinicSeedSchedule {
       return DevClinicVisitDocumentationKind.completedWithTreatment;
     }
     if (status == AppointmentStatus.inProgress) {
-      return seedKey.isEven ? DevClinicVisitDocumentationKind.full : DevClinicVisitDocumentationKind.partial;
+      return seedKey.isEven
+          ? DevClinicVisitDocumentationKind.full
+          : DevClinicVisitDocumentationKind.partial;
     }
 
     return switch (seedKey % 3) {
@@ -241,10 +280,21 @@ abstract final class DevClinicSeedSchedule {
     final ref = (referenceUtc ?? DateTime.now()).toUtc();
     final location = tz.getLocation(timezone);
     final localNow = tz.TZDateTime.from(ref, location);
-    final day = tz.TZDateTime(location, localNow.year, localNow.month, localNow.day).add(Duration(days: dayOffset));
-    final durationMinutes = appointmentDurationMinutesFor(patientIndex + dayOffset);
-    final trackOffsetMinutes = minutesBeforePatient(dayOffset: dayOffset, patientIndex: patientIndex);
-    final startMinutes = firstSlotLocalHour * 60 + firstSlotLocalMinute + trackOffsetMinutes;
+    final day = tz.TZDateTime(
+      location,
+      localNow.year,
+      localNow.month,
+      localNow.day,
+    ).add(Duration(days: dayOffset));
+    final durationMinutes = appointmentDurationMinutesFor(
+      patientIndex + dayOffset,
+    );
+    final trackOffsetMinutes = minutesBeforePatient(
+      dayOffset: dayOffset,
+      patientIndex: patientIndex,
+    );
+    final startMinutes =
+        firstSlotLocalHour * 60 + firstSlotLocalMinute + trackOffsetMinutes;
     final endMinutes = startMinutes + durationMinutes;
     final closeMinutes = branchCloseLocalHour * 60;
     if (endMinutes > closeMinutes) {
@@ -256,7 +306,14 @@ abstract final class DevClinicSeedSchedule {
 
     final hour = startMinutes ~/ 60;
     final minute = startMinutes % 60;
-    return tz.TZDateTime(location, day.year, day.month, day.day, hour, minute).toUtc();
+    return tz.TZDateTime(
+      location,
+      day.year,
+      day.month,
+      day.day,
+      hour,
+      minute,
+    ).toUtc();
   }
 
   static String appointmentNotes({
@@ -268,7 +325,13 @@ abstract final class DevClinicSeedSchedule {
     return 'Dev seed $branchCode patient #$patientIndex day $dayOffset — ${status.label}.';
   }
 
-  static ({String complaint, String history, String examination, String diagnosis, String plan})
+  static ({
+    String complaint,
+    String history,
+    String examination,
+    String diagnosis,
+    String plan,
+  })
   clinicalNoteContentFor({
     required DevClinicVisitDocumentationKind kind,
     required String branchCode,
@@ -308,16 +371,21 @@ abstract final class DevClinicSeedSchedule {
     };
   }
 
-  static ({String medicationName, String dosage, String frequency, String duration, String notes}) treatmentPlanFor({
-    required String branchCode,
-    required int patientIndex,
-  }) {
+  static ({
+    String medicationName,
+    String dosage,
+    String frequency,
+    String duration,
+    String notes,
+  })
+  treatmentPlanFor({required String branchCode, required int patientIndex}) {
     return (
       medicationName: 'Dev Seed Rx $branchCode',
       dosage: '${(patientIndex % 3) + 1}00 mg',
       frequency: patientIndex.isEven ? 'Twice daily' : 'Once daily',
       duration: '${7 + (patientIndex % 4)} days',
-      notes: 'Take with food. Dev seed treatment plan for patient #$patientIndex.',
+      notes:
+          'Take with food. Dev seed treatment plan for patient #$patientIndex.',
     );
   }
 
@@ -328,7 +396,10 @@ abstract final class DevClinicSeedSchedule {
 
   /// Whether seeding [status] for [seedKey] ends with the doctor still in an
   /// in-progress appointment (without completing the visit).
-  static bool leavesDoctorInProgress({required AppointmentStatus status, required int seedKey}) {
+  static bool leavesDoctorInProgress({
+    required AppointmentStatus status,
+    required int seedKey,
+  }) {
     if (status == AppointmentStatus.completed) {
       return false;
     }
@@ -336,8 +407,12 @@ abstract final class DevClinicSeedSchedule {
       return true;
     }
     if (status == AppointmentStatus.checkedIn) {
-      final documentation = visitDocumentationFor(status: status, seedKey: seedKey);
-      return shouldSeedVisit(status) && documentation != DevClinicVisitDocumentationKind.none;
+      final documentation = visitDocumentationFor(
+        status: status,
+        seedKey: seedKey,
+      );
+      return shouldSeedVisit(status) &&
+          documentation != DevClinicVisitDocumentationKind.none;
     }
     return false;
   }
@@ -362,7 +437,10 @@ abstract final class DevClinicSeedSchedule {
     return switch (target) {
       AppointmentStatus.scheduled => const [],
       AppointmentStatus.confirmed => const [AppointmentStatus.confirmed],
-      AppointmentStatus.checkedIn => const [AppointmentStatus.confirmed, AppointmentStatus.checkedIn],
+      AppointmentStatus.checkedIn => const [
+        AppointmentStatus.confirmed,
+        AppointmentStatus.checkedIn,
+      ],
       AppointmentStatus.inProgress => const [
         AppointmentStatus.confirmed,
         AppointmentStatus.checkedIn,
@@ -374,7 +452,10 @@ abstract final class DevClinicSeedSchedule {
         AppointmentStatus.inProgress,
       ],
       AppointmentStatus.cancelled => const [],
-      AppointmentStatus.noShow => const [AppointmentStatus.confirmed, AppointmentStatus.noShow],
+      AppointmentStatus.noShow => const [
+        AppointmentStatus.confirmed,
+        AppointmentStatus.noShow,
+      ],
       AppointmentStatus.unknown => const [],
     };
   }
@@ -382,4 +463,9 @@ abstract final class DevClinicSeedSchedule {
 
 enum DevClinicSeedCalendarDayRelation { past, today, future }
 
-enum DevClinicVisitDocumentationKind { none, partial, full, completedWithTreatment }
+enum DevClinicVisitDocumentationKind {
+  none,
+  partial,
+  full,
+  completedWithTreatment,
+}

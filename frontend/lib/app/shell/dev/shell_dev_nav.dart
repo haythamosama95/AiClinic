@@ -33,7 +33,7 @@ abstract final class ShellDevNav {
   }
 
   static String? labelFor(String itemId) => switch (itemId) {
-    themeShowcaseId => 'Theme Showcase',
+    themeShowcaseId => 'Design System',
     ShellDevFillDummyClinic.itemId => ShellDevFillDummyClinic.label,
     resetDatabaseId => 'Reset Database',
     _ => null,

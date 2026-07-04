@@ -19,7 +19,11 @@ abstract final class DevClinicSeedSpec {
       mapsUrl: 'https://maps.example.com/demo-downtown',
       scheduleKind: DevClinicBranchScheduleKind.dailyNineToNine,
       branchStaff: [
-        DevClinicStaffSpec(username: 'dev_b1_doc', fullName: 'Dev Downtown Doctor', role: DevClinicStaffRole.doctor),
+        DevClinicStaffSpec(
+          username: 'dev_b1_doc',
+          fullName: 'Dev Downtown Doctor',
+          role: DevClinicStaffRole.doctor,
+        ),
         DevClinicStaffSpec(
           username: 'dev_b1_rec',
           fullName: 'Dev Downtown Receptionist',
@@ -35,7 +39,11 @@ abstract final class DevClinicSeedSpec {
       mapsUrl: 'https://maps.example.com/demo-uptown',
       scheduleKind: DevClinicBranchScheduleKind.dailyNineToNine,
       branchStaff: [
-        DevClinicStaffSpec(username: 'dev_b2_doc', fullName: 'Dev Uptown Doctor', role: DevClinicStaffRole.doctor),
+        DevClinicStaffSpec(
+          username: 'dev_b2_doc',
+          fullName: 'Dev Uptown Doctor',
+          role: DevClinicStaffRole.doctor,
+        ),
         DevClinicStaffSpec(
           username: 'dev_b2_rec',
           fullName: 'Dev Uptown Receptionist',
@@ -51,7 +59,11 @@ abstract final class DevClinicSeedSpec {
       mapsUrl: 'https://maps.example.com/demo-waterfront',
       scheduleKind: DevClinicBranchScheduleKind.dailyNineToNine,
       branchStaff: [
-        DevClinicStaffSpec(username: 'dev_b3_doc', fullName: 'Dev Waterfront Doctor', role: DevClinicStaffRole.doctor),
+        DevClinicStaffSpec(
+          username: 'dev_b3_doc',
+          fullName: 'Dev Waterfront Doctor',
+          role: DevClinicStaffRole.doctor,
+        ),
         DevClinicStaffSpec(
           username: 'dev_b3_rec',
           fullName: 'Dev Waterfront Receptionist',
@@ -62,7 +74,11 @@ abstract final class DevClinicSeedSpec {
   ];
 
   static const allBranchStaff = <DevClinicStaffSpec>[
-    DevClinicStaffSpec(username: 'dev_all_doc', fullName: 'Dev Multi-Branch Doctor', role: DevClinicStaffRole.doctor),
+    DevClinicStaffSpec(
+      username: 'dev_all_doc',
+      fullName: 'Dev Multi-Branch Doctor',
+      role: DevClinicStaffRole.doctor,
+    ),
     DevClinicStaffSpec(
       username: 'dev_all_rec',
       fullName: 'Dev Multi-Branch Receptionist',
@@ -73,19 +89,28 @@ abstract final class DevClinicSeedSpec {
   static const branchOpenTime = '09:00';
   static const branchCloseTime = '21:00';
 
-  static BranchWorkingSchedule workingScheduleFor(DevClinicBranchScheduleKind kind) {
+  static BranchWorkingSchedule workingScheduleFor(
+    DevClinicBranchScheduleKind kind,
+  ) {
     return switch (kind) {
       DevClinicBranchScheduleKind.dailyNineToNine => _dailyNineAmToNinePm(),
     };
   }
 
-  static BranchWorkingSchedule branchWorkingSchedule() => _dailyNineAmToNinePm();
+  static BranchWorkingSchedule branchWorkingSchedule() =>
+      _dailyNineAmToNinePm();
 
-  static String patientFullName({required String branchCode, required int index}) {
+  static String patientFullName({
+    required String branchCode,
+    required int index,
+  }) {
     return '$patientNamePrefix$branchCode #${index.toString().padLeft(3, '0')}';
   }
 
-  static String patientPhone({required int branchIndex, required int patientIndex}) {
+  static String patientPhone({
+    required int branchIndex,
+    required int patientIndex,
+  }) {
     return '2018${branchIndex.toString().padLeft(2, '0')}${patientIndex.toString().padLeft(4, '0')}';
   }
 
@@ -130,7 +155,11 @@ class DevClinicBranchSpec {
 }
 
 class DevClinicStaffSpec {
-  const DevClinicStaffSpec({required this.username, required this.fullName, required this.role});
+  const DevClinicStaffSpec({
+    required this.username,
+    required this.fullName,
+    required this.role,
+  });
 
   final String username;
   final String fullName;

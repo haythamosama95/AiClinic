@@ -25,7 +25,10 @@ abstract final class ShellDevFillDummyClinic {
       'plans where applicable). '
       'Your current session stays signed in.';
 
-  static Future<void> handleNavSelection(BuildContext context, WidgetRef ref) async {
+  static Future<void> handleNavSelection(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     if (!isEnabled) {
       return;
     }
@@ -34,7 +37,11 @@ abstract final class ShellDevFillDummyClinic {
   }
 
   /// Shows the confirmation dialog and runs the full dummy clinic seed (debug builds only).
-  static Future<void> confirmAndRun(BuildContext context, WidgetRef ref, {VoidCallback? onSuccess}) async {
+  static Future<void> confirmAndRun(
+    BuildContext context,
+    WidgetRef ref, {
+    VoidCallback? onSuccess,
+  }) async {
     if (!isEnabled) {
       return;
     }
@@ -45,8 +52,14 @@ abstract final class ShellDevFillDummyClinic {
         title: const Text(confirmationTitle),
         content: const Text(confirmationMessage),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Fill dummy data')),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Fill dummy data'),
+          ),
         ],
       ),
     );
@@ -56,21 +69,29 @@ abstract final class ShellDevFillDummyClinic {
     }
   }
 
-  static Future<void> _run(BuildContext context, WidgetRef ref, {VoidCallback? onSuccess}) async {
+  static Future<void> _run(
+    BuildContext context,
+    WidgetRef ref, {
+    VoidCallback? onSuccess,
+  }) async {
     final ok = await ref.read(devClinicSeedProvider.notifier).fillDummyClinic();
     if (!context.mounted) {
       return;
     }
 
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dummy clinic data created.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Dummy clinic data created.')),
+      );
       onSuccess?.call();
       return;
     }
 
     final errorMessage = ref.read(devClinicSeedProvider).errorMessage;
     if (errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMessage)));
     }
   }
 }

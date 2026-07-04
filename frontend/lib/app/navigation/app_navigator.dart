@@ -31,7 +31,11 @@ class AppNavigator {
   // Patient management
   void goPatients() => _context.go(AppRoutes.patients);
   void goPatientDetail(String id) => _context.go(AppRoutes.patientDetail(id));
-  void pushPatientDetail(String id, {PatientListItem? preview, Rect? sourceRect}) => _context.push(
+  void pushPatientDetail(
+    String id, {
+    PatientListItem? preview,
+    Rect? sourceRect,
+  }) => _context.push(
     AppRoutes.patientDetail(id),
     extra: PatientDetailRouteExtra(preview: preview, sourceRect: sourceRect),
   );
@@ -49,32 +53,48 @@ class AppNavigator {
   void goAppointments() => _context.go(AppRoutes.appointments);
   void goAppointmentsBook() => _context.push(AppRoutes.appointmentsBook);
   void goAppointmentsQueue() => _context.push(AppRoutes.appointmentsQueue);
-  void goAppointmentsCalendar() => _context.push(AppRoutes.appointmentsCalendar);
-  void pushAppointmentDetail(String appointmentId, {AppointmentListItem? preview}) =>
-      _context.push(AppRoutes.appointmentDetail(appointmentId), extra: AppointmentDetailRouteExtra(preview: preview));
-  void goAppointmentsSchedule(String doctorId) => _context.push(AppRoutes.appointmentsSchedule(doctorId));
+  void goAppointmentsCalendar() =>
+      _context.push(AppRoutes.appointmentsCalendar);
+  void pushAppointmentDetail(
+    String appointmentId, {
+    AppointmentListItem? preview,
+  }) => _context.push(
+    AppRoutes.appointmentDetail(appointmentId),
+    extra: AppointmentDetailRouteExtra(preview: preview),
+  );
+  void goAppointmentsSchedule(String doctorId) =>
+      _context.push(AppRoutes.appointmentsSchedule(doctorId));
 
   // Billing (V1-6)
   void goBillingInvoices() => _context.go(AppRoutes.billingInvoices);
-  void pushBillingInvoiceDetail(String invoiceId) => _context.push(AppRoutes.billingInvoiceDetail(invoiceId));
-  void pushBillingInvoiceEdit(String invoiceId) => _context.push(AppRoutes.billingInvoiceEdit(invoiceId));
+  void pushBillingInvoiceDetail(String invoiceId) =>
+      _context.push(AppRoutes.billingInvoiceDetail(invoiceId));
+  void pushBillingInvoiceEdit(String invoiceId) =>
+      _context.push(AppRoutes.billingInvoiceEdit(invoiceId));
 
   // Visits (V1-5)
-  void goVisitDocument(String visitId) => _context.go(AppRoutes.visitDocument(visitId));
-  void pushVisitDocument(String visitId) => _context.push(AppRoutes.visitDocument(visitId));
-  void goVisitDetail(String visitId) => _context.go(AppRoutes.visitDetail(visitId));
-  void pushVisitDetail(String visitId) => _context.push(AppRoutes.visitDetail(visitId));
+  void goVisitDocument(String visitId) =>
+      _context.go(AppRoutes.visitDocument(visitId));
+  void pushVisitDocument(String visitId) =>
+      _context.push(AppRoutes.visitDocument(visitId));
+  void goVisitDetail(String visitId) =>
+      _context.go(AppRoutes.visitDetail(visitId));
+  void pushVisitDetail(String visitId) =>
+      _context.push(AppRoutes.visitDetail(visitId));
 
   // Settings
   void goSettings() => _context.go(AppRoutes.settings);
   void goSettingsOrganization() => _context.go(AppRoutes.settingsOrganization);
   void goSettingsBranches() => _context.go(AppRoutes.settingsBranches);
   void goSettingsBranchesNew() => _context.go(AppRoutes.settingsBranchesNew);
-  void goSettingsBranchEdit(String id) => _context.go(AppRoutes.settingsBranchEdit(id));
+  void goSettingsBranchEdit(String id) =>
+      _context.go(AppRoutes.settingsBranchEdit(id));
   void goSettingsStaff() => _context.go(AppRoutes.settingsStaff);
   void goSettingsStaffNew() => _context.go(AppRoutes.settingsStaffNew);
-  void goSettingsStaffDetail(String id) => _context.go(AppRoutes.settingsStaffDetail(id));
-  void goSettingsStaffResetPassword(String id) => _context.go(AppRoutes.settingsStaffResetPassword(id));
+  void goSettingsStaffDetail(String id) =>
+      _context.go(AppRoutes.settingsStaffDetail(id));
+  void goSettingsStaffResetPassword(String id) =>
+      _context.go(AppRoutes.settingsStaffResetPassword(id));
   void goSettingsPermissions() => _context.go(AppRoutes.settingsPermissions);
   void goSettingsIdleTimeout() => _context.go(AppRoutes.settingsIdleTimeout);
 
