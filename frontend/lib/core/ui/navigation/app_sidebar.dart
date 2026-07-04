@@ -146,6 +146,9 @@ class _AppSidebarState extends ConsumerState<AppSidebar> {
                     end: collapsed ? AppSpacing.s2 : AppSpacing.s3,
                   ),
                   child: Row(
+                    mainAxisAlignment: collapsed
+                        ? MainAxisAlignment.center
+                        : MainAxisAlignment.start,
                     children: [
                       if (!collapsed)
                         Expanded(

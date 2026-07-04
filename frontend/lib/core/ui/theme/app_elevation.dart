@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 
 /// Theme-aware elevation shadows matching `--elevation-*` tokens.
+///
+/// - [level0]: flat cards, tables (border only)
+/// - [level1]: resting cards
+/// - [level2]: dropdowns, popovers, tooltips
+/// - [level3]: modals, Command Bar
+///
+/// Sticky chrome (top bar, sidebar header) uses `border-subtle` only — no elevation.
 @immutable
 class AppElevation extends ThemeExtension<AppElevation> {
   const AppElevation({

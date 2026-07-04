@@ -1,4 +1,6 @@
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/design_reference_mode.dart';
+import 'package:ai_clinic/app/shell/shell_nav.dart';
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -15,7 +17,8 @@ abstract final class AuthRouteGuard {
         location == AppRoutes.protectedBlocked ||
         location == AppRoutes.login ||
         location == AppRoutes.forgotPassword ||
-        location == AppRoutes.foundationDemo;
+        location == AppRoutes.foundationDemo ||
+        (isDesignReferenceMode && isShellNavLocation(location));
   }
 
   /// Routes that require a signed-in staff session.

@@ -17,17 +17,13 @@ enum AppPopoverAlign { start, center, end }
 /// Combined placement for [AppPopover].
 @immutable
 class AppPopoverPlacement {
-  const AppPopoverPlacement({
-    this.side = AppPopoverSide.bottom,
-    this.align = AppPopoverAlign.start,
-  });
+  const AppPopoverPlacement({this.side = AppPopoverSide.bottom, this.align = AppPopoverAlign.start});
 
   final AppPopoverSide side;
   final AppPopoverAlign align;
 }
 
-typedef AppPopoverContentBuilder =
-    Widget Function(BuildContext context, VoidCallback hide);
+typedef AppPopoverContentBuilder = Widget Function(BuildContext context, VoidCallback hide);
 
 /// Imperative handle returned by [AppPopover.show].
 class AppPopoverHandle {
@@ -51,16 +47,10 @@ class AppPopover extends StatefulWidget {
     this.matchTriggerWidth = false,
     this.contentPadding,
     this.dismissOnTapOutside = true,
-  }) : assert(
-         contentBuilder != null || content != null,
-         'Provide contentBuilder or content',
-       ),
+  }) : assert(contentBuilder != null || content != null, 'Provide contentBuilder or content'),
        contentBuilder =
            contentBuilder ??
-           ((context, hide) => Padding(
-             padding: contentPadding ?? EdgeInsets.zero,
-             child: content as Widget,
-           ));
+           ((context, hide) => Padding(padding: contentPadding ?? EdgeInsets.zero, child: content as Widget));
 
   final Widget trigger;
   final AppPopoverContentBuilder contentBuilder;
@@ -125,8 +115,7 @@ class AppPopover extends StatefulWidget {
   State<AppPopover> createState() => _AppPopoverState();
 }
 
-class _AppPopoverState extends State<AppPopover>
-    with SingleTickerProviderStateMixin {
+class _AppPopoverState extends State<AppPopover> with SingleTickerProviderStateMixin {
   final GlobalKey _triggerKey = GlobalKey();
   OverlayEntry? _entry;
   late bool _open;
@@ -140,7 +129,7 @@ class _AppPopoverState extends State<AppPopover>
     _open = widget.open ?? false;
     _controller = AnimationController(vsync: this);
     if (_open) {
-      SchedulerBinding.instance.addPostFrameCallback((_) => _showOverlay());
+      _scheduleOverlaySync();
     }
   }
 
@@ -148,7 +137,8 @@ class _AppPopoverState extends State<AppPopover>
   void didUpdateWidget(AppPopover oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_isControlled && widget.open != oldWidget.open) {
-      _syncOpen(widget.open!, notify: false);
+      _open = widget.open!;
+      _scheduleOverlaySync();
     }
   }
 
@@ -161,15 +151,22 @@ class _AppPopoverState extends State<AppPopover>
 
   void _setOpen(bool value) => _syncOpen(value);
 
+  void _scheduleOverlaySync() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_open) {
+        _showOverlay();
+      } else {
+        _removeOverlay();
+      }
+    });
+  }
+
   void _syncOpen(bool value, {bool notify = true}) {
     if (_open == value) return;
     setState(() => _open = value);
     if (notify) widget.onOpenChange?.call(value);
-    if (value) {
-      _showOverlay();
-    } else {
-      _removeOverlay();
-    }
+    _scheduleOverlaySync();
   }
 
   void _toggle() => _setOpen(!_open);
@@ -177,13 +174,10 @@ class _AppPopoverState extends State<AppPopover>
   void _showOverlay() {
     if (_entry != null) return;
     final overlayState = Overlay.maybeOf(context, rootOverlay: true);
-    final renderBox =
-        _triggerKey.currentContext?.findRenderObject() as RenderBox?;
+    final renderBox = _triggerKey.currentContext?.findRenderObject() as RenderBox?;
     if (overlayState == null || renderBox == null || !renderBox.hasSize) return;
 
-    final resolvedMinWidth = widget.matchTriggerWidth
-        ? renderBox.size.width
-        : widget.minWidth;
+    final resolvedMinWidth = widget.matchTriggerWidth ? renderBox.size.width : widget.minWidth;
 
     _entry = OverlayEntry(
       builder: (overlayContext) {
@@ -227,20 +221,14 @@ class _AppPopoverState extends State<AppPopover>
 
   void _runShowAnimation() {
     final reduced = AppMotion.isReducedMotion(context);
-    final transition = AppMotion.resolveTransition(
-      preset: AppMotionPreset.fadeScale,
-      reducedMotion: reduced,
-    );
+    final transition = AppMotion.resolveTransition(preset: AppMotionPreset.fadeScale, reducedMotion: reduced);
     _controller.duration = transition.duration;
     _controller.forward(from: 0);
   }
 
   void _runHideAnimation({required VoidCallback onComplete}) {
     final reduced = AppMotion.isReducedMotion(context);
-    final transition = AppMotion.resolveTransition(
-      preset: AppMotionPreset.fadeScale,
-      reducedMotion: reduced,
-    );
+    final transition = AppMotion.resolveTransition(preset: AppMotionPreset.fadeScale, reducedMotion: reduced);
     _controller.duration = transition.duration;
     _controller.reverse().whenComplete(onComplete);
   }
@@ -288,9 +276,7 @@ class _AppPopoverOverlay {
   final VoidCallback onDismissed;
 
   OverlayEntry? _entry;
-  late final AnimationController _controller = AnimationController(
-    vsync: _StandaloneTicker(),
-  );
+  late final AnimationController _controller = AnimationController(vsync: _StandaloneTicker());
 
   void show() {
     _entry = OverlayEntry(
@@ -353,10 +339,7 @@ class _AppPopoverOverlayLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reduced = AppMotion.isReducedMotion(context);
-    final transition = AppMotion.resolveTransition(
-      preset: AppMotionPreset.fadeScale,
-      reducedMotion: reduced,
-    );
+    final transition = AppMotion.resolveTransition(preset: AppMotionPreset.fadeScale, reducedMotion: reduced);
     final direction = Directionality.of(context);
     final viewport = MediaQuery.sizeOf(context);
     final triggerOffset = triggerRenderBox.localToGlobal(Offset.zero);
@@ -367,10 +350,7 @@ class _AppPopoverOverlayLayer extends StatelessWidget {
       children: [
         if (dismissOnTapOutside)
           Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: onRequestHide,
-            ),
+            child: GestureDetector(behavior: HitTestBehavior.translucent, onTap: onRequestHide),
           ),
         _AppPopoverPositionedContent(
           triggerOffset: triggerOffset,
@@ -381,16 +361,10 @@ class _AppPopoverOverlayLayer extends StatelessWidget {
           viewport: viewport,
           direction: direction,
           child: AnimatedBuilder(
-            animation: CurvedAnimation(
-              parent: controller,
-              curve: transition.curve,
-            ),
+            animation: CurvedAnimation(parent: controller, curve: transition.curve),
             builder: (context, child) {
               final t = controller.value;
-              final hidden = AppMotion.hiddenValues(
-                AppMotionPreset.fadeScale,
-                direction: direction,
-              );
+              final hidden = AppMotion.hiddenValues(AppMotionPreset.fadeScale, direction: direction);
               final visible = AppMotion.visibleValues;
               final values = hidden.lerp(visible, t);
               return Opacity(
@@ -402,61 +376,34 @@ class _AppPopoverOverlayLayer extends StatelessWidget {
                 ),
               );
             },
-            child: _AppPopoverSurface(minWidth: minWidth, child: child),
+            child: _AppPopoverSurface(minWidth: minWidth, maxWidth: viewport.width - AppSpacing.s2 * 2, child: child),
           ),
         ),
       ],
     );
   }
 
-  static Alignment _scaleAlignment(
-    AppPopoverPlacement placement,
-    TextDirection direction,
-  ) {
+  static Alignment _scaleAlignment(AppPopoverPlacement placement, TextDirection direction) {
     return switch (placement.side) {
       AppPopoverSide.top => switch (placement.align) {
-        AppPopoverAlign.start =>
-          direction == TextDirection.ltr
-              ? Alignment.bottomLeft
-              : Alignment.bottomRight,
+        AppPopoverAlign.start => direction == TextDirection.ltr ? Alignment.bottomLeft : Alignment.bottomRight,
         AppPopoverAlign.center => Alignment.bottomCenter,
-        AppPopoverAlign.end =>
-          direction == TextDirection.ltr
-              ? Alignment.bottomRight
-              : Alignment.bottomLeft,
+        AppPopoverAlign.end => direction == TextDirection.ltr ? Alignment.bottomRight : Alignment.bottomLeft,
       },
       AppPopoverSide.bottom => switch (placement.align) {
-        AppPopoverAlign.start =>
-          direction == TextDirection.ltr
-              ? Alignment.topLeft
-              : Alignment.topRight,
+        AppPopoverAlign.start => direction == TextDirection.ltr ? Alignment.topLeft : Alignment.topRight,
         AppPopoverAlign.center => Alignment.topCenter,
-        AppPopoverAlign.end =>
-          direction == TextDirection.ltr
-              ? Alignment.topRight
-              : Alignment.topLeft,
+        AppPopoverAlign.end => direction == TextDirection.ltr ? Alignment.topRight : Alignment.topLeft,
       },
       AppPopoverSide.start => switch (placement.align) {
-        AppPopoverAlign.start =>
-          direction == TextDirection.ltr
-              ? Alignment.centerRight
-              : Alignment.centerLeft,
+        AppPopoverAlign.start => direction == TextDirection.ltr ? Alignment.centerRight : Alignment.centerLeft,
         AppPopoverAlign.center => Alignment.center,
-        AppPopoverAlign.end =>
-          direction == TextDirection.ltr
-              ? Alignment.bottomRight
-              : Alignment.bottomLeft,
+        AppPopoverAlign.end => direction == TextDirection.ltr ? Alignment.bottomRight : Alignment.bottomLeft,
       },
       AppPopoverSide.end => switch (placement.align) {
-        AppPopoverAlign.start =>
-          direction == TextDirection.ltr
-              ? Alignment.centerLeft
-              : Alignment.centerRight,
+        AppPopoverAlign.start => direction == TextDirection.ltr ? Alignment.centerLeft : Alignment.centerRight,
         AppPopoverAlign.center => Alignment.center,
-        AppPopoverAlign.end =>
-          direction == TextDirection.ltr
-              ? Alignment.bottomLeft
-              : Alignment.bottomRight,
+        AppPopoverAlign.end => direction == TextDirection.ltr ? Alignment.bottomLeft : Alignment.bottomRight,
       },
     };
   }
@@ -484,12 +431,10 @@ class _AppPopoverPositionedContent extends StatefulWidget {
   final Widget child;
 
   @override
-  State<_AppPopoverPositionedContent> createState() =>
-      _AppPopoverPositionedContentState();
+  State<_AppPopoverPositionedContent> createState() => _AppPopoverPositionedContentState();
 }
 
-class _AppPopoverPositionedContentState
-    extends State<_AppPopoverPositionedContent> {
+class _AppPopoverPositionedContentState extends State<_AppPopoverPositionedContent> {
   final GlobalKey _contentKey = GlobalKey();
   Offset _offset = Offset.zero;
 
@@ -506,8 +451,7 @@ class _AppPopoverPositionedContentState
   }
 
   void _updatePosition() {
-    final renderBox =
-        _contentKey.currentContext?.findRenderObject() as RenderBox?;
+    final renderBox = _contentKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null || !renderBox.hasSize) return;
     final contentSize = renderBox.size;
     final next = _computeOffset(contentSize);
@@ -530,57 +474,25 @@ class _AppPopoverPositionedContentState
     switch (side) {
       case AppPopoverSide.bottom:
         top = triggerTopLeft.dy + triggerSize.height + gap;
-        left = _alignHorizontal(
-          triggerTopLeft.dx,
-          triggerSize.width,
-          contentSize.width,
-          align,
-          isRtl,
-        );
+        left = _alignHorizontal(triggerTopLeft.dx, triggerSize.width, contentSize.width, align, isRtl);
       case AppPopoverSide.top:
         top = triggerTopLeft.dy - contentSize.height - gap;
-        left = _alignHorizontal(
-          triggerTopLeft.dx,
-          triggerSize.width,
-          contentSize.width,
-          align,
-          isRtl,
-        );
+        left = _alignHorizontal(triggerTopLeft.dx, triggerSize.width, contentSize.width, align, isRtl);
       case AppPopoverSide.start:
-        left = isRtl
-            ? triggerTopLeft.dx + triggerSize.width + gap
-            : triggerTopLeft.dx - contentSize.width - gap;
-        top = _alignVertical(
-          triggerTopLeft.dy,
-          triggerSize.height,
-          contentSize.height,
-          align,
-        );
+        left = isRtl ? triggerTopLeft.dx + triggerSize.width + gap : triggerTopLeft.dx - contentSize.width - gap;
+        top = _alignVertical(triggerTopLeft.dy, triggerSize.height, contentSize.height, align);
       case AppPopoverSide.end:
-        left = isRtl
-            ? triggerTopLeft.dx - contentSize.width - gap
-            : triggerTopLeft.dx + triggerSize.width + gap;
-        top = _alignVertical(
-          triggerTopLeft.dy,
-          triggerSize.height,
-          contentSize.height,
-          align,
-        );
+        left = isRtl ? triggerTopLeft.dx - contentSize.width - gap : triggerTopLeft.dx + triggerSize.width + gap;
+        top = _alignVertical(triggerTopLeft.dy, triggerSize.height, contentSize.height, align);
     }
 
     left = left.clamp(
       AppSpacing.s2,
-      math.max(
-        AppSpacing.s2,
-        widget.viewport.width - contentSize.width - AppSpacing.s2,
-      ),
+      math.max(AppSpacing.s2, widget.viewport.width - contentSize.width - AppSpacing.s2),
     );
     top = top.clamp(
       AppSpacing.s2,
-      math.max(
-        AppSpacing.s2,
-        widget.viewport.height - contentSize.height - AppSpacing.s2,
-      ),
+      math.max(AppSpacing.s2, widget.viewport.height - contentSize.height - AppSpacing.s2),
     );
 
     return Offset(left, top);
@@ -594,24 +506,16 @@ class _AppPopoverPositionedContentState
     bool isRtl,
   ) {
     return switch (align) {
-      AppPopoverAlign.start =>
-        isRtl ? triggerLeft + triggerWidth - contentWidth : triggerLeft,
+      AppPopoverAlign.start => isRtl ? triggerLeft + triggerWidth - contentWidth : triggerLeft,
       AppPopoverAlign.center => triggerLeft + (triggerWidth - contentWidth) / 2,
-      AppPopoverAlign.end =>
-        isRtl ? triggerLeft : triggerLeft + triggerWidth - contentWidth,
+      AppPopoverAlign.end => isRtl ? triggerLeft : triggerLeft + triggerWidth - contentWidth,
     };
   }
 
-  static double _alignVertical(
-    double triggerTop,
-    double triggerHeight,
-    double contentHeight,
-    AppPopoverAlign align,
-  ) {
+  static double _alignVertical(double triggerTop, double triggerHeight, double contentHeight, AppPopoverAlign align) {
     return switch (align) {
       AppPopoverAlign.start => triggerTop,
-      AppPopoverAlign.center =>
-        triggerTop + (triggerHeight - contentHeight) / 2,
+      AppPopoverAlign.center => triggerTop + (triggerHeight - contentHeight) / 2,
       AppPopoverAlign.end => triggerTop + triggerHeight - contentHeight,
     };
   }
@@ -627,15 +531,19 @@ class _AppPopoverPositionedContentState
 }
 
 class _AppPopoverSurface extends StatelessWidget {
-  const _AppPopoverSurface({required this.child, this.minWidth});
+  const _AppPopoverSurface({required this.child, this.minWidth, this.maxWidth});
 
   final Widget child;
   final double? minWidth;
+  final double? maxWidth;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final elevation = context.elevation;
+    final resolvedMinWidth = minWidth ?? 0;
+    final resolvedMaxWidth = math.max(resolvedMinWidth, maxWidth ?? resolvedMinWidth);
+
     return Material(
       type: MaterialType.transparency,
       child: DecoratedBox(
@@ -646,8 +554,8 @@ class _AppPopoverSurface extends StatelessWidget {
           boxShadow: elevation.level2,
         ),
         child: ConstrainedBox(
-          constraints: BoxConstraints(minWidth: minWidth ?? 0),
-          child: child,
+          constraints: BoxConstraints(minWidth: resolvedMinWidth, maxWidth: resolvedMaxWidth),
+          child: minWidth != null ? SizedBox(width: minWidth, child: child) : IntrinsicWidth(child: child),
         ),
       ),
     );

@@ -158,6 +158,9 @@ class _AppTextInputState extends State<AppTextInput> {
       autofillHints: widget.autofillHints,
       inputFormatters: widget.inputFormatters,
       textAlign: widget.textAlign,
+      autocorrect: false,
+      enableSuggestions: false,
+      spellCheckConfiguration: SpellCheckConfiguration.disabled(),
       style: _textStyle(context),
       cursorColor: context.colors.borderFocus,
       decoration: bare

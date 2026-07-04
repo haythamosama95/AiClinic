@@ -4,19 +4,22 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
-import 'package:ai_clinic/core/ui/providers/density_provider.dart';
 import 'package:ai_clinic/core/ui/providers/locale_provider.dart';
 import 'package:ai_clinic/core/ui/providers/reduced_motion_provider.dart';
 import 'package:ai_clinic/core/ui/providers/command_bar_provider.dart';
 import 'package:ai_clinic/core/ui/showcase/components_showcase.dart';
 import 'package:ai_clinic/core/ui/showcase/app_contrast.dart';
+import 'package:ai_clinic/core/ui/showcase/dev_locale_controls.dart';
 import 'package:ai_clinic/core/ui/navigation/command_bar.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/signal.dart';
 
 /// Flutter reproduction of the web Foundations showcase page.
 class DesignSystemShowcasePage extends ConsumerStatefulWidget {
-  const DesignSystemShowcasePage({super.key});
+  const DesignSystemShowcasePage({super.key, this.embedded = false});
+
+  /// When true, renders foundations content only (no standalone scaffold).
+  final bool embedded;
 
   @override
   ConsumerState<DesignSystemShowcasePage> createState() => _DesignSystemShowcasePageState();
@@ -67,6 +70,18 @@ class _DesignSystemShowcasePageState extends ConsumerState<DesignSystemShowcaseP
     final isArabic = localeState.locale == AppLocale.ar;
     final reducedMotion = ref.watch(reducedMotionProvider);
 
+    final content = _buildShowcaseContent(
+      colors: colors,
+      typography: typography,
+      elevation: elevation,
+      isArabic: isArabic,
+      reducedMotion: reducedMotion,
+    );
+
+    if (widget.embedded) {
+      return content;
+    }
+
     return CommandBarKeyboardScope(
       child: Stack(
         children: [
@@ -94,141 +109,7 @@ class _DesignSystemShowcasePageState extends ConsumerState<DesignSystemShowcaseP
               child: Divider(height: 1, color: colors.borderSubtle),
             ),
           ),
-          SliverToBoxAdapter(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1024),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s6, vertical: AppSpacing.s10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _tab == _ShowcaseTab.foundations
-                            ? 'Calm Clinical Precision — the design system foundation for AiClinic. '
-                                  'Tokens, typography, motion, and The Signal.'
-                            : 'Shared primitives with full variant and state matrices. '
-                                  'Toggle theme, locale, reduced motion, and density in the header.',
-                        style: typography.bodyLg.copyWith(color: colors.textSecondary),
-                      ),
-                      const SizedBox(height: AppSpacing.s6),
-                      Text(
-                        _tab == _ShowcaseTab.foundations ? 'Foundations' : 'Components',
-                        style: typography.h2.copyWith(color: colors.textPrimary),
-                      ),
-                      const SizedBox(height: AppSpacing.s4),
-                      Wrap(
-                        spacing: AppSpacing.s2,
-                        runSpacing: AppSpacing.s2,
-                        children: [
-                          ChoiceChip(
-                            label: Text(
-                              'Foundations',
-                              style: typography.bodySm.copyWith(
-                                color: _tab == _ShowcaseTab.foundations ? colors.textPrimary : colors.textLink,
-                              ),
-                            ),
-                            selected: _tab == _ShowcaseTab.foundations,
-                            onSelected: (_) => setState(() => _tab = _ShowcaseTab.foundations),
-                          ),
-                          ChoiceChip(
-                            label: Text(
-                              'Components',
-                              style: typography.bodySm.copyWith(
-                                color: _tab == _ShowcaseTab.components ? colors.textPrimary : colors.textLink,
-                              ),
-                            ),
-                            selected: _tab == _ShowcaseTab.components,
-                            onSelected: (_) => setState(() => _tab = _ShowcaseTab.components),
-                          ),
-                        ],
-                      ),
-                      if (_tab == _ShowcaseTab.foundations) ...[
-                        const SizedBox(height: AppSpacing.s4),
-                        Wrap(
-                          spacing: AppSpacing.s2,
-                          runSpacing: AppSpacing.s2,
-                          children: _foundationSections
-                              .map(
-                                (s) => ActionChip(
-                                  label: Text(s.$2, style: typography.bodySm.copyWith(color: colors.textLink)),
-                                  onPressed: () {},
-                                ),
-                              )
-                              .toList(),
-                        ),
-                        const SizedBox(height: AppSpacing.s16),
-                        _Section(
-                          title: 'Color',
-                          description: 'Semantic pairs with WCAG 2.2 AA contrast verification in both themes.',
-                          child: _ColorSection(
-                            isDark: _isDark,
-                            colors: colors,
-                            typography: typography,
-                            elevation: elevation,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.s16),
-                        _Section(
-                          title: 'Typography',
-                          description:
-                              'Inter + Geist for Latin; IBM Plex Sans Arabic on :lang(ar). Tabular nums for data.',
-                          child: _TypographySection(isArabic: isArabic, colors: colors, typography: typography),
-                        ),
-                        const SizedBox(height: AppSpacing.s16),
-                        _Section(
-                          title: 'Spacing, Radius & Elevation',
-                          description:
-                              '4px base unit. Elevation is border + soft shadow — kept cheap for low-end hardware.',
-                          child: _SpacingSection(colors: colors, typography: typography, elevation: elevation),
-                        ),
-                        const SizedBox(height: AppSpacing.s16),
-                        _Section(
-                          title: 'Motion',
-                          description: 'Presets from 03-motion. Respects prefers-reduced-motion.',
-                          child: _MotionSection(
-                            activePreset: _activePreset,
-                            replayKey: _motionReplayKey,
-                            reducedMotion: reducedMotion,
-                            colors: colors,
-                            typography: typography,
-                            onPresetSelected: (preset) {
-                              setState(() {
-                                _activePreset = preset;
-                                _motionReplayKey++;
-                              });
-                            },
-                            onReplay: _replayMotion,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.s16),
-                        _Section(
-                          title: 'The Signal',
-                          description: 'Signature primitive — active nav, Command Bar focus, AI thinking pulse.',
-                          child: _SignalSection(
-                            aiThinking: _aiThinking,
-                            colors: colors,
-                            typography: typography,
-                            onToggleThinking: () => setState(() => _aiThinking = !_aiThinking),
-                          ),
-                        ),
-                      ] else ...[
-                        const SizedBox(height: AppSpacing.s10),
-                        const ComponentsShowcase(),
-                      ],
-                      const SizedBox(height: AppSpacing.s10),
-                      Center(
-                        child: Text(
-                          'AiClinic Design System · Flutter · presentation only',
-                          style: typography.caption.copyWith(color: colors.textTertiary),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+          SliverToBoxAdapter(child: content),
         ],
       ),
           ),
@@ -248,6 +129,175 @@ class _DesignSystemShowcasePageState extends ConsumerState<DesignSystemShowcaseP
       ),
     );
   }
+
+  Widget _buildShowcaseContent({
+    required AppColors colors,
+    required AppTypography typography,
+    required AppElevation elevation,
+    required bool isArabic,
+    required bool reducedMotion,
+  }) {
+    final embedded = widget.embedded;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: embedded ? double.infinity : 1024),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: AppSpacing.s6,
+            vertical: embedded ? 0 : AppSpacing.s10,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!embedded) ...[
+                Text(
+                  _tab == _ShowcaseTab.foundations
+                      ? 'Calm Clinical Precision — the design system foundation for AiClinic. '
+                            'Tokens, typography, motion, and The Signal.'
+                      : 'Shared primitives with full variant and state matrices.',
+                  style: typography.bodyLg.copyWith(color: colors.textSecondary),
+                ),
+                const SizedBox(height: AppSpacing.s6),
+                Text(
+                  _tab == _ShowcaseTab.foundations ? 'Foundations' : 'Components',
+                  style: typography.h2.copyWith(color: colors.textPrimary),
+                ),
+                const SizedBox(height: AppSpacing.s4),
+                Wrap(
+                  spacing: AppSpacing.s2,
+                  runSpacing: AppSpacing.s2,
+                  children: [
+                    ChoiceChip(
+                      label: Text(
+                        'Foundations',
+                        style: typography.bodySm.copyWith(
+                          color: _tab == _ShowcaseTab.foundations ? colors.textPrimary : colors.textLink,
+                        ),
+                      ),
+                      selected: _tab == _ShowcaseTab.foundations,
+                      onSelected: (_) => setState(() => _tab = _ShowcaseTab.foundations),
+                    ),
+                    ChoiceChip(
+                      label: Text(
+                        'Components',
+                        style: typography.bodySm.copyWith(
+                          color: _tab == _ShowcaseTab.components ? colors.textPrimary : colors.textLink,
+                        ),
+                      ),
+                      selected: _tab == _ShowcaseTab.components,
+                      onSelected: (_) => setState(() => _tab = _ShowcaseTab.components),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.s6),
+                const DevLocaleControls(),
+              ],
+              if (embedded || _tab == _ShowcaseTab.foundations) ...[
+                if (embedded) ...[
+                  Text(
+                    'Milestone 1',
+                    style: typography.overline.copyWith(color: colors.textTertiary),
+                  ),
+                  Text(
+                    'Foundations',
+                    style: typography.h2.copyWith(color: colors.textPrimary),
+                  ),
+                  const SizedBox(height: AppSpacing.s2),
+                  Text(
+                    'Tokens, typography, spacing, motion, and The Signal.',
+                    style: typography.bodyLg.copyWith(color: colors.textSecondary),
+                  ),
+                  const SizedBox(height: AppSpacing.s16),
+                ] else ...[
+                  const SizedBox(height: AppSpacing.s4),
+                  Wrap(
+                    spacing: AppSpacing.s2,
+                    runSpacing: AppSpacing.s2,
+                    children: _foundationSections
+                        .map(
+                          (s) => ActionChip(
+                            label: Text(s.$2, style: typography.bodySm.copyWith(color: colors.textLink)),
+                            onPressed: () {},
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: AppSpacing.s16),
+                ],
+                _Section(
+                  title: 'Color',
+                  description: 'Semantic pairs with WCAG 2.2 AA contrast verification in both themes.',
+                  child: _ColorSection(
+                    isDark: _isDark,
+                    colors: colors,
+                    typography: typography,
+                    elevation: elevation,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.s16),
+                _Section(
+                  title: 'Typography',
+                  description:
+                      'Inter + Geist for Latin; IBM Plex Sans Arabic on :lang(ar). Tabular nums for data.',
+                  child: _TypographySection(isArabic: isArabic, colors: colors, typography: typography),
+                ),
+                const SizedBox(height: AppSpacing.s16),
+                _Section(
+                  title: 'Spacing, Radius & Elevation',
+                  description:
+                      '4px base unit. Elevation is border + soft shadow — kept cheap for low-end hardware.',
+                  child: _SpacingSection(colors: colors, typography: typography, elevation: elevation),
+                ),
+                const SizedBox(height: AppSpacing.s16),
+                _Section(
+                  title: 'Motion',
+                  description: 'Presets from 03-motion. Respects prefers-reduced-motion.',
+                  child: _MotionSection(
+                    activePreset: _activePreset,
+                    replayKey: _motionReplayKey,
+                    reducedMotion: reducedMotion,
+                    colors: colors,
+                    typography: typography,
+                    onPresetSelected: (preset) {
+                      setState(() {
+                        _activePreset = preset;
+                        _motionReplayKey++;
+                      });
+                    },
+                    onReplay: _replayMotion,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.s16),
+                _Section(
+                  title: 'The Signal',
+                  description: 'Signature primitive — active nav, Command Bar focus, AI thinking pulse.',
+                  child: _SignalSection(
+                    aiThinking: _aiThinking,
+                    colors: colors,
+                    typography: typography,
+                    onToggleThinking: () => setState(() => _aiThinking = !_aiThinking),
+                  ),
+                ),
+              ] else ...[
+                const SizedBox(height: AppSpacing.s10),
+                const ComponentsShowcase(),
+              ],
+              if (!embedded) ...[
+                const SizedBox(height: AppSpacing.s10),
+                Center(
+                  child: Text(
+                    'AiClinic Design System · Flutter · presentation only',
+                    style: typography.caption.copyWith(color: colors.textTertiary),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ShowcaseControls extends ConsumerWidget {
@@ -257,9 +307,7 @@ class _ShowcaseControls extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final localeState = ref.watch(appLocaleProvider);
     final reducedMotion = ref.watch(reducedMotionProvider);
-    final density = ref.watch(appDensityProvider);
     final typography = context.typography;
     final colors = context.colors;
 
@@ -276,20 +324,8 @@ class _ShowcaseControls extends ConsumerWidget {
             colors: colors,
           ),
           _ControlChip(
-            label: localeState.locale == AppLocale.ar ? 'AR / RTL' : 'EN / LTR',
-            onPressed: () => ref.read(appLocaleProvider.notifier).toggleLocale(),
-            typography: typography,
-            colors: colors,
-          ),
-          _ControlChip(
             label: reducedMotion ? 'Reduced motion' : 'Motion on',
             onPressed: () => ref.read(reducedMotionProvider.notifier).toggle(),
-            typography: typography,
-            colors: colors,
-          ),
-          _ControlChip(
-            label: density.label,
-            onPressed: () => ref.read(appDensityProvider.notifier).cycle(),
             typography: typography,
             colors: colors,
           ),
@@ -1036,92 +1072,101 @@ class _SignalSection extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 700;
-        return Flex(
-          direction: isWide ? Axis.horizontal : Axis.vertical,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: AppRadius.lgAll,
-                  border: Border.all(color: colors.borderDefault),
-                  color: colors.surfaceDefault,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.s6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+        final standardPanel = DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.lgAll,
+            border: Border.all(color: colors.borderDefault),
+            color: colors.surfaceDefault,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.s6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Standard (teal)', style: typography.overline.copyWith(color: colors.textTertiary)),
+                const SizedBox(height: AppSpacing.s4),
+                SizedBox(
+                  height: 56,
+                  child: Stack(
                     children: [
-                      Text('Standard (teal)', style: typography.overline.copyWith(color: colors.textTertiary)),
-                      const SizedBox(height: AppSpacing.s4),
-                      SizedBox(
-                        height: 56,
-                        child: Stack(
+                      const PositionedDirectional(
+                        start: 0,
+                        top: 8,
+                        bottom: 8,
+                        child: Signal(orientation: SignalOrientation.vertical),
+                      ),
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(start: AppSpacing.s4 + 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const PositionedDirectional(
-                              start: 0,
-                              top: 8,
-                              bottom: 8,
-                              child: Signal(orientation: SignalOrientation.vertical),
+                            Text(
+                              'Active navigation item',
+                              style: typography.bodyStrong.copyWith(color: colors.textPrimary),
                             ),
-                            Padding(
-                              padding: const EdgeInsetsDirectional.only(start: AppSpacing.s4 + 4),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Active navigation item',
-                                    style: typography.bodyStrong.copyWith(color: colors.textPrimary),
-                                  ),
-                                  const SizedBox(height: AppSpacing.s1),
-                                  Text('Patients', style: typography.caption.copyWith(color: colors.textTertiary)),
-                                ],
-                              ),
-                            ),
+                            const SizedBox(height: AppSpacing.s1),
+                            Text('Patients', style: typography.caption.copyWith(color: colors.textTertiary)),
                           ],
                         ),
                       ),
-                      const SizedBox(height: AppSpacing.s6),
-                      Text('Horizontal · hero', style: typography.caption.copyWith(color: colors.textTertiary)),
-                      const SizedBox(height: AppSpacing.s2),
-                      const SizedBox(width: 280, child: Signal(size: SignalSize.hero)),
                     ],
                   ),
                 ),
-              ),
+                const SizedBox(height: AppSpacing.s6),
+                Text('Horizontal · hero', style: typography.caption.copyWith(color: colors.textTertiary)),
+                const SizedBox(height: AppSpacing.s2),
+                const SizedBox(width: 280, child: Signal(size: SignalSize.hero)),
+              ],
             ),
-            SizedBox(width: isWide ? AppSpacing.s8 : 0, height: isWide ? 0 : AppSpacing.s8),
-            Expanded(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: AppRadius.lgAll,
-                  border: Border.all(color: colors.borderAi),
-                  color: colors.surfaceAi,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.s6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('AI (violet)', style: typography.overline.copyWith(color: colors.textAi)),
-                      const SizedBox(height: AppSpacing.s4),
-                      Signal(variant: SignalVariant.ai, thinking: aiThinking),
-                      const SizedBox(height: AppSpacing.s4),
-                      Text('AI is drafting a proposed action…', style: typography.body.copyWith(color: colors.textAi)),
-                      const SizedBox(height: AppSpacing.s4),
-                      FilledButton(
-                        onPressed: onToggleThinking,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: colors.actionAi,
-                          foregroundColor: colors.actionAiFg,
-                        ),
-                        child: Text(aiThinking ? 'Stop pulse' : 'Start thinking pulse', style: typography.bodyStrong),
-                      ),
-                    ],
+          ),
+        );
+        final aiPanel = DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: AppRadius.lgAll,
+            border: Border.all(color: colors.borderAi),
+            color: colors.surfaceAi,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.s6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('AI (violet)', style: typography.overline.copyWith(color: colors.textAi)),
+                const SizedBox(height: AppSpacing.s4),
+                Signal(variant: SignalVariant.ai, thinking: aiThinking),
+                const SizedBox(height: AppSpacing.s4),
+                Text('AI is drafting a proposed action…', style: typography.body.copyWith(color: colors.textAi)),
+                const SizedBox(height: AppSpacing.s4),
+                FilledButton(
+                  onPressed: onToggleThinking,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colors.actionAi,
+                    foregroundColor: colors.actionAiFg,
                   ),
+                  child: Text(aiThinking ? 'Stop pulse' : 'Start thinking pulse', style: typography.bodyStrong),
                 ),
-              ),
+              ],
             ),
+          ),
+        );
+
+        if (isWide) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: standardPanel),
+              const SizedBox(width: AppSpacing.s8),
+              Expanded(child: aiPanel),
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            standardPanel,
+            const SizedBox(height: AppSpacing.s8),
+            aiPanel,
           ],
         );
       },

@@ -1,13 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:ai_clinic/core/logging/app_log.dart';
 
 /// Shell density scale matching web `data-density` tokens.
 enum AppDensity { compact, default_, comfortable }
+
+const _densityStorageKey = 'aiclinic-density';
 
 extension AppDensityX on AppDensity {
   String get label => switch (this) {
     AppDensity.compact => 'Compact',
     AppDensity.default_ => 'Default',
     AppDensity.comfortable => 'Comfortable',
+  };
+
+  String get wireValue => switch (this) {
+    AppDensity.compact => 'compact',
+    AppDensity.default_ => 'default',
+    AppDensity.comfortable => 'comfortable',
   };
 
   double get shellTopbarHeight => switch (this) {
@@ -23,18 +36,48 @@ extension AppDensityX on AppDensity {
   };
 }
 
+AppDensity _densityFromStored(String? stored) => switch (stored) {
+  'compact' => AppDensity.compact,
+  'default' => AppDensity.comfortable,
+  'comfortable' => AppDensity.comfortable,
+  _ => AppDensity.comfortable,
+};
+
 class AppDensityNotifier extends Notifier<AppDensity> {
   @override
-  AppDensity build() => AppDensity.default_;
+  AppDensity build() {
+    Future.microtask(_loadPersistedDensity);
+    return AppDensity.comfortable;
+  }
 
-  void setDensity(AppDensity density) => state = density;
+  Future<void> _loadPersistedDensity() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString(_densityStorageKey);
+      if (stored == null) return;
+      state = _densityFromStored(stored);
+    } on Exception catch (error) {
+      AppLog.warning('density.load_failed reason=${error.runtimeType}');
+    }
+  }
 
-  void cycle() {
-    state = switch (state) {
+  Future<void> setDensity(AppDensity density) async {
+    state = density;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_densityStorageKey, density.wireValue);
+    } on Exception catch (error) {
+      AppLog.warning('density.save_failed reason=${error.runtimeType}');
+    }
+  }
+
+  Future<void> cycle() async {
+    final next = switch (state) {
       AppDensity.compact => AppDensity.default_,
       AppDensity.default_ => AppDensity.comfortable,
       AppDensity.comfortable => AppDensity.compact,
     };
+    await setDensity(next);
   }
 }
 

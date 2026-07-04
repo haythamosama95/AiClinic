@@ -8,6 +8,18 @@ abstract final class AppRoutes {
   static const protectedPrefix = '/protected';
   static const foundationDemo = '/foundation-demo';
 
+  /// In-shell design system routes (mirrors web `#dev/*`).
+  static const dev = '/dev';
+  static const devFoundations = '/dev/foundations';
+  static const devComponents = '/dev/components';
+
+  /// Shell placeholder routes for nav items without feature UI yet.
+  static const dashboard = '/dashboard';
+  static const encounters = '/encounters';
+  static const workspace = '/workspace';
+  static const reports = '/reports';
+  static const billingHub = '/billing';
+
   // Auth (V1-1)
   static const login = '/login';
   static const bootstrap = '/bootstrap';

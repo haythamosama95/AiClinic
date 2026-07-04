@@ -24,7 +24,8 @@ class ShellDevDesignSystemLauncher extends ConsumerWidget {
     return ListenableBuilder(
       listenable: router.routerDelegate,
       builder: (context, _) {
-        if (router.state.matchedLocation == AppRoutes.foundationDemo) {
+        if (router.state.matchedLocation == AppRoutes.foundationDemo ||
+            router.state.matchedLocation.startsWith(AppRoutes.dev)) {
           return const SizedBox.shrink();
         }
 
@@ -42,7 +43,7 @@ class ShellDevDesignSystemLauncher extends ConsumerWidget {
                 color: theme.colorScheme.primary,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
-                  onTap: () => router.go(AppRoutes.foundationDemo),
+                  onTap: () => router.go(AppRoutes.devFoundations),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     child: Row(

@@ -55,13 +55,6 @@ class AppTopBar extends ConsumerWidget {
   static const double _mdBreakpoint = 768;
   static const double _smBreakpoint = 640;
 
-  /// Minimum width for the branch trigger when space is tight (icon + chevron).
-  static const double _minBranchTriggerWidth = 56;
-
-  /// Fixed-width action controls on the trailing edge (icons + avatar + gaps).
-  static const double _trailingActionsWidth =
-      AppSpacing.s2 * 3 + 40 + 40 + 24;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
@@ -89,9 +82,11 @@ class AppTopBar extends ConsumerWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
             child: Row(
+              spacing: AppSpacing.s3,
               children: [
                 Expanded(
                   child: Row(
+                    spacing: AppSpacing.s3,
                     children: [
                       if (showPageContext)
                         Flexible(child: pageContext!),
@@ -106,62 +101,51 @@ class AppTopBar extends ConsumerWidget {
                     verticalPadding: verticalPadding,
                   ),
                 ),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final trailingWidth = constraints.maxWidth;
-                      final canShowBranch = showBranchSwitcher &&
-                          trailingWidth >=
-                              _trailingActionsWidth +
-                                  AppSpacing.s2 +
-                                  _minBranchTriggerWidth;
-
-                      return ClipRect(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            ?toolbarSlot,
-                            if (canShowBranch) ...[
-                              Flexible(
-                                child: BranchSwitcher(
-                                  branches: branches,
-                                  currentBranchId: currentBranchId,
-                                  onBranchChange: onBranchChange,
-                                ),
-                              ),
-                              const SizedBox(width: AppSpacing.s2),
-                            ],
-                            _NotificationButton(
-                              count: notificationCount,
-                              onPressed: onNotificationsClick,
+                Flexible(
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      reverse: true,
+                      child: Row(
+                        spacing: AppSpacing.s2,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ?toolbarSlot,
+                          if (showBranchSwitcher)
+                            BranchSwitcher(
+                              branches: branches,
+                              currentBranchId: currentBranchId,
+                              onBranchChange: onBranchChange,
                             ),
-                            const SizedBox(width: AppSpacing.s2),
-                            AppIconButton(
-                              semanticLabel: isDark
-                                  ? 'Switch to light theme'
-                                  : 'Switch to dark theme',
-                              icon: isDark
-                                  ? Icons.light_mode_outlined
-                                  : Icons.dark_mode_outlined,
-                              size: AppIconButtonSize.lg,
-                              variant: AppIconButtonVariant.ghost,
-                              onPressed: onToggleTheme,
-                            ),
-                            const SizedBox(width: AppSpacing.s2),
-                            UserMenu(
-                              user: user,
-                              appVersion: appVersion,
-                              isDark: isDark,
-                              locale: locale,
-                              onProfile: onProfile,
-                              onToggleTheme: onToggleTheme,
-                              onLocaleChange: onLocaleChange,
-                              onSignOut: onSignOut,
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                          _NotificationButton(
+                            count: notificationCount,
+                            onPressed: onNotificationsClick,
+                          ),
+                          AppIconButton(
+                            semanticLabel: isDark
+                                ? 'Switch to light theme'
+                                : 'Switch to dark theme',
+                            icon: isDark
+                                ? Icons.light_mode_outlined
+                                : Icons.dark_mode_outlined,
+                            size: AppIconButtonSize.lg,
+                            variant: AppIconButtonVariant.ghost,
+                            onPressed: onToggleTheme,
+                          ),
+                          UserMenu(
+                            user: user,
+                            appVersion: appVersion,
+                            isDark: isDark,
+                            locale: locale,
+                            onProfile: onProfile,
+                            onToggleTheme: onToggleTheme,
+                            onLocaleChange: onLocaleChange,
+                            onSignOut: onSignOut,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ],

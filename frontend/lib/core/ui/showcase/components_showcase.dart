@@ -50,7 +50,7 @@ class ComponentsShowcase extends StatelessWidget {
       children: [
         Text(
           'Shared primitives with full variant and state matrices. '
-          'Use the header toggles for theme, locale, reduced motion, and density.',
+          'Use Preview theming above for density, direction, and locale.',
           style: typography.bodyLg.copyWith(color: colors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.s10),

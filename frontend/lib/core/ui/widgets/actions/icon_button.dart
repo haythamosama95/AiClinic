@@ -114,7 +114,11 @@ class AppIconButton extends StatefulWidget {
     AppIconButtonSize.lg => 40,
   };
 
-  double get _iconSize => size == AppIconButtonSize.lg ? 20 : 16;
+  double get _iconSize => switch (size) {
+    AppIconButtonSize.sm => 16,
+    AppIconButtonSize.md => 20,
+    AppIconButtonSize.lg => 24,
+  };
 
   @override
   State<AppIconButton> createState() => _AppIconButtonState();

@@ -42,17 +42,27 @@ class AppShell extends StatelessWidget {
               children: [
                 topBar,
                 Expanded(
-                  child: SingleChildScrollView(
-                    key: const Key('main'),
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: fullWidth ? double.infinity : contentMaxWidth,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(AppSpacing.s6),
-                          child: child,
+                  child: Material(
+                    type: MaterialType.canvas,
+                    color: colors.surfaceCanvas,
+                    child: Semantics(
+                      identifier: 'main',
+                      label: 'Main content',
+                      child: SingleChildScrollView(
+                        key: const Key('main'),
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: fullWidth
+                                  ? double.infinity
+                                  : contentMaxWidth,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(AppSpacing.s6),
+                              child: child,
+                            ),
+                          ),
                         ),
                       ),
                     ),

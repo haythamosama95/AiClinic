@@ -26,7 +26,7 @@ class AppNavigator {
   void goStartupEntry() => _context.go(AppRoutes.startupEntry);
   void goStaffCreate() => _context.go(AppRoutes.staffCreate);
   void goStaffPasswordReset() => _context.go(AppRoutes.staffPasswordReset);
-  void goFoundationDemo() => _context.go(AppRoutes.foundationDemo);
+  void goFoundationDemo() => _context.go(AppRoutes.devFoundations);
 
   // Patient management
   void goPatients() => _context.go(AppRoutes.patients);

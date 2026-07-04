@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/showcase/showcase_primitives.dart';
 import 'package:ai_clinic/core/ui/ui.dart';
 
@@ -17,9 +18,17 @@ class _AppShellShowcaseState extends ConsumerState<AppShellShowcase> {
   String _branchId = mockBranches.first.id;
   String _tab = 'overview';
 
+  bool get _isDark {
+    final mode = ref.watch(themeModeProvider);
+    if (mode == ThemeMode.dark) return true;
+    if (mode == ThemeMode.light) return false;
+    return WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final localeState = ref.watch(appLocaleProvider);
     final branch = mockBranches.firstWhere(
       (b) => b.id == _branchId,
       orElse: () => mockBranches.first,
@@ -67,6 +76,12 @@ class _AppShellShowcaseState extends ConsumerState<AppShellShowcase> {
                   onBranchChange: (id) => setState(() => _branchId = id),
                   user: mockUser,
                   notificationCount: mockNotificationCount,
+                  isDark: _isDark,
+                  onToggleTheme: () =>
+                      setAppThemeMode(ref, _isDark ? ThemeMode.light : ThemeMode.dark),
+                  locale: localeState.locale,
+                  onLocaleChange: (locale) =>
+                      ref.read(appLocaleProvider.notifier).setLocale(locale),
                   onCommandBarOpen: () =>
                       ref.read(commandBarProvider.notifier).openCommandBar(),
                 ),

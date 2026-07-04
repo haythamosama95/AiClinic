@@ -11,7 +11,7 @@ abstract final class ShellDevNav {
   static const themeShowcaseId = 'theme-showcase';
   static const resetDatabaseId = 'reset-database';
 
-  static const Map<String, String> _routesByItemId = {themeShowcaseId: AppRoutes.foundationDemo};
+  static const Map<String, String> _routesByItemId = {themeShowcaseId: AppRoutes.devFoundations};
 
   static bool get isEnabled => kDebugMode;
 

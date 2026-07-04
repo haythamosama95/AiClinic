@@ -89,6 +89,30 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
     final colors = context.colors;
     final typography = context.typography;
     final filtered = _filtered;
+    final queryField = TextField(
+      controller: _queryController,
+      enabled: !widget.disabled,
+      autocorrect: false,
+      enableSuggestions: false,
+      spellCheckConfiguration: SpellCheckConfiguration.disabled(),
+      style: AppInputStyles.textStyle(
+        context,
+        widget.size,
+      ).copyWith(color: colors.textPrimary),
+      cursorColor: colors.borderFocus,
+      decoration: InputDecoration(
+        border: InputBorder.none,
+        isDense: true,
+        contentPadding: EdgeInsets.zero,
+        hintText: widget.value.isEmpty ? widget.placeholder : null,
+        hintStyle: AppInputStyles.textStyle(
+          context,
+          widget.size,
+        ).copyWith(color: colors.textPlaceholder),
+      ),
+      onChanged: (_) => setState(() => _open = true),
+      onTap: () => setState(() => _open = true),
+    );
 
     return Focus(
       focusNode: _focusNode,
@@ -116,43 +140,22 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
             disabled: widget.disabled,
             focused: _focused || _open,
           ),
-          child: Wrap(
-            spacing: AppSpacing.s1,
-            runSpacing: AppSpacing.s1,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              for (final item in widget.value)
-                _SelectionChip(
-                  label: item.label,
-                  disabled: widget.disabled,
-                  onRemove: () => _remove(item.id),
+          child: widget.value.isEmpty
+              ? queryField
+              : Wrap(
+                  spacing: AppSpacing.s1,
+                  runSpacing: AppSpacing.s1,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    for (final item in widget.value)
+                      _SelectionChip(
+                        label: item.label,
+                        disabled: widget.disabled,
+                        onRemove: () => _remove(item.id),
+                      ),
+                    SizedBox(width: 120, child: queryField),
+                  ],
                 ),
-              SizedBox(
-                width: widget.value.isEmpty ? double.infinity : 120,
-                child: TextField(
-                  controller: _queryController,
-                  enabled: !widget.disabled,
-                  style: AppInputStyles.textStyle(
-                    context,
-                    widget.size,
-                  ).copyWith(color: colors.textPrimary),
-                  cursorColor: colors.borderFocus,
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: widget.value.isEmpty ? widget.placeholder : null,
-                    hintStyle: AppInputStyles.textStyle(
-                      context,
-                      widget.size,
-                    ).copyWith(color: colors.textPlaceholder),
-                  ),
-                  onChanged: (_) => setState(() => _open = true),
-                  onTap: () => setState(() => _open = true),
-                ),
-              ),
-            ],
-          ),
         ),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 240),
