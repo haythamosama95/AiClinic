@@ -40,7 +40,10 @@ class AppShell extends StatelessWidget {
                             constraints: BoxConstraints(
                               maxWidth: fullWidth ? double.infinity : AppShellTokens.contentMaxWidth,
                             ),
-                            child: Padding(padding: const EdgeInsets.all(AppSpacing.space6), child: child),
+                            child: Padding(
+                              padding: const EdgeInsets.all(AppSpacing.space6),
+                              child: SizedBox(width: double.infinity, child: child),
+                            ),
                           ),
                         ),
                       ),

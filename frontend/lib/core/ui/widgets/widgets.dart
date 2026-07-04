@@ -1,7 +1,10 @@
 // Components
 export 'package:ai_clinic/core/ui/components/app_avatar.dart';
 export 'package:ai_clinic/core/ui/components/app_badge.dart';
+export 'package:ai_clinic/core/ui/components/app_button.dart';
 export 'package:ai_clinic/core/ui/components/app_icon_button.dart';
+export 'package:ai_clinic/core/ui/components/app_segmented_control.dart';
+export 'package:ai_clinic/core/ui/components/app_split_button.dart';
 export 'package:ai_clinic/core/ui/components/app_signal.dart';
 export 'package:ai_clinic/core/ui/components/app_tooltip.dart';
 

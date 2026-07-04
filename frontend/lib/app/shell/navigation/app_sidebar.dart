@@ -208,7 +208,7 @@ class _SidebarHeader extends StatelessWidget {
                 ),
               AppIconButton(
                 icon: Icon(collapsed ? Icons.read_more_outlined : Icons.menu_open_outlined, size: 16),
-                tooltip: collapsed ? 'Expand sidebar' : 'Collapse sidebar',
+                label: collapsed ? 'Expand sidebar' : 'Collapse sidebar',
                 size: AppIconButtonSize.sm,
                 onPressed: onToggleCollapsed,
               ),

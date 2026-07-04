@@ -47,8 +47,11 @@ class AuthenticatedShell extends ConsumerWidget {
       role: session?.staffProfile.role.displayLabel,
     );
 
+    final isDesignSystemPage = ShellNavConfig.isDesignSystemLocation(location);
+
     return ShellDevShellWrapper(
       child: AppShell(
+        fullWidth: isDesignSystemPage,
         sidebar: AppSidebar(
           groups: ShellNavConfig.groups,
           footerItems: ShellNavConfig.footerItems(),

@@ -87,7 +87,7 @@ class AppTopBar extends StatelessWidget {
                           children: [
                             AppIconButton(
                               icon: const Icon(Icons.notifications_outlined),
-                              tooltip: notificationCount > 0
+                              label: notificationCount > 0
                                   ? 'Notifications, $notificationCount unread'
                                   : 'Notifications',
                               size: AppIconButtonSize.lg,
@@ -121,7 +121,7 @@ class AppTopBar extends StatelessWidget {
                         if (width >= 480)
                           AppIconButton(
                             icon: Icon(isDarkTheme ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
-                            tooltip: isDarkTheme ? 'Switch to light theme' : 'Switch to dark theme',
+                            label: isDarkTheme ? 'Switch to light theme' : 'Switch to dark theme',
                             size: AppIconButtonSize.lg,
                             onPressed: onToggleTheme,
                           ),

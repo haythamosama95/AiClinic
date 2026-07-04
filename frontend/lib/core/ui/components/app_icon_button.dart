@@ -1,48 +1,187 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
+import 'package:ai_clinic/core/ui/theme/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 
 /// Application-owned icon button (`04-components` A2).
-class AppIconButton extends StatelessWidget {
+class AppIconButton extends StatefulWidget {
   const AppIconButton({
     required this.icon,
-    required this.tooltip,
+    required this.label,
     this.onPressed,
+    this.variant = AppIconButtonVariant.ghost,
     this.size = AppIconButtonSize.md,
+    this.error = false,
+    this.tooltip,
+    this.tooltipDisabled = false,
     super.key,
   });
 
   final Widget icon;
-  final String tooltip;
+  final String label;
   final VoidCallback? onPressed;
+  final AppIconButtonVariant variant;
   final AppIconButtonSize size;
+  final bool error;
+  final String? tooltip;
+  final bool tooltipDisabled;
+
+  bool get disabled => onPressed == null;
+
+  @override
+  State<AppIconButton> createState() => _AppIconButtonState();
+}
+
+class _AppIconButtonState extends State<AppIconButton> {
+  bool _hovered = false;
+  bool _pressed = false;
+  bool _focused = false;
+
+  double get _dimension => switch (widget.size) {
+    AppIconButtonSize.sm => 28,
+    AppIconButtonSize.md => 32,
+    AppIconButtonSize.lg => 40,
+  };
+
+  double get _iconSize => widget.size == AppIconButtonSize.lg ? 20 : 16;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final dimension = switch (size) {
-      AppIconButtonSize.sm => 28.0,
-      AppIconButtonSize.md => 32.0,
-      AppIconButtonSize.lg => 40.0,
-    };
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final style = _resolveStyle(colors, isDark);
+    final reducedMotion = AppMotion.prefersReducedMotion(context);
+    final scale = !widget.disabled && _pressed && !reducedMotion ? 0.98 : 1.0;
 
-    return Tooltip(
-      message: tooltip,
-      child: IconButton(
-        onPressed: onPressed,
-        icon: icon,
-        iconSize: size == AppIconButtonSize.lg ? 24 : 20,
-        padding: EdgeInsets.zero,
-        constraints: BoxConstraints.tightFor(width: dimension, height: dimension),
-        style: IconButton.styleFrom(
-          foregroundColor: colors.iconDefault,
-          hoverColor: colors.surfaceHover,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+    Widget button = Semantics(
+      label: widget.label,
+      button: true,
+      enabled: !widget.disabled,
+      child: Focus(
+        onFocusChange: (focused) => setState(() => _focused = focused),
+        child: MouseRegion(
+          cursor: widget.disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() {
+            _hovered = false;
+            _pressed = false;
+          }),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: widget.disabled ? null : (_) => setState(() => _pressed = true),
+            onTapUp: widget.disabled ? null : (_) => setState(() => _pressed = false),
+            onTapCancel: widget.disabled ? null : () => setState(() => _pressed = false),
+            onTap: widget.onPressed,
+            child: AnimatedScale(
+              scale: scale,
+              duration: AppMotion.instant,
+              curve: AppMotion.standardCurve,
+              child: _buildButtonSurface(colors, isDark, style),
+            ),
+          ),
         ),
       ),
     );
+
+    if (!widget.tooltipDisabled && !widget.disabled) {
+      button = Tooltip(message: widget.tooltip ?? widget.label, child: button);
+    }
+
+    return button;
+  }
+
+  Widget _buildButtonSurface(AppSemanticColors colors, bool isDark, _IconButtonStyle style) {
+    final radius = BorderRadius.circular(AppRadius.md);
+    final focusRingColor = widget.variant == AppIconButtonVariant.ai
+        ? (isDark ? AppColorPrimitives.focusRingAiDark : AppColorPrimitives.focusRingAiLight)
+        : (isDark ? AppColorPrimitives.focusRingDark : AppColorPrimitives.focusRingLight);
+
+    Widget core = Container(
+      width: _dimension,
+      height: _dimension,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: style.background,
+        borderRadius: radius,
+        border: style.borderColor == null ? null : Border.all(color: style.borderColor!),
+        boxShadow: _focused && !widget.disabled
+            ? [BoxShadow(color: focusRingColor, blurRadius: 0, spreadRadius: 2)]
+            : null,
+      ),
+      child: IconTheme(
+        data: IconThemeData(size: _iconSize, color: style.foreground),
+        child: widget.icon,
+      ),
+    );
+
+    if (widget.error && !widget.disabled) {
+      final dangerBorder = isDark ? AppColorPrimitives.statusDangerBorderDark : AppColorPrimitives.red100;
+      core = Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: colors.surfaceDefault,
+          borderRadius: BorderRadius.circular(AppRadius.md + 2),
+          border: Border.all(color: dangerBorder, width: 2),
+        ),
+        child: core,
+      );
+    }
+
+    return core;
+  }
+
+  _IconButtonStyle _resolveStyle(AppSemanticColors colors, bool isDark) {
+    if (widget.disabled) {
+      return _IconButtonStyle(
+        background: isDark ? AppColorPrimitives.actionDisabledBgDark : AppColorPrimitives.neutral100,
+        foreground: isDark ? AppColorPrimitives.textDisabledDark : AppColorPrimitives.neutral400,
+      );
+    }
+
+    final dangerSurface = isDark ? AppColorPrimitives.statusDangerSurfaceDark : AppColorPrimitives.red50;
+    final secondaryBackground = isDark ? AppColorPrimitives.surfaceRaisedDark : colors.surfaceDefault;
+    final subtleHover = isDark ? AppColorPrimitives.surfaceHoverDark : AppColorPrimitives.neutral50;
+
+    return switch (widget.variant) {
+      AppIconButtonVariant.ghost => _IconButtonStyle(
+        background: _pressed
+            ? colors.surfaceMuted
+            : _hovered
+            ? subtleHover
+            : Colors.transparent,
+        foreground: _hovered ? colors.textPrimary : colors.iconDefault,
+      ),
+      AppIconButtonVariant.secondary => _IconButtonStyle(
+        background: _pressed
+            ? colors.surfaceMuted
+            : _hovered
+            ? colors.surfaceHover
+            : secondaryBackground,
+        foreground: _hovered ? colors.textPrimary : colors.iconDefault,
+        borderColor: colors.borderDefault,
+      ),
+      AppIconButtonVariant.danger => _IconButtonStyle(
+        background: _pressed || _hovered ? dangerSurface : Colors.transparent,
+        foreground: colors.statusDangerFg,
+      ),
+      AppIconButtonVariant.ai => _IconButtonStyle(
+        background: _pressed || _hovered ? colors.surfaceAi : Colors.transparent,
+        foreground: colors.textAi,
+      ),
+    };
   }
 }
+
+class _IconButtonStyle {
+  const _IconButtonStyle({required this.background, required this.foreground, this.borderColor});
+
+  final Color background;
+  final Color foreground;
+  final Color? borderColor;
+}
+
+enum AppIconButtonVariant { ghost, secondary, danger, ai }
 
 enum AppIconButtonSize { sm, md, lg }

@@ -43,6 +43,7 @@ abstract final class AppColorPrimitives {
 
   static const red50 = Color(0xFFFBECEC);
   static const red100 = Color(0xFFF6CFCF);
+  static const red500Dark = Color(0xFFD64545);
   static const red600 = Color(0xFFBC3333);
   static const red700 = Color(0xFF9A2828);
 

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/components_sub_nav.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/components_tab_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/dev_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/foundations/dev_section_layout.dart';
 import 'package:ai_clinic/features/design_system/presentation/foundations/foundations_content.dart';
@@ -24,6 +26,7 @@ class DesignSystemPage extends ConsumerStatefulWidget {
 
 class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
   DevSection _section = DevSection.foundations;
+  var _componentsPreloaded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +51,8 @@ class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
   Widget _buildSubNav() {
     return switch (_section) {
       DevSection.foundations => const FoundationsSubNav(),
+      DevSection.components when _componentsPreloaded => const ComponentsSubNav(),
+      DevSection.components => const ComponentsSubNavLoading(),
       _ => const _ComingSoonSubNav(),
     };
   }
@@ -69,6 +74,12 @@ class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
           ),
         ),
       ),
+      DevSection.components => ComponentsTabSection(
+        direction: direction,
+        locale: ref.watch(devPreviewProvider).locale,
+        preloadComplete: _componentsPreloaded,
+        onPreloadComplete: () => setState(() => _componentsPreloaded = true),
+      ),
       _ => const _ComingSoonTab(),
     };
   }
@@ -85,10 +96,7 @@ class _FoundationsIntro extends StatelessWidget {
         const SizedBox(height: AppSpacing.space2),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 672),
-          child: Text(
-            'Tokens, typography, spacing, motion, and The Signal.',
-            style: DevTextStyles.bodyLg(context),
-          ),
+          child: Text('Tokens, typography, spacing, motion, and The Signal.', style: DevTextStyles.bodyLg(context)),
         ),
       ],
     );
