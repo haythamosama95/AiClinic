@@ -1,14 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/router.dart';
+import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/app/session_activity_scope.dart';
 import 'package:ai_clinic/features/settings/application/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/providers/theme_provider.dart';
+import 'package:ai_clinic/core/ui/state/locale_direction_provider.dart';
 
 /// Root widget that wires together startup state, routing, and theming.
 class AiClinicApp extends ConsumerStatefulWidget {
@@ -56,15 +59,32 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final locale = ref.watch(localeDirectionProvider).locale;
 
     return SessionActivityScope(
       child: MaterialApp.router(
         title: 'AiClinic',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData.light(),
-        darkTheme: ThemeData.dark(),
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
         themeMode: themeMode,
+        locale: locale,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: LocaleDirectionState.supportedLocales,
         routerConfig: router,
+        // Text outside a [Material] ancestor inherits MaterialApp's debug
+        // fallback style (double yellow underline). Transparent [Material]
+        // applies the theme text style app-wide.
+        builder: (context, child) {
+          if (child == null) {
+            return const SizedBox.shrink();
+          }
+          return Material(type: MaterialType.transparency, child: child);
+        },
       ),
     );
   }

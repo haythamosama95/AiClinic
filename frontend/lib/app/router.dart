@@ -4,6 +4,48 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
+import 'package:ai_clinic/features/dev/presentation/pages/theme_showcase_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_hub_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_queue_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_booking_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/doctor_schedule_page.dart';
+import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_list_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_detail_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/invoice_editor_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/insurance_providers_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/billing_settings_page.dart';
+import 'package:ai_clinic/features/dashboard/presentation/pages/dashboard_page.dart';
+import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/patients_list_page.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/register_patient_page.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/edit_patient_page.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/patient_detail_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/idle_timeout_settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/organization_settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/branches_list_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/branch_create_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/branch_edit_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/staff_list_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/staff_create_settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/staff_detail_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/staff_reset_password_settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/role_permissions_page.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/pages/service_catalog_list_page.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/pages/service_editor_create_page.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/pages/service_editor_edit_page.dart';
+import 'package:ai_clinic/features/setup/presentation/pages/bootstrap_wizard_page.dart';
+import 'package:ai_clinic/features/shifts/presentation/pages/shift_calendar_page.dart';
+import 'package:ai_clinic/features/shifts/presentation/pages/shift_create_page.dart';
+import 'package:ai_clinic/features/shifts/presentation/pages/shift_detail_page.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_documentation_page.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_detail_page.dart';
+import 'package:ai_clinic/features/setup/presentation/pages/staff_create_page.dart';
+import 'package:ai_clinic/features/setup/presentation/pages/staff_password_reset_page.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
@@ -42,11 +84,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.protectedPlaceholder,
         builder: (context, state) => uiPendingPlaceholder('Startup', state),
       ),
-      GoRoute(path: AppRoutes.login, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
+      GoRoute(
+        path: AppRoutes.login,
+        builder: (context, state) => LoginPage(forgotMode: state.uri.queryParameters.containsKey('forgot')),
+      ),
       GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
-      GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
-      GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
-      GoRoute(path: AppRoutes.staffPasswordReset, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
+      GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const BootstrapWizardPage()),
+      GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => const StaffCreatePage()),
+      GoRoute(path: AppRoutes.staffPasswordReset, builder: (context, state) => const StaffPasswordResetPage()),
 
       // Authenticated shell — shared navigation wraps all feature routes
       ShellRoute(
@@ -54,132 +99,142 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: AppRoutes.foundationDemo,
-            builder: (context, state) => uiPendingPlaceholder('Foundation', state),
+            builder: (context, state) => const ThemeShowcasePage(),
           ),
-          GoRoute(path: AppRoutes.home, builder: (context, state) => uiPendingPlaceholder('Dashboard', state)),
+          GoRoute(path: AppRoutes.home, builder: (context, state) => const DashboardPage()),
 
           // Patient management
-          GoRoute(path: AppRoutes.patients, builder: (context, state) => uiPendingPlaceholder('Patients', state)),
-          GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => uiPendingPlaceholder('Patients', state)),
+          GoRoute(path: AppRoutes.patients, builder: (context, state) => const PatientsListPage()),
+          GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => const RegisterPatientPage()),
           GoRoute(
             path: '${AppRoutes.patients}/:patientId',
-            builder: (context, state) => uiPendingPlaceholder('Patients', state),
+            builder: (context, state) => PatientDetailPage(
+              patientId: state.pathParameters['patientId']!,
+              preview: PatientDetailRouteExtra.fromExtra(state.extra).preview,
+            ),
           ),
           GoRoute(
             path: '${AppRoutes.patients}/:patientId/edit',
-            builder: (context, state) => uiPendingPlaceholder('Patients', state),
+            builder: (context, state) => EditPatientPage(patientId: state.pathParameters['patientId']!),
           ),
 
           // Appointments (V1-4)
           GoRoute(
             path: AppRoutes.appointments,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
+            builder: (context, state) => const AppointmentHubPage(),
           ),
           GoRoute(
             path: AppRoutes.appointmentsBook,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
+            builder: (context, state) => const AppointmentBookingPage(),
           ),
           GoRoute(
             path: AppRoutes.appointmentsQueue,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
+            builder: (context, state) => const AppointmentQueuePage(),
           ),
           GoRoute(
             path: AppRoutes.appointmentsCalendar,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
+            builder: (context, state) => const AppointmentCalendarPage(),
           ),
           GoRoute(
             path: '${AppRoutes.appointments}/:appointmentId',
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
+            builder: (context, state) => AppointmentDetailPage(
+              appointmentId: state.pathParameters['appointmentId']!,
+              preview: AppointmentDetailRouteExtra.fromExtra(state.extra).preview,
+            ),
           ),
           GoRoute(
             path: '${AppRoutes.appointments}/schedule/:doctorId',
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
+            builder: (context, state) => DoctorSchedulePage(doctorId: state.pathParameters['doctorId']!),
           ),
 
           // Visits (V1-5)
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Visits', state),
+            builder: (context, state) => VisitDocumentationPage(
+              visitId: state.pathParameters['visitId']!,
+              startEditing: state.uri.queryParameters['edit'] == '1',
+            ),
           ),
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Visits', state),
+            builder: (context, state) => VisitDetailPage(visitId: state.pathParameters['visitId']!),
           ),
 
           // Billing (V1-6)
-          GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => uiPendingPlaceholder('Billing', state)),
+          GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => const InvoiceListPage()),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceEditSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            builder: (context, state) => InvoiceEditorPage(invoiceId: state.pathParameters['invoiceId']!),
           ),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId',
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            builder: (context, state) => InvoiceDetailPage(invoiceId: state.pathParameters['invoiceId']!),
           ),
           GoRoute(
             path: AppRoutes.billingInsuranceProviders,
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            builder: (context, state) => const InsuranceProvidersPage(),
           ),
-          GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => uiPendingPlaceholder('Billing', state)),
+          GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => const BillingSettingsPage()),
           GoRoute(
             path: AppRoutes.settingsServices,
-            builder: (context, state) => uiPendingPlaceholder('Service Catalog', state),
+            builder: (context, state) => const ServiceCatalogListPage(),
           ),
           GoRoute(
             path: AppRoutes.settingsServicesNew,
-            builder: (context, state) => uiPendingPlaceholder('Service Catalog', state),
+            builder: (context, state) => const ServiceEditorCreatePage(),
           ),
           GoRoute(
             path: '/settings/services/:serviceId/edit',
-            builder: (context, state) => uiPendingPlaceholder('Service Catalog', state),
+            builder: (context, state) => ServiceEditorEditPage(serviceId: state.pathParameters['serviceId']!),
           ),
 
           // Shifts (V1-7)
-          GoRoute(path: AppRoutes.shiftsCalendar, builder: (context, state) => uiPendingPlaceholder('Shifts', state)),
-          GoRoute(path: AppRoutes.shiftsNew, builder: (context, state) => uiPendingPlaceholder('Shifts', state)),
+          GoRoute(path: AppRoutes.shiftsCalendar, builder: (context, state) => const ShiftCalendarPage()),
+          GoRoute(path: AppRoutes.shiftsNew, builder: (context, state) => const ShiftCreatePage()),
           GoRoute(
             path: '${AppRoutes.shifts}/:shiftId',
-            builder: (context, state) => uiPendingPlaceholder('Shifts', state),
+            builder: (context, state) => ShiftDetailPage(shiftId: state.pathParameters['shiftId']!),
           ),
 
           // Settings
-          GoRoute(path: AppRoutes.settings, builder: (context, state) => uiPendingPlaceholder('Settings', state)),
+          GoRoute(path: AppRoutes.settings, builder: (context, state) => const SettingsPage()),
           GoRoute(
             path: AppRoutes.settingsIdleTimeout,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            builder: (context, state) => const IdleTimeoutSettingsPage(),
           ),
           GoRoute(
             path: AppRoutes.settingsOrganization,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            builder: (context, state) => const OrganizationSettingsPage(),
           ),
           GoRoute(
             path: AppRoutes.settingsBranches,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            builder: (context, state) => const BranchesListPage(),
           ),
           GoRoute(
             path: AppRoutes.settingsBranchesNew,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            builder: (context, state) => const BranchCreatePage(),
           ),
           GoRoute(
             path: '${AppRoutes.settingsBranches}/:branchId/edit',
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            builder: (context, state) => BranchEditPage(branchId: state.pathParameters['branchId']!),
           ),
-          GoRoute(path: AppRoutes.settingsStaff, builder: (context, state) => uiPendingPlaceholder('Settings', state)),
+          GoRoute(path: AppRoutes.settingsStaff, builder: (context, state) => const StaffListPage()),
           GoRoute(
             path: AppRoutes.settingsStaffNew,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            builder: (context, state) => const SettingsStaffCreatePage(),
           ),
           GoRoute(
             path: '${AppRoutes.settingsStaff}/:staffId',
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            builder: (context, state) => StaffDetailPage(staffId: state.pathParameters['staffId']!),
           ),
           GoRoute(
             path: '${AppRoutes.settingsStaff}/:staffId/reset-password',
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            builder: (context, state) =>
+                StaffResetPasswordSettingsPage(staffId: state.pathParameters['staffId']!),
           ),
           GoRoute(
             path: AppRoutes.settingsPermissions,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
+            builder: (context, state) => const RolePermissionsPage(),
           ),
         ],
       ),

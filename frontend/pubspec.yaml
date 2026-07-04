@@ -57,6 +57,10 @@ dependencies:
   pdf: ^3.11.3
   printing: ^5.14.2
   pdfx: ^2.9.2
+  lucide_icons_flutter: ^3.1.14+2
+  desktop_drop: ^0.7.1
+  fl_chart: ^1.2.0
+  markdown_widget: ^2.3.2+8
 
 # Patches flutter_quill#2487: selection paint crashes on empty lines / RTL text
 # until https://github.com/singerdmx/flutter-quill/pull/2736 merges.
@@ -103,22 +107,38 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  # To add custom fonts to your application, add a fonts section here,
-  # in this "flutter" section. Each entry in this list should have a
-  # "family" key with the font family name, and a "fonts" key with a
-  # list giving the asset and other descriptors for the font. For
-  # example:
-  # fonts:
-  #   - family: Schyler
-  #     fonts:
-  #       - asset: fonts/Schyler-Regular.ttf
-  #       - asset: fonts/Schyler-Italic.ttf
-  #         style: italic
-  #   - family: Trajan Pro
-  #     fonts:
-  #       - asset: fonts/TrajanPro.ttf
-  #       - asset: fonts/TrajanPro_Bold.ttf
-  #         weight: 700
-  #
-  # For details regarding fonts from package dependencies,
-  # see https://flutter.dev/to/font-from-package
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/inter/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/inter/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/inter/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/inter/Inter-Bold.ttf
+          weight: 700
+    - family: Geist
+      fonts:
+        - asset: assets/fonts/geist/Geist-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/geist/Geist-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/geist/Geist-Bold.ttf
+          weight: 700
+    - family: Geist Mono
+      fonts:
+        - asset: assets/fonts/geist_mono/GeistMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/geist_mono/GeistMono-Medium.ttf
+          weight: 500
+    - family: IBM Plex Sans Arabic
+      fonts:
+        - asset: assets/fonts/ibm_plex_arabic/IBMPlexSansArabic-Light.ttf
+          weight: 300
+        - asset: assets/fonts/ibm_plex_arabic/IBMPlexSansArabic-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/ibm_plex_arabic/IBMPlexSansArabic-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/ibm_plex_arabic/IBMPlexSansArabic-Bold.ttf
+          weight: 700
