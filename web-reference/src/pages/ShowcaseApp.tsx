@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { buildDefaultCommandItems, CommandBar } from '@/components/navigation/CommandBar'
 import { FoundationsContent } from '@/pages/FoundationsPage'
 import { ComponentsPage, ComponentsSubNav } from '@/pages/ComponentsPage'
 import { ShowcaseShell, type ShowcaseArea } from '@/showcase/ShowcaseShell'
@@ -22,12 +23,15 @@ export function ShowcaseApp() {
   const [area, setArea] = useState<ShowcaseArea>('components')
 
   return (
-    <ShowcaseShell
-      area={area}
-      onAreaChange={setArea}
-      subNav={area === 'components' ? <ComponentsSubNav /> : undefined}
-    >
-      {area === 'foundations' ? <FoundationsArea /> : <ComponentsPage />}
-    </ShowcaseShell>
+    <>
+      <ShowcaseShell
+        area={area}
+        onAreaChange={setArea}
+        subNav={area === 'components' ? <ComponentsSubNav /> : undefined}
+      >
+        {area === 'foundations' ? <FoundationsArea /> : <ComponentsPage />}
+      </ShowcaseShell>
+      <CommandBar items={buildDefaultCommandItems()} />
+    </>
   )
 }

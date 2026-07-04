@@ -10,10 +10,6 @@ function GroupPlaceholder({ title, slug }: { title: string; slug: string }) {
   )
 }
 
-function NavigationPlaceholder() {
-  return <GroupPlaceholder title="Navigation" slug="navigation" />
-}
-
 function FeedbackPlaceholder() {
   return <GroupPlaceholder title="Feedback & overlays" slug="feedback" />
 }
@@ -21,20 +17,6 @@ function FeedbackPlaceholder() {
 function AiPlaceholder() {
   return <GroupPlaceholder title="AI" slug="ai" />
 }
-
-function LayoutPlaceholder() {
-  return <GroupPlaceholder title="Layout & utility" slug="layout" />
-}
-
-export const navigationSections: ShowcaseSectionDef[] = [
-  {
-    id: 'navigation-placeholder',
-    title: 'Navigation',
-    group: 'navigation',
-    component: NavigationPlaceholder,
-    status: 'placeholder',
-  },
-]
 
 export const feedbackSections: ShowcaseSectionDef[] = [
   {
@@ -52,16 +34,6 @@ export const aiSections: ShowcaseSectionDef[] = [
     title: 'AI',
     group: 'ai',
     component: AiPlaceholder,
-    status: 'placeholder',
-  },
-]
-
-export const layoutSections: ShowcaseSectionDef[] = [
-  {
-    id: 'layout-placeholder',
-    title: 'Layout & utility',
-    group: 'layout',
-    component: LayoutPlaceholder,
     status: 'placeholder',
   },
 ]

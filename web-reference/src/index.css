@@ -103,6 +103,9 @@
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
 
+  --shell-topbar-height: 56px;
+  --shell-nav-item-height: 36px;
+
   --font-sans: "Inter", system-ui, sans-serif;
   --font-display: "Geist", "Inter", sans-serif;
   --font-mono: "Geist Mono", "JetBrains Mono", monospace;
@@ -598,6 +601,22 @@ body {
 [data-reduced-motion="true"] .progress-spin,
 [data-reduced-motion="true"] .progress-indeterminate {
   animation: none;
+}
+
+/* ── Density scale (shell chrome) ── */
+html[data-density="compact"] {
+  --shell-topbar-height: 48px;
+  --shell-nav-item-height: 32px;
+}
+
+html[data-density="default"] {
+  --shell-topbar-height: 56px;
+  --shell-nav-item-height: 36px;
+}
+
+html[data-density="comfortable"] {
+  --shell-topbar-height: 64px;
+  --shell-nav-item-height: 40px;
 }
 
 /* ── Screen reader only ── */

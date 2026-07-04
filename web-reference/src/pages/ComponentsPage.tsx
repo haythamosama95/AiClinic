@@ -9,11 +9,11 @@ export function ComponentsPage() {
   return (
     <div className="space-y-16">
       <div>
-        <p className="text-overline text-text-tertiary">Milestone 2</p>
+        <p className="text-overline text-text-tertiary">Milestone 3</p>
         <h2 className="text-h2 text-text-primary">Components</h2>
         <p className="mt-2 max-w-2xl text-body-lg text-text-secondary">
-          Shared primitives with full variant and state matrices. Toggle theme and direction in the
-          header to verify light, dark, LTR, and RTL.
+          Shared primitives with full variant and state matrices. Toggle theme, direction, language,
+          density, and AI mode in the header or the App shell demo.
         </p>
       </div>
 
@@ -87,7 +87,11 @@ export function ComponentsSubNav() {
                   ({readyCount}/{sections.length})
                 </span>
               </a>
-              {group.id === 'display' || group.id === 'actions' || group.id === 'inputs' ? (
+              {group.id === 'display' ||
+              group.id === 'actions' ||
+              group.id === 'inputs' ||
+              group.id === 'navigation' ||
+              group.id === 'layout' ? (
                 <ul className="mt-1 space-y-0.5 border-s-2 border-border-subtle ps-3">
                   {sections.map((section) => (
                     <li key={section.id}>
