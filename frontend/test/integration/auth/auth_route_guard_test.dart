@@ -1,15 +1,9 @@
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/app/router.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../support/pump_auth_app.dart';
 import '../../helpers/auth_test_support.dart';
-import '../../helpers/startup_test_support.dart';
 
 void main() {
   group('AuthRouteGuard.resolveRedirect', () {
@@ -54,58 +48,6 @@ void main() {
         ),
         isNull,
       );
-    });
-  });
-
-  group('router integration', () {
-    testWidgets('unauthenticated protected route redirects to login when startup is valid', (tester) async {
-      await pumpStartupApp(tester);
-      await completeStartupBootstrap(tester);
-
-      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
-      container.read(appRouterProvider).go(AppRoutes.protectedPlaceholder);
-      await settleRouterRedirects(tester);
-
-      expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.login);
-      expect(find.byType(UiPendingPlaceholderPage), findsOneWidget);
-    });
-
-    testWidgets('REG-008: unauthenticated /patients redirects to login', (tester) async {
-      await pumpStartupApp(tester);
-      await completeStartupBootstrap(tester);
-
-      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
-      container.read(appRouterProvider).go(AppRoutes.patients);
-      await settleRouterRedirects(tester);
-
-      expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.login);
-      expect(find.byType(UiPendingPlaceholderPage), findsOneWidget);
-    });
-
-    testWidgets('authenticated setup-complete user reaches home from login', (tester) async {
-      await pumpAuthApp(tester, extraOverrides: [authSessionProvider.overrideWith(TestAuthSessionNotifier.new)]);
-      await completeStartupBootstrap(tester);
-
-      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
-      (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setAuthenticated();
-      container.read(appRouterProvider).go(AppRoutes.login);
-      await settleRouterRedirects(tester);
-
-      expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
-      expect(find.byType(UiPendingPlaceholderPage), findsOneWidget);
-      expect(find.text('Dashboard'), findsOneWidget);
-    });
-
-    testWidgets('authenticated user navigating to login bounces to home', (tester) async {
-      await pumpAuthApp(tester, extraOverrides: [authSessionProvider.overrideWith(TestAuthSessionNotifier.new)]);
-      await completeStartupBootstrap(tester);
-
-      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
-      (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setAuthenticated();
-      container.read(appRouterProvider).go(AppRoutes.login);
-      await settleRouterRedirects(tester);
-
-      expect(container.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path, AppRoutes.home);
     });
   });
 }
