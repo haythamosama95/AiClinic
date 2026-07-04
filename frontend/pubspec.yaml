@@ -54,6 +54,9 @@ dependencies:
   file_picker: ^10.1.9
   flutter_quill: ^11.5.1
   open_filex: ^4.7.0
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  pdfx: ^2.9.2
 
 # Patches flutter_quill#2487: selection paint crashes on empty lines / RTL text
 # until https://github.com/singerdmx/flutter-quill/pull/2736 merges.

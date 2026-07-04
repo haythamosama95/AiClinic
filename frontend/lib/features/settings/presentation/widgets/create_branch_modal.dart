@@ -14,6 +14,8 @@ import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_pr
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
 import 'package:ai_clinic/features/setup/domain/setup_step_readiness.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/setup_branch_step.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/service_catalog/presentation/widgets/new_branch_service_setup.dart';
 
 abstract final class _CreateBranchModalPalette {
   static const modalRadius = 24.0;
@@ -140,7 +142,7 @@ class _CreateBranchModalState extends ConsumerState<CreateBranchModal> {
     });
 
     try {
-      await ref.read(createBranchUseCaseProvider)(
+      final branchId = await ref.read(createBranchUseCaseProvider)(
         CreateBranchInput(
           name: _nameController.text,
           workingSchedule: _workingSchedule,
@@ -152,6 +154,25 @@ class _CreateBranchModalState extends ConsumerState<CreateBranchModal> {
       );
 
       ref.invalidate(clinicSetupBranchesProvider);
+
+      if (!mounted) {
+        return;
+      }
+
+      final branchName = _nameController.text.trim();
+      final canManageServices = ref.read(permissionServiceProvider).canManageServices();
+      if (canManageServices) {
+        final branches = await ref.read(clinicSetupBranchesProvider.future);
+        if (!mounted) {
+          return;
+        }
+        await NewBranchServiceSetup.show(
+          context,
+          targetBranchId: branchId,
+          targetBranchName: branchName,
+          branches: branches,
+        );
+      }
 
       if (!mounted) {
         return;

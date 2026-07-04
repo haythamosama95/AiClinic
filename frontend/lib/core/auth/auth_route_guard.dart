@@ -302,7 +302,55 @@ abstract final class AuthRouteGuard {
     return location == AppRoutes.settings ||
         location == AppRoutes.settingsIdleTimeout ||
         location == AppRoutes.settingsBilling ||
+        isServiceCatalogRoute(location) ||
         isAdminSettingsRoute(location);
+  }
+
+  /// Service catalog administration routes (015).
+  static bool isServiceCatalogRoute(String location) {
+    if (AppRoutes.serviceCatalogStaticPaths.contains(location)) {
+      return true;
+    }
+    return location.startsWith('/settings/services/');
+  }
+
+  static bool canAccessServiceEditor(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    return PermissionService(auth.context).canManageServices();
+  }
+
+  static bool canAccessServiceCatalogList(AuthSessionState auth) {
+    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+      return false;
+    }
+    final permissions = PermissionService(auth.context);
+    return permissions.canViewServices() || permissions.canManageServices();
+  }
+
+  /// Returns redirect when [location] is a service catalog route the session cannot access.
+  static String? serviceCatalogRouteRedirect({required String location, required AuthSessionState auth}) {
+    if (!isServiceCatalogRoute(location)) {
+      return null;
+    }
+
+    if (!auth.isAuthenticated) {
+      return AppRoutes.login;
+    }
+
+    if (auth.context!.setupRequired) {
+      return AppRoutes.bootstrap;
+    }
+
+    final allowed = switch (location) {
+      AppRoutes.settingsServices => canAccessServiceCatalogList(auth),
+      AppRoutes.settingsServicesNew => canAccessServiceEditor(auth),
+      _ when location.startsWith('/settings/services/') => canAccessServiceEditor(auth),
+      _ => false,
+    };
+
+    return allowed ? null : AppRoutes.settings;
   }
 
   /// V1-2 administration sub-routes under the settings hub.

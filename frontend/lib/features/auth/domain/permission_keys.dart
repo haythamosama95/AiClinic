@@ -25,6 +25,8 @@ abstract final class PermissionKeys {
   static const insuranceManage = 'insurance.manage';
   static const settingsBillingManage = 'settings.billing.manage';
   static const shiftsManage = 'shifts.manage';
+  static const servicesView = 'services.view';
+  static const servicesManage = 'services.manage';
 }
 
 /// Expected V1-1 seed grants per role (for tests and RBAC demo verification).
@@ -52,6 +54,8 @@ abstract final class RolePermissionSeed {
     PermissionKeys.paymentsRefund,
     PermissionKeys.insuranceManage,
     PermissionKeys.settingsBillingManage,
+    PermissionKeys.servicesView,
+    PermissionKeys.servicesManage,
   };
 
   static const doctor = {

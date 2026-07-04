@@ -22,6 +22,7 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_list_
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/create_patient_modal.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_documents_card.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_billing_section.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_notes_card.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_timeline_section.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_gender_avatar.dart';
@@ -156,6 +157,8 @@ class _PatientDetailContentView extends ConsumerWidget {
                       onRetryUpcoming: () => ref.invalidate(patientUpcomingAppointmentsProvider(historyQuery)),
                     ),
                     const SizedBox(height: SpacingTokens.lg),
+                    PatientBillingSection(patientId: detail.id),
+                    const SizedBox(height: SpacingTokens.lg),
                     SizedBox(
                       height: sideCardHeight,
                       child: PatientDetailDocumentsCard(patientId: detail.id),
@@ -264,6 +267,8 @@ class _PatientDetailSplitLayout extends StatelessWidget {
               _buildTopSection(),
               const SizedBox(height: SpacingTokens.lg),
               _buildTimelineSection(),
+              const SizedBox(height: SpacingTokens.lg),
+              PatientBillingSection(patientId: detail.id),
             ],
           ),
         ),
