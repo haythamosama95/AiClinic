@@ -30,28 +30,31 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final notifier = ref.read(startupSessionProvider.notifier);
 
   return GoRouter(
-    initialLocation: AppRoutes.startupCheck,
+    initialLocation: AppRoutes.home,
     refreshListenable: refreshSignal,
     routes: [
-      // Unauthenticated / startup routes
-      GoRoute(path: AppRoutes.startupCheck, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
-      GoRoute(path: AppRoutes.startupEntry, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
-      GoRoute(path: AppRoutes.setupGuidance, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
-      GoRoute(path: AppRoutes.protectedBlocked, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
-      GoRoute(
-        path: AppRoutes.protectedPlaceholder,
-        builder: (context, state) => uiPendingPlaceholder('Startup', state),
-      ),
-      GoRoute(path: AppRoutes.login, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
-      GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
-      GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
-      GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
-      GoRoute(path: AppRoutes.staffPasswordReset, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
-
-      // Authenticated shell — shared navigation wraps all feature routes
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
         routes: [
+          GoRoute(path: AppRoutes.startupCheck, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
+          GoRoute(path: AppRoutes.startupEntry, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
+          GoRoute(path: AppRoutes.setupGuidance, builder: (context, state) => uiPendingPlaceholder('Startup', state)),
+          GoRoute(
+            path: AppRoutes.protectedBlocked,
+            builder: (context, state) => uiPendingPlaceholder('Startup', state),
+          ),
+          GoRoute(
+            path: AppRoutes.protectedPlaceholder,
+            builder: (context, state) => uiPendingPlaceholder('Startup', state),
+          ),
+          GoRoute(path: AppRoutes.login, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
+          GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
+          GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
+          GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
+          GoRoute(
+            path: AppRoutes.staffPasswordReset,
+            builder: (context, state) => uiPendingPlaceholder('Setup', state),
+          ),
           GoRoute(
             path: AppRoutes.foundationDemo,
             builder: (context, state) => uiPendingPlaceholder('Foundation', state),
@@ -220,11 +223,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       final startupRedirect = switch (session.currentView) {
-        StartupCurrentView.startupCheck => location == AppRoutes.startupCheck ? null : AppRoutes.startupCheck,
+        StartupCurrentView.startupCheck => location == AppRoutes.home ? null : AppRoutes.home,
         StartupCurrentView.setupGuidance => location == AppRoutes.setupGuidance ? null : AppRoutes.setupGuidance,
         StartupCurrentView.protectedRouteBlocked =>
           location == AppRoutes.protectedBlocked ? null : AppRoutes.protectedBlocked,
         StartupCurrentView.unauthenticatedEntry => () {
+          if (!auth.isAuthenticated && location == AppRoutes.home) {
+            return null;
+          }
+
           final authRedirect = resolveAuthRedirect(location);
           if (authRedirect != null) {
             return authRedirect;
@@ -234,13 +241,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             return null;
           }
 
-          // Legacy landing routes remain registered but are not reachable in normal flow.
-          if (location == AppRoutes.startupEntry || location == AppRoutes.foundationDemo) {
+          if (location == AppRoutes.startupEntry) {
+            return AppRoutes.home;
+          }
+
+          if (location == AppRoutes.foundationDemo) {
             return AppRoutes.login;
           }
 
-          const preAuthShellRoutes = {AppRoutes.login, AppRoutes.forgotPassword};
-          return preAuthShellRoutes.contains(location) ? null : AppRoutes.login;
+          const preAuthShellRoutes = {AppRoutes.home, AppRoutes.login, AppRoutes.forgotPassword};
+          return preAuthShellRoutes.contains(location) ? null : AppRoutes.home;
         }(),
       };
 
@@ -249,6 +259,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (session.currentView == StartupCurrentView.unauthenticatedEntry) {
+        if (!auth.isAuthenticated && location == AppRoutes.home) {
+          return null;
+        }
+
         final authRedirect = resolveAuthRedirect(location);
         if (authRedirect != null) {
           return authRedirect;
