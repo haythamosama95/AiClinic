@@ -442,7 +442,7 @@ The frontend is currently a startup-oriented orchestration layer rather than a f
 
 ## Purpose and scope
 
-Phase 3 implements **User Story 1 — Launch a Safe Pre-Auth Entry** (`specs/001-project-scaffolding/tasks.md`, T011–T017). The goal is a complete, testable startup experience that:
+Phase 3 implements **User Story 1 — Launch a Safe Pre-Auth Entry** (`docs/specs/001-project-scaffolding/tasks.md`, T011–T017). The goal is a complete, testable startup experience that:
 
 - validates the local deployment profile at launch
 - shows connection status and actionable next-step guidance on the unauthenticated entry screen
@@ -656,7 +656,7 @@ For frontend acceptance, Phase 4 only affects **how** operators prepare workstat
 
 ## Purpose and scope
 
-Phase 5 implements **User Story 3 — Build New Features on Shared Foundations** (`specs/001-project-scaffolding/tasks.md`, T025–T032). It adds:
+Phase 5 implements **User Story 3 — Build New Features on Shared Foundations** (`docs/specs/001-project-scaffolding/tasks.md`, T025–T032). It adds:
 
 - a shared Material 3 theme and semantic color tokens
 - reusable UI primitives under `core/widgets/`

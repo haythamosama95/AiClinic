@@ -76,16 +76,16 @@ Given that feature description, do this:
 
 3. **Create the spec feature directory**:
 
-   Specs live under the default `specs/` directory unless the user explicitly provides `SPECIFY_FEATURE_DIRECTORY`.
+   Specs live under the default `docs/specs/` directory unless the user explicitly provides `SPECIFY_FEATURE_DIRECTORY`.
 
    **Resolution order for `SPECIFY_FEATURE_DIRECTORY`**:
    1. If the user explicitly provided `SPECIFY_FEATURE_DIRECTORY` (e.g., via environment variable, argument, or configuration), use it as-is
-   2. Otherwise, auto-generate it under `specs/`:
+   2. Otherwise, auto-generate it under `docs/specs/`:
       - Check `.specify/init-options.json` for `branch_numbering`
       - If `"timestamp"`: prefix is `YYYYMMDD-HHMMSS` (current timestamp)
-      - If `"sequential"` or absent: prefix is `NNN` (next available 3-digit number after scanning existing directories in `specs/`)
+      - If `"sequential"` or absent: prefix is `NNN` (next available 3-digit number after scanning existing directories in `docs/specs/`)
       - Construct the directory name: `<prefix>-<short-name>` (e.g., `003-user-auth` or `20260319-143022-user-auth`)
-      - Set `SPECIFY_FEATURE_DIRECTORY` to `specs/<directory-name>`
+      - Set `SPECIFY_FEATURE_DIRECTORY` to `docs/specs/<directory-name>`
 
    **Create the directory and spec file**:
    - `mkdir -p SPECIFY_FEATURE_DIRECTORY`
@@ -97,7 +97,7 @@ Given that feature description, do this:
        "feature_directory": "<resolved feature dir>"
      }
      ```
-     Write the actual resolved directory path value (for example, `specs/003-user-auth`), not the literal string `SPECIFY_FEATURE_DIRECTORY`.
+     Write the actual resolved directory path value (for example, `docs/specs/003-user-auth`), not the literal string `SPECIFY_FEATURE_DIRECTORY`.
      This allows downstream commands (`/speckit-plan`, `/speckit-tasks`, etc.) to locate the feature directory without relying on git branch name conventions.
 
    **IMPORTANT**:
@@ -140,20 +140,20 @@ Given that feature description, do this:
 
       ```markdown
       # Specification Quality Checklist: [FEATURE NAME]
-      
+
       **Purpose**: Validate specification completeness and quality before proceeding to planning
       **Created**: [DATE]
       **Feature**: [Link to spec.md]
-      
+
       ## Content Quality
-      
+
       - [ ] No implementation details (languages, frameworks, APIs)
       - [ ] Focused on user value and business needs
       - [ ] Written for non-technical stakeholders
       - [ ] All mandatory sections completed
-      
+
       ## Requirement Completeness
-      
+
       - [ ] No [NEEDS CLARIFICATION] markers remain
       - [ ] Requirements are testable and unambiguous
       - [ ] Success criteria are measurable
@@ -162,16 +162,16 @@ Given that feature description, do this:
       - [ ] Edge cases are identified
       - [ ] Scope is clearly bounded
       - [ ] Dependencies and assumptions identified
-      
+
       ## Feature Readiness
-      
+
       - [ ] All functional requirements have clear acceptance criteria
       - [ ] User scenarios cover primary flows
       - [ ] Feature meets measurable outcomes defined in Success Criteria
       - [ ] No implementation details leak into specification
-      
+
       ## Notes
-      
+
       - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
       ```
 
@@ -196,20 +196,20 @@ Given that feature description, do this:
 
            ```markdown
            ## Question [N]: [Topic]
-           
+
            **Context**: [Quote relevant spec section]
-           
+
            **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
-           
+
            **Suggested Answers**:
-           
+
            | Option | Answer | Implications |
            |--------|--------|--------------|
            | A      | [First suggested answer] | [What this means for the feature] |
            | B      | [Second suggested answer] | [What this means for the feature] |
            | C      | [Third suggested answer] | [What this means for the feature] |
            | Custom | Provide your own answer | [Explain how to provide custom input] |
-           
+
            **Your choice**: _[Wait for user response]_
            ```
 

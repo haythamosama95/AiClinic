@@ -860,7 +860,7 @@ if (deploymentModeValue != DeploymentMode.local.wireValue) {
 
 **Fix** (deferred — document now, implement later):
 
-**Step 1**: Create `specs/future/offline-cache-strategy.md` documenting the approach:
+**Step 1**: Create `docs/specs/future/offline-cache-strategy.md` documenting the approach:
 
 - Use `drift` (SQLite) as a local cache for patient data
 - Implement a sync queue for mutations made offline

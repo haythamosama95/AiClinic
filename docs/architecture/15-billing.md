@@ -3,7 +3,7 @@
 - Purpose: Document the billing domain schema, invoice lifecycle, payment rules, and current frontend implementation status.
 - Read this when: implementing invoice UI, payment flows, insurance settings, or billing RPC integrations.
 - Canonical for: billing tables, RPC inventory, permission keys, and business rules for V1-6.
-- Usually paired with: `docs/architecture/05-database.md`, `docs/architecture/07-frontend.md`, `docs/architecture/09-security-rbac.md`, `specs/007-billing/`.
+- Usually paired with: `docs/architecture/05-database.md`, `docs/architecture/07-frontend.md`, `docs/architecture/09-security-rbac.md`, `docs/specs/007-billing/`.
 - Not covered here: V3-2 advanced billing (overdue automation, claim tracking), analytics revenue views.
 
 ---
@@ -17,7 +17,7 @@
 | Frontend data/domain | **Complete** — `frontend/lib/features/billing/data/`, `domain/`, `application/` |
 | Frontend presentation | **Complete** — `frontend/lib/features/billing/presentation/` |
 
-Operator walkthrough for backend verification: `specs/007-billing/quickstart.md`.
+Operator walkthrough for backend verification: `docs/specs/007-billing/quickstart.md`.
 
 ## Schema
 

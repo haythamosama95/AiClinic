@@ -1,6 +1,6 @@
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 
-/// Permission key strings aligned with `roles_permissions` seed (specs/002-auth-rbac).
+/// Permission key strings aligned with `roles_permissions` seed (docs/specs/002-auth-rbac).
 abstract final class PermissionKeys {
   static const manageStaff = 'settings.manage_staff';
   static const manageBranches = 'settings.manage_branches';

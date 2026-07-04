@@ -3,7 +3,7 @@
 - Purpose: Document the visit lifecycle, clinical documentation model, and encounter workspace UI architecture.
 - Read this when: implementing or reviewing visit documentation, patient safety editing, attachments, or encounter workspace behavior.
 - Canonical for: visit/encounter domain tables, RPC contracts, workspace phases, save semantics, and frontend module layout.
-- Usually paired with: `docs/architecture/05-database.md`, `docs/architecture/07-frontend.md`, `docs/architecture/09-security-rbac.md`, `specs/013-visits/`, `specs/014-visit-encounter-workspace/`.
+- Usually paired with: `docs/architecture/05-database.md`, `docs/architecture/07-frontend.md`, `docs/architecture/09-security-rbac.md`, `docs/specs/013-visits/`, `docs/specs/014-visit-encounter-workspace/`.
 - Not covered here: billing from visits (see `15-billing.md`), appointment booking rules, or AI SOAP summarization.
 
 ---
@@ -15,8 +15,8 @@ Visit documentation evolved through three delivery phases:
 | Phase | Spec | Scope |
 | ----- | ---- | ----- |
 | V1-5 base | `006-visit-medical-records` (superseded) | `visits`, `treatment_plans`, `visit_attachments`; legacy `soap_notes` |
-| 013 redesign | `specs/013-visits/` | Sectioned `visit_clinical_notes`, vitals, investigations, org catalogs |
-| 014 workspace | `specs/014-visit-encounter-workspace/` | Encounter shell, patient safety tables, guided/expert modes |
+| 013 redesign | `docs/specs/013-visits/` | Sectioned `visit_clinical_notes`, vitals, investigations, org catalogs |
+| 014 workspace | `docs/specs/014-visit-encounter-workspace/` | Encounter shell, patient safety tables, guided/expert modes |
 
 The legacy `soap_notes` table was backfilled into `visit_clinical_notes` and dropped. Spec 014 P3 additions for coded diagnosis (`diagnosis_codes`, `visit_diagnosis_codes`) and structured plan (`visit_plan_details`) were **implemented then removed** in migrations `20260702120000` and `20260705120000`. Architecture and contracts must reflect the rolled-back state.
 

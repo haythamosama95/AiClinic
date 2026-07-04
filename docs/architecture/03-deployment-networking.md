@@ -18,7 +18,7 @@ The repository contains **two independent Supabase stacks**, easy to confuse:
 
 | Stack | Location | Purpose | Managed by |
 | --- | --- | --- | --- |
-| Dev stack | `backend/supabase/` (`config.toml`, `migrations/`, `seed.sql`) | Local development and CI; what `specs/*/plan.md` and this doc set assume when they say "local Supabase on port 54322" | Supabase CLI (`supabase start`) |
+| Dev stack | `backend/supabase/` (`config.toml`, `migrations/`, `seed.sql`) | Local development and CI; what `docs/specs/*/plan.md` and this doc set assume when they say "local Supabase on port 54322" | Supabase CLI (`supabase start`) |
 | Deployment stack | `backend/local/` (`docker-compose.yml`, `kong.yml`, `init.sql`, `.env.example`) | Hand-authored Docker Compose stack intended to become the actual Tier 1 clinic-server package | `docker compose` directly, no Supabase CLI |
 
 Both use the same port convention (`54321` API / `54322` Postgres / `54323` Studio) and the same image set (`postgres`, `gotrue`, `postgrest`, `storage-api`, `realtime`, `kong`, `studio`), but they are **not the same running instance**. `backend/local/init.sql` only bootstraps the `anon`/`authenticated`/`service_role` roles and the `auth`/`storage` schemas — it does **not** run any of the 149+ files in `backend/supabase/migrations/`. There is currently no documented or scripted path to apply the application schema to the `backend/local` Compose stack, so that stack cannot yet serve a real clinic database as-is. This is tracked as a gap in `docs/architecture/ARCHITECTURAL_FLAWS.md`.

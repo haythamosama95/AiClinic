@@ -18,7 +18,7 @@
 -- -----------------------------------------------------------------------------
 -- Permission matrix: which role gets which permission_key
 -- -----------------------------------------------------------------------------
--- permission_key strings are contracts with the Flutter app (see specs/002-auth-rbac).
+-- permission_key strings are contracts with the Flutter app (see docs/specs/002-auth-rbac).
 -- Many keys reference future features (patients, appointments); granted now so roles
 -- are complete when those modules ship. is_granted = false rows are not used yet.
 INSERT INTO public.roles_permissions (role, permission_key, is_granted)

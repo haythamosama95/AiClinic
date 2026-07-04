@@ -3,7 +3,7 @@
 - Purpose: Sequence delivery by version and define the minimum architecture/spec context for each feature.
 - Read this when: deciding what to build next, planning implementation order, or assembling the minimum context packet for a feature.
 - Canonical for: feature sequencing, per-phase deliverables, and required architecture/spec references.
-- Usually paired with: `docs/architecture/00-index.md`, `docs/architecture/11-spec-driven-development.md`, and the relevant spec in `specs/...`.
+- Usually paired with: `docs/architecture/00-index.md`, `docs/architecture/11-spec-driven-development.md`, and the relevant spec in `docs/specs/...`.
 - Not covered here: the full implementation detail for any one domain; that belongs in the feature spec and referenced architecture docs.
 
 ---
@@ -39,7 +39,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Development Workflow`
 
 Required specs:
-- `specs/common/deployment-installer.spec.md`
+- `docs/specs/common/deployment-installer.spec.md`
 
 Deliverables:
 - Flutter project initialization with folder structure per `docs/architecture/07-frontend.md` → `Project Structure`
@@ -66,8 +66,8 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/common/auth.spec.md`
-- `specs/common/rbac.spec.md`
+- `docs/specs/common/auth.spec.md`
+- `docs/specs/common/rbac.spec.md`
 
 Backend deliverables:
 - Database migration: `organizations`, `branches`, `staff_members`, `staff_branch_assignments`, `roles_permissions` tables
@@ -99,9 +99,9 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/common/organizations.spec.md`
-- `specs/common/branches.spec.md`
-- `specs/common/staff.spec.md`
+- `docs/specs/common/organizations.spec.md`
+- `docs/specs/common/branches.spec.md`
+- `docs/specs/common/staff.spec.md`
 
 Backend deliverables:
 - RPC functions for organization and branch CRUD operations (branch create/update require `working_schedule`)
@@ -124,7 +124,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/operations/patients.spec.md`
+- `docs/specs/operations/patients.spec.md`
 
 Backend deliverables:
 - Database migration: `patients` table
@@ -151,7 +151,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/005-appointment-management/spec.md` (authoritative for V1-4; shared `specs/operations/appointments.spec.md` deferred)
+- `docs/specs/005-appointment-management/spec.md` (authoritative for V1-4; shared `docs/specs/operations/appointments.spec.md` deferred)
 
 Backend deliverables:
 - Database migrations: `appointments` table and enums; optional `doctor_id`; `confirmed` status; branch `working_schedule` (required on branches); branch working-hours and slot/patient-day conflict enforcement
@@ -176,8 +176,8 @@ Required architecture docs:
 - `docs/architecture/07-frontend.md`, `09-security-rbac.md`
 
 Required specs:
-- `specs/013-visits/spec.md` (documentation redesign)
-- `specs/014-visit-encounter-workspace/spec.md` (encounter workspace UI + patient safety)
+- `docs/specs/013-visits/spec.md` (documentation redesign)
+- `docs/specs/014-visit-encounter-workspace/spec.md` (encounter workspace UI + patient safety)
 
 Backend deliverables:
 - Migrations: `visits`, `visit_clinical_notes`, vitals/investigations/catalogs, patient safety tables, attachments
@@ -204,8 +204,8 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/007-billing/spec.md` (authoritative for V1-6)
-- `specs/operations/billing.spec.md` (placeholder — not yet authored; see FR-026)
+- `docs/specs/007-billing/spec.md` (authoritative for V1-6)
+- `docs/specs/operations/billing.spec.md` (placeholder — not yet authored; see FR-026)
 
 Backend deliverables:
 - Migrations under `backend/supabase/migrations/20260605180000_billing.sql` and follow-ups (US1–US8 RPCs, void, list/patient queries)
@@ -225,7 +225,7 @@ Operator notes (Billing):
 - **Allow partial payments** defaults **off**; only administrator can toggle it under Settings → Billing (`settings.billing.manage`).
 - Line-level and invoice-level discounts are mutually exclusive on draft invoices; clear one scope before applying the other.
 - Payments are append-only — corrections use refunds, not edits. Void `paid` invoices only after net payments are refunded.
-- Operator verification walkthrough: `specs/007-billing/quickstart.md`
+- Operator verification walkthrough: `docs/specs/007-billing/quickstart.md`
 
 ### V1-7: Shifts
 
@@ -237,7 +237,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/008-shift-management/spec.md`
+- `docs/specs/008-shift-management/spec.md`
 
 Backend deliverables (**complete**):
 - Database migration: `shifts`, `shift_assignments` tables
@@ -260,7 +260,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Development Workflow`
 
 Required specs:
-- `specs/common/deployment-installer.spec.md`
+- `docs/specs/common/deployment-installer.spec.md`
 
 Deliverables:
 - Windows installer (MSI or MSIX) for the Flutter desktop app
@@ -286,19 +286,19 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/ai/ai_service.spec.md`
-- `specs/ai/scheduling_agent.spec.md`
-- `specs/ai/billing_agent.spec.md`
-- `specs/ai/soap_summarizer.spec.md`
-- `specs/ai/analytics_agent.spec.md`
+- `docs/specs/ai/ai_service.spec.md`
+- `docs/specs/ai/scheduling_agent.spec.md`
+- `docs/specs/ai/billing_agent.spec.md`
+- `docs/specs/ai/soap_summarizer.spec.md`
+- `docs/specs/ai/analytics_agent.spec.md`
 
 Backend deliverables (AI service is backend infra):
 - Write specifications for AI modules:
-  - `specs/ai/ai_service.spec.md`
-  - `specs/ai/scheduling_agent.spec.md`
-  - `specs/ai/billing_agent.spec.md`
-  - `specs/ai/soap_summarizer.spec.md`
-  - `specs/ai/analytics_agent.spec.md`
+  - `docs/specs/ai/ai_service.spec.md`
+  - `docs/specs/ai/scheduling_agent.spec.md`
+  - `docs/specs/ai/billing_agent.spec.md`
+  - `docs/specs/ai/soap_summarizer.spec.md`
+  - `docs/specs/ai/analytics_agent.spec.md`
 - Define the structured command protocol (JSON schemas for all command types)
 - Define the AI HTTP API contract (endpoints, request/response formats)
 - Ollama installation script/Docker container for the receptionist PC
@@ -323,7 +323,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Development Workflow`
 
 Required specs:
-- `specs/ai/ai_chat_frontend.spec.md`
+- `docs/specs/ai/ai_chat_frontend.spec.md`
 
 Frontend deliverables:
 - AI chat panel (can be opened as an overlay or sidebar from any screen)
@@ -356,10 +356,10 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/ai/scheduling_agent.spec.md`
-- `specs/ai/billing_agent.spec.md`
-- `specs/ai/soap_summarizer.spec.md`
-- `specs/ai/analytics_agent.spec.md`
+- `docs/specs/ai/scheduling_agent.spec.md`
+- `docs/specs/ai/billing_agent.spec.md`
+- `docs/specs/ai/soap_summarizer.spec.md`
+- `docs/specs/ai/analytics_agent.spec.md`
 
 AI layer deliverables:
 - Define and tune system prompts for each agent
@@ -387,7 +387,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/analytics/dashboards.spec.md`
+- `docs/specs/analytics/dashboards.spec.md`
 
 Backend deliverables:
 - Define all analytics queries (SQL views or functions)
@@ -425,7 +425,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
 
 Required specs:
-- `specs/operations/advanced-billing.spec.md`
+- `docs/specs/operations/advanced-billing.spec.md`
 
 Backend deliverables:
 - Enhanced insurance workflow: insurance provider CRUD, claim reference tracking
@@ -446,7 +446,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Development Workflow`
 
 Required specs:
-- `specs/common/system-polish.spec.md`
+- `docs/specs/common/system-polish.spec.md`
 
 Deliverables:
 - Keyboard shortcut system (configurable, overlay help panel)
@@ -464,7 +464,7 @@ Required architecture docs:
 - `docs/architecture/11-spec-driven-development.md` → `Development Workflow`
 
 Required specs:
-- `specs/common/localization.spec.md`
+- `docs/specs/common/localization.spec.md`
 
 Deliverables:
 - Arabic language support (RTL layout)

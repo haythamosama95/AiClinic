@@ -69,4 +69,4 @@ Bootstrap wizard routes remain active only while `setup_required` is true.
 | Flutter acceptance      | `cd frontend && flutter test test/integration/settings/org_branch_management_acceptance_test.dart` |
 | Full Flutter            | `cd frontend && flutter test`                                                                      |
 
-Feature quickstart: [specs/003-org-branch-management/quickstart.md](../../specs/003-org-branch-management/quickstart.md).
+Feature quickstart: [docs/specs/003-org-branch-management/quickstart.md](../specs/003-org-branch-management/quickstart.md).

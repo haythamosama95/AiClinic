@@ -173,4 +173,4 @@ When implementing encounter-scale features (e.g. spec 014), prefer:
 
 - `docs/architecture/ARCHITECTURAL_FLAWS.md` — CI gaps and test debt
 - `docs/architecture/12-roadmap-phases.md` — per-phase deliverables including test utilities
-- Feature quickstarts: e.g. `specs/007-billing/quickstart.md`, `specs/014-visit-encounter-workspace/quickstart.md`
+- Feature quickstarts: e.g. `docs/specs/007-billing/quickstart.md`, `docs/specs/014-visit-encounter-workspace/quickstart.md`
