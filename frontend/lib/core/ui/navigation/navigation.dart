@@ -1,0 +1,12 @@
+export 'package:ai_clinic/core/ui/navigation/ai_mode_toggle.dart';
+export 'package:ai_clinic/core/ui/navigation/app_sidebar.dart';
+export 'package:ai_clinic/core/ui/navigation/app_top_bar.dart';
+export 'package:ai_clinic/core/ui/navigation/branch_switcher.dart';
+export 'package:ai_clinic/core/ui/navigation/breadcrumb.dart';
+export 'package:ai_clinic/core/ui/navigation/command_bar.dart';
+export 'package:ai_clinic/core/ui/navigation/menu.dart';
+export 'package:ai_clinic/core/ui/navigation/nav_model.dart';
+export 'package:ai_clinic/core/ui/navigation/pagination.dart';
+export 'package:ai_clinic/core/ui/navigation/stepper.dart';
+export 'package:ai_clinic/core/ui/navigation/tabs.dart';
+export 'package:ai_clinic/core/ui/navigation/user_menu.dart';

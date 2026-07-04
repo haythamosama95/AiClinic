@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ui/showcase/components/actions_showcase.dart';
 import 'package:ai_clinic/core/ui/showcase/components/display_showcase.dart';
 import 'package:ai_clinic/core/ui/showcase/components/inputs_showcase.dart';
+import 'package:ai_clinic/core/ui/showcase/components/layout/layout_showcase.dart';
+import 'package:ai_clinic/core/ui/showcase/components/navigation/navigation_showcase.dart';
 import 'package:ai_clinic/core/ui/showcase/showcase_primitives.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 
@@ -25,6 +27,16 @@ class ComponentsShowcase extends StatelessWidget {
       'Inputs',
       'Text fields, selects, choice controls, date/time, and file upload.',
       InputsShowcase(),
+    ),
+    (
+      'Navigation',
+      'Sidebar, tabs, menus, Command Bar, and wayfinding.',
+      NavigationShowcase(),
+    ),
+    (
+      'Layout',
+      'Headers, toolbars, scroll areas, and shell composition.',
+      LayoutShowcase(),
     ),
   ];
 

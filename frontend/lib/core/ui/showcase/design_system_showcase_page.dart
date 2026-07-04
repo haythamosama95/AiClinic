@@ -7,8 +7,10 @@ import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/providers/density_provider.dart';
 import 'package:ai_clinic/core/ui/providers/locale_provider.dart';
 import 'package:ai_clinic/core/ui/providers/reduced_motion_provider.dart';
+import 'package:ai_clinic/core/ui/providers/command_bar_provider.dart';
 import 'package:ai_clinic/core/ui/showcase/components_showcase.dart';
 import 'package:ai_clinic/core/ui/showcase/app_contrast.dart';
+import 'package:ai_clinic/core/ui/navigation/command_bar.dart';
 import 'package:ai_clinic/core/ui/theme/theme.dart';
 import 'package:ai_clinic/core/ui/widgets/signal.dart';
 
@@ -65,9 +67,12 @@ class _DesignSystemShowcasePageState extends ConsumerState<DesignSystemShowcaseP
     final isArabic = localeState.locale == AppLocale.ar;
     final reducedMotion = ref.watch(reducedMotionProvider);
 
-    return Scaffold(
-      backgroundColor: colors.surfaceCanvas,
-      body: CustomScrollView(
+    return CommandBarKeyboardScope(
+      child: Stack(
+        children: [
+          Scaffold(
+            backgroundColor: colors.surfaceCanvas,
+            body: CustomScrollView(
         slivers: [
           SliverAppBar(
             pinned: true,
@@ -224,6 +229,21 @@ class _DesignSystemShowcasePageState extends ConsumerState<DesignSystemShowcaseP
               ),
             ),
           ),
+        ],
+      ),
+          ),
+          if (_tab == _ShowcaseTab.components)
+            Consumer(
+              builder: (context, ref, _) {
+                final commandOpen = ref.watch(commandBarProvider);
+                return AppCommandBar(
+                  open: commandOpen,
+                  onClose: () =>
+                      ref.read(commandBarProvider.notifier).closeCommandBar(),
+                  items: const [],
+                );
+              },
+            ),
         ],
       ),
     );
