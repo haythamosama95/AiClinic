@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_clinic/core/ui/theme/app_elevation.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
@@ -23,7 +24,7 @@ abstract final class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: semantic.surfaceCanvas,
       textTheme: AppTypography.textTheme(brightness: brightness),
-      extensions: [semantic],
+      extensions: [semantic, brightness == Brightness.light ? AppElevation.light : AppElevation.dark],
       dividerColor: semantic.borderSubtle,
     );
   }

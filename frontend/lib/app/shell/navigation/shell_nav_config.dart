@@ -70,6 +70,22 @@ abstract final class ShellNavConfig {
     return location == AppRoutes.settings || location.startsWith('${AppRoutes.settings}/');
   }
 
+  static bool isDesignSystemLocation(String location) {
+    return location == AppRoutes.foundationDemo;
+  }
+
+  static String? pageTitleForLocation(String location) {
+    if (isSettingsLocation(location)) {
+      return 'Settings';
+    }
+    if (isDesignSystemLocation(location)) {
+      return 'Design System';
+    }
+
+    final itemId = itemIdForLocation(location);
+    return itemId != null ? labelFor(itemId) : null;
+  }
+
   static String? itemIdForLocation(String location) {
     for (final entry in _routesByItemId.entries) {
       if (entry.value == location) {

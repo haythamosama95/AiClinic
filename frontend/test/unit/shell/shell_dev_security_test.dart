@@ -1,3 +1,4 @@
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_fill_dummy_clinic.dart';
@@ -13,6 +14,17 @@ void main() {
     test('DV-S-001: Fill Dummy Clinic gated by kDebugMode (absent in release/profile)', () {
       expect(ShellDevFillDummyClinic.isEnabled, kDebugMode);
       expect(ShellDevNav.isEnabled, kDebugMode);
+    });
+
+    test('DV-S-003: design system route is open in debug builds', () {
+      expect(ShellDevNav.isDesignSystemRoute(AppRoutes.foundationDemo), isTrue);
+      expect(ShellDevNav.isDesignSystemRoute(AppRoutes.home), isFalse);
+
+      if (kDebugMode) {
+        expect(ShellDevNav.allowsOpenAccess(AppRoutes.foundationDemo), isTrue);
+      } else {
+        expect(ShellDevNav.allowsOpenAccess(AppRoutes.foundationDemo), isFalse);
+      }
     });
 
     test('DV-S-002: Fill Dummy Clinic nav item visible in debug builds', () {

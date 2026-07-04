@@ -15,6 +15,11 @@ abstract final class ShellDevNav {
 
   static bool get isEnabled => kDebugMode;
 
+  static bool isDesignSystemRoute(String location) => location == AppRoutes.foundationDemo;
+
+  /// Debug-only: design system page is reachable without login and startup view locks.
+  static bool allowsOpenAccess(String location) => kDebugMode && isDesignSystemRoute(location);
+
   static List<String> get footerItemIds => [
     themeShowcaseId,
     if (ShellDevFillDummyClinic.isEnabled) ShellDevFillDummyClinic.itemId,

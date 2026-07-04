@@ -28,9 +28,7 @@ class AuthenticatedShell extends ConsumerWidget {
 
     final location = GoRouterState.of(context).matchedLocation;
     final activeId = ShellNavConfig.itemIdForLocation(location);
-    final pageLabel = ShellNavConfig.isSettingsLocation(location)
-        ? 'Settings'
-        : (activeId != null ? ShellNavConfig.labelFor(activeId) : null);
+    final pageLabel = ShellNavConfig.pageTitleForLocation(location);
 
     final auth = ref.watch(authSessionProvider);
     final session = auth.context;

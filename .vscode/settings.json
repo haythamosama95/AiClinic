@@ -1,6 +1,10 @@
 {
   "editor.formatOnSave": true,
   "files.trimTrailingWhitespace": true,
+  "dart.flutterDefaultDevice": "chrome",
+  "dart.env": {
+    "CHROME_EXECUTABLE": "/usr/bin/brave-browser"
+  },
   "[dart]": {
     "editor.formatOnSave": true,
     "editor.formatOnPaste": true,

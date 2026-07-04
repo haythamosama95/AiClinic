@@ -262,7 +262,13 @@ class _SidebarNavItem extends StatelessWidget {
                 height: AppShellTokens.navItemHeight,
                 child: Stack(
                   children: [
-                    if (active) const PositionedDirectional(start: 0, top: 4, bottom: 4, child: AppSignal()),
+                    if (active)
+                      const PositionedDirectional(
+                        start: 0,
+                        top: 4,
+                        bottom: 4,
+                        child: AppSignal(orientation: Axis.vertical),
+                      ),
                     Positioned.fill(
                       child: Padding(
                         padding: EdgeInsets.symmetric(horizontal: iconOnly ? 0 : AppSpacing.space2),

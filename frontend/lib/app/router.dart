@@ -4,12 +4,14 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
+import 'package:ai_clinic/features/design_system/presentation/design_system_page.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -55,10 +57,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.staffPasswordReset,
             builder: (context, state) => uiPendingPlaceholder('Setup', state),
           ),
-          GoRoute(
-            path: AppRoutes.foundationDemo,
-            builder: (context, state) => uiPendingPlaceholder('Foundation', state),
-          ),
+          GoRoute(path: AppRoutes.foundationDemo, builder: (context, state) => const DesignSystemPage()),
           GoRoute(path: AppRoutes.home, builder: (context, state) => uiPendingPlaceholder('Dashboard', state)),
 
           // Patient management
@@ -192,6 +191,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final auth = ref.read(authSessionProvider);
       final setup = ref.read(setupNotifierProvider);
       final location = state.matchedLocation;
+
+      if (ShellDevNav.allowsOpenAccess(location)) {
+        return null;
+      }
 
       if (shellDevSuppressAuthRedirect(ref, auth)) {
         return null;
