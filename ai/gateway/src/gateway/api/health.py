@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from gateway.api.errors import ErrorCode, error_response
+from gateway.auth.dependencies import require_ai_access
+from gateway.auth.jwt_validator import CallerIdentity
 from gateway.routing.registry import RunnerRegistry
 
 router = APIRouter(tags=["health"])
@@ -22,7 +26,10 @@ async def health() -> JSONResponse:
 
 
 @router.get("/ready")
-async def ready(request: Request) -> JSONResponse:
+async def ready(
+    request: Request,
+    _caller: Annotated[CallerIdentity, Depends(require_ai_access)],
+) -> JSONResponse:
     """Readiness — 200 only when at least one runner is READY."""
     registry = _registry(request)
     if registry.ready:

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from gateway.api.errors import ErrorCode, error_response
+from gateway.auth.dependencies import require_ai_access
+from gateway.auth.jwt_validator import CallerIdentity
 from gateway.routing.registry import RunnerRegistry
 from gateway.runners.openai_client import POLL_TIMEOUT_S
 
@@ -21,7 +23,11 @@ def _registry(request: Request) -> RunnerRegistry:
 
 
 @router.get("/{runner_id}/models")
-async def get_runner_models(runner_id: str, request: Request) -> JSONResponse:
+async def get_runner_models(
+    runner_id: str,
+    request: Request,
+    _caller: Annotated[CallerIdentity, Depends(require_ai_access)],
+) -> JSONResponse:
     """Proxy GET /v1/models to a configured runner (dashboard / operators only).
 
     Clients must not reach runners directly; this route lets the control plane

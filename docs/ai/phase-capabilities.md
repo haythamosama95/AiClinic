@@ -6,7 +6,7 @@ This document describes **what you can do after each implementation phase** of f
 Use it as a progress checklist: find your current phase, see what's available, and see what's still
 blocked.
 
-> **Current repo state (2026-07-03):** Phases **1–3 are complete**. Phases **4–6 are not yet
+> **Current repo state (2026-07-03):** Phases **1–4 are complete**. Phases **5–6 are not yet
 > implemented. There is **no AI generation** anywhere in feature 015 — inference arrives in a later
 > feature (016 / AI Service Phase 2).
 
@@ -31,7 +31,7 @@ discovery; clients never talk to Ollama directly in production.
 | 1 | Setup | ✅ Done | Project skeleton, Docker, deps |
 | 2 | Foundational | ✅ Done | Config, errors, logs, metrics, app bootstrap |
 | 3 | US1 — Health spine (MVP) | ✅ Done | Run a model runner; Gateway reports honest health/readiness |
-| 4 | US2 — Auth | ⏳ Pending | JWT + `ai.access` gate on protected endpoints |
+| 4 | US2 — Auth | ✅ Done | JWT + `ai.access` gate on protected endpoints |
 | 5 | US3 — Discovery & routing | ⏳ Pending | Capabilities report, routing selection, generate **stub** (501) |
 | 6 | Polish | ⏳ Pending | Full observability wiring, CI gate, hardening |
 
@@ -105,7 +105,7 @@ curl -s http://localhost:8090/metrics | head -20
 
 ---
 
-## Phase 3 — US1: Isolated, health-reportable AI layer (MVP) ✅ **You are here**
+## Phase 3 — US1: Isolated, health-reportable AI layer (MVP)
 
 **Delivered:** Runner lifecycle state machine, in-memory registry, OpenAI-compatible poll client,
 background health poller, `/ready` endpoint, isolation scan CI gate, Ollama docker-compose +
@@ -125,18 +125,17 @@ Modelfile + operator runbook.
 | **Run isolation scan** | `cd ai/gateway && .venv/bin/python scripts/isolation_scan.py` |
 | **Run full dev/CI gate** | `cd ai/gateway && ./scripts/run_tests.sh` |
 | **Observe runner failover** | Stop Ollama → within ~3 polls (~30 s) `/ready` → `503`; restart → recovers |
-| **Open control plane dashboard** | Start Gateway → [http://localhost:8090/dashboard](http://localhost:8090/dashboard) (see `ai/dashboard/README.md`) — covers Phases 1–3 checklist, architecture, endpoints, runners, `/v1/models` probe, metrics, and error envelope |
+| **Open control plane dashboard** | Start Gateway → [http://localhost:8090/dashboard](http://localhost:8090/dashboard) (see `ai/dashboard/README.md`) — covers Phases 1–4 checklist, architecture, endpoints, runners, `/v1/models` probe, metrics, auth token entry, and error envelope |
 
 ### Endpoints available after Phase 3
 
-| Method | Path | Auth (now) | Auth (after Phase 4) | Description |
+| Method | Path | Auth (Phase 3) | Auth (Phase 4+) | Description |
 | --- | --- | --- | --- | --- |
 | `GET` | `/health` | None | None | Liveness |
-| `GET` | `/ready` | **None** ⚠️ | JWT + `ai.access` | Readiness — `200` or `503 ai_no_capacity` |
+| `GET` | `/ready` | None | JWT + `ai.access` | Readiness — `200` or `503 ai_no_capacity` |
 | `GET` | `/metrics` | None | None | Prometheus metrics |
-
-> **Note:** Phase 4 will protect `/ready`. Until then, `/ready` is open (same as `/health` from an
-> auth perspective). Plan monitoring accordingly.
+| `GET` | `/v1/status` | None | JWT + `ai.access` | Control-plane snapshot (dashboard) |
+| `GET` | `/v1/runners/{id}/models` | None | JWT + `ai.access` | Proxy runner `GET /v1/models` |
 
 ### 1. Start the Model Runner (Ollama)
 
@@ -189,7 +188,7 @@ Minimum `gateway.yaml` for Phase 3:
 
 ```yaml
 port: 8090
-jwt_secret: "${SUPABASE_JWT_SECRET}"   # required to boot; not enforced on /ready until Phase 4
+jwt_secret: "${SUPABASE_JWT_SECRET}"   # required to boot; enforced on protected routes from Phase 4
 allowed_origins:
   - "http://localhost:3000"
 runners:
@@ -239,11 +238,13 @@ curl -s http://localhost:8090/health
 # {"status":"ok"}
 ```
 
-**Readiness** — depends on the health poller (default every 10 s):
+**Readiness** — depends on the health poller (default every 10 s). **Requires JWT from Phase 4:**
 
 ```bash
+TOKEN="<valid Supabase JWT for doctor/admin>"
+
 # While model is loading or runner is down:
-curl -s -w "\nHTTP %{http_code}\n" http://localhost:8090/ready
+curl -s -w "\nHTTP %{http_code}\n" -H "Authorization: Bearer $TOKEN" http://localhost:8090/ready
 # {
 #   "error": {
 #     "code": "ai_no_capacity",
@@ -254,7 +255,7 @@ curl -s -w "\nHTTP %{http_code}\n" http://localhost:8090/ready
 # HTTP 503
 
 # After runner reports a loaded model (status READY):
-curl -s -w "\nHTTP %{http_code}\n" http://localhost:8090/ready
+curl -s -w "\nHTTP %{http_code}\n" -H "Authorization: Bearer $TOKEN" http://localhost:8090/ready
 # {"status":"ready"}
 # HTTP 200
 ```
@@ -264,11 +265,11 @@ curl -s -w "\nHTTP %{http_code}\n" http://localhost:8090/ready
 ```bash
 docker compose -f ai/runners/ollama/docker-compose.yaml stop ollama
 # Wait ~30 s (3 failed polls × 10 s interval)
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/ready   # 503
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" http://localhost:8090/ready   # 503
 
 docker compose -f ai/runners/ollama/docker-compose.yaml start ollama
 # Wait for model reload + poll
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/ready   # 200
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" http://localhost:8090/ready   # 200
 ```
 
 ### 4. Developer / CI verification
@@ -278,7 +279,7 @@ cd ai/gateway
 ./scripts/run_tests.sh
 # ruff check ✓
 # isolation_scan.py ✓  (no DB creds/drivers under ai/)
-# pytest ✓             (25 tests as of Phase 3)
+# pytest ✓             (48 tests as of Phase 4)
 ```
 
 Run isolation scan alone:
@@ -295,10 +296,93 @@ cd ai/gateway
 | --- | --- | --- |
 | Generate text / chat via Gateway | No `/v1/ai/generate` yet | Phase 5 (stub 501); real inference in feature 016 |
 | List capabilities via Gateway | No `/v1/capabilities` yet | Phase 5 |
-| Authenticate with Supabase JWT | Auth gate not wired | Phase 4 |
-| Enforce `ai.access` role check | Role map not enforced | Phase 4 |
 | Route requests among multiple runners | Selector not implemented | Phase 5 |
-| Use AI from Flutter client securely | Client integration + auth pending | Phase 4+ and client feature |
+| Use AI from Flutter client securely | Client integration pending | Phase 4+ and client feature |
+
+---
+
+## Phase 4 — US2: Authenticate and authorize every AI caller ✅ **You are here**
+
+**Delivered:** Offline Supabase JWT validation (HS256 or JWKS) + coarse `ai.access` role gate on all
+protected endpoints. Zero network calls to Supabase per request. Typed `401`/`403` error envelope.
+Reloadable role map (SIGHUP / periodic file re-read).
+
+### What you can do
+
+| Action | How |
+| --- | --- |
+| Call protected endpoints with a valid staff JWT | `Authorization: Bearer <token>` |
+| Get typed `401 unauthenticated` | Missing / tampered / expired / not-yet-valid token |
+| Get typed `403 forbidden` | Valid token but role lacks `ai.access` (e.g. receptionist) |
+| Use HS256 or JWKS config | `jwt_secret` or `jwks_url` in `gateway.yaml` (JWKS wins if both set) |
+| Reload role map without restart | Optional `role_ai_access.yaml` beside config; SIGHUP or 60 s periodic re-read |
+| Exercise auth matrix in CI | `pytest tests/contract/test_auth_matrix.py` (HS256 + JWKS) |
+| Use dashboard with auth | Paste staff JWT in **Security → JWT auth** panel at `/dashboard` |
+
+### Endpoints after Phase 4
+
+| Method | Path | Auth |
+| --- | --- | --- |
+| `GET` | `/health` | None |
+| `GET` | `/metrics` | None |
+| `GET` | `/dashboard` | None (static UI; API polls need token) |
+| `GET` | `/ready` | **JWT + `ai.access`** |
+| `GET` | `/v1/status` | **JWT + `ai.access`** |
+| `GET` | `/v1/runners/{id}/models` | **JWT + `ai.access`** |
+| `GET` | `/v1/capabilities` | JWT + `ai.access` (endpoint added Phase 5) |
+| `POST` | `/v1/ai/generate` | JWT + `ai.access` (endpoint added Phase 5) |
+
+### Role → `ai.access` defaults
+
+| Role | `ai.access` |
+| --- | --- |
+| `administrator` | granted |
+| `doctor` | granted |
+| `receptionist` | denied |
+| `lab_staff` | denied |
+
+Override in `gateway.yaml` under `role_ai_access:` or via optional `config/role_ai_access.yaml`.
+
+### Example commands
+
+```bash
+TOKEN="<valid Supabase JWT for doctor/admin>"
+
+# Success — readiness (may be 503 if no READY runner)
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8090/ready
+
+# Success — control-plane snapshot (powers the dashboard)
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8090/v1/status | jq .
+
+# 401 — no token (authentication checked before authorization)
+curl -s -w "\nHTTP %{http_code}\n" http://localhost:8090/ready
+
+# 401 — bad token
+curl -s -w "\nHTTP %{http_code}\n" \
+  -H "Authorization: Bearer tampered.jwt.here" http://localhost:8090/ready
+
+# 403 — valid token, role without ai.access
+curl -s -H "Authorization: Bearer $RECEPTIONIST_TOKEN" http://localhost:8090/ready
+# {"error":{"code":"forbidden","message":"Role does not have ai.access","request_id":"…"}}
+```
+
+### JWKS mode (off-LAN Supabase)
+
+```yaml
+# gateway.yaml — JWKS takes precedence if both jwt_secret and jwks_url are set
+jwks_url: "https://<supabase-host>/auth/v1/.well-known/jwks.json"
+```
+
+Keys are cached locally by `PyJWKClient` — no per-request fetch after warm-up.
+
+### What you cannot do after Phase 4
+
+| Blocked action | Why | Available after |
+| --- | --- | --- |
+| Capabilities report | No `/v1/capabilities` yet | Phase 5 |
+| Generate stub route | No `/v1/ai/generate` yet | Phase 5 |
+| Actual AI inference | By design in feature 015 | Feature 016 |
+| Flutter client AI features | Client integration pending | Client feature + 016 |
 
 ### Direct Ollama inference (dev only, bypasses Gateway)
 
@@ -316,58 +400,6 @@ curl -s http://127.0.0.1:11434/v1/chat/completions \
 ```
 
 This confirms the **model runs**; it does not mean the Gateway AI product path is ready.
-
----
-
-## Phase 4 — US2: Authenticate and authorize every AI caller ⏳
-
-**Goal:** Offline Supabase JWT validation (HS256 or JWKS) + coarse `ai.access` role gate. Zero
-network calls to Supabase.
-
-### What you will be able to do
-
-| Action | How |
-| --- | --- |
-| Call protected endpoints with a valid staff JWT | `Authorization: Bearer <token>` |
-| Get typed `401 unauthenticated` | Missing / tampered / expired / not-yet-valid token |
-| Get typed `403 forbidden` | Valid token but role lacks `ai.access` (e.g. receptionist) |
-| Use HS256 or JWKS config | `jwt_secret` or `jwks_url` in `gateway.yaml` (JWKS wins if both set) |
-| Reload role map without restart | File watch / SIGHUP / periodic re-read of `role_ai_access` |
-
-### Endpoints after Phase 4
-
-| Method | Path | Auth |
-| --- | --- | --- |
-| `GET` | `/health` | None |
-| `GET` | `/metrics` | None |
-| `GET` | `/ready` | **JWT + `ai.access`** |
-| `GET` | `/v1/capabilities` | JWT + `ai.access` (endpoint added Phase 5) |
-| `POST` | `/v1/ai/generate` | JWT + `ai.access` (endpoint added Phase 5) |
-
-### Example commands (once Phase 4 lands)
-
-```bash
-TOKEN="<valid Supabase JWT for doctor/admin>"
-
-# Success
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8090/ready
-
-# 401 — no token
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/ready
-
-# 401 — bad token
-curl -s -o /dev/null -w "%{http_code}\n" \
-  -H "Authorization: Bearer tampered.jwt.here" http://localhost:8090/ready
-
-# 403 — valid token, role without ai.access
-curl -s -H "Authorization: Bearer $RECEPTIONIST_TOKEN" http://localhost:8090/ready
-# {"error":{"code":"forbidden","message":"…","request_id":"…"}}
-```
-
-### Still blocked after Phase 4
-
-- Capabilities report, routing, generate stub (Phase 5).
-- Actual AI inference (feature 016).
 
 ---
 
@@ -470,7 +502,7 @@ Real model inference via the Gateway requires **feature 016** (AI generation lay
 
 ---
 
-## Dashboard coverage (Phases 1–3)
+## Dashboard coverage (Phases 1–4)
 
 The control plane at `/dashboard` maps to this document:
 
@@ -489,6 +521,10 @@ The control plane at `/dashboard` maps to this document:
 | 3 | Digest pinning | Runner card declared vs live digest |
 | 3 | `gateway_runner_health` metric | **Metrics → Runner health** chart |
 | 3 | Isolation scan | **Phase coverage** (operator runs locally) |
+| 4 | JWT on protected routes | **Security → JWT auth** (token entry, role preview) |
+| 4 | `401 unauthenticated` / `403 forbidden` | **Security → Error envelope** (`unauthenticated`, `forbidden` rows) |
+| 4 | Auth-gated API polls | Overview / Runners / Explorer send `Authorization: Bearer` when token saved |
+| 4 | Offline HS256 / JWKS validation | Documented in phase coverage checklist (no Supabase network per request) |
 
 ---
 
@@ -554,7 +590,7 @@ Every response includes an `X-Request-ID` header for log correlation.
 
 ## Quick reference: "Can I …?" after each phase
 
-| Question | P1–2 | P3 ✅ | P4 | P5 | P6 | Feature 016 |
+| Question | P1–2 | P3 | P4 ✅ | P5 | P6 | Feature 016 |
 | --- | --- | --- | --- | --- | --- | --- |
 | Boot the Gateway | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `GET /health` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |

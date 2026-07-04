@@ -102,16 +102,16 @@ honesty, PHI-redaction). Test tasks are therefore first-class, not optional.
 
 > Write these tests FIRST and confirm they FAIL before implementation.
 
-- [ ] T029 [P] [US2] Auth matrix contract test run under BOTH HS256 and JWKS configs (valid/tampered/expired/nbf-future/missing/no-`ai.access`) asserting 200/401/403 with zero Supabase network calls, in `ai/gateway/tests/contract/test_auth_matrix.py` (SC-004/SC-010)
-- [ ] T030 [P] [US2] Role-map reload unit test: changing the role→`ai.access` map is reflected atomically in subsequent decisions, in `ai/gateway/tests/unit/test_role_map.py` (FR-018)
-- [ ] T031 [P] [US2] Error-contract test: authentication (401) precedes authorization (403); every failure body carries stable `code`, `message`, and `request_id`, in `ai/gateway/tests/contract/test_error_contract.py` (FR-020, contracts/error-contract.md)
+- [X] T029 [P] [US2] Auth matrix contract test run under BOTH HS256 and JWKS configs (valid/tampered/expired/nbf-future/missing/no-`ai.access`) asserting 200/401/403 with zero Supabase network calls, in `ai/gateway/tests/contract/test_auth_matrix.py` (SC-004/SC-010)
+- [X] T030 [P] [US2] Role-map reload unit test: changing the role→`ai.access` map is reflected atomically in subsequent decisions, in `ai/gateway/tests/unit/test_role_map.py` (FR-018)
+- [X] T031 [P] [US2] Error-contract test: authentication (401) precedes authorization (403); every failure body carries stable `code`, `message`, and `request_id`, in `ai/gateway/tests/contract/test_error_contract.py` (FR-020, contracts/error-contract.md)
 
 ### Implementation for User Story 2
 
-- [ ] T032 [P] [US2] Implement offline JWT validation supporting HS256 (`jwt_secret`) and JWKS (`jwks_url`, `PyJWKClient` with local cache), validating signature + `exp` + `nbf`, extracting `CallerIdentity`, with documented JWKS precedence, in `ai/gateway/src/gateway/auth/jwt_validator.py` (FR-015/FR-016, data-model §4)
-- [ ] T033 [P] [US2] Implement the reloadable role→`ai.access` map (file-watch/SIGHUP/periodic re-read, atomic swap) in `ai/gateway/src/gateway/auth/role_map.py` (FR-017/FR-018, data-model §5)
-- [ ] T034 [US2] Implement the FastAPI auth dependency wiring `jwt_validator` + `role_map` into a single gate emitting typed `unauthenticated`/`forbidden` outcomes (depends on T032, T033)
-- [ ] T035 [US2] Apply the auth gate to all client-facing endpoints except `/health` and `/metrics` (protect `/ready`, `/v1/capabilities`, `/v1/ai/generate`) in `ai/gateway/src/gateway/api/` (FR-019)
+- [X] T032 [P] [US2] Implement offline JWT validation supporting HS256 (`jwt_secret`) and JWKS (`jwks_url`, `PyJWKClient` with local cache), validating signature + `exp` + `nbf`, extracting `CallerIdentity`, with documented JWKS precedence, in `ai/gateway/src/gateway/auth/jwt_validator.py` (FR-015/FR-016, data-model §4)
+- [X] T033 [P] [US2] Implement the reloadable role→`ai.access` map (file-watch/SIGHUP/periodic re-read, atomic swap) in `ai/gateway/src/gateway/auth/role_map.py` (FR-017/FR-018, data-model §5)
+- [X] T034 [US2] Implement the FastAPI auth dependency wiring `jwt_validator` + `role_map` into a single gate emitting typed `unauthenticated`/`forbidden` outcomes (depends on T032, T033)
+- [X] T035 [US2] Apply the auth gate to all client-facing endpoints except `/health` and `/metrics` (protect `/ready`, `/v1/capabilities`, `/v1/ai/generate`) in `ai/gateway/src/gateway/api/` (FR-019)
 
 **Checkpoint**: US1 and US2 both work independently — the front door is locked with a tested typed contract.
 

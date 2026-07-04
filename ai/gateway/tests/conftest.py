@@ -10,12 +10,15 @@ from httpx import ASGITransport
 
 from gateway.config.settings import GatewayConfig
 from gateway.main import create_app
+from tests.fixtures.jwt_tokens import make_hs256_token
+
+TEST_JWT_SECRET = "test-secret-for-hs256-validation"
 
 
 @pytest.fixture
 def gateway_config() -> GatewayConfig:
     return GatewayConfig(
-        jwt_secret="test-secret-for-hs256-validation",
+        jwt_secret=TEST_JWT_SECRET,
         allowed_origins=["http://localhost:3000"],
         log_dir="/tmp/gateway-test-logs",
         runners=[],
@@ -33,6 +36,12 @@ def gateway_config_jwks() -> GatewayConfig:
 
 
 @pytest.fixture
+def auth_headers() -> dict[str, str]:
+    token = make_hs256_token(TEST_JWT_SECRET, staff_role="doctor")
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 async def app(gateway_config: GatewayConfig):
     application = create_app(gateway_config)
     async with application.router.lifespan_context(application):
@@ -40,7 +49,11 @@ async def app(gateway_config: GatewayConfig):
 
 
 @pytest.fixture
-async def client(app) -> AsyncIterator[httpx.AsyncClient]:
+async def client(app, auth_headers) -> AsyncIterator[httpx.AsyncClient]:
     transport = ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=auth_headers,
+    ) as ac:
         yield ac

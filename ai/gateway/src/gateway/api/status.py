@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
+from gateway.auth.dependencies import require_ai_access
+from gateway.auth.jwt_validator import CallerIdentity
 from gateway.config.settings import GatewayConfig
 from gateway.routing.registry import LoadedModel, RunnerRegistry, RunnerRegistryEntry
 
 router = APIRouter(prefix="/v1", tags=["status"])
 
 _GATEWAY_VERSION = "0.1.0"
-_PHASE_ACTIVE = 3
+_PHASE_ACTIVE = 4
 
 
 def _serialize_datetime(value: datetime | None) -> str | None:
@@ -140,7 +142,10 @@ def _endpoint_catalog(
 
 
 @router.get("/status")
-async def get_status(request: Request) -> JSONResponse:
+async def get_status(
+    request: Request,
+    _caller: Annotated[CallerIdentity, Depends(require_ai_access)],
+) -> JSONResponse:
     """Safe JSON snapshot of gateway health, config, runners, and endpoint catalog."""
     cfg: GatewayConfig = request.app.state.config
     registry: RunnerRegistry = request.app.state.registry

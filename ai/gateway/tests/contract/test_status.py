@@ -12,6 +12,9 @@ from httpx import ASGITransport
 from gateway.config.settings import GatewayConfig, RunnerConfig
 from gateway.main import create_app
 from gateway.routing.lifecycle import RunnerStatus
+from tests.fixtures.jwt_tokens import make_hs256_token
+
+TEST_SECRET = "test-secret"
 
 GATEWAY_KEYS = frozenset({"version", "ready", "phase_active", "uptime_s"})
 CONFIG_SAFE_KEYS = frozenset(
@@ -49,7 +52,7 @@ ENDPOINT_KEYS = frozenset({"path", "method", "phase", "available"})
 @pytest.fixture
 async def status_client():
     config = GatewayConfig(
-        jwt_secret="test-secret",
+        jwt_secret=TEST_SECRET,
         log_dir="/tmp/gateway-test-logs",
         health_poll_interval_s=15,
         unreachable_after_failures=4,
@@ -66,9 +69,15 @@ async def status_client():
         ],
     )
     app = create_app(config)
+    token = make_hs256_token(TEST_SECRET, staff_role="doctor")
+    headers = {"Authorization": f"Bearer {token}"}
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers=headers,
+        ) as client:
             yield client, app
 
 
@@ -113,7 +122,7 @@ async def test_status_response_shape(status_client) -> None:
     assert "poller" in body
     assert body["poller"]["estimated_failover_s"] == 60
 
-    assert body["gateway"]["phase_active"] == 3
+    assert body["gateway"]["phase_active"] == 4
     assert isinstance(body["gateway"]["ready"], bool)
     assert isinstance(body["gateway"]["uptime_s"], int | float)
     assert body["gateway"]["uptime_s"] >= 0

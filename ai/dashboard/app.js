@@ -10,6 +10,17 @@
   const DOWN_MULTIPLIER = 3;
   const SPARKLINE_MAX_POINTS = 60;
   const RUNNER_LIFECYCLE = ['UNKNOWN', 'STARTING', 'READY', 'DEGRADED', 'UNREACHABLE'];
+  const AUTH_TOKEN_STORAGE_KEY = 'dashboard_jwt_token';
+
+  /** Routes that require Authorization: Bearer (Phase 4+). */
+  const PROTECTED_PATH_PREFIXES = ['/ready', '/v1/status', '/v1/runners/', '/v1/capabilities', '/v1/ai/generate'];
+
+  const DEFAULT_AI_ACCESS_ROLES = {
+    administrator: true,
+    doctor: true,
+    receptionist: false,
+    lab_staff: false,
+  };
 
   /** Phase descriptor — maps phases to DOM sections and optional capability probes. */
   const PHASES = {
@@ -33,8 +44,8 @@
     },
     4: {
       label: 'Auth',
-      sections: [],
-      probe: { path: '/v1/capabilities', method: 'GET', expectStatus: [401, 403] },
+      sections: ['auth-panel'],
+      probe: { path: '/ready', method: 'GET', expectStatus: [401], skipAuth: true },
     },
     5: {
       label: 'Capabilities & Generate',
@@ -51,13 +62,13 @@
     { code: 'bad_request', http: 400, phaseActive: true },
     { code: 'ai_no_capacity', http: 503, phaseActive: true },
     { code: 'ai_timeout', http: 504, phaseActive: true },
-    { code: 'unauthenticated', http: 401, phaseActive: false },
-    { code: 'forbidden', http: 403, phaseActive: false },
+    { code: 'unauthenticated', http: 401, phaseActive: true },
+    { code: 'forbidden', http: 403, phaseActive: true },
     { code: 'not_implemented', http: 501, phaseActive: false },
     { code: 'rate_limited', http: 429, phaseActive: false },
   ];
 
-  /** Checklist aligned with docs/ai/phase-capabilities.md Phases 1–3. */
+  /** Checklist aligned with docs/ai/phase-capabilities.md Phases 1–4. */
   const PHASE_COVERAGE = [
     { phase: 1, label: 'Isolated ai/ project skeleton', mode: 'static' },
     { phase: 1, label: 'Gateway + Ollama runner layout', mode: 'live', check: (s) => !!s.status?.architecture },
@@ -78,11 +89,19 @@
     { phase: 3, label: 'Isolation scan CI gate', mode: 'static', hint: 'cd ai/gateway && .venv/bin/python scripts/isolation_scan.py' },
     { phase: 3, label: 'Failover timing (~poll × failures)', mode: 'live', check: (s) => s.status?.poller?.estimated_failover_s != null },
     { phase: 3, label: 'Control plane dashboard', mode: 'live', check: () => true },
+    { phase: 4, label: 'JWT required on protected routes', mode: 'live', check: (s) => s.auth?.enforced === true },
+    { phase: 4, label: '401 unauthenticated (missing/invalid token)', mode: 'live', check: (s) => s.auth?.saw401 === true || seenErrorCodes().has('unauthenticated') },
+    { phase: 4, label: '403 forbidden (role without ai.access)', mode: 'static', hint: 'Use receptionist JWT in explorer' },
+    { phase: 4, label: 'Offline HS256 / JWKS validation', mode: 'static', hint: 'No Supabase network per request' },
+    { phase: 4, label: 'Reloadable role → ai.access map', mode: 'static', hint: 'role_ai_access in gateway.yaml or role_ai_access.yaml' },
+    { phase: 4, label: 'Dashboard Bearer token for API polls', mode: 'live', check: (s) => !!s.auth?.tokenPresent },
   ];
 
   function hasErrorEnvelopeSample(s) {
     const readyErr = s.ready.body?.error;
     if (readyErr?.code && readyErr?.request_id) return true;
+    const statusErr = s.statusAuthError?.error;
+    if (statusErr?.code && statusErr?.request_id) return true;
     const parsed = s.metricsParsed;
     if (!parsed) return false;
     return Object.values(parsed.counters).some((e) => e.name === 'gateway_errors_total');
@@ -121,7 +140,73 @@
     lastTryResult: null,
     runnerModelsPolls: {},
     lastRequestId: null,
+    authToken: null,
+    auth: {
+      tokenPresent: false,
+      enforced: false,
+      saw401: false,
+      staffRole: null,
+      hasAiAccess: null,
+    },
+    statusAuthError: null,
   };
+
+  function requiresAuth(path) {
+    if (!path) return false;
+    if (path === '/health' || path === '/metrics') return false;
+    if (path === '/dashboard' || path.startsWith('/dashboard/')) return false;
+    return PROTECTED_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix));
+  }
+
+  function loadAuthToken() {
+    try {
+      return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveAuthToken(token) {
+    const trimmed = (token || '').trim();
+    state.authToken = trimmed || null;
+    try {
+      if (state.authToken) localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, state.authToken);
+      else localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    updateAuthStateFromToken();
+  }
+
+  function decodeJwtPayload(token) {
+    if (!token) return null;
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    try {
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+      return JSON.parse(atob(padded));
+    } catch {
+      return null;
+    }
+  }
+
+  function updateAuthStateFromToken() {
+    const token = state.authToken;
+    state.auth.tokenPresent = !!token;
+    const payload = decodeJwtPayload(token);
+    const role = payload?.staff_role || null;
+    state.auth.staffRole = role;
+    state.auth.hasAiAccess = role ? !!DEFAULT_AI_ACCESS_ROLES[role] : null;
+  }
+
+  function authHeadersFor(path, options) {
+    const opts = options || {};
+    if (opts.skipAuth) return {};
+    if (!requiresAuth(path)) return {};
+    if (!state.authToken) return {};
+    return { Authorization: `Bearer ${state.authToken}` };
+  }
 
   function $(id) {
     return document.getElementById(id);
@@ -198,7 +283,7 @@
     const url = GATEWAY_ROOT + path;
     const init = {
       method: opts.method || 'GET',
-      headers: { ...(opts.headers || {}) },
+      headers: { ...authHeadersFor(path, opts), ...(opts.headers || {}) },
       signal: AbortSignal.timeout(opts.timeoutMs || 8000),
     };
     if (opts.body != null) {
@@ -434,11 +519,17 @@
 
   function renderHeader() {
     const gw = state.status?.gateway;
-    const ready = state.ready.ok || gw?.ready;
+    const readyFromStatus = gw?.ready;
+    const readyFromPoll = state.ready.ok;
+    const readyDenied = state.ready.status === 401;
+    const ready = readyDenied ? false : readyFromPoll || readyFromStatus;
 
     const readyBadge = $('readiness-badge');
-    if (readyBadge) readyBadge.dataset.ready = ready ? 'true' : 'false';
-    setText($('readiness-label'), ready ? 'Ready' : 'Not ready');
+    if (readyBadge) readyBadge.dataset.ready = readyDenied ? 'auth' : ready ? 'true' : 'false';
+    setText(
+      $('readiness-label'),
+      readyDenied ? 'Auth required' : ready ? 'Ready' : 'Not ready'
+    );
 
     const phasePill = $('phase-pill');
     if (phasePill) {
@@ -503,9 +594,9 @@
       'card-readiness',
       'metric-readiness',
       'metric-readiness-hint',
-      state.ready.ok ? 'READY' : 'NOT READY',
+      state.ready.status === 401 ? 'AUTH' : state.ready.ok ? 'READY' : 'NOT READY',
       readinessHint(),
-      state.ready.ok ? 'ok' : 'warn'
+      state.ready.status === 401 ? 'warn' : state.ready.ok ? 'ok' : 'warn'
     );
 
     setStatCard(
@@ -547,6 +638,9 @@
   }
 
   function readinessHint() {
+    if (state.ready.status === 401) {
+      return 'HTTP 401 · save JWT in Security';
+    }
     if (state.ready.ok) {
       return state.ready.status ? `HTTP ${state.ready.status}` : '/ready';
     }
@@ -636,6 +730,8 @@
     const seen = new Set();
     const readyCode = state.ready.body?.error?.code;
     if (readyCode) seen.add(readyCode);
+    const statusCode = state.statusAuthError?.error?.code;
+    if (statusCode) seen.add(statusCode);
     if (state.metricsParsed) {
       for (const entry of Object.values(state.metricsParsed.counters)) {
         if (entry.name === 'gateway_errors_total' && entry.labels.code) {
@@ -658,16 +754,18 @@
         <tr data-seen="${isSeen ? 'true' : 'false'}" data-phase-active="${row.phaseActive ? 'true' : 'false'}">
           <td class="mono">${escapeHtml(row.code)}</td>
           <td>${row.http}</td>
-          <td>${row.phaseActive ? 'yes' : 'Phase 4+'}</td>
+          <td>${row.phaseActive ? 'yes' : 'Phase 5+'}</td>
           <td>${isSeen ? 'yes' : '—'}</td>
         </tr>`;
     }).join('');
 
     const readyErr = state.ready.body?.error;
+    const statusErr = state.statusAuthError?.error;
+    const sampleErr = readyErr || statusErr;
     if (sample) {
-      if (readyErr) {
+      if (sampleErr) {
         sample.hidden = false;
-        sample.textContent = JSON.stringify({ error: readyErr }, null, 2);
+        sample.textContent = JSON.stringify({ error: sampleErr }, null, 2);
       } else {
         sample.hidden = true;
         sample.textContent = '';
@@ -979,6 +1077,7 @@
 
   function renderEndpointRow(ep) {
     const disabled = !ep.available;
+    const needsAuth = requiresAuth(ep.path);
     const result = state.lastTryResult?.path === ep.path ? state.lastTryResult : null;
     const statusText = disabled
       ? `Phase ${ep.phase}`
@@ -989,11 +1088,14 @@
     const runnerNote = ep.runner_id
       ? `<span class="explorer-table__runner" title="Proxies runner /v1/models">runner ${escapeHtml(ep.runner_id)}</span>`
       : '';
+    const authBadge = needsAuth
+      ? `<span class="explorer-table__auth" title="Requires JWT + ai.access">🔒</span>`
+      : '';
 
     return `
       <tr class="explorer-table__row${disabled ? ' explorer-table__row--disabled' : ''}" data-path="${escapeHtml(ep.path)}">
         <td><code class="method method--${methodClass}">${escapeHtml(ep.method)}</code></td>
-        <td class="mono">${escapeHtml(ep.path)}${runnerNote}</td>
+        <td class="mono">${escapeHtml(ep.path)}${authBadge}${runnerNote}</td>
         <td><span class="phase-tag">P${ep.phase}</span></td>
         <td class="explorer-table__status">${escapeHtml(statusText)}</td>
         <td>
@@ -1094,6 +1196,30 @@
     }
   }
 
+  function renderAuthPanel() {
+    const statusEl = $('auth-status');
+    const roleEl = $('auth-staff-role');
+    const accessEl = $('auth-ai-access');
+    const input = $('auth-token-input');
+
+    if (input && document.activeElement !== input) {
+      input.value = state.authToken || '';
+    }
+
+    if (!state.authToken) {
+      setText(statusEl, 'No token — protected polls return 401');
+      setText(roleEl, '—');
+      setText(accessEl, '—');
+      return;
+    }
+
+    setText(statusEl, 'Token saved');
+    setText(roleEl, state.auth.staffRole || '(no staff_role claim)');
+    if (state.auth.hasAiAccess === true) setText(accessEl, 'granted');
+    else if (state.auth.hasAiAccess === false) setText(accessEl, 'denied');
+    else setText(accessEl, 'unknown role');
+  }
+
   function renderSecurity() {
     const cfg = state.status?.config_safe;
     const gw = state.status?.gateway;
@@ -1121,13 +1247,15 @@
     for (const [id, value] of fields) {
       setText($(id), value);
     }
+
+    renderAuthPanel();
   }
 
   async function probePhase(descriptor) {
     if (!descriptor.probe) return null;
-    const { path, method, expectStatus } = descriptor.probe;
+    const { path, method, expectStatus, skipAuth } = descriptor.probe;
     try {
-      const res = await fetchEndpoint(path, { method, timeoutMs: 4000 });
+      const res = await fetchEndpoint(path, { method, timeoutMs: 4000, skipAuth: !!skipAuth });
       const expected = Array.isArray(expectStatus) ? expectStatus : [expectStatus];
       return expected.includes(res.status);
     } catch {
@@ -1171,8 +1299,23 @@
   }
 
   async function pollOnce() {
+    if (!state.authToken) {
+      try {
+        const anon = await fetchEndpoint('/ready', { skipAuth: true, timeoutMs: 4000 });
+        state.auth.enforced = anon.status === 401;
+        state.auth.saw401 = anon.status === 401;
+        if (anon.status === 401) state.statusAuthError = anon.body;
+      } catch {
+        state.auth.enforced = false;
+      }
+    } else {
+      state.auth.enforced = true;
+    }
+
     const results = await Promise.allSettled([
-      fetchEndpoint('/v1/status').then((r) => ({ kind: 'status', ...r })),
+      state.authToken
+        ? fetchEndpoint('/v1/status').then((r) => ({ kind: 'status', ...r }))
+        : Promise.resolve({ kind: 'status', ok: false, status: 401, body: state.statusAuthError }),
       fetchEndpoint('/health').then((r) => ({ kind: 'health', ...r })),
       fetchEndpoint('/ready').then((r) => ({ kind: 'ready', ...r })),
       fetchEndpoint('/metrics').then((r) => ({ kind: 'metrics', ...r })),
@@ -1188,7 +1331,13 @@
 
       switch (data.kind) {
         case 'status':
-          if (data.ok) state.status = data.body;
+          if (data.ok) {
+            state.status = data.body;
+            state.statusAuthError = null;
+          } else if (data.status === 401) {
+            state.statusAuthError = data.body;
+            state.auth.saw401 = true;
+          }
           break;
         case 'health':
           state.health = { ok: data.ok, status: data.status, body: data.body };
@@ -1197,6 +1346,7 @@
         case 'ready':
           state.ready = { ok: data.ok, status: data.status, body: data.body };
           if (data.requestId) state.lastRequestId = data.requestId;
+          if (data.status === 401) state.auth.saw401 = true;
           break;
         case 'metrics':
           state.metricsRaw = typeof data.body === 'string' ? data.body : '';
@@ -1285,6 +1435,25 @@
       if (document.hidden) stopPolling();
       else startPolling();
     });
+
+    const authSave = $('auth-token-save');
+    const authClear = $('auth-token-clear');
+    const authInput = $('auth-token-input');
+
+    if (authSave && authInput) {
+      authSave.addEventListener('click', () => {
+        saveAuthToken(authInput.value);
+        pollOnce();
+      });
+    }
+
+    if (authClear) {
+      authClear.addEventListener('click', () => {
+        if (authInput) authInput.value = '';
+        saveAuthToken('');
+        pollOnce();
+      });
+    }
   }
 
   function loadSavedInterval() {
@@ -1298,6 +1467,8 @@
   }
 
   function init() {
+    state.authToken = loadAuthToken();
+    updateAuthStateFromToken();
     bindControls();
     setPollInterval(loadSavedInterval());
   }

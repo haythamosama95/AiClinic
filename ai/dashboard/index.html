@@ -18,7 +18,7 @@
         <div class="hero__identity">
           <p class="hero__eyebrow">AiClinic · Gateway</p>
           <h1 class="hero__title">Control Plane</h1>
-          <p class="hero__subtitle">Phases 1–3 · health spine &amp; runner registry</p>
+          <p class="hero__subtitle">Phases 1–4 · health spine, runner registry &amp; JWT auth</p>
         </div>
 
         <div class="hero__status-bar">
@@ -35,7 +35,7 @@
             </span>
 
             <span class="pill pill--phase" id="phase-pill" title="Active implementation phases">
-              Phases 1–3 active
+              Phases 1–4 active
             </span>
           </div>
 
@@ -281,7 +281,7 @@
       <section class="panel panel--coverage" id="phase-coverage-panel" aria-labelledby="coverage-heading">
         <header class="panel__header">
           <h2 class="panel__title" id="coverage-heading">Phase coverage</h2>
-          <p class="panel__desc">Live checklist mapped to <code>docs/ai/phase-capabilities.md</code> (Phases 1–3)</p>
+          <p class="panel__desc">Live checklist mapped to <code>docs/ai/phase-capabilities.md</code> (Phases 1–4)</p>
         </header>
         <div class="coverage-grid" id="phase-coverage-grid" role="list" aria-label="Phase capability checklist">
           <!-- app.js populates -->
@@ -334,6 +334,38 @@
             </ol>
           </div>
 
+          <div class="auth-panel" id="auth-panel">
+            <h3 class="auth-panel__title">JWT auth <span class="phase-tag">P4</span></h3>
+            <p class="auth-panel__desc">
+              Protected routes (<code>/ready</code>, <code>/v1/status</code>,
+              <code>/v1/runners/…/models</code>) require a Supabase staff JWT with
+              <code>ai.access</code>. Paste a token to enable live polls and explorer probes.
+            </p>
+            <div class="auth-panel__form">
+              <label class="auth-panel__label" for="auth-token-input">Bearer token</label>
+              <textarea class="auth-panel__input mono" id="auth-token-input" rows="3" spellcheck="false"
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…" autocomplete="off"></textarea>
+              <div class="auth-panel__actions">
+                <button type="button" class="btn btn--auth-save" id="auth-token-save">Save token</button>
+                <button type="button" class="btn btn--auth-clear" id="auth-token-clear">Clear</button>
+              </div>
+            </div>
+            <dl class="auth-panel__summary" id="auth-token-summary">
+              <div class="auth-panel__row">
+                <dt>Status</dt>
+                <dd id="auth-status">No token</dd>
+              </div>
+              <div class="auth-panel__row">
+                <dt>Staff role</dt>
+                <dd id="auth-staff-role" class="mono">—</dd>
+              </div>
+              <div class="auth-panel__row">
+                <dt>ai.access</dt>
+                <dd id="auth-ai-access">—</dd>
+              </div>
+            </dl>
+          </div>
+
           <div class="error-envelope" id="error-envelope-panel">
             <h3 class="error-envelope__title">Error envelope <span class="phase-tag">P2</span></h3>
             <p class="error-envelope__desc">Uniform JSON failures · every response includes <code>X-Request-ID</code>
@@ -343,7 +375,7 @@
                 <tr>
                   <th scope="col">Code</th>
                   <th scope="col">HTTP</th>
-                  <th scope="col">Phase 1–3</th>
+                  <th scope="col">Phase 1–4</th>
                   <th scope="col">Seen</th>
                 </tr>
               </thead>

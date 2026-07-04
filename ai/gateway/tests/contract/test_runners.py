@@ -9,6 +9,9 @@ from httpx import ASGITransport
 
 from gateway.config.settings import GatewayConfig, RunnerConfig
 from gateway.main import create_app
+from tests.fixtures.jwt_tokens import make_hs256_token
+
+TEST_SECRET = "test-secret"
 
 MODELS_PAYLOAD = {
     "object": "list",
@@ -26,7 +29,7 @@ MODELS_PAYLOAD = {
 @pytest.fixture
 async def runners_client():
     config = GatewayConfig(
-        jwt_secret="test-secret",
+        jwt_secret=TEST_SECRET,
         log_dir="/tmp/gateway-test-logs",
         runners=[
             RunnerConfig(
@@ -36,9 +39,15 @@ async def runners_client():
         ],
     )
     app = create_app(config)
+    token = make_hs256_token(TEST_SECRET, staff_role="doctor")
+    headers = {"Authorization": f"Bearer {token}"}
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers=headers,
+        ) as client:
             yield client
 
 
