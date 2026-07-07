@@ -16,10 +16,11 @@ const testimonials = [
   {
     quote:
       'AiClinic keeps our front desk, clinicians, and billing aligned without slowing anyone down. It feels calm even on busy mornings.',
-    name: 'Dr. Nadia Hassan',
+    name: 'Dr. Ahmed Hassan',
     title: 'Medical Director',
     organization: 'Downtown Clinic',
-    image: 'https://www.untitledui.com/images/portraits/person-03',
+    image:
+      'https://images.unsplash.com/photo-1758691463582-11aea602cd4a?auto=format&fit=crop&w=1200&q=80',
   },
   {
     quote:
@@ -27,15 +28,17 @@ const testimonials = [
     name: 'Omar Farouk',
     title: 'Practice Manager',
     organization: 'Nasr City',
-    image: 'https://www.untitledui.com/marketing/girl.webp',
+    image:
+      'https://images.unsplash.com/photo-1576669801775-ff43c5ab079d?auto=format&fit=crop&w=1200&q=80',
   },
   {
     quote:
       'The workflow is focused and predictable. We spend less time hunting for information and more time with patients.',
-    name: 'Dr. Layla Mansour',
+    name: 'Dr. Karim Mansour',
     title: 'Family Physician',
     organization: 'Alexandria',
-    image: 'https://www.untitledui.com/marketing/podcast-girl.webp',
+    image:
+      'https://images.unsplash.com/photo-1637059824899-a441006a6875?auto=format&fit=crop&w=1200&q=80',
   },
 ] as const
 
