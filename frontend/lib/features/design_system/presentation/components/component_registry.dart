@@ -69,7 +69,7 @@ const showcaseGroups = <ShowcaseGroupDef>[
   ),
 ];
 
-/// All component sections. Actions and Inputs are ready; other groups use placeholders.
+/// All component sections. Actions, Inputs, and Data display are ready; other groups use placeholders.
 const componentSections = <ShowcaseSectionDef>[
   // Actions (ready)
   ShowcaseSectionDef(
@@ -199,132 +199,117 @@ const componentSections = <ShowcaseSectionDef>[
   ),
   ShowcaseSectionDef(id: 'slider', title: 'Slider', group: ShowcaseGroupId.inputs, status: ShowcaseSectionStatus.ready),
 
-  // Data display (placeholder)
+  // Data display (ready)
   ShowcaseSectionDef(
     id: 'badge',
     title: 'Badge / Status pill',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'chip',
     title: 'Chip / Tag',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'avatar',
     title: 'Avatar / Group',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'tooltip',
     title: 'Tooltip',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
-  ShowcaseSectionDef(
-    id: 'kbd',
-    title: 'Kbd',
-    group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
-  ),
+  ShowcaseSectionDef(id: 'kbd', title: 'Kbd', group: ShowcaseGroupId.display, status: ShowcaseSectionStatus.ready),
   ShowcaseSectionDef(
     id: 'divider',
     title: 'Divider',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'skeleton',
     title: 'Skeleton',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'progress',
     title: 'Progress',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'data-table',
     title: 'Table / Data grid',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
-  ShowcaseSectionDef(
-    id: 'card',
-    title: 'Card',
-    group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
-  ),
+  ShowcaseSectionDef(id: 'card', title: 'Card', group: ShowcaseGroupId.display, status: ShowcaseSectionStatus.ready),
   ShowcaseSectionDef(
     id: 'metric-card',
     title: 'Metric card',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'entity-cards',
     title: 'Entity cards',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
-  ShowcaseSectionDef(
-    id: 'list',
-    title: 'List',
-    group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
-  ),
+  ShowcaseSectionDef(id: 'list', title: 'List', group: ShowcaseGroupId.display, status: ShowcaseSectionStatus.ready),
   ShowcaseSectionDef(
     id: 'description-list',
     title: 'Description list',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'timeline',
     title: 'Timeline',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'calendar',
     title: 'Calendar',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'chart',
     title: 'Chart primitives',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'money-display',
     title: 'Money display',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'code-block',
     title: 'Code block',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'scroll-area',
     title: 'Scroll area',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'resizable-panels',
     title: 'Resizable panels',
     group: ShowcaseGroupId.display,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
 
   // Navigation (placeholder)

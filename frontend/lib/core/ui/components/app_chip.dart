@@ -78,53 +78,58 @@ class _AppChipState extends State<AppChip> {
     final background = widget.selected ? colors.surfaceSelected : colors.surfaceDefault;
     final foreground = widget.selected ? colors.textPrimary : colors.textSecondary;
 
-    return Opacity(
-      opacity: _isDisabled ? 0.6 : 1,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          border: Border.all(color: borderColor),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.selectable)
-              _ChipBody(
-                hovered: _bodyHovered,
-                selected: widget.selected,
-                disabled: _isDisabled,
-                foreground: foreground,
-                hoverColor: colors.surfaceHover,
-                onHoverChanged: (hovered) => setState(() => _bodyHovered = hovered),
-                onPressed: _handleBodyPress,
-                selectedSemantics: widget.selected,
-                child: widget.child,
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.space2,
-                  vertical: AppSpacing.space05,
-                ),
-                child: DefaultTextStyle(
-                  style: AppTypography.bodySm(context).copyWith(color: foreground),
-                  child: IconTheme(
-                    data: IconThemeData(size: 14, color: colors.iconMuted),
-                    child: widget.child,
+    return UnconstrainedBox(
+      constrainedAxis: Axis.vertical,
+      alignment: AlignmentDirectional.centerStart,
+      clipBehavior: Clip.none,
+      child: Opacity(
+        opacity: _isDisabled ? 0.6 : 1,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.selectable)
+                _ChipBody(
+                  hovered: _bodyHovered,
+                  selected: widget.selected,
+                  disabled: _isDisabled,
+                  foreground: foreground,
+                  hoverColor: colors.surfaceHover,
+                  onHoverChanged: (hovered) => setState(() => _bodyHovered = hovered),
+                  onPressed: _handleBodyPress,
+                  selectedSemantics: widget.selected,
+                  child: widget.child,
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.space2,
+                    vertical: AppSpacing.space05,
+                  ),
+                  child: DefaultTextStyle(
+                    style: AppTypography.bodySm(context).copyWith(color: foreground),
+                    child: IconTheme(
+                      data: IconThemeData(size: 14, color: colors.iconMuted),
+                      child: widget.child,
+                    ),
                   ),
                 ),
-              ),
-            if (widget.removable)
-              _ChipRemoveButton(
-                hovered: _removeHovered,
-                disabled: _isDisabled,
-                semanticsLabel: _removeSemanticsLabel,
-                colors: colors,
-                onHoverChanged: (hovered) => setState(() => _removeHovered = hovered),
-                onPressed: _handleRemove,
-              ),
-          ],
+              if (widget.removable)
+                _ChipRemoveButton(
+                  hovered: _removeHovered,
+                  disabled: _isDisabled,
+                  semanticsLabel: _removeSemanticsLabel,
+                  colors: colors,
+                  onHoverChanged: (hovered) => setState(() => _removeHovered = hovered),
+                  onPressed: _handleRemove,
+                ),
+            ],
+          ),
         ),
       ),
     );

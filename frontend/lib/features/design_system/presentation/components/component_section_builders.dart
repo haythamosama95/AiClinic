@@ -20,6 +20,28 @@ import 'package:ai_clinic/features/design_system/presentation/components/inputs/
 import 'package:ai_clinic/features/design_system/presentation/components/inputs/slider_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/inputs/text_input_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/inputs/textarea_showcase_section.dart';
+// Data display
+import 'package:ai_clinic/features/design_system/presentation/components/display/avatar_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/badge_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/card_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/chart_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/chip_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/code_block_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/data_table_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/description_list_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/divider_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/entity_cards_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/kbd_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/list_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/timeline_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/calendar_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/metric_card_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/money_display_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/progress_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/resizable_panels_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/scroll_area_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/skeleton_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/display/tooltip_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/component_registry.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/showcase_primitives.dart';
 
@@ -50,6 +72,28 @@ final Map<String, ComponentSectionBuilder> componentSectionBuilders = {
   'date-range-picker': () => const DateRangePickerShowcaseSection(),
   'file-dropzone': () => const FileDropzoneShowcaseSection(),
   'slider': () => const SliderShowcaseSection(),
+  // Data display
+  'badge': () => const BadgeShowcaseSection(),
+  'chip': () => const ChipShowcaseSection(),
+  'avatar': () => const AvatarShowcaseSection(),
+  'tooltip': () => const TooltipShowcaseSection(),
+  'kbd': () => const KbdShowcaseSection(),
+  'divider': () => const DividerShowcaseSection(),
+  'money-display': () => const MoneyDisplayShowcaseSection(),
+  'code-block': () => const CodeBlockShowcaseSection(),
+  'description-list': () => const DescriptionListShowcaseSection(),
+  'list': () => const ListShowcaseSection(),
+  'skeleton': () => const SkeletonShowcaseSection(),
+  'progress': () => const ProgressShowcaseSection(),
+  'data-table': () => const DataTableShowcaseSection(),
+  'timeline': () => const TimelineShowcaseSection(),
+  'calendar': () => const CalendarShowcaseSection(),
+  'chart': () => const ChartShowcaseSection(),
+  'card': () => const CardShowcaseSection(),
+  'metric-card': () => const MetricCardShowcaseSection(),
+  'entity-cards': () => const EntityCardsShowcaseSection(),
+  'scroll-area': () => const ScrollAreaShowcaseSection(),
+  'resizable-panels': () => const ResizablePanelsShowcaseSection(),
 };
 
 /// Builds a section widget from registry metadata.

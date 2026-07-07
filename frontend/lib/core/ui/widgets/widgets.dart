@@ -33,6 +33,25 @@ export 'package:ai_clinic/core/ui/components/app_time_picker.dart';
 export 'package:ai_clinic/core/ui/components/app_file_dropzone.dart';
 export 'package:ai_clinic/core/ui/components/app_slider.dart';
 
+// Data display
+export 'package:ai_clinic/core/ui/components/app_chart.dart';
+export 'package:ai_clinic/core/ui/components/app_description_list.dart';
+export 'package:ai_clinic/core/ui/components/app_divider.dart';
+export 'package:ai_clinic/core/ui/components/app_list.dart';
+export 'package:ai_clinic/core/ui/components/app_money_display.dart';
+export 'package:ai_clinic/core/ui/components/app_card.dart';
+export 'package:ai_clinic/core/ui/components/app_code_block.dart';
+export 'package:ai_clinic/core/ui/components/app_progress.dart';
+export 'package:ai_clinic/core/ui/components/app_skeleton.dart';
+export 'package:ai_clinic/core/ui/components/app_timeline.dart';
+export 'package:ai_clinic/core/ui/components/app_empty_state.dart';
+export 'package:ai_clinic/core/ui/components/app_error_state.dart';
+export 'package:ai_clinic/core/ui/components/app_bulk_action_bar.dart';
+export 'package:ai_clinic/core/ui/components/app_data_table.dart';
+export 'package:ai_clinic/core/ui/components/app_calendar.dart';
+export 'package:ai_clinic/core/ui/components/app_scroll_area.dart';
+export 'package:ai_clinic/core/ui/components/app_resizable_panels.dart';
+
 // Motion
 export 'package:ai_clinic/core/ui/motion/app_motion.dart';
 
