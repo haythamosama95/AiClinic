@@ -1195,6 +1195,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "32.2.9"
+  syncfusion_flutter_datagrid:
+    dependency: "direct main"
+    description:
+      name: syncfusion_flutter_datagrid
+      sha256: "21992f7e8754741dc1c08780a64fb276349e3f1e4212bf7856292e9fe9f44f7e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "32.2.9"
   syncfusion_flutter_datepicker:
     dependency: transitive
     description:

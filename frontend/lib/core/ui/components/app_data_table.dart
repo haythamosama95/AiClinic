@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:syncfusion_flutter_core/theme.dart';
+import 'package:syncfusion_flutter_datagrid/datagrid.dart';
 
 import 'package:ai_clinic/core/ui/components/app_checkbox.dart';
 import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
 import 'package:ai_clinic/core/ui/components/app_input_styles.dart';
 import 'package:ai_clinic/core/ui/components/app_skeleton.dart';
-import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
@@ -34,8 +35,18 @@ class TableColumn<T> {
   final double? width;
 }
 
-/// Data grid built on Material [Table] (web `DataTable`).
-class AppDataTable<T> extends StatelessWidget {
+const _selectionColumnName = '__selection__';
+const _actionsColumnName = '__actions__';
+
+class _GridRowData<T> {
+  const _GridRowData({required this.item, required this.index});
+
+  final T? item;
+  final int index;
+}
+
+/// Data grid built on Syncfusion [SfDataGrid] (web `DataTable`).
+class AppDataTable<T> extends StatefulWidget {
   const AppDataTable({
     required this.columns,
     required this.data,
@@ -81,57 +92,60 @@ class AppDataTable<T> extends StatelessWidget {
   final Widget? Function(T row)? rowActions;
   final String ariaLabel;
 
-  double get _rowHeight => switch (density) {
+  double get rowHeight => switch (density) {
     TableDensity.compact => 36,
     TableDensity.standard => 40,
     TableDensity.comfortable => 48,
   };
 
-  bool _allSelected() => data.isNotEmpty && data.every((row) => selectedIds.contains(getRowId(row)));
+  bool get showBodyInTable => loading || (errorState == null && !(data.isEmpty && emptyState != null));
 
-  bool _someSelected() => data.any((row) => selectedIds.contains(getRowId(row)));
+  int get frozenColumnsCount {
+    if (!stickyFirstColumn) return 0;
+    return selectable ? 2 : 1;
+  }
+
+  @override
+  State<AppDataTable<T>> createState() => _AppDataTableState<T>();
+}
+
+class _AppDataTableState<T> extends State<AppDataTable<T>> {
+  late _AppDataGridSource<T> _source;
+
+  @override
+  void initState() {
+    super.initState();
+    _source = _AppDataGridSource<T>(table: widget, context: context);
+  }
+
+  @override
+  void didUpdateWidget(covariant AppDataTable<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _source
+      ..table = widget
+      ..context = context
+      ..notifyListeners();
+  }
+
+  bool _allSelected() =>
+      widget.data.isNotEmpty && widget.data.every((row) => widget.selectedIds.contains(widget.getRowId(row)));
+
+  bool _someSelected() => widget.data.any((row) => widget.selectedIds.contains(widget.getRowId(row)));
 
   void _toggleAll() {
-    final onChange = onSelectionChange;
+    final onChange = widget.onSelectionChange;
     if (onChange == null) return;
     if (_allSelected()) {
       onChange({});
     } else {
-      onChange(data.map(getRowId).toSet());
+      onChange(widget.data.map(widget.getRowId).toSet());
     }
   }
 
-  void _toggleRow(String id) {
-    final onChange = onSelectionChange;
-    if (onChange == null) return;
-    final next = Set<String>.from(selectedIds);
-    if (next.contains(id)) {
-      next.remove(id);
-    } else {
-      next.add(id);
-    }
-    onChange(next);
-  }
-
-  Map<int, TableColumnWidth> _columnWidths() {
-    final widths = <int, TableColumnWidth>{};
-    var index = 0;
-    if (selectable) {
-      widths[index++] = const FixedColumnWidth(40);
-    }
-    for (final column in columns) {
-      widths[index++] = column.width != null ? FixedColumnWidth(column.width!) : const FlexColumnWidth(1);
-    }
-    if (rowActions != null) {
-      widths[index] = const FixedColumnWidth(48);
-    }
-    return widths;
-  }
-
-  AlignmentDirectional _cellAlignment(TableAlign align) => switch (align) {
-    TableAlign.start => AlignmentDirectional.centerStart,
-    TableAlign.end => AlignmentDirectional.centerEnd,
-    TableAlign.center => AlignmentDirectional.center,
+  Alignment _cellAlignment(TableAlign align) => switch (align) {
+    TableAlign.start => Alignment.centerLeft,
+    TableAlign.end => Alignment.centerRight,
+    TableAlign.center => Alignment.center,
   };
 
   TextAlign _textAlign(TableAlign align) => switch (align) {
@@ -141,162 +155,76 @@ class AppDataTable<T> extends StatelessWidget {
   };
 
   Widget _buildSortIcon(String columnId, AppSemanticColors colors) {
-    if (sortColumn != columnId) {
+    if (widget.sortColumn != columnId) {
       return Icon(Icons.swap_vert, size: 14, color: colors.iconMuted);
     }
     return Icon(
-      sortDirection == SortDirection.asc ? Icons.arrow_upward : Icons.arrow_downward,
+      widget.sortDirection == SortDirection.asc ? Icons.arrow_upward : Icons.arrow_downward,
       size: 14,
       color: colors.textLink,
     );
   }
 
-  Widget _buildHeaderCell(BuildContext context, TableColumn<T> column, int columnIndex, AppSemanticColors colors) {
-    final align = column.align;
-    final sticky = stickyFirstColumn && columnIndex == 0;
+  Widget _headerLabel(BuildContext context, TableColumn<T> column, AppSemanticColors colors) {
     final headerStyle = AppTypography.overline(context).copyWith(color: colors.textTertiary);
-    final headerContentAlignment = switch (align) {
-      TableAlign.start => AlignmentDirectional.centerStart,
-      TableAlign.end => AlignmentDirectional.centerEnd,
-      TableAlign.center => AlignmentDirectional.center,
-    };
+    final alignment = _cellAlignment(column.align);
 
-    Widget label;
-    if (column.sortable) {
-      final sortState = sortColumn == column.id
-          ? (sortDirection == SortDirection.asc ? 'ascending' : 'descending')
-          : 'none';
-      label = Semantics(
-        label: '${column.header}, sort $sortState',
-        button: true,
-        child: SizedBox(
-          height: _rowHeight,
-          width: double.infinity,
-          child: TextButton(
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              foregroundColor: colors.textTertiary,
-              alignment: headerContentAlignment,
-            ),
-            onPressed: onSort == null ? null : () => onSort!(column.id),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(column.header, style: headerStyle),
-                const SizedBox(width: AppSpacing.space1),
-                _buildSortIcon(column.id, colors),
-              ],
-            ),
-          ),
-        ),
+    if (!column.sortable) {
+      return Container(
+        alignment: alignment,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
+        child: Text(column.header, style: headerStyle, textAlign: _textAlign(column.align)),
       );
-    } else {
-      label = Text(column.header, style: headerStyle, textAlign: _textAlign(align));
     }
 
-    return _wrapCell(
-      alignment: _cellAlignment(align),
-      backgroundColor: sticky ? colors.surfaceMuted : colors.surfaceMuted,
-      height: _rowHeight,
-      padding: column.sortable ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-      child: column.sortable ? label : SizedBox(width: double.infinity, child: label),
+    final sortState = widget.sortColumn == column.id
+        ? (widget.sortDirection == SortDirection.asc ? 'ascending' : 'descending')
+        : 'none';
+
+    return Semantics(
+      label: '${column.header}, sort $sortState',
+      button: true,
+      child: TextButton(
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          foregroundColor: colors.textTertiary,
+          alignment: alignment,
+        ),
+        onPressed: widget.onSort == null ? null : () => widget.onSort!(column.id),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(column.header, style: headerStyle),
+            const SizedBox(width: AppSpacing.space1),
+            _buildSortIcon(column.id, colors),
+          ],
+        ),
+      ),
     );
   }
 
-  TableRow _buildHeaderTableRow(BuildContext context, AppSemanticColors colors) {
-    final cells = <Widget>[];
+  List<GridColumn> _buildGridColumns(AppSemanticColors colors) {
+    final gridColumns = <GridColumn>[];
 
-    if (selectable) {
+    if (widget.selectable) {
       final checkboxState = _someSelected() && !_allSelected()
           ? AppCheckboxState.indeterminate
           : (_allSelected() ? AppCheckboxState.checked : AppCheckboxState.unchecked);
-      cells.add(
-        _wrapCell(
-          height: _rowHeight,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-          child: appWrapMaterialInput(
-            AppCheckbox(value: checkboxState, onChanged: onSelectionChange == null ? null : (_) => _toggleAll()),
-          ),
-        ),
-      );
-    }
-
-    for (var i = 0; i < columns.length; i++) {
-      cells.add(_buildHeaderCell(context, columns[i], i, colors));
-    }
-
-    if (rowActions != null) {
-      cells.add(
-        _wrapCell(
-          height: _rowHeight,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
-          child: Semantics(label: 'Actions', child: const SizedBox.shrink()),
-        ),
-      );
-    }
-
-    return TableRow(
-      decoration: BoxDecoration(
-        color: colors.surfaceMuted,
-        border: Border(bottom: BorderSide(color: colors.borderDefault)),
-      ),
-      children: cells,
-    );
-  }
-
-  Widget _buildDataCell({
-    required BuildContext context,
-    required Widget child,
-    required TableAlign align,
-    required int columnIndex,
-    required bool selected,
-    required AppSemanticColors colors,
-  }) {
-    final sticky = stickyFirstColumn && columnIndex == 0;
-    return _wrapCell(
-      alignment: _cellAlignment(align),
-      backgroundColor: sticky ? (selected ? colors.surfaceSelected : colors.surfaceDefault) : null,
-      height: _rowHeight,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-      child: DefaultTextStyle(
-        style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary),
-        textAlign: _textAlign(align),
-        child: child,
-      ),
-    );
-  }
-
-  List<TableRow> _buildDataRows(BuildContext context, AppSemanticColors colors) {
-    return [
-      for (var rowIndex = 0; rowIndex < data.length; rowIndex++)
-        _buildDataRow(context, data[rowIndex], rowIndex, colors),
-    ];
-  }
-
-  TableRow _buildDataRow(BuildContext context, T row, int rowIndex, AppSemanticColors colors) {
-    final id = getRowId(row);
-    final selected = selectedIds.contains(id);
-    final zebraRow = zebra && rowIndex.isOdd;
-    final interactive = onRowClick != null;
-
-    final rowBackground = selected ? colors.surfaceSelected : (zebraRow ? colors.surfaceMuted : null);
-
-    final cells = <Widget>[];
-
-    if (selectable) {
-      cells.add(
-        _wrapCell(
-          height: _rowHeight,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-          child: GestureDetector(
-            onTap: () {},
-            behavior: HitTestBehavior.opaque,
+      gridColumns.add(
+        GridColumn(
+          columnName: _selectionColumnName,
+          width: 40,
+          allowSorting: false,
+          label: Container(
+            alignment: Alignment.center,
+            color: colors.surfaceMuted,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
             child: appWrapMaterialInput(
               AppCheckbox(
-                value: selected ? AppCheckboxState.checked : AppCheckboxState.unchecked,
-                onChanged: onSelectionChange == null ? null : (_) => _toggleRow(id),
+                value: checkboxState,
+                onChanged: widget.onSelectionChange == null ? null : (_) => _toggleAll(),
               ),
             ),
           ),
@@ -304,100 +232,108 @@ class AppDataTable<T> extends StatelessWidget {
       );
     }
 
-    for (var i = 0; i < columns.length; i++) {
-      final column = columns[i];
-      cells.add(
-        _buildDataCell(
-          context: context,
-          child: column.accessor(row),
-          align: column.align,
-          columnIndex: i,
-          selected: selected,
-          colors: colors,
-        ),
-      );
-    }
-
-    if (rowActions != null) {
-      cells.add(
-        _wrapCell(
-          height: _rowHeight,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
-          child: GestureDetector(
-            onTap: () {},
-            behavior: HitTestBehavior.opaque,
-            child:
-                rowActions!(row) ??
-                AppIconButton(
-                  icon: const Icon(Icons.more_horiz, size: 16),
-                  label: 'Row actions',
-                  size: AppIconButtonSize.sm,
-                  onPressed: () {},
-                ),
+    for (final column in widget.columns) {
+      gridColumns.add(
+        GridColumn(
+          columnName: column.id,
+          width: column.width ?? double.nan,
+          columnWidthMode: column.width != null ? ColumnWidthMode.none : ColumnWidthMode.fill,
+          allowSorting: false,
+          label: Container(
+            color: colors.surfaceMuted,
+            alignment: _cellAlignment(column.align),
+            child: _headerLabel(context, column, colors),
           ),
         ),
       );
     }
 
-    return TableRow(
-      decoration: BoxDecoration(
-        color: rowBackground,
-        border: Border(bottom: BorderSide(color: colors.borderSubtle)),
-      ),
-      children: cells.map((cell) {
-        if (!interactive) return cell;
-        return _InteractiveRowCell(onActivate: () => onRowClick!(row), hoverColor: colors.surfaceHover, child: cell);
-      }).toList(),
-    );
-  }
-
-  List<TableRow> _buildSkeletonRows(AppSemanticColors colors) {
-    return [
-      for (var i = 0; i < loadingRows; i++)
-        TableRow(
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: colors.borderSubtle)),
+    if (widget.rowActions != null) {
+      gridColumns.add(
+        GridColumn(
+          columnName: _actionsColumnName,
+          width: 48,
+          allowSorting: false,
+          label: Container(
+            alignment: Alignment.center,
+            color: colors.surfaceMuted,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
+            child: Semantics(label: 'Actions', child: const SizedBox.shrink()),
           ),
-          children: [
-            if (selectable)
-              _wrapCell(
-                height: _rowHeight,
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-                child: const AppSkeleton(variant: SkeletonVariant.rectangular, width: 16, height: 16),
-              ),
-            for (final _ in columns)
-              _wrapCell(
-                height: _rowHeight,
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
-                child: const AppSkeleton(variant: SkeletonVariant.rectangular, width: 120, height: 16),
-              ),
-            if (rowActions != null)
-              _wrapCell(
-                height: _rowHeight,
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
-                child: const SizedBox.shrink(),
-              ),
-          ],
         ),
-    ];
+      );
+    }
+
+    return gridColumns;
   }
 
-  bool get _showBodyInTable => loading || (errorState == null && !(data.isEmpty && emptyState != null));
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
 
-  Widget _buildTable(BuildContext context, AppSemanticColors colors, double minWidth) {
-    final rows = <TableRow>[
-      _buildHeaderTableRow(context, colors),
-      if (loading) ..._buildSkeletonRows(colors),
-      if (!loading && _showBodyInTable) ..._buildDataRows(context, colors),
-    ];
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(minWidth: minWidth),
-      child: Table(
-        columnWidths: _columnWidths(),
-        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-        children: rows,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Semantics(
+          container: true,
+          label: widget.ariaLabel,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colors.surfaceDefault,
+              border: Border.all(color: colors.borderDefault),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SfDataGridTheme(
+                    data: SfDataGridThemeData(
+                      headerColor: colors.surfaceMuted,
+                      gridLineColor: colors.borderSubtle,
+                      gridLineStrokeWidth: 1,
+                      rowHoverColor: widget.onRowClick == null ? Colors.transparent : colors.surfaceHover,
+                    ),
+                    child: SfDataGrid(
+                      source: _source,
+                      columns: _buildGridColumns(colors),
+                      rowHeight: widget.rowHeight,
+                      headerRowHeight: widget.rowHeight,
+                      shrinkWrapRows: true,
+                      frozenColumnsCount: widget.frozenColumnsCount,
+                      gridLinesVisibility: GridLinesVisibility.horizontal,
+                      headerGridLinesVisibility: GridLinesVisibility.none,
+                      columnWidthMode: ColumnWidthMode.fill,
+                      selectionMode: SelectionMode.none,
+                      highlightRowOnHover: widget.onRowClick != null,
+                      showHorizontalScrollbar: true,
+                      showVerticalScrollbar: false,
+                      onCellTap: widget.onRowClick == null
+                          ? null
+                          : (details) {
+                              final rowIndex = details.rowColumnIndex.rowIndex - 1;
+                              if (rowIndex < 0 || rowIndex >= widget.data.length || widget.loading) return;
+                              if (details.column.columnName == _selectionColumnName ||
+                                  details.column.columnName == _actionsColumnName) {
+                                return;
+                              }
+                              widget.onRowClick!(widget.data[rowIndex]);
+                            },
+                      placeholder: const SizedBox.shrink(),
+                    ),
+                  ),
+                  if (!widget.loading && widget.errorState != null)
+                    widget.errorState!
+                  else if (!widget.loading && widget.data.isEmpty && widget.emptyState != null)
+                    widget.emptyState!,
+                  if (widget.footer != null) _buildFooter(context, colors),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -411,103 +347,162 @@ class AppDataTable<T> extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3, vertical: AppSpacing.space2),
         child: DefaultTextStyle(
           style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
-          child: footer!,
+          child: widget.footer!,
         ),
       ),
     );
   }
+}
+
+class _AppDataGridSource<T> extends DataGridSource {
+  _AppDataGridSource({required this.table, required this.context});
+
+  AppDataTable<T> table;
+  BuildContext context;
+
+  AppSemanticColors get _colors => context.appColors;
+
+  List<_GridRowData<T>> get _rowData {
+    if (!table.showBodyInTable) return const [];
+    if (table.loading) {
+      return List.generate(table.loadingRows, (index) => _GridRowData<T>(item: null, index: index));
+    }
+    return table.data.asMap().entries.map((entry) => _GridRowData<T>(item: entry.value, index: entry.key)).toList();
+  }
 
   @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
+  List<DataGridRow> get rows => _rowData
+      .map(
+        (rowData) => DataGridRow(
+          cells: [
+            if (table.selectable) DataGridCell<_GridRowData<T>>(columnName: _selectionColumnName, value: rowData),
+            for (final column in table.columns) DataGridCell<_GridRowData<T>>(columnName: column.id, value: rowData),
+            if (table.rowActions != null) DataGridCell<_GridRowData<T>>(columnName: _actionsColumnName, value: rowData),
+          ],
+        ),
+      )
+      .toList();
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Semantics(
-          container: true,
-          label: ariaLabel,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceDefault,
-              border: Border.all(color: colors.borderDefault),
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: _buildTable(context, colors, constraints.maxWidth),
-                  ),
-                  if (!loading && errorState != null)
-                    errorState!
-                  else if (!loading && data.isEmpty && emptyState != null)
-                    emptyState!,
-                  if (footer != null) _buildFooter(context, colors),
-                ],
+  Alignment _cellAlignment(TableAlign align) => switch (align) {
+    TableAlign.start => Alignment.centerLeft,
+    TableAlign.end => Alignment.centerRight,
+    TableAlign.center => Alignment.center,
+  };
+
+  TextAlign _textAlign(TableAlign align) => switch (align) {
+    TableAlign.start => TextAlign.start,
+    TableAlign.end => TextAlign.end,
+    TableAlign.center => TextAlign.center,
+  };
+
+  void _toggleRow(String id) {
+    final onChange = table.onSelectionChange;
+    if (onChange == null) return;
+    final next = Set<String>.from(table.selectedIds);
+    if (next.contains(id)) {
+      next.remove(id);
+    } else {
+      next.add(id);
+    }
+    onChange(next);
+  }
+
+  Widget _wrapCell({
+    required Widget child,
+    required TableAlign align,
+    Color? backgroundColor,
+    EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
+  }) {
+    return ColoredBox(
+      color: backgroundColor ?? Colors.transparent,
+      child: Container(alignment: _cellAlignment(align), padding: padding, child: child),
+    );
+  }
+
+  Widget _buildSkeletonCell() {
+    return _wrapCell(
+      align: TableAlign.start,
+      child: const AppSkeleton(variant: SkeletonVariant.rectangular, width: 120, height: 16),
+    );
+  }
+
+  @override
+  DataGridRowAdapter? buildRow(DataGridRow row) {
+    final rowData = row.getCells().first.value as _GridRowData<T>;
+    final item = rowData.item;
+    final rowIndex = rowData.index;
+    final isLoadingRow = item == null;
+    final selected = !isLoadingRow && table.selectedIds.contains(table.getRowId(item as T));
+    final zebraRow = table.zebra && rowIndex.isOdd;
+    final rowBackground = selected ? _colors.surfaceSelected : (zebraRow ? _colors.surfaceMuted : null);
+
+    return DataGridRowAdapter(
+      color: rowBackground,
+      cells: row.getCells().map((cell) {
+        if (isLoadingRow) {
+          if (cell.columnName == _actionsColumnName) {
+            return _wrapCell(align: TableAlign.center, child: const SizedBox.shrink());
+          }
+          if (cell.columnName == _selectionColumnName) {
+            return _wrapCell(
+              align: TableAlign.center,
+              child: const AppSkeleton(variant: SkeletonVariant.rectangular, width: 16, height: 16),
+            );
+          }
+          return _buildSkeletonCell();
+        }
+
+        final rowItem = item as T;
+        final id = table.getRowId(rowItem);
+
+        if (cell.columnName == _selectionColumnName) {
+          return _wrapCell(
+            align: TableAlign.center,
+            backgroundColor: rowBackground,
+            child: GestureDetector(
+              onTap: () {},
+              behavior: HitTestBehavior.opaque,
+              child: appWrapMaterialInput(
+                AppCheckbox(
+                  value: selected ? AppCheckboxState.checked : AppCheckboxState.unchecked,
+                  onChanged: table.onSelectionChange == null ? null : (_) => _toggleRow(id),
+                ),
               ),
             ),
+          );
+        }
+
+        if (cell.columnName == _actionsColumnName) {
+          return _wrapCell(
+            align: TableAlign.center,
+            backgroundColor: rowBackground,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
+            child: GestureDetector(
+              onTap: () {},
+              behavior: HitTestBehavior.opaque,
+              child:
+                  table.rowActions!(rowItem) ??
+                  AppIconButton(
+                    icon: const Icon(Icons.more_horiz, size: 16),
+                    label: 'Row actions',
+                    size: AppIconButtonSize.sm,
+                    onPressed: () {},
+                  ),
+            ),
+          );
+        }
+
+        final column = table.columns.firstWhere((col) => col.id == cell.columnName);
+        return _wrapCell(
+          align: column.align,
+          backgroundColor: rowBackground,
+          child: DefaultTextStyle(
+            style: AppTypography.bodySm(context).copyWith(color: _colors.textPrimary),
+            textAlign: _textAlign(column.align),
+            child: column.accessor(rowItem),
           ),
         );
-      },
-    );
-  }
-}
-
-Widget _wrapCell({
-  required Widget child,
-  required double height,
-  EdgeInsetsGeometry? padding,
-  AlignmentDirectional alignment = AlignmentDirectional.centerStart,
-  Color? backgroundColor,
-}) {
-  return TableCell(
-    verticalAlignment: TableCellVerticalAlignment.middle,
-    child: ColoredBox(
-      color: backgroundColor ?? Colors.transparent,
-      child: SizedBox(
-        height: height,
-        child: Padding(
-          padding: padding ?? EdgeInsets.zero,
-          child: Align(alignment: alignment, widthFactor: 1, child: child),
-        ),
-      ),
-    ),
-  );
-}
-
-class _InteractiveRowCell extends StatefulWidget {
-  const _InteractiveRowCell({required this.child, required this.onActivate, required this.hoverColor});
-
-  final Widget child;
-  final VoidCallback onActivate;
-  final Color hoverColor;
-
-  @override
-  State<_InteractiveRowCell> createState() => _InteractiveRowCellState();
-}
-
-class _InteractiveRowCellState extends State<_InteractiveRowCell> {
-  var _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onActivate,
-        child: AnimatedContainer(
-          duration: AppMotion.fast,
-          curve: AppMotion.standardCurve,
-          color: _hovered ? widget.hoverColor : Colors.transparent,
-          child: widget.child,
-        ),
-      ),
+      }).toList(),
     );
   }
 }

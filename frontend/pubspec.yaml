@@ -57,6 +57,7 @@ dependencies:
   pdf: ^3.11.3
   printing: ^5.14.2
   pdfx: ^2.9.2
+  syncfusion_flutter_datagrid: ^32.2.9
 
 # Patches flutter_quill#2487: selection paint crashes on empty lines / RTL text
 # until https://github.com/singerdmx/flutter-quill/pull/2736 merges.
