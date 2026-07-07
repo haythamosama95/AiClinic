@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react'
 import { ALL_NAV_ITEMS } from '@/components/navigation/nav-model'
+import { getPatientById, patientFullName } from '@/data/patients'
 import { PlaceholderPage } from '@/pages/app/PlaceholderPage'
 import { DevPage, type DevSection } from '@/pages/app/DevPage'
+import { PatientDetailPage } from '@/pages/app/patients/PatientDetailPage'
+import { PatientsPage } from '@/pages/app/patients/PatientsPage'
 
 export type RouteMeta = {
   title: string
@@ -34,7 +37,12 @@ function metaForNavId(id: string): RouteMeta {
 }
 
 export type RouteDefinition = RouteMeta & {
-  render: () => ReactNode
+  render: (ctx: RouteRenderContext) => ReactNode
+}
+
+export type RouteRenderContext = {
+  segments: string[]
+  navigate: (route: string) => void
 }
 
 function placeholderRoute(id: string): RouteDefinition {
@@ -42,6 +50,20 @@ function placeholderRoute(id: string): RouteDefinition {
   return {
     ...meta,
     render: () => <PlaceholderPage title={meta.title} description={meta.description} />,
+  }
+}
+
+function patientsRoute(): RouteDefinition {
+  const meta = metaForNavId('patients')
+  return {
+    ...meta,
+    render: ({ segments, navigate }) => {
+      const patientId = segments[1]
+      if (patientId) {
+        return <PatientDetailPage patientId={patientId} onNavigate={navigate} />
+      }
+      return <PatientsPage onNavigate={navigate} />
+    },
   }
 }
 
@@ -61,9 +83,12 @@ const CLINIC_ROUTE_IDS = [
   'settings',
 ] as const
 
-export const ROUTE_REGISTRY: Record<string, RouteDefinition> = Object.fromEntries(
-  CLINIC_ROUTE_IDS.map((id) => [id, placeholderRoute(id)]),
-)
+export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
+  ...Object.fromEntries(
+    CLINIC_ROUTE_IDS.filter((id) => id !== 'patients').map((id) => [id, placeholderRoute(id)]),
+  ),
+  patients: patientsRoute(),
+}
 
 export function resolveDevSection(segments: string[]): DevSection {
   const section = segments[1]
@@ -73,7 +98,10 @@ export function resolveDevSection(segments: string[]): DevSection {
   return 'components'
 }
 
-export function resolveRoute(segments: string[]): {
+export function resolveRoute(
+  segments: string[],
+  navigate: (route: string) => void,
+): {
   content: ReactNode
   meta: RouteMeta
   fullWidth: boolean
@@ -107,9 +135,20 @@ export function resolveRoute(segments: string[]): {
     }
   }
 
+  const ctx: RouteRenderContext = { segments, navigate }
+  let meta: RouteMeta = { title: route.title, description: route.description }
+
+  if (root === 'patients' && segments[1]) {
+    const patient = getPatientById(segments[1])
+    meta = {
+      title: patient ? patientFullName(patient) : 'Patient',
+      description: patient?.mrn ?? meta.description,
+    }
+  }
+
   return {
-    content: route.render(),
-    meta: { title: route.title, description: route.description },
+    content: route.render(ctx),
+    meta,
     fullWidth: false,
   }
 }
@@ -122,6 +161,10 @@ export function breadcrumbLabel(segments: string[]): string {
     if (section === 'patterns') return 'Patterns'
     if (section === 'guidelines') return 'Guidelines'
     return 'Components'
+  }
+  if (root === 'patients' && segments[1]) {
+    const patient = getPatientById(segments[1])
+    return patient ? patientFullName(patient) : 'Patient'
   }
   return metaForNavId(root).title
 }

@@ -37,7 +37,10 @@ export function App() {
 
     const activeId = segments[0] ?? 'home'
     const currentBranch = MOCK_BRANCHES.find((b) => b.id === branchId) ?? MOCK_BRANCHES[0]
-    const { content, fullWidth } = useMemo(() => resolveRoute(segments), [segments])
+    const { content, fullWidth } = useMemo(
+        () => resolveRoute(segments, navigate),
+        [segments, navigate],
+    )
 
     const toggleCollapsed = useCallback(() => {
         setCollapsed((prev) => {
@@ -67,6 +70,17 @@ export function App() {
         const navItem = [...CLINIC_NAV_GROUPS.flatMap((g) => g.items), ...CLINIC_NAV_FOOTER].find(
             (item) => item.id === activeId,
         )
+
+        if (activeId === 'patients' && segments[1]) {
+            return (
+                <Breadcrumb
+                    items={[
+                        { label: 'Patients', onClick: () => navigate('patients') },
+                        { label: breadcrumbLabel(segments) },
+                    ]}
+                />
+            )
+        }
 
         if (!navItem) return undefined
 
