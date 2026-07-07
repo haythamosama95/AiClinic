@@ -452,7 +452,7 @@ const componentSections = <ShowcaseSectionDef>[
     status: ShowcaseSectionStatus.ready,
   ),
 
-  // Layout & utility (placeholder)
+  // Layout & utility
   ShowcaseSectionDef(
     id: 'app-shell',
     title: 'App shell',
@@ -463,37 +463,37 @@ const componentSections = <ShowcaseSectionDef>[
     id: 'page-header',
     title: 'Page header',
     group: ShowcaseGroupId.layout,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'section-header',
     title: 'Section header',
     group: ShowcaseGroupId.layout,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'toolbar',
     title: 'Toolbar / filter bar',
     group: ShowcaseGroupId.layout,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'bulk-action-bar',
     title: 'Bulk action bar',
     group: ShowcaseGroupId.layout,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'layout-scroll-area',
     title: 'Scroll area',
     group: ShowcaseGroupId.layout,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'layout-resizable',
     title: 'Resizable panels',
     group: ShowcaseGroupId.layout,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
 ];
 

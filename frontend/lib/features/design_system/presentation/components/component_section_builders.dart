@@ -69,7 +69,14 @@ import 'package:ai_clinic/features/design_system/presentation/components/ai/ai_s
 import 'package:ai_clinic/features/design_system/presentation/components/ai/ai_message_bubble_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/ai/ai_panel_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/ai/proposed_action_card_showcase_section.dart';
+// Layout & utility
 import 'package:ai_clinic/features/design_system/presentation/components/layout/app_shell_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/layout/bulk_action_bar_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/layout/page_header_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/layout/resizable_panels_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/layout/scroll_area_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/layout/section_header_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/layout/toolbar_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/component_registry.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/showcase_primitives.dart';
 
@@ -134,7 +141,15 @@ final Map<String, ComponentSectionBuilder> componentSectionBuilders = {
   'user-menu': () => const UserMenuShowcaseSection(),
   'command-bar': () => const CommandBarShowcaseSection(),
   'app-topbar': () => const TopBarShowcaseSection(),
+  // Layout & utility (Phase 1)
+  'page-header': () => const PageHeaderShowcaseSection(),
+  'section-header': () => const SectionHeaderShowcaseSection(),
+  'toolbar': () => const ToolbarShowcaseSection(),
+  'bulk-action-bar': () => const BulkActionBarShowcaseSection(),
+  // Layout & utility (Phase 2)
   'app-shell': () => const AppShellShowcaseSection(),
+  'layout-scroll-area': () => const LayoutScrollAreaShowcaseSection(),
+  'layout-resizable': () => const ResizablePanelsLayoutShowcaseSection(),
   // Feedback & overlays
   'toast': () => const ToastShowcaseSection(),
   'alert': () => const AlertShowcaseSection(),

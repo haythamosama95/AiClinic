@@ -50,6 +50,12 @@ export 'package:ai_clinic/core/ui/components/app_calendar.dart';
 export 'package:ai_clinic/core/ui/components/app_scroll_area.dart';
 export 'package:ai_clinic/core/ui/components/app_resizable_panels.dart';
 
+// Layout & utility
+export 'package:ai_clinic/core/ui/components/app_page_header.dart';
+export 'package:ai_clinic/core/ui/components/app_section_header.dart';
+export 'package:ai_clinic/core/ui/components/app_toolbar.dart';
+export 'package:ai_clinic/core/ui/components/app_app_shell.dart';
+
 // AI
 export 'package:ai_clinic/core/ui/components/app_ai_mode_toggle.dart';
 export 'package:ai_clinic/core/ui/components/app_thinking_indicator.dart';
