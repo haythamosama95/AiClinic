@@ -4,7 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/motion/app_page_transition.dart';
 
-typedef ShellPageTransitionBuilder = Widget Function(BuildContext context, Widget child);
+typedef ShellPageTransitionBuilder = Widget Function(BuildContext context, Widget child, Object activePageKey);
 
 /// Shell content host with wait-mode page transitions (web `AnimatePresence` + `PageTransition`).
 class ShellPageTransition extends StatefulWidget {
@@ -146,7 +146,7 @@ class _ShellPageTransitionState extends State<ShellPageTransition> with SingleTi
   @override
   Widget build(BuildContext context) {
     if (AppMotion.prefersReducedMotion(context)) {
-      return widget.builder(context, _keyedChild(widget.pageKey, widget.child));
+      return widget.builder(context, _keyedChild(widget.pageKey, widget.child), widget.pageKey);
     }
 
     return AnimatedBuilder(
@@ -159,7 +159,7 @@ class _ShellPageTransitionState extends State<ShellPageTransition> with SingleTi
           _TransitionPhase.idle => _shownChild,
         };
 
-        return widget.builder(context, page);
+        return widget.builder(context, page, _shownKey);
       },
     );
   }

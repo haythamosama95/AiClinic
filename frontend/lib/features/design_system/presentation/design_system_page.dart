@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/ui/components/app_page_header.dart';
+import 'package:ai_clinic/core/ui/theme/app_shell_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/components_sub_nav.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/components_tab_section.dart';
@@ -53,7 +54,8 @@ class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
   Widget build(BuildContext context) {
     final preview = ref.watch(devPreviewProvider);
 
-    return Column(
+    final header = Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppPageHeader(
@@ -64,10 +66,38 @@ class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
         const SizedBox(height: AppSpacing.space6),
         const DevLocaleControls(),
         const SizedBox(height: AppSpacing.space8),
-        Expanded(
-          child: DevSectionLayout(nav: _buildSubNav(), child: _buildTabContent(preview.direction)),
-        ),
       ],
+    );
+
+    final section = DevSectionLayout(nav: _buildSubNav(), child: _buildTabContent(preview.direction));
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.hasBoundedHeight) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              Expanded(child: section),
+            ],
+          );
+        }
+
+        final viewportHeight =
+            MediaQuery.sizeOf(context).height -
+            MediaQuery.paddingOf(context).vertical -
+            AppShellTokens.topBarHeight -
+            (AppSpacing.space6 * 2);
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header,
+            SizedBox(height: viewportHeight.clamp(320, double.infinity), child: section),
+          ],
+        );
+      },
     );
   }
 

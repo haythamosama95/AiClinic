@@ -727,7 +727,7 @@ return LayoutBuilder(
 
 ## Checklist for new shell / placeholder pages
 
-1. Tall `Column` body in `AppShell`? → Set `mainAxisSize: MainAxisSize.min` and, when `LayoutBuilder` reports `constraints.hasBoundedHeight`, wrap in `SingleChildScrollView` so `fillViewport` shells and short viewports can scroll (see entry #28). Viewport-filling pages (e.g. design system with internal `Expanded`) stay on the `fillViewport` shell path.
+1. Tall `Column` body in `AppShell`? → Set `mainAxisSize: MainAxisSize.min` and, when `LayoutBuilder` reports `constraints.hasBoundedHeight`, wrap in `SingleChildScrollView` so `fillViewport` shells and short viewports can scroll (see entry #28). Viewport-filling pages (e.g. design system with internal `Expanded`) stay on the `fillViewport` shell path — including while the page is the **outgoing** transition child (see entry #30).
 
 ---
 
@@ -758,8 +758,30 @@ void dispose() {
 
 **Affected files (fixed):** `app_top_bar.dart`.
 
+---
+
+## 30. `RenderFlex` unbounded height + `Expanded` (`DesignSystemPage` / shell transition)
+
+**Symptom:** Red screen when opening or leaving the Design System page (`/foundation-demo`), especially during shell page transitions. `RenderFlex children have non-zero flex but incoming height constraints are unbounded` on `Column` in `design_system_page.dart`. Cascading `does not meet its constraints` through `shell_page_transition.dart`, `app_shell.dart`, and scheduler semantics assertions.
+
+**Cause:** `DesignSystemPage` uses `Expanded` for `DevSectionLayout`. `AppShell` sets `fillViewport: true` only when the **router location** is the design-system route. After `ShellPageTransition` was added, navigating **away** from Design System updates `matchedLocation` to e.g. `/home` (`fillViewport: false`) while the **outgoing** `DesignSystemPage` is still animating. The shell wraps that outgoing page in `SingleChildScrollView`, which passes unbounded max height to the page `Column` + `Expanded`.
+
+**Fix:** Keep viewport-fill framing for the **displayed** page key during transitions, not only the destination route:
+
+```dart
+// app_shell.dart — builder receives activePageKey from ShellPageTransition
+final effectiveFillViewport =
+    fillViewport ||
+    ShellNavConfig.isDesignSystemLocation(activePageKey.toString());
+```
+
+Also guard `DesignSystemPage` with `LayoutBuilder`: use `Expanded` only when `constraints.hasBoundedHeight`; otherwise give `DevSectionLayout` an explicit viewport-based `SizedBox` height so `Expanded` is never used in a scroll context.
+
+**Affected files (fixed):** `shell_page_transition.dart`, `app_shell.dart`, `design_system_page.dart`.
+
 ## Checklist for new shell / Riverpod lifecycle
 
 1. Provider cleanup in `dispose()`? → Save the notifier/controller in a field during `initState`; never call `ref.read` / `ref.watch` in `dispose` (see entry #29).
+2. Page uses `Expanded` / viewport-fill layout? → Ensure `AppShell` `fillViewport` (or `effectiveFillViewport` during transitions) stays true while that page is **visible**, not only after navigation completes (see entry #30).
 
 ---

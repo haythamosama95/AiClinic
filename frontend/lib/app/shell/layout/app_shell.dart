@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/app/shell/layout/shell_page_transition.dart';
+import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_shell_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
@@ -48,9 +49,11 @@ class AppShell extends StatelessWidget {
                       child: ShellPageTransition(
                         pageKey: pageKey,
                         child: child,
-                        builder: (context, pageContent) {
+                        builder: (context, pageContent, activePageKey) {
                           final framed = _buildFrame(pageContent);
-                          if (fillViewport) {
+                          final effectiveFillViewport =
+                              fillViewport || ShellNavConfig.isDesignSystemLocation(activePageKey.toString());
+                          if (effectiveFillViewport) {
                             return framed;
                           }
                           return SingleChildScrollView(primary: true, child: framed);
