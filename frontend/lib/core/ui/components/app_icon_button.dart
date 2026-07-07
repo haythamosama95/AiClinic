@@ -39,11 +39,7 @@ class _AppIconButtonState extends State<AppIconButton> {
   bool _pressed = false;
   bool _focused = false;
 
-  double get _dimension => switch (widget.size) {
-    AppIconButtonSize.sm => 28,
-    AppIconButtonSize.md => 32,
-    AppIconButtonSize.lg => 40,
-  };
+  double get _dimension => widget.size.dimension;
 
   double get _iconSize => widget.size == AppIconButtonSize.lg ? 20 : 16;
 
@@ -185,3 +181,11 @@ class _IconButtonStyle {
 enum AppIconButtonVariant { ghost, secondary, danger, ai }
 
 enum AppIconButtonSize { sm, md, lg }
+
+extension AppIconButtonSizeDimension on AppIconButtonSize {
+  double get dimension => switch (this) {
+    AppIconButtonSize.sm => 28,
+    AppIconButtonSize.md => 32,
+    AppIconButtonSize.lg => 40,
+  };
+}

@@ -549,6 +549,92 @@ static TextStyle _baseTextStyle(BuildContext context) {
 
 ---
 
+## 23. `No Material widget found` (`AppBreadcrumb` / `InkWell`)
+
+**Symptom:** Red screen in Dev → Components → Navigation → Breadcrumb (and TopBar with breadcrumb `pageContext`). Ancestor chain shows `InkWell` → `MouseRegion` → `_BreadcrumbSegment` → `AppBreadcrumb` → `ShowcaseDemo` / `DecoratedBox`, with no `Material` in between.
+
+**Cause:** Link segments use `InkWell` for tap targets, but `ShowcaseDemo` is only a `DecoratedBox` — not a `Scaffold` or `Material` surface. `InkWell` requires a `Material` ancestor for ink splashes even when hover color is driven separately via `MouseRegion`.
+
+**Fix:** Wrap each link `InkWell` in a transparent `Material` shell (same pattern as `AppBranchSwitcher`, `AppUserMenu`):
+
+```dart
+Material(
+  color: Colors.transparent,
+  child: InkWell(
+    onTap: item.onTap,
+    borderRadius: BorderRadius.circular(AppRadius.sm),
+    child: label,
+  ),
+)
+```
+
+**Affected files (fixed):** `app_breadcrumb.dart`.
+
+---
+
+## 24. `RenderFlex` overflow (`AppTopBar` toolbar `Row`)
+
+**Symptom:** Yellow/black overflow stripe on the right side of the top bar showcase (or live shell) — "overflowed by N pixels on the right" at `app_top_bar.dart` toolbar `Row`.
+
+**Cause:** The toolbar `Row` (`mainAxisSize: min`) sits inside an `Expanded` + `Align(centerEnd)`. Its intrinsic width (branch switcher + icon buttons + user menu) can exceed the flex slot when the center search field and left `pageContext` consume most of the bar width. `Align` does not clip; the `Row` paints past its max width.
+
+**Fix:** Wrap the toolbar `Row` in a horizontal `SingleChildScrollView` with `reverse: true` so actions stay end-aligned and can scroll when space is tight:
+
+```dart
+SingleChildScrollView(
+  scrollDirection: Axis.horizontal,
+  reverse: true,
+  clipBehavior: Clip.hardEdge,
+  child: Row(mainAxisSize: MainAxisSize.min, children: [...]),
+)
+```
+
+**Affected files (fixed):** `app_top_bar.dart`.
+
+---
+
+## 25. Vertical tabs hover flashes two colors (`AppTabs` vertical)
+
+**Symptom:** In Dev → Components → Navigation → Tabs → Vertical, hovering a tab flickers between two background colors instead of a smooth hover.
+
+**Cause:** Vertical tab buttons used `MouseRegion` + `setState` to drive an `AnimatedContainer` background (`surfaceHover` vs `surfaceSelected`). Rebuilding on hover can fight the pointer hit target, and animating the decoration while also toggling text color produces a visible two-tone flash. Selected tabs could also pick up `InkWell`-style hover if layered incorrectly.
+
+**Fix:** Match `AppSidebar` nav items — `Material` + `InkWell(hoverColor:)` for background hover (disabled when selected), `MouseRegion` only for text color (`textPrimary` on hover), and `appInputFocusRingColor` for focus. Do not animate vertical tab backgrounds with `AnimatedContainer`.
+
+```dart
+Material(
+  color: selected ? colors.surfaceSelected : Colors.transparent,
+  child: InkWell(
+    hoverColor: selected ? Colors.transparent : colors.surfaceHover,
+    child: ...,
+  ),
+)
+```
+
+**Affected files (fixed):** `app_tabs.dart`.
+
+---
+
+## 26. Context menu opens far from click target (`AppContextMenu`)
+
+**Symptom:** In Dev → Components → Navigation → Context menu, right-clicking the dashed target opens the menu offset from the cursor — often by the width of the app sidebar or shell chrome.
+
+**Cause:** `_openAt` stored `localToGlobal` screen coordinates and placed the overlay `CompositedTransformTarget` with `Positioned(left:, top:)` using those globals directly. `Overlay` `Stack` children use coordinates relative to the overlay origin, not the screen, so any shell offset (sidebar, padding) shifts the menu away from the click.
+
+**Fix:** Anchor with `event.position` / `LongPressStartDetails.globalPosition`, then convert to overlay-local space before `Positioned`:
+
+```dart
+final overlayBox = Overlay.of(overlayContext).context.findRenderObject() as RenderBox?;
+final anchor = overlayBox!.globalToLocal(globalPosition);
+Positioned(left: anchor.dx, top: anchor.dy, child: menu);
+```
+
+Drop the redundant `CompositedTransformTarget` / `CompositedTransformFollower` pair for cursor-anchored menus. Wrap the `Positioned` child in `IntrinsicWidth` so `_AppMenuList`'s `Column(crossAxisAlignment: stretch)` receives bounded width — bare `Positioned` in an overlay `Stack` passes infinite max width.
+
+**Affected files (fixed):** `app_menu.dart`.
+
+---
+
 ## Checklist for new input components
 
 1. Does it use `TextField`, `Slider`, `InkWell`, or `DropdownButton`? → Add `appWrapMaterialInput`.
@@ -572,5 +658,12 @@ static TextStyle _baseTextStyle(BuildContext context) {
 7. `AppDataTable` header/body alignment? → Use a **single** `Table` for header + rows inside one horizontal scroll; never split into two `Table`s with independent `IntrinsicColumnWidth` (see entry #20). Stretch with `LayoutBuilder` + `ConstrainedBox(minWidth: constraints.maxWidth)` and `FlexColumnWidth(1)` for fluid columns.
 8. Pill / chip / badge that should hug content? → Wrap in `UnconstrainedBox(constrainedAxis: Axis.vertical)`; never use height-only `SizedBox` inside a width-bounded parent (see entry #21).
 9. `AppMoneyDisplay` typography? → Anchor on `AppTypography.body` for font family/metrics; only adopt parent `DefaultTextStyle` size/weight when it intentionally differs from theme `bodyMedium` **and** parent font size is ≤ body (never inherit heading/display sizes). Do not put it inside a `WidgetSpan` — use a `Row` or explicit `DefaultTextStyle` wrapper instead (see entry #22).
+
+## Checklist for new navigation components
+
+1. `InkWell` outside `Scaffold` / overlay (e.g. inside `ShowcaseDemo`)? → Wrap in `Material(color: Colors.transparent)` — `MaterialApp` alone does not provide Material to arbitrary descendants (see entry #23).
+2. Fixed-width toolbar/actions `Row` inside `Expanded`? → Use horizontal `SingleChildScrollView(reverse: true)` so the row can scroll instead of overflowing (see entry #24).
+3. Vertical tab / nav list item hover? → `Material` + `InkWell(hoverColor:)` for background; `MouseRegion` only for label color — never `AnimatedContainer` + `setState` background swap (see entry #25).
+4. Cursor-anchored overlay (`AppContextMenu`)? → Use `event.position` and `overlayBox.globalToLocal` for `Positioned` in `OverlayEntry`; screen globals are wrong (see entry #26). Wrap the menu in `IntrinsicWidth` so stretch `Column` children get bounded width.
 
 ---

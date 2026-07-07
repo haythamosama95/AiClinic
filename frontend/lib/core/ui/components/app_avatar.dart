@@ -14,6 +14,7 @@ class AppAvatar extends StatelessWidget {
   const AppAvatar({
     required this.name,
     this.size = AvatarSize.md,
+    this.dimension,
     this.status = AvatarStatus.offline,
     this.showStatus = false,
     this.src,
@@ -22,6 +23,9 @@ class AppAvatar extends StatelessWidget {
 
   final String name;
   final AvatarSize size;
+
+  /// When set, overrides the pixel size from [size] so the avatar can fill a parent.
+  final double? dimension;
   final AvatarStatus status;
   final bool showStatus;
   final String? src;
@@ -45,7 +49,8 @@ class AppAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final dimension = _sizes[size]!;
+    final resolvedDimension = dimension ?? _sizes[size]!;
+    final resolvedSize = dimension != null ? _nearestSizeFor(resolvedDimension) : size;
     final initials = _initials(name);
     final surface = _initialsSurface(context, name);
 
@@ -59,31 +64,31 @@ class AppAvatar extends StatelessWidget {
         child: ClipOval(
           child: Image.network(
             src!,
-            width: dimension,
-            height: dimension,
+            width: resolvedDimension,
+            height: resolvedDimension,
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) =>
-                _InitialsAvatar(size: size, dimension: dimension, initials: initials, surface: surface),
+                _InitialsAvatar(size: resolvedSize, dimension: resolvedDimension, initials: initials, surface: surface),
           ),
         ),
       );
     } else {
-      avatar = _InitialsAvatar(size: size, dimension: dimension, initials: initials, surface: surface);
+      avatar = _InitialsAvatar(size: resolvedSize, dimension: resolvedDimension, initials: initials, surface: surface);
     }
 
     if (!showStatus) {
       return Semantics(image: true, label: name, child: avatar);
     }
 
-    final statusSpec = _statusSpec(size);
+    final statusSpec = _statusSpec(resolvedSize);
     final statusColor = _statusColor(colors, status, Theme.of(context).brightness);
 
     return Semantics(
       image: true,
       label: name,
       child: SizedBox(
-        width: dimension,
-        height: dimension,
+        width: resolvedDimension,
+        height: resolvedDimension,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -107,6 +112,19 @@ class AppAvatar extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static AvatarSize _nearestSizeFor(double dimension) {
+    var nearest = AvatarSize.sm;
+    var smallestDiff = double.infinity;
+    for (final entry in _sizes.entries) {
+      final diff = (entry.value - dimension).abs();
+      if (diff < smallestDiff) {
+        smallestDiff = diff;
+        nearest = entry.key;
+      }
+    }
+    return nearest;
   }
 
   static String _initials(String name) {

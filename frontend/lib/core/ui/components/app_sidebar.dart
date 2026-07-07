@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:ai_clinic/app/shell/navigation/shell_nav_model.dart';
 import 'package:ai_clinic/core/ui/components/app_badge.dart';
 import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
+import 'package:ai_clinic/core/ui/components/app_nav_models.dart';
 import 'package:ai_clinic/core/ui/components/app_signal.dart';
 import 'package:ai_clinic/core/ui/components/app_tooltip.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
@@ -12,23 +12,23 @@ import 'package:ai_clinic/core/ui/theme/app_shell_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
-/// Primary app navigation sidebar (`04-components` C1, web `AppSidebar`).
+/// Primary app navigation sidebar (web `AppSidebar`).
 class AppSidebar extends StatefulWidget {
   const AppSidebar({
-    required this.groups,
-    required this.footerItems,
+    required this.items,
     required this.activeId,
     required this.onNavigate,
     required this.collapsed,
     required this.onToggleCollapsed,
     required this.org,
     required this.branch,
+    this.footerItems = const [],
     super.key,
   });
 
-  final List<ShellNavGroup> groups;
-  final List<ShellNavItem> footerItems;
-  final String? activeId;
+  final List<AppNavGroup> items;
+  final List<AppNavItem> footerItems;
+  final String activeId;
   final ValueChanged<String> onNavigate;
   final bool collapsed;
   final VoidCallback onToggleCollapsed;
@@ -45,27 +45,32 @@ class _AppSidebarState extends State<AppSidebar> {
   @override
   void dispose() {
     for (final node in _focusNodes.values) {
-      node.dispose();
+      node
+        ..onKeyEvent = null
+        ..dispose();
     }
     super.dispose();
   }
 
-  FocusNode _nodeFor(String id) => _focusNodes.putIfAbsent(id, FocusNode.new);
+  List<String> get _navIds => [
+        for (final group in widget.items) ...group.items.map((item) => item.id),
+        ...widget.footerItems.map((item) => item.id),
+      ];
 
-  KeyEventResult _handleNavKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) {
-      return KeyEventResult.ignored;
-    }
+  FocusNode _nodeFor(String id) {
+    return _focusNodes.putIfAbsent(id, () {
+      final node = FocusNode();
+      node.onKeyEvent = (node, event) => _handleNavKey(id, event);
+      return node;
+    });
+  }
 
-    final ids = [
-      for (final group in widget.groups) ...group.items.map((i) => i.id),
-      ...widget.footerItems.map((i) => i.id),
-    ];
+  KeyEventResult _handleNavKey(String currentId, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
-    final currentIndex = ids.indexOf(widget.activeId ?? '');
-    if (currentIndex < 0) {
-      return KeyEventResult.ignored;
-    }
+    final ids = _navIds;
+    final currentIndex = ids.indexOf(currentId);
+    if (currentIndex < 0) return KeyEventResult.ignored;
 
     int? nextIndex;
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
@@ -78,9 +83,7 @@ class _AppSidebarState extends State<AppSidebar> {
       nextIndex = ids.length - 1;
     }
 
-    if (nextIndex == null) {
-      return KeyEventResult.ignored;
-    }
+    if (nextIndex == null) return KeyEventResult.ignored;
 
     final nextId = ids[nextIndex];
     widget.onNavigate(nextId);
@@ -93,70 +96,78 @@ class _AppSidebarState extends State<AppSidebar> {
     final colors = context.appColors;
     final width = widget.collapsed ? AppShellTokens.sidebarCollapsedWidth : AppShellTokens.sidebarExpandedWidth;
 
-    return AnimatedContainer(
-      duration: AppShellTokens.collapseDuration,
-      width: width,
-      decoration: BoxDecoration(
+    return Semantics(
+      label: 'Main navigation',
+      container: true,
+      child: Material(
         color: colors.surfaceDefault,
-        border: BorderDirectional(end: BorderSide(color: colors.borderSubtle)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _SidebarHeader(
-            org: widget.org,
-            branch: widget.branch,
-            collapsed: widget.collapsed,
-            onToggleCollapsed: widget.onToggleCollapsed,
+        child: AnimatedContainer(
+          duration: AppShellTokens.collapseDuration,
+          width: width,
+          decoration: BoxDecoration(
+            border: BorderDirectional(end: BorderSide(color: colors.borderSubtle)),
           ),
-          Expanded(
-            child: Focus(
-              onKeyEvent: _handleNavKey,
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space3),
-                children: [
-                  for (final group in widget.groups) ...[
-                    if (group.label != null && !widget.collapsed)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(AppSpacing.space2, 0, AppSpacing.space2, AppSpacing.space1),
-                        child: Text(group.label!.toUpperCase(), style: AppTypography.overline(context)),
-                      ),
-                    for (final item in group.items)
-                      _SidebarNavItem(
-                        item: item,
-                        active: widget.activeId == item.id,
-                        collapsed: widget.collapsed,
-                        focusNode: _nodeFor(item.id),
-                        onNavigate: widget.onNavigate,
-                      ),
-                    const SizedBox(height: AppSpacing.space4),
-                  ],
-                ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SidebarHeader(
+                org: widget.org,
+                branch: widget.branch,
+                collapsed: widget.collapsed,
+                onToggleCollapsed: widget.onToggleCollapsed,
               ),
-            ),
-          ),
-          if (widget.footerItems.isNotEmpty)
-            DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.borderSubtle)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space3),
-                child: Column(
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space3),
                   children: [
-                    for (final item in widget.footerItems)
-                      _SidebarNavItem(
-                        item: item,
-                        active: widget.activeId == item.id,
-                        collapsed: widget.collapsed,
-                        focusNode: _nodeFor(item.id),
-                        onNavigate: widget.onNavigate,
-                      ),
+                    for (final group in widget.items) ...[
+                      if (group.label != null && !widget.collapsed)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.space2,
+                            0,
+                            AppSpacing.space2,
+                            AppSpacing.space1,
+                          ),
+                          child: Text(group.label!, style: AppTypography.overline(context)),
+                        ),
+                      for (final item in group.items)
+                        _SidebarNavItem(
+                          item: item,
+                          active: widget.activeId == item.id,
+                          collapsed: widget.collapsed,
+                          focusNode: _nodeFor(item.id),
+                          onNavigate: widget.onNavigate,
+                        ),
+                      const SizedBox(height: AppSpacing.space4),
+                    ],
                   ],
                 ),
               ),
-            ),
-        ],
+              if (widget.footerItems.isNotEmpty)
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: colors.borderSubtle)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space3),
+                    child: Column(
+                      children: [
+                        for (final item in widget.footerItems)
+                          _SidebarNavItem(
+                            item: item,
+                            active: widget.activeId == item.id,
+                            collapsed: widget.collapsed,
+                            focusNode: _nodeFor(item.id),
+                            onNavigate: widget.onNavigate,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -207,7 +218,10 @@ class _SidebarHeader extends StatelessWidget {
                   ),
                 ),
               AppIconButton(
-                icon: Icon(collapsed ? Icons.read_more_outlined : Icons.menu_open_outlined, size: 16),
+                icon: Icon(
+                  collapsed ? Icons.read_more_outlined : Icons.menu_open_outlined,
+                  size: 16,
+                ),
                 label: collapsed ? 'Expand sidebar' : 'Collapse sidebar',
                 size: AppIconButtonSize.sm,
                 onPressed: onToggleCollapsed,
@@ -229,10 +243,9 @@ class _SidebarNavItem extends StatelessWidget {
     required this.onNavigate,
   });
 
-  /// Minimum row width for icon + leading gap + trailing gap (label uses remaining space).
   static const _minExpandedRowWidth = AppSpacing.space1 + 20 + AppSpacing.space3;
 
-  final ShellNavItem item;
+  final AppNavItem item;
   final bool active;
   final bool collapsed;
   final FocusNode focusNode;
@@ -276,9 +289,7 @@ class _SidebarNavItem extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             if (iconOnly)
-                              Expanded(
-                                child: Center(child: Icon(item.icon, size: 20, color: foreground)),
-                              )
+                              Expanded(child: Center(child: Icon(item.icon, size: 20, color: foreground)))
                             else ...[
                               const SizedBox(width: AppSpacing.space1),
                               Icon(item.icon, size: 20, color: foreground),
@@ -291,7 +302,13 @@ class _SidebarNavItem extends StatelessWidget {
                                   style: AppTypography.body(context).copyWith(color: foreground),
                                 ),
                               ),
-                              if (item.count != null) AppBadge(label: '${item.count}'),
+                              if (item.count != null)
+                                AppBadge(
+                                  label: '${item.count}',
+                                  color: BadgeColor.neutral,
+                                  variant: BadgeVariant.soft,
+                                  size: BadgeSize.sm,
+                                ),
                             ],
                           ],
                         ),
@@ -303,10 +320,15 @@ class _SidebarNavItem extends StatelessWidget {
             ),
           );
 
-          final focused = Focus(focusNode: focusNode, child: button);
+          final focused = Semantics(
+            button: true,
+            label: item.label,
+            selected: active,
+            child: Focus(focusNode: focusNode, child: button),
+          );
 
           if (iconOnly) {
-            return AppTooltip(message: item.label, child: focused);
+            return AppTooltip(message: item.label, side: TooltipSide.right, child: focused);
           }
 
           return focused;

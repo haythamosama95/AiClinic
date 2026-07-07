@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/ui/components/app_command_bar.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/components_content.dart';
+import 'package:ai_clinic/features/design_system/presentation/providers/command_bar_controller.dart';
 import 'package:ai_clinic/features/design_system/presentation/widgets/dev_text_styles.dart';
 
 /// Components tab with a loading screen while showcase sections are built.
@@ -64,14 +68,47 @@ class _ComponentsTabSectionState extends State<ComponentsTabSection> {
       child: Localizations.override(
         context: context,
         locale: Locale(widget.locale),
-        child: _contentReady
-            ? content
-            : Stack(
-                children: [
-                  Offstage(child: content),
-                  const SizedBox(width: double.infinity, height: 420, child: _ComponentsLoadingView()),
-                ],
+        child: Consumer(
+          builder: (context, ref, _) {
+            final commandBarOpen = ref.watch(commandBarProvider).open;
+
+            return Shortcuts(
+              shortcuts: const {
+                SingleActivator(LogicalKeyboardKey.keyK, meta: true): _ToggleCommandBarIntent(),
+                SingleActivator(LogicalKeyboardKey.keyK, control: true): _ToggleCommandBarIntent(),
+              },
+              child: Actions(
+                actions: {
+                  _ToggleCommandBarIntent: CallbackAction<_ToggleCommandBarIntent>(
+                    onInvoke: (_) {
+                      ref.read(commandBarProvider.notifier).toggleCommandBar();
+                      return null;
+                    },
+                  ),
+                },
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _contentReady
+                        ? content
+                        : Stack(
+                            children: [
+                              Offstage(child: content),
+                              const SizedBox(
+                                width: double.infinity,
+                                height: 420,
+                                child: _ComponentsLoadingView(),
+                              ),
+                            ],
+                          ),
+                    if (commandBarOpen)
+                      AppCommandBar(items: kDefaultCommandItems(onNavigate: (_) {})),
+                  ],
+                ),
               ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -118,6 +155,10 @@ class _ComponentsIntro extends StatelessWidget {
       ],
     );
   }
+}
+
+final class _ToggleCommandBarIntent extends Intent {
+  const _ToggleCommandBarIntent();
 }
 
 class _ComponentsLoadingView extends StatelessWidget {

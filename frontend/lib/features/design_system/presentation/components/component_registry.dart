@@ -312,66 +312,56 @@ const componentSections = <ShowcaseSectionDef>[
     status: ShowcaseSectionStatus.ready,
   ),
 
-  // Navigation (placeholder)
+  // Navigation (Phase 1 ready; Phase 2 placeholder)
   ShowcaseSectionDef(
     id: 'breadcrumb',
     title: 'Breadcrumb',
     group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
-  ShowcaseSectionDef(
-    id: 'tabs',
-    title: 'Tabs',
-    group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
-  ),
-  ShowcaseSectionDef(
-    id: 'menu',
-    title: 'Menu',
-    group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
-  ),
+  ShowcaseSectionDef(id: 'tabs', title: 'Tabs', group: ShowcaseGroupId.navigation, status: ShowcaseSectionStatus.ready),
+  ShowcaseSectionDef(id: 'menu', title: 'Menu', group: ShowcaseGroupId.navigation, status: ShowcaseSectionStatus.ready),
   ShowcaseSectionDef(
     id: 'pagination',
     title: 'Pagination',
     group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'stepper',
     title: 'Stepper',
     group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'app-sidebar',
     title: 'App sidebar',
     group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'app-topbar',
     title: 'App top bar',
     group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'command-bar',
     title: 'Command bar',
     group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'branch-switcher',
     title: 'Branch switcher',
     group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'user-menu',
     title: 'User menu',
     group: ShowcaseGroupId.navigation,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
 
   // Feedback & overlays (placeholder)
@@ -467,7 +457,7 @@ const componentSections = <ShowcaseSectionDef>[
     id: 'app-shell',
     title: 'App shell',
     group: ShowcaseGroupId.layout,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'page-header',

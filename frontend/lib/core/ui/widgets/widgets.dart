@@ -52,6 +52,20 @@ export 'package:ai_clinic/core/ui/components/app_calendar.dart';
 export 'package:ai_clinic/core/ui/components/app_scroll_area.dart';
 export 'package:ai_clinic/core/ui/components/app_resizable_panels.dart';
 
+// Navigation
+export 'package:ai_clinic/core/ui/components/app_nav_models.dart';
+export 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
+export 'package:ai_clinic/core/ui/components/app_tabs.dart';
+export 'package:ai_clinic/core/ui/components/app_menu.dart';
+export 'package:ai_clinic/core/ui/components/app_pagination.dart';
+export 'package:ai_clinic/core/ui/components/app_stepper.dart';
+export 'package:ai_clinic/core/ui/components/app_sidebar.dart';
+export 'package:ai_clinic/core/ui/components/app_branch_switcher.dart';
+export 'package:ai_clinic/core/ui/components/app_user_menu.dart';
+export 'package:ai_clinic/core/ui/components/app_command_bar.dart';
+export 'package:ai_clinic/core/ui/components/app_top_bar.dart';
+export 'package:ai_clinic/features/design_system/presentation/providers/command_bar_controller.dart';
+
 // Motion
 export 'package:ai_clinic/core/ui/motion/app_motion.dart';
 

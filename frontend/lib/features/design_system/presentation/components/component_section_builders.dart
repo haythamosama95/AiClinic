@@ -42,6 +42,18 @@ import 'package:ai_clinic/features/design_system/presentation/components/display
 import 'package:ai_clinic/features/design_system/presentation/components/display/scroll_area_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/display/skeleton_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/display/tooltip_showcase_section.dart';
+// Navigation
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/breadcrumb_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/menu_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/pagination_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/stepper_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/tabs_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/branch_switcher_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/command_bar_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/sidebar_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/top_bar_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/navigation/user_menu_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/layout/app_shell_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/component_registry.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/showcase_primitives.dart';
 
@@ -94,6 +106,19 @@ final Map<String, ComponentSectionBuilder> componentSectionBuilders = {
   'entity-cards': () => const EntityCardsShowcaseSection(),
   'scroll-area': () => const ScrollAreaShowcaseSection(),
   'resizable-panels': () => const ResizablePanelsShowcaseSection(),
+  // Navigation (Phase 1)
+  'breadcrumb': () => const BreadcrumbShowcaseSection(),
+  'tabs': () => const TabsShowcaseSection(),
+  'menu': () => const MenuShowcaseSection(),
+  'pagination': () => const PaginationShowcaseSection(),
+  'stepper': () => const StepperShowcaseSection(),
+  // Navigation (Phase 2)
+  'app-sidebar': () => const SidebarShowcaseSection(),
+  'branch-switcher': () => const BranchSwitcherShowcaseSection(),
+  'user-menu': () => const UserMenuShowcaseSection(),
+  'command-bar': () => const CommandBarShowcaseSection(),
+  'app-topbar': () => const TopBarShowcaseSection(),
+  'app-shell': () => const AppShellShowcaseSection(),
 };
 
 /// Builds a section widget from registry metadata.
