@@ -4,9 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/core/ui/components/app_alert.dart';
 import 'package:ai_clinic/core/ui/components/app_brand_mark.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
@@ -23,6 +21,7 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/app/presentation/placeholder_page.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
+import 'package:ai_clinic/features/auth/presentation/dev/auth_dev_widgets.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 
 const _lgBreakpoint = 960.0;
@@ -89,6 +88,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
   late final TextEditingController _usernameController;
   late final TextEditingController _passwordController;
   late final FocusNode _passwordFocusNode;
+  late final AuthNotifier _authNotifier;
   final _submitFocusNode = FocusNode();
 
   var _enterStarted = false;
@@ -96,6 +96,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
+    _authNotifier = ref.read(authNotifierProvider.notifier);
     _enterController = AnimationController(vsync: this, duration: AppMotion.resolveDuration(AppMotionPreset.modal));
     _usernameController = TextEditingController();
     _passwordController = TextEditingController();
@@ -116,7 +117,8 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
 
   @override
   void dispose() {
-    ref.read(authNotifierProvider.notifier).resetSignInForm();
+    final authNotifier = _authNotifier;
+    Future(() => authNotifier.resetSignInForm());
     _enterController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
@@ -143,6 +145,16 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
         .signIn(username: _usernameController.text, password: _passwordController.text);
   }
 
+  void _devLoginAsAdmin() {
+    _usernameController.text = AuthDevBootstrapCredentials.username;
+    _passwordController.text = AuthDevBootstrapCredentials.password;
+    _submit();
+  }
+
+  void _showForgotPasswordMessage() {
+    ref.read(authNotifierProvider.notifier).showForgotPasswordMessage();
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
@@ -162,24 +174,42 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.space4),
-              child: Center(
-                child: FocusScope(
-                  child: AppMotion.animatedPreset(
-                    context: context,
-                    preset: AppMotionPreset.modal,
-                    animation: _enterController,
-                    child: _LoginPanel(
-                      authState: authState,
-                      usernameController: _usernameController,
-                      passwordController: _passwordController,
-                      passwordFocusNode: _passwordFocusNode,
-                      submitFocusNode: _submitFocusNode,
-                      onFieldChanged: _clearError,
-                      onForgotPassword: () => context.go(AppRoutes.forgotPassword),
-                      onSubmit: _submit,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      child: Center(
+                        child: FocusScope(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AppMotion.animatedPreset(
+                                context: context,
+                                preset: AppMotionPreset.modal,
+                                animation: _enterController,
+                                child: _LoginPanel(
+                                  authState: authState,
+                                  usernameController: _usernameController,
+                                  passwordController: _passwordController,
+                                  passwordFocusNode: _passwordFocusNode,
+                                  submitFocusNode: _submitFocusNode,
+                                  onFieldChanged: _clearError,
+                                  onForgotPassword: _showForgotPasswordMessage,
+                                  onSubmit: _submit,
+                                ),
+                              ),
+                              AuthDevWidgets.panel(
+                                onLoginAsAdmin: _devLoginAsAdmin,
+                                isSubmitting: authState.isSubmitting,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
             ),
           ),
@@ -356,7 +386,10 @@ class _LoginFormColumn extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.space6),
         if (authState.errorMessage != null) ...[
-          AppAlert(variant: AppAlertVariant.danger, title: authState.errorMessage!),
+          AppAlert(
+            variant: authState.isInfoMessage ? AppAlertVariant.info : AppAlertVariant.danger,
+            title: authState.errorMessage!,
+          ),
           const SizedBox(height: AppSpacing.space6),
         ],
         FocusTraversalGroup(

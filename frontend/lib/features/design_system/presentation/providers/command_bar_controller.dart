@@ -4,22 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Command bar open state and trigger registration (web `CommandBarProvider`).
 @immutable
 class CommandBarState {
-  const CommandBarState({
-    this.open = false,
-    this.aiMode = false,
-    this.triggerKey,
-  });
+  const CommandBarState({this.open = false, this.aiMode = false, this.triggerKey});
 
   final bool open;
   final bool aiMode;
   final GlobalKey? triggerKey;
 
-  CommandBarState copyWith({
-    bool? open,
-    bool? aiMode,
-    GlobalKey? triggerKey,
-    bool clearTriggerKey = false,
-  }) {
+  CommandBarState copyWith({bool? open, bool? aiMode, GlobalKey? triggerKey, bool clearTriggerKey = false}) {
     return CommandBarState(
       open: open ?? this.open,
       aiMode: aiMode ?? this.aiMode,
@@ -40,11 +31,15 @@ class CommandBarController extends Notifier<CommandBarState> {
 
   void setAiMode(bool value) => state = state.copyWith(aiMode: value);
 
-  void registerTrigger(GlobalKey? key) {
-    if (key == null) {
+  void registerTrigger(GlobalKey key) {
+    state = state.copyWith(triggerKey: key);
+  }
+
+  /// Clears the registered trigger only when [key] is still the active one.
+  /// Safe to call from widget `dispose` via `Future(() => ...)`.
+  void unregisterTriggerIfCurrent(GlobalKey key) {
+    if (state.triggerKey == key) {
       state = state.copyWith(clearTriggerKey: true);
-    } else {
-      state = state.copyWith(triggerKey: key);
     }
   }
 
@@ -56,6 +51,4 @@ class CommandBarController extends Notifier<CommandBarState> {
   }
 }
 
-final commandBarProvider = NotifierProvider<CommandBarController, CommandBarState>(
-  CommandBarController.new,
-);
+final commandBarProvider = NotifierProvider<CommandBarController, CommandBarState>(CommandBarController.new);

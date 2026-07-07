@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/branch_selection_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
@@ -77,7 +78,14 @@ class AuthenticatedShell extends ConsumerWidget {
             currentBranchId: chrome.currentBranchId,
             onBranchChange: (branchId) => ref.read(branchSelectionProvider.notifier).selectBranch(branchId),
             user: chrome.user,
-            onSignOut: auth.isAuthenticated ? () => ref.read(authSessionProvider.notifier).signOut() : null,
+            onSignOut: auth.isAuthenticated
+                ? () async {
+                    await ref.read(authSessionProvider.notifier).signOut();
+                    if (context.mounted) {
+                      context.go(AppRoutes.login);
+                    }
+                  }
+                : null,
           ),
           child: child,
         ),

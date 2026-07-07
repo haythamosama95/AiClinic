@@ -59,7 +59,9 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
 
   @override
   void dispose() {
-    _commandBarController.registerTrigger(null);
+    final triggerKey = _triggerKey;
+    final controller = _commandBarController;
+    Future(() => controller.unregisterTriggerIfCurrent(triggerKey));
     super.dispose();
   }
 

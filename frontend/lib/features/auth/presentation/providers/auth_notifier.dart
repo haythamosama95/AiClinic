@@ -16,17 +16,22 @@ const String kSignInUnavailableMessage = 'Unable to sign in right now. Check cli
 /// Shown when startup has not finished preparing the Supabase client for sign-in.
 const String kSignInNotReadyMessage = 'Clinic services are still starting. Wait a moment and try again.';
 
+/// Shown when staff request a password reset from the login screen.
+const String kForgotPasswordMessage = 'To reset your password, contact your clinic administrator.';
+
 @immutable
 class AuthUiState {
-  const AuthUiState({this.isSubmitting = false, this.errorMessage});
+  const AuthUiState({this.isSubmitting = false, this.errorMessage, this.isInfoMessage = false});
 
   final bool isSubmitting;
   final String? errorMessage;
+  final bool isInfoMessage;
 
-  AuthUiState copyWith({bool? isSubmitting, String? errorMessage, bool clearError = false}) {
+  AuthUiState copyWith({bool? isSubmitting, String? errorMessage, bool? isInfoMessage, bool clearError = false}) {
     return AuthUiState(
       isSubmitting: isSubmitting ?? this.isSubmitting,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      isInfoMessage: clearError ? false : (isInfoMessage ?? this.isInfoMessage),
     );
   }
 }
@@ -138,6 +143,11 @@ class AuthNotifier extends Notifier<AuthUiState> {
       errorMessage:
           'Sign-in is taking longer than expected. If this continues after a backend update, sign out, restart the app, and try again.',
     );
+  }
+
+  /// Shows inline guidance when staff tap "Forgot your password?" on the login screen.
+  void showForgotPasswordMessage() {
+    state = state.copyWith(errorMessage: kForgotPasswordMessage, isInfoMessage: true);
   }
 
   /// Clears a displayed sign-in error without affecting an in-flight submission.

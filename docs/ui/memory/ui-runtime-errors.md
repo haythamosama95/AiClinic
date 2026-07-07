@@ -731,32 +731,33 @@ return LayoutBuilder(
 
 ---
 
-## 29. `StateError` — unsafe `ref` in `dispose` (`AppTopBar`)
+## 29. Provider write in `dispose` (`AppTopBar` / `CommandBarController`)
 
-**Symptom:** Red screen / console exception when auth redirects unmount the shell (e.g. hot restart, sign-out) — "Bad state: Using `ref` when a widget is about to or has been unmounted is unsafe" at `_AppTopBarState.dispose`.
+**Symptom:** Console exception when auth redirects unmount the shell (e.g. login → home, hot restart, sign-out). Either "Bad state: Using `ref` when a widget is about to or has been unmounted is unsafe" or "Tried to modify a provider while the widget tree was building" at `_AppTopBarState.dispose` → `CommandBarController.registerTrigger`.
 
-**Cause:** `dispose()` called `ref.read(commandBarProvider.notifier)` to clear the command-bar trigger key. Riverpod forbids `ref` once the `ConsumerState` element is deactivated because `ref` depends on `BuildContext`.
+**Cause:** `dispose()` cleared the command-bar trigger by writing provider state. Riverpod forbids both `ref` after deactivation and **any** provider mutation during widget lifecycle finalization (`dispose` runs while `finalizeTree` is in progress).
 
-**Fix:** Cache the notifier in a `late final` field during `initState` and call it from `dispose` instead of `ref.read`:
+**Fix:** Cache the notifier in `initState` (never `ref.read` in `dispose`). Defer the unregister with `Future(() => …)` and only clear when the disposing widget still owns the trigger — avoids wiping a newly mounted `AppTopBar` during login → home transitions:
 
 ```dart
-late final CommandBarController _commandBarController;
-
-@override
-void initState() {
-  super.initState();
-  _commandBarController = ref.read(commandBarProvider.notifier);
-  // ...
+// command_bar_controller.dart
+void unregisterTriggerIfCurrent(GlobalKey key) {
+  if (state.triggerKey == key) {
+    state = state.copyWith(clearTriggerKey: true);
+  }
 }
 
+// app_top_bar.dart
 @override
 void dispose() {
-  _commandBarController.registerTrigger(null);
+  final triggerKey = _triggerKey;
+  final controller = _commandBarController;
+  Future(() => controller.unregisterTriggerIfCurrent(triggerKey));
   super.dispose();
 }
 ```
 
-**Affected files (fixed):** `app_top_bar.dart`.
+**Affected files (fixed):** `app_top_bar.dart`, `command_bar_controller.dart`.
 
 ---
 
@@ -781,7 +782,65 @@ Also guard `DesignSystemPage` with `LayoutBuilder`: use `Expanded` only when `co
 
 ## Checklist for new shell / Riverpod lifecycle
 
-1. Provider cleanup in `dispose()`? → Save the notifier/controller in a field during `initState`; never call `ref.read` / `ref.watch` in `dispose` (see entry #29).
+1. Provider cleanup in `dispose()`? → Save the notifier in `initState`; never `ref.read` in `dispose`; defer writes with `Future(() => …)` and guard by identity when another widget may have re-registered (see entry #29).
 2. Page uses `Expanded` / viewport-fill layout? → Ensure `AppShell` `fillViewport` (or `effectiveFillViewport` during transitions) stays true while that page is **visible**, not only after navigation completes (see entry #30).
+
+---
+
+## 31. `RenderFlex` overflow (`LoginPage` modal + dev panel)
+
+**Symptom:** Yellow/black overflow stripe on app start in debug — "overflowed by 36 pixels on the bottom" at `login_page.dart` root `Column` (line ~176). Constraints show a tight SafeArea height (e.g. `h=688`) with a large login panel (~648px) plus the debug `AuthDevWidgets.panel` (~76px) beneath it.
+
+**Cause:** The centered `Column` stacks `_LoginPanel` (capped at `min(screenHeight * 0.9, 680)`) and the debug-only dev-login shortcuts. On short viewports or when SafeArea/padding reduce available height, the combined intrinsic height exceeds the bounded `Column` parent. The panel height math does not reserve space for the dev footer.
+
+**Fix:** Wrap the centered column in `LayoutBuilder` + `SingleChildScrollView` + `ConstrainedBox(minHeight: constraints.maxHeight)` so content stays vertically centered when it fits and scrolls when the login panel plus dev panel exceed the viewport:
+
+```dart
+LayoutBuilder(
+  builder: (context, constraints) {
+    return SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [...]),
+        ),
+      ),
+    );
+  },
+)
+```
+
+**Affected files (fixed):** `login_page.dart`.
+
+---
+
+## 32. Provider write in `dispose` (`LoginPage` / `AuthNotifier`)
+
+**Symptom:** Console exception after successful login redirect — "Bad state: Using `ref` when a widget is about to or has been unmounted is unsafe" at `_LoginPageState.dispose` when clearing sign-in UI state.
+
+**Cause:** `dispose()` called `ref.read(authNotifierProvider.notifier).resetSignInForm()`. Same Riverpod lifecycle rule as entry #29: `ref` is invalid after deactivation, and provider writes during `finalizeTree` are unsafe.
+
+**Fix:** Cache `AuthNotifier` in `initState` and defer `resetSignInForm()` with `Future(() => …)`:
+
+```dart
+late final AuthNotifier _authNotifier;
+
+@override
+void initState() {
+  super.initState();
+  _authNotifier = ref.read(authNotifierProvider.notifier);
+  // ...
+}
+
+@override
+void dispose() {
+  final authNotifier = _authNotifier;
+  Future(() => authNotifier.resetSignInForm());
+  // ...
+  super.dispose();
+}
+```
+
+**Affected files (fixed):** `login_page.dart`.
 
 ---
