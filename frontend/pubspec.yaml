@@ -93,6 +93,9 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/images/auth/testimonial_1.jpg
+    - assets/images/auth/testimonial_2.jpg
+    - assets/images/auth/testimonial_3.jpg
     - assets/images/patient_avatar_female.png
     - assets/images/patient_avatar_male.png
     - assets/dev/egyptian_medication_names.json

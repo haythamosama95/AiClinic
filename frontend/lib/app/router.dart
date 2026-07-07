@@ -14,6 +14,7 @@ import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
+import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -34,9 +35,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final notifier = ref.read(startupSessionProvider.notifier);
 
   return GoRouter(
-    initialLocation: AppRoutes.home,
+    initialLocation: AppRoutes.login,
     refreshListenable: refreshSignal,
     routes: [
+      GoRoute(path: AppRoutes.login, builder: (context, state) => const LoginPage()),
+      GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
         routes: [
@@ -51,8 +54,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.protectedPlaceholder,
             builder: (context, state) => uiPendingPlaceholder('Startup', state),
           ),
-          GoRoute(path: AppRoutes.login, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
-          GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
           GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
           GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
           GoRoute(
@@ -134,7 +135,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      if (!auth.isAuthenticated && ShellNavConfig.allowsUnauthenticatedPreview(location)) {
+      if (!auth.isAuthenticated && ShellDevNav.isEnabled && ShellNavConfig.allowsUnauthenticatedPreview(location)) {
         return null;
       }
 
@@ -168,15 +169,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       final startupRedirect = switch (session.currentView) {
-        StartupCurrentView.startupCheck => location == AppRoutes.home ? null : AppRoutes.home,
+        StartupCurrentView.startupCheck =>
+          location == AppRoutes.login || location == AppRoutes.home ? null : AppRoutes.login,
         StartupCurrentView.setupGuidance => location == AppRoutes.setupGuidance ? null : AppRoutes.setupGuidance,
         StartupCurrentView.protectedRouteBlocked =>
           location == AppRoutes.protectedBlocked ? null : AppRoutes.protectedBlocked,
         StartupCurrentView.unauthenticatedEntry => () {
-          if (!auth.isAuthenticated && location == AppRoutes.home) {
-            return null;
-          }
-
           final authRedirect = resolveAuthRedirect(location);
           if (authRedirect != null) {
             return authRedirect;
@@ -187,15 +185,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
 
           if (location == AppRoutes.startupEntry) {
-            return AppRoutes.home;
+            return AppRoutes.login;
           }
 
           if (location == AppRoutes.foundationDemo) {
             return AppRoutes.login;
           }
 
-          const preAuthShellRoutes = {AppRoutes.home, AppRoutes.login, AppRoutes.forgotPassword};
-          return preAuthShellRoutes.contains(location) ? null : AppRoutes.home;
+          const preAuthShellRoutes = {AppRoutes.login, AppRoutes.forgotPassword};
+          return preAuthShellRoutes.contains(location) ? null : AppRoutes.login;
         }(),
       };
 
@@ -204,10 +202,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (session.currentView == StartupCurrentView.unauthenticatedEntry) {
-        if (!auth.isAuthenticated && location == AppRoutes.home) {
-          return null;
-        }
-
         final authRedirect = resolveAuthRedirect(location);
         if (authRedirect != null) {
           return authRedirect;

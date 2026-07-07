@@ -1,3 +1,6 @@
+// Brand
+export 'package:ai_clinic/core/ui/components/app_brand_mark.dart';
+
 // Components
 export 'package:ai_clinic/core/ui/components/app_avatar.dart';
 export 'package:ai_clinic/core/ui/components/app_badge.dart';
