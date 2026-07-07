@@ -12,8 +12,10 @@ import {
     MOCK_ORG,
     MOCK_USER,
 } from '@/components/navigation/nav-model'
+import { LoginPage } from '@/pages/auth/LoginPage'
 import { breadcrumbLabel, resolveRoute } from '@/pages/app/routes'
 import { useHashRoute } from '@/router/useHashRoute'
+import { cn } from '@/lib/cn'
 
 const SIDEBAR_COLLAPSED_KEY = 'aiclinic:sidebar-collapsed'
 const BRANCH_KEY = 'aiclinic:branch'
@@ -34,8 +36,10 @@ export function App() {
     const { segments, navigate } = useHashRoute()
     const [collapsed, setCollapsed] = useState(getInitialCollapsed)
     const [branchId, setBranchId] = useState(getInitialBranchId)
+    const [authenticated, setAuthenticated] = useState(false)
 
     const activeId = segments[0] ?? 'home'
+
     const currentBranch = MOCK_BRANCHES.find((b) => b.id === branchId) ?? MOCK_BRANCHES[0]
     const { content, fullWidth } = useMemo(
         () => resolveRoute(segments, navigate),
@@ -88,43 +92,53 @@ export function App() {
     }, [activeId, navigate, segments])
 
     return (
-        <div className="h-dvh bg-surface-canvas">
-            <a
-                href="#main"
-                className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-4 focus:rounded-md focus:bg-action-primary focus:px-4 focus:py-2 focus:text-action-primary-fg"
+        <div className="relative h-dvh bg-surface-canvas">
+            <div
+                className={cn(
+                    'h-full transition-[filter] duration-[var(--duration-slow)] ease-[var(--ease-standard)]',
+                    !authenticated && 'pointer-events-none select-none blur-md',
+                )}
+                aria-hidden={!authenticated}
             >
-                Skip to content
-            </a>
+                <a
+                    href="#main"
+                    className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-4 focus:rounded-md focus:bg-action-primary focus:px-4 focus:py-2 focus:text-action-primary-fg"
+                >
+                    Skip to content
+                </a>
 
-            <AppShell
-                className="h-full"
-                fullWidth={fullWidth}
-                sidebar={
-                    <AppSidebar
-                        items={CLINIC_NAV_GROUPS}
-                        footerItems={CLINIC_NAV_FOOTER}
-                        activeId={activeId}
-                        onNavigate={navigate}
-                        collapsed={collapsed}
-                        onToggleCollapsed={toggleCollapsed}
-                        org={MOCK_ORG}
-                        branch={currentBranch.name}
-                    />
-                }
-                topBar={
-                    <AppTopBar
-                        pageContext={pageContext}
-                        branches={MOCK_BRANCHES}
-                        currentBranchId={branchId}
-                        onBranchChange={handleBranchChange}
-                        user={MOCK_USER}
-                        notificationCount={MOCK_NOTIFICATION_COUNT}
-                    />
-                }
-                commandBar={<CommandBar items={buildDefaultCommandItems(navigate)} />}
-            >
-                {content}
-            </AppShell>
+                <AppShell
+                    className="h-full"
+                    fullWidth={fullWidth}
+                    sidebar={
+                        <AppSidebar
+                            items={CLINIC_NAV_GROUPS}
+                            footerItems={CLINIC_NAV_FOOTER}
+                            activeId={activeId}
+                            onNavigate={navigate}
+                            collapsed={collapsed}
+                            onToggleCollapsed={toggleCollapsed}
+                            org={MOCK_ORG}
+                            branch={currentBranch.name}
+                        />
+                    }
+                    topBar={
+                        <AppTopBar
+                            pageContext={pageContext}
+                            branches={MOCK_BRANCHES}
+                            currentBranchId={branchId}
+                            onBranchChange={handleBranchChange}
+                            user={MOCK_USER}
+                            notificationCount={MOCK_NOTIFICATION_COUNT}
+                        />
+                    }
+                    commandBar={<CommandBar items={buildDefaultCommandItems(navigate)} />}
+                >
+                    {content}
+                </AppShell>
+            </div>
+
+            {!authenticated ? <LoginPage onLogin={() => setAuthenticated(true)} /> : null}
         </div>
     )
 }
