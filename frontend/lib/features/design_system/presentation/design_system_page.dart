@@ -43,7 +43,9 @@ class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
         const SizedBox(height: AppSpacing.space6),
         const DevLocaleControls(),
         const SizedBox(height: AppSpacing.space8),
-        DevSectionLayout(nav: _buildSubNav(), child: _buildTabContent(preview.direction)),
+        Expanded(
+          child: DevSectionLayout(nav: _buildSubNav(), child: _buildTabContent(preview.direction)),
+        ),
       ],
     );
   }

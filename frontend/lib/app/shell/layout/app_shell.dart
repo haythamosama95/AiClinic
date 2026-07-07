@@ -6,12 +6,22 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 
 /// Persistent authenticated frame (`05-patterns` §1, web `AppShell`).
 class AppShell extends StatelessWidget {
-  const AppShell({required this.sidebar, required this.topBar, required this.child, this.fullWidth = false, super.key});
+  const AppShell({
+    required this.sidebar,
+    required this.topBar,
+    required this.child,
+    this.fullWidth = false,
+    this.fillViewport = false,
+    super.key,
+  });
 
   final Widget sidebar;
   final Widget topBar;
   final Widget child;
   final bool fullWidth;
+
+  /// When true, the content region fills the viewport and does not scroll at the shell level.
+  final bool fillViewport;
 
   @override
   Widget build(BuildContext context) {
@@ -32,27 +42,28 @@ class AppShell extends StatelessWidget {
                   Expanded(
                     child: ColoredBox(
                       color: colors.surfaceCanvas,
-                      child: SingleChildScrollView(
-                        primary: true,
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: fullWidth ? double.infinity : AppShellTokens.contentMaxWidth,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(AppSpacing.space6),
-                              child: SizedBox(width: double.infinity, child: child),
-                            ),
-                          ),
-                        ),
-                      ),
+                      child: fillViewport
+                          ? _buildContent(child)
+                          : SingleChildScrollView(primary: true, child: _buildContent(child)),
                     ),
                   ),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(Widget child) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: fullWidth ? double.infinity : AppShellTokens.contentMaxWidth),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.space6),
+          child: SizedBox(width: double.infinity, child: child),
         ),
       ),
     );

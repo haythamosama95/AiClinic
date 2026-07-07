@@ -52,6 +52,7 @@ class AuthenticatedShell extends ConsumerWidget {
     return ShellDevShellWrapper(
       child: AppShell(
         fullWidth: isDesignSystemPage,
+        fillViewport: isDesignSystemPage,
         sidebar: AppSidebar(
           groups: ShellNavConfig.groups,
           footerItems: ShellNavConfig.footerItems(),
