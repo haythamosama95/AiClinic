@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -516,9 +517,32 @@ class _TestimonialCarousel extends StatefulWidget {
 }
 
 class _TestimonialCarouselState extends State<_TestimonialCarousel> {
+  static const _autoAdvanceInterval = Duration(seconds: 6);
+
   var _page = 0;
   var _direction = 0;
   var _switchCount = 0;
+  Timer? _autoAdvanceTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleAutoAdvance();
+  }
+
+  @override
+  void dispose() {
+    _autoAdvanceTimer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleAutoAdvance() {
+    _autoAdvanceTimer?.cancel();
+    _autoAdvanceTimer = Timer(_autoAdvanceInterval, () {
+      if (!mounted) return;
+      _navigate(1);
+    });
+  }
 
   void _navigate(int nextDirection) {
     setState(() {
@@ -526,6 +550,7 @@ class _TestimonialCarouselState extends State<_TestimonialCarousel> {
       _page += nextDirection;
       _switchCount++;
     });
+    _scheduleAutoAdvance();
   }
 
   @override
@@ -544,16 +569,13 @@ class _TestimonialCarouselState extends State<_TestimonialCarousel> {
         fit: StackFit.expand,
         children: [
           Positioned.fill(
-            child: Image(
-              key: ValueKey<String>(testimonial.imageAsset),
-              image: AssetImage(testimonial.imageAsset),
-              fit: BoxFit.cover,
-              alignment: Alignment.center,
-              filterQuality: FilterQuality.medium,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) {
-                return ColoredBox(color: colors.surfaceMuted);
-              },
+            child: _TestimonialImageSwitcher(
+              switchKey: _switchCount,
+              imageAsset: testimonial.imageAsset,
+              duration: reducedMotion ? AppMotion.fast : const Duration(milliseconds: 800),
+              reducedMotion: reducedMotion,
+              enterOffset: _direction > 0 ? const Offset(0.12, 0) : const Offset(-0.12, 0),
+              fallbackColor: colors.surfaceMuted,
             ),
           ),
           Positioned.fill(
@@ -717,6 +739,60 @@ class _TestimonialGlassCard extends StatelessWidget {
   }
 }
 
+/// Full-bleed carousel image transition (matches [_TestimonialSlideSwitcher]).
+class _TestimonialImageSwitcher extends StatelessWidget {
+  const _TestimonialImageSwitcher({
+    required this.switchKey,
+    required this.imageAsset,
+    required this.duration,
+    required this.reducedMotion,
+    required this.enterOffset,
+    required this.fallbackColor,
+  });
+
+  final int switchKey;
+  final String imageAsset;
+  final Duration duration;
+  final bool reducedMotion;
+  final Offset enterOffset;
+  final Color fallbackColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: duration,
+      switchInCurve: const Cubic(0.2, 0, 0.2, 1),
+      switchOutCurve: const Cubic(0.8, 0, 0.8, 1),
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            for (final child in previousChildren) Positioned.fill(child: child),
+            if (currentChild != null) Positioned.fill(child: currentChild),
+          ],
+        );
+      },
+      transitionBuilder: (child, animation) => _testimonialSlideTransition(
+        child: child,
+        animation: animation,
+        reducedMotion: reducedMotion,
+        enterOffset: enterOffset,
+      ),
+      child: Image(
+        key: ValueKey<int>(switchKey),
+        image: AssetImage(imageAsset),
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) {
+          return ColoredBox(color: fallbackColor);
+        },
+      ),
+    );
+  }
+}
+
 /// Left-aligned carousel text transition (web `AnimatePresence mode="popLayout"`).
 class _TestimonialSlideSwitcher extends StatelessWidget {
   const _TestimonialSlideSwitcher({
@@ -755,30 +831,46 @@ class _TestimonialSlideSwitcher extends StatelessWidget {
               ],
             );
           },
-          transitionBuilder: (child, animation) {
-            if (reducedMotion) {
-              return FadeTransition(opacity: animation, child: child);
-            }
-
-            final curved = CurvedAnimation(
-              parent: animation,
-              curve: const Cubic(0.2, 0, 0.2, 1),
-              reverseCurve: const Cubic(0.8, 0, 0.8, 1),
-            );
-
-            return FadeTransition(
-              opacity: curved,
-              child: SlideTransition(
-                position: Tween<Offset>(begin: enterOffset, end: Offset.zero).animate(curved),
-                child: Align(alignment: AlignmentDirectional.topStart, child: child),
-              ),
-            );
-          },
+          transitionBuilder: (child, animation) => _testimonialSlideTransition(
+            child: child,
+            animation: animation,
+            reducedMotion: reducedMotion,
+            enterOffset: enterOffset,
+            alignStart: true,
+          ),
           child: SizedBox(key: ValueKey<int>(switchKey), width: double.infinity, child: child),
         ),
       ),
     );
   }
+}
+
+Widget _testimonialSlideTransition({
+  required Widget child,
+  required Animation<double> animation,
+  required bool reducedMotion,
+  required Offset enterOffset,
+  bool alignStart = false,
+}) {
+  if (reducedMotion) {
+    return FadeTransition(opacity: animation, child: child);
+  }
+
+  final curved = CurvedAnimation(
+    parent: animation,
+    curve: const Cubic(0.2, 0, 0.2, 1),
+    reverseCurve: const Cubic(0.8, 0, 0.8, 1),
+  );
+
+  final transitioned = FadeTransition(
+    opacity: curved,
+    child: SlideTransition(
+      position: Tween<Offset>(begin: enterOffset, end: Offset.zero).animate(curved),
+      child: alignStart ? Align(alignment: AlignmentDirectional.topStart, child: child) : child,
+    ),
+  );
+
+  return transitioned;
 }
 
 class _CarouselNavButton extends StatefulWidget {
