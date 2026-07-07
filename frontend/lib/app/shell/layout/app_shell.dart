@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_clinic/app/shell/layout/shell_page_transition.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_shell_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
@@ -10,6 +11,7 @@ class AppShell extends StatelessWidget {
     required this.sidebar,
     required this.topBar,
     required this.child,
+    required this.pageKey,
     this.fullWidth = false,
     this.fillViewport = false,
     super.key,
@@ -18,6 +20,7 @@ class AppShell extends StatelessWidget {
   final Widget sidebar;
   final Widget topBar;
   final Widget child;
+  final Object pageKey;
   final bool fullWidth;
 
   /// When true, the content region fills the viewport and does not scroll at the shell level.
@@ -42,9 +45,17 @@ class AppShell extends StatelessWidget {
                   Expanded(
                     child: ColoredBox(
                       color: colors.surfaceCanvas,
-                      child: fillViewport
-                          ? _buildContent(child)
-                          : SingleChildScrollView(primary: true, child: _buildContent(child)),
+                      child: ShellPageTransition(
+                        pageKey: pageKey,
+                        child: child,
+                        builder: (context, pageContent) {
+                          final framed = _buildFrame(pageContent);
+                          if (fillViewport) {
+                            return framed;
+                          }
+                          return SingleChildScrollView(primary: true, child: framed);
+                        },
+                      ),
                     ),
                   ),
                 ],
@@ -56,7 +67,7 @@ class AppShell extends StatelessWidget {
     );
   }
 
-  Widget _buildContent(Widget child) {
+  Widget _buildFrame(Widget child) {
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(

@@ -3,23 +3,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_avatar.dart';
-import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
 import 'package:ai_clinic/core/ui/components/app_nav_models.dart';
 import 'package:ai_clinic/core/ui/components/app_popover.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
+import 'package:ai_clinic/core/ui/theme/app_shell_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/design_system/presentation/providers/dev_preview_provider.dart';
 
 /// Account menu in the top bar (web `UserMenu`).
 class AppUserMenu extends ConsumerStatefulWidget {
-  const AppUserMenu({required this.user, this.onSignOut, this.appVersion = '0.1.0', this.triggerSize = 40, super.key});
+  const AppUserMenu({
+    required this.user,
+    this.onSignOut,
+    this.appVersion = '0.1.0',
+    this.triggerSize = AppShellTokens.topBarActionHeight,
+    super.key,
+  });
 
   final AppUserMenuUser user;
   final VoidCallback? onSignOut;
   final String appVersion;
 
-  /// Outer trigger footprint; defaults to [AppIconButtonSize.lg] for top-bar alignment.
+  /// Outer trigger footprint; defaults to [AppShellTokens.topBarActionHeight] for top-bar alignment.
   final double triggerSize;
 
   @override

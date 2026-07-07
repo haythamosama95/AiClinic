@@ -2,6 +2,7 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
 import 'package:ai_clinic/core/ui/components/app_nav_models.dart';
+import 'package:ai_clinic/features/design_system/presentation/dev_section.dart';
 
 /// Clinic navigation tree and route bindings for [AppSidebar].
 abstract final class ShellNavConfig {
@@ -9,14 +10,17 @@ abstract final class ShellNavConfig {
 
   static const Map<String, String> _routesByItemId = {
     'home': AppRoutes.home,
-    'dashboard': AppRoutes.home,
+    'dashboard': AppRoutes.dashboard,
     'patients': AppRoutes.patients,
     'appointments': AppRoutes.appointments,
-    'billing': AppRoutes.billingInvoices,
+    'encounters': AppRoutes.encounters,
+    'workspace': AppRoutes.workspace,
+    'billing': AppRoutes.billing,
     'invoices': AppRoutes.billingInvoices,
     'services': AppRoutes.settingsServices,
     'staff': AppRoutes.settingsStaff,
     'shifts': AppRoutes.shiftsCalendar,
+    'reports': AppRoutes.reports,
     'settings': AppRoutes.settings,
     'dev': AppRoutes.foundationDemo,
   };
@@ -32,6 +36,16 @@ abstract final class ShellNavConfig {
 
   static String? routeFor(String itemId) => _routesByItemId[itemId] ?? ShellDevNav.routeFor(itemId);
 
+  /// Shell placeholder routes reachable without signing in (scaffold preview).
+  static bool allowsUnauthenticatedPreview(String location) {
+    if (ShellDevNav.allowsOpenAccess(location)) {
+      return true;
+    }
+
+    final itemId = itemIdForLocation(location);
+    return itemId != null && itemId != 'dev';
+  }
+
   static bool isSettingsLocation(String location) {
     return location == AppRoutes.settings || location.startsWith('${AppRoutes.settings}/');
   }
@@ -40,10 +54,29 @@ abstract final class ShellNavConfig {
     return location == AppRoutes.foundationDemo;
   }
 
-  static String? pageTitleForLocation(String location) {
-    if (isSettingsLocation(location)) {
-      return 'Settings';
+  static DevSection devSectionForUri(Uri uri) {
+    if (!isDesignSystemLocation(uri.path)) {
+      return DevSection.foundations;
     }
+    return DevSectionId.fromId(uri.queryParameters['section'] ?? 'components');
+  }
+
+  static bool isDesignSystemFullWidth(Uri uri) {
+    if (!isDesignSystemLocation(uri.path)) {
+      return false;
+    }
+    final section = devSectionForUri(uri);
+    return section == DevSection.components || section == DevSection.patterns;
+  }
+
+  static String devSectionBreadcrumbLabel(DevSection section) => switch (section) {
+    DevSection.foundations => 'Foundations',
+    DevSection.patterns => 'Patterns',
+    DevSection.guidelines => 'Guidelines',
+    DevSection.components => 'Components',
+  };
+
+  static String? pageTitleForLocation(String location) {
     if (isDesignSystemLocation(location)) {
       return 'Design System';
     }
@@ -52,25 +85,28 @@ abstract final class ShellNavConfig {
     return itemId != null ? labelFor(itemId) : null;
   }
 
-  static AppBreadcrumb? breadcrumbForLocation(String location) {
+  static AppBreadcrumb? breadcrumbForLocation(String location, {Uri? uri, void Function(String route)? onNavigate}) {
     final itemId = itemIdForLocation(location);
     if (itemId == null) {
       return null;
     }
 
+    if (itemId == 'dev' && uri != null) {
+      final section = devSectionForUri(uri);
+      return AppBreadcrumb(
+        items: [
+          AppBreadcrumbItem(
+            label: 'Dev',
+            onTap: onNavigate == null ? null : () => onNavigate(AppRoutes.foundationDemo),
+          ),
+          AppBreadcrumbItem(label: devSectionBreadcrumbLabel(section)),
+        ],
+      );
+    }
+
     final pageLabel = pageTitleForLocation(location) ?? labelFor(itemId);
     if (pageLabel == null) {
       return null;
-    }
-
-    final groupLabel = groupLabelFor(itemId);
-    if (groupLabel != null && groupLabel != pageLabel) {
-      return AppBreadcrumb(
-        items: [
-          AppBreadcrumbItem(label: groupLabel),
-          AppBreadcrumbItem(label: pageLabel),
-        ],
-      );
     }
 
     return AppBreadcrumb(items: [AppBreadcrumbItem(label: pageLabel)]);
@@ -101,6 +137,9 @@ abstract final class ShellNavConfig {
     if (location.startsWith(AppRoutes.appointments)) {
       return 'appointments';
     }
+    if (location == AppRoutes.billing) {
+      return 'billing';
+    }
     if (location.startsWith(AppRoutes.billingInvoices)) {
       return 'invoices';
     }
@@ -112,6 +151,18 @@ abstract final class ShellNavConfig {
     }
     if (location.startsWith(AppRoutes.shifts)) {
       return 'shifts';
+    }
+    if (location == AppRoutes.dashboard) {
+      return 'dashboard';
+    }
+    if (location == AppRoutes.encounters) {
+      return 'encounters';
+    }
+    if (location == AppRoutes.workspace) {
+      return 'workspace';
+    }
+    if (location == AppRoutes.reports) {
+      return 'reports';
     }
     if (location == AppRoutes.foundationDemo) {
       return 'dev';

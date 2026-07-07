@@ -43,6 +43,7 @@ export 'package:ai_clinic/core/ui/components/app_card.dart';
 export 'package:ai_clinic/core/ui/components/app_code_block.dart';
 export 'package:ai_clinic/core/ui/components/app_progress.dart';
 export 'package:ai_clinic/core/ui/components/app_skeleton.dart';
+export 'package:ai_clinic/core/ui/components/app_skeletonizer_zone.dart';
 export 'package:ai_clinic/core/ui/components/app_timeline.dart';
 export 'package:ai_clinic/core/ui/components/app_bulk_action_bar.dart';
 export 'package:ai_clinic/core/ui/components/app_data_table.dart';
@@ -89,6 +90,7 @@ export 'package:ai_clinic/core/ui/components/app_drawer.dart';
 
 // Motion
 export 'package:ai_clinic/core/ui/motion/app_motion.dart';
+export 'package:ai_clinic/core/ui/motion/app_page_transition.dart';
 
 // Theme tokens
 export 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';

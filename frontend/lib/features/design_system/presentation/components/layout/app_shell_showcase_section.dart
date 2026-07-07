@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/components/app_app_shell.dart';
-import 'package:ai_clinic/core/ui/components/app_avatar.dart';
+import 'package:ai_clinic/core/ui/components/app_user_menu.dart';
 import 'package:ai_clinic/core/ui/components/app_branch_switcher.dart';
 import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
@@ -133,10 +133,7 @@ class _AppShellShowcaseSectionState extends ConsumerState<AppShellShowcaseSectio
                 topBar: _LiveTopBarMock(
                   breadcrumb: AppBreadcrumb(
                     items: [
-                      AppBreadcrumbItem(
-                        label: copy.patients,
-                        onTap: () => setState(() => _activeId = 'patients'),
-                      ),
+                      AppBreadcrumbItem(label: copy.patients, onTap: () => setState(() => _activeId = 'patients')),
                       AppBreadcrumbItem(label: copy.directory),
                     ],
                   ),
@@ -236,10 +233,7 @@ class _LiveTopBarMock extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: breadcrumb,
-                  ),
+                  child: Align(alignment: AlignmentDirectional.centerStart, child: breadcrumb),
                 ),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -260,10 +254,8 @@ class _LiveTopBarMock extends StatelessWidget {
                         clipBehavior: Clip.none,
                         children: [
                           AppIconButton(
-                            icon: const Icon(Icons.notifications_outlined, size: 24),
-                            label: notificationCount > 0
-                                ? 'Notifications, $notificationCount unread'
-                                : 'Notifications',
+                            icon: const Icon(Icons.notifications_outlined),
+                            label: notificationCount > 0 ? 'Notifications, $notificationCount unread' : 'Notifications',
                             size: AppIconButtonSize.lg,
                             onPressed: () {},
                           ),
@@ -293,7 +285,7 @@ class _LiveTopBarMock extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(width: AppSpacing.space2),
-                      AppAvatar(name: user.name, size: AvatarSize.sm),
+                      AppUserMenu(user: user),
                     ],
                   ),
                 ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/presentation/shell_page_builder.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/features/design_system/presentation/design_system_page.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
@@ -12,6 +13,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
+import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -57,132 +59,68 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.staffPasswordReset,
             builder: (context, state) => uiPendingPlaceholder('Setup', state),
           ),
-          GoRoute(path: AppRoutes.foundationDemo, builder: (context, state) => const DesignSystemPage()),
-          GoRoute(path: AppRoutes.home, builder: (context, state) => uiPendingPlaceholder('Dashboard', state)),
+          GoRoute(
+            path: AppRoutes.foundationDemo,
+            builder: (context, state) => DesignSystemPage(initialSection: ShellNavConfig.devSectionForUri(state.uri)),
+          ),
+          GoRoute(path: AppRoutes.home, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.dashboard, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.encounters, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.workspace, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.reports, builder: shellPlaceholderPage),
 
           // Patient management
-          GoRoute(path: AppRoutes.patients, builder: (context, state) => uiPendingPlaceholder('Patients', state)),
-          GoRoute(path: AppRoutes.patientsNew, builder: (context, state) => uiPendingPlaceholder('Patients', state)),
-          GoRoute(
-            path: '${AppRoutes.patients}/:patientId',
-            builder: (context, state) => uiPendingPlaceholder('Patients', state),
-          ),
-          GoRoute(
-            path: '${AppRoutes.patients}/:patientId/edit',
-            builder: (context, state) => uiPendingPlaceholder('Patients', state),
-          ),
+          GoRoute(path: AppRoutes.patients, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.patientsNew, builder: shellPlaceholderPage),
+          GoRoute(path: '${AppRoutes.patients}/:patientId', builder: shellPlaceholderPage),
+          GoRoute(path: '${AppRoutes.patients}/:patientId/edit', builder: shellPlaceholderPage),
 
           // Appointments (V1-4)
-          GoRoute(
-            path: AppRoutes.appointments,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
-          ),
-          GoRoute(
-            path: AppRoutes.appointmentsBook,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
-          ),
-          GoRoute(
-            path: AppRoutes.appointmentsQueue,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
-          ),
-          GoRoute(
-            path: AppRoutes.appointmentsCalendar,
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
-          ),
-          GoRoute(
-            path: '${AppRoutes.appointments}/:appointmentId',
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
-          ),
-          GoRoute(
-            path: '${AppRoutes.appointments}/schedule/:doctorId',
-            builder: (context, state) => uiPendingPlaceholder('Appointments', state),
-          ),
+          GoRoute(path: AppRoutes.appointments, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.appointmentsBook, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.appointmentsQueue, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.appointmentsCalendar, builder: shellPlaceholderPage),
+          GoRoute(path: '${AppRoutes.appointments}/:appointmentId', builder: shellPlaceholderPage),
+          GoRoute(path: '${AppRoutes.appointments}/schedule/:doctorId', builder: shellPlaceholderPage),
 
           // Visits (V1-5)
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Visits', state),
+            builder: shellPlaceholderPage,
           ),
-          GoRoute(
-            path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Visits', state),
-          ),
+          GoRoute(path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}', builder: shellPlaceholderPage),
 
           // Billing (V1-6)
-          GoRoute(path: AppRoutes.billingInvoices, builder: (context, state) => uiPendingPlaceholder('Billing', state)),
+          GoRoute(path: AppRoutes.billing, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.billingInvoices, builder: shellPlaceholderPage),
           GoRoute(
             path: '${AppRoutes.billingInvoices}/:invoiceId/${AppRoutes.billingInvoiceEditSegment}',
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
+            builder: shellPlaceholderPage,
           ),
-          GoRoute(
-            path: '${AppRoutes.billingInvoices}/:invoiceId',
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
-          ),
-          GoRoute(
-            path: AppRoutes.billingInsuranceProviders,
-            builder: (context, state) => uiPendingPlaceholder('Billing', state),
-          ),
-          GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => uiPendingPlaceholder('Billing', state)),
-          GoRoute(
-            path: AppRoutes.settingsServices,
-            builder: (context, state) => uiPendingPlaceholder('Service Catalog', state),
-          ),
-          GoRoute(
-            path: AppRoutes.settingsServicesNew,
-            builder: (context, state) => uiPendingPlaceholder('Service Catalog', state),
-          ),
-          GoRoute(
-            path: '/settings/services/:serviceId/edit',
-            builder: (context, state) => uiPendingPlaceholder('Service Catalog', state),
-          ),
+          GoRoute(path: '${AppRoutes.billingInvoices}/:invoiceId', builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.billingInsuranceProviders, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsBilling, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsServices, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsServicesNew, builder: shellPlaceholderPage),
+          GoRoute(path: '/settings/services/:serviceId/edit', builder: shellPlaceholderPage),
 
           // Shifts (V1-7)
-          GoRoute(path: AppRoutes.shiftsCalendar, builder: (context, state) => uiPendingPlaceholder('Shifts', state)),
-          GoRoute(path: AppRoutes.shiftsNew, builder: (context, state) => uiPendingPlaceholder('Shifts', state)),
-          GoRoute(
-            path: '${AppRoutes.shifts}/:shiftId',
-            builder: (context, state) => uiPendingPlaceholder('Shifts', state),
-          ),
+          GoRoute(path: AppRoutes.shiftsCalendar, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.shiftsNew, builder: shellPlaceholderPage),
+          GoRoute(path: '${AppRoutes.shifts}/:shiftId', builder: shellPlaceholderPage),
 
           // Settings
-          GoRoute(path: AppRoutes.settings, builder: (context, state) => uiPendingPlaceholder('Settings', state)),
-          GoRoute(
-            path: AppRoutes.settingsIdleTimeout,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: AppRoutes.settingsOrganization,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: AppRoutes.settingsBranches,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: AppRoutes.settingsBranchesNew,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: '${AppRoutes.settingsBranches}/:branchId/edit',
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(path: AppRoutes.settingsStaff, builder: (context, state) => uiPendingPlaceholder('Settings', state)),
-          GoRoute(
-            path: AppRoutes.settingsStaffNew,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: '${AppRoutes.settingsStaff}/:staffId',
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: '${AppRoutes.settingsStaff}/:staffId/reset-password',
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
-          GoRoute(
-            path: AppRoutes.settingsPermissions,
-            builder: (context, state) => uiPendingPlaceholder('Settings', state),
-          ),
+          GoRoute(path: AppRoutes.settings, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsIdleTimeout, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsOrganization, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsBranches, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsBranchesNew, builder: shellPlaceholderPage),
+          GoRoute(path: '${AppRoutes.settingsBranches}/:branchId/edit', builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsStaff, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsStaffNew, builder: shellPlaceholderPage),
+          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId', builder: shellPlaceholderPage),
+          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId/reset-password', builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsPermissions, builder: shellPlaceholderPage),
         ],
       ),
     ],
@@ -193,6 +131,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final location = state.matchedLocation;
 
       if (ShellDevNav.allowsOpenAccess(location)) {
+        return null;
+      }
+
+      if (!auth.isAuthenticated && ShellNavConfig.allowsUnauthenticatedPreview(location)) {
         return null;
       }
 

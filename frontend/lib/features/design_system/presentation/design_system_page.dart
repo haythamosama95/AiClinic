@@ -1,32 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/core/ui/components/app_page_header.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/components_sub_nav.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/components_tab_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/dev_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/foundations/dev_section_layout.dart';
 import 'package:ai_clinic/features/design_system/presentation/foundations/foundations_content.dart';
 import 'package:ai_clinic/features/design_system/presentation/foundations/foundations_sub_nav.dart';
+import 'package:ai_clinic/features/design_system/presentation/guidelines/guidelines_page.dart';
+import 'package:ai_clinic/features/design_system/presentation/patterns/patterns_page.dart';
 import 'package:ai_clinic/features/design_system/presentation/providers/dev_preview_provider.dart';
 import 'package:ai_clinic/features/design_system/presentation/widgets/dev_locale_controls.dart';
-import 'package:ai_clinic/features/design_system/presentation/widgets/dev_page_header.dart';
 import 'package:ai_clinic/features/design_system/presentation/widgets/dev_tabs.dart';
 import 'package:ai_clinic/features/design_system/presentation/widgets/dev_text_styles.dart';
 
 /// Design system dev page shell (web `DevPage`).
 class DesignSystemPage extends ConsumerStatefulWidget {
-  const DesignSystemPage({super.key});
+  const DesignSystemPage({this.initialSection = DevSection.components, super.key});
+
+  final DevSection initialSection;
 
   @override
   ConsumerState<DesignSystemPage> createState() => _DesignSystemPageState();
 }
 
 class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
-  DevSection _section = DevSection.foundations;
+  late DevSection _section = widget.initialSection;
   var _componentsPreloaded = false;
+
+  @override
+  void didUpdateWidget(covariant DesignSystemPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialSection != widget.initialSection) {
+      _section = widget.initialSection;
+    }
+  }
+
+  void _onSectionChanged(DevSection section) {
+    setState(() => _section = section);
+    final uri = Uri(
+      path: AppRoutes.foundationDemo,
+      queryParameters: section == DevSection.components ? null : {'section': section.id},
+    );
+    context.go(uri.toString());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,10 +56,10 @@ class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DevPageHeader(
+        AppPageHeader(
           title: 'Design System',
           description: 'Foundations, tokens, and component matrices for the AiClinic design reference.',
-          tabs: DevTabs(value: _section, onChanged: (section) => setState(() => _section = section)),
+          tabs: DevTabs(value: _section, onChanged: _onSectionChanged),
         ),
         const SizedBox(height: AppSpacing.space6),
         const DevLocaleControls(),
@@ -55,7 +76,8 @@ class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
       DevSection.foundations => const FoundationsSubNav(),
       DevSection.components when _componentsPreloaded => const ComponentsSubNav(),
       DevSection.components => const ComponentsSubNavLoading(),
-      _ => const _ComingSoonSubNav(),
+      DevSection.patterns => const PatternsSubNav(),
+      DevSection.guidelines => const GuidelinesSubNav(),
     };
   }
 
@@ -69,7 +91,7 @@ class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _FoundationsIntro(),
+              const _FoundationsIntro(),
               const SizedBox(height: AppSpacing.space16),
               const FoundationsContent(),
             ],
@@ -82,12 +104,29 @@ class _DesignSystemPageState extends ConsumerState<DesignSystemPage> {
         preloadComplete: _componentsPreloaded,
         onPreloadComplete: () => setState(() => _componentsPreloaded = true),
       ),
-      _ => const _ComingSoonTab(),
+      DevSection.patterns => Directionality(
+        textDirection: direction,
+        child: Localizations.override(
+          context: context,
+          locale: Locale(ref.watch(devPreviewProvider).locale),
+          child: const PatternsPage(),
+        ),
+      ),
+      DevSection.guidelines => Directionality(
+        textDirection: direction,
+        child: Localizations.override(
+          context: context,
+          locale: Locale(ref.watch(devPreviewProvider).locale),
+          child: const GuidelinesPage(),
+        ),
+      ),
     };
   }
 }
 
 class _FoundationsIntro extends StatelessWidget {
+  const _FoundationsIntro();
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -101,31 +140,6 @@ class _FoundationsIntro extends StatelessWidget {
           child: Text('Tokens, typography, spacing, motion, and The Signal.', style: DevTextStyles.bodyLg(context)),
         ),
       ],
-    );
-  }
-}
-
-class _ComingSoonSubNav extends StatelessWidget {
-  const _ComingSoonSubNav();
-
-  @override
-  Widget build(BuildContext context) {
-    return Text('Sections', style: DevTextStyles.overline(context));
-  }
-}
-
-class _ComingSoonTab extends StatelessWidget {
-  const _ComingSoonTab();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.space12),
-        child: Text('Coming soon', style: AppTypography.body(context).copyWith(color: colors.textSecondary)),
-      ),
     );
   }
 }

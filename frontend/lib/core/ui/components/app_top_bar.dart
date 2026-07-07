@@ -46,18 +46,20 @@ class AppTopBar extends ConsumerStatefulWidget {
 
 class _AppTopBarState extends ConsumerState<AppTopBar> {
   final _triggerKey = GlobalKey();
+  late final CommandBarController _commandBarController;
 
   @override
   void initState() {
     super.initState();
+    _commandBarController = ref.read(commandBarProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(commandBarProvider.notifier).registerTrigger(_triggerKey);
+      _commandBarController.registerTrigger(_triggerKey);
     });
   }
 
   @override
   void dispose() {
-    ref.read(commandBarProvider.notifier).registerTrigger(null);
+    _commandBarController.registerTrigger(null);
     super.dispose();
   }
 
@@ -104,25 +106,28 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
                                 borderRadius: BorderRadius.circular(AppRadius.md),
                                 border: Border.all(color: colors.borderDefault),
                               ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3, vertical: 6),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.search, size: 16, color: colors.iconMuted),
-                                    const SizedBox(width: AppSpacing.space2),
-                                    Expanded(
-                                      child: Text(
-                                        'Search or jump to…',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: AppTypography.bodySm(context).copyWith(color: colors.textPlaceholder),
-                                      ),
-                                    ),
-                                    if (barWidth >= 640) ...[
+                              child: SizedBox(
+                                height: AppShellTokens.topBarActionHeight,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.search, size: 16, color: colors.iconMuted),
                                       const SizedBox(width: AppSpacing.space2),
-                                      const AppKbd(keys: ['⌘', 'K']),
+                                      Expanded(
+                                        child: Text(
+                                          'Search or jump to…',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: AppTypography.bodySm(context).copyWith(color: colors.textPlaceholder),
+                                        ),
+                                      ),
+                                      if (barWidth >= 640) ...[
+                                        const SizedBox(width: AppSpacing.space2),
+                                        const AppKbd(keys: ['⌘', 'K']),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -153,7 +158,7 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
                                 clipBehavior: Clip.none,
                                 children: [
                                   AppIconButton(
-                                    icon: const Icon(Icons.notifications_outlined, size: 24),
+                                    icon: const Icon(Icons.notifications_outlined),
                                     label: widget.notificationCount > 0
                                         ? 'Notifications, ${widget.notificationCount} unread'
                                         : 'Notifications',
@@ -186,12 +191,16 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
                                 ],
                               ),
                               AppIconButton(
-                                icon: Icon(isLight ? Icons.dark_mode_outlined : Icons.light_mode_outlined, size: 24),
+                                icon: Icon(isLight ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
                                 label: isLight ? 'Switch to dark theme' : 'Switch to light theme',
                                 size: AppIconButtonSize.lg,
                                 onPressed: () => setAppThemeMode(ref, isLight ? ThemeMode.dark : ThemeMode.light),
                               ),
-                              AppUserMenu(user: widget.user, onSignOut: widget.onSignOut),
+                              AppUserMenu(
+                                user: widget.user,
+                                onSignOut: widget.onSignOut,
+                                triggerSize: AppShellTokens.topBarActionHeight,
+                              ),
                             ],
                           ),
                         ),

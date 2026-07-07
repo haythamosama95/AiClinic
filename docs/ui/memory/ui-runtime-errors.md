@@ -703,3 +703,63 @@ void appToast(BuildContext context, AppToastInput input) {
 4. `AnimationController.forward()` in overlay enter animations? → Set a default duration in `initState`; defer `forward()` to `didChangeDependencies` when duration depends on reduced motion (see entries #2, #27).
 
 ---
+
+## 28. `RenderFlex` overflow (`PlaceholderPage` shell `Column`)
+
+**Symptom:** Yellow/black overflow stripe on shell placeholder routes (e.g. Home after sign-out or hot restart) — "overflowed by N pixels on the bottom" at `placeholder_page.dart` root `Column`. Error constraints show a tight height (~viewport minus top bar and shell padding, e.g. `h=150`).
+
+**Cause:** `PlaceholderPage` is a tall intrinsic `Column` (header, card, skeleton rows). When the shell content slot passes a **bounded** max height — `AppShell` `fillViewport` path (`Align` inside `Expanded` without `SingleChildScrollView`) or a short viewport during route refresh — the column is forced into that height and its children overflow.
+
+**Fix:** Use `mainAxisSize: MainAxisSize.min` on page columns and wrap in `SingleChildScrollView` only when `LayoutBuilder` reports `constraints.hasBoundedHeight`. When the shell already scrolls (unbounded max height), return the column directly to avoid nested primary scroll views.
+
+```dart
+return LayoutBuilder(
+  builder: (context, constraints) {
+    if (constraints.hasBoundedHeight) {
+      return SingleChildScrollView(child: body);
+    }
+    return body;
+  },
+);
+```
+
+**Affected files (fixed):** `placeholder_page.dart`.
+
+## Checklist for new shell / placeholder pages
+
+1. Tall `Column` body in `AppShell`? → Set `mainAxisSize: MainAxisSize.min` and, when `LayoutBuilder` reports `constraints.hasBoundedHeight`, wrap in `SingleChildScrollView` so `fillViewport` shells and short viewports can scroll (see entry #28). Viewport-filling pages (e.g. design system with internal `Expanded`) stay on the `fillViewport` shell path.
+
+---
+
+## 29. `StateError` — unsafe `ref` in `dispose` (`AppTopBar`)
+
+**Symptom:** Red screen / console exception when auth redirects unmount the shell (e.g. hot restart, sign-out) — "Bad state: Using `ref` when a widget is about to or has been unmounted is unsafe" at `_AppTopBarState.dispose`.
+
+**Cause:** `dispose()` called `ref.read(commandBarProvider.notifier)` to clear the command-bar trigger key. Riverpod forbids `ref` once the `ConsumerState` element is deactivated because `ref` depends on `BuildContext`.
+
+**Fix:** Cache the notifier in a `late final` field during `initState` and call it from `dispose` instead of `ref.read`:
+
+```dart
+late final CommandBarController _commandBarController;
+
+@override
+void initState() {
+  super.initState();
+  _commandBarController = ref.read(commandBarProvider.notifier);
+  // ...
+}
+
+@override
+void dispose() {
+  _commandBarController.registerTrigger(null);
+  super.dispose();
+}
+```
+
+**Affected files (fixed):** `app_top_bar.dart`.
+
+## Checklist for new shell / Riverpod lifecycle
+
+1. Provider cleanup in `dispose()`? → Save the notifier/controller in a field during `initState`; never call `ref.read` / `ref.watch` in `dispose` (see entry #29).
+
+---

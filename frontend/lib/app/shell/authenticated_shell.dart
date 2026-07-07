@@ -27,14 +27,20 @@ class AuthenticatedShell extends ConsumerWidget {
     }
 
     final location = GoRouterState.of(context).matchedLocation;
+    final uri = GoRouterState.of(context).uri;
     final activeId = ShellNavConfig.itemIdForLocation(location) ?? '';
-    final pageContext = ShellNavConfig.breadcrumbForLocation(location);
+    final pageContext = ShellNavConfig.breadcrumbForLocation(
+      location,
+      uri: uri,
+      onNavigate: (route) => context.go(route),
+    );
 
     final auth = ref.watch(authSessionProvider);
     final chrome = ref.watch(shellChromeProvider);
     final collapsed = ref.watch(shellSidebarCollapsedProvider);
 
     final isDesignSystemPage = ShellNavConfig.isDesignSystemLocation(location);
+    final fullWidth = ShellNavConfig.isDesignSystemFullWidth(uri);
 
     return CommandBarScope(
       items: kDefaultCommandItems(
@@ -47,7 +53,8 @@ class AuthenticatedShell extends ConsumerWidget {
       ),
       child: ShellDevShellWrapper(
         child: AppShell(
-          fullWidth: isDesignSystemPage,
+          pageKey: location,
+          fullWidth: isDesignSystemPage && fullWidth,
           fillViewport: isDesignSystemPage,
           sidebar: AppSidebar(
             items: ShellNavConfig.groups,

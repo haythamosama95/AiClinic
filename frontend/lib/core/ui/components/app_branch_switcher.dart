@@ -8,6 +8,7 @@ import 'package:ai_clinic/core/ui/components/app_popover.dart';
 import 'package:ai_clinic/core/ui/components/app_search_input.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
+import 'package:ai_clinic/core/ui/theme/app_shell_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
@@ -65,9 +66,7 @@ class _AppBranchSwitcherState extends State<AppBranchSwitcher> {
   List<AppBranch> get _filtered {
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return widget.branches;
-    return widget.branches
-        .where((b) => b.name.toLowerCase().contains(q) || b.org.toLowerCase().contains(q))
-        .toList();
+    return widget.branches.where((b) => b.name.toLowerCase().contains(q) || b.org.toLowerCase().contains(q)).toList();
   }
 
   @override
@@ -101,7 +100,8 @@ class _AppBranchSwitcherState extends State<AppBranchSwitcher> {
                   hoverColor: colors.surfaceHover,
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 192),
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3, vertical: 6),
+                    height: AppShellTokens.topBarActionHeight,
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
                     decoration: BoxDecoration(
                       color: colors.surfaceDefault,
                       borderRadius: BorderRadius.circular(AppRadius.md),
@@ -209,11 +209,7 @@ class _AppBranchSwitcherState extends State<AppBranchSwitcher> {
 }
 
 class _BranchRow extends StatelessWidget {
-  const _BranchRow({
-    required this.branch,
-    required this.selected,
-    required this.onSelect,
-  });
+  const _BranchRow({required this.branch, required this.selected, required this.onSelect});
 
   final AppBranch branch;
   final bool selected;
@@ -233,9 +229,7 @@ class _BranchRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space2),
           child: Row(
             children: [
-              Expanded(
-                child: Text(branch.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
+              Expanded(child: Text(branch.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
               if (selected) Icon(Icons.check, size: 16, color: colors.textLink),
             ],
           ),

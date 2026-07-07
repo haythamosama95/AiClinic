@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import 'package:ai_clinic/core/ui/components/app_avatar.dart';
-import 'package:ai_clinic/core/ui/motion/app_motion.dart';
+import 'package:ai_clinic/core/ui/components/app_skeletonizer_zone.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
@@ -64,34 +64,6 @@ const _copyAr = _SkeletonCopy(
 
 _SkeletonCopy _copyFor(String locale) => locale == 'ar' ? _copyAr : _copyEn;
 
-/// Wraps showcase demos with skeletonizer theme tokens and reduced-motion handling.
-class _SkeletonizerZone extends StatelessWidget {
-  const _SkeletonizerZone({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final reducedMotion = AppMotion.prefersReducedMotion(context);
-    final effect = reducedMotion
-        ? SolidColorEffect(color: colors.surfaceMuted)
-        : ShimmerEffect(
-            baseColor: colors.surfaceMuted,
-            highlightColor: colors.surfaceHover,
-            duration: AppMotionDuration.deliberate,
-          );
-
-    return SkeletonizerConfig(
-      data: SkeletonizerConfigData(
-        effect: effect,
-        textBorderRadius: TextBoneBorderRadius(BorderRadius.circular(AppRadius.sm)),
-      ),
-      child: Skeletonizer.zone(enabled: true, child: child),
-    );
-  }
-}
-
 /// Skeleton showcase (web `SkeletonShowcase`).
 class SkeletonShowcaseSection extends ConsumerWidget {
   const SkeletonShowcaseSection({super.key});
@@ -111,7 +83,7 @@ class SkeletonShowcaseSection extends ConsumerWidget {
           ShowcaseDemo(
             label: copy.variantsLabel,
             propsHint: copy.variantsHint,
-            child: _SkeletonizerZone(
+            child: AppSkeletonizerZone(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -127,7 +99,7 @@ class SkeletonShowcaseSection extends ConsumerWidget {
           ShowcaseDemo(
             label: copy.listRowLabel,
             propsHint: copy.listRowHint,
-            child: _SkeletonizerZone(
+            child: AppSkeletonizerZone(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 384),
                 child: Row(
@@ -152,7 +124,7 @@ class SkeletonShowcaseSection extends ConsumerWidget {
           ShowcaseDemo(
             label: copy.cardLayoutLabel,
             propsHint: copy.cardLayoutHint,
-            child: _SkeletonizerZone(
+            child: AppSkeletonizerZone(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 320),
                 child: DecoratedBox(
@@ -180,7 +152,7 @@ class SkeletonShowcaseSection extends ConsumerWidget {
           ShowcaseDemo(
             label: copy.contrastLabel,
             propsHint: copy.contrastHint,
-            child: _SkeletonizerZone(
+            child: AppSkeletonizerZone(
               child: Row(
                 children: [
                   const Bone.circle(size: 32),
