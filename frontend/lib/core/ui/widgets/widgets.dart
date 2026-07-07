@@ -44,13 +44,19 @@ export 'package:ai_clinic/core/ui/components/app_code_block.dart';
 export 'package:ai_clinic/core/ui/components/app_progress.dart';
 export 'package:ai_clinic/core/ui/components/app_skeleton.dart';
 export 'package:ai_clinic/core/ui/components/app_timeline.dart';
-export 'package:ai_clinic/core/ui/components/app_empty_state.dart';
-export 'package:ai_clinic/core/ui/components/app_error_state.dart';
 export 'package:ai_clinic/core/ui/components/app_bulk_action_bar.dart';
 export 'package:ai_clinic/core/ui/components/app_data_table.dart';
 export 'package:ai_clinic/core/ui/components/app_calendar.dart';
 export 'package:ai_clinic/core/ui/components/app_scroll_area.dart';
 export 'package:ai_clinic/core/ui/components/app_resizable_panels.dart';
+
+// AI
+export 'package:ai_clinic/core/ui/components/app_ai_mode_toggle.dart';
+export 'package:ai_clinic/core/ui/components/app_thinking_indicator.dart';
+export 'package:ai_clinic/core/ui/components/app_ai_suggestion.dart';
+export 'package:ai_clinic/core/ui/components/app_ai_message_bubble.dart';
+export 'package:ai_clinic/core/ui/components/app_ai_panel.dart';
+export 'package:ai_clinic/core/ui/components/app_proposed_action_card.dart';
 
 // Navigation
 export 'package:ai_clinic/core/ui/components/app_nav_models.dart';
@@ -65,6 +71,15 @@ export 'package:ai_clinic/core/ui/components/app_user_menu.dart';
 export 'package:ai_clinic/core/ui/components/app_command_bar.dart';
 export 'package:ai_clinic/core/ui/components/app_top_bar.dart';
 export 'package:ai_clinic/features/design_system/presentation/providers/command_bar_controller.dart';
+
+// Feedback & overlays
+export 'package:ai_clinic/core/ui/components/app_alert.dart';
+export 'package:ai_clinic/core/ui/components/app_loading_overlay.dart';
+export 'package:ai_clinic/core/ui/components/app_empty_state.dart';
+export 'package:ai_clinic/core/ui/components/app_error_state.dart';
+export 'package:ai_clinic/core/ui/components/app_toast.dart';
+export 'package:ai_clinic/core/ui/components/app_dialog.dart';
+export 'package:ai_clinic/core/ui/components/app_drawer.dart';
 
 // Motion
 export 'package:ai_clinic/core/ui/motion/app_motion.dart';

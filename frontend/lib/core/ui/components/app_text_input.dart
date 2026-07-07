@@ -157,6 +157,7 @@ class AppTextInput extends StatefulWidget {
     this.keyboardType,
     this.textInputAction,
     this.obscureText = false,
+    this.shellDecoration,
     super.key,
   });
 
@@ -178,6 +179,9 @@ class AppTextInput extends StatefulWidget {
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final bool obscureText;
+
+  /// Optional shell decoration override (e.g. AI panel violet focus ring).
+  final BoxDecoration Function(BuildContext context, {required bool focused})? shellDecoration;
 
   @override
   State<AppTextInput> createState() => _AppTextInputState();
@@ -283,6 +287,20 @@ class _AppTextInputState extends State<AppTextInput> {
       ),
     );
 
+    BoxDecoration resolveShellDecoration() {
+      if (widget.shellDecoration != null) {
+        return widget.shellDecoration!(context, focused: _focused);
+      }
+      return appInputDecoration(
+        context,
+        size: widget.size,
+        invalid: widget.invalid,
+        disabled: widget.disabled,
+        readOnly: widget.readOnly,
+        focused: _focused,
+      );
+    }
+
     Widget result;
     if (!_hasAffixes) {
       result = AnimatedContainer(
@@ -290,14 +308,7 @@ class _AppTextInputState extends State<AppTextInput> {
         curve: Curves.easeOut,
         height: metrics.height,
         padding: EdgeInsets.symmetric(horizontal: metrics.horizontalPadding),
-        decoration: appInputDecoration(
-          context,
-          size: widget.size,
-          invalid: widget.invalid,
-          disabled: widget.disabled,
-          readOnly: widget.readOnly,
-          focused: _focused,
-        ),
+        decoration: resolveShellDecoration(),
         child: appCenterInputField(field),
       );
     } else {

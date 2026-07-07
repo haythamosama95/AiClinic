@@ -635,6 +635,35 @@ Drop the redundant `CompositedTransformTarget` / `CompositedTransformFollower` p
 
 ---
 
+## 27. Feedback overlay buttons do nothing (`AppDialog` / `AppToast` / `AppToastHost`)
+
+**Symptom:** In Dev → Components → Feedback, buttons in Toast, Dialog, and Drawer/Sheet showcases appear inert; the debug console floods with `setState() or markNeedsBuild() called during build`, `AnimationController.forward() called with no default duration`, `explicitChildNodes must be set to true if scopes route is true`, and (for toast) no toast ever appears.
+
+**Cause:** Three separate lifecycle / overlay issues in the Phase 2 feedback port:
+
+1. **Controlled `AppDialog`** called `showDialog` synchronously from `didUpdateWidget` when `open:` flipped to `true`, mutating the navigator overlay mid-build (same class of bug as entry #10 for `AppPopover`).
+2. **`AppToastHost`** was mounted in `MaterialApp.builder`, which wraps the navigator **child** — the host context is an **ancestor** of `Overlay`, so `Overlay.maybeOf(context)` in `didChangeDependencies` always returned `null` and no toast overlay entry was ever inserted. `appToast` updated the controller but nothing rendered.
+3. **`_ToastView`** and **`_AppDialogShell`** called `AnimationController.forward()` in `initState` before duration was configured (or before `didChangeDependencies` ran). **`_AppDialogPanel`** used `Semantics(scopesRoute: true)` without `explicitChildNodes: true`.
+
+**Fix:**
+
+1. Defer controlled dialog presentation in `didUpdateWidget` with `addPostFrameCallback` (mirror entry #10). Cache `NavigatorState` when presenting; use it in `dispose` instead of `Navigator.of(context)` on a deactivated element.
+2. Lazily bind the toast overlay from the **caller** route context on first `appToast` call:
+
+```dart
+void appToast(BuildContext context, AppToastInput input) {
+  final controller = _AppToastHostScope.maybeOf(context);
+  controller?.ensureOverlay(context); // Overlay.of(context, rootOverlay: true)
+  controller?.show(input);
+}
+```
+
+3. Initialize motion controllers with static `AppMotion.resolveDuration(preset)` in `initState`; call `forward()` from `didChangeDependencies` after applying reduced-motion duration. Add `explicitChildNodes: true` when `scopesRoute: true` on dialog panels.
+
+**Affected files (fixed):** `app_dialog.dart`, `app_toast.dart`.
+
+---
+
 ## Checklist for new input components
 
 1. Does it use `TextField`, `Slider`, `InkWell`, or `DropdownButton`? → Add `appWrapMaterialInput`.
@@ -665,5 +694,12 @@ Drop the redundant `CompositedTransformTarget` / `CompositedTransformFollower` p
 2. Fixed-width toolbar/actions `Row` inside `Expanded`? → Use horizontal `SingleChildScrollView(reverse: true)` so the row can scroll instead of overflowing (see entry #24).
 3. Vertical tab / nav list item hover? → `Material` + `InkWell(hoverColor:)` for background; `MouseRegion` only for label color — never `AnimatedContainer` + `setState` background swap (see entry #25).
 4. Cursor-anchored overlay (`AppContextMenu`)? → Use `event.position` and `overlayBox.globalToLocal` for `Positioned` in `OverlayEntry`; screen globals are wrong (see entry #26). Wrap the menu in `IntrinsicWidth` so stretch `Column` children get bounded width.
+
+## Checklist for new feedback / overlay components
+
+1. Controlled `open:` modal (`AppDialog`, `AppDrawer`, `AppPopover`)? → Defer `showDialog` / `showGeneralDialog` / overlay mutations to `addPostFrameCallback` in `didUpdateWidget` — never call them synchronously during build (see entries #10, #27).
+2. App-global overlay host in `MaterialApp.builder`? → The builder wraps the navigator child, so the host context cannot see `Overlay`. Bind the overlay lazily from a **route** `BuildContext` on first show (see entry #27).
+3. `Semantics(scopesRoute: true)` on modal panels? → Also set `explicitChildNodes: true`.
+4. `AnimationController.forward()` in overlay enter animations? → Set a default duration in `initState`; defer `forward()` to `didChangeDependencies` when duration depends on reduced motion (see entries #2, #27).
 
 ---

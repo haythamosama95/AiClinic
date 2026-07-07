@@ -364,92 +364,92 @@ const componentSections = <ShowcaseSectionDef>[
     status: ShowcaseSectionStatus.ready,
   ),
 
-  // Feedback & overlays (placeholder)
+  // Feedback & overlays
   ShowcaseSectionDef(
     id: 'toast',
     title: 'Toast',
     group: ShowcaseGroupId.feedback,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'alert',
     title: 'Inline alert',
     group: ShowcaseGroupId.feedback,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'dialog',
     title: 'Dialog',
     group: ShowcaseGroupId.feedback,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'drawer',
     title: 'Drawer / sheet',
     group: ShowcaseGroupId.feedback,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'popover',
     title: 'Popover',
     group: ShowcaseGroupId.feedback,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'loading-overlay',
     title: 'Loading overlay',
     group: ShowcaseGroupId.feedback,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'empty-state',
     title: 'Empty states',
     group: ShowcaseGroupId.feedback,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'error-state',
     title: 'Error state',
     group: ShowcaseGroupId.feedback,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
 
-  // AI (placeholder)
+  // AI
   ShowcaseSectionDef(
     id: 'ai-mode-toggle',
     title: 'AI mode toggle',
     group: ShowcaseGroupId.ai,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'ai-panel',
     title: 'AI panel / chat',
     group: ShowcaseGroupId.ai,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'ai-message-bubble',
     title: 'AI message bubbles',
     group: ShowcaseGroupId.ai,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'proposed-action-card',
     title: 'Proposed action card',
     group: ShowcaseGroupId.ai,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'ai-suggestion',
     title: 'Inline AI suggestion',
     group: ShowcaseGroupId.ai,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
   ShowcaseSectionDef(
     id: 'thinking-indicator',
     title: 'Thinking indicator',
     group: ShowcaseGroupId.ai,
-    status: ShowcaseSectionStatus.placeholder,
+    status: ShowcaseSectionStatus.ready,
   ),
 
   // Layout & utility (placeholder)

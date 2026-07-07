@@ -7,12 +7,15 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 /// Visual variant for [AppEmptyState] (web `EmptyStateVariant`).
-enum EmptyStateVariant {
+enum AppEmptyStateVariant {
   firstRun,
   noResults,
   noAccess,
   error,
 }
+
+/// @deprecated Use [AppEmptyStateVariant].
+typedef EmptyStateVariant = AppEmptyStateVariant;
 
 /// Primary call-to-action for [AppEmptyState].
 class EmptyStateAction {
@@ -25,7 +28,7 @@ class EmptyStateAction {
 /// Centered empty / no-data placeholder (web `EmptyState`).
 class AppEmptyState extends StatelessWidget {
   const AppEmptyState({
-    this.variant = EmptyStateVariant.firstRun,
+    this.variant = AppEmptyStateVariant.firstRun,
     this.title,
     this.description,
     this.action,
@@ -34,7 +37,7 @@ class AppEmptyState extends StatelessWidget {
     super.key,
   });
 
-  final EmptyStateVariant variant;
+  final AppEmptyStateVariant variant;
   final String? title;
   final String? description;
   final EmptyStateAction? action;
@@ -43,26 +46,26 @@ class AppEmptyState extends StatelessWidget {
 
   static const _maxDescriptionWidth = 384.0;
 
-  static const _defaults = <EmptyStateVariant, ({String title, String description, IconData icon})>{
-    EmptyStateVariant.firstRun: (
+  static const _defaults = <AppEmptyStateVariant, ({String title, String description, IconData icon})>{
+    AppEmptyStateVariant.firstRun: (
       title: 'Get started',
       description: 'Add your first record to begin.',
-      icon: Icons.folder_open_outlined,
+      icon: Icons.folder_open,
     ),
-    EmptyStateVariant.noResults: (
+    AppEmptyStateVariant.noResults: (
       title: 'No matches',
       description: 'Try adjusting your filters or search terms.',
-      icon: Icons.search_off_outlined,
+      icon: Icons.search_off,
     ),
-    EmptyStateVariant.noAccess: (
+    AppEmptyStateVariant.noAccess: (
       title: 'No access',
       description: 'You do not have permission to view this content.',
-      icon: Icons.lock_outlined,
+      icon: Icons.lock_outline,
     ),
-    EmptyStateVariant.error: (
+    AppEmptyStateVariant.error: (
       title: 'Something went wrong',
       description: 'We could not load this content.',
-      icon: Icons.insert_drive_file_outlined,
+      icon: Icons.help_outline,
     ),
   };
 

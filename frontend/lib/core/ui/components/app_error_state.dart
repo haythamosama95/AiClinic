@@ -3,7 +3,6 @@ import 'dart:ui' show SemanticsRole;
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
-import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
@@ -12,24 +11,23 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 class AppErrorState extends StatelessWidget {
   const AppErrorState({
     required this.message,
-    this.title = 'Failed to load',
+    this.title,
     this.onRetry,
     this.retryLabel = 'Try again',
     super.key,
   });
 
-  final String title;
+  final String? title;
   final String message;
   final VoidCallback? onRetry;
   final String retryLabel;
 
+  static const _defaultTitle = 'Failed to load';
   static const _maxMessageWidth = 384.0;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dangerSurface = isDark ? AppColorPrimitives.statusDangerSurfaceDark : AppColorPrimitives.red50;
 
     return Semantics(
       role: SemanticsRole.alert,
@@ -45,22 +43,24 @@ class AppErrorState extends StatelessWidget {
           children: [
             DecoratedBox(
               decoration: BoxDecoration(
-                color: dangerSurface,
+                color: colors.statusDangerSurface,
                 shape: BoxShape.circle,
               ),
               child: SizedBox(
                 width: AppSpacing.space12,
                 height: AppSpacing.space12,
-                child: Icon(
-                  Icons.warning,
-                  size: 24,
-                  color: colors.statusDangerFg,
+                child: ExcludeSemantics(
+                  child: Icon(
+                    Icons.warning_amber_outlined,
+                    size: 24,
+                    color: colors.statusDangerFg,
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: AppSpacing.space4),
             Text(
-              title,
+              title ?? _defaultTitle,
               style: AppTypography.h3(context).copyWith(color: colors.textPrimary),
               textAlign: TextAlign.center,
             ),

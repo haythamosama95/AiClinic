@@ -132,6 +132,23 @@ Border appInputBorder(
   );
 }
 
+/// Violet AI focus ring for the AI panel composer (web `focus-ring-ai`).
+BoxDecoration appAiInputDecoration(
+  BuildContext context, {
+  required bool focused,
+}) {
+  final colors = context.appColors;
+
+  return BoxDecoration(
+    color: colors.surfaceDefault,
+    borderRadius: BorderRadius.circular(AppRadius.md),
+    border: Border.all(color: focused ? colors.actionAi : colors.borderAi),
+    boxShadow: focused
+        ? [BoxShadow(color: colors.actionAi.withValues(alpha: 0.35), blurRadius: 0, spreadRadius: 2)]
+        : null,
+  );
+}
+
 /// Box decoration for input shells (web `inputFieldClasses` / `inputWrapperClasses`).
 BoxDecoration appInputDecoration(
   BuildContext context, {

@@ -28,6 +28,7 @@ enum AppMotionPreset {
   slideUp,
   slideInline,
   modal,
+  drawer,
   command,
   rowEnter,
 }
@@ -154,6 +155,11 @@ abstract final class AppMotion {
         offset: Offset(direction == TextDirection.rtl ? -12 : 12, 0),
       ),
       AppMotionPreset.modal => const AppMotionValues(opacity: 0, scale: 0.97, offset: Offset(0, 8)),
+      AppMotionPreset.drawer => AppMotionValues(
+        opacity: 1,
+        scale: 1,
+        offset: Offset(direction == TextDirection.rtl ? -1 : 1, 0),
+      ),
       AppMotionPreset.command => const AppMotionValues(opacity: 0, scale: 0.96, offset: Offset(0, 10)),
       AppMotionPreset.rowEnter => const AppMotionValues(opacity: 0, scale: 1, offset: Offset(0, 6)),
     };
@@ -213,6 +219,7 @@ abstract final class AppMotion {
       AppMotionPreset.slideUp => (duration: AppMotionDurationToken.base, ease: AppMotionEasingToken.out),
       AppMotionPreset.slideInline => (duration: AppMotionDurationToken.base, ease: AppMotionEasingToken.out),
       AppMotionPreset.modal => (duration: AppMotionDurationToken.base, ease: AppMotionEasingToken.out),
+      AppMotionPreset.drawer => (duration: AppMotionDurationToken.slow, ease: AppMotionEasingToken.standard),
       AppMotionPreset.command => (duration: AppMotionDurationToken.quick, ease: AppMotionEasingToken.emphasized),
       AppMotionPreset.rowEnter => (duration: AppMotionDurationToken.base, ease: AppMotionEasingToken.out),
     };

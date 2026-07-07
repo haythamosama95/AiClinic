@@ -53,6 +53,22 @@ import 'package:ai_clinic/features/design_system/presentation/components/navigat
 import 'package:ai_clinic/features/design_system/presentation/components/navigation/sidebar_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/navigation/top_bar_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/navigation/user_menu_showcase_section.dart';
+// Feedback & overlays
+import 'package:ai_clinic/features/design_system/presentation/components/feedback/alert_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/feedback/empty_state_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/feedback/error_state_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/feedback/loading_overlay_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/feedback/popover_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/feedback/dialog_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/feedback/drawer_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/feedback/toast_showcase_section.dart';
+// AI
+import 'package:ai_clinic/features/design_system/presentation/components/ai/ai_mode_toggle_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/ai/thinking_indicator_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/ai/ai_suggestion_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/ai/ai_message_bubble_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/ai/ai_panel_showcase_section.dart';
+import 'package:ai_clinic/features/design_system/presentation/components/ai/proposed_action_card_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/layout/app_shell_showcase_section.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/component_registry.dart';
 import 'package:ai_clinic/features/design_system/presentation/components/showcase_primitives.dart';
@@ -119,6 +135,23 @@ final Map<String, ComponentSectionBuilder> componentSectionBuilders = {
   'command-bar': () => const CommandBarShowcaseSection(),
   'app-topbar': () => const TopBarShowcaseSection(),
   'app-shell': () => const AppShellShowcaseSection(),
+  // Feedback & overlays
+  'toast': () => const ToastShowcaseSection(),
+  'alert': () => const AlertShowcaseSection(),
+  'loading-overlay': () => const LoadingOverlayShowcaseSection(),
+  'empty-state': () => const EmptyStateShowcaseSection(),
+  'error-state': () => const ErrorStateShowcaseSection(),
+  'popover': () => const PopoverShowcaseSection(),
+  'dialog': () => const DialogShowcaseSection(),
+  'drawer': () => const DrawerShowcaseSection(),
+  // AI (Phase 1)
+  'ai-mode-toggle': () => const AiModeToggleShowcaseSection(),
+  'thinking-indicator': () => const ThinkingIndicatorShowcaseSection(),
+  'ai-suggestion': () => const AiSuggestionShowcaseSection(),
+  'ai-message-bubble': () => const AiMessageBubbleShowcaseSection(),
+  // AI (Phase 2)
+  'ai-panel': () => const AiPanelShowcaseSection(),
+  'proposed-action-card': () => const ProposedActionCardShowcaseSection(),
 };
 
 /// Builds a section widget from registry metadata.
