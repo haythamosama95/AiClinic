@@ -12,6 +12,10 @@ abstract final class AppRoutes {
   static const login = '/login';
   static const bootstrap = '/bootstrap';
   static const home = '/home';
+  static const dashboard = '/dashboard';
+  static const encounters = '/encounters';
+  static const workspace = '/workspace';
+  static const reports = '/reports';
   static const forgotPassword = '/forgot-password';
 
   /// Minimal staff provisioning (US6); blocked while `setup_required` is true.
@@ -97,6 +101,7 @@ abstract final class AppRoutes {
   static String visitDetail(String visitId) => '$visits/$visitId/$visitDetailSegment';
 
   // V1-6 billing
+  static const billing = '/billing';
   static const billingInvoices = '/billing/invoices';
   static const billingInsuranceProviders = '/billing/insurance-providers';
   static const settingsBilling = '/settings/billing';
@@ -119,7 +124,7 @@ abstract final class AppRoutes {
   static String billingInvoiceEdit(String invoiceId) => '$billingInvoices/$invoiceId/$billingInvoiceEditSegment';
 
   /// Static billing hub paths.
-  static const billingStaticPaths = <String>[billingInvoices, billingInsuranceProviders, settingsBilling];
+  static const billingStaticPaths = <String>[billing, billingInvoices, billingInsuranceProviders, settingsBilling];
 
   // V1-7 shift management
   static const shiftsCalendar = '/shifts/calendar';

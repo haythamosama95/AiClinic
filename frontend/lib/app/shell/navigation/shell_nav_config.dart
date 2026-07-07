@@ -1,70 +1,50 @@
-import 'package:flutter/material.dart';
-
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
-import 'package:ai_clinic/app/shell/navigation/shell_nav_model.dart';
+import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
+import 'package:ai_clinic/core/ui/components/app_nav_models.dart';
+import 'package:ai_clinic/features/design_system/presentation/dev_section.dart';
 
 /// Clinic navigation tree and route bindings for [AppSidebar].
 abstract final class ShellNavConfig {
+  static const List<AppNavGroup> groups = kClinicNavGroups;
+
   static const Map<String, String> _routesByItemId = {
     'home': AppRoutes.home,
-    'dashboard': AppRoutes.home,
+    'dashboard': AppRoutes.dashboard,
     'patients': AppRoutes.patients,
     'appointments': AppRoutes.appointments,
-    'billing': AppRoutes.billingInvoices,
+    'encounters': AppRoutes.encounters,
+    'workspace': AppRoutes.workspace,
+    'billing': AppRoutes.billing,
     'invoices': AppRoutes.billingInvoices,
     'services': AppRoutes.settingsServices,
     'staff': AppRoutes.settingsStaff,
     'shifts': AppRoutes.shiftsCalendar,
+    'reports': AppRoutes.reports,
     'settings': AppRoutes.settings,
     'dev': AppRoutes.foundationDemo,
   };
 
-  static const List<ShellNavGroup> groups = [
-    ShellNavGroup(
-      id: 'main',
-      items: [
-        ShellNavItem(id: 'home', label: 'Home', icon: Icons.home_outlined),
-        ShellNavItem(id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard_outlined),
-      ],
-    ),
-    ShellNavGroup(
-      id: 'clinical',
-      label: 'Clinical',
-      items: [
-        ShellNavItem(id: 'patients', label: 'Patients', icon: Icons.people_outline),
-        ShellNavItem(id: 'appointments', label: 'Appointments', icon: Icons.calendar_month_outlined),
-        ShellNavItem(id: 'encounters', label: 'Encounters', icon: Icons.medical_services_outlined),
-        ShellNavItem(id: 'workspace', label: 'Workspace', icon: Icons.assignment_outlined),
-      ],
-    ),
-    ShellNavGroup(
-      id: 'operations',
-      label: 'Operations',
-      items: [
-        ShellNavItem(id: 'billing', label: 'Billing', icon: Icons.receipt_long_outlined),
-        ShellNavItem(id: 'invoices', label: 'Invoices', icon: Icons.description_outlined),
-        ShellNavItem(id: 'services', label: 'Services', icon: Icons.grid_view_outlined),
-        ShellNavItem(id: 'staff', label: 'Staff', icon: Icons.person_outline),
-        ShellNavItem(id: 'shifts', label: 'Shifts', icon: Icons.event_outlined),
-        ShellNavItem(id: 'reports', label: 'Reports', icon: Icons.bar_chart_outlined),
-      ],
-    ),
-  ];
-
-  static List<ShellNavItem> footerItems() {
-    final items = <ShellNavItem>[const ShellNavItem(id: 'settings', label: 'Settings', icon: Icons.settings_outlined)];
-
-    if (ShellDevNav.isEnabled) {
-      items.add(const ShellNavItem(id: 'dev', label: 'Dev', icon: Icons.science_outlined));
-    }
-
-    return items;
+  static List<AppNavItem> footerItems() {
+    return [
+      for (final item in kClinicNavFooter)
+        if (item.id != 'dev' || ShellDevNav.isEnabled) item,
+    ];
   }
 
-  static List<ShellNavItem> get allItems => [for (final group in groups) ...group.items, ...footerItems()];
+  static List<AppNavItem> get allItems => [for (final group in groups) ...group.items, ...footerItems()];
 
   static String? routeFor(String itemId) => _routesByItemId[itemId] ?? ShellDevNav.routeFor(itemId);
+
+  /// Shell placeholder routes reachable without signing in (scaffold preview).
+  static bool allowsUnauthenticatedPreview(String location) {
+    if (ShellDevNav.allowsOpenAccess(location)) {
+      return true;
+    }
+
+    final itemId = itemIdForLocation(location);
+    return itemId != null && itemId != 'dev';
+  }
 
   static bool isSettingsLocation(String location) {
     return location == AppRoutes.settings || location.startsWith('${AppRoutes.settings}/');
@@ -74,16 +54,71 @@ abstract final class ShellNavConfig {
     return location == AppRoutes.foundationDemo;
   }
 
-  static String? pageTitleForLocation(String location) {
-    if (isSettingsLocation(location)) {
-      return 'Settings';
+  static DevSection devSectionForUri(Uri uri) {
+    if (!isDesignSystemLocation(uri.path)) {
+      return DevSection.foundations;
     }
+    return DevSectionId.fromId(uri.queryParameters['section'] ?? 'components');
+  }
+
+  static bool isDesignSystemFullWidth(Uri uri) {
+    if (!isDesignSystemLocation(uri.path)) {
+      return false;
+    }
+    final section = devSectionForUri(uri);
+    return section == DevSection.components || section == DevSection.patterns;
+  }
+
+  static String devSectionBreadcrumbLabel(DevSection section) => switch (section) {
+    DevSection.foundations => 'Foundations',
+    DevSection.patterns => 'Patterns',
+    DevSection.guidelines => 'Guidelines',
+    DevSection.components => 'Components',
+  };
+
+  static String? pageTitleForLocation(String location) {
     if (isDesignSystemLocation(location)) {
       return 'Design System';
     }
 
     final itemId = itemIdForLocation(location);
     return itemId != null ? labelFor(itemId) : null;
+  }
+
+  static AppBreadcrumb? breadcrumbForLocation(String location, {Uri? uri, void Function(String route)? onNavigate}) {
+    final itemId = itemIdForLocation(location);
+    if (itemId == null) {
+      return null;
+    }
+
+    if (itemId == 'dev' && uri != null) {
+      final section = devSectionForUri(uri);
+      return AppBreadcrumb(
+        items: [
+          AppBreadcrumbItem(
+            label: 'Dev',
+            onTap: onNavigate == null ? null : () => onNavigate(AppRoutes.foundationDemo),
+          ),
+          AppBreadcrumbItem(label: devSectionBreadcrumbLabel(section)),
+        ],
+      );
+    }
+
+    final pageLabel = pageTitleForLocation(location) ?? labelFor(itemId);
+    if (pageLabel == null) {
+      return null;
+    }
+
+    return AppBreadcrumb(items: [AppBreadcrumbItem(label: pageLabel)]);
+  }
+
+  static String? groupLabelFor(String itemId) {
+    for (final group in groups) {
+      if (group.items.any((item) => item.id == itemId)) {
+        return group.label;
+      }
+    }
+    return null;
   }
 
   static String? itemIdForLocation(String location) {
@@ -102,6 +137,9 @@ abstract final class ShellNavConfig {
     if (location.startsWith(AppRoutes.appointments)) {
       return 'appointments';
     }
+    if (location == AppRoutes.billing) {
+      return 'billing';
+    }
     if (location.startsWith(AppRoutes.billingInvoices)) {
       return 'invoices';
     }
@@ -113,6 +151,18 @@ abstract final class ShellNavConfig {
     }
     if (location.startsWith(AppRoutes.shifts)) {
       return 'shifts';
+    }
+    if (location == AppRoutes.dashboard) {
+      return 'dashboard';
+    }
+    if (location == AppRoutes.encounters) {
+      return 'encounters';
+    }
+    if (location == AppRoutes.workspace) {
+      return 'workspace';
+    }
+    if (location == AppRoutes.reports) {
+      return 'reports';
     }
     if (location == AppRoutes.foundationDemo) {
       return 'dev';

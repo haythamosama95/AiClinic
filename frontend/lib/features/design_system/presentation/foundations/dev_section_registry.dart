@@ -14,7 +14,7 @@ abstract final class DevSectionRegistry {
     final target = targetContext.findRenderObject();
     if (target == null || !target.attached) return;
 
-    // AppShell scrolls inside its primary [SingleChildScrollView], not the window.
+    // DevSectionLayout scrolls the main pane inside the design system page.
     final controller = PrimaryScrollController.maybeOf(targetContext);
     if (controller != null && controller.hasClients) {
       final viewport = RenderAbstractViewport.of(target);

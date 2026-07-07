@@ -93,23 +93,7 @@ const colorPairs = <FoundationColorPair>[
   ),
 ];
 
-const spacingTokens = <String>[
-  '0',
-  'px',
-  '0.5',
-  '1',
-  '2',
-  '3',
-  '4',
-  '5',
-  '6',
-  '8',
-  '10',
-  '12',
-  '16',
-  '20',
-  '24',
-];
+const spacingTokens = <String>['0', 'px', '0.5', '1', '2', '3', '4', '5', '6', '8', '10', '12', '16', '20', '24'];
 
 const radiusTokens = <String>['sm', 'md', 'lg', 'xl', '2xl', 'full'];
 
@@ -121,6 +105,7 @@ const motionPresetList = <AppMotionPreset>[
   AppMotionPreset.slideUp,
   AppMotionPreset.slideInline,
   AppMotionPreset.modal,
+  AppMotionPreset.drawer,
   AppMotionPreset.command,
   AppMotionPreset.rowEnter,
 ];
@@ -132,6 +117,7 @@ String motionPresetLabel(AppMotionPreset preset) {
     AppMotionPreset.slideUp => 'slide-up',
     AppMotionPreset.slideInline => 'slide-inline',
     AppMotionPreset.modal => 'modal',
+    AppMotionPreset.drawer => 'drawer',
     AppMotionPreset.command => 'command',
     AppMotionPreset.rowEnter => 'row-enter',
   };

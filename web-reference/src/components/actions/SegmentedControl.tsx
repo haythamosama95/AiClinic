@@ -86,7 +86,7 @@ export function SegmentedControl<T extends string = string>({
       id={groupId}
       onKeyDown={handleKeyDown}
       className={cn(
-        'inline-flex items-stretch overflow-hidden rounded-md border border-border-default bg-surface-default',
+        'relative inline-flex items-stretch overflow-hidden rounded-md bg-surface-default',
         className,
       )}
     >
@@ -123,6 +123,10 @@ export function SegmentedControl<T extends string = string>({
           </button>
         )
       })}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-md border border-border-default"
+      />
     </div>
   )
 }

@@ -9,6 +9,7 @@ import 'package:ai_clinic/features/settings/application/idle_timeout_settings_no
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/providers/theme_provider.dart';
+import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 
 /// Root widget that wires together startup state, routing, and theming.
@@ -66,6 +67,7 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
         darkTheme: AppTheme.dark(),
         themeMode: themeMode,
         routerConfig: router,
+        builder: (context, child) => AppToastHost(child: child ?? const SizedBox.shrink()),
       ),
     );
   }

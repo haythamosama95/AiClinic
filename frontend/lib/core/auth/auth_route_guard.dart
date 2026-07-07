@@ -247,6 +247,7 @@ abstract final class AuthRouteGuard {
     }
 
     final allowed = switch (location) {
+      AppRoutes.billing => canAccessInvoiceList(auth) || canAccessBillingSettings(auth),
       AppRoutes.billingInvoices => canAccessInvoiceList(auth),
       AppRoutes.billingInsuranceProviders => canAccessInsuranceProviders(auth),
       AppRoutes.settingsBilling => canAccessBillingSettings(auth),
