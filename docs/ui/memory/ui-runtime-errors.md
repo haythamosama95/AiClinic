@@ -822,25 +822,110 @@ LayoutBuilder(
 
 **Fix:** Cache `AuthNotifier` in `initState` and defer `resetSignInForm()` with `Future(() => …)`:
 
+**Affected files (fixed):** `login_page.dart`.
+
+---
+
+## 33. `RenderFlex` overflow + duplicate `GlobalKey` (`SetupScreen` / `SetupStepPanel`)
+
+**Symptom:** On Settings → Setup, yellow/black overflow stripe ("overflowed by N pixels on the bottom") at `setup_screen.dart` root `Column`. Console repeats `Multiple widgets used the same GlobalKey` when switching setup steps or after auth session refresh.
+
+**Cause:** (1) The setup page stacks a header, optional completion banner, and the tall `SetupWizard` in a `Column`. When the settings content slot passes a bounded max height (large breakpoint `Row` + `Expanded`, or viewport-fill shell framing), the column is forced into that height and overflows. (2) `SetupStepPanel` used a custom `AnimatedSwitcher.layoutBuilder` that kept **both** the outgoing and incoming step subtrees mounted during the slide transition. Each step contains `AppSelect` / `AppCombobox` → `AppPopover` widgets that own `GlobalKey`s for overlay anchoring; mounting two steps at once attaches the same key objects twice.
+
+**Fix:** Scroll the setup page body when height is bounded (same pattern as entry #28). Only mount the active step in the switcher — do not stack `previousChildren` when children contain overlay/popover primitives:
+
 ```dart
-late final AuthNotifier _authNotifier;
+// setup_screen.dart
+return LayoutBuilder(
+  builder: (context, constraints) {
+    if (constraints.hasBoundedHeight) {
+      return SingleChildScrollView(child: body);
+    }
+    return body;
+  },
+);
 
-@override
-void initState() {
-  super.initState();
-  _authNotifier = ref.read(authNotifierProvider.notifier);
-  // ...
-}
+// setup_step_panel.dart
+layoutBuilder: (currentChild, previousChildren) => currentChild ?? const SizedBox.shrink(),
+```
 
-@override
-void dispose() {
-  final authNotifier = _authNotifier;
-  Future(() => authNotifier.resetSignInForm());
-  // ...
-  super.dispose();
+**Affected files (fixed):** `setup_screen.dart`, `setup_step_panel.dart`.
+
+---
+
+## 34. `AppProgress` bar fill invisible / stuck (`FractionallySizedBox`)
+
+**Symptom:** Determinate progress bars (e.g. clinic setup wizard header) appear as a static muted track; the fill never grows when `value` or wizard step changes even though the `%` label updates.
+
+**Cause:** `_buildBar` used `FractionallySizedBox` with only `widthFactor`. When `heightFactor` is omitted, the child keeps loose height constraints; `ColoredBox` has no intrinsic height, so the fill renders at **0px tall** (width is correct but invisible).
+
+**Fix:** Always set `heightFactor: 1` (and `alignment: AlignmentDirectional.centerStart`) on bar-track `FractionallySizedBox` children so the fill spans the track height:
+
+```dart
+FractionallySizedBox(
+  widthFactor: fraction,
+  heightFactor: 1,
+  alignment: AlignmentDirectional.centerStart,
+  child: ColoredBox(color: colors.actionPrimary),
+)
+```
+
+Apply the same pattern to the reduced-motion indeterminate bar segment.
+
+**Affected files (fixed):** `app_progress.dart`.
+
+---
+
+## 35. Password field loses focus on every keystroke (`AppPasswordInput`)
+
+**Symptom:** In settings clinic setup (staff step), typing into the password field drops focus after each character; other text fields in the same form behave normally.
+
+**Cause:** `AppPasswordInput.didUpdateWidget` reassigned `_controller.text` whenever `initialValue` changed from the parent. Staff setup syncs password to Riverpod on every `onChanged`, so each keystroke triggered a rebuild and a controller write. Unlike `AppTextInput`, there was no guard to skip sync while the user is editing. Reassigning `TextEditingController.text` resets selection and drops focus.
+
+**Fix:** Match `AppTextInput` — only apply `initialValue` when the owned controller is still empty:
+
+```dart
+if (_ownsController &&
+    widget.initialValue != oldWidget.initialValue &&
+    widget.initialValue != null &&
+    _controller.text.isEmpty) {
+  _controller.text = widget.initialValue!;
 }
 ```
 
-**Affected files (fixed):** `login_page.dart`.
+Also add `ValueKey(itemId)` on `EntityList` cards so list items keep stable element identity across draft rebuilds.
+
+**Affected files (fixed):** `app_password_input.dart`, `entity_list.dart`.
+
+## 36. Settings nav rail tab never highlights except General (`SettingsNavRail`)
+
+**Symptom:** On the settings page, clicking Setup (or any tab other than General) switches the content panel, but the left nav rail keeps General highlighted.
+
+**Cause:** `SettingsPage` read `GoRouterState.matchedLocation` to resolve the active tab. Inside a `ShellRoute` builder, `matchedLocation` is the **leaf segment only** (e.g. `setup`), not the full path `/settings/setup`. `AppRoutes.settingsScreenFromPath` expects a full path with `settings` as the first segment, so a bare segment falls through to the default `'general'`.
+
+**Fix:** Resolve the active tab from `GoRouterState.uri.path` instead:
+
+```dart
+final location = GoRouterState.of(context).uri.path;
+final activeScreen = AppRoutes.settingsScreenFromPath(location);
+```
+
+**Affected files (fixed):** `settings_page.dart`.
+
+## 37. Settings nav item flashes black on click (`SettingsNavRail`)
+
+**Symptom:** Tapping a settings nav rail item briefly shows a black background before the selected teal state appears.
+
+**Cause:** `InkWell` uses the theme default splash/highlight overlay (dark Material ink). The web reference uses plain buttons with `hover:bg-surface-hover` and no ripple.
+
+**Fix:** Replace `InkWell` with `GestureDetector` and drive hover/selected backgrounds from `Material.color` via the existing `MouseRegion` hover state (same pattern as horizontal `AppTabs`).
+
+**Affected files (fixed):** `settings_nav_rail.dart`.
+
+## Checklist for new settings / wizard pages
+
+1. Tall `Column` in settings content (`Expanded` slot or bounded shell)? → `mainAxisSize: MainAxisSize.min` plus `LayoutBuilder` + conditional `SingleChildScrollView` when `constraints.hasBoundedHeight` (see entries #28, #33).
+2. `AnimatedSwitcher` between steps/screens with `AppSelect`, `AppCombobox`, `AppPopover`, or other `GlobalKey` owners? → Do **not** keep `previousChildren` in a stacked `layoutBuilder`; mount only `currentChild` (see entry #33). Settings tab switches already use `ShellPageTransition`, which shows one page at a time.
+3. `FractionallySizedBox` fill inside a fixed-height track? → Set `heightFactor: 1` so `ColoredBox` children are not 0px tall (see entry #34).
 
 ---

@@ -12,6 +12,7 @@ import { cn } from '@/lib/cn'
 import { resolveTransition } from '@/lib/motion'
 import { MapsLocationInput, WorkingHoursEditor } from '../../components/WorkingHoursEditor'
 import { useSetup } from '../../SetupContext'
+import { SETUP_FIELD_HINTS } from '../setupFieldHints'
 import { hasErrors, validateSingleBranch, type StepErrors } from '../validation'
 
 export type BranchStepProps = {
@@ -130,6 +131,7 @@ function BranchForm({
             id={`${branch.id}-name`}
             label="Branch name"
             required
+            hint={SETUP_FIELD_HINTS.branchName}
             error={errors[`${prefix}-name`]}
           >
             <TextInput
@@ -145,8 +147,8 @@ function BranchForm({
             id={`${branch.id}-code`}
             label="Branch code"
             required
+            hint={SETUP_FIELD_HINTS.branchCode}
             error={errors[`${prefix}-code`]}
-            helperText="Short identifier used in reports."
           >
             <TextInput
               id={`${branch.id}-code`}
@@ -163,6 +165,7 @@ function BranchForm({
           id={`${branch.id}-mobile`}
           label="Mobile"
           required
+          hint={SETUP_FIELD_HINTS.branchMobile}
           error={errors[`${prefix}-mobile`]}
         >
           <PhoneInput
@@ -219,7 +222,7 @@ export function BranchStep({ errors: parentErrors }: BranchStepProps) {
       const index = draft.branches.findIndex((b) => b.id === branchId)
       if (index < 0) return true
 
-      const branchErrors = validateSingleBranch(draft.branches[index], index)
+      const branchErrors = validateSingleBranch(draft.branches[index], index, draft.branches)
       if (hasErrors(branchErrors)) {
         setLocalErrors(branchErrors)
         return false

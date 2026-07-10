@@ -1,8 +1,10 @@
-import { MapPin } from 'lucide-react'
+import { MapPin, CircleHelp } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox/Checkbox'
 import { FormField } from '@/components/ui/form-field/FormField'
 import { TimePicker } from '@/components/ui/time-picker/TimePicker'
+import { Tooltip } from '@/components/tooltip'
 import { DAYS_OF_WEEK, type WorkingDay } from '@/data/settings'
+import { SETUP_FIELD_HINTS } from '../setup/setupFieldHints'
 import { cn } from '@/lib/cn'
 
 export type WorkingHoursEditorProps = {
@@ -21,7 +23,18 @@ export function WorkingHoursEditor({ value, onChange, errors }: WorkingHoursEdit
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-body-strong text-text-primary">Working days & hours</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-body-strong text-text-primary">Working days & hours</p>
+          <Tooltip content={SETUP_FIELD_HINTS.branchWorkingHours}>
+            <button
+              type="button"
+              className="focus-ring inline-flex size-5 items-center justify-center rounded-sm text-icon-muted hover:text-icon-default"
+              aria-label="More about Working days & hours"
+            >
+              <CircleHelp className="size-4" aria-hidden />
+            </button>
+          </Tooltip>
+        </div>
         <span className="text-caption text-text-tertiary tabular-nums">
           {enabledCount} day{enabledCount !== 1 ? 's' : ''} open
         </span>
@@ -116,8 +129,7 @@ export function MapsLocationInput({
       id={id}
       label="Google Maps location"
       required
-      hint="Paste a Google Maps link or search for your clinic address"
-      helperText="Patients use this to find your branch on the map."
+      hint={SETUP_FIELD_HINTS.branchMapLocation}
     >
       <div className="relative">
         <MapPin

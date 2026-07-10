@@ -156,11 +156,7 @@ class _HorizontalStepItem extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
-                    child: _StepConnector(
-                      orientation: AppStepperOrientation.horizontal,
-                      state: state,
-                      colors: colors,
-                    ),
+                    child: _StepConnector(orientation: AppStepperOrientation.horizontal, state: state, colors: colors),
                   ),
                 ),
             ],
@@ -219,6 +215,7 @@ class _VerticalStepItem extends StatelessWidget {
 
   static const double _indicatorSize = AppStepper._indicatorSize;
   static const double _connectorThickness = AppStepper._connectorThickness;
+  static const double _stepGap = AppSpacing.space8;
   static const double _lineStart = (_indicatorSize - _connectorThickness) / 2;
 
   @override
@@ -226,42 +223,34 @@ class _VerticalStepItem extends StatelessWidget {
     final state = appStepStateFor(index, currentStep);
 
     return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.space6),
+      padding: EdgeInsets.only(bottom: isLast ? 0 : _stepGap),
       child: Semantics(
         selected: state == AppStepState.current,
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: _indicatorSize,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    if (!isLast)
-                      PositionedDirectional(
-                        start: _lineStart,
-                        top: _indicatorSize,
-                        bottom: 0,
-                        width: _connectorThickness,
-                        child: _StepConnector(
-                          orientation: AppStepperOrientation.vertical,
-                          state: state,
-                          colors: colors,
-                        ),
-                      ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: _indicatorSize,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  if (!isLast)
                     PositionedDirectional(
-                      start: 0,
-                      top: 0,
-                      child: _StepIndicator(number: index + 1, state: state, colors: colors),
+                      start: _lineStart,
+                      top: _indicatorSize,
+                      bottom: -_stepGap,
+                      width: _connectorThickness,
+                      child: _StepConnector(orientation: AppStepperOrientation.vertical, state: state, colors: colors),
                     ),
-                  ],
-                ),
+                  _StepIndicator(number: index + 1, state: state, colors: colors),
+                ],
               ),
-              const SizedBox(width: AppSpacing.space3),
-              Expanded(child: _StepLabels(step: step, state: state, textAlign: TextAlign.start)),
-            ],
-          ),
+            ),
+            const SizedBox(width: AppSpacing.space3),
+            Expanded(
+              child: _StepLabels(step: step, state: state, textAlign: TextAlign.start),
+            ),
+          ],
         ),
       ),
     );
@@ -380,7 +369,9 @@ class _StepConnector extends StatelessWidget {
       curve: AppMotion.resolveCurve(AppMotionPreset.fade),
       height: orientation == AppStepperOrientation.horizontal ? AppStepper._connectorThickness : null,
       width: orientation == AppStepperOrientation.vertical ? AppStepper._connectorThickness : null,
-      margin: orientation == AppStepperOrientation.horizontal ? const EdgeInsets.only(top: AppStepper._indicatorSize / 2) : null,
+      margin: orientation == AppStepperOrientation.horizontal
+          ? const EdgeInsets.only(top: AppStepper._indicatorSize / 2)
+          : null,
       color: color,
     );
   }

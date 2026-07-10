@@ -6,6 +6,13 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/shell_page_builder.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/features/design_system/presentation/design_system_page.dart';
+import 'package:ai_clinic/features/settings/presentation/pages/settings_page.dart';
+import 'package:ai_clinic/features/settings/presentation/screens/branches_screen.dart';
+import 'package:ai_clinic/features/settings/presentation/screens/general_screen.dart';
+import 'package:ai_clinic/features/settings/presentation/screens/notifications_screen.dart';
+import 'package:ai_clinic/features/settings/presentation/screens/services_screen.dart';
+import 'package:ai_clinic/features/settings/presentation/screens/setup_screen.dart';
+import 'package:ai_clinic/features/settings/presentation/screens/staff_screen.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
@@ -101,26 +108,62 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '${AppRoutes.billingInvoices}/:invoiceId', builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.billingInsuranceProviders, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsBilling, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsServices, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsServicesNew, builder: shellPlaceholderPage),
-          GoRoute(path: '/settings/services/:serviceId/edit', builder: shellPlaceholderPage),
 
           // Shifts (V1-7)
           GoRoute(path: AppRoutes.shiftsCalendar, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.shiftsNew, builder: shellPlaceholderPage),
           GoRoute(path: '${AppRoutes.shifts}/:shiftId', builder: shellPlaceholderPage),
 
-          // Settings
-          GoRoute(path: AppRoutes.settings, builder: shellPlaceholderPage),
+          // Settings page (screen tabs + nested admin sub-routes)
+          GoRoute(
+            path: AppRoutes.settings,
+            redirect: (context, state) {
+              if (state.uri.path == AppRoutes.settings) {
+                return AppRoutes.settingsGeneral;
+              }
+              return null;
+            },
+            routes: [
+              ShellRoute(
+                builder: (context, state, child) => SettingsPage(child: child),
+                routes: [
+                  GoRoute(path: 'general', builder: (context, state) => const GeneralScreen()),
+                  GoRoute(path: 'setup', builder: (context, state) => const SetupScreen()),
+                  GoRoute(
+                    path: 'branches',
+                    builder: (context, state) => const BranchesScreen(),
+                    routes: [
+                      GoRoute(path: 'new', builder: shellPlaceholderPage),
+                      GoRoute(path: ':branchId/edit', builder: shellPlaceholderPage),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'staff',
+                    builder: (context, state) => const StaffScreen(),
+                    routes: [
+                      GoRoute(path: 'new', builder: shellPlaceholderPage),
+                      GoRoute(
+                        path: ':staffId',
+                        routes: [GoRoute(path: 'reset-password', builder: shellPlaceholderPage)],
+                        builder: shellPlaceholderPage,
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'services',
+                    builder: (context, state) => const ServicesScreen(),
+                    routes: [
+                      GoRoute(path: 'new', builder: shellPlaceholderPage),
+                      GoRoute(path: ':serviceId/edit', builder: shellPlaceholderPage),
+                    ],
+                  ),
+                  GoRoute(path: 'notifications', builder: (context, state) => const NotificationsScreen()),
+                ],
+              ),
+            ],
+          ),
           GoRoute(path: AppRoutes.settingsIdleTimeout, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsOrganization, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsBranches, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsBranchesNew, builder: shellPlaceholderPage),
-          GoRoute(path: '${AppRoutes.settingsBranches}/:branchId/edit', builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsStaff, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsStaffNew, builder: shellPlaceholderPage),
-          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId', builder: shellPlaceholderPage),
-          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId/reset-password', builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsPermissions, builder: shellPlaceholderPage),
         ],
       ),

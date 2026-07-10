@@ -4,6 +4,7 @@ import { Select } from '@/components/ui/select/Select'
 import { TextInput } from '@/components/ui/text-input/TextInput'
 import { CURRENCY_OPTIONS, TIMEZONE_OPTIONS } from '@/data/settings'
 import { useSetup } from '../../SetupContext'
+import { SETUP_FIELD_HINTS } from '../setupFieldHints'
 import type { StepErrors } from '../validation'
 
 export type OrganizationStepProps = {
@@ -30,7 +31,7 @@ export function OrganizationStep({ errors }: OrganizationStepProps) {
       </div>
 
       <div className="max-w-lg space-y-4">
-        <FormField id="org-name" label="Organization name" required error={errors.name}>
+        <FormField id="org-name" label="Organization name" required hint={SETUP_FIELD_HINTS.organizationName} error={errors.name}>
           <TextInput
             id="org-name"
             value={organization.name}
@@ -40,7 +41,7 @@ export function OrganizationStep({ errors }: OrganizationStepProps) {
           />
         </FormField>
 
-        <FormField id="org-timezone" label="Timezone" required error={errors.timezone}>
+        <FormField id="org-timezone" label="Timezone" required hint={SETUP_FIELD_HINTS.timezone} error={errors.timezone}>
           <Select
             id="org-timezone"
             value={organization.timezone}
@@ -54,8 +55,8 @@ export function OrganizationStep({ errors }: OrganizationStepProps) {
           id="org-currency"
           label="Currency"
           required
+          hint={SETUP_FIELD_HINTS.currency}
           error={errors.currency}
-          helperText="Used for invoices, services, and financial reports."
         >
           <Select
             id="org-currency"

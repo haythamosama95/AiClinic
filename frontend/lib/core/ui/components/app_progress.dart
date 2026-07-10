@@ -68,20 +68,14 @@ class _AppProgressState extends State<AppProgress> with TickerProviderStateMixin
 
   void _ensureControllers() {
     if (_needsBarAnimation && _barController == null) {
-      _barController = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 1200),
-      );
+      _barController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
     } else if (!_needsBarAnimation) {
       _barController?.dispose();
       _barController = null;
     }
 
     if (_needsSpinAnimation && _spinController == null) {
-      _spinController = AnimationController(
-        vsync: this,
-        duration: const Duration(seconds: 1),
-      );
+      _spinController = AnimationController(vsync: this, duration: const Duration(seconds: 1));
     } else if (!_needsSpinAnimation) {
       _spinController?.dispose();
       _spinController = null;
@@ -150,6 +144,8 @@ class _AppProgressState extends State<AppProgress> with TickerProviderStateMixin
                         alignment: AlignmentDirectional.centerStart,
                         child: FractionallySizedBox(
                           widthFactor: fraction,
+                          heightFactor: 1,
+                          alignment: AlignmentDirectional.centerStart,
                           child: ColoredBox(color: colors.actionPrimary),
                         ),
                       ),
@@ -162,10 +158,9 @@ class _AppProgressState extends State<AppProgress> with TickerProviderStateMixin
               alignment: AlignmentDirectional.centerEnd,
               child: Text(
                 '${_clampedValue.round()}%',
-                style: AppTypography.caption(context).copyWith(
-                  color: colors.textTertiary,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+                style: AppTypography.caption(
+                  context,
+                ).copyWith(color: colors.textTertiary, fontFeatures: const [FontFeature.tabularFigures()]),
               ),
             ),
           ],
@@ -181,6 +176,8 @@ class _AppProgressState extends State<AppProgress> with TickerProviderStateMixin
         alignment: AlignmentDirectional.centerStart,
         child: FractionallySizedBox(
           widthFactor: 1 / 3,
+          heightFactor: 1,
+          alignment: AlignmentDirectional.centerStart,
           child: ColoredBox(color: colors.actionPrimary),
         ),
       );
@@ -230,17 +227,10 @@ class _AppProgressState extends State<AppProgress> with TickerProviderStateMixin
     );
 
     if (widget.indeterminate && _spinController != null && !AppMotion.prefersReducedMotion(context)) {
-      indicator = RotationTransition(
-        turns: _spinController!,
-        child: indicator,
-      );
+      indicator = RotationTransition(turns: _spinController!, child: indicator);
     }
 
-    return Semantics(
-      label: label,
-      value: widget.indeterminate ? null : '${_clampedValue.round()}%',
-      child: indicator,
-    );
+    return Semantics(label: label, value: widget.indeterminate ? null : '${_clampedValue.round()}%', child: indicator);
   }
 
   Widget _buildSteps(BuildContext context) {
@@ -255,11 +245,7 @@ class _AppProgressState extends State<AppProgress> with TickerProviderStateMixin
           for (var index = 0; index < widget.steps; index++) ...[
             if (index > 0) const SizedBox(width: AppSpacing.space1),
             Expanded(
-              child: _StepSegment(
-                stepNumber: index + 1,
-                safeStep: safeStep,
-                colors: colors,
-              ),
+              child: _StepSegment(stepNumber: index + 1, safeStep: safeStep, colors: colors),
             ),
           ],
         ],
@@ -269,11 +255,7 @@ class _AppProgressState extends State<AppProgress> with TickerProviderStateMixin
 }
 
 class _StepSegment extends StatelessWidget {
-  const _StepSegment({
-    required this.stepNumber,
-    required this.safeStep,
-    required this.colors,
-  });
+  const _StepSegment({required this.stepNumber, required this.safeStep, required this.colors});
 
   final int stepNumber;
   final int safeStep;
@@ -290,9 +272,7 @@ class _StepSegment extends StatelessWidget {
         duration: AppMotion.instant,
         height: 4,
         decoration: BoxDecoration(
-          color: active
-              ? colors.actionPrimary.withValues(alpha: isCurrent ? 0.8 : 1)
-              : colors.surfaceMuted,
+          color: active ? colors.actionPrimary.withValues(alpha: isCurrent ? 0.8 : 1) : colors.surfaceMuted,
           borderRadius: BorderRadius.circular(AppRadius.full),
         ),
       ),
@@ -336,21 +316,9 @@ class _CircularProgressPainter extends CustomPainter {
 
     if (indeterminate) {
       const visibleFraction = 0.25;
-      canvas.drawArc(
-        rect,
-        -math.pi / 2,
-        math.pi * 2 * visibleFraction,
-        false,
-        progressPaint,
-      );
+      canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * visibleFraction, false, progressPaint);
     } else {
-      canvas.drawArc(
-        rect,
-        -math.pi / 2,
-        math.pi * 2 * progress,
-        false,
-        progressPaint,
-      );
+      canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * progress, false, progressPaint);
     }
   }
 

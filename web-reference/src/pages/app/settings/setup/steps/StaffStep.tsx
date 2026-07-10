@@ -9,6 +9,7 @@ import { TextInput } from '@/components/ui/text-input/TextInput'
 import { createEmptyStaff, STAFF_ROLE_OPTIONS, type StaffDraft } from '@/data/settings'
 import { EntityList } from '../../components/EntityList'
 import { useSetup } from '../../SetupContext'
+import { SETUP_FIELD_HINTS } from '../setupFieldHints'
 import type { StepErrors } from '../validation'
 
 export type StaffStepProps = {
@@ -72,6 +73,7 @@ export function StaffStep({ errors }: StaffStepProps) {
                   id={`${member.id}-name`}
                   label="Full name"
                   required
+                  hint={SETUP_FIELD_HINTS.staffName}
                   error={errors[`${prefix}-name`]}
                 >
                   <TextInput
@@ -87,6 +89,7 @@ export function StaffStep({ errors }: StaffStepProps) {
                   id={`${member.id}-mobile`}
                   label="Mobile"
                   required
+                  hint={SETUP_FIELD_HINTS.staffMobile}
                   error={errors[`${prefix}-mobile`]}
                 >
                   <PhoneInput
@@ -103,13 +106,14 @@ export function StaffStep({ errors }: StaffStepProps) {
                   id={`${member.id}-username`}
                   label="Username"
                   required
+                  hint={SETUP_FIELD_HINTS.staffUsername}
                   error={errors[`${prefix}-username`]}
                 >
                   <TextInput
                     id={`${member.id}-username`}
                     value={member.username}
                     onChange={(e) => updateStaff(member.id, { username: e.target.value })}
-                    placeholder="e.g. sara.hassan"
+                    placeholder="e.g. sara_hassan"
                     invalid={!!errors[`${prefix}-username`]}
                   />
                 </FormField>
@@ -118,6 +122,7 @@ export function StaffStep({ errors }: StaffStepProps) {
                   id={`${member.id}-password`}
                   label="Password"
                   required
+                  hint={SETUP_FIELD_HINTS.staffPassword}
                   error={errors[`${prefix}-password`]}
                 >
                   <PasswordInput
@@ -134,6 +139,7 @@ export function StaffStep({ errors }: StaffStepProps) {
                   id={`${member.id}-role`}
                   label="Role"
                   required
+                  hint={SETUP_FIELD_HINTS.staffRole}
                   error={errors[`${prefix}-role`]}
                 >
                   <Select
@@ -149,6 +155,7 @@ export function StaffStep({ errors }: StaffStepProps) {
                   id={`${member.id}-branches`}
                   label="Branches assigned"
                   required
+                  hint={SETUP_FIELD_HINTS.staffBranches}
                   error={errors[`${prefix}-branches`]}
                 >
                   <MultiSelect

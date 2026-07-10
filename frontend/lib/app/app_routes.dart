@@ -24,7 +24,45 @@ abstract final class AppRoutes {
 
   /// Clinic workstation settings (authenticated, setup complete).
   static const settings = '/settings';
+  static const settingsGeneral = '/settings/general';
+  static const settingsSetup = '/settings/setup';
+  static const settingsNotifications = '/settings/notifications';
   static const settingsIdleTimeout = '/settings/idle-timeout';
+
+  /// Settings page screen segments (web `SETTINGS_SCREENS` ids).
+  static const settingsScreenSegments = <String>['general', 'setup', 'branches', 'staff', 'services', 'notifications'];
+
+  /// Resolves the active settings screen id from a location path (web `resolveScreen`).
+  static String settingsScreenFromPath(String path) {
+    final segments = Uri.parse(path).pathSegments;
+    if (segments.length >= 2 && segments.first == 'settings') {
+      final screen = segments[1];
+      if (settingsScreenSegments.contains(screen)) {
+        return screen;
+      }
+    }
+    return 'general';
+  }
+
+  /// Builds the route for a settings screen tab.
+  static String settingsScreenPath(String screenId) => '$settings/$screenId';
+
+  /// Stable shell transition key for settings routes.
+  ///
+  /// Tab switches and nested settings flows keep the same key so the app shell
+  /// does not animate the settings nav rail; only [SettingsScreenPanel] transitions.
+  static String shellPageTransitionKeyForLocation(String location) {
+    final segments = Uri.parse(location).pathSegments;
+    if (segments.isNotEmpty && segments.first == 'settings') {
+      if (segments.length == 1) {
+        return settings;
+      }
+      if (settingsScreenSegments.contains(segments[1])) {
+        return settings;
+      }
+    }
+    return location;
+  }
 
   // V1-2 settings administration (org / branch / staff / permissions)
   static const settingsOrganization = '/settings/organization';
@@ -44,11 +82,12 @@ abstract final class AppRoutes {
   static String settingsStaffResetPassword(String staffId) => '$settingsStaff/$staffId/reset-password';
 
   /// All V1-2 admin settings paths (static + parameterized builders).
+  ///
+  /// Bare `/settings/branches` and `/settings/staff` are settings page tabs;
+  /// admin list/create flows use the `…/new` and parameterized routes below.
   static const adminSettingsPaths = <String>[
     settingsOrganization,
-    settingsBranches,
     settingsBranchesNew,
-    settingsStaff,
     settingsStaffNew,
     settingsPermissions,
   ];
@@ -136,4 +175,23 @@ abstract final class AppRoutes {
   static const shifts = '/shifts';
 
   static const shiftStaticPaths = <String>[shiftsCalendar, shiftsNew];
+
+  /// Static paths for each settings screen tab.
+  static const settingsScreenPaths = <String>[
+    settingsGeneral,
+    settingsSetup,
+    settingsBranches,
+    settingsStaff,
+    settingsServices,
+    settingsNotifications,
+  ];
+
+  /// All settings-related admin paths including screen tabs used by shell navigation.
+  static const allSettingsAdminPaths = <String>[
+    ...settingsScreenPaths,
+    ...adminSettingsPaths,
+    settingsIdleTimeout,
+    settingsBilling,
+    ...serviceCatalogStaticPaths,
+  ];
 }

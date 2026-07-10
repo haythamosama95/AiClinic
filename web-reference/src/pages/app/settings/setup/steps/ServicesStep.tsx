@@ -7,6 +7,7 @@ import { MoneyField } from '@/components/ui/money-field/MoneyField'
 import { TextInput } from '@/components/ui/text-input/TextInput'
 import { createEmptyService, type ServiceDraft } from '@/data/settings'
 import { useSetup } from '../../SetupContext'
+import { SETUP_FIELD_HINTS } from '../setupFieldHints'
 import type { StepErrors } from '../validation'
 
 export type ServicesStepProps = {
@@ -72,6 +73,7 @@ export function ServicesStep({ errors }: ServicesStepProps) {
                   id={`${service.id}-name`}
                   label="Service name"
                   required
+                  hint={SETUP_FIELD_HINTS.serviceName}
                   error={errors[`${prefix}-name`]}
                   className="sm:[&_label]:sr-only"
                 >
@@ -88,6 +90,7 @@ export function ServicesStep({ errors }: ServicesStepProps) {
                   id={`${service.id}-price`}
                   label="Price"
                   required
+                  hint={SETUP_FIELD_HINTS.servicePrice}
                   error={errors[`${prefix}-price`]}
                   className="sm:[&_label]:sr-only"
                 >
