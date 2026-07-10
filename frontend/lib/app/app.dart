@@ -11,6 +11,7 @@ import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
+import 'package:ai_clinic/core/ui/theme/theme_transition_host.dart';
 
 /// Root widget that wires together startup state, routing, and theming.
 class AiClinicApp extends ConsumerStatefulWidget {
@@ -67,7 +68,10 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
         darkTheme: AppTheme.dark(),
         themeMode: themeMode,
         routerConfig: router,
-        builder: (context, child) => AppToastHost(child: child ?? const SizedBox.shrink()),
+        builder: (context, child) => ThemeTransitionHost(
+          key: const ValueKey('theme-transition-host'),
+          child: AppToastHost(child: child ?? const SizedBox.shrink()),
+        ),
       ),
     );
   }

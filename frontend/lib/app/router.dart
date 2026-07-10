@@ -14,6 +14,7 @@ import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
+import 'package:ai_clinic/core/ui/theme/theme_transition_controller.dart';
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -34,6 +35,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final notifier = ref.read(startupSessionProvider.notifier);
 
   return GoRouter(
+    navigatorKey: ref.read(rootNavigatorKeyProvider),
     initialLocation: AppRoutes.home,
     refreshListenable: refreshSignal,
     routes: [

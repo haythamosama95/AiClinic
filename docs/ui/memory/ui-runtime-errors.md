@@ -779,9 +779,43 @@ Also guard `DesignSystemPage` with `LayoutBuilder`: use `Expanded` only when `co
 
 **Affected files (fixed):** `shell_page_transition.dart`, `app_shell.dart`, `design_system_page.dart`.
 
+---
+
+## 31. `Tried to modify a provider while the widget tree was building` (`ThemeTransitionHost`)
+
+**Symptom:** Crash on app start (or when `MaterialApp.builder` mounts). Stack shows repeated `Element.inflateWidget` / `ComponentElement.mount` frames. Riverpod error: modifying a provider during `initState` or `dispose`.
+
+**Cause:** `ThemeTransitionHost` registered its transition runner by assigning `themeTransitionControllerProvider.notifier.state` in `initState` and clearing it with `ref.read` in `dispose`. Notifier writes during widget lifecycle are forbidden; `ref` is also unsafe in `dispose` after unmount.
+
+**Fix:** Use a mutable registry object from a plain `Provider` (field assignment does not notify listeners). Cache the registry in `initState`; clear the runner in `dispose` via the cached field, not `ref`:
+
+```dart
+late final ThemeTransitionRegistry _registry;
+
+@override
+void initState() {
+  super.initState();
+  _registry = ref.read(themeTransitionRegistryProvider);
+  _registry.runner = _runTransition;
+}
+
+@override
+void dispose() {
+  if (identical(_registry.runner, _runTransition)) {
+    _registry.runner = null;
+  }
+  super.dispose();
+}
+```
+
+Give `ThemeTransitionHost` a stable `ValueKey` in `MaterialApp.builder` so shell rebuilds do not recreate the host unnecessarily.
+
+**Affected files (fixed):** `theme_transition_controller.dart`, `theme_transition_host.dart`, `app.dart`.
+
 ## Checklist for new shell / Riverpod lifecycle
 
 1. Provider cleanup in `dispose()`? → Save the notifier/controller in a field during `initState`; never call `ref.read` / `ref.watch` in `dispose` (see entry #29).
-2. Page uses `Expanded` / viewport-fill layout? → Ensure `AppShell` `fillViewport` (or `effectiveFillViewport` during transitions) stays true while that page is **visible**, not only after navigation completes (see entry #30).
+2. Registering callbacks/runners at mount? → Do not assign `Notifier.state` in `initState`; use a mutable registry from a plain `Provider` instead (see entry #31).
+3. Page uses `Expanded` / viewport-fill layout? → Ensure `AppShell` `fillViewport` (or `effectiveFillViewport` during transitions) stays true while that page is **visible**, not only after navigation completes (see entry #30).
 
 ---

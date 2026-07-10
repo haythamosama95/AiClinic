@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -46,6 +48,7 @@ class AppTopBar extends ConsumerStatefulWidget {
 
 class _AppTopBarState extends ConsumerState<AppTopBar> {
   final _triggerKey = GlobalKey();
+  Offset? _themeTapOrigin;
   late final CommandBarController _commandBarController;
 
   @override
@@ -190,11 +193,17 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
                                     ),
                                 ],
                               ),
-                              AppIconButton(
-                                icon: Icon(isLight ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
-                                label: isLight ? 'Switch to dark theme' : 'Switch to light theme',
-                                size: AppIconButtonSize.lg,
-                                onPressed: () => setAppThemeMode(ref, isLight ? ThemeMode.dark : ThemeMode.light),
+                              Listener(
+                                onPointerDown: (event) => _themeTapOrigin = event.position,
+                                child: AppIconButton(
+                                  icon: Icon(isLight ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
+                                  label: isLight ? 'Switch to dark theme' : 'Switch to light theme',
+                                  size: AppIconButtonSize.lg,
+                                  onPressed: () {
+                                    final origin = _themeTapOrigin ?? Offset(barWidth, AppShellTokens.topBarHeight / 2);
+                                    unawaited(toggleAppThemeMode(ref, context, origin: origin));
+                                  },
+                                ),
                               ),
                               AppUserMenu(
                                 user: widget.user,

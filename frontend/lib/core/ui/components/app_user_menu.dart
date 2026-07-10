@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,6 +37,7 @@ class AppUserMenu extends ConsumerStatefulWidget {
 class _AppUserMenuState extends ConsumerState<AppUserMenu> {
   var _open = false;
   var _hovered = false;
+  Offset? _themeTapOrigin;
 
   @override
   Widget build(BuildContext context) {
@@ -100,8 +103,10 @@ class _AppUserMenuState extends ConsumerState<AppUserMenu> {
           _UserMenuItem(
             icon: isLight ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
             label: isLight ? 'Dark theme' : 'Light theme',
+            onTapDown: (details) => _themeTapOrigin = details.globalPosition,
             onTap: () {
-              setAppThemeMode(ref, isLight ? ThemeMode.dark : ThemeMode.light);
+              final origin = _themeTapOrigin ?? Offset.zero;
+              unawaited(toggleAppThemeMode(ref, context, origin: origin));
               setState(() => _open = false);
             },
           ),
@@ -138,11 +143,18 @@ class _AppUserMenuState extends ConsumerState<AppUserMenu> {
 }
 
 class _UserMenuItem extends StatelessWidget {
-  const _UserMenuItem({required this.icon, required this.label, required this.onTap, this.destructive = false});
+  const _UserMenuItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.destructive = false,
+    this.onTapDown,
+  });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final ValueChanged<TapDownDetails>? onTapDown;
   final bool destructive;
 
   @override
@@ -153,6 +165,7 @@ class _UserMenuItem extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        onTapDown: onTapDown,
         onTap: onTap,
         hoverColor: colors.surfaceHover,
         child: Padding(
