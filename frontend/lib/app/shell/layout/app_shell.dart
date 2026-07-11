@@ -72,11 +72,11 @@ class AppShell extends StatelessWidget {
 
   Widget _buildFrame(Widget child) {
     return Align(
-      alignment: Alignment.topCenter,
+      alignment: AlignmentDirectional.topStart,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: fullWidth ? double.infinity : AppShellTokens.contentMaxWidth),
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.space6),
+          padding: const EdgeInsetsDirectional.all(AppSpacing.space6),
           child: SizedBox(width: double.infinity, child: child),
         ),
       ),

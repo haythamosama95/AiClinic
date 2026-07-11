@@ -63,7 +63,13 @@ class _AppPasswordInputState extends State<AppPasswordInput> {
   @override
   void didUpdateWidget(covariant AppPasswordInput oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_ownsController && widget.initialValue != oldWidget.initialValue && widget.initialValue != null) {
+    // Only apply external initialValue before the user types. Reassigning
+    // controller.text on every parent rebuild (e.g. staff setup draft sync)
+    // resets selection and drops focus after each keystroke.
+    if (_ownsController &&
+        widget.initialValue != oldWidget.initialValue &&
+        widget.initialValue != null &&
+        _controller.text.isEmpty) {
       _controller.text = widget.initialValue!;
     }
   }

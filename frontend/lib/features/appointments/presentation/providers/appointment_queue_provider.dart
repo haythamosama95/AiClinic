@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/application/clinic_data_changed_provider.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_apply.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
@@ -293,5 +295,13 @@ final appointmentQueueCheckedInCountProvider = Provider<int>((ref) {
 /// Eagerly warms the queue provider so the nav badge reflects today's check-ins
 /// without requiring a visit to the queue page.
 final appointmentQueueShellWarmProvider = Provider<void>((ref) {
+  // Listen for clinic-data changes (org/branch/staff/service mutations from the
+  // setup orchestrator) and invalidate cached appointment surface state so the
+  // queue/calendar refresh without the setup feature importing appointments
+  // directly (review §6.2).
+  ref.watch(clinicDataChangedProvider);
+  ref.listen<int>(clinicDataChangedProvider, (_, _) {
+    invalidateAppointmentSurfaceProviders(ref);
+  });
   ref.watch(appointmentQueueCheckedInCountProvider);
 });

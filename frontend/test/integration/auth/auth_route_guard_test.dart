@@ -27,7 +27,25 @@ void main() {
       );
     });
 
-    test('authenticated setup required allows home shell without redirect', () {
+    test('postLoginDestination uses setup_required claim', () {
+      expect(
+        AuthRouteGuard.postLoginDestination(
+          AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: true),
+          ),
+        ),
+        AppRoutes.home,
+      );
+      expect(
+        AuthRouteGuard.postLoginDestination(
+          AuthSessionState(status: AuthSessionStatus.authenticated, context: sampleAuthSessionContext()),
+        ),
+        AppRoutes.home,
+      );
+    });
+
+    test('authenticated setup required keeps home for setup dialog', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.home,
@@ -40,10 +58,10 @@ void main() {
       );
     });
 
-    test('loading session does not redirect', () {
+    test('loading session on public route does not redirect', () {
       expect(
         AuthRouteGuard.resolveRedirect(
-          location: AppRoutes.home,
+          location: AppRoutes.login,
           auth: const AuthSessionState(status: AuthSessionStatus.loading),
         ),
         isNull,

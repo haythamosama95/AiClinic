@@ -74,6 +74,10 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
 
   Set<String> get _selectedIds => widget.value.map((item) => item.id).toSet();
 
+  /// Hide the inline query field when every option is already selected and the
+  /// user is not actively searching — otherwise [Wrap] leaves a blank second row.
+  bool get _showQueryField => widget.value.isEmpty || _filtered.isNotEmpty || _controller.text.isNotEmpty || _focused;
+
   List<AppComboboxItem> get _filtered {
     final lower = _controller.text.toLowerCase();
     return widget.options.where((option) {
@@ -201,7 +205,12 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
         minWidth: appPopoverListboxMinWidth,
         child: listbox,
         triggerBuilder: (context, isOpen, onToggle) => GestureDetector(
-          onTap: () => _focusNode.requestFocus(),
+          onTap: widget.disabled
+              ? null
+              : () {
+                  setState(() => _open = true);
+                  if (_showQueryField) _focusNode.requestFocus();
+                },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
             curve: Curves.easeOut,
@@ -218,21 +227,23 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
               disabled: widget.disabled,
               focused: _focused,
             ),
-            child: Wrap(
-              spacing: AppSpacing.space1,
-              runSpacing: AppSpacing.space1,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final item in widget.value)
-                  AppChip(
-                    removable: true,
-                    disabled: widget.disabled,
-                    onRemove: () => _remove(item.id),
-                    child: Text(item.label),
+            child: widget.value.isEmpty
+                ? field
+                : Wrap(
+                    spacing: AppSpacing.space1,
+                    runSpacing: AppSpacing.space1,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      for (final item in widget.value)
+                        AppChip(
+                          removable: true,
+                          disabled: widget.disabled,
+                          onRemove: () => _remove(item.id),
+                          child: Text(item.label),
+                        ),
+                      if (_showQueryField) SizedBox(width: 72, child: field),
+                    ],
                   ),
-                ConstrainedBox(constraints: const BoxConstraints(minWidth: 64), child: field),
-              ],
-            ),
           ),
         ),
       ),

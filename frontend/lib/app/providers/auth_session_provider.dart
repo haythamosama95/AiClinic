@@ -14,6 +14,16 @@ import 'package:ai_clinic/features/settings/data/idle_timeout_preferences_store.
 import 'package:ai_clinic/app/providers/session_context_loader.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 
+/// Max time to wait for staff profile / permissions context before failing auth.
+const Duration kSessionContextLoadingTimeout = Duration(seconds: 10);
+
+/// Max time to wait for the Supabase sign-out network call after optimistic UI update.
+const Duration kSignOutNetworkTimeout = Duration(seconds: 10);
+
+/// Shown on login when session context loading exceeds [kSessionContextLoadingTimeout].
+const String kSessionContextLoadingTimeoutMessage =
+    'Sign-in is taking longer than expected. Check your connection and try again.';
+
 /// High-level auth lifecycle used by routing and permission services.
 enum AuthSessionStatus { unknown, unauthenticated, loading, authenticated }
 
@@ -61,6 +71,9 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   bool _intentionalSignOut = false;
   Future<void>? _ensureSupabaseReadyTask;
   bool _clearedPersistedSessionOnColdStart = false;
+  bool? _hadProperClinicSetup;
+  String? _pendingContextLoadToken;
+  Future<AuthSessionContext>? _pendingContextLoad;
 
   @override
   AuthSessionState build() {
@@ -102,7 +115,10 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
 
       // Run once per process so cold start never restores a prior workstation session.
       if (!_clearedPersistedSessionOnColdStart) {
-        await ref.read(authRepositoryProvider).clearPersistedSessionOnColdStart();
+        final repository = ref.read(authRepositoryProvider);
+        if (repository.currentSession != null) {
+          await repository.clearPersistedSessionOnColdStart();
+        }
         _clearedPersistedSessionOnColdStart = true;
       }
 
@@ -139,7 +155,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
       if (state.isAuthenticated) {
         try {
           final context = await _loadSessionContext(authState.session!);
-          state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+          await _applyAuthenticatedContext(context);
         } catch (error) {
           AppLog.warning('auth.session.token_refresh_context_failed reason=${_contextFailureReason(error)}');
           await ref.read(authRepositoryProvider).signOut();
@@ -153,16 +169,14 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     state = state.copyWith(status: AuthSessionStatus.loading, clearFailure: true);
     try {
       final context = await _loadSessionContext(authState.session!);
-      state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
-      _syncIdleMonitoring();
-      AppLog.fine(
-        'auth.session.authenticated role=${context.staffProfile.role.wireValue} '
-        'setup=${context.setupRequired}',
-      );
+      await _applyAuthenticatedContext(context);
     } catch (error) {
       AppLog.warning('auth.session.context_failed reason=${_contextFailureReason(error)}');
       await ref.read(authRepositoryProvider).signOut();
-      state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
+      state = AuthSessionState(
+        status: AuthSessionStatus.unauthenticated,
+        failureMessage: _failureMessageForContextError(error),
+      );
       _syncIdleMonitoring();
     }
   }
@@ -221,11 +235,44 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   SessionContextLoader get _contextLoader =>
       SessionContextLoader(ref.read(supabaseClientProvider), ref.read(permissionRepositoryProvider));
 
-  Future<AuthSessionContext> _loadSessionContext(Session session) => _contextLoader.load(session);
+  Future<AuthSessionContext> _loadSessionContext(Session session) {
+    final accessToken = session.accessToken;
+    final pending = _pendingContextLoad;
+    if (pending != null && _pendingContextLoadToken == accessToken) {
+      return pending;
+    }
+
+    final load = _runSessionContextLoad(session, accessToken);
+    _pendingContextLoadToken = accessToken;
+    _pendingContextLoad = load;
+    return load;
+  }
+
+  Future<AuthSessionContext> _runSessionContextLoad(Session session, String accessToken) async {
+    try {
+      return await _contextLoader.load(session).timeout(kSessionContextLoadingTimeout);
+    } on TimeoutException {
+      AppLog.warning('auth.session.context_load_timed_out');
+      throw TimeoutException(kSessionContextLoadingTimeoutMessage);
+    } finally {
+      if (_pendingContextLoadToken == accessToken) {
+        _pendingContextLoad = null;
+        _pendingContextLoadToken = null;
+      }
+    }
+  }
+
+  static String _failureMessageForContextError(Object error) {
+    if (error is TimeoutException) {
+      return kSessionContextLoadingTimeoutMessage;
+    }
+    return error.toString();
+  }
 
   void setActiveBranch(String branchId) {
     final context = state.context;
     if (context == null || !context.branchIds.contains(branchId)) {
+      AppLog.fine('auth.session.set_active_branch_noop branchId=$branchId');
       return;
     }
     state = state.copyWith(context: context.copyWith(activeBranchId: branchId));
@@ -239,13 +286,18 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
 
   Future<void> signOut() async {
     _intentionalSignOut = true;
+    _hadProperClinicSetup = null;
+    state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
+    _syncIdleMonitoring();
+
     try {
-      await ref.read(authRepositoryProvider).signOut();
+      await ref
+          .read(authRepositoryProvider)
+          .signOut()
+          .timeout(kSignOutNetworkTimeout, onTimeout: () => AppLog.warning('auth.session.sign_out_timed_out'));
     } finally {
       _intentionalSignOut = false;
     }
-    state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
-    _syncIdleMonitoring();
   }
 
   /// Automatic sign-out after idle timeout (FR-005a); does not use [signOut] message semantics.
@@ -291,14 +343,32 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     // away from deep-linked settings pages (e.g. role permissions matrix).
     try {
       final context = await _loadSessionContext(session);
-      state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
-      _syncIdleMonitoring();
+      await _applyAuthenticatedContext(context);
     } catch (error) {
       AppLog.warning('auth.session.refresh_failed reason=${_contextFailureReason(error)}');
       await ref.read(authRepositoryProvider).signOut();
       state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: kSessionEndedMessage);
       _syncIdleMonitoring();
     }
+  }
+
+  Future<void> _applyAuthenticatedContext(AuthSessionContext context) async {
+    final hadSetup = _hadProperClinicSetup;
+    final hasSetup = context.hasProperClinicSetup;
+    _hadProperClinicSetup = hasSetup;
+
+    if (hadSetup == true && !hasSetup) {
+      AppLog.info('auth.session.clinic_setup_lost');
+      await signOut();
+      return;
+    }
+
+    state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+    _syncIdleMonitoring();
+    AppLog.fine(
+      'auth.session.authenticated role=${context.staffProfile.role.wireValue} '
+      'setup=${context.setupRequired}',
+    );
   }
 
   /// Waits until startup config is loaded and the Supabase client is ready for password sign-in.
