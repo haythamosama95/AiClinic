@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -243,6 +244,8 @@ class _AppSelectState extends State<AppSelect> {
       ),
     );
 
+    final estimatedListHeight = math.min(240.0, widget.options.length * metrics.height + AppSpacing.space2);
+
     return Semantics(
       button: true,
       enabled: !widget.disabled,
@@ -253,6 +256,7 @@ class _AppSelectState extends State<AppSelect> {
       child: AppPopover(
         open: _open && !_interactionDisabled,
         onOpenChange: _setOpen,
+        estimatedContentHeight: estimatedListHeight,
         child: listbox,
         triggerBuilder: (context, isOpen, onToggle) => Focus(
           focusNode: _focusNode,

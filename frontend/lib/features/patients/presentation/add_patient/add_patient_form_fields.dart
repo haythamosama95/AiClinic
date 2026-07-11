@@ -21,13 +21,7 @@ import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_registration_form.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/active_branch_name_provider.dart';
 
-const _kSmBreakpoint = 640.0;
-
-const _registrationGenderOptions = [
-  PatientGender.male,
-  PatientGender.female,
-  PatientGender.other,
-];
+const _registrationGenderOptions = [PatientGender.male, PatientGender.female];
 
 const _maritalStatusOptions = PatientMaritalStatus.values;
 
@@ -124,11 +118,7 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
             const SizedBox(height: AppSpacing.space6),
             const AppDivider(),
             const SizedBox(height: AppSpacing.space6),
-            _ClinicalNotesSection(
-              values: widget.values,
-              errors: widget.errors,
-              onFieldChange: widget.onFieldChange,
-            ),
+            _ClinicalNotesSection(values: widget.values, errors: widget.errors, onFieldChange: widget.onFieldChange),
             if (widget.errors.form != null) ...[
               const SizedBox(height: AppSpacing.space6),
               Semantics(
@@ -175,10 +165,9 @@ class _BranchBanner extends StatelessWidget {
                     const TextSpan(text: 'Registering at '),
                     TextSpan(
                       text: branchName,
-                      style: AppTypography.bodySm(context).copyWith(
-                        color: colors.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: AppTypography.bodySm(
+                        context,
+                      ).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -192,11 +181,7 @@ class _BranchBanner extends StatelessWidget {
 }
 
 class _IdentityPreview extends StatelessWidget {
-  const _IdentityPreview({
-    required this.trimmedName,
-    required this.showPreview,
-    required this.reducedMotion,
-  });
+  const _IdentityPreview({required this.trimmedName, required this.showPreview, required this.reducedMotion});
 
   final String trimmedName;
   final bool showPreview;
@@ -219,20 +204,14 @@ class _IdentityPreview extends StatelessWidget {
           child: AnimatedBuilder(
             animation: animation,
             builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, -6 * (1 - animation.value)),
-                child: child,
-              );
+              return Transform.translate(offset: Offset(0, -6 * (1 - animation.value)), child: child);
             },
             child: child,
           ),
         );
       },
       child: showPreview
-          ? _IdentityPreviewCard(
-              key: const ValueKey<String>('identity-preview'),
-              trimmedName: trimmedName,
-            )
+          ? _IdentityPreviewCard(key: const ValueKey<String>('identity-preview'), trimmedName: trimmedName)
           : const SizedBox.shrink(key: ValueKey<String>('identity-preview-empty')),
     );
   }
@@ -254,10 +233,7 @@ class _IdentityPreviewCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            colors.surfaceMuted.withValues(alpha: 0.8),
-            colors.surfaceDefault,
-          ],
+          colors: [colors.surfaceMuted.withValues(alpha: 0.8), colors.surfaceDefault],
         ),
       ),
       child: Padding(
@@ -314,137 +290,119 @@ class _PatientDetailsSection extends StatelessWidget {
           description: 'Core information used to identify the patient and reach them for care.',
         ),
         const SizedBox(height: AppSpacing.space4),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final twoColumns = constraints.maxWidth >= _kSmBreakpoint;
-            final fieldGap = const SizedBox(height: AppSpacing.space4);
-            final columnGap = const SizedBox(width: AppSpacing.space4);
+        _buildPatientDetailsFields(),
+      ],
+    );
+  }
 
-            final fullNameField = AppFormField(
-              id: 'add-patient-fullName',
-              label: 'Full name',
-              requiredMark: true,
-              hint: 'Legal name as it appears on government ID.',
-              error: errors.fullName,
-              child: Focus(
-                autofocus: autoFocus,
-                child: AppTextInput(
-                  id: 'add-patient-fullName',
-                  initialValue: values.fullName,
-                  onChanged: (value) => onFieldChange('fullName', value),
-                  placeholder: 'e.g. Sara Hassan Ibrahim',
-                  invalid: errors.fullName != null,
-                ),
-              ),
-            );
+  Widget _buildPatientDetailsFields() {
+    const fieldGap = SizedBox(height: AppSpacing.space4);
+    const columnGap = SizedBox(width: AppSpacing.space4);
 
-            final dobField = AppFormField(
-              id: 'add-patient-dob',
-              label: 'Date of birth',
-              hint: 'Used with name for duplicate detection.',
-              error: errors.dateOfBirth,
-              child: AppDatePicker(
-                id: 'add-patient-dob',
-                value: values.dateOfBirth,
-                onChanged: (date) => onFieldChange('dateOfBirth', date),
-                placeholder: 'Select date',
-                max: DateTime.now(),
-                invalid: errors.dateOfBirth != null,
-              ),
-            );
+    final fullNameField = AppFormField(
+      id: 'add-patient-fullName',
+      label: 'Full name',
+      requiredMark: true,
+      hint: 'Legal name as it appears on government ID.',
+      error: errors.fullName,
+      child: Focus(
+        autofocus: autoFocus,
+        child: AppTextInput(
+          id: 'add-patient-fullName',
+          initialValue: values.fullName,
+          onChanged: (value) => onFieldChange('fullName', value),
+          placeholder: 'e.g. Sara Hassan Ibrahim',
+          invalid: errors.fullName != null,
+        ),
+      ),
+    );
 
-            final genderField = AppFormField(
-              id: 'add-patient-gender',
-              label: 'Gender',
-              hint: 'Optional. Shown on the patient profile.',
-              error: errors.gender,
-              child: AppSelect(
-                id: 'add-patient-gender',
-                value: values.gender?.wireValue,
-                onChanged: (value) => onFieldChange('gender', PatientGender.tryParse(value)),
-                options: _registrationGenderOptions
-                    .map((gender) => AppSelectOption(value: gender.wireValue, label: gender.label))
-                    .toList(),
-                placeholder: 'Select gender',
-                invalid: errors.gender != null,
-              ),
-            );
+    final dobField = AppFormField(
+      id: 'add-patient-dob',
+      label: 'Date of birth',
+      hint: 'Used with name for duplicate detection.',
+      error: errors.dateOfBirth,
+      child: AppDatePicker(
+        id: 'add-patient-dob',
+        value: values.dateOfBirth,
+        onChanged: (date) => onFieldChange('dateOfBirth', date),
+        placeholder: 'Select date',
+        max: DateTime.now(),
+        invalid: errors.dateOfBirth != null,
+      ),
+    );
 
-            final phoneField = AppFormField(
-              id: 'add-patient-phone',
-              label: 'Mobile number',
-              hint: 'Used for reminders and duplicate checks.',
-              error: errors.phone,
-              child: Directionality(
-                textDirection: TextDirection.ltr,
-                child: AppPhoneInput(
-                  id: 'add-patient-phone',
-                  initialValue: values.phone,
-                  onValueChange: (phone) => onFieldChange('phone', phone),
-                  invalid: errors.phone != null,
-                ),
-              ),
-            );
+    final genderField = AppFormField(
+      id: 'add-patient-gender',
+      label: 'Gender',
+      hint: 'Optional. Shown on the patient profile.',
+      error: errors.gender,
+      child: AppSelect(
+        id: 'add-patient-gender',
+        value: values.gender?.wireValue,
+        onChanged: (value) => onFieldChange('gender', PatientGender.tryParse(value)),
+        options: _registrationGenderOptions
+            .map((gender) => AppSelectOption(value: gender.wireValue, label: gender.label))
+            .toList(),
+        placeholder: 'Select gender',
+        invalid: errors.gender != null,
+      ),
+    );
 
-            final maritalField = AppFormField(
-              id: 'add-patient-maritalStatus',
-              label: 'Marital state',
-              hint: 'Optional. Shown on the patient profile.',
-              error: errors.maritalStatus,
-              child: AppSelect(
-                id: 'add-patient-maritalStatus',
-                value: values.maritalStatus?.wireValue,
-                onChanged: (value) => onFieldChange('maritalStatus', PatientMaritalStatus.tryParse(value)),
-                options: _maritalStatusOptions
-                    .map((status) => AppSelectOption(value: status.wireValue, label: status.label))
-                    .toList(),
-                placeholder: 'Select marital state',
-                invalid: errors.maritalStatus != null,
-              ),
-            );
+    final phoneField = AppFormField(
+      id: 'add-patient-phone',
+      label: 'Mobile number',
+      hint: 'Used for reminders and duplicate checks.',
+      error: errors.phone,
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: AppPhoneInput(
+          id: 'add-patient-phone',
+          initialValue: values.phone,
+          onValueChange: (phone) => onFieldChange('phone', phone),
+          invalid: errors.phone != null,
+        ),
+      ),
+    );
 
-            if (!twoColumns) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  fullNameField,
-                  fieldGap,
-                  dobField,
-                  fieldGap,
-                  genderField,
-                  fieldGap,
-                  phoneField,
-                  fieldGap,
-                  maritalField,
-                ],
-              );
-            }
+    final maritalField = AppFormField(
+      id: 'add-patient-maritalStatus',
+      label: 'Marital state',
+      hint: 'Optional. Shown on the patient profile.',
+      error: errors.maritalStatus,
+      child: AppSelect(
+        id: 'add-patient-maritalStatus',
+        value: values.maritalStatus?.wireValue,
+        onChanged: (value) => onFieldChange('maritalStatus', PatientMaritalStatus.tryParse(value)),
+        options: _maritalStatusOptions
+            .map((status) => AppSelectOption(value: status.wireValue, label: status.label))
+            .toList(),
+        placeholder: 'Select marital state',
+        invalid: errors.maritalStatus != null,
+      ),
+    );
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                fullNameField,
-                fieldGap,
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: dobField),
-                    columnGap,
-                    Expanded(child: genderField),
-                  ],
-                ),
-                fieldGap,
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: phoneField),
-                    columnGap,
-                    Expanded(child: maritalField),
-                  ],
-                ),
-              ],
-            );
-          },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        fullNameField,
+        fieldGap,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: dobField),
+            columnGap,
+            Expanded(child: genderField),
+          ],
+        ),
+        fieldGap,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: phoneField),
+            columnGap,
+            Expanded(child: maritalField),
+          ],
         ),
       ],
     );
@@ -452,11 +410,7 @@ class _PatientDetailsSection extends StatelessWidget {
 }
 
 class _ClinicalNotesSection extends StatelessWidget {
-  const _ClinicalNotesSection({
-    required this.values,
-    required this.errors,
-    required this.onFieldChange,
-  });
+  const _ClinicalNotesSection({required this.values, required this.errors, required this.onFieldChange});
 
   final PatientRegistrationForm values;
   final PatientFormErrors errors;

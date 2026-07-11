@@ -58,18 +58,13 @@ class AppPagination extends StatelessWidget {
     final canGoPrev = page > 1;
     final canGoNext = page < totalPages;
 
-    final rangeStyle = AppTypography.bodySm(context).copyWith(
-      color: colors.textSecondary,
-      fontFeatures: _tabularFigures,
-    );
-    final rangeHighlightStyle = rangeStyle.copyWith(
-      fontWeight: FontWeight.w500,
-      color: colors.textPrimary,
-    );
-    final pageIndicatorStyle = AppTypography.bodySm(context).copyWith(
-      color: colors.textPrimary,
-      fontFeatures: _tabularFigures,
-    );
+    final rangeStyle = AppTypography.bodySm(
+      context,
+    ).copyWith(color: colors.textSecondary, fontFeatures: _tabularFigures);
+    final rangeHighlightStyle = rangeStyle.copyWith(fontWeight: FontWeight.w500, color: colors.textPrimary);
+    final pageIndicatorStyle = AppTypography.bodySm(
+      context,
+    ).copyWith(color: colors.textPrimary, fontFeatures: _tabularFigures);
     final rowsLabelStyle = AppTypography.bodySm(context).copyWith(color: colors.textSecondary);
 
     final rangeSummary = Text.rich(
@@ -114,11 +109,7 @@ class AppPagination extends StatelessWidget {
         ),
         ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 64),
-          child: Text(
-            '$page / $totalPages',
-            textAlign: TextAlign.center,
-            style: pageIndicatorStyle,
-          ),
+          child: Text('$page / $totalPages', textAlign: TextAlign.center, style: pageIndicatorStyle),
         ),
         AppIconButton(
           size: AppIconButtonSize.sm,
@@ -133,13 +124,11 @@ class AppPagination extends StatelessWidget {
     return Semantics(
       container: true,
       label: 'Pagination',
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: AppSpacing.space4,
-        runSpacing: AppSpacing.space4,
+      child: Row(
         children: [
-          Semantics(label: 'Showing $_start to $_end $ofLabel $total', child: rangeSummary),
+          Expanded(
+            child: Semantics(label: 'Showing $_start to $_end $ofLabel $total', child: rangeSummary),
+          ),
           controls,
         ],
       ),

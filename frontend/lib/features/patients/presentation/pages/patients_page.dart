@@ -245,7 +245,7 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
     }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       spacing: AppSpacing.space6,
       children: [
