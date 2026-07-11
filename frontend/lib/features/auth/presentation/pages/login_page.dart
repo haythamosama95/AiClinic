@@ -23,6 +23,9 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/app/presentation/placeholder_page.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/features/auth/presentation/dev/auth_dev_widgets.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_fill_dummy_clinic.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_nav_handler.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_reset_clinic.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 
 const _lgBreakpoint = 960.0;
@@ -152,6 +155,24 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
     _submit();
   }
 
+  Future<void> _devFillDummyClinic() async {
+    await ShellDevNavHandler.handleFromLogin(
+      context,
+      ref,
+      confirm: ShellDevFillDummyClinic.confirm,
+      run: ShellDevFillDummyClinic.run,
+    );
+  }
+
+  Future<void> _devResetClinic() async {
+    await ShellDevNavHandler.handleFromLogin(
+      context,
+      ref,
+      confirm: ShellDevResetClinic.confirm,
+      run: ShellDevResetClinic.run,
+    );
+  }
+
   void _showForgotPasswordMessage() {
     ref.read(authNotifierProvider.notifier).showForgotPasswordMessage();
   }
@@ -202,6 +223,8 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
                               ),
                               AuthDevWidgets.panel(
                                 onLoginAsAdmin: _devLoginAsAdmin,
+                                onFillDummyClinic: _devFillDummyClinic,
+                                onResetClinic: _devResetClinic,
                                 isSubmitting: authState.isSubmitting,
                               ),
                             ],

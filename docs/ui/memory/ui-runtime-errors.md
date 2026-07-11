@@ -1,6 +1,6 @@
 # UI Runtime Error Memory
 
-Brief notes from fixing design-system showcase crashes (2026-07-07). Read this before adding or porting form and display components.
+Brief notes from fixing design-system showcase crashes (2026-07-07). Consult this file only when explicitly instructed — not on every UI task.
 
 ## 1. `No Material widget found` (TextField / Slider)
 
@@ -675,6 +675,7 @@ void appToast(BuildContext context, AppToastInput input) {
 7. Form-field hint tooltip? → Pass `preferBelow: false` on `AppTooltip` to match web `side="top"`.
 8. Row/Column inside `SingleChildScrollView`? → Do not use `CrossAxisAlignment.stretch` on a `Row` when the parent gives unbounded height; use `start` and derive sticky/viewport height from `MediaQuery` when `constraints.maxHeight` is infinite.
 9. Material `Slider` inside a scroll view? → **Do not use Material `Slider`**; its `OverlayPortal` cannot be disabled. Build a custom track/thumb slider instead (see `app_slider.dart`).
+10. Token/multi-select with chips + inline query `TextField` in `Wrap`? → Hide the query field when every option is selected and the user is not searching; use a fixed ~72px width when visible so `Wrap` does not leave a blank second row (see entry #38).
 
 ## Checklist for new display components
 
@@ -921,6 +922,31 @@ final activeScreen = AppRoutes.settingsScreenFromPath(location);
 **Fix:** Replace `InkWell` with `GestureDetector` and drive hover/selected backgrounds from `Material.color` via the existing `MouseRegion` hover state (same pattern as horizontal `AppTabs`).
 
 **Affected files (fixed):** `settings_nav_rail.dart`.
+
+---
+
+## 38. Extra blank row in multi-select after all options selected (`AppMultiSelect`)
+
+**Symptom:** In Staff setup (and other `AppMultiSelect` usages), after selecting every available branch the field shows selected chips plus an empty second line of vertical space inside the bordered input.
+
+**Cause:** Chips and the query `TextField` live in a `Wrap`. The `TextField` always stayed in the tree with `ConstrainedBox(minWidth: 64)` even when `_filtered` was empty (all options already selected). `Wrap` placed the empty field on a new run, leaving a full input-height blank row.
+
+**Fix:** Hide the inline query field when there is nothing left to pick and the user is not searching (`value` non-empty, `_filtered` empty, controller empty, not focused). Match the web `min-w-[8ch]` token width when the field is shown so it stays on the chip row:
+
+```dart
+bool get _showQueryField =>
+    widget.value.isEmpty ||
+    _filtered.isNotEmpty ||
+    _controller.text.isNotEmpty ||
+    _focused;
+
+// In Wrap children:
+if (_showQueryField) SizedBox(width: 72, child: field),
+```
+
+Tapping the shell still opens the popover (`No more options`) without forcing focus onto a hidden field.
+
+**Affected files (fixed):** `app_multi_select.dart`.
 
 ## Checklist for new settings / wizard pages
 

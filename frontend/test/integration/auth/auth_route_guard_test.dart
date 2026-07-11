@@ -27,7 +27,25 @@ void main() {
       );
     });
 
-    test('authenticated setup required allows home shell without redirect', () {
+    test('postLoginDestination uses setup_required claim', () {
+      expect(
+        AuthRouteGuard.postLoginDestination(
+          AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: true),
+          ),
+        ),
+        AppRoutes.settingsSetup,
+      );
+      expect(
+        AuthRouteGuard.postLoginDestination(
+          AuthSessionState(status: AuthSessionStatus.authenticated, context: sampleAuthSessionContext()),
+        ),
+        AppRoutes.home,
+      );
+    });
+
+    test('authenticated setup required redirects home to setup wizard', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.home,
@@ -36,7 +54,20 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        isNull,
+        AppRoutes.settingsSetup,
+      );
+    });
+
+    test('missing organization redirects to setup wizard even when setup_required is false', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(
+          location: AppRoutes.home,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: false).copyWith(organizationId: null),
+          ),
+        ),
+        AppRoutes.settingsSetup,
       );
     });
 

@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart'
 import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
 import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
+import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 
@@ -22,7 +23,7 @@ import 'package:ai_clinic/features/setup/presentation/providers/provisioning_not
 String setupMessageForRpc(RpcFailure failure) {
   return switch (failure.code) {
     'ORG_ALREADY_EXISTS' => 'An organization already exists for this installation.',
-    'NOT_BOOTSTRAP_ADMIN' => 'Only the bootstrap administrator can perform this clinic setup action.',
+    'NOT_BOOTSTRAP_ADMIN' => 'Only the clinic administrator account can run first-time setup.',
     'ORG_NOT_FOUND' => 'The organization could not be found. Restart setup from the beginning.',
     'INVALID_INPUT' => failure.message,
     'RESET_INCOMPLETE' => 'Clinic data could not be cleared. Apply the latest database migrations and try again.',
@@ -300,6 +301,11 @@ class SetupNotifier extends Notifier<SetupUiState> {
       return false;
     }
 
+    if (!session.canPerformBootstrapSetup) {
+      state = state.copyWith(errorMessage: 'Only the clinic administrator account can run first-time setup.');
+      return false;
+    }
+
     if (state.branchDraft == null) {
       state = state.copyWith(errorMessage: 'Complete branch details first.', step: SetupWizardStep.branch);
       return false;
@@ -384,6 +390,7 @@ class SetupNotifier extends Notifier<SetupUiState> {
 
       invalidateAppointmentSurfaceProviders(ref);
       resetWizardState();
+      await ref.read(clinicSetupDraftProvider.notifier).resetSetup();
       state = state.copyWith(isSubmitting: false);
       return true;
     } on RpcFailure catch (error) {
@@ -424,6 +431,17 @@ class SetupNotifier extends Notifier<SetupUiState> {
 
     if (state.staffDrafts.isEmpty) {
       state = state.copyWith(errorMessage: 'Create at least one staff account to finish setup.');
+      return false;
+    }
+
+    final session = ref.read(authSessionProvider).context;
+    if (session == null) {
+      state = state.copyWith(errorMessage: 'Sign in again to finish clinic setup.');
+      return false;
+    }
+
+    if (!session.canPerformBootstrapSetup) {
+      state = state.copyWith(errorMessage: 'Only the clinic administrator account can run first-time setup.');
       return false;
     }
 

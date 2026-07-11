@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/core/ui/components/app_alert.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_card.dart';
 import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
@@ -15,7 +19,25 @@ class SetupScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+      final wasLocked = previous?.context?.needsClinicSetup ?? false;
+      final isLocked = next.context?.needsClinicSetup ?? false;
+      if (!wasLocked || isLocked || !next.isAuthenticated) {
+        return;
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) {
+          return;
+        }
+        context.go(AppRoutes.home);
+      });
+    });
+
     final setupDone = ref.watch(isSetupCompleteProvider);
+    final session = ref.watch(authSessionProvider).context;
+    final setupRequired = session?.needsClinicSetup ?? false;
+    final canRunBootstrapSetup = !setupRequired || (session?.canPerformBootstrapSetup ?? false);
     final colors = context.appColors;
 
     final body = Column(
@@ -89,7 +111,19 @@ class SetupScreen extends ConsumerWidget {
             ),
           ),
         ],
-        if (!setupDone) ...[const SizedBox(height: AppSpacing.space6), const SetupWizard()],
+        if (!setupDone && !canRunBootstrapSetup) ...[
+          const SizedBox(height: AppSpacing.space6),
+          AppAlert(
+            variant: AppAlertVariant.warning,
+            title: 'Administrator sign-in required',
+            child: Text(
+              'First-time clinic setup can only be completed by the clinic administrator account. '
+              'Sign out and sign in with your administrator credentials to continue.',
+              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+            ),
+          ),
+        ],
+        if (!setupDone && canRunBootstrapSetup) ...[const SizedBox(height: AppSpacing.space6), const SetupWizard()],
       ],
     );
 

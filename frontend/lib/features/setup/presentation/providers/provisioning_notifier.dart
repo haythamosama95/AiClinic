@@ -137,7 +137,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
 
-    if (session.setupRequired) {
+    if (session.needsClinicSetup) {
       state = state.copyWith(errorMessage: 'Finish clinic setup before creating staff accounts.');
       return null;
     }
@@ -226,7 +226,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
 
-    if (session.setupRequired) {
+    if (session.needsClinicSetup) {
       state = state.copyWith(errorMessage: 'Finish clinic setup before resetting staff passwords.');
       return null;
     }
@@ -289,7 +289,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
 
-    if (session.setupRequired) {
+    if (session.needsClinicSetup) {
       state = state.copyWith(errorMessage: 'Finish clinic setup before updating staff usernames.');
       return null;
     }

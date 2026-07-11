@@ -201,7 +201,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
 
           if (!AuthRouteGuard.canAccessProtectedFeatureRoute(auth)) {
-            return auth.isAuthenticated ? AppRoutes.bootstrap : AppRoutes.login;
+            return auth.isAuthenticated ? AppRoutes.settingsSetup : AppRoutes.login;
           }
         }
 
@@ -283,6 +283,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final shiftRedirect = AuthRouteGuard.shiftRouteRedirect(location: location, auth: auth);
         if (shiftRedirect != null) {
           return shiftRedirect;
+        }
+
+        final settingsRedirect = AuthRouteGuard.settingsRouteRedirect(location: location, auth: auth);
+        if (settingsRedirect != null) {
+          return settingsRedirect;
         }
 
         final provisioningRedirect = AuthRouteGuard.steadyStateProvisioningRedirect(location: location, auth: auth);

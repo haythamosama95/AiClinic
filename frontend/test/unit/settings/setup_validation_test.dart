@@ -91,9 +91,43 @@ void main() {
     });
   });
 
+  group('validateSingleStaff', () {
+    test('accepts a valid staff member', () {
+      expect(validateSingleStaff(_staff(), 0, allStaff: [_staff()], branchCount: 1), isEmpty);
+    });
+
+    test('rejects invalid fields for one member', () {
+      final errors = validateSingleStaff(
+        _staff(username: 'ab', password: 'short', branchIds: const []),
+        0,
+        allStaff: [_staff(username: 'ab', password: 'short', branchIds: const [])],
+        branchCount: 1,
+      );
+
+      expect(errors['staff-0-username'], isNotNull);
+      expect(errors['staff-0-password'], contains('8 characters'));
+      expect(errors['staff-0-branches'], isNotNull);
+    });
+  });
+
   group('validateServices', () {
     test('accepts valid services', () {
       expect(validateServices([_service()]), isEmpty);
+    });
+
+    test('validateSingleService accepts a valid service', () {
+      expect(validateSingleService(_service(), 0, allServices: [_service()]), isEmpty);
+    });
+
+    test('validateSingleService rejects invalid fields for one service', () {
+      final errors = validateSingleService(
+        _service(name: '', price: null),
+        0,
+        allServices: [_service(name: '', price: null)],
+      );
+
+      expect(errors['service-0-name'], isNotNull);
+      expect(errors['service-0-price'], isNotNull);
     });
 
     test('rejects missing price, long names, and duplicate names', () {

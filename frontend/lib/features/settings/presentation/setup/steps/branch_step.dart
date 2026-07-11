@@ -18,6 +18,7 @@ import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_model
 import 'package:ai_clinic/features/settings/presentation/setup/setup_field_hints.dart';
 import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
 import 'package:ai_clinic/features/settings/presentation/setup/widgets/collapsed_branch_card.dart';
+import 'package:ai_clinic/features/settings/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
 import 'package:ai_clinic/features/settings/presentation/setup/widgets/maps_location_input.dart';
 import 'package:ai_clinic/features/settings/presentation/setup/widgets/working_hours_editor.dart';
 
@@ -33,8 +34,8 @@ class BranchStep extends StatefulWidget {
 
 class _BranchStepState extends State<BranchStep> {
   late String _activeBranchId;
-  final Set<String> _confirmedIds = {};
   Map<String, String> _localErrors = {};
+  String? _savingBranchId;
 
   @override
   void initState() {
@@ -43,6 +44,30 @@ class _BranchStepState extends State<BranchStep> {
   }
 
   Map<String, String> get _mergedErrors => {...widget.errors, ..._localErrors};
+
+  String? _resolveActiveBranchId(List<BranchDraft> branches, Set<String> confirmedIds) {
+    if (_activeBranchId.isNotEmpty && !confirmedIds.contains(_activeBranchId)) {
+      if (branches.any((branch) => branch.id == _activeBranchId)) {
+        return _activeBranchId;
+      }
+    }
+
+    for (final branch in branches) {
+      if (!confirmedIds.contains(branch.id)) {
+        return branch.id;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _ensureMinLoadingDuration(DateTime startedAt) async {
+    final elapsed = DateTime.now().difference(startedAt);
+    final remaining = kSetupSaveMinLoadingDuration - elapsed;
+    if (remaining > Duration.zero) {
+      await Future<void>.delayed(remaining);
+    }
+  }
 
   Map<String, String> _branchDayErrors(Map<String, String> errors, String prefix) {
     final dayErrors = <String, String>{};
@@ -55,7 +80,12 @@ class _BranchStepState extends State<BranchStep> {
     return dayErrors;
   }
 
-  bool _validateAndConfirm(List<BranchDraft> branches, String branchId) {
+  bool _validateAndConfirm(
+    List<BranchDraft> branches,
+    String branchId,
+    ClinicSetupDraftNotifier notifier,
+    Set<String> confirmedIds,
+  ) {
     final index = branches.indexWhere((branch) => branch.id == branchId);
     if (index < 0) return true;
 
@@ -67,9 +97,45 @@ class _BranchStepState extends State<BranchStep> {
 
     setState(() {
       _localErrors = {};
-      _confirmedIds.add(branchId);
+      if (_activeBranchId == branchId) {
+        _activeBranchId = '';
+      }
     });
+    notifier.confirmBranch(branchId);
     return true;
+  }
+
+  Future<void> _saveBranch(List<BranchDraft> branches, String branchId, ClinicSetupDraftNotifier notifier) async {
+    if (_savingBranchId != null) return;
+
+    setState(() => _savingBranchId = branchId);
+    final startedAt = DateTime.now();
+    await Future<void>.delayed(Duration.zero);
+
+    final index = branches.indexWhere((branch) => branch.id == branchId);
+    if (index < 0) {
+      if (mounted) setState(() => _savingBranchId = null);
+      return;
+    }
+
+    final branchErrors = validateSingleBranch(branches[index], index, allBranches: branches);
+    await _ensureMinLoadingDuration(startedAt);
+    if (!mounted) return;
+
+    if (hasErrors(branchErrors)) {
+      setState(() {
+        _localErrors = branchErrors;
+        _savingBranchId = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _localErrors = {};
+      _activeBranchId = '';
+      _savingBranchId = null;
+    });
+    notifier.confirmBranch(branchId);
   }
 
   @override
@@ -77,20 +143,24 @@ class _BranchStepState extends State<BranchStep> {
     return Consumer(
       builder: (context, ref, _) {
         final draft = ref.watch(clinicSetupDraftProvider.select((state) => state.draft));
+        final confirmedIds = ref.watch(clinicSetupDraftProvider.select((state) => state.confirmedBranchIds));
         final notifier = ref.read(clinicSetupDraftProvider.notifier);
         final colors = context.appColors;
 
         if (_activeBranchId.isEmpty && draft.branches.isNotEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            setState(() => _activeBranchId = draft.branches.first.id);
+            final nextActiveId = _resolveActiveBranchId(draft.branches, confirmedIds);
+            if (nextActiveId != null) {
+              setState(() => _activeBranchId = nextActiveId);
+            }
           });
         }
 
-        final resolvedActiveId = draft.branches.any((branch) => branch.id == _activeBranchId)
-            ? _activeBranchId
-            : (draft.branches.isNotEmpty ? draft.branches.first.id : '');
-        final activeIndex = draft.branches.indexWhere((branch) => branch.id == resolvedActiveId);
+        final resolvedActiveId = _resolveActiveBranchId(draft.branches, confirmedIds);
+        final activeIndex = resolvedActiveId == null
+            ? -1
+            : draft.branches.indexWhere((branch) => branch.id == resolvedActiveId);
         final activeBranch = activeIndex >= 0 ? draft.branches[activeIndex] : null;
 
         void updateBranch(
@@ -109,15 +179,20 @@ class _BranchStepState extends State<BranchStep> {
             mapLocation: mapLocation,
             workingDays: workingDays,
           );
+          if (confirmedIds.contains(id)) {
+            notifier.unconfirmBranch(id);
+          }
         }
 
         void removeBranch(String id) {
-          final next = draft.branches.where((branch) => branch.id != id).toList();
-          notifier.setBranches(next);
+          notifier.removeBranch(id);
+          final branches = ref.read(clinicSetupDraftProvider).draft.branches;
           setState(() {
-            _confirmedIds.remove(id);
-            if (id == _activeBranchId) {
-              _activeBranchId = next.isNotEmpty ? next.last.id : '';
+            if (branches.isEmpty) {
+              final newBranch = notifier.addBranch();
+              _activeBranchId = newBranch.id;
+            } else if (id == _activeBranchId) {
+              _activeBranchId = branches.last.id;
             }
             _localErrors = {};
           });
@@ -125,28 +200,30 @@ class _BranchStepState extends State<BranchStep> {
 
         void addBranch() {
           if (activeBranch == null) return;
-          if (!_validateAndConfirm(draft.branches, activeBranch.id)) return;
+          if (!_validateAndConfirm(draft.branches, activeBranch.id, notifier, confirmedIds)) return;
 
           final newBranch = notifier.addBranch();
-          setState(() => _activeBranchId = newBranch.id);
+          setState(() {
+            _activeBranchId = newBranch.id;
+            _localErrors = {};
+          });
         }
 
         void expandBranch(String branchId) {
           if (branchId == resolvedActiveId) return;
 
-          if (activeBranch != null && !_confirmedIds.contains(activeBranch.id)) {
-            if (!_validateAndConfirm(draft.branches, activeBranch.id)) return;
+          if (activeBranch != null && !confirmedIds.contains(activeBranch.id)) {
+            if (!_validateAndConfirm(draft.branches, activeBranch.id, notifier, confirmedIds)) return;
           }
 
           setState(() {
             _localErrors = {};
             _activeBranchId = branchId;
           });
+          notifier.unconfirmBranch(branchId);
         }
 
-        final collapsedBranches = draft.branches
-            .where((branch) => branch.id != resolvedActiveId && _confirmedIds.contains(branch.id))
-            .toList();
+        final collapsedBranches = draft.branches.where((branch) => confirmedIds.contains(branch.id)).toList();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -205,7 +282,6 @@ class _BranchStepState extends State<BranchStep> {
                     index: draft.branches.indexWhere((item) => item.id == branch.id),
                     onExpand: () => expandBranch(branch.id),
                     onRemove: () => removeBranch(branch.id),
-                    canRemove: draft.branches.length > 1,
                   ),
                   const SizedBox(height: AppSpacing.space3),
                 ],
@@ -233,6 +309,8 @@ class _BranchStepState extends State<BranchStep> {
                       index: activeIndex >= 0 ? activeIndex : 0,
                       errors: _mergedErrors,
                       dayErrors: _branchDayErrors(_mergedErrors, 'branch-${activeIndex >= 0 ? activeIndex : 0}'),
+                      isSaving: _savingBranchId == activeBranch.id,
+                      onSave: () => _saveBranch(draft.branches, activeBranch.id, notifier),
                       onUpdate: (patch) => updateBranch(
                         activeBranch.id,
                         name: patch.name,
@@ -242,7 +320,7 @@ class _BranchStepState extends State<BranchStep> {
                         workingDays: patch.workingDays,
                       ),
                       onRemove: () => removeBranch(activeBranch.id),
-                      canRemove: draft.branches.length > 1,
+                      canRemove: true,
                     ),
                   ),
               ],
@@ -277,6 +355,8 @@ class _BranchForm extends StatelessWidget {
     required this.index,
     required this.errors,
     required this.dayErrors,
+    required this.isSaving,
+    required this.onSave,
     required this.onUpdate,
     required this.onRemove,
     required this.canRemove,
@@ -287,6 +367,8 @@ class _BranchForm extends StatelessWidget {
   final int index;
   final Map<String, String> errors;
   final Map<String, String> dayErrors;
+  final bool isSaving;
+  final Future<void> Function() onSave;
   final void Function(_BranchFormPatch patch) onUpdate;
   final VoidCallback onRemove;
   final bool canRemove;
@@ -311,7 +393,7 @@ class _BranchForm extends StatelessWidget {
                 AppIconButton(
                   icon: const Icon(Icons.delete_outline, size: 16),
                   label: 'Remove branch',
-                  variant: AppIconButtonVariant.ghost,
+                  variant: AppIconButtonVariant.danger,
                   size: AppIconButtonSize.sm,
                   onPressed: onRemove,
                 ),
@@ -406,6 +488,17 @@ class _BranchForm extends StatelessWidget {
             value: branch.workingDays,
             onChange: (workingDays) => onUpdate(_BranchFormPatch(workingDays: workingDays)),
             errors: dayErrors,
+          ),
+          const SizedBox(height: AppSpacing.space6),
+          SizedBox(
+            width: double.infinity,
+            child: AppButton(
+              variant: AppButtonVariant.primary,
+              loading: isSaving,
+              disabled: isSaving,
+              onPressed: isSaving ? null : onSave,
+              child: Text(isSaving ? 'Validating…' : 'Save branch'),
+            ),
           ),
         ],
       ),

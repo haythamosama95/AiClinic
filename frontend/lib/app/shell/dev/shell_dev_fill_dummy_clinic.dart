@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_notifier.dart';
+import 'package:ai_clinic/core/ui/components/app_dialog.dart';
 
 /// Dev Options nav item and handlers for filling dummy clinic data.
 abstract final class ShellDevFillDummyClinic {
@@ -33,30 +34,29 @@ abstract final class ShellDevFillDummyClinic {
     await confirmAndRun(context, ref);
   }
 
-  /// Shows the confirmation dialog and runs the full dummy clinic seed (debug builds only).
-  static Future<void> confirmAndRun(BuildContext context, WidgetRef ref, {VoidCallback? onSuccess}) async {
+  static Future<bool> confirm(BuildContext context) async {
     if (!isEnabled) {
-      return;
+      return false;
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text(confirmationTitle),
-        content: const Text(confirmationMessage),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Fill dummy data')),
-        ],
-      ),
+    return AppConfirmationDialog.show(
+      context,
+      title: confirmationTitle,
+      description: confirmationMessage,
+      confirmLabel: 'Fill dummy data',
+      cancelLabel: 'Cancel',
     );
+  }
 
-    if (confirmed == true && context.mounted) {
-      await _run(context, ref, onSuccess: onSuccess);
+  /// Shows the confirmation dialog and runs the full dummy clinic seed (debug builds only).
+  static Future<void> confirmAndRun(BuildContext context, WidgetRef ref, {VoidCallback? onSuccess}) async {
+    final confirmed = await confirm(context);
+    if (confirmed && context.mounted) {
+      await run(context, ref, onSuccess: onSuccess);
     }
   }
 
-  static Future<void> _run(BuildContext context, WidgetRef ref, {VoidCallback? onSuccess}) async {
+  static Future<void> run(BuildContext context, WidgetRef ref, {VoidCallback? onSuccess}) async {
     final ok = await ref.read(devClinicSeedProvider.notifier).fillDummyClinic();
     if (!context.mounted) {
       return;

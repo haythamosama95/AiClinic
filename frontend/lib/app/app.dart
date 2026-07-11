@@ -47,7 +47,7 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
     }
 
     final auth = ref.read(authSessionProvider);
-    if (!auth.isAuthenticated || auth.context!.setupRequired) {
+    if (!auth.isAuthenticated || auth.context!.needsClinicSetup) {
       return;
     }
 

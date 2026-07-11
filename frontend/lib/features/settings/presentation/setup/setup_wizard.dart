@@ -10,7 +10,6 @@ import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/settings/presentation/setup/setup_step_panel.dart';
 import 'package:ai_clinic/features/settings/presentation/setup/setup_step_rail.dart';
 import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
@@ -22,16 +21,6 @@ import 'package:ai_clinic/features/settings/presentation/setup/steps/staff_step.
 const _stepCount = 4;
 const _smBreakpoint = 600.0;
 
-Map<String, String> _validateStep(int step, SetupDraft draft) {
-  return switch (step) {
-    0 => validateOrganization(draft.organization),
-    1 => validateBranches(draft.branches),
-    2 => validateStaff(draft.staff, draft.branches.length),
-    3 => validateServices(draft.services),
-    _ => const {},
-  };
-}
-
 /// Setup wizard shell (web `SetupWizard`).
 class SetupWizard extends ConsumerStatefulWidget {
   const SetupWizard({super.key});
@@ -42,12 +31,14 @@ class SetupWizard extends ConsumerStatefulWidget {
 
 class _SetupWizardState extends ConsumerState<SetupWizard> {
   var _errors = <String, String>{};
+  final _branchStepKey = GlobalKey();
+  final _staffStepKey = GlobalKey();
 
-  void _goNext() {
+  Future<void> _goNext() async {
     final setupState = ref.read(clinicSetupDraftProvider);
     final step = setupState.step;
     final draft = setupState.draft;
-    final stepErrors = _validateStep(step, draft);
+    final stepErrors = validateStep(step, draft);
 
     if (hasErrors(stepErrors)) {
       setState(() => _errors = stepErrors);
@@ -59,11 +50,17 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     final notifier = ref.read(clinicSetupDraftProvider.notifier);
     final isLastStep = step == _stepCount - 1;
 
+    await notifier.persistDraft();
+
     if (isLastStep) {
-      notifier.completeSetup();
+      final ok = await notifier.completeSetup();
+      if (!ok && mounted) {
+        setState(() {});
+      }
       return;
     }
 
+    notifier.markStepComplete(step);
     notifier.setStep(step + 1);
   }
 
@@ -78,14 +75,14 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   Widget _stepContent(int step) {
     return switch (step) {
       0 => OrganizationStep(errors: _errors),
-      1 => BranchStep(errors: _errors),
-      2 => StaffStep(errors: _errors),
+      1 => BranchStep(key: _branchStepKey, errors: _errors),
+      2 => StaffStep(key: _staffStepKey, errors: _errors),
       3 => ServicesStep(errors: _errors),
       _ => const SizedBox.shrink(),
     };
   }
 
-  Widget _stepPanel(int step, AppSemanticColors colors, bool isLastStep) {
+  Widget _stepPanel(int step, AppSemanticColors colors, bool isLastStep, bool isSubmitting, String? submitError) {
     return SetupStepPanel(
       stepKey: '$step',
       child: Column(
@@ -93,6 +90,13 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _stepContent(step),
+          if (submitError != null) ...[
+            const SizedBox(height: AppSpacing.space4),
+            Semantics(
+              liveRegion: true,
+              child: Text(submitError, style: AppTypography.bodySm(context).copyWith(color: colors.statusDangerFg)),
+            ),
+          ],
           const SizedBox(height: AppSpacing.space10),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -105,16 +109,17 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 children: [
                   AppButton(
                     variant: AppButtonVariant.secondary,
-                    disabled: step == 0,
-                    onPressed: step == 0 ? null : _goBack,
+                    disabled: step == 0 || isSubmitting,
+                    onPressed: step == 0 || isSubmitting ? null : _goBack,
                     leadingIcon: const Icon(Icons.arrow_back, size: 16),
                     child: const Text('Back'),
                   ),
                   AppButton(
                     variant: AppButtonVariant.primary,
-                    onPressed: _goNext,
-                    trailingIcon: isLastStep ? null : const Icon(Icons.arrow_forward, size: 16),
-                    child: Text(isLastStep ? 'Finish setup' : 'Continue'),
+                    disabled: isSubmitting,
+                    onPressed: isSubmitting ? null : _goNext,
+                    trailingIcon: isLastStep || isSubmitting ? null : const Icon(Icons.arrow_forward, size: 16),
+                    child: Text(isLastStep ? (isSubmitting ? 'Finishing setup…' : 'Finish setup') : 'Continue'),
                   ),
                 ],
               ),
@@ -127,7 +132,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
 
   @override
   Widget build(BuildContext context) {
-    final step = ref.watch(clinicSetupDraftProvider.select((state) => state.step));
+    final setupState = ref.watch(clinicSetupDraftProvider);
+    final step = setupState.step;
     final progress = ((step + 1) / _stepCount) * 100;
     final isLastStep = step == _stepCount - 1;
     final colors = context.appColors;
@@ -218,7 +224,13 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final showRail = constraints.maxWidth >= _smBreakpoint;
-                      final body = _stepPanel(step, colors, isLastStep);
+                      final body = _stepPanel(
+                        step,
+                        colors,
+                        isLastStep,
+                        setupState.isSubmitting,
+                        setupState.submitError,
+                      );
 
                       if (!showRail) {
                         return body;

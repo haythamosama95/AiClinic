@@ -61,6 +61,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   bool _intentionalSignOut = false;
   Future<void>? _ensureSupabaseReadyTask;
   bool _clearedPersistedSessionOnColdStart = false;
+  bool? _hadProperClinicSetup;
 
   @override
   AuthSessionState build() {
@@ -139,7 +140,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
       if (state.isAuthenticated) {
         try {
           final context = await _loadSessionContext(authState.session!);
-          state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+          await _applyAuthenticatedContext(context);
         } catch (error) {
           AppLog.warning('auth.session.token_refresh_context_failed reason=${_contextFailureReason(error)}');
           await ref.read(authRepositoryProvider).signOut();
@@ -153,12 +154,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     state = state.copyWith(status: AuthSessionStatus.loading, clearFailure: true);
     try {
       final context = await _loadSessionContext(authState.session!);
-      state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
-      _syncIdleMonitoring();
-      AppLog.fine(
-        'auth.session.authenticated role=${context.staffProfile.role.wireValue} '
-        'setup=${context.setupRequired}',
-      );
+      await _applyAuthenticatedContext(context);
     } catch (error) {
       AppLog.warning('auth.session.context_failed reason=${_contextFailureReason(error)}');
       await ref.read(authRepositoryProvider).signOut();
@@ -244,6 +240,7 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     } finally {
       _intentionalSignOut = false;
     }
+    _hadProperClinicSetup = null;
     state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
     _syncIdleMonitoring();
   }
@@ -291,14 +288,32 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     // away from deep-linked settings pages (e.g. role permissions matrix).
     try {
       final context = await _loadSessionContext(session);
-      state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
-      _syncIdleMonitoring();
+      await _applyAuthenticatedContext(context);
     } catch (error) {
       AppLog.warning('auth.session.refresh_failed reason=${_contextFailureReason(error)}');
       await ref.read(authRepositoryProvider).signOut();
       state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: kSessionEndedMessage);
       _syncIdleMonitoring();
     }
+  }
+
+  Future<void> _applyAuthenticatedContext(AuthSessionContext context) async {
+    final hadSetup = _hadProperClinicSetup;
+    final hasSetup = context.hasProperClinicSetup;
+    _hadProperClinicSetup = hasSetup;
+
+    if (hadSetup == true && !hasSetup) {
+      AppLog.info('auth.session.clinic_setup_lost');
+      await signOut();
+      return;
+    }
+
+    state = AuthSessionState(status: AuthSessionStatus.authenticated, context: context);
+    _syncIdleMonitoring();
+    AppLog.fine(
+      'auth.session.authenticated role=${context.staffProfile.role.wireValue} '
+      'setup=${context.setupRequired}',
+    );
   }
 
   /// Waits until startup config is loaded and the Supabase client is ready for password sign-in.

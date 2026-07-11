@@ -174,6 +174,52 @@ class AppConfirmationDialog extends StatefulWidget {
   final bool barrierDismissible;
   final bool blur;
 
+  /// Imperatively presents a small confirmation dialog; returns `true` when confirmed.
+  static Future<bool> show(
+    BuildContext context, {
+    required String title,
+    required String description,
+    String confirmLabel = 'Confirm',
+    String cancelLabel = 'Cancel',
+    AppConfirmationDialogVariant variant = AppConfirmationDialogVariant.destructive,
+    bool barrierDismissible = true,
+    bool blur = true,
+  }) async {
+    final result = await AppDialog.show<bool>(
+      context,
+      title: title,
+      size: AppDialogSize.sm,
+      barrierDismissible: barrierDismissible,
+      blur: blur,
+      child: Builder(
+        builder: (context) =>
+            Text(description, style: AppTypography.body(context).copyWith(color: context.appColors.textSecondary)),
+      ),
+      footer: Builder(
+        builder: (dialogContext) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppButton(
+              variant: AppButtonVariant.secondary,
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(cancelLabel),
+            ),
+            const SizedBox(width: AppSpacing.space2),
+            AppButton(
+              variant: variant == AppConfirmationDialogVariant.destructive
+                  ? AppButtonVariant.danger
+                  : AppButtonVariant.primary,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(confirmLabel),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return result ?? false;
+  }
+
   @override
   State<AppConfirmationDialog> createState() => _AppConfirmationDialogState();
 }

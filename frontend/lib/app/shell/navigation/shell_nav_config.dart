@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
@@ -29,6 +31,23 @@ abstract final class ShellNavConfig {
     return [
       for (final item in kClinicNavFooter)
         if (item.id != 'dev' || ShellDevNav.isEnabled) item,
+      ...devActionItems(),
+    ];
+  }
+
+  /// Debug-only dev tooling entries in the sidebar footer (siblings of Settings/Dev).
+  static List<AppNavItem> devActionItems() {
+    if (!ShellDevNav.isEnabled) {
+      return const [];
+    }
+
+    return [
+      for (final itemId in ShellDevNav.actionItemIds)
+        AppNavItem(
+          id: itemId,
+          label: ShellDevNav.labelFor(itemId) ?? itemId,
+          icon: ShellDevNav.iconFor(itemId) ?? Icons.build_outlined,
+        ),
     ];
   }
 
@@ -163,6 +182,9 @@ abstract final class ShellNavConfig {
     }
     if (location == AppRoutes.reports) {
       return 'reports';
+    }
+    if (isSettingsLocation(location)) {
+      return 'settings';
     }
     if (location == AppRoutes.foundationDemo) {
       return 'dev';

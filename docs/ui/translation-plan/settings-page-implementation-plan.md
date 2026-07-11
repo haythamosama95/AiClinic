@@ -6,7 +6,7 @@ This is a feature-page port (like `login-page-implementation-plan.md`), not a De
 
 ## 0. Ambiguities & Design Decisions (resolve before coding)
 
-> ⚠️ **Read `docs/ui/memory/ui-runtime-errors.md` first.** This plan touches Material inputs (`TextField`-backed `AppTextInput`/`AppPhoneInput`/`AppPasswordInput`/`AppMoneyField`), `AppSelect`/`AppMultiSelect`/`AppCombobox` popovers, `AppTimePicker` popovers, `AppIconButton`/`InkWell` nav buttons, and an `AnimatedSwitcher`-style panel transition inside a scroll view. The memory entries below are the set-specific regressions Composer 2.5 must not reintroduce.
+> ⚠️ **Set-specific runtime regressions.** This plan touches Material inputs (`TextField`-backed `AppTextInput`/`AppPhoneInput`/`AppPasswordInput`/`AppMoneyField`), `AppSelect`/`AppMultiSelect`/`AppCombobox` popovers, `AppTimePicker` popovers, `AppIconButton`/`InkWell` nav buttons, and an `AnimatedSwitcher`-style panel transition inside a scroll view. The items below are the regressions Composer 2.5 must not reintroduce (consult `docs/ui/memory/ui-runtime-errors.md` only when explicitly instructed).
 
 Set-specific regression watchlist (cite by memory entry number):
 

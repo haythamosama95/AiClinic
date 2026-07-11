@@ -47,7 +47,10 @@ class SessionContextLoader {
     final branchIds = branchIdsRaw.split(',').map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
 
     final permissions = await _permissionRepository.loadGrantedPermissions(role);
-    final setupRequired = claims['setup_required'] == true || claims['setup_required']?.toString() == 'true';
+    final organizationId = claims['organization_id']?.toString();
+    final hasOrganization = organizationId != null && organizationId.isNotEmpty;
+    final claimSetupRequired = claims['setup_required'] == true || claims['setup_required']?.toString() == 'true';
+    final setupRequired = claimSetupRequired || !hasOrganization;
 
     String? primaryBranchId;
     if (branchIds.isNotEmpty) {
@@ -64,8 +67,7 @@ class SessionContextLoader {
     }
 
     String? organizationTimezone;
-    final organizationId = claims['organization_id']?.toString();
-    if (organizationId != null && organizationId.isNotEmpty) {
+    if (hasOrganization) {
       final orgRow = await _client.from('organizations').select('timezone').eq('id', organizationId).maybeSingle();
       organizationTimezone = orgRow?['timezone']?.toString();
     }

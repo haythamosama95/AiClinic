@@ -23,7 +23,7 @@ void main() {
 
       expect(
         setupMessageForRpc(RpcFailure(RpcResult.fromDynamic({'success': false, 'error_code': 'NOT_BOOTSTRAP_ADMIN'}))),
-        contains('bootstrap administrator'),
+        contains('administrator account'),
       );
     });
 
@@ -118,7 +118,11 @@ void main() {
       (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setSession(
         AuthSessionState(
           status: AuthSessionStatus.authenticated,
-          context: sampleAuthSessionContext(setupRequired: true, branchIds: const ['branch-local']),
+          context: sampleAuthSessionContext(
+        setupRequired: true,
+        branchIds: const ['branch-local'],
+        isBootstrapAdmin: true,
+      ),
         ),
       );
       final notifier = container.read(setupNotifierProvider.notifier);
@@ -235,7 +239,11 @@ void main() {
       (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setSession(
         AuthSessionState(
           status: AuthSessionStatus.authenticated,
-          context: sampleAuthSessionContext(setupRequired: true, branchIds: const ['branch-local']),
+          context: sampleAuthSessionContext(
+        setupRequired: true,
+        branchIds: const ['branch-local'],
+        isBootstrapAdmin: true,
+      ),
         ),
       );
       final notifier = container.read(setupNotifierProvider.notifier);
@@ -378,7 +386,11 @@ void main() {
       (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setSession(
         AuthSessionState(
           status: AuthSessionStatus.authenticated,
-          context: sampleAuthSessionContext(setupRequired: true, branchIds: const ['branch-local']),
+          context: sampleAuthSessionContext(
+        setupRequired: true,
+        branchIds: const ['branch-local'],
+        isBootstrapAdmin: true,
+      ),
         ),
       );
       final notifier = container.read(setupNotifierProvider.notifier);
@@ -768,7 +780,11 @@ void _prepareStaffDraftPathWithContainer(ProviderContainer container) {
   (container.read(authSessionProvider.notifier) as TestAuthSessionNotifier).setSession(
     AuthSessionState(
       status: AuthSessionStatus.authenticated,
-      context: sampleAuthSessionContext(setupRequired: true, branchIds: const ['branch-local']),
+      context: sampleAuthSessionContext(
+        setupRequired: true,
+        branchIds: const ['branch-local'],
+        isBootstrapAdmin: true,
+      ),
     ),
   );
 }

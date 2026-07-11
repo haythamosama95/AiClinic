@@ -96,7 +96,10 @@ void main() {
         context: sampleAuthSessionContext(setupRequired: true, permissions: RolePermissionSeed.administrator),
       );
 
-      expect(AuthRouteGuard.billingRouteRedirect(location: AppRoutes.billingInvoices, auth: auth), AppRoutes.bootstrap);
+      expect(
+        AuthRouteGuard.billingRouteRedirect(location: AppRoutes.billingInvoices, auth: auth),
+        AppRoutes.settingsSetup,
+      );
     });
   });
 }

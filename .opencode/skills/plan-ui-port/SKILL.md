@@ -104,13 +104,12 @@ Do these efficiently — read only what each step names; parallelize where possi
    `frontend/lib/core/ui/components/app_*.dart` — only when existing primitives cannot host the
    content. Avoid introducing new architectural patterns unless justified; reuse `MenuAnchor`,
    `Overlay`/`OverlayEntry`, `showDialog`, etc. as appropriate.
-6. Read `docs/ui/memory/ui-runtime-errors.md` end-to-end. It captures the red-screen crashes hit
-   while porting the Inputs & forms group (Material-ancestor missing, `MediaQuery`/inherited
-   widget read in `initState`, `intl` locale not initialized, duplicate `FocusNode` on `Focus` +
-   `TextField`, etc.). Identify which widgets in THIS set risk the same regressions (any that
-   embed a Material primitive in a custom shell, open an `OverlayEntry`/popover, format dates with
-   a non-default locale, or attach a `Focus`/`FocusNode`). The plan must call these out so Composer
-   2.5 does not repeat them.
+6. Identify which widgets in THIS set risk known Flutter UI runtime regressions (Material-ancestor
+   missing, `MediaQuery`/inherited widget read in `initState`, `intl` locale not initialized,
+   duplicate `FocusNode` on `Focus` + `TextField`, etc.) — any that embed a Material primitive in
+   a custom shell, open an `OverlayEntry`/popover, format dates with a non-default locale, or attach
+   a `Focus`/`FocusNode`. Enumerate set-specific regressions inline in the plan; do **not** require
+   reading `docs/ui/memory/ui-runtime-errors.md` unless the user explicitly asks.
 
 ## Plan contents (the Markdown document must include)
 
@@ -118,8 +117,7 @@ Do these efficiently — read only what each step names; parallelize where possi
    Material (always: native Material, `forui-wrappers.md` is superseded), file layout (flat
    `app_<name>.dart` + showcase subfolder when applicable), any new shared abstraction justification,
    i18n/RTL handling, controlled/uncontrolled pattern, error/invalid placement. **Open this
-   section with a ⚠️ callout** directing Composer 2.5 to read `docs/ui/memory/ui-runtime-errors.md`
-   first, then enumerate the set-specific regressions to avoid (e.g. overlay widgets must not
+   section with a ⚠️ callout** enumerating the set-specific regressions to avoid (e.g. overlay widgets must not
    read `MediaQuery` in `initState`; locale-specific `DateFormat` requires
    `ensureIntlDateFormattingInitialized()` at app startup; `FocusNode` must not be shared between
    an ancestor `Focus` and a descendant `TextField`; Material primitives inside custom

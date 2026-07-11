@@ -28,17 +28,24 @@ const _settingsNavItems = <_SettingsNavItem>[
 
 /// Left settings navigation rail (web `SettingsPage` `<nav>` + `settingsNavItemClass`).
 class SettingsNavRail extends StatelessWidget {
-  const SettingsNavRail({required this.active, required this.onNavigate, super.key});
+  const SettingsNavRail({required this.active, required this.onNavigate, this.isItemEnabled, super.key});
 
   final String active;
   final ValueChanged<String> onNavigate;
+  final bool Function(String itemId)? isItemEnabled;
 
   @override
   Widget build(BuildContext context) {
     final isVertical = MediaQuery.sizeOf(context).width >= _lgBreakpoint;
     final items = [
       for (final item in _settingsNavItems)
-        _SettingsNavRailItem(item: item, active: active == item.id, isVertical: isVertical, onNavigate: onNavigate),
+        _SettingsNavRailItem(
+          item: item,
+          active: active == item.id,
+          enabled: isItemEnabled?.call(item.id) ?? true,
+          isVertical: isVertical,
+          onNavigate: onNavigate,
+        ),
     ];
 
     return Semantics(
@@ -78,12 +85,14 @@ class _SettingsNavRailItem extends StatefulWidget {
   const _SettingsNavRailItem({
     required this.item,
     required this.active,
+    required this.enabled,
     required this.isVertical,
     required this.onNavigate,
   });
 
   final _SettingsNavItem item;
   final bool active;
+  final bool enabled;
   final bool isVertical;
   final ValueChanged<String> onNavigate;
 
@@ -98,8 +107,17 @@ class _SettingsNavRailItemState extends State<_SettingsNavRailItem> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final active = widget.active;
-    final iconColor = active ? colors.actionPrimary : colors.iconMuted;
-    final textColor = active ? colors.textPrimary : (_hovered ? colors.textPrimary : colors.textSecondary);
+    final enabled = widget.enabled;
+    final iconColor = !enabled
+        ? colors.iconMuted.withValues(alpha: 0.45)
+        : active
+        ? colors.actionPrimary
+        : colors.iconMuted;
+    final textColor = !enabled
+        ? colors.textTertiary
+        : active
+        ? colors.textPrimary
+        : (_hovered ? colors.textPrimary : colors.textSecondary);
     final textStyle = AppTypography.body(
       context,
     ).copyWith(color: textColor, fontWeight: active ? FontWeight.w500 : FontWeight.w400);
@@ -124,14 +142,14 @@ class _SettingsNavRailItemState extends State<_SettingsNavRailItem> {
       selected: active,
       label: widget.item.label,
       child: MouseRegion(
-        onEnter: active ? null : (_) => setState(() => _hovered = true),
+        onEnter: active || !enabled ? null : (_) => setState(() => _hovered = true),
         onExit: (_) => setState(() => _hovered = false),
-        cursor: SystemMouseCursors.click,
+        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
         child: Material(
-          color: active ? colors.surfaceSelected : (_hovered ? colors.surfaceHover : Colors.transparent),
+          color: active && enabled ? colors.surfaceSelected : (_hovered ? colors.surfaceHover : Colors.transparent),
           borderRadius: BorderRadius.circular(AppRadius.md),
           child: GestureDetector(
-            onTap: () => widget.onNavigate(widget.item.id),
+            onTap: enabled ? () => widget.onNavigate(widget.item.id) : null,
             behavior: HitTestBehavior.opaque,
             child: content,
           ),

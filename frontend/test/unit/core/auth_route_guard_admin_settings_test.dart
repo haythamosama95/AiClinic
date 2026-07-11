@@ -38,7 +38,7 @@ void main() {
 
       expect(AuthRouteGuard.canAccessClinicSetup(auth), isFalse);
       expect(
-        AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsBranches, auth: auth),
+        AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsBranchesNew, auth: auth),
         AppRoutes.settings,
       );
       expect(
@@ -57,13 +57,16 @@ void main() {
       expect(AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsBranchesNew, auth: auth), isNull);
     });
 
-    test('setup_required session redirected to bootstrap', () {
+    test('setup_required session redirected to setup wizard', () {
       final auth = AuthSessionState(
         status: AuthSessionStatus.authenticated,
         context: sampleAuthSessionContext(setupRequired: true),
       );
 
-      expect(AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsStaff, auth: auth), AppRoutes.bootstrap);
+      expect(
+        AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsOrganization, auth: auth),
+        AppRoutes.settingsSetup,
+      );
     });
 
     test('stupid usage: unauthenticated admin URL goes to login', () {
@@ -100,7 +103,7 @@ void main() {
 
       expect(AuthRouteGuard.canAccessBranchManagement(auth), isFalse);
       expect(
-        AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsBranches, auth: auth),
+        AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsBranchesNew, auth: auth),
         AppRoutes.settings,
       );
     });
@@ -111,7 +114,10 @@ void main() {
         context: sampleAuthSessionContext(role: StaffRole.administrator, permissions: {'settings.manage_branches'}),
       );
 
-      expect(AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsStaff, auth: auth), AppRoutes.settings);
+      expect(
+        AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsStaffNew, auth: auth),
+        AppRoutes.settings,
+      );
     });
   });
 }

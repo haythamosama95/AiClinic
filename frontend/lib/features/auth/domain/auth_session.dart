@@ -81,6 +81,15 @@ class AuthSessionContext {
 
   bool get hasBranchAssignment => branchIds.isNotEmpty;
 
+  /// True when the clinic still needs first-time bootstrap (JWT flag or missing org).
+  bool get needsClinicSetup => setupRequired || organizationId == null || organizationId!.trim().isEmpty;
+
+  /// True when organization bootstrap is complete.
+  bool get hasProperClinicSetup => !needsClinicSetup;
+
+  /// True when this account may run first-time clinic bootstrap RPCs.
+  bool get canPerformBootstrapSetup => staffProfile.isBootstrapAdmin && staffProfile.role == StaffRole.administrator;
+
   AuthSessionContext copyWith({
     StaffProfile? staffProfile,
     Object? organizationId = copyWithSentinel,

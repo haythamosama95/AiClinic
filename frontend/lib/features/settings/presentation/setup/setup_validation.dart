@@ -81,6 +81,53 @@ Map<String, String> validateSingleBranch(BranchDraft branch, int index, {List<Br
   return errors;
 }
 
+Map<String, String> validateSingleStaff(
+  StaffDraft member,
+  int index, {
+  List<StaffDraft>? allStaff,
+  int branchCount = 1,
+}) {
+  final errors = <String, String>{};
+  final prefix = 'staff-$index';
+
+  if (member.name.trim().isEmpty) {
+    errors['$prefix-name'] = 'Name is required';
+  }
+
+  final mobileError = BranchFieldValidation.validateNationalPhone(member.mobile);
+  if (mobileError != null) {
+    errors['$prefix-mobile'] = mobileError;
+  }
+
+  final usernameError = validateStaffUsername(member.username);
+  if (usernameError != null) {
+    errors['$prefix-username'] = usernameError;
+  } else if (allStaff != null) {
+    final normalizedUsername = normalizeStaffUsername(member.username);
+    for (var otherIndex = 0; otherIndex < allStaff.length; otherIndex++) {
+      if (otherIndex == index) continue;
+      if (normalizeStaffUsername(allStaff[otherIndex].username) == normalizedUsername) {
+        errors['$prefix-username'] = 'Usernames must be unique';
+        break;
+      }
+    }
+  }
+
+  final passwordError = StaffPasswordValidation.validateInitialPassword(member.password);
+  if (passwordError != null) {
+    errors['$prefix-password'] = passwordError;
+  }
+
+  if (member.role.isEmpty) {
+    errors['$prefix-role'] = 'Select a role';
+  }
+  if (branchCount > 0 && member.branchIds.isEmpty) {
+    errors['$prefix-branches'] = 'Assign at least one branch';
+  }
+
+  return errors;
+}
+
 Map<String, String> validateStaff(List<StaffDraft> staff, int branchCount) {
   final errors = <String, String>{};
   if (staff.isEmpty) {
@@ -88,42 +135,34 @@ Map<String, String> validateStaff(List<StaffDraft> staff, int branchCount) {
     return errors;
   }
 
-  final seenUsernames = <String>{};
-
   for (var index = 0; index < staff.length; index++) {
-    final member = staff[index];
-    final prefix = 'staff-$index';
+    errors.addAll(validateSingleStaff(staff[index], index, allStaff: staff, branchCount: branchCount));
+  }
 
-    if (member.name.trim().isEmpty) {
-      errors['$prefix-name'] = 'Name is required';
-    }
+  return errors;
+}
 
-    final mobileError = BranchFieldValidation.validateNationalPhone(member.mobile);
-    if (mobileError != null) {
-      errors['$prefix-mobile'] = mobileError;
-    }
+Map<String, String> validateSingleService(ServiceDraft service, int index, {List<ServiceDraft>? allServices}) {
+  final errors = <String, String>{};
+  final prefix = 'service-$index';
 
-    final usernameError = validateStaffUsername(member.username);
-    if (usernameError != null) {
-      errors['$prefix-username'] = usernameError;
-    } else {
-      final normalizedUsername = normalizeStaffUsername(member.username);
-      if (!seenUsernames.add(normalizedUsername)) {
-        errors['$prefix-username'] = 'Usernames must be unique';
+  final nameError = ServiceFormValidation.validateName(service.name);
+  if (nameError != null) {
+    errors['$prefix-name'] = nameError;
+  } else if (allServices != null) {
+    final normalizedName = service.name.trim().toLowerCase();
+    for (var otherIndex = 0; otherIndex < allServices.length; otherIndex++) {
+      if (otherIndex == index) continue;
+      if (allServices[otherIndex].name.trim().toLowerCase() == normalizedName) {
+        errors['$prefix-name'] = 'Service names must be unique';
+        break;
       }
     }
+  }
 
-    final passwordError = StaffPasswordValidation.validateInitialPassword(member.password);
-    if (passwordError != null) {
-      errors['$prefix-password'] = passwordError;
-    }
-
-    if (member.role.isEmpty) {
-      errors['$prefix-role'] = 'Select a role';
-    }
-    if (branchCount > 0 && member.branchIds.isEmpty) {
-      errors['$prefix-branches'] = 'Assign at least one branch';
-    }
+  final priceError = _validateServicePrice(service.price);
+  if (priceError != null) {
+    errors['$prefix-price'] = priceError;
   }
 
   return errors;
@@ -136,26 +175,8 @@ Map<String, String> validateServices(List<ServiceDraft> services) {
     return errors;
   }
 
-  final seenNames = <String>{};
-
   for (var index = 0; index < services.length; index++) {
-    final service = services[index];
-    final prefix = 'service-$index';
-
-    final nameError = ServiceFormValidation.validateName(service.name);
-    if (nameError != null) {
-      errors['$prefix-name'] = nameError;
-    } else {
-      final normalizedName = service.name.trim().toLowerCase();
-      if (!seenNames.add(normalizedName)) {
-        errors['$prefix-name'] = 'Service names must be unique';
-      }
-    }
-
-    final priceError = _validateServicePrice(service.price);
-    if (priceError != null) {
-      errors['$prefix-price'] = priceError;
-    }
+    errors.addAll(validateSingleService(services[index], index, allServices: services));
   }
 
   return errors;

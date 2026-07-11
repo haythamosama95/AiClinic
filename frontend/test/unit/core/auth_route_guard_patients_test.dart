@@ -49,7 +49,7 @@ void main() {
         context: sampleAuthSessionContext(setupRequired: true, permissions: RolePermissionSeed.administrator),
       );
 
-      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patients, auth: auth), AppRoutes.bootstrap);
+      expect(AuthRouteGuard.patientRouteRedirect(location: AppRoutes.patients, auth: auth), AppRoutes.settingsSetup);
     });
 
     test('owner with full patient grants can access all patient routes', () {

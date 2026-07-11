@@ -10,7 +10,7 @@ void main() {
       expect(AuthRouteGuard.resolveRedirect(location: AppRoutes.home, auth: AuthSessionState.initial()), isNull);
     });
 
-    test('authenticated setup_required on login redirects to home shell', () {
+    test('authenticated setup_required on login redirects to setup wizard', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.login,
@@ -19,11 +19,11 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.home,
+        AppRoutes.settingsSetup,
       );
     });
 
-    test('authenticated setup_required on home stays on home shell', () {
+    test('authenticated setup_required on home redirects to setup wizard', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.home,
@@ -32,7 +32,59 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
+        AppRoutes.settingsSetup,
+      );
+    });
+
+    test('authenticated setup_required on setup wizard stays', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(
+          location: AppRoutes.settingsSetup,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: true),
+          ),
+        ),
         isNull,
+      );
+    });
+
+    test('authenticated setup_required on settings general redirects to setup wizard', () {
+      expect(
+        AuthRouteGuard.settingsRouteRedirect(
+          location: AppRoutes.settingsGeneral,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: true),
+          ),
+        ),
+        AppRoutes.settingsSetup,
+      );
+    });
+
+    test('authenticated setup_required on settings hub redirects to setup wizard', () {
+      expect(
+        AuthRouteGuard.settingsRouteRedirect(
+          location: AppRoutes.settings,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: true),
+          ),
+        ),
+        AppRoutes.settingsSetup,
+      );
+    });
+
+    test('authenticated setup_required on bootstrap redirects to setup wizard', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(
+          location: AppRoutes.bootstrap,
+          auth: AuthSessionState(
+            status: AuthSessionStatus.authenticated,
+            context: sampleAuthSessionContext(setupRequired: true),
+          ),
+        ),
+        AppRoutes.settingsSetup,
       );
     });
 
@@ -57,7 +109,7 @@ void main() {
       );
     });
 
-    test('protected app prefix without setup redirects to bootstrap', () {
+    test('protected app prefix without setup redirects to setup wizard', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: '${AppRoutes.protectedPrefix}/patients',
@@ -66,11 +118,11 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.settingsSetup,
       );
     });
 
-    test('setup_required staff create redirects to bootstrap', () {
+    test('setup_required staff create redirects to setup wizard', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.staffCreate,
@@ -79,7 +131,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.settingsSetup,
       );
     });
 

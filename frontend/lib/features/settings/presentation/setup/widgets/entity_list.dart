@@ -57,7 +57,7 @@ class EntityList<T> extends StatelessWidget {
                       AppIconButton(
                         icon: const Icon(Icons.delete_outline, size: 16),
                         label: 'Remove',
-                        variant: AppIconButtonVariant.ghost,
+                        variant: AppIconButtonVariant.danger,
                         size: AppIconButtonSize.sm,
                         onPressed: () => onRemove(itemId(items[index])),
                       ),
