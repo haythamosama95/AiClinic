@@ -2,14 +2,14 @@ import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';
 import 'package:ai_clinic/features/setup/domain/persist_clinic_setup_draft.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
-import 'package:ai_clinic/features/settings/domain/update_organization_input.dart';
-import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/update_branch_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/update_organization_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/update_staff_member_input.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
@@ -116,7 +116,7 @@ void main() {
             fullName: 'Old Staff',
             role: StaffRole.receptionist,
             isActive: true,
-            branches: const [],
+            branches: [],
           ),
         ],
         existingServices: [

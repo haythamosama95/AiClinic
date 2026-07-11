@@ -5,10 +5,10 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
 import 'package:ai_clinic/features/setup/domain/clinic_setup_draft_mapper.dart';
 import 'package:ai_clinic/features/setup/domain/persist_clinic_setup_draft.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';

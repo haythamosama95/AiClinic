@@ -1,6 +1,5 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/app/shell/dev/dev_clinic_reset_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_fill_dummy_clinic.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_reset_clinic.dart';

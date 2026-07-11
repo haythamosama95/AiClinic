@@ -18,10 +18,7 @@ import '../../helpers/startup_test_support.dart';
 
 String _fakeJwt(Map<String, dynamic> payload) {
   final claims = Map<String, dynamic>.from(payload);
-  claims.putIfAbsent(
-    'exp',
-    () => DateTime.now().toUtc().add(const Duration(days: 1)).millisecondsSinceEpoch ~/ 1000,
-  );
+  claims.putIfAbsent('exp', () => DateTime.now().toUtc().add(const Duration(days: 1)).millisecondsSinceEpoch ~/ 1000);
   final header = base64Url.encode(utf8.encode('{"alg":"none"}'));
   final body = base64Url.encode(utf8.encode(jsonEncode(claims)));
   return '$header.$body.signature';
@@ -279,9 +276,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         startupSessionProvider.overrideWith(_ValidStartupNotifier.new),
-        authRepositoryProvider.overrideWith(
-          (ref) => _ColdStartAuthRepository(onClear: () => clearCalls++),
-        ),
+        authRepositoryProvider.overrideWith((ref) => _ColdStartAuthRepository(onClear: () => clearCalls++)),
         supabaseClientProvider.overrideWithValue(_ReloadFakeClient()),
         idleTimeoutServiceProvider.overrideWith((ref) {
           final idle = IdleTimeoutService(idleDuration: const Duration(minutes: 15), onIdleTimeout: () {});
@@ -364,9 +359,7 @@ class _ValidStartupNotifier extends StartupSessionNotifier {
 }
 
 class _ColdStartAuthRepository extends AuthRepositoryImpl {
-  _ColdStartAuthRepository({required void Function() onClear})
-    : _onClear = onClear,
-      super(_ReloadFakeClient());
+  _ColdStartAuthRepository({required void Function() onClear}) : _onClear = onClear, super(_ReloadFakeClient());
 
   final void Function() _onClear;
 
@@ -432,18 +425,12 @@ class _ImmediateSingleResult extends Fake implements PostgrestTransformBuilder<M
   final Map<String, dynamic>? _value;
 
   @override
-  Future<Map<String, dynamic>?> timeout(
-    Duration timeLimit, {
-    FutureOr<Map<String, dynamic>?> onTimeout()?,
-  }) {
+  Future<Map<String, dynamic>?> timeout(Duration timeLimit, {FutureOr<Map<String, dynamic>?> Function()? onTimeout}) {
     return Future<Map<String, dynamic>?>.value(_value).timeout(timeLimit, onTimeout: onTimeout);
   }
 
   @override
-  Future<S> then<S>(
-    FutureOr<S> Function(Map<String, dynamic>? value) onValue, {
-    Function? onError,
-  }) {
+  Future<S> then<S>(FutureOr<S> Function(Map<String, dynamic>? value) onValue, {Function? onError}) {
     return Future<Map<String, dynamic>?>.value(_value).then(onValue, onError: onError);
   }
 }
