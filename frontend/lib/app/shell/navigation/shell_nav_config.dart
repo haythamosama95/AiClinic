@@ -84,7 +84,9 @@ abstract final class ShellNavConfig {
   }
 
   static bool isFullWidthLocation(String location) {
-    return location == AppRoutes.patients || location.startsWith('${AppRoutes.patients}/');
+    return location == AppRoutes.patients ||
+        location.startsWith('${AppRoutes.patients}/') ||
+        location == AppRoutes.clinicManagement;
   }
 
   static DevSection devSectionForUri(Uri uri) {

@@ -11,28 +11,32 @@ class _StaffDetailDialogCopy {
     required this.description,
     required this.close,
     required this.edit,
+    required this.delete,
   });
 
   final String description;
   final String close;
   final String edit;
+  final String delete;
 }
 
 const _copyEn = _StaffDetailDialogCopy(
   description: 'Profile details, role, and branch access.',
   close: 'Close',
   edit: 'Edit',
+  delete: 'Delete',
 );
 
 const _copyAr = _StaffDetailDialogCopy(
   description: 'تفاصيل الملف والدور وصلاحية الفروع.',
   close: 'إغلاق',
   edit: 'تعديل',
+  delete: 'حذف',
 );
 
 _StaffDetailDialogCopy _copyFor(String locale) => locale == 'ar' ? _copyAr : _copyEn;
 
-/// Read-only staff detail dialog with an Edit action.
+/// Read-only staff detail dialog with Edit and Delete actions.
 class StaffDetailDialog extends StatelessWidget {
   const StaffDetailDialog({
     required this.open,
@@ -40,6 +44,7 @@ class StaffDetailDialog extends StatelessWidget {
     required this.member,
     required this.branches,
     required this.onEdit,
+    required this.onDelete,
     super.key,
   });
 
@@ -48,6 +53,7 @@ class StaffDetailDialog extends StatelessWidget {
   final StaffListItem member;
   final List<BranchListItem> branches;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -64,10 +70,16 @@ class StaffDetailDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           AppButton(
-            variant: AppButtonVariant.secondary,
-            onPressed: () => onOpenChange(false),
-            child: Text(copy.close),
+            variant: AppButtonVariant.danger,
+            leadingIcon: const Icon(Icons.delete_outline, size: 16),
+            onPressed: () {
+              onOpenChange(false);
+              onDelete();
+            },
+            child: Text(copy.delete),
           ),
+          const SizedBox(width: AppSpacing.space2),
+          AppButton(variant: AppButtonVariant.secondary, onPressed: () => onOpenChange(false), child: Text(copy.close)),
           const SizedBox(width: AppSpacing.space2),
           AppButton(
             leadingIcon: const Icon(Icons.edit, size: 16),

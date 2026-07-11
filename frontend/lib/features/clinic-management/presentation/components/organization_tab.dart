@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/clinic-management/domain/organization_profile.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/clinic_hero.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/components/clinic_tab_header.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/forms/organization_form_fields.dart';
 
 class _OrganizationTabCopy {
@@ -121,54 +122,38 @@ class _OrganizationTabState extends State<OrganizationTab> {
           activeBranchCount: widget.activeBranchCount,
         ),
         const SizedBox(height: AppSpacing.space6),
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.start,
-          spacing: AppSpacing.space4,
-          runSpacing: AppSpacing.space4,
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 576),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(copy.profileTitle, style: AppTypography.h3(context)),
-                  const SizedBox(height: AppSpacing.space1),
-                  Text(copy.profileDescription, style: AppTypography.bodySm(context)),
-                ],
-              ),
-            ),
-            Wrap(
-              spacing: AppSpacing.space2,
-              runSpacing: AppSpacing.space2,
-              children: [
-                if (_editing) ...[
-                  AppButton(
-                    variant: AppButtonVariant.secondary,
-                    size: AppButtonSize.lg,
-                    leadingIcon: const Icon(Icons.close, size: 16),
-                    onPressed: _cancel,
-                    child: Text(copy.cancel),
-                  ),
-                  AppButton(
-                    variant: AppButtonVariant.primary,
-                    size: AppButtonSize.lg,
-                    leadingIcon: const Icon(Icons.save, size: 16),
-                    onPressed: _save,
-                    child: Text(copy.saveChanges),
-                  ),
-                ] else
-                  AppButton(
-                    variant: AppButtonVariant.primary,
-                    size: AppButtonSize.lg,
-                    leadingIcon: const Icon(Icons.edit, size: 16),
-                    onPressed: _startEdit,
-                    child: Text(copy.editOrganization),
-                  ),
-              ],
-            ),
-          ],
+        ClinicTabHeader(
+          title: copy.profileTitle,
+          description: copy.profileDescription,
+          actions: Wrap(
+            spacing: AppSpacing.space2,
+            runSpacing: AppSpacing.space2,
+            children: [
+              if (_editing) ...[
+                AppButton(
+                  variant: AppButtonVariant.secondary,
+                  size: AppButtonSize.lg,
+                  leadingIcon: const Icon(Icons.close, size: 16),
+                  onPressed: _cancel,
+                  child: Text(copy.cancel),
+                ),
+                AppButton(
+                  variant: AppButtonVariant.primary,
+                  size: AppButtonSize.lg,
+                  leadingIcon: const Icon(Icons.save, size: 16),
+                  onPressed: _save,
+                  child: Text(copy.saveChanges),
+                ),
+              ] else
+                AppButton(
+                  variant: AppButtonVariant.primary,
+                  size: AppButtonSize.lg,
+                  leadingIcon: const Icon(Icons.edit, size: 16),
+                  onPressed: _startEdit,
+                  child: Text(copy.editOrganization),
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: AppSpacing.space6),
         DecoratedBox(

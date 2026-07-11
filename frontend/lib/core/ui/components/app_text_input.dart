@@ -217,11 +217,12 @@ class _AppTextInputState extends State<AppTextInput> {
       }
       _controller.addListener(_handleControllerChange);
     }
-    if (widget.initialValue != oldWidget.initialValue &&
-        widget.controller == null &&
-        _controller.text.isEmpty &&
-        widget.initialValue != null) {
-      _controller.text = widget.initialValue!;
+    if (widget.controller == null && widget.initialValue != oldWidget.initialValue) {
+      if (widget.readOnly || widget.disabled) {
+        _controller.text = widget.initialValue ?? '';
+      } else if (_controller.text.isEmpty && widget.initialValue != null) {
+        _controller.text = widget.initialValue!;
+      }
     }
   }
 

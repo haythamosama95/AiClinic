@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/components/clinic_tab_header.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/role_permissions_matrix.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/providers/role_permissions_notifier.dart';
 
@@ -27,52 +28,34 @@ class RolesTab extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.start,
-              spacing: AppSpacing.space4,
-              runSpacing: AppSpacing.space4,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 672),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('Roles & permissions', style: AppTypography.h3(context)),
-                      const SizedBox(height: AppSpacing.space1),
-                      Text(
-                        'Built-in roles and their access grants. Assign a role when you create or edit a staff account.',
-                        style: AppTypography.bodySm(context),
-                      ),
-                    ],
-                  ),
-                ),
-                Wrap(
-                  spacing: AppSpacing.space2,
-                  runSpacing: AppSpacing.space2,
-                  children: [
-                    if (state.hasUnsavedChanges)
-                      AppButton(
-                        variant: AppButtonVariant.secondary,
-                        size: AppButtonSize.lg,
-                        leadingIcon: const Icon(Icons.close, size: 16),
-                        disabled: state.isSaving || !state.editable,
-                        onPressed: ref.read(rolePermissionsProvider.notifier).discardChanges,
-                        child: const Text('Discard'),
-                      ),
+            ClinicTabHeader(
+              title: 'Roles & permissions',
+              description:
+                  'Built-in roles and their access grants. Assign a role when you create or edit a staff account.',
+              actions: Wrap(
+                spacing: AppSpacing.space2,
+                runSpacing: AppSpacing.space2,
+                children: [
+                  if (state.hasUnsavedChanges)
                     AppButton(
-                      variant: AppButtonVariant.primary,
+                      variant: AppButtonVariant.secondary,
                       size: AppButtonSize.lg,
-                      leadingIcon: const Icon(Icons.save, size: 16),
-                      disabled: !state.hasUnsavedChanges || state.isSaving || !state.editable,
-                      loading: state.isSaving,
-                      onPressed: () => ref.read(rolePermissionsProvider.notifier).saveChanges(),
-                      child: const Text('Save changes'),
+                      leadingIcon: const Icon(Icons.close, size: 16),
+                      disabled: state.isSaving || !state.editable,
+                      onPressed: ref.read(rolePermissionsProvider.notifier).discardChanges,
+                      child: const Text('Discard'),
                     ),
-                  ],
-                ),
-              ],
+                  AppButton(
+                    variant: AppButtonVariant.primary,
+                    size: AppButtonSize.lg,
+                    leadingIcon: const Icon(Icons.save, size: 16),
+                    disabled: !state.hasUnsavedChanges || state.isSaving || !state.editable,
+                    loading: state.isSaving,
+                    onPressed: () => ref.read(rolePermissionsProvider.notifier).saveChanges(),
+                    child: const Text('Save changes'),
+                  ),
+                ],
+              ),
             ),
             if (state.errorMessage != null) ...[
               const SizedBox(height: AppSpacing.space4),

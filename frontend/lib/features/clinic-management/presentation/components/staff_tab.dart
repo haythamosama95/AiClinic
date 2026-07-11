@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/components/clinic_tab_header.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/list_control_bar.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/staff_detail_dialog.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/staff_filter_panel.dart';
@@ -33,8 +34,6 @@ class _StaffTabCopy {
     required this.noResultsDescription,
     required this.clearFilters,
     required this.phoneLabel,
-    required this.edit,
-    required this.delete,
     required this.deleteTitle,
     required this.deleteConfirm,
     required this.noBranches,
@@ -55,8 +54,6 @@ class _StaffTabCopy {
   final String noResultsDescription;
   final String clearFilters;
   final String phoneLabel;
-  final String edit;
-  final String delete;
   final String deleteTitle;
   final String deleteConfirm;
   final String noBranches;
@@ -78,8 +75,6 @@ const _copyEn = _StaffTabCopy(
   noResultsDescription: 'Try a different search term or clear your filters.',
   clearFilters: 'Clear filters',
   phoneLabel: 'Phone',
-  edit: 'Edit',
-  delete: 'Delete',
   deleteTitle: 'Delete staff account?',
   deleteConfirm: 'Delete account',
   noBranches: 'No branches',
@@ -101,8 +96,6 @@ const _copyAr = _StaffTabCopy(
   noResultsDescription: 'جرّب مصطلح بحث مختلفًا أو امسح عوامل التصفية.',
   clearFilters: 'مسح عوامل التصفية',
   phoneLabel: 'الهاتف',
-  edit: 'تعديل',
-  delete: 'حذف',
   deleteTitle: 'حذف حساب الموظف؟',
   deleteConfirm: 'حذف الحساب',
   noBranches: 'لا توجد فروع',
@@ -280,30 +273,14 @@ class _StaffTabState extends State<StaffTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.start,
-          spacing: AppSpacing.space4,
-          runSpacing: AppSpacing.space4,
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 576),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(copy.title, style: AppTypography.h3(context)),
-                  const SizedBox(height: AppSpacing.space1),
-                  Text(copy.description, style: AppTypography.bodySm(context)),
-                ],
-              ),
-            ),
-            AppButton(
-              leadingIcon: const Icon(Icons.add, size: 16),
-              onPressed: _openCreate,
-              child: Text(copy.addStaffMember),
-            ),
-          ],
+        ClinicTabHeader(
+          title: copy.title,
+          description: copy.description,
+          actions: AppButton(
+            leadingIcon: const Icon(Icons.add, size: 16),
+            onPressed: _openCreate,
+            child: Text(copy.addStaffMember),
+          ),
         ),
         if (hasStaff) ...[
           const SizedBox(height: AppSpacing.space6),
@@ -382,8 +359,6 @@ class _StaffTabState extends State<StaffTab> {
                       copy: copy,
                       showPhone: showPhone,
                       onTap: () => _openDetail(_filtered[index]),
-                      onEdit: () => _openEdit(_filtered[index]),
-                      onDelete: () => setState(() => _deleteTarget = _filtered[index]),
                     ),
                   ),
                 ],
@@ -401,6 +376,7 @@ class _StaffTabState extends State<StaffTab> {
             member: member,
             branches: widget.branches,
             onEdit: () => _openEdit(member),
+            onDelete: () => setState(() => _deleteTarget = member),
           ),
         StaffFormDialog(
           open: _dialogOpen,
@@ -488,11 +464,7 @@ class _StaffEmptyPanel extends StatelessWidget {
 }
 
 class _AnimatedStaffRow extends StatefulWidget {
-  const _AnimatedStaffRow({
-    required this.index,
-    required this.child,
-    super.key,
-  });
+  const _AnimatedStaffRow({required this.index, required this.child, super.key});
 
   final int index;
   final Widget child;
@@ -503,15 +475,21 @@ class _AnimatedStaffRow extends StatefulWidget {
 
 class _AnimatedStaffRowState extends State<_AnimatedStaffRow> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  var _enterStarted = false;
 
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(vsync: this, duration: AppMotion.resolveDuration(AppMotionPreset.rowEnter));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_enterStarted) return;
+    _enterStarted = true;
     final reducedMotion = AppMotion.prefersReducedMotion(context);
-    _controller = AnimationController(
-      vsync: this,
-      duration: AppMotion.resolveDuration(AppMotionPreset.rowEnter, reducedMotion: reducedMotion),
-    );
+    _controller.duration = AppMotion.resolveDuration(AppMotionPreset.rowEnter, reducedMotion: reducedMotion);
     _startEnterAnimation(reducedMotion);
   }
 
@@ -564,8 +542,6 @@ class _StaffRow extends StatefulWidget {
     required this.copy,
     required this.showPhone,
     required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
   });
 
   final StaffListItem member;
@@ -573,8 +549,6 @@ class _StaffRow extends StatefulWidget {
   final _StaffTabCopy copy;
   final bool showPhone;
   final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
 
   @override
   State<_StaffRow> createState() => _StaffRowState();
@@ -651,41 +625,12 @@ class _StaffRowState extends State<_StaffRow> {
                           '+${widget.member.phone}',
                           style: AppTypography.bodySm(
                             context,
-                          ).copyWith(
-                            color: colors.textSecondary,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
+                          ).copyWith(color: colors.textSecondary, fontFeatures: const [FontFeature.tabularFigures()]),
                         ),
                       ),
                     ],
                   ),
                 ],
-                const SizedBox(width: AppSpacing.space2),
-                Material(
-                  color: Colors.transparent,
-                  child: AppMenu(
-                    align: AppPopoverAlign.end,
-                    trigger: AppIconButton(
-                      icon: const Icon(Icons.more_horiz, size: 18),
-                      label: 'Actions for ${widget.member.fullName}',
-                    ),
-                    entries: [
-                      AppMenuItem(
-                        id: 'edit',
-                        label: widget.copy.edit,
-                        icon: const Icon(Icons.edit, size: 14),
-                        onSelect: widget.onEdit,
-                      ),
-                      AppMenuItem(
-                        id: 'delete',
-                        label: widget.copy.delete,
-                        destructive: true,
-                        icon: const Icon(Icons.delete_outline, size: 14),
-                        onSelect: widget.onDelete,
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),

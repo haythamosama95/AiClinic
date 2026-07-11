@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/branch_form_dialog.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/components/clinic_tab_header.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/filter_menu_panel.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/list_control_bar.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/branch_form_values.dart';
@@ -232,30 +233,14 @@ class _BranchesTabState extends State<BranchesTab> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.start,
-          spacing: AppSpacing.space4,
-          runSpacing: AppSpacing.space4,
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 576),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(copy.title, style: AppTypography.h3(context)),
-                  const SizedBox(height: AppSpacing.space1),
-                  Text(copy.description, style: AppTypography.bodySm(context)),
-                ],
-              ),
-            ),
-            AppButton(
-              leadingIcon: const Icon(Icons.add, size: 16),
-              onPressed: _openCreate,
-              child: Text(copy.addBranch),
-            ),
-          ],
+        ClinicTabHeader(
+          title: copy.title,
+          description: copy.description,
+          actions: AppButton(
+            leadingIcon: const Icon(Icons.add, size: 16),
+            onPressed: _openCreate,
+            child: Text(copy.addBranch),
+          ),
         ),
         if (_hasBranches) ...[
           const SizedBox(height: AppSpacing.space6),
@@ -453,8 +438,10 @@ class _BranchCardGrid extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space1),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final columnCount = constraints.maxWidth >= 1024 ? 2 : 1;
-          final cardWidth = columnCount == 1 ? constraints.maxWidth : (constraints.maxWidth - AppSpacing.space4) / 2;
+          final columnCount = constraints.maxWidth >= 1024 ? 3 : 1;
+          final cardWidth = columnCount == 1
+              ? constraints.maxWidth
+              : (constraints.maxWidth - AppSpacing.space4 * (columnCount - 1)) / columnCount;
 
           return Wrap(
             spacing: AppSpacing.space4,
@@ -509,10 +496,12 @@ class _BranchCardState extends State<_BranchCard> {
     final branch = widget.branch;
     final copy = widget.copy;
     final phone = branch.phone?.trim();
+    final address = branch.address?.trim();
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
+      cursor: SystemMouseCursors.click,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
@@ -523,38 +512,39 @@ class _BranchCardState extends State<_BranchCard> {
           color: colors.surfaceDefault,
           boxShadow: _hovered ? elevation.shadows2 : elevation.shadows1,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.x2l),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: branch.isActive
-                        ? [colors.statusSuccessSurface, colors.surfaceDefault]
-                        : [colors.statusWarningSurface, colors.surfaceDefault],
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.space5,
-                    AppSpacing.space5,
-                    AppSpacing.space5,
-                    AppSpacing.space3,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Wrap(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onEdit,
+            borderRadius: BorderRadius.circular(AppRadius.x2l),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.x2l),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: branch.isActive
+                            ? [colors.statusSuccessSurface, colors.surfaceDefault]
+                            : [colors.statusWarningSurface, colors.surfaceDefault],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.space5,
+                        AppSpacing.space5,
+                        AppSpacing.space5,
+                        AppSpacing.space3,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Wrap(
                               spacing: AppSpacing.space2,
                               runSpacing: AppSpacing.space2,
                               crossAxisAlignment: WrapCrossAlignment.center,
@@ -580,108 +570,116 @@ class _BranchCardState extends State<_BranchCard> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: AppSpacing.space2),
-                            Text(
-                              branch.address ?? '—',
-                              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Material(
-                        color: Colors.transparent,
-                        child: AppMenu(
-                          align: AppPopoverAlign.end,
-                          entries: [
-                            AppMenuItem(
-                              id: 'edit',
-                              label: copy.edit,
-                              icon: const Icon(Icons.edit, size: 14),
-                              onSelect: widget.onEdit,
-                            ),
-                            AppMenuItem(
-                              id: 'toggle-active',
-                              label: branch.isActive ? copy.deactivate : copy.activate,
-                              icon: const Icon(Icons.power_settings_new, size: 14),
-                              onSelect: widget.onToggleActive,
-                            ),
-                            AppMenuItem(
-                              id: 'delete',
-                              label: copy.delete,
-                              icon: const Icon(Icons.delete_outline, size: 14),
-                              destructive: true,
-                              onSelect: widget.onDelete,
-                            ),
-                          ],
-                          trigger: Semantics(
-                            button: true,
-                            label: copy.branchActions,
-                            child: AppIconButton(
-                              icon: const Icon(Icons.more_horiz, size: 18),
-                              label: copy.branchActions,
-                              variant: AppIconButtonVariant.ghost,
-                            ),
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: colors.borderSubtle)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.space5,
-                    AppSpacing.space4,
-                    AppSpacing.space5,
-                    AppSpacing.space4,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (phone != null && phone.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.space2),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.phone, size: 14, color: colors.iconMuted),
-                              const SizedBox(width: AppSpacing.space2),
-                              Directionality(
-                                textDirection: TextDirection.ltr,
-                                child: Text(
-                                  _formatBranchPhone(phone),
-                                  style: AppTypography.bodySm(context).copyWith(
-                                    color: colors.textSecondary,
-                                    fontFeatures: const [FontFeature.tabularFigures()],
-                                  ),
+                          Material(
+                            color: Colors.transparent,
+                            child: AppMenu(
+                              align: AppPopoverAlign.end,
+                              entries: [
+                                AppMenuItem(
+                                  id: 'edit',
+                                  label: copy.edit,
+                                  icon: const Icon(Icons.edit, size: 14),
+                                  onSelect: widget.onEdit,
+                                ),
+                                AppMenuItem(
+                                  id: 'toggle-active',
+                                  label: branch.isActive ? copy.deactivate : copy.activate,
+                                  icon: const Icon(Icons.power_settings_new, size: 14),
+                                  onSelect: widget.onToggleActive,
+                                ),
+                                AppMenuItem(
+                                  id: 'delete',
+                                  label: copy.delete,
+                                  icon: const Icon(Icons.delete_outline, size: 14),
+                                  destructive: true,
+                                  onSelect: widget.onDelete,
+                                ),
+                              ],
+                              trigger: Semantics(
+                                button: true,
+                                label: copy.branchActions,
+                                child: AppIconButton(
+                                  icon: const Icon(Icons.more_horiz, size: 18),
+                                  label: copy.branchActions,
+                                  variant: AppIconButtonVariant.ghost,
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.location_on, size: 14, color: colors.iconMuted),
-                          const SizedBox(width: AppSpacing.space2),
-                          Expanded(
-                            child: Text(
-                              formatWorkingHoursSummary(branch.workingSchedule),
-                              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
                             ),
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border(top: BorderSide(color: colors.borderSubtle)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.space5,
+                        AppSpacing.space4,
+                        AppSpacing.space5,
+                        AppSpacing.space4,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.location_on, size: 14, color: colors.iconMuted),
+                              const SizedBox(width: AppSpacing.space2),
+                              Expanded(
+                                child: Text(
+                                  address != null && address.isNotEmpty ? address : '—',
+                                  style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (phone != null && phone.isNotEmpty) ...[
+                            const SizedBox(height: AppSpacing.space2),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.phone, size: 14, color: colors.iconMuted),
+                                const SizedBox(width: AppSpacing.space2),
+                                Directionality(
+                                  textDirection: TextDirection.ltr,
+                                  child: Text(
+                                    _formatBranchPhone(phone),
+                                    style: AppTypography.bodySm(context).copyWith(
+                                      color: colors.textSecondary,
+                                      fontFeatures: const [FontFeature.tabularFigures()],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          const SizedBox(height: AppSpacing.space2),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.schedule, size: 14, color: colors.iconMuted),
+                              const SizedBox(width: AppSpacing.space2),
+                              Expanded(
+                                child: Text(
+                                  formatWorkingHoursSummary(branch.workingSchedule),
+                                  style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

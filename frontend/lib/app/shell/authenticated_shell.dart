@@ -47,6 +47,7 @@ class AuthenticatedShell extends ConsumerWidget {
 
     final isDesignSystemPage = ShellNavConfig.isDesignSystemLocation(location);
     final designSystemFullWidth = ShellNavConfig.isDesignSystemFullWidth(uri);
+    final fullWidth = ShellNavConfig.isFullWidthLocation(location) || (isDesignSystemPage && designSystemFullWidth);
 
     return CommandBarScope(
       enabled: !setupLocked,
@@ -63,7 +64,7 @@ class AuthenticatedShell extends ConsumerWidget {
       child: ShellDevShellWrapper(
         child: AppShell(
           pageKey: location,
-          fullWidth: ShellNavConfig.isFullWidthLocation(location) || (isDesignSystemPage && designSystemFullWidth),
+          fullWidth: fullWidth,
           fillViewport: isDesignSystemPage,
           sidebar: AppSidebar(
             items: ShellNavConfig.groups,

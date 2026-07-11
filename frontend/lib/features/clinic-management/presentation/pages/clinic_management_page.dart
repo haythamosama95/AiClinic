@@ -25,7 +25,7 @@ class ClinicManagementPage extends ConsumerStatefulWidget {
 }
 
 class _ClinicManagementPageState extends ConsumerState<ClinicManagementPage> {
-  static const _minimumSkeletonDuration = Duration(seconds: 2);
+  static const _minimumSkeletonDuration = Duration(seconds: 1);
 
   String? _activeTabId;
   bool _minSkeletonElapsed = false;
@@ -94,11 +94,10 @@ class _ClinicManagementPageState extends ConsumerState<ClinicManagementPage> {
 
     final Widget body;
     if (showInitialSkeleton) {
-      body = _TabSkeletonBody(key: ValueKey('skeleton-$activeTabId'), tabId: activeTabId);
+      body = _TabSkeletonBody(tabId: activeTabId);
     } else {
       body = clinicState.when(
         data: (state) => _ActiveTabBody(
-          key: ValueKey(activeTabId),
           tabId: activeTabId,
           state: state,
           onUpdateOrganization: notifier.updateOrganization,
@@ -123,7 +122,6 @@ class _ClinicManagementPageState extends ConsumerState<ClinicManagementPage> {
           final previous = clinicState.value;
           if (previous != null) {
             return _ActiveTabBody(
-              key: ValueKey(activeTabId),
               tabId: activeTabId,
               state: previous,
               onUpdateOrganization: notifier.updateOrganization,
@@ -145,7 +143,7 @@ class _ClinicManagementPageState extends ConsumerState<ClinicManagementPage> {
               onRemoveStaff: notifier.removeStaff,
             );
           }
-          return _TabSkeletonBody(key: ValueKey('skeleton-$activeTabId'), tabId: activeTabId);
+          return _TabSkeletonBody(tabId: activeTabId);
         },
         error: (_, _) => const AppEmptyState(variant: AppEmptyStateVariant.error),
       );
@@ -155,7 +153,7 @@ class _ClinicManagementPageState extends ConsumerState<ClinicManagementPage> {
       tabs: visibleTabs,
       activeTabId: activeTabId,
       onTabChanged: (id) => setState(() => _activeTabId = id),
-      body: body,
+      body: _TabTransition(tabId: activeTabId, child: body),
     );
   }
 
@@ -165,6 +163,59 @@ class _ClinicManagementPageState extends ConsumerState<ClinicManagementPage> {
       return current;
     }
     return visibleTabs.first.id;
+  }
+}
+
+class _TabTransition extends StatefulWidget {
+  const _TabTransition({required this.tabId, required this.child});
+
+  final String tabId;
+  final Widget child;
+
+  @override
+  State<_TabTransition> createState() => _TabTransitionState();
+}
+
+class _TabTransitionState extends State<_TabTransition> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: AppMotionDuration.slow);
+    _animation = CurvedAnimation(parent: _controller, curve: AppMotionEasing.standard);
+    _controller.forward();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller.duration = AppMotion.prefersReducedMotion(context) ? AppMotionDuration.fast : AppMotionDuration.slow;
+  }
+
+  @override
+  void didUpdateWidget(covariant _TabTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tabId != widget.tabId) {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppMotion.animatedPreset(
+      context: context,
+      preset: AppMotionPreset.slideUp,
+      animation: _animation,
+      child: SizedBox(width: double.infinity, child: widget.child),
+    );
   }
 }
 
@@ -216,7 +267,6 @@ class _ActiveTabBody extends StatelessWidget {
     required this.onAddStaff,
     required this.onUpdateStaff,
     required this.onRemoveStaff,
-    super.key,
   });
 
   final String tabId;
@@ -232,50 +282,30 @@ class _ActiveTabBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final transition = AppMotion.transitionFor(context: context, preset: AppMotionPreset.slideUp);
-
-    return AnimatedSwitcher(
-      duration: transition.duration,
-      switchInCurve: transition.curve,
-      switchOutCurve: transition.curve,
-      transitionBuilder: (child, animation) {
-        return AppMotion.animatedPreset(
-          context: context,
-          preset: AppMotionPreset.slideUp,
-          animation: animation,
-          child: child,
-        );
-      },
-      layoutBuilder: (currentChild, previousChildren) => currentChild ?? const SizedBox.shrink(),
-      child: SizedBox(
-        key: ValueKey(tabId),
-        width: double.infinity,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            switch (tabId) {
-              'organization' => _buildOrganizationTab(),
-              'branches' => BranchesTab(
-                branches: state.branches,
-                onAddBranch: onAddBranch,
-                onUpdateBranch: onUpdateBranch,
-                onRemoveBranch: onRemoveBranch,
-                onToggleBranchActive: onToggleBranchActive,
-              ),
-              'staff' => StaffTab(
-                staff: state.staff,
-                branches: state.branches,
-                onAdd: onAddStaff,
-                onUpdate: onUpdateStaff,
-                onRemove: onRemoveStaff,
-              ),
-              'roles' => const RolesTab(),
-              _ => const SizedBox.shrink(),
-            },
-          ],
-        ),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        switch (tabId) {
+          'organization' => _buildOrganizationTab(),
+          'branches' => BranchesTab(
+            branches: state.branches,
+            onAddBranch: onAddBranch,
+            onUpdateBranch: onUpdateBranch,
+            onRemoveBranch: onRemoveBranch,
+            onToggleBranchActive: onToggleBranchActive,
+          ),
+          'staff' => StaffTab(
+            staff: state.staff,
+            branches: state.branches,
+            onAdd: onAddStaff,
+            onUpdate: onUpdateStaff,
+            onRemove: onRemoveStaff,
+          ),
+          'roles' => const RolesTab(),
+          _ => const SizedBox.shrink(),
+        },
+      ],
     );
   }
 
@@ -300,40 +330,20 @@ class _ActiveTabBody extends StatelessWidget {
 }
 
 class _TabSkeletonBody extends StatelessWidget {
-  const _TabSkeletonBody({required this.tabId, super.key});
+  const _TabSkeletonBody({required this.tabId});
 
   final String tabId;
 
   @override
   Widget build(BuildContext context) {
-    final transition = AppMotion.transitionFor(context: context, preset: AppMotionPreset.slideUp);
-
-    return AnimatedSwitcher(
-      duration: transition.duration,
-      switchInCurve: transition.curve,
-      switchOutCurve: transition.curve,
-      transitionBuilder: (child, animation) {
-        return AppMotion.animatedPreset(
-          context: context,
-          preset: AppMotionPreset.slideUp,
-          animation: animation,
-          child: child,
-        );
+    return AppSkeletonizerZone(
+      child: switch (tabId) {
+        'organization' => const _OrganizationTabSkeleton(),
+        'branches' => const _BranchesTabSkeleton(),
+        'staff' => const _StaffTabSkeleton(),
+        'roles' => const _RolesTabSkeleton(),
+        _ => const _OrganizationTabSkeleton(),
       },
-      layoutBuilder: (currentChild, previousChildren) => currentChild ?? const SizedBox.shrink(),
-      child: SizedBox(
-        key: ValueKey(tabId),
-        width: double.infinity,
-        child: AppSkeletonizerZone(
-          child: switch (tabId) {
-            'organization' => const _OrganizationTabSkeleton(),
-            'branches' => const _BranchesTabSkeleton(),
-            'staff' => const _StaffTabSkeleton(),
-            'roles' => const _RolesTabSkeleton(),
-            _ => const _OrganizationTabSkeleton(),
-          },
-        ),
-      ),
     );
   }
 }
