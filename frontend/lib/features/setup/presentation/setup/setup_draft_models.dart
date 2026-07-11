@@ -49,10 +49,11 @@ const List<SelectOption> currencyOptions = [
 const List<SelectOption> CURRENCY_OPTIONS = currencyOptions;
 
 const List<SelectOption> staffRoleOptions = [
+  SelectOption(value: 'owner', label: 'Owner'),
   SelectOption(value: 'administrator', label: 'Administrator'),
   SelectOption(value: 'doctor', label: 'Doctor'),
   SelectOption(value: 'receptionist', label: 'Receptionist'),
-  SelectOption(value: 'lab_staff', label: 'Lab staff'),
+  SelectOption(value: 'nurse', label: 'Nurse'),
 ];
 
 /// Web export name: `STAFF_ROLE_OPTIONS`.
@@ -201,12 +202,12 @@ class StaffDraft {
     );
   }
 
-  /// Passwords are collected transiently in the UI and must not be persisted.
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'mobile': mobile,
     'username': username,
+    'password': password,
     'role': role,
     'branchIds': branchIds,
   };

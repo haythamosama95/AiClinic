@@ -25,8 +25,6 @@ abstract final class ClinicSetupDialog {
       showHeader: false,
       child: Consumer(
         builder: (context, ref, _) {
-          final needsClinicSetup = ref.watch(authSessionProvider).context?.needsClinicSetup ?? false;
-
           ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
             final wasLocked = previous?.context?.needsClinicSetup ?? false;
             final isLocked = next.context?.needsClinicSetup ?? false;
@@ -36,10 +34,7 @@ abstract final class ClinicSetupDialog {
             }
           });
 
-          return PopScope(
-            canPop: !needsClinicSetup,
-            child: const ClinicSetupDialogContent(showPageHeader: false, showCompletedBanner: false),
-          );
+          return const ClinicSetupDialogContent(showPageHeader: false, showCompletedBanner: false);
         },
       ),
     );

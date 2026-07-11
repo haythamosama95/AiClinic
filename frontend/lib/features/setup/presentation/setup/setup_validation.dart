@@ -6,9 +6,6 @@ import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
 
 typedef StepErrors = Map<String, String>;
 
-/// Wizard step count: first-run bootstrap skips the services step.
-int setupWizardStepCount({required bool bootstrapMode}) => bootstrapMode ? 3 : 4;
-
 Map<String, String> validateOrganization(OrganizationDraft org) {
   final errors = <String, String>{};
   if (org.name.trim().isEmpty) {
@@ -23,21 +20,15 @@ Map<String, String> validateOrganization(OrganizationDraft org) {
   return errors;
 }
 
-Map<String, String> validateBranches(List<BranchDraft> branches, {bool bootstrapMode = false}) {
+Map<String, String> validateBranches(List<BranchDraft> branches) {
   final errors = <String, String>{};
   if (branches.isEmpty) {
     errors['_form'] = 'Add at least one branch';
     return errors;
   }
 
-  if (bootstrapMode && branches.length > 1) {
-    errors['_form'] = 'First-run setup supports one branch. Remove extra branches before continuing.';
-    return errors;
-  }
-
-  final branchesToValidate = bootstrapMode ? branches.take(1).toList() : branches;
-  for (var index = 0; index < branchesToValidate.length; index++) {
-    errors.addAll(validateSingleBranch(branchesToValidate[index], index, allBranches: branches));
+  for (var index = 0; index < branches.length; index++) {
+    errors.addAll(validateSingleBranch(branches[index], index, allBranches: branches));
   }
 
   return errors;
@@ -95,7 +86,6 @@ Map<String, String> validateSingleStaff(
   int index, {
   List<StaffDraft>? allStaff,
   int branchCount = 1,
-  bool bootstrapMode = false,
 }) {
   final errors = <String, String>{};
   final prefix = 'staff-$index';
@@ -131,14 +121,14 @@ Map<String, String> validateSingleStaff(
   if (member.role.isEmpty) {
     errors['$prefix-role'] = 'Select a role';
   }
-  if (!bootstrapMode && branchCount > 0 && member.branchIds.isEmpty) {
+  if (branchCount > 0 && member.branchIds.isEmpty) {
     errors['$prefix-branches'] = 'Assign at least one branch';
   }
 
   return errors;
 }
 
-Map<String, String> validateStaff(List<StaffDraft> staff, int branchCount, {bool bootstrapMode = false}) {
+Map<String, String> validateStaff(List<StaffDraft> staff, int branchCount) {
   final errors = <String, String>{};
   if (staff.isEmpty) {
     errors['_form'] = 'Add at least one staff member';
@@ -146,9 +136,7 @@ Map<String, String> validateStaff(List<StaffDraft> staff, int branchCount, {bool
   }
 
   for (var index = 0; index < staff.length; index++) {
-    errors.addAll(
-      validateSingleStaff(staff[index], index, allStaff: staff, branchCount: branchCount, bootstrapMode: bootstrapMode),
-    );
+    errors.addAll(validateSingleStaff(staff[index], index, allStaff: staff, branchCount: branchCount));
   }
 
   return errors;
@@ -194,29 +182,6 @@ Map<String, String> validateServices(List<ServiceDraft> services) {
   return errors;
 }
 
-String? validateServicePriceText(String? raw) {
-  if (raw == null || raw.trim().isEmpty) {
-    return 'Enter a valid price';
-  }
-
-  final cleaned = raw.trim().replaceAll(RegExp(r'[^\d.]'), '');
-  if (cleaned.isEmpty) {
-    return 'Enter a valid price';
-  }
-  if (!RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(cleaned)) {
-    return 'Enter a valid price with at most two decimal places';
-  }
-
-  final value = double.tryParse(cleaned);
-  if (value == null || value.isNaN || value.isInfinite) {
-    return 'Enter a valid price';
-  }
-  if (value < 0) {
-    return 'Price must be zero or greater';
-  }
-  return null;
-}
-
 String? _validateServicePrice(double? price) {
   if (price == null || price.isNaN || price.isInfinite) {
     return 'Enter a valid price';
@@ -224,9 +189,8 @@ String? _validateServicePrice(double? price) {
   if (price < 0) {
     return 'Price must be zero or greater';
   }
-  // Reject more than two decimal places without rounding (e.g. 12.345).
   final cents = (price * 100).round();
-  if ((cents / 100 - price).abs() > 1e-6) {
+  if ((cents / 100 - price).abs() > 0.001) {
     return 'Enter a valid price with at most two decimal places';
   }
   return null;
@@ -267,18 +231,15 @@ Set<String> confirmedServiceIdsForSetup(List<ServiceDraft> services) {
   return confirmed;
 }
 
-Map<String, String> validateStep(int step, SetupDraft draft, {bool bootstrapMode = false}) {
+Map<String, String> validateStep(int step, SetupDraft draft) {
   switch (step) {
     case 0:
       return validateOrganization(draft.organization);
     case 1:
-      return validateBranches(draft.branches, bootstrapMode: bootstrapMode);
+      return validateBranches(draft.branches);
     case 2:
-      return validateStaff(draft.staff, draft.branches.length, bootstrapMode: bootstrapMode);
+      return validateStaff(draft.staff, draft.branches.length);
     case 3:
-      if (bootstrapMode) {
-        return {};
-      }
       return validateServices(draft.services);
     default:
       return {};

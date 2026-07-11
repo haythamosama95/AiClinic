@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_progress.dart';
-import 'package:ai_clinic/core/ui/components/app_stepper.dart';
 import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
 import 'package:ai_clinic/core/ui/theme/app_elevation.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
@@ -13,26 +11,15 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_step_panel.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_step_rail.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/steps/branch_step.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/steps/organization_step.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/steps/services_step.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/steps/staff_step.dart';
 
+const _stepCount = 4;
 const _smBreakpoint = 600.0;
-
-const _allSetupSteps = <AppStep>[
-  AppStep(id: 'organization', label: 'Organization', description: 'Name & region'),
-  AppStep(id: 'branch', label: 'Branch', description: 'Locations & hours'),
-  AppStep(id: 'staff', label: 'Staff', description: 'Team & access'),
-  AppStep(id: 'services', label: 'Services', description: 'Catalog & pricing'),
-];
-
-const _bootstrapSetupSteps = <AppStep>[
-  AppStep(id: 'organization', label: 'Organization', description: 'Name & region'),
-  AppStep(id: 'branch', label: 'Branch', description: 'Your first location'),
-  AppStep(id: 'staff', label: 'Staff', description: 'Team & access'),
-];
 
 /// Setup wizard shell (web `SetupWizard`).
 class SetupWizard extends ConsumerStatefulWidget {
@@ -52,11 +39,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
 
   Future<void> _goNext() async {
     final setupState = ref.read(clinicSetupProvider);
-    final bootstrapMode = ref.read(authSessionProvider).context?.needsClinicSetup ?? false;
-    final stepCount = setupWizardStepCount(bootstrapMode: bootstrapMode);
     final step = setupState.step;
     final draft = setupState.draft;
-    final stepErrors = validateStep(step, draft, bootstrapMode: bootstrapMode);
+    final stepErrors = validateStep(step, draft);
 
     if (hasErrors(stepErrors)) {
       final notifier = ref.read(clinicSetupProvider.notifier);
@@ -75,7 +60,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     setState(() => _errors = {});
 
     final notifier = ref.read(clinicSetupProvider.notifier);
-    final isLastStep = step == stepCount - 1;
+    final isLastStep = step == _stepCount - 1;
 
     await notifier.persistDraft();
 
@@ -99,31 +84,24 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     ref.read(clinicSetupProvider.notifier).setStep(step - 1);
   }
 
-  Widget _stepContent(int step, {required bool bootstrapMode}) {
+  Widget _stepContent(int step) {
     return switch (step) {
       0 => OrganizationStep(errors: _errors),
-      1 => BranchStep(key: _branchStepKey, errors: _errors, bootstrapMode: bootstrapMode),
-      2 => StaffStep(key: _staffStepKey, errors: _errors, bootstrapMode: bootstrapMode),
-      3 when !bootstrapMode => ServicesStep(errors: _errors),
+      1 => BranchStep(key: _branchStepKey, errors: _errors),
+      2 => StaffStep(key: _staffStepKey, errors: _errors),
+      3 => ServicesStep(errors: _errors),
       _ => const SizedBox.shrink(),
     };
   }
 
-  Widget _stepPanel(
-    int step,
-    AppSemanticColors colors,
-    bool isLastStep,
-    bool isSubmitting,
-    String? submitError, {
-    required bool bootstrapMode,
-  }) {
+  Widget _stepPanel(int step, AppSemanticColors colors, bool isLastStep, bool isSubmitting, String? submitError) {
     return SetupStepPanel(
       stepKey: '$step',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _stepContent(step, bootstrapMode: bootstrapMode),
+          _stepContent(step),
           if (submitError != null) ...[
             const SizedBox(height: AppSpacing.space4),
             Semantics(
@@ -167,19 +145,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   @override
   Widget build(BuildContext context) {
     final setupState = ref.watch(clinicSetupProvider);
-    final bootstrapMode = ref.watch(authSessionProvider.select((auth) => auth.context?.needsClinicSetup ?? false));
-    final stepCount = setupWizardStepCount(bootstrapMode: bootstrapMode);
-    final step = setupState.step.clamp(0, stepCount - 1);
-
-    if (bootstrapMode && setupState.step >= stepCount) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ref.read(clinicSetupProvider.notifier).setStep(stepCount - 1);
-      });
-    }
-
-    final progress = ((step + 1) / stepCount) * 100;
-    final isLastStep = step == stepCount - 1;
+    final step = setupState.step;
+    final progress = ((step + 1) / _stepCount) * 100;
+    final isLastStep = step == _stepCount - 1;
     final colors = context.appColors;
     final elevation = Theme.of(context).extension<AppElevation>();
 
@@ -227,7 +195,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            'Step ${step + 1} of $stepCount',
+                            'Step ${step + 1} of $_stepCount',
                             style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
                           ),
                           const SizedBox(height: AppSpacing.space2),
@@ -259,14 +227,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final showRail = constraints.maxWidth >= _smBreakpoint;
-                  final body = _stepPanel(
-                    step,
-                    colors,
-                    isLastStep,
-                    setupState.isSubmitting,
-                    setupState.submitError,
-                    bootstrapMode: bootstrapMode,
-                  );
+                  final body = _stepPanel(step, colors, isLastStep, setupState.isSubmitting, setupState.submitError);
 
                   if (!showRail) {
                     return body;
@@ -275,14 +236,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: 208,
-                        child: AppStepper(
-                          orientation: AppStepperOrientation.vertical,
-                          steps: bootstrapMode ? _bootstrapSetupSteps : _allSetupSteps,
-                          currentStep: step,
-                        ),
-                      ),
+                      SizedBox(width: 208, child: SetupStepRail(currentStep: step)),
                       const SizedBox(width: AppSpacing.space8),
                       Expanded(child: body),
                     ],

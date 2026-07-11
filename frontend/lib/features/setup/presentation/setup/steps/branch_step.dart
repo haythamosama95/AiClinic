@@ -25,10 +25,9 @@ import 'package:ai_clinic/features/setup/presentation/setup/widgets/working_hour
 
 /// Branch step (web `BranchStep`).
 class BranchStep extends StatefulWidget {
-  const BranchStep({required this.errors, this.bootstrapMode = false, super.key});
+  const BranchStep({required this.errors, super.key});
 
   final Map<String, String> errors;
-  final bool bootstrapMode;
 
   @override
   State<BranchStep> createState() => _BranchStepState();
@@ -263,9 +262,7 @@ class _BranchStepState extends State<BranchStep> {
                       Text('Branches', style: AppTypography.h2(context).copyWith(color: colors.textPrimary)),
                       const SizedBox(height: AppSpacing.space1),
                       Text(
-                        widget.bootstrapMode
-                            ? 'Add your first clinic location. You can add more branches after setup is complete.'
-                            : 'Add every location where patients are seen. Each branch needs a unique code for scheduling and billing.',
+                        'Add every location where patients are seen. Each branch needs a unique code for scheduling and billing.',
                         style: AppTypography.body(context).copyWith(color: colors.textSecondary),
                       ),
                     ],
@@ -338,15 +335,13 @@ class _BranchStepState extends State<BranchStep> {
                   ),
               ],
             ),
-            if (!widget.bootstrapMode) ...[
-              const SizedBox(height: AppSpacing.space4),
-              AppButton(
-                variant: AppButtonVariant.secondary,
-                onPressed: addBranch,
-                leadingIcon: const Icon(Icons.add, size: 16),
-                child: const Text('Add another branch'),
-              ),
-            ],
+            const SizedBox(height: AppSpacing.space4),
+            AppButton(
+              variant: AppButtonVariant.secondary,
+              onPressed: addBranch,
+              leadingIcon: const Icon(Icons.add, size: 16),
+              child: const Text('Add another branch'),
+            ),
           ],
         );
       },

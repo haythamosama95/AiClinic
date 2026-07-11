@@ -46,10 +46,6 @@ List<WorkingDay> scheduleToWorkingDays(BranchWorkingSchedule? schedule) {
 }
 
 /// Normalizes backend phone values to the 10-digit national format used by setup.
-///
-/// Egypt numbers (`20` country code + 10 digits) are stripped to national form.
-/// Ten-digit values are returned as-is. Other lengths are returned without
-/// truncating leading digits so international numbers are not silently mangled.
 String normalizeSetupNationalPhone(String? raw) {
   final digits = raw?.replaceAll(RegExp(r'\D'), '') ?? '';
   if (digits.isEmpty) {
@@ -60,6 +56,9 @@ String normalizeSetupNationalPhone(String? raw) {
   }
   if (digits.length == 12 && digits.startsWith('20')) {
     return digits.substring(2);
+  }
+  if (digits.length > 10) {
+    return digits.substring(digits.length - 10);
   }
   return digits;
 }
@@ -83,7 +82,14 @@ BranchDraft branchListItemToDraft(BranchListItem branch) {
   );
 }
 
-String staffRoleToDraftValue(StaffRole role) => role.wireValue;
+String staffRoleToDraftValue(StaffRole role) {
+  return switch (role) {
+    StaffRole.administrator => 'administrator',
+    StaffRole.labStaff => 'nurse',
+    StaffRole.doctor => 'doctor',
+    StaffRole.receptionist => 'receptionist',
+  };
+}
 
 StaffDraft staffListItemToDraft(StaffListItem staff) {
   return StaffDraft(
@@ -146,7 +152,6 @@ BranchWorkingSchedule workingDaysToSchedule(List<WorkingDay> workingDays) {
 
 StaffRole? staffRoleFromDraft(String role) {
   final normalized = role.trim().toLowerCase();
-  // Legacy draft values from before role alignment.
   if (normalized == 'owner') {
     return StaffRole.administrator;
   }
@@ -158,9 +163,9 @@ StaffRole? staffRoleFromDraft(String role) {
 
 /// Maps the cached settings setup draft to the atomic bootstrap RPC payload.
 ///
-/// V1 bootstrap creates exactly one branch atomically with organization and staff.
-/// Staff are assigned to that branch in the draft mapper; services and additional
-/// branches are configured after setup via the steady-state wizard path.
+/// V1 bootstrap creates the first branch atomically with organization and staff.
+/// Additional branches and services remain in the local draft until dedicated
+/// steady-state APIs are wired for the settings wizard re-run path.
 BootstrapFinishSetupInput toBootstrapFinishSetupInput(SetupDraft draft) {
   if (draft.branches.isEmpty) {
     throw StateError('At least one branch is required to finish clinic setup.');
@@ -179,16 +184,13 @@ BootstrapFinishSetupInput toBootstrapFinishSetupInput(SetupDraft draft) {
       throw StateError('Staff member "${member.name}" has an unsupported role.');
     }
 
-    final branchIds = member.branchIds.isNotEmpty ? member.branchIds : [primaryBranch.id];
-
     staffAccounts.add(
       CreateStaffAccountInput(
         username: normalizeStaffUsername(member.username),
         password: member.password,
         fullName: member.name.trim(),
         role: role,
-        branchIds: branchIds,
-        primaryBranchId: primaryBranch.id,
+        branchIds: const [],
         phone: member.mobile.trim().isEmpty ? null : member.mobile.trim(),
       ),
     );
