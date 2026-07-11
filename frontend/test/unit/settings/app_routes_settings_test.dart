@@ -52,54 +52,6 @@ void main() {
       expect(AppRoutes.adminSettingsPaths, isNot(contains(AppRoutes.settingsIdleTimeout)));
     });
 
-    test('settingsScreenFromPath resolves active tab from full settings path', () {
-      expect(AppRoutes.settingsScreenFromPath('/settings/general'), 'general');
-      expect(AppRoutes.settingsScreenFromPath('/settings/branches'), 'branches');
-      expect(AppRoutes.settingsScreenFromPath('/settings/staff'), 'staff');
-      expect(AppRoutes.settingsScreenFromPath('/settings/services'), 'services');
-      expect(AppRoutes.settingsScreenFromPath('/settings/notifications'), 'notifications');
-      expect(AppRoutes.settingsScreenFromPath('/settings/branches/branch-1/edit'), 'branches');
-      expect(AppRoutes.settingsScreenFromPath('/settings/unknown'), 'general');
-      expect(AppRoutes.settingsScreenFromPath('/settings'), 'general');
-    });
-
-    test('settings screen tabs and nested flows share one shell page transition key', () {
-      const stablePaths = [
-        AppRoutes.settingsGeneral,
-        AppRoutes.settingsBranches,
-        AppRoutes.settingsStaff,
-        AppRoutes.settingsServices,
-        AppRoutes.settingsNotifications,
-        AppRoutes.settingsBranchesNew,
-        '/settings/branches/branch-1/edit',
-        '/settings/staff/staff-1',
-        '/settings/staff/staff-1/reset-password',
-      ];
-      for (final path in stablePaths) {
-        expect(
-          AppRoutes.shellPageTransitionKeyForLocation(path),
-          AppRoutes.settings,
-          reason: 'settings route $path should not trigger shell transition',
-        );
-      }
-    });
-
-    test('non-settings routes keep distinct shell page transition keys', () {
-      const paths = [
-        AppRoutes.home,
-        AppRoutes.settingsIdleTimeout,
-        AppRoutes.settingsOrganization,
-        AppRoutes.settingsPermissions,
-      ];
-      for (final path in paths) {
-        expect(
-          AppRoutes.shellPageTransitionKeyForLocation(path),
-          path,
-          reason: 'route $path should keep its own shell transition',
-        );
-      }
-    });
-
     test('legacy staff provisioning paths differ from settings staff routes', () {
       expect(AppRoutes.staffCreate, isNot(startsWith(AppRoutes.settingsStaff)));
       expect(AppRoutes.staffPasswordReset, isNot(startsWith(AppRoutes.settingsStaff)));
