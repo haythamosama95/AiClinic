@@ -271,6 +271,7 @@ class _BranchesTabState extends State<BranchesTab> {
                 ListControlSortOption(value: option.value.wireValue, label: option.label),
             ],
             onSortChange: (sort) => _setControls(_controls.copyWith(sort: BranchSortKeyWire.fromWire(sort))),
+            onClearSort: _controls.isSortCustom ? () => _setControls(_controls.withDefaultSort()) : null,
             sortAriaLabel: copy.sortAriaLabel,
             filterActiveCount: filterActiveCount,
             filterPanel: FilterMenuPanel(
@@ -448,29 +449,33 @@ class _BranchCardGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columnCount = constraints.maxWidth >= 1024 ? 2 : 1;
-        final cardWidth = columnCount == 1 ? constraints.maxWidth : (constraints.maxWidth - AppSpacing.space4) / 2;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space1),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columnCount = constraints.maxWidth >= 1024 ? 2 : 1;
+          final cardWidth = columnCount == 1 ? constraints.maxWidth : (constraints.maxWidth - AppSpacing.space4) / 2;
 
-        return Wrap(
-          spacing: AppSpacing.space4,
-          runSpacing: AppSpacing.space4,
-          children: [
-            for (final branch in branches)
-              SizedBox(
-                width: cardWidth,
-                child: _BranchCard(
-                  branch: branch,
-                  copy: copy,
-                  onEdit: () => onEdit(branch),
-                  onToggleActive: () => onToggleActive(branch),
-                  onDelete: () => onDelete(branch),
+          return Wrap(
+            spacing: AppSpacing.space4,
+            runSpacing: AppSpacing.space4,
+            clipBehavior: Clip.none,
+            children: [
+              for (final branch in branches)
+                SizedBox(
+                  width: cardWidth,
+                  child: _BranchCard(
+                    branch: branch,
+                    copy: copy,
+                    onEdit: () => onEdit(branch),
+                    onToggleActive: () => onToggleActive(branch),
+                    onDelete: () => onDelete(branch),
+                  ),
                 ),
-              ),
-          ],
-        );
-      },
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -511,174 +516,183 @@ class _BranchCardState extends State<_BranchCard> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
+        clipBehavior: Clip.none,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadius.x2l),
           border: Border.all(color: colors.borderSubtle),
           color: colors.surfaceDefault,
           boxShadow: _hovered ? elevation.shadows2 : elevation.shadows1,
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              height: 1,
-              child: DecoratedBox(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.x2l),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      AppColorPrimitives.teal500.withValues(alpha: 0.8),
-                      AppColorPrimitives.violet500.withValues(alpha: 0.8),
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: branch.isActive
+                        ? [colors.statusSuccessSurface, colors.surfaceDefault]
+                        : [colors.statusWarningSurface, colors.surfaceDefault],
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.space5,
+                    AppSpacing.space5,
+                    AppSpacing.space5,
+                    AppSpacing.space3,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Wrap(
+                              spacing: AppSpacing.space2,
+                              runSpacing: AppSpacing.space2,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(
+                                  branch.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.bodyStrong(context),
+                                ),
+                                if ((branch.code ?? '').isNotEmpty)
+                                  AppBadge(
+                                    label: branch.code,
+                                    color: BadgeColor.neutral,
+                                    variant: BadgeVariant.soft,
+                                    size: BadgeSize.sm,
+                                  ),
+                                AppBadge(
+                                  label: branch.isActive ? copy.active : copy.inactive,
+                                  color: branch.isActive ? BadgeColor.success : BadgeColor.warning,
+                                  variant: BadgeVariant.soft,
+                                  size: BadgeSize.sm,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: AppSpacing.space2),
+                            Text(
+                              branch.address ?? '—',
+                              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Material(
+                        color: Colors.transparent,
+                        child: AppMenu(
+                          align: AppPopoverAlign.end,
+                          entries: [
+                            AppMenuItem(
+                              id: 'edit',
+                              label: copy.edit,
+                              icon: const Icon(Icons.edit, size: 14),
+                              onSelect: widget.onEdit,
+                            ),
+                            AppMenuItem(
+                              id: 'toggle-active',
+                              label: branch.isActive ? copy.deactivate : copy.activate,
+                              icon: const Icon(Icons.power_settings_new, size: 14),
+                              onSelect: widget.onToggleActive,
+                            ),
+                            AppMenuItem(
+                              id: 'delete',
+                              label: copy.delete,
+                              icon: const Icon(Icons.delete_outline, size: 14),
+                              destructive: true,
+                              onSelect: widget.onDelete,
+                            ),
+                          ],
+                          trigger: Semantics(
+                            button: true,
+                            label: copy.branchActions,
+                            child: AppIconButton(
+                              icon: const Icon(Icons.more_horiz, size: 18),
+                              label: copy.branchActions,
+                              variant: AppIconButtonVariant.ghost,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.space5,
-                AppSpacing.space5,
-                AppSpacing.space5,
-                AppSpacing.space3,
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Wrap(
-                          spacing: AppSpacing.space2,
-                          runSpacing: AppSpacing.space2,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              branch.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.bodyStrong(context),
-                            ),
-                            if ((branch.code ?? '').isNotEmpty)
-                              AppBadge(
-                                label: branch.code,
-                                color: BadgeColor.neutral,
-                                variant: BadgeVariant.soft,
-                                size: BadgeSize.sm,
-                              ),
-                            AppBadge(
-                              label: branch.isActive ? copy.active : copy.inactive,
-                              color: branch.isActive ? BadgeColor.success : BadgeColor.warning,
-                              variant: BadgeVariant.soft,
-                              size: BadgeSize.sm,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: AppSpacing.space2),
-                        Text(
-                          branch.address ?? '—',
-                          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Material(
-                    color: Colors.transparent,
-                    child: AppMenu(
-                      align: AppPopoverAlign.end,
-                      entries: [
-                        AppMenuItem(
-                          id: 'edit',
-                          label: copy.edit,
-                          icon: const Icon(Icons.edit, size: 14),
-                          onSelect: widget.onEdit,
-                        ),
-                        AppMenuItem(
-                          id: 'toggle-active',
-                          label: branch.isActive ? copy.deactivate : copy.activate,
-                          icon: const Icon(Icons.power_settings_new, size: 14),
-                          onSelect: widget.onToggleActive,
-                        ),
-                        AppMenuItem(
-                          id: 'delete',
-                          label: copy.delete,
-                          icon: const Icon(Icons.delete_outline, size: 14),
-                          destructive: true,
-                          onSelect: widget.onDelete,
-                        ),
-                      ],
-                      trigger: Semantics(
-                        button: true,
-                        label: copy.branchActions,
-                        child: AppIconButton(
-                          icon: const Icon(Icons.more_horiz, size: 18),
-                          label: copy.branchActions,
-                          variant: AppIconButtonVariant.ghost,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.borderSubtle)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.space5,
-                  AppSpacing.space4,
-                  AppSpacing.space5,
-                  AppSpacing.space4,
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: colors.borderSubtle)),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (phone != null && phone.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.space2),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.phone, size: 14, color: colors.iconMuted),
-                            const SizedBox(width: AppSpacing.space2),
-                            Directionality(
-                              textDirection: TextDirection.ltr,
-                              child: Text(
-                                '+$phone',
-                                style: AppTypography.bodySm(context).copyWith(
-                                  color: colors.textSecondary,
-                                  fontFeatures: const [FontFeature.tabularFigures()],
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.space5,
+                    AppSpacing.space4,
+                    AppSpacing.space5,
+                    AppSpacing.space4,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (phone != null && phone.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.space2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.phone, size: 14, color: colors.iconMuted),
+                              const SizedBox(width: AppSpacing.space2),
+                              Directionality(
+                                textDirection: TextDirection.ltr,
+                                child: Text(
+                                  _formatBranchPhone(phone),
+                                  style: AppTypography.bodySm(context).copyWith(
+                                    color: colors.textSecondary,
+                                    fontFeatures: const [FontFeature.tabularFigures()],
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.location_on, size: 14, color: colors.iconMuted),
-                        const SizedBox(width: AppSpacing.space2),
-                        Expanded(
-                          child: Text(
-                            formatWorkingHoursSummary(branch.workingSchedule),
-                            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ],
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.location_on, size: 14, color: colors.iconMuted),
+                          const SizedBox(width: AppSpacing.space2),
+                          Expanded(
+                            child: Text(
+                              formatWorkingHoursSummary(branch.workingSchedule),
+                              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+String _formatBranchPhone(String phone) {
+  final trimmed = phone.trim();
+  if (trimmed.startsWith('+')) {
+    return trimmed;
+  }
+  return '+$trimmed';
 }

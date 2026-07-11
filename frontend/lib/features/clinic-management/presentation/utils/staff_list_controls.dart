@@ -39,6 +39,12 @@ class StaffListControls {
 
 const defaultStaffControls = StaffListControls();
 
+/// Default staff list sort (web `DEFAULT_STAFF_CONTROLS.sort`).
+const defaultStaffSort = StaffSortKey.nameAsc;
+
+StaffListControls resetStaffSort(StaffListControls controls) =>
+    controls.copyWith(sort: defaultStaffSort);
+
 /// Web `DEFAULT_STAFF_CONTROLS` alias.
 // ignore: constant_identifier_names
 const DEFAULT_STAFF_CONTROLS = defaultStaffControls;

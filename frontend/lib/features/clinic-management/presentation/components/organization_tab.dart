@@ -146,22 +146,23 @@ class _OrganizationTabState extends State<OrganizationTab> {
                 if (_editing) ...[
                   AppButton(
                     variant: AppButtonVariant.secondary,
-                    size: AppButtonSize.sm,
-                    leadingIcon: const Icon(Icons.close, size: 14),
+                    size: AppButtonSize.lg,
+                    leadingIcon: const Icon(Icons.close, size: 16),
                     onPressed: _cancel,
                     child: Text(copy.cancel),
                   ),
                   AppButton(
-                    size: AppButtonSize.sm,
-                    leadingIcon: const Icon(Icons.save, size: 14),
+                    variant: AppButtonVariant.primary,
+                    size: AppButtonSize.lg,
+                    leadingIcon: const Icon(Icons.save, size: 16),
                     onPressed: _save,
                     child: Text(copy.saveChanges),
                   ),
                 ] else
                   AppButton(
-                    variant: AppButtonVariant.secondary,
-                    size: AppButtonSize.sm,
-                    leadingIcon: const Icon(Icons.edit, size: 14),
+                    variant: AppButtonVariant.primary,
+                    size: AppButtonSize.lg,
+                    leadingIcon: const Icon(Icons.edit, size: 16),
                     onPressed: _startEdit,
                     child: Text(copy.editOrganization),
                   ),

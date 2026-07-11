@@ -139,7 +139,7 @@ class ClinicHero extends StatelessWidget {
                     ],
                   );
 
-                  final statTiles = _StatTileGrid(stats: stats);
+                  final statTiles = _StatTileGrid(stats: stats, horizontal: isWide);
 
                   if (isWide) {
                     return Row(
@@ -147,7 +147,7 @@ class ClinicHero extends StatelessWidget {
                       children: [
                         Expanded(child: identity),
                         const SizedBox(width: AppSpacing.space6),
-                        SizedBox(width: constraints.maxWidth * 0.38, child: statTiles),
+                        statTiles,
                       ],
                     );
                   }
@@ -172,33 +172,47 @@ class ClinicHero extends StatelessWidget {
 }
 
 class _StatTileGrid extends StatelessWidget {
-  const _StatTileGrid({required this.stats});
+  const _StatTileGrid({required this.stats, this.horizontal = false});
 
   final List<_HeroStat> stats;
+  final bool horizontal;
+
+  static const _tileMinWidth = 124.0;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final tiles = [for (final stat in stats) _buildTile(context, colors, stat)];
 
-    return Row(
-      children: [
-        for (var i = 0; i < stats.length; i++) ...[
-          if (i > 0) const SizedBox(width: AppSpacing.space3),
-          Expanded(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.surfaceDefault.withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(AppRadius.xl),
-                border: Border.all(color: colors.borderSubtle.withValues(alpha: 0.6)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
-                child: _StatTile(stat: stats[i]),
-              ),
-            ),
-          ),
+    if (horizontal) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < tiles.length; index++) ...[
+            if (index > 0) const SizedBox(width: AppSpacing.space3),
+            tiles[index],
+          ],
         ],
-      ],
+      );
+    }
+
+    return Wrap(spacing: AppSpacing.space3, runSpacing: AppSpacing.space3, children: tiles);
+  }
+
+  Widget _buildTile(BuildContext context, AppSemanticColors colors, _HeroStat stat) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: _tileMinWidth),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.surfaceDefault.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(color: colors.borderSubtle.withValues(alpha: 0.6)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
+          child: _StatTile(stat: stat),
+        ),
+      ),
     );
   }
 }
@@ -217,18 +231,12 @@ class _StatTile extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(stat.icon, size: 14, color: colors.textTertiary),
             const SizedBox(width: AppSpacing.space2),
-            Flexible(
-              child: Text(
-                stat.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
-              ),
-            ),
+            Text(stat.label, style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
           ],
         ),
         const SizedBox(height: AppSpacing.space1),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/components/filter_menu_panel.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/constants/clinic_constants.dart';
 
 class StaffFilterPanel extends StatelessWidget {
@@ -24,65 +25,60 @@ class StaffFilterPanel extends StatelessWidget {
   final ValueChanged<String?> onBranchChange;
   final VoidCallback onClearAll;
 
+  List<FilterMenuOption> _toFilterOptions(List<AppSelectOption> options) {
+    return [for (final option in options) FilterMenuOption(value: option.value, label: option.label)];
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final hasActiveFilters = role != null || (branchId != null && branchId!.isNotEmpty);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('Filters', style: AppTypography.overline(context)),
-        const SizedBox(height: AppSpacing.space3),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: colors.surfaceSunken.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(AppRadius.xl),
-            border: Border.all(color: colors.borderSubtle),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.space3),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AppFormField(
-                  id: 'staff-filter-role',
-                  label: 'Role',
-                  child: AppSelect(
-                    value: role?.wireValue ?? 'all',
-                    options: roleOptions,
-                    onChanged: (next) => onRoleChange(next == 'all' ? null : StaffRole.tryParse(next)),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.space3),
-                AppFormField(
-                  id: 'staff-filter-branch',
-                  label: 'Branch',
-                  child: AppSelect(
-                    value: branchId ?? 'all',
-                    options: branchOptions,
-                    onChanged: (next) => onBranchChange(next == 'all' ? null : next),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (hasActiveFilters) ...[
-          const SizedBox(height: AppSpacing.space4),
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.space4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Filters', style: AppTypography.title(context)),
+          const SizedBox(height: AppSpacing.space3),
           SizedBox(
-            width: double.infinity,
-            child: AppButton(
-              variant: AppButtonVariant.secondary,
-              size: AppButtonSize.sm,
-              onPressed: onClearAll,
-              child: const Text('Clear filters'),
-            ),
+            height: 1,
+            child: ColoredBox(color: colors.borderSubtle),
           ),
+          const SizedBox(height: AppSpacing.space3),
+          FilterMenuPanel(
+            sections: [
+              FilterMenuSection(
+                id: 'role',
+                label: 'Role',
+                value: role?.wireValue ?? 'all',
+                options: _toFilterOptions(roleOptions),
+                onChange: (next) => onRoleChange(next == 'all' ? null : StaffRole.tryParse(next)),
+              ),
+              FilterMenuSection(
+                id: 'branch',
+                label: 'Branch',
+                value: branchId ?? 'all',
+                options: _toFilterOptions(branchOptions),
+                onChange: (next) => onBranchChange(next == 'all' ? null : next),
+              ),
+            ],
+          ),
+          if (hasActiveFilters) ...[
+            const SizedBox(height: AppSpacing.space4),
+            SizedBox(
+              width: double.infinity,
+              child: AppButton(
+                variant: AppButtonVariant.secondary,
+                size: AppButtonSize.sm,
+                onPressed: onClearAll,
+                child: const Text('Clear filters'),
+              ),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

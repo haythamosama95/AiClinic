@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/clinic-management/presentation/forms/staff_form_fields.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/components/staff_form_dialog_fields.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/models/staff_form_values.dart';
 
 class _StaffFormDialogCopy {
@@ -119,7 +119,7 @@ class _StaffFormDialogState extends State<StaffFormDialog> {
           ),
         ],
       ),
-      child: StaffFormFields(
+      child: StaffFormDialogFields(
         mode: widget.mode,
         values: _values,
         onChanged: (values) => setState(() => _values = values),

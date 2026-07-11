@@ -7,6 +7,7 @@ class _ListControlBarCopy {
     required this.filter,
     required this.sort,
     required this.sortBy,
+    required this.clearSorting,
     required this.filteredBy,
     required this.clearAll,
   });
@@ -14,6 +15,7 @@ class _ListControlBarCopy {
   final String filter;
   final String sort;
   final String sortBy;
+  final String clearSorting;
   final String filteredBy;
   final String clearAll;
 }
@@ -22,6 +24,7 @@ const _copyEn = _ListControlBarCopy(
   filter: 'Filter',
   sort: 'Sort',
   sortBy: 'Sort by',
+  clearSorting: 'Clear sorting',
   filteredBy: 'Filtered by',
   clearAll: 'Clear all',
 );
@@ -30,6 +33,7 @@ const _copyAr = _ListControlBarCopy(
   filter: 'تصفية',
   sort: 'ترتيب',
   sortBy: 'ترتيب حسب',
+  clearSorting: 'مسح الترتيب',
   filteredBy: 'مُصفّى حسب',
   clearAll: 'مسح الكل',
 );
@@ -71,6 +75,7 @@ class ListControlBar extends StatefulWidget {
     this.activeFilterChips = const [],
     this.onRemoveChip,
     this.onClearAllFilters,
+    this.onClearSort,
     super.key,
   });
 
@@ -88,6 +93,7 @@ class ListControlBar extends StatefulWidget {
   final List<ListControlActiveFilterChip> activeFilterChips;
   final ValueChanged<String>? onRemoveChip;
   final VoidCallback? onClearAllFilters;
+  final VoidCallback? onClearSort;
 
   @override
   State<ListControlBar> createState() => _ListControlBarState();
@@ -166,11 +172,13 @@ class _ListControlBarState extends State<ListControlBar> {
                       _SortButton(
                         label: copy.sort,
                         sortByLabel: copy.sortBy,
+                        clearSortingLabel: copy.clearSorting,
                         ariaLabel: widget.sortAriaLabel,
                         sortIsCustom: _sortIsCustom,
                         sortValue: widget.sortValue,
                         sortOptions: widget.sortOptions,
                         onSortChange: widget.onSortChange,
+                        onClearSort: widget.onClearSort,
                       ),
                     ],
                   );
@@ -273,24 +281,29 @@ class _SortButton extends StatelessWidget {
   const _SortButton({
     required this.label,
     required this.sortByLabel,
+    required this.clearSortingLabel,
     required this.ariaLabel,
     required this.sortIsCustom,
     required this.sortValue,
     required this.sortOptions,
     required this.onSortChange,
+    this.onClearSort,
   });
 
   final String label;
   final String sortByLabel;
+  final String clearSortingLabel;
   final String ariaLabel;
   final bool sortIsCustom;
   final String sortValue;
   final List<ListControlSortOption> sortOptions;
   final ValueChanged<String> onSortChange;
+  final VoidCallback? onClearSort;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final showClearSort = sortIsCustom && onClearSort != null;
 
     return AppMenu(
       align: AppPopoverAlign.end,
@@ -307,6 +320,14 @@ class _SortButton extends StatelessWidget {
               ),
           ],
         ),
+        if (showClearSort) ...[
+          const AppMenuSeparator(),
+          AppMenuItem(
+            id: 'clear-sort',
+            label: clearSortingLabel,
+            onSelect: onClearSort,
+          ),
+        ],
       ],
       trigger: Semantics(
         button: true,

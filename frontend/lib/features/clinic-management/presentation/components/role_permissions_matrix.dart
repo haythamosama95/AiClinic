@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -7,6 +9,8 @@ import 'package:ai_clinic/features/clinic-management/presentation/utils/permissi
 import 'package:ai_clinic/features/clinic-management/presentation/utils/role_theme.dart';
 
 typedef RoleGrantToggleCallback = void Function({required StaffRole role, required String permissionKey});
+
+const double _kMinMatrixTableWidth = 704;
 
 /// Permission grant matrix grid (web `RolePermissionsMatrix`).
 class RolePermissionsMatrix extends StatelessWidget {
@@ -30,45 +34,66 @@ class RolePermissionsMatrix extends StatelessWidget {
     final colors = context.appColors;
     final groups = matrix.categoryGroups;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _MatrixColumnHeaders(),
-        const SizedBox(height: AppSpacing.space4),
-        for (final group in groups) ...[
-          _CategoryCard(
-            category: group.category,
-            permissionKeys: group.permissionKeys,
-            matrix: matrix,
-            savedMatrix: savedMatrix,
-            editable: editable,
-            onToggle: onToggle,
-            isCellDirty: isCellDirty,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tableWidth = _matrixTableWidth(constraints.maxWidth);
+
+        return SizedBox(
+          width: double.infinity,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _MatrixColumnHeaders(tableWidth: tableWidth),
+              const SizedBox(height: AppSpacing.space4),
+              for (final group in groups) ...[
+                _CategoryCard(
+                  category: group.category,
+                  permissionKeys: group.permissionKeys,
+                  matrix: matrix,
+                  savedMatrix: savedMatrix,
+                  editable: editable,
+                  onToggle: onToggle,
+                  isCellDirty: isCellDirty,
+                  tableWidth: tableWidth,
+                ),
+                const SizedBox(height: AppSpacing.space4),
+              ],
+              if (groups.isEmpty)
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.surfaceDefault,
+                    borderRadius: BorderRadius.circular(AppRadius.xl),
+                    border: Border.all(color: colors.borderSubtle),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.all(AppSpacing.space6),
+                    child: AppEmptyState(
+                      title: 'No permissions configured',
+                      description: 'Permission keys are not available for this organization.',
+                    ),
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(height: AppSpacing.space4),
-        ],
-        if (groups.isEmpty)
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceDefault,
-              borderRadius: BorderRadius.circular(AppRadius.xl),
-              border: Border.all(color: colors.borderSubtle),
-            ),
-            child: const Padding(
-              padding: EdgeInsets.all(AppSpacing.space6),
-              child: AppEmptyState(
-                title: 'No permissions configured',
-                description: 'Permission keys are not available for this organization.',
-              ),
-            ),
-          ),
-      ],
+        );
+      },
     );
   }
 }
 
+double _matrixTableWidth(double maxWidth) {
+  if (!maxWidth.isFinite || maxWidth <= 0) {
+    return _kMinMatrixTableWidth;
+  }
+  return math.max(maxWidth, _kMinMatrixTableWidth);
+}
+
 class _MatrixColumnHeaders extends StatelessWidget {
+  const _MatrixColumnHeaders({required this.tableWidth});
+
+  final double tableWidth;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -82,7 +107,7 @@ class _MatrixColumnHeaders extends StatelessWidget {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: SizedBox(
-          width: 704,
+          width: tableWidth,
           child: Row(
             children: [
               SizedBox(
@@ -151,6 +176,7 @@ class _CategoryCard extends StatelessWidget {
     required this.savedMatrix,
     required this.editable,
     required this.onToggle,
+    required this.tableWidth,
     this.isCellDirty,
   });
 
@@ -160,6 +186,7 @@ class _CategoryCard extends StatelessWidget {
   final PermissionMatrixView savedMatrix;
   final bool editable;
   final RoleGrantToggleCallback onToggle;
+  final double tableWidth;
   final bool Function(StaffRole role, String permissionKey)? isCellDirty;
 
   @override
@@ -191,7 +218,7 @@ class _CategoryCard extends StatelessWidget {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: SizedBox(
-              width: 704,
+              width: tableWidth,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

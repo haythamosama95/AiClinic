@@ -26,6 +26,10 @@ class BranchListControls {
       sort: sort ?? this.sort,
     );
   }
+
+  bool get isSortCustom => sort != DEFAULT_BRANCH_CONTROLS.sort;
+
+  BranchListControls withDefaultSort() => copyWith(sort: DEFAULT_BRANCH_CONTROLS.sort);
 }
 
 class BranchSortOption {

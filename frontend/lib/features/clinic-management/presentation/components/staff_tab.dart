@@ -4,6 +4,7 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/list_control_bar.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/components/staff_detail_dialog.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/staff_filter_panel.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/components/staff_form_dialog.dart';
 import 'package:ai_clinic/features/clinic-management/presentation/constants/clinic_constants.dart';
@@ -136,6 +137,7 @@ class _StaffTabState extends State<StaffTab> {
   var _dialogOpen = false;
   StaffListItem? _editingStaff;
   StaffListItem? _deleteTarget;
+  StaffListItem? _detailTarget;
 
   List<StaffListItem> get _filtered =>
       filterAndSortStaff(staff: widget.staff, branches: widget.branches, controls: _controls);
@@ -144,7 +146,7 @@ class _StaffTabState extends State<StaffTab> {
       _controls.search.isNotEmpty ||
       _controls.role != null ||
       (_controls.branchId != null && _controls.branchId!.isNotEmpty) ||
-      _controls.sort != StaffSortKey.nameAsc;
+      _controls.sort != defaultStaffSort;
 
   int get _filterActiveCount =>
       (_controls.role != null || (_controls.branchId != null && _controls.branchId!.isNotEmpty)) ? 1 : 0;
@@ -161,6 +163,14 @@ class _StaffTabState extends State<StaffTab> {
       _editingStaff = member;
       _dialogOpen = true;
     });
+  }
+
+  void _openDetail(StaffListItem member) {
+    setState(() => _detailTarget = member);
+  }
+
+  void _clearSort() {
+    setState(() => _controls = resetStaffSort(_controls));
   }
 
   Future<void> _handleSubmit(StaffFormValues values) async {
@@ -314,6 +324,7 @@ class _StaffTabState extends State<StaffTab> {
                 setState(() => _controls = _controls.copyWith(sort: next));
               }
             },
+            onClearSort: _controls.sort != defaultStaffSort ? _clearSort : null,
             sortAriaLabel: copy.sortAriaLabel,
             filterActiveCount: _filterActiveCount,
             filterPanel: StaffFilterPanel(
@@ -362,17 +373,34 @@ class _StaffTabState extends State<StaffTab> {
               children: [
                 for (var index = 0; index < _filtered.length; index++) ...[
                   if (index > 0) Divider(height: 1, color: colors.borderSubtle),
-                  _StaffRow(
-                    member: _filtered[index],
-                    branchSummary: _branchNames(_filtered[index], copy),
-                    copy: copy,
-                    showPhone: showPhone,
-                    onEdit: () => _openEdit(_filtered[index]),
-                    onDelete: () => setState(() => _deleteTarget = _filtered[index]),
+                  _AnimatedStaffRow(
+                    key: ValueKey(_filtered[index].id),
+                    index: index,
+                    child: _StaffRow(
+                      member: _filtered[index],
+                      branchSummary: _branchNames(_filtered[index], copy),
+                      copy: copy,
+                      showPhone: showPhone,
+                      onTap: () => _openDetail(_filtered[index]),
+                      onEdit: () => _openEdit(_filtered[index]),
+                      onDelete: () => setState(() => _deleteTarget = _filtered[index]),
+                    ),
                   ),
                 ],
               ],
             ),
+          ),
+        if (_detailTarget case final member?)
+          StaffDetailDialog(
+            open: true,
+            onOpenChange: (open) {
+              if (!open) {
+                setState(() => _detailTarget = null);
+              }
+            },
+            member: member,
+            branches: widget.branches,
+            onEdit: () => _openEdit(member),
           ),
         StaffFormDialog(
           open: _dialogOpen,
@@ -459,12 +487,83 @@ class _StaffEmptyPanel extends StatelessWidget {
   }
 }
 
+class _AnimatedStaffRow extends StatefulWidget {
+  const _AnimatedStaffRow({
+    required this.index,
+    required this.child,
+    super.key,
+  });
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_AnimatedStaffRow> createState() => _AnimatedStaffRowState();
+}
+
+class _AnimatedStaffRowState extends State<_AnimatedStaffRow> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    final reducedMotion = AppMotion.prefersReducedMotion(context);
+    _controller = AnimationController(
+      vsync: this,
+      duration: AppMotion.resolveDuration(AppMotionPreset.rowEnter, reducedMotion: reducedMotion),
+    );
+    _startEnterAnimation(reducedMotion);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedStaffRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.key != oldWidget.key) {
+      final reducedMotion = AppMotion.prefersReducedMotion(context);
+      _controller
+        ..reset()
+        ..duration = AppMotion.resolveDuration(AppMotionPreset.rowEnter, reducedMotion: reducedMotion);
+      _startEnterAnimation(reducedMotion);
+    }
+  }
+
+  void _startEnterAnimation(bool reducedMotion) {
+    if (reducedMotion) {
+      _controller.value = 1;
+      return;
+    }
+    final delay = AppMotion.staggerStep(context, stepMs: 25) * widget.index.clamp(0, 4);
+    Future<void>.delayed(delay, () {
+      if (mounted) {
+        _controller.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppMotion.animatedPreset(
+      context: context,
+      preset: AppMotionPreset.rowEnter,
+      animation: CurvedAnimation(parent: _controller, curve: AppMotion.outCurve),
+      child: widget.child,
+    );
+  }
+}
+
 class _StaffRow extends StatefulWidget {
   const _StaffRow({
     required this.member,
     required this.branchSummary,
     required this.copy,
     required this.showPhone,
+    required this.onTap,
     required this.onEdit,
     required this.onDelete,
   });
@@ -473,6 +572,7 @@ class _StaffRow extends StatefulWidget {
   final String branchSummary;
   final _StaffTabCopy copy;
   final bool showPhone;
+  final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -491,96 +591,103 @@ class _StaffRowState extends State<_StaffRow> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: DecoratedBox(
-        decoration: BoxDecoration(color: _hovered ? colors.surfaceHover.withValues(alpha: 0.5) : Colors.transparent),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space5, vertical: AppSpacing.space4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              AppAvatar(name: widget.member.fullName, size: AvatarSize.md),
-              const SizedBox(width: AppSpacing.space4),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Wrap(
-                      spacing: AppSpacing.space2,
-                      runSpacing: AppSpacing.space1,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          widget.member.fullName,
-                          style: AppTypography.bodyStrong(context),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        AppBadge(
-                          label: kRoleLabels[widget.member.role],
-                          color: kRoleBadgeColors[widget.member.role] ?? BadgeColor.neutral,
-                          variant: BadgeVariant.soft,
-                          size: BadgeSize.sm,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '@$username · ${widget.branchSummary}',
-                      style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              if (widget.showPhone && widget.member.phone != null && widget.member.phone!.isNotEmpty) ...[
-                const SizedBox(width: AppSpacing.space6),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      widget.copy.phoneLabel,
-                      style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
-                    ),
-                    Directionality(
-                      textDirection: TextDirection.ltr,
-                      child: Text(
-                        '+${widget.member.phone}',
-                        style: AppTypography.bodySm(
-                          context,
-                        ).copyWith(color: colors.textSecondary, fontFeatures: const [FontFeature.tabularFigures()]),
+      cursor: SystemMouseCursors.click,
+      child: Material(
+        color: _hovered ? colors.surfaceHover.withValues(alpha: 0.5) : Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space5, vertical: AppSpacing.space4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                AppAvatar(name: widget.member.fullName, size: AvatarSize.md),
+                const SizedBox(width: AppSpacing.space4),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Wrap(
+                        spacing: AppSpacing.space2,
+                        runSpacing: AppSpacing.space1,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            widget.member.fullName,
+                            style: AppTypography.bodyStrong(context),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          AppBadge(
+                            label: kRoleLabels[widget.member.role],
+                            color: kRoleBadgeColors[widget.member.role] ?? BadgeColor.neutral,
+                            variant: BadgeVariant.soft,
+                            size: BadgeSize.sm,
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '@$username · ${widget.branchSummary}',
+                        style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (widget.showPhone && widget.member.phone != null && widget.member.phone!.isNotEmpty) ...[
+                  const SizedBox(width: AppSpacing.space6),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.copy.phoneLabel,
+                        style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
+                      ),
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Text(
+                          '+${widget.member.phone}',
+                          style: AppTypography.bodySm(
+                            context,
+                          ).copyWith(
+                            color: colors.textSecondary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(width: AppSpacing.space2),
+                Material(
+                  color: Colors.transparent,
+                  child: AppMenu(
+                    align: AppPopoverAlign.end,
+                    trigger: AppIconButton(
+                      icon: const Icon(Icons.more_horiz, size: 18),
+                      label: 'Actions for ${widget.member.fullName}',
                     ),
-                  ],
+                    entries: [
+                      AppMenuItem(
+                        id: 'edit',
+                        label: widget.copy.edit,
+                        icon: const Icon(Icons.edit, size: 14),
+                        onSelect: widget.onEdit,
+                      ),
+                      AppMenuItem(
+                        id: 'delete',
+                        label: widget.copy.delete,
+                        destructive: true,
+                        icon: const Icon(Icons.delete_outline, size: 14),
+                        onSelect: widget.onDelete,
+                      ),
+                    ],
+                  ),
                 ),
               ],
-              const SizedBox(width: AppSpacing.space2),
-              Material(
-                color: Colors.transparent,
-                child: AppMenu(
-                  align: AppPopoverAlign.end,
-                  trigger: AppIconButton(
-                    icon: const Icon(Icons.more_horiz, size: 18),
-                    label: 'Actions for ${widget.member.fullName}',
-                  ),
-                  entries: [
-                    AppMenuItem(
-                      id: 'edit',
-                      label: widget.copy.edit,
-                      icon: const Icon(Icons.edit, size: 14),
-                      onSelect: widget.onEdit,
-                    ),
-                    AppMenuItem(
-                      id: 'delete',
-                      label: widget.copy.delete,
-                      destructive: true,
-                      icon: const Icon(Icons.delete_outline, size: 14),
-                      onSelect: widget.onDelete,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

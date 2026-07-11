@@ -55,15 +55,16 @@ class RolesTab extends ConsumerWidget {
                     if (state.hasUnsavedChanges)
                       AppButton(
                         variant: AppButtonVariant.secondary,
-                        size: AppButtonSize.sm,
-                        leadingIcon: const Icon(Icons.close, size: 14),
+                        size: AppButtonSize.lg,
+                        leadingIcon: const Icon(Icons.close, size: 16),
                         disabled: state.isSaving || !state.editable,
                         onPressed: ref.read(rolePermissionsProvider.notifier).discardChanges,
                         child: const Text('Discard'),
                       ),
                     AppButton(
-                      size: AppButtonSize.sm,
-                      leadingIcon: const Icon(Icons.save, size: 14),
+                      variant: AppButtonVariant.primary,
+                      size: AppButtonSize.lg,
+                      leadingIcon: const Icon(Icons.save, size: 16),
                       disabled: !state.hasUnsavedChanges || state.isSaving || !state.editable,
                       loading: state.isSaving,
                       onPressed: () => ref.read(rolePermissionsProvider.notifier).saveChanges(),
@@ -82,17 +83,20 @@ class RolesTab extends ConsumerWidget {
               AppAlert(variant: AppAlertVariant.success, title: state.saveMessage!),
             ],
             const SizedBox(height: AppSpacing.space6),
-            RolePermissionsMatrix(
-              matrix: state.workingMatrix,
-              savedMatrix: state.savedMatrix,
-              editable: state.editable,
-              isCellDirty: state.isCellDirty,
-              onToggle: ({required role, required permissionKey}) {
-                final granted = state.workingMatrix.isGranted(role, permissionKey);
-                ref
-                    .read(rolePermissionsProvider.notifier)
-                    .setLocalGrant(role: role, permissionKey: permissionKey, isGranted: !granted);
-              },
+            SizedBox(
+              width: double.infinity,
+              child: RolePermissionsMatrix(
+                matrix: state.workingMatrix,
+                savedMatrix: state.savedMatrix,
+                editable: state.editable,
+                isCellDirty: state.isCellDirty,
+                onToggle: ({required role, required permissionKey}) {
+                  final granted = state.workingMatrix.isGranted(role, permissionKey);
+                  ref
+                      .read(rolePermissionsProvider.notifier)
+                      .setLocalGrant(role: role, permissionKey: permissionKey, isGranted: !granted);
+                },
+              ),
             ),
           ],
         );

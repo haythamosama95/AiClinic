@@ -42,6 +42,9 @@ class ClinicManagementNotifier extends AsyncNotifier<ClinicManagementState> {
   }
 
   Future<void> reload() async {
+    if (!state.hasValue) {
+      state = const AsyncLoading<ClinicManagementState>();
+    }
     state = await AsyncValue.guard(_load);
   }
 
