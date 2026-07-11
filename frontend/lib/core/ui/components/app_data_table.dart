@@ -282,9 +282,11 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
         return Semantics(
           container: true,
           label: widget.ariaLabel,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceDefault,
+          child: Container(
+            decoration: BoxDecoration(color: colors.surfaceDefault, borderRadius: BorderRadius.circular(AppRadius.lg)),
+            // Foreground border stays above row hover layers (background borders are
+            // painted under children and get covered by InkWell / hover fills).
+            foregroundDecoration: BoxDecoration(
               border: Border.all(color: colors.borderDefault),
               borderRadius: BorderRadius.circular(AppRadius.lg),
             ),

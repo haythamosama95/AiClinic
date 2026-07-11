@@ -302,11 +302,22 @@ class _AppDataTableAnimatedBodyState<T> extends State<AppDataTableAnimatedBody<T
       row = ColoredBox(color: background, child: row);
     }
 
-    row = DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colors.borderSubtle)),
+    // Paint the row divider above the InkWell hover layer so it stays visible on hover.
+    row = SizedBox(
+      height: rowHeight,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          row,
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: ColoredBox(
+              color: colors.borderSubtle,
+              child: const SizedBox(height: 1, width: double.infinity),
+            ),
+          ),
+        ],
       ),
-      child: SizedBox(height: rowHeight, child: row),
     );
 
     return AnimatedPositioned(
