@@ -7,13 +7,13 @@ import 'package:ai_clinic/features/patients/domain/patient_dev_seed_data.dart';
 import 'package:ai_clinic/features/patients/domain/patient_dev_seed_spec.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
-import 'package:ai_clinic/features/settings/domain/repositories/branch_repository.dart';
-import 'package:ai_clinic/features/settings/domain/repositories/staff_admin_repository.dart';
-import 'package:ai_clinic/features/settings/domain/update_staff_member_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/repositories/branch_repository.dart';
+import 'package:ai_clinic/features/clinic-management/domain/repositories/staff_admin_repository.dart';
+import 'package:ai_clinic/features/clinic-management/domain/update_staff_member_input.dart';
 
 /// Outcome of a dev patient seed run.
 class PatientDevSeedOutcome {

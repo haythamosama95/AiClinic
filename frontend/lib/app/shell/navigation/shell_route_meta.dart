@@ -12,6 +12,7 @@ abstract final class ShellRouteMeta {
     'billing': 'Charges, payments, and revenue cycle management.',
     'invoices': 'Create, send, and reconcile patient invoices.',
     'services': 'Catalog procedures, packages, and billable services.',
+    'clinic-management': 'Organization identity, locations, team accounts, and access roles.',
     'staff': 'Team directory, roles, and provider profiles.',
     'shifts': 'Staff scheduling, coverage, and shift assignments.',
     'reports': 'Operational and clinical reports across your organization.',

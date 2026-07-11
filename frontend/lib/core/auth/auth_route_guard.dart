@@ -26,6 +26,7 @@ abstract final class AuthRouteGuard {
         location == AppRoutes.bootstrap ||
         location == AppRoutes.foundationDemo ||
         isSettingsRoute(location) ||
+        isClinicManagementRoute(location) ||
         isPatientRoute(location) ||
         isAppointmentRoute(location) ||
         isVisitRoute(location) ||
@@ -357,6 +358,11 @@ abstract final class AuthRouteGuard {
     return allowed ? null : AppRoutes.settings;
   }
 
+  /// V1-2 clinic management hub at `/clinic-management`.
+  static bool isClinicManagementRoute(String location) {
+    return location == AppRoutes.clinicManagement;
+  }
+
   /// V1-2 administration sub-routes under the settings hub.
   static bool isAdminSettingsRoute(String location) {
     if (AppRoutes.adminSettingsPaths.contains(location)) {
@@ -447,6 +453,29 @@ abstract final class AuthRouteGuard {
     return allowed ? null : AppRoutes.settings;
   }
 
+  /// Returns redirect when [location] is the clinic management hub the session cannot access.
+  static String? clinicManagementRouteRedirect({required String location, required AuthSessionState auth}) {
+    if (!isClinicManagementRoute(location)) {
+      return null;
+    }
+
+    if (!auth.isAuthenticated) {
+      return AppRoutes.login;
+    }
+
+    if (auth.context!.setupRequired) {
+      return AppRoutes.bootstrap;
+    }
+
+    final allowed =
+        canAccessOrganizationSettings(auth) ||
+        canAccessBranchManagement(auth) ||
+        canAccessStaffManagement(auth) ||
+        canAccessPermissionMatrix(auth);
+
+    return allowed ? null : AppRoutes.home;
+  }
+
   /// Staff account administration routes (blocked until clinic bootstrap completes).
   static bool isStaffProvisioningRoute(String location) {
     return location == AppRoutes.staffCreate || location == AppRoutes.staffPasswordReset;
@@ -459,11 +488,11 @@ abstract final class AuthRouteGuard {
     }
 
     if (location == AppRoutes.staffCreate) {
-      return canAccessStaffManagement(auth) ? AppRoutes.settingsStaffNew : AppRoutes.settings;
+      return canAccessStaffManagement(auth) ? AppRoutes.clinicManagement : AppRoutes.settings;
     }
 
     if (location == AppRoutes.staffPasswordReset) {
-      return canAccessStaffManagement(auth) ? AppRoutes.settingsStaff : AppRoutes.settings;
+      return canAccessStaffManagement(auth) ? AppRoutes.clinicManagement : AppRoutes.settings;
     }
 
     return null;

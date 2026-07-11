@@ -26,6 +26,9 @@ abstract final class AppRoutes {
   static const settings = '/settings';
   static const settingsIdleTimeout = '/settings/idle-timeout';
 
+  /// Clinic management hub (organization, branches, staff, roles).
+  static const clinicManagement = '/clinic-management';
+
   // V1-2 settings administration (org / branch / staff / permissions)
   static const settingsOrganization = '/settings/organization';
   static const settingsBranches = '/settings/branches';
@@ -52,6 +55,9 @@ abstract final class AppRoutes {
     settingsStaffNew,
     settingsPermissions,
   ];
+
+  /// Clinic management hub paths.
+  static const clinicManagementPaths = <String>[clinicManagement];
 
   // V1-3 patient management
   static const patients = '/patients';

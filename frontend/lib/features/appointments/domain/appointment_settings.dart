@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:flutter/foundation.dart';
 
 /// Default duration settings for a branch (V1-4 `get_appointment_settings`).
