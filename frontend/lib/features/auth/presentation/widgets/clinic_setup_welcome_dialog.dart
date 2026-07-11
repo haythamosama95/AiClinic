@@ -44,7 +44,7 @@ abstract final class ClinicSetupWelcomeDialog {
                   const SizedBox(width: AppSpacing.space3),
                   Expanded(
                     child: Text(
-                      'Next up: clinic setup. It only takes a few minutes, and you can adjust everything later in Settings.',
+                      'Next up: a short setup wizard will open here. It only takes a few minutes, and you can adjust everything later in Settings.',
                       style: AppTypography.bodySm(context).copyWith(color: context.appColors.textSecondary),
                     ),
                   ),
@@ -58,7 +58,7 @@ abstract final class ClinicSetupWelcomeDialog {
         builder: (dialogContext) => AppButton(
           variant: AppButtonVariant.primary,
           onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Start clinic setup'),
+          child: const Text('Continue'),
         ),
       ),
     );

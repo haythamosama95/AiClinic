@@ -35,7 +35,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.home,
       );
       expect(
         AuthRouteGuard.postLoginDestination(
@@ -45,7 +45,7 @@ void main() {
       );
     });
 
-    test('authenticated setup required redirects home to setup wizard', () {
+    test('authenticated setup required keeps home for setup dialog', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.home,
@@ -54,20 +54,20 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        isNull,
       );
     });
 
-    test('missing organization redirects to setup wizard even when setup_required is false', () {
+    test('missing organization redirects to home for setup dialog even when setup_required is false', () {
       expect(
         AuthRouteGuard.resolveRedirect(
-          location: AppRoutes.home,
+          location: AppRoutes.settingsGeneral,
           auth: AuthSessionState(
             status: AuthSessionStatus.authenticated,
             context: sampleAuthSessionContext(setupRequired: false).copyWith(organizationId: null),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.home,
       );
     });
 

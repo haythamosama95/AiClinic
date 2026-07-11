@@ -10,7 +10,7 @@ void main() {
       expect(AuthRouteGuard.resolveRedirect(location: AppRoutes.home, auth: AuthSessionState.initial()), isNull);
     });
 
-    test('authenticated setup_required on login redirects to setup wizard', () {
+    test('authenticated setup_required on login redirects to home for setup dialog', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.login,
@@ -19,11 +19,11 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.home,
       );
     });
 
-    test('authenticated setup_required on home redirects to setup wizard', () {
+    test('authenticated setup_required on home stays for setup dialog', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.home,
@@ -32,11 +32,11 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        isNull,
       );
     });
 
-    test('authenticated setup_required on setup wizard stays', () {
+    test('authenticated setup_required on bootstrap redirects to home', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.bootstrap,
@@ -45,7 +45,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        isNull,
+        AppRoutes.home,
       );
     });
 
@@ -58,7 +58,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.home,
       );
     });
 
@@ -71,20 +71,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
-      );
-    });
-
-    test('authenticated setup_required on bootstrap stays on setup wizard', () {
-      expect(
-        AuthRouteGuard.resolveRedirect(
-          location: AppRoutes.bootstrap,
-          auth: AuthSessionState(
-            status: AuthSessionStatus.authenticated,
-            context: sampleAuthSessionContext(setupRequired: true),
-          ),
-        ),
-        isNull,
+        AppRoutes.home,
       );
     });
 
@@ -98,10 +85,10 @@ void main() {
       );
     });
 
-    test('setup-complete bootstrap stays while staff wizard step is active', () {
+    test('setup-complete home stays while staff wizard step is active', () {
       expect(
         AuthRouteGuard.resolveRedirect(
-          location: AppRoutes.bootstrap,
+          location: AppRoutes.home,
           auth: AuthSessionState(status: AuthSessionStatus.authenticated, context: sampleAuthSessionContext()),
           bootstrapStaffWizardInProgress: true,
         ),
@@ -118,7 +105,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.home,
       );
     });
 
@@ -131,7 +118,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.bootstrap,
+        AppRoutes.home,
       );
     });
 

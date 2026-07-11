@@ -11,7 +11,6 @@ import 'package:ai_clinic/features/settings/presentation/screens/branches_screen
 import 'package:ai_clinic/features/settings/presentation/screens/general_screen.dart';
 import 'package:ai_clinic/features/settings/presentation/screens/notifications_screen.dart';
 import 'package:ai_clinic/features/settings/presentation/screens/services_screen.dart';
-import 'package:ai_clinic/features/setup/presentation/pages/setup_page.dart';
 import 'package:ai_clinic/features/settings/presentation/screens/staff_screen.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
@@ -61,7 +60,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.protectedPlaceholder,
             builder: (context, state) => uiPendingPlaceholder('Startup', state),
           ),
-          GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const SetupPage()),
+          GoRoute(path: AppRoutes.bootstrap, redirect: (context, state) => AppRoutes.home),
           GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
           GoRoute(
             path: AppRoutes.staffPasswordReset,
@@ -200,7 +199,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
 
           if (!AuthRouteGuard.canAccessProtectedFeatureRoute(auth)) {
-            return auth.isAuthenticated ? AppRoutes.bootstrap : AppRoutes.login;
+            return auth.isAuthenticated ? AppRoutes.home : AppRoutes.login;
           }
         }
 

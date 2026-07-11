@@ -5,13 +5,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/clinic_setup_welcome_dialog.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/clinic_setup_complete_dialog.dart';
+import 'package:ai_clinic/features/setup/presentation/widgets/clinic_setup_dialog.dart';
 
 /// Tracks whether the welcome dialog was shown for the current signed-in spell.
-///
-/// Shared across [ClinicSetupWelcomeScope] instances (login backdrop + routed shell).
 bool _clinicSetupWelcomeShown = false;
 
-/// Presents [ClinicSetupWelcomeDialog] once after each sign-in while setup is still required.
+/// Prevents overlapping setup-flow presentations.
+bool _clinicSetupFlowRunning = false;
+
+/// Prevents showing the completion celebration more than once per sign-in spell.
+bool _clinicSetupCelebrationShown = false;
+
+/// Presents the first-run clinic setup flow: welcome → setup dialog → completion dialog.
 class ClinicSetupWelcomeScope extends ConsumerStatefulWidget {
   const ClinicSetupWelcomeScope({required this.child, super.key});
 
@@ -25,11 +32,21 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybePresentWelcome());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStartSetupFlow());
   }
 
-  void _maybePresentWelcome() {
-    if (!mounted || _clinicSetupWelcomeShown) {
+  Future<void> _presentCelebration() async {
+    if (!mounted || _clinicSetupCelebrationShown) {
+      return;
+    }
+
+    _clinicSetupCelebrationShown = true;
+    final draft = ref.read(clinicSetupProvider).draft;
+    await ClinicSetupCompleteDialog.show(context, draft: draft);
+  }
+
+  Future<void> _maybeStartSetupFlow() async {
+    if (!mounted || _clinicSetupFlowRunning) {
       return;
     }
 
@@ -43,16 +60,34 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
       return;
     }
 
-    _presentWelcome();
-  }
+    _clinicSetupFlowRunning = true;
+    try {
+      if (!_clinicSetupWelcomeShown) {
+        _clinicSetupWelcomeShown = true;
+        await ClinicSetupWelcomeDialog.show(context);
+      }
 
-  void _presentWelcome() {
-    if (_clinicSetupWelcomeShown || !mounted) {
-      return;
+      if (!mounted) {
+        return;
+      }
+
+      final latestAuth = ref.read(authSessionProvider);
+      final latestSession = latestAuth.context;
+      if (!latestAuth.isAuthenticated || latestSession == null || !latestSession.needsClinicSetup) {
+        return;
+      }
+
+      final draftBeforeSetup = ref.read(clinicSetupProvider).draft;
+      final completed = await ClinicSetupDialog.show(context);
+      if (!mounted || !completed) {
+        return;
+      }
+
+      _clinicSetupCelebrationShown = true;
+      await ClinicSetupCompleteDialog.show(context, draft: draftBeforeSetup);
+    } finally {
+      _clinicSetupFlowRunning = false;
     }
-
-    _clinicSetupWelcomeShown = true;
-    unawaited(ClinicSetupWelcomeDialog.show(context));
   }
 
   @override
@@ -64,10 +99,22 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
 
       if (previous?.isAuthenticated == true && !next.isAuthenticated) {
         _clinicSetupWelcomeShown = false;
+        _clinicSetupCelebrationShown = false;
         return;
       }
 
-      if (_clinicSetupWelcomeShown) {
+      final wasLocked = previous?.context?.needsClinicSetup ?? false;
+      final isLocked = next.context?.needsClinicSetup ?? false;
+      if (wasLocked && !isLocked && next.isAuthenticated && !_clinicSetupCelebrationShown) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            unawaited(_presentCelebration());
+          }
+        });
+        return;
+      }
+
+      if (_clinicSetupFlowRunning) {
         return;
       }
 
@@ -83,7 +130,7 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _presentWelcome();
+          unawaited(_maybeStartSetupFlow());
         }
       });
     });
