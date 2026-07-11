@@ -14,10 +14,7 @@ void main() {
     });
 
     test('unknown session on public route does not redirect', () {
-      expect(
-        AuthRouteGuard.resolveRedirect(location: AppRoutes.login, auth: AuthSessionState.initial()),
-        isNull,
-      );
+      expect(AuthRouteGuard.resolveRedirect(location: AppRoutes.login, auth: AuthSessionState.initial()), isNull);
     });
 
     test('loading session on protected route redirects to login', () {
@@ -74,32 +71,6 @@ void main() {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.bootstrap,
-          auth: AuthSessionState(
-            status: AuthSessionStatus.authenticated,
-            context: sampleAuthSessionContext(setupRequired: true),
-          ),
-        ),
-        AppRoutes.home,
-      );
-    });
-
-    test('authenticated setup_required on settings general redirects to setup wizard', () {
-      expect(
-        AuthRouteGuard.settingsRouteRedirect(
-          location: AppRoutes.settingsGeneral,
-          auth: AuthSessionState(
-            status: AuthSessionStatus.authenticated,
-            context: sampleAuthSessionContext(setupRequired: true),
-          ),
-        ),
-        AppRoutes.home,
-      );
-    });
-
-    test('authenticated setup_required on settings hub redirects to setup wizard', () {
-      expect(
-        AuthRouteGuard.settingsRouteRedirect(
-          location: AppRoutes.settings,
           auth: AuthSessionState(
             status: AuthSessionStatus.authenticated,
             context: sampleAuthSessionContext(setupRequired: true),

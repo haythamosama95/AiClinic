@@ -310,37 +310,6 @@ abstract final class AuthRouteGuard {
         isAdminSettingsRoute(location);
   }
 
-  /// Settings page tab routes under `/settings/*` (including the setup wizard).
-  static bool isSettingsScreenRoute(String location) {
-    if (location == AppRoutes.settings) {
-      return true;
-    }
-    return AppRoutes.settingsScreenPaths.contains(location) ||
-        (location.startsWith('${AppRoutes.settings}/') &&
-            AppRoutes.settingsScreenSegments.contains(Uri.parse(location).pathSegments.elementAtOrNull(1) ?? ''));
-  }
-
-  /// Returns redirect when [location] is a settings screen other than setup while bootstrap is incomplete.
-  static String? settingsRouteRedirect({required String location, required AuthSessionState auth}) {
-    if (!isSettingsScreenRoute(location)) {
-      return null;
-    }
-
-    if (!auth.isAuthenticated) {
-      return AppRoutes.login;
-    }
-
-    if (!(auth.context?.needsClinicSetup ?? true)) {
-      return null;
-    }
-
-    if (location == clinicSetupRoute) {
-      return null;
-    }
-
-    return clinicSetupRoute;
-  }
-
   /// Service catalog administration routes (015).
   static bool isServiceCatalogRoute(String location) {
     if (AppRoutes.serviceCatalogStaticPaths.contains(location)) {

@@ -192,9 +192,6 @@ abstract final class ShellNavConfig {
     if (location == AppRoutes.reports) {
       return 'reports';
     }
-    if (isSettingsLocation(location)) {
-      return 'settings';
-    }
     if (location == AppRoutes.foundationDemo) {
       return 'dev';
     }

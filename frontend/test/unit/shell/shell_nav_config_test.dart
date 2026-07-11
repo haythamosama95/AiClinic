@@ -28,7 +28,7 @@ void main() {
   group('ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder', () {
     test('uses placeholders for shell preview routes but not design system', () {
       expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.home), isTrue);
-      expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.settingsGeneral), isTrue);
+      expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.settings), isTrue);
       expect(ShellNavConfig.shouldUseUnauthenticatedPreviewPlaceholder(AppRoutes.foundationDemo), isFalse);
     });
   });

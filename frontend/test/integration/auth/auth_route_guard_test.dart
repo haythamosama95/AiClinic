@@ -58,19 +58,6 @@ void main() {
       );
     });
 
-    test('missing organization redirects to home for setup dialog even when setup_required is false', () {
-      expect(
-        AuthRouteGuard.resolveRedirect(
-          location: AppRoutes.settingsGeneral,
-          auth: AuthSessionState(
-            status: AuthSessionStatus.authenticated,
-            context: sampleAuthSessionContext(setupRequired: false).copyWith(organizationId: null),
-          ),
-        ),
-        AppRoutes.home,
-      );
-    });
-
     test('loading session does not redirect', () {
       expect(
         AuthRouteGuard.resolveRedirect(
