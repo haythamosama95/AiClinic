@@ -1,7 +1,6 @@
 import 'package:ai_clinic/core/auth/permission_service.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import '../../helpers/auth_test_support.dart';
-import '../../helpers/role_permission_seed.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

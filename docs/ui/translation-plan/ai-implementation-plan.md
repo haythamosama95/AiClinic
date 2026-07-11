@@ -6,7 +6,7 @@ Spec target: port the **AI** group of `web-reference/` into the Flutter `fronten
 
 ## 0. Ambiguities & Design Decisions (resolve before coding)
 
-> ⚠️ **Set-specific runtime regressions.** The items below are the regression hot-spots for THIS group (consult `docs/ui/memory/ui-runtime-errors.md` only when explicitly instructed).
+> ⚠️ **Read `docs/ui/memory/ui-runtime-errors.md` end-to-end before writing a single AI file.** Surface the items below as the regression hot-spots for THIS group.
 
 1. **forui vs native Material.** Same as the prior groups: `forui` is declared in `pubspec.yaml` but imported nowhere; the shipped App widgets are native Material under `core/ui/components/app_*.dart`. `docs/ui/forui-wrappers.md` is superseded.
    **Decision: follow the shipping Actions/Inputs/Display convention (native Material). Do not introduce forui.**
@@ -26,7 +26,7 @@ Spec target: port the **AI** group of `web-reference/` into the Flutter `fronten
 
 8. **Error/invalid placement.** Only `AppProposedActionCard` has a failure surface; match the web — `state: 'failed'` + `errorMessage` renders a danger-bordered callout **inside the card body**, not on a control border. No `AppFormField` error slot is reused here.
 
-### Group-specific regressions to avoid
+### Group-specific regressions to avoid (cross-reference `ui-runtime-errors.md`)
 
 - **Memory #1 (`No Material widget found`):** `AppAiPanel`'s composer embeds a `TextField`. Do **not** drop a bare `TextField` into the panel's `DecoratedBox` shell. Use `AppTextInput` (already wrapped) **or** call `appWrapMaterialInput(TextField(...))` from `app_input_styles.dart`. Same applies if `AppProposedActionCard` were ever to host a Material primitive — but it only embeds `AppFormField`/`AppTextInput`, both already safe.
 - **Memory #2 / #10 / #12 / #13 (popover/MediaQuery/initState):** No AI widget uses `AppPopover`, `OverlayEntry`, or reads `MediaQuery` in `initState`. No risk. (`AppSignal`'s animation controller is already context-free in `app_signal.dart`; reuse as-is.)

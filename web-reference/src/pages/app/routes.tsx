@@ -5,8 +5,6 @@ import { PlaceholderPage } from '@/pages/app/PlaceholderPage'
 import { DevPage, type DevSection } from '@/pages/app/DevPage'
 import { PatientDetailPage } from '@/pages/app/patients/PatientDetailPage'
 import { PatientsPage } from '@/pages/app/patients/PatientsPage'
-import { SettingsPage } from '@/pages/app/settings/SettingsPage'
-import { SETTINGS_SCREENS } from '@/data/settings'
 
 export type RouteMeta = {
   title: string
@@ -85,25 +83,11 @@ const CLINIC_ROUTE_IDS = [
   'settings',
 ] as const
 
-function settingsRoute(): RouteDefinition {
-  const meta = metaForNavId('settings')
-  return {
-    ...meta,
-    render: ({ segments, navigate }) => (
-      <SettingsPage screen={segments[1]} onNavigate={navigate} />
-    ),
-  }
-}
-
 export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
   ...Object.fromEntries(
-    CLINIC_ROUTE_IDS.filter((id) => id !== 'patients' && id !== 'settings').map((id) => [
-      id,
-      placeholderRoute(id),
-    ]),
+    CLINIC_ROUTE_IDS.filter((id) => id !== 'patients').map((id) => [id, placeholderRoute(id)]),
   ),
   patients: patientsRoute(),
-  settings: settingsRoute(),
 }
 
 export function resolveDevSection(segments: string[]): DevSection {
@@ -162,16 +146,6 @@ export function resolveRoute(
     }
   }
 
-  if (root === 'settings' && segments[1]) {
-    const screen = SETTINGS_SCREENS.find((s) => s.id === segments[1])
-    if (screen) {
-      meta = {
-        title: screen.label,
-        description: screen.description,
-      }
-    }
-  }
-
   return {
     content: route.render(ctx),
     meta,
@@ -191,10 +165,6 @@ export function breadcrumbLabel(segments: string[]): string {
   if (root === 'patients' && segments[1]) {
     const patient = getPatientById(segments[1])
     return patient ? patientFullName(patient) : 'Patient'
-  }
-  if (root === 'settings' && segments[1]) {
-    const screen = SETTINGS_SCREENS.find((s) => s.id === segments[1])
-    if (screen) return screen.label
   }
   return metaForNavId(root).title
 }

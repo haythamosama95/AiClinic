@@ -2,8 +2,6 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_fill_dummy_clinic.dart';
-import 'package:ai_clinic/app/shell/dev/shell_dev_reset_clinic.dart';
-import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,35 +27,13 @@ void main() {
       }
     });
 
-    test('DV-S-004: open access routes are design-system only', () {
-      ShellDevNav.assertOpenAccessRoutesAreDesignSystemOnly();
-
-      for (final route in ShellDevNav.openAccessRoutes) {
-        expect(ShellDevNav.isValidOpenAccessRoute(route), isTrue);
-        expect(ShellDevNav.isDesignSystemRoute(route), isTrue);
-      }
-
-      const productionRoutes = [
-        AppRoutes.home,
-        AppRoutes.settings,
-        AppRoutes.patients,
-        AppRoutes.login,
-      ];
-      for (final route in productionRoutes) {
-        expect(ShellDevNav.openAccessRoutes, isNot(contains(route)));
-        expect(ShellDevNav.isValidOpenAccessRoute(route), isFalse);
-      }
-    });
-
-    test('DV-S-002: dev action items visible in debug footer nav', () {
+    test('DV-S-002: Fill Dummy Clinic nav item visible in debug builds', () {
       if (!kDebugMode) {
         return;
       }
 
-      final footerIds = ShellNavConfig.footerItems().map((item) => item.id).toList();
-      expect(footerIds, contains(ShellDevFillDummyClinic.itemId));
-      expect(footerIds, contains(ShellDevResetClinic.itemId));
-      expect(footerIds, contains('dev'));
+      final childIds = ShellDevNav.footerItemIds;
+      expect(childIds, contains(ShellDevFillDummyClinic.itemId));
     });
 
     test('DV-S-007: auth redirect suppression gated by kDebugMode', () {

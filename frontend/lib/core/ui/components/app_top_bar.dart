@@ -29,7 +29,6 @@ class AppTopBar extends ConsumerStatefulWidget {
     this.onNotificationsClick,
     this.onSignOut,
     this.toolbarSlot,
-    this.shellActionsEnabled = true,
     super.key,
   });
 
@@ -42,9 +41,6 @@ class AppTopBar extends ConsumerStatefulWidget {
   final VoidCallback? onNotificationsClick;
   final VoidCallback? onSignOut;
   final Widget? toolbarSlot;
-
-  /// When false, disables search, branch switching, and notifications while clinic setup is in progress.
-  final bool shellActionsEnabled;
 
   @override
   ConsumerState<AppTopBar> createState() => _AppTopBarState();
@@ -66,9 +62,7 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
 
   @override
   void dispose() {
-    final triggerKey = _triggerKey;
-    final controller = _commandBarController;
-    Future(() => controller.unregisterTriggerIfCurrent(triggerKey));
+    _commandBarController.registerTrigger(null);
     super.dispose();
   }
 
@@ -76,7 +70,6 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final shellActionsEnabled = widget.shellActionsEnabled;
 
     return Material(
       color: colors.surfaceDefault,
@@ -109,9 +102,7 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
                         child: Focus(
                           key: _triggerKey,
                           child: AppPressable(
-                            onPressed: shellActionsEnabled
-                                ? () => ref.read(commandBarProvider.notifier).openCommandBar()
-                                : null,
+                            onPressed: () => ref.read(commandBarProvider.notifier).openCommandBar(),
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 color: colors.surfaceSunken,
@@ -158,7 +149,7 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               ?widget.toolbarSlot,
-                              if (shellActionsEnabled && widget.branches.isNotEmpty) ...[
+                              if (widget.branches.isNotEmpty) ...[
                                 AppBranchSwitcher(
                                   branches: widget.branches,
                                   currentBranchId: widget.currentBranchId,
@@ -166,43 +157,42 @@ class _AppTopBarState extends ConsumerState<AppTopBar> {
                                 ),
                                 const SizedBox(width: AppSpacing.space2),
                               ],
-                              if (shellActionsEnabled)
-                                Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    AppIconButton(
-                                      icon: const Icon(Icons.notifications_outlined),
-                                      label: widget.notificationCount > 0
-                                          ? 'Notifications, ${widget.notificationCount} unread'
-                                          : 'Notifications',
-                                      size: AppIconButtonSize.lg,
-                                      onPressed: widget.onNotificationsClick,
-                                    ),
-                                    if (widget.notificationCount > 0)
-                                      PositionedDirectional(
-                                        end: 6,
-                                        top: 6,
-                                        child: Container(
-                                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                          padding: const EdgeInsets.symmetric(horizontal: 2),
-                                          decoration: BoxDecoration(
-                                            color: colors.statusDangerFg,
-                                            borderRadius: BorderRadius.circular(999),
-                                          ),
-                                          alignment: Alignment.center,
-                                          child: Text(
-                                            widget.notificationCount > 9 ? '9+' : '${widget.notificationCount}',
-                                            style: AppTypography.bodySm(context).copyWith(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w600,
-                                              color: colors.textInverse,
-                                              height: 1,
-                                            ),
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  AppIconButton(
+                                    icon: const Icon(Icons.notifications_outlined),
+                                    label: widget.notificationCount > 0
+                                        ? 'Notifications, ${widget.notificationCount} unread'
+                                        : 'Notifications',
+                                    size: AppIconButtonSize.lg,
+                                    onPressed: widget.onNotificationsClick,
+                                  ),
+                                  if (widget.notificationCount > 0)
+                                    PositionedDirectional(
+                                      end: 6,
+                                      top: 6,
+                                      child: Container(
+                                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                                        decoration: BoxDecoration(
+                                          color: colors.statusDangerFg,
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          widget.notificationCount > 9 ? '9+' : '${widget.notificationCount}',
+                                          style: AppTypography.bodySm(context).copyWith(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            color: colors.textInverse,
+                                            height: 1,
                                           ),
                                         ),
                                       ),
-                                  ],
-                                ),
+                                    ),
+                                ],
+                              ),
                               Listener(
                                 onPointerDown: (event) => _themeTapOrigin = event.position,
                                 child: AppIconButton(

@@ -137,7 +137,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
 
-    if (session.needsClinicSetup) {
+    if (session.setupRequired) {
       state = state.copyWith(errorMessage: 'Finish clinic setup before creating staff accounts.');
       return null;
     }
@@ -226,7 +226,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
 
-    if (session.needsClinicSetup) {
+    if (session.setupRequired) {
       state = state.copyWith(errorMessage: 'Finish clinic setup before resetting staff passwords.');
       return null;
     }
@@ -247,9 +247,8 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       state = state.copyWith(errorMessage: 'Enter a new password for the staff member.');
       return null;
     }
-    final passwordError = StaffPasswordValidation.validateInitialPassword(trimmedPassword);
-    if (passwordError != null) {
-      state = state.copyWith(errorMessage: passwordError);
+    if (trimmedPassword.length < 6) {
+      state = state.copyWith(errorMessage: 'Password must be at least 6 characters.');
       return null;
     }
 
@@ -290,12 +289,12 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
 
-    if (session.needsClinicSetup) {
+    if (session.setupRequired) {
       state = state.copyWith(errorMessage: 'Finish clinic setup before updating staff usernames.');
       return null;
     }
 
-    if (!ProvisioningRules.canUpdateStaffUsername(session.staffProfile)) {
+    if (!ProvisioningRules.canResetStaffPassword(session.staffProfile)) {
       state = state.copyWith(errorMessage: 'Only clinic administrators can update staff usernames.');
       return null;
     }

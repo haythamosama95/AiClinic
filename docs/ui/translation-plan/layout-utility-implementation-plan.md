@@ -6,7 +6,7 @@ Spec target: port the **Layout & utility** group of `web-reference/` into the Fl
 
 ## 0. Ambiguities & Design Decisions (resolve before coding)
 
-⚠️ **Set-specific runtime regressions.** The items below are the ones most likely to recur in this group — guard against them explicitly (consult `docs/ui/memory/ui-runtime-errors.md` only when explicitly instructed).
+⚠️ **Composer 2.5: read `docs/ui/memory/ui-runtime-errors.md` end-to-end before touching any widget in this group.** The regressions below are the ones most likely to recur in this group — guard against them explicitly.
 
 1. **forui vs native Material.** The shipping Actions / Inputs / Display App widgets use **native Material** under `core/ui/components/app_*.dart`. `forui` is imported nowhere. `docs/ui/forui-wrappers.md` is **superseded**.
    **Decision: keep native Material.** No forui.

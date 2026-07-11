@@ -13,7 +13,6 @@ class AppIconButton extends StatefulWidget {
     this.onPressed,
     this.variant = AppIconButtonVariant.ghost,
     this.size = AppIconButtonSize.md,
-    this.dimension,
     this.error = false,
     this.tooltip,
     this.tooltipDisabled = false,
@@ -25,9 +24,6 @@ class AppIconButton extends StatefulWidget {
   final VoidCallback? onPressed;
   final AppIconButtonVariant variant;
   final AppIconButtonSize size;
-
-  /// When set, overrides [AppIconButtonSize.dimension] (e.g. to match an input field height).
-  final double? dimension;
   final bool error;
   final String? tooltip;
   final bool tooltipDisabled;
@@ -43,7 +39,7 @@ class _AppIconButtonState extends State<AppIconButton> {
   bool _pressed = false;
   bool _focused = false;
 
-  double get _dimension => widget.dimension ?? widget.size.dimension;
+  double get _dimension => widget.size.dimension;
 
   double get _iconSize => widget.size == AppIconButtonSize.lg ? 20 : 16;
 
@@ -140,6 +136,7 @@ class _AppIconButtonState extends State<AppIconButton> {
       );
     }
 
+    final dangerSurface = isDark ? AppColorPrimitives.statusDangerSurfaceDark : AppColorPrimitives.red50;
     final secondaryBackground = isDark ? AppColorPrimitives.surfaceRaisedDark : colors.surfaceDefault;
     final subtleHover = isDark ? AppColorPrimitives.surfaceHoverDark : AppColorPrimitives.neutral50;
 
@@ -161,22 +158,8 @@ class _AppIconButtonState extends State<AppIconButton> {
         foreground: _hovered ? colors.textPrimary : colors.iconDefault,
         borderColor: colors.borderDefault,
       ),
-      AppIconButtonVariant.primary => _IconButtonStyle(
-        background: _pressed
-            ? colors.actionPrimaryActive
-            : _hovered
-            ? colors.actionPrimaryHover
-            : colors.actionPrimary,
-        foreground: colors.actionPrimaryFg,
-      ),
       AppIconButtonVariant.danger => _IconButtonStyle(
-        background: _pressed
-            ? (isDark ? AppColorPrimitives.statusDangerBorderDark : AppColorPrimitives.red100)
-            : _hovered
-            ? (isDark
-                  ? AppColorPrimitives.statusDangerBorderDark.withValues(alpha: 0.35)
-                  : AppColorPrimitives.red100.withValues(alpha: 0.7))
-            : colors.statusDangerSurface,
+        background: _pressed || _hovered ? dangerSurface : Colors.transparent,
         foreground: colors.statusDangerFg,
       ),
       AppIconButtonVariant.ai => _IconButtonStyle(
@@ -195,7 +178,7 @@ class _IconButtonStyle {
   final Color? borderColor;
 }
 
-enum AppIconButtonVariant { primary, ghost, secondary, danger, ai }
+enum AppIconButtonVariant { ghost, secondary, danger, ai }
 
 enum AppIconButtonSize { sm, md, lg }
 

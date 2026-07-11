@@ -598,18 +598,13 @@ List<AppCommandItem> kDefaultCommandItems({void Function(String id)? onNavigate}
 
 /// Wraps the components showcase with ⌘K/Ctrl-K shortcuts and the command bar overlay.
 class CommandBarScope extends ConsumerWidget {
-  const CommandBarScope({required this.child, this.items = const [], this.enabled = true, super.key});
+  const CommandBarScope({required this.child, this.items = const [], super.key});
 
   final Widget child;
   final List<AppCommandItem> items;
-  final bool enabled;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!enabled) {
-      return child;
-    }
-
     return Shortcuts(
       shortcuts: const {
         SingleActivator(LogicalKeyboardKey.keyK, meta: true): _ToggleCommandBarIntent(),

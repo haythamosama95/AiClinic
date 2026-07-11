@@ -6,7 +6,7 @@ agent: plan
 # Plan widget group port
 
 You are producing an implementation plan (NOT implementing). Load and strictly follow the
-`plan-ui-port` skill's instructions, then execute that workflow for the group the user
+`plan-widget-group-port` skill's instructions, then execute that workflow for the group the user
 passed as the argument below.
 
 ## Arguments
@@ -74,7 +74,7 @@ Free-form prose (this is the recommended form, and is what the user most often t
 
 ## Execution
 
-1. Invoke the `plan-ui-port` skill to load its full workflow.
+1. Invoke the `plan-widget-group-port` skill to load its full workflow.
 2. Perform the skill's research steps (parallelize reads where possible).
 3. Divide the widgets into the **`$2` (or default 3) implementation phases** specified by the
    argument — each phase a logical, independently-shippable cluster. If `$2` differs from 3,

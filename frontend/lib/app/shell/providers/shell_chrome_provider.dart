@@ -4,7 +4,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/branch_selection_notifier.dart';
 import 'package:ai_clinic/core/ui/components/app_nav_models.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_providers.dart';
+import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_providers.dart';
 import 'package:ai_clinic/features/setup/domain/branch_summary.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/staff_assignable_branches_provider.dart';
 

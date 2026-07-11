@@ -23,7 +23,6 @@ class AppSidebar extends StatefulWidget {
     required this.org,
     required this.branch,
     this.footerItems = const [],
-    this.isItemEnabled,
     super.key,
   });
 
@@ -35,7 +34,6 @@ class AppSidebar extends StatefulWidget {
   final VoidCallback onToggleCollapsed;
   final String org;
   final String branch;
-  final bool Function(String itemId)? isItemEnabled;
 
   @override
   State<AppSidebar> createState() => _AppSidebarState();
@@ -55,9 +53,9 @@ class _AppSidebarState extends State<AppSidebar> {
   }
 
   List<String> get _navIds => [
-    for (final group in widget.items) ...group.items.map((item) => item.id),
-    ...widget.footerItems.map((item) => item.id),
-  ];
+        for (final group in widget.items) ...group.items.map((item) => item.id),
+        ...widget.footerItems.map((item) => item.id),
+      ];
 
   FocusNode _nodeFor(String id) {
     return _focusNodes.putIfAbsent(id, () {
@@ -88,9 +86,6 @@ class _AppSidebarState extends State<AppSidebar> {
     if (nextIndex == null) return KeyEventResult.ignored;
 
     final nextId = ids[nextIndex];
-    if (!(widget.isItemEnabled?.call(nextId) ?? true)) {
-      return KeyEventResult.ignored;
-    }
     widget.onNavigate(nextId);
     _nodeFor(nextId).requestFocus();
     return KeyEventResult.handled;
@@ -141,7 +136,6 @@ class _AppSidebarState extends State<AppSidebar> {
                           item: item,
                           active: widget.activeId == item.id,
                           collapsed: widget.collapsed,
-                          enabled: widget.isItemEnabled?.call(item.id) ?? true,
                           focusNode: _nodeFor(item.id),
                           onNavigate: widget.onNavigate,
                         ),
@@ -164,7 +158,6 @@ class _AppSidebarState extends State<AppSidebar> {
                             item: item,
                             active: widget.activeId == item.id,
                             collapsed: widget.collapsed,
-                            enabled: widget.isItemEnabled?.call(item.id) ?? true,
                             focusNode: _nodeFor(item.id),
                             onNavigate: widget.onNavigate,
                           ),
@@ -225,7 +218,10 @@ class _SidebarHeader extends StatelessWidget {
                   ),
                 ),
               AppIconButton(
-                icon: Icon(collapsed ? Icons.read_more_outlined : Icons.menu_open_outlined, size: 16),
+                icon: Icon(
+                  collapsed ? Icons.read_more_outlined : Icons.menu_open_outlined,
+                  size: 16,
+                ),
                 label: collapsed ? 'Expand sidebar' : 'Collapse sidebar',
                 size: AppIconButtonSize.sm,
                 onPressed: onToggleCollapsed,
@@ -243,7 +239,6 @@ class _SidebarNavItem extends StatelessWidget {
     required this.item,
     required this.active,
     required this.collapsed,
-    required this.enabled,
     required this.focusNode,
     required this.onNavigate,
   });
@@ -253,18 +248,13 @@ class _SidebarNavItem extends StatelessWidget {
   final AppNavItem item;
   final bool active;
   final bool collapsed;
-  final bool enabled;
   final FocusNode focusNode;
   final ValueChanged<String> onNavigate;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final foreground = !enabled
-        ? colors.textTertiary
-        : active
-        ? colors.textPrimary
-        : colors.textSecondary;
+    final foreground = active ? colors.textPrimary : colors.textSecondary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
@@ -275,61 +265,56 @@ class _SidebarNavItem extends StatelessWidget {
           final iconOnly = collapsed || rowWidth < _minExpandedRowWidth;
 
           final button = Material(
-            color: active && enabled ? colors.surfaceSelected : Colors.transparent,
+            color: active ? colors.surfaceSelected : Colors.transparent,
             borderRadius: BorderRadius.circular(AppRadius.md),
             child: InkWell(
-              onTap: enabled ? () => onNavigate(item.id) : null,
+              onTap: () => onNavigate(item.id),
               borderRadius: BorderRadius.circular(AppRadius.md),
-              hoverColor: enabled ? colors.surfaceHover : Colors.transparent,
-              child: Opacity(
-                opacity: enabled ? 1 : 0.45,
-                child: SizedBox(
-                  height: AppShellTokens.navItemHeight,
-                  child: Stack(
-                    children: [
-                      if (active)
-                        const PositionedDirectional(
-                          start: 0,
-                          top: 4,
-                          bottom: 4,
-                          child: AppSignal(orientation: Axis.vertical),
-                        ),
-                      Positioned.fill(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: iconOnly ? 0 : AppSpacing.space2),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              if (iconOnly)
-                                Expanded(
-                                  child: Center(child: Icon(item.icon, size: 20, color: foreground)),
-                                )
-                              else ...[
-                                const SizedBox(width: AppSpacing.space1),
-                                Icon(item.icon, size: 20, color: foreground),
-                                const SizedBox(width: AppSpacing.space3),
-                                Expanded(
-                                  child: Text(
-                                    item.label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTypography.body(context).copyWith(color: foreground),
-                                  ),
+              hoverColor: colors.surfaceHover,
+              child: SizedBox(
+                height: AppShellTokens.navItemHeight,
+                child: Stack(
+                  children: [
+                    if (active)
+                      const PositionedDirectional(
+                        start: 0,
+                        top: 4,
+                        bottom: 4,
+                        child: AppSignal(orientation: Axis.vertical),
+                      ),
+                    Positioned.fill(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: iconOnly ? 0 : AppSpacing.space2),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (iconOnly)
+                              Expanded(child: Center(child: Icon(item.icon, size: 20, color: foreground)))
+                            else ...[
+                              const SizedBox(width: AppSpacing.space1),
+                              Icon(item.icon, size: 20, color: foreground),
+                              const SizedBox(width: AppSpacing.space3),
+                              Expanded(
+                                child: Text(
+                                  item.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.body(context).copyWith(color: foreground),
                                 ),
-                                if (item.count != null)
-                                  AppBadge(
-                                    label: '${item.count}',
-                                    color: BadgeColor.neutral,
-                                    variant: BadgeVariant.soft,
-                                    size: BadgeSize.sm,
-                                  ),
-                              ],
+                              ),
+                              if (item.count != null)
+                                AppBadge(
+                                  label: '${item.count}',
+                                  color: BadgeColor.neutral,
+                                  variant: BadgeVariant.soft,
+                                  size: BadgeSize.sm,
+                                ),
                             ],
-                          ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),

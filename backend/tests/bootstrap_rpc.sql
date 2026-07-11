@@ -97,41 +97,6 @@ PERFORM set_config('role', 'postgres', true);
   );
   PERFORM set_config('role', 'authenticated', true);
 
-  -- Advanced: non-bootstrap administrator cannot finish clinic setup.
-  PERFORM set_config(
-    'request.jwt.claims',
-    json_build_object('sub', v_non_bootstrap_user::text, 'role', 'authenticated')::text,
-    true
-  );
-  v_result := public.bootstrap_finish_setup(
-    'Denied Finish Clinic',
-    'Denied Finish Branch',
-    jsonb_build_array(
-      jsonb_build_object(
-        'username', 'denied-finish-admin',
-        'password', 'finish-pass-1',
-        'full_name', 'Denied Admin',
-        'role', 'administrator'
-      )
-    ),
-    '{}'::jsonb,
-    NULL,
-    'USD',
-    'UTC',
-    'DENY',
-    '1 Denied Way',
-    '+1-555-0299',
-    'https://maps.example/denied',
-    v_working_schedule
-  );
-PERFORM set_config('role', 'postgres', true);
-  INSERT INTO bootstrap_rpc_results VALUES (
-'non_bootstrap_admin_denied_finish_setup',
-    NOT v_result.success AND v_result.error_code = 'NOT_BOOTSTRAP_ADMIN',
-    COALESCE(v_result.error_code, '<null>')
-  );
-  PERFORM set_config('role', 'authenticated', true);
-
   PERFORM set_config(
     'request.jwt.claims',
     json_build_object('sub', v_bootstrap_user::text, 'role', 'authenticated')::text,

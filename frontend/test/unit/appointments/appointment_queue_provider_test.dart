@@ -80,7 +80,7 @@ class _ComparisonFailRpcClient extends AppointmentRpcTestClient {
 void main() {
   group('AppointmentFetchScope', () {
     test('fromContext normalizes empty strings to null', () {
-      final context = AuthSessionContext(
+      const context = AuthSessionContext(
         staffProfile: StaffProfile(
           staffMemberId: 'staff-1',
           fullName: 'Staff',

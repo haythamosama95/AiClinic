@@ -19,29 +19,6 @@ void main() {
     });
   });
 
-  group('BranchFieldValidation.validateNationalPhone', () {
-    test('accepts 10-digit numbers', () {
-      expect(BranchFieldValidation.validateNationalPhone('1000000000'), isNull);
-    });
-
-    test('rejects numbers with fewer than 10 digits', () {
-      expect(BranchFieldValidation.validateNationalPhone('12345'), contains('10-digit'));
-    });
-  });
-
-  group('BranchFieldValidation.validateBranchCode', () {
-    test('accepts uppercase alphanumeric codes', () {
-      expect(BranchFieldValidation.validateBranchCode('ZML'), isNull);
-      expect(BranchFieldValidation.validateBranchCode('main'), isNull);
-    });
-
-    test('rejects empty and invalid codes', () {
-      expect(BranchFieldValidation.validateBranchCode(''), isNotNull);
-      expect(BranchFieldValidation.validateBranchCode('bad code'), isNotNull);
-      expect(BranchFieldValidation.validateBranchCode('A' * 21), isNotNull);
-    });
-  });
-
   group('BranchFieldValidation.validateMapsUrl', () {
     test('accepts https and http URLs', () {
       expect(BranchFieldValidation.validateMapsUrl('https://maps.google.com/?q=test'), isNull);

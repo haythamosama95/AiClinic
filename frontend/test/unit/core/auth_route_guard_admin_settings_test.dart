@@ -63,7 +63,7 @@ void main() {
         context: sampleAuthSessionContext(setupRequired: true),
       );
 
-      expect(AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsStaff, auth: auth), AppRoutes.home);
+      expect(AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsStaff, auth: auth), AppRoutes.bootstrap);
     });
 
     test('stupid usage: unauthenticated admin URL goes to login', () {

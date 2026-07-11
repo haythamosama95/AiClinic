@@ -3,9 +3,9 @@ name: ui-runtime-bug-fix
 description: >-
   Investigates and fixes Flutter UI runtime bugs from a user description, then
   records the issue, root cause, and fix in docs/ui/memory/ui-runtime-errors.md.
-  Use only when the user explicitly reports a UI crash, red screen, widget
-  error, layout exception, or design-system showcase bug, or asks to fix and
-  document a runtime UI error. Do not use for general Flutter UI work.
+  Use when the user reports a UI crash, red screen, widget error, layout
+  exception, or design-system showcase bug, or asks to fix and document a
+  runtime UI error.
 ---
 
 # UI Runtime Bug Fix
@@ -46,7 +46,7 @@ Copy this checklist and track progress:
 
 ### 1. Read memory
 
-This skill is the explicit trigger to consult the memory file. Before changing code, read `docs/ui/memory/ui-runtime-errors.md`.
+Before changing code, read `docs/ui/memory/ui-runtime-errors.md`.
 
 - If the bug matches an existing entry, apply the documented fix pattern first.
 - If the entry exists but is incomplete, extend it instead of duplicating.

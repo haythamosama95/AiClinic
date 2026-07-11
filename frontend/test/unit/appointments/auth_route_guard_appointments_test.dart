@@ -66,7 +66,7 @@ void main() {
 
       expect(
         AuthRouteGuard.appointmentRouteRedirect(location: AppRoutes.appointmentsQueue, auth: auth),
-        AppRoutes.home,
+        AppRoutes.bootstrap,
       );
     });
   });

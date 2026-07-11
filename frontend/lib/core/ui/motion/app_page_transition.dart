@@ -28,13 +28,14 @@ abstract final class AppPageTransitionMotion {
     final values = valuesFor(progress, exiting: exiting);
     final opacity = values.opacity.clamp(0.0, 1.0);
 
-    // Keep layout size while hidden so parent [AnimatedSize] can tween height across pages.
-    return IgnorePointer(
-      ignoring: opacity <= 0,
-      child: Opacity(
-        opacity: opacity,
-        child: Transform.translate(offset: values.offset, child: child),
-      ),
+    // Drop the outgoing page from the tree once fully hidden to prevent ghost frames.
+    if (opacity <= 0 && exiting) {
+      return const SizedBox.shrink();
+    }
+
+    return Opacity(
+      opacity: opacity,
+      child: Transform.translate(offset: values.offset, child: child),
     );
   }
 }

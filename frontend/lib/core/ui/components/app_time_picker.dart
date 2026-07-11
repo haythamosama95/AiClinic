@@ -9,49 +9,6 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 String _pad(int n) => n.toString().padLeft(2, '0');
 
-int? _parseTimeToMinutes(String? value) {
-  final trimmed = value?.trim();
-  if (trimmed == null || trimmed.isEmpty) {
-    return null;
-  }
-
-  final match24 = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(trimmed);
-  if (match24 != null) {
-    return int.parse(match24.group(1)!) * 60 + int.parse(match24.group(2)!);
-  }
-
-  final match12 = RegExp(r'^(\d{1,2}):([0-5]\d)\s*(AM|PM)$', caseSensitive: false).firstMatch(trimmed);
-  if (match12 != null) {
-    var hour = int.parse(match12.group(1)!);
-    final minute = int.parse(match12.group(2)!);
-    final period = match12.group(3)!.toUpperCase();
-    if (hour < 1 || hour > 12) {
-      return null;
-    }
-    if (period == 'PM' && hour != 12) {
-      hour += 12;
-    } else if (period == 'AM' && hour == 12) {
-      hour = 0;
-    }
-    return hour * 60 + minute;
-  }
-
-  return null;
-}
-
-String _formatTime(int minutes, {required bool use24Hour}) {
-  final hour = minutes ~/ 60;
-  final minute = minutes % 60;
-  if (use24Hour) {
-    return '${_pad(hour)}:${_pad(minute)}';
-  }
-  final period = hour >= 12 ? 'PM' : 'AM';
-  final hour12 = hour % 12 == 0 ? 12 : hour % 12;
-  return '$hour12:${_pad(minute)} $period';
-}
-
-String _format24Hour(int minutes) => _formatTime(minutes, use24Hour: true);
-
 List<String> _generateSlots({required int stepMinutes, required bool use24Hour}) {
   final slots = <String>[];
   for (var h = 0; h < 24; h++) {
@@ -161,12 +118,10 @@ class _AppTimePickerState extends State<AppTimePicker> {
   }
 
   void _select(String time) {
-    final minutes = _parseTimeToMinutes(time);
-    final canonical = minutes == null ? time : _format24Hour(minutes);
     if (!_isControlled) {
-      setState(() => _internalValue = canonical);
+      setState(() => _internalValue = time);
     }
-    widget.onChanged?.call(canonical);
+    widget.onChanged?.call(time);
     _setOpen(false);
   }
 
@@ -176,8 +131,6 @@ class _AppTimePickerState extends State<AppTimePicker> {
     final metrics = appInputMetrics(context, widget.size);
     final is24 = widget.use24Hour ?? !_isArabicLocale(context);
     final slots = _generateSlots(stepMinutes: widget.stepMinutes, use24Hour: is24);
-    final valueMinutes = _parseTimeToMinutes(_value);
-    final displayValue = valueMinutes == null ? _value : _formatTime(valueMinutes, use24Hour: is24);
 
     final listbox = ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 240),
@@ -188,12 +141,10 @@ class _AppTimePickerState extends State<AppTimePicker> {
           for (final slot in slots)
             Semantics(
               button: true,
-              selected: valueMinutes != null && _parseTimeToMinutes(slot) == valueMinutes,
+              selected: slot == _value,
               label: slot,
               child: Material(
-                color: valueMinutes != null && _parseTimeToMinutes(slot) == valueMinutes
-                    ? colors.surfaceSelected
-                    : Colors.transparent,
+                color: slot == _value ? colors.surfaceSelected : Colors.transparent,
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(AppRadius.md),
@@ -202,9 +153,10 @@ class _AppTimePickerState extends State<AppTimePicker> {
                     padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3, vertical: AppSpacing.space2),
                     child: Text(
                       slot,
-                      style: AppTypography.body(
-                        context,
-                      ).copyWith(color: colors.textPrimary, fontFeatures: const [FontFeature.tabularFigures()]),
+                      style: AppTypography.body(context).copyWith(
+                        color: colors.textPrimary,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
                 ),
@@ -219,13 +171,16 @@ class _AppTimePickerState extends State<AppTimePicker> {
       enabled: !widget.disabled,
       identifier: widget.id,
       label: widget.placeholder,
-      value: displayValue.isEmpty ? null : displayValue,
+      value: _value.isEmpty ? null : _value,
       child: AppPopover(
         open: _open && !_interactionDisabled,
         onOpenChange: _setOpen,
         matchTriggerWidth: false,
         width: 192,
-        child: Semantics(label: 'Time options', child: listbox),
+        child: Semantics(
+          label: 'Time options',
+          child: listbox,
+        ),
         triggerBuilder: (context, isOpen, onToggle) => Focus(
           focusNode: _focusNode,
           child: GestureDetector(
@@ -254,17 +209,16 @@ class _AppTimePickerState extends State<AppTimePicker> {
                     ),
                     alignment: AlignmentDirectional.centerStart,
                     child: Text(
-                      displayValue.isEmpty ? widget.placeholder : displayValue,
-                      style:
-                          (displayValue.isEmpty
-                                  ? metrics.textStyle
-                                  : appBareInputTextStyle(context, widget.size, disabled: widget.disabled))
-                              ?.copyWith(
-                                color: displayValue.isEmpty
-                                    ? colors.textPlaceholder
-                                    : (widget.disabled ? colors.textDisabled : colors.textPrimary),
-                                fontFeatures: const [FontFeature.tabularFigures()],
-                              ),
+                      _value.isEmpty ? widget.placeholder : _value,
+                      style: (_value.isEmpty
+                              ? metrics.textStyle
+                              : appBareInputTextStyle(context, widget.size, disabled: widget.disabled))
+                          ?.copyWith(
+                        color: _value.isEmpty
+                            ? colors.textPlaceholder
+                            : (widget.disabled ? colors.textDisabled : colors.textPrimary),
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
                   PositionedDirectional(

@@ -119,7 +119,6 @@ class DevClinicSeedService {
               fullName: staff.fullName,
               role: _staffRole(staff.role),
               branchIds: const [],
-              phone: staff.phone,
             ),
         ],
       ),
@@ -169,7 +168,6 @@ class DevClinicSeedService {
             role: _staffRole(staff.role),
             branchIds: [branchId],
             primaryBranchId: branchId,
-            phone: staff.phone,
           ),
         );
         if (staff.role == DevClinicStaffRole.doctor) {
@@ -188,7 +186,6 @@ class DevClinicSeedService {
           role: _staffRole(staff.role),
           branchIds: List<String>.from(branchIds),
           primaryBranchId: branchIds.first,
-          phone: staff.phone,
         ),
       );
       if (staff.role == DevClinicStaffRole.doctor) {

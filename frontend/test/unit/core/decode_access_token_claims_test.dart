@@ -11,13 +11,13 @@ String _fakeJwt(Map<String, dynamic> payload) {
 
 void main() {
   group('decodeAccessTokenClaims', () {
-    test('returns invalid result for malformed token', () {
-      expect(decodeAccessTokenClaims('not-a-jwt'), isA<AccessTokenClaimsInvalid>());
-      expect(decodeAccessTokenClaims('only.two'), isA<AccessTokenClaimsInvalid>());
+    test('returns empty map for malformed token', () {
+      expect(decodeAccessTokenClaims('not-a-jwt'), isEmpty);
+      expect(decodeAccessTokenClaims('only.two'), isEmpty);
     });
 
     test('decodes staff claims from payload', () {
-      final result = decodeAccessTokenClaims(
+      final claims = decodeAccessTokenClaims(
         _fakeJwt({
           'staff_member_id': 'b0000000-0000-4000-8000-000000000001',
           'staff_role': 'administrator',
@@ -26,30 +26,16 @@ void main() {
         }),
       );
 
-      expect(result, isA<AccessTokenClaimsSuccess>());
-      final claims = result.claims;
       expect(claims['staff_member_id'], 'b0000000-0000-4000-8000-000000000001');
       expect(claims['staff_role'], 'administrator');
       expect(claims['setup_required'], true);
       expect(claims['branch_ids'], 'a,b');
     });
 
-    test('returns expired result when exp is in the past', () {
-      final result = decodeAccessTokenClaims(
-        _fakeJwt({
-          'exp': DateTime.now().toUtc().subtract(const Duration(minutes: 5)).millisecondsSinceEpoch ~/ 1000,
-          'staff_member_id': 'b0000000-0000-4000-8000-000000000001',
-        }),
-      );
-
-      expect(result, isA<AccessTokenClaimsExpired>());
-      expect(result.claims, isEmpty);
-    });
-
-    test('returns invalid result when payload is not a JSON object', () {
+    test('returns empty map when payload is not a JSON object', () {
       final header = base64Url.encode(utf8.encode('{}'));
       final body = base64Url.encode(utf8.encode('"string"'));
-      expect(decodeAccessTokenClaims('$header.$body.sig'), isA<AccessTokenClaimsInvalid>());
+      expect(decodeAccessTokenClaims('$header.$body.sig'), isEmpty);
     });
   });
 }

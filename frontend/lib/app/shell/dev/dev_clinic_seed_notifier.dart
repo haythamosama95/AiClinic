@@ -14,8 +14,7 @@ import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
-import 'package:ai_clinic/features/setup/application/setup_rpc_messages.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 
 @immutable
 class DevClinicSeedState {
@@ -89,8 +88,7 @@ class DevClinicSeedNotifier extends Notifier<DevClinicSeedState> {
             },
           );
 
-      ref.read(clinicSetupProvider.notifier).markSetupComplete();
-      await ref.read(clinicSetupProvider.notifier).hydrateFromBackend();
+      ref.read(setupNotifierProvider.notifier).markSetupComplete();
       invalidateAppointmentSurfaceProviders(ref);
       state = const DevClinicSeedState();
       AppLog.info('dev_clinic_seed.completed');
