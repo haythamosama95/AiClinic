@@ -3,6 +3,7 @@ import { ALL_NAV_ITEMS } from '@/components/navigation/nav-model'
 import { getPatientById, patientFullName } from '@/data/patients'
 import { PlaceholderPage } from '@/pages/app/PlaceholderPage'
 import { DevPage, type DevSection } from '@/pages/app/DevPage'
+import { ClinicManagementPage } from '@/features/clinic-management/ClinicManagementPage'
 import { PatientDetailPage } from '@/pages/app/patients/PatientDetailPage'
 import { PatientsPage } from '@/pages/app/patients/PatientsPage'
 import { SettingsPage } from '@/pages/app/settings/SettingsPage'
@@ -23,6 +24,7 @@ const ROUTE_DESCRIPTIONS: Record<string, string> = {
   billing: 'Charges, payments, and revenue cycle management.',
   invoices: 'Create, send, and reconcile patient invoices.',
   services: 'Catalog procedures, packages, and billable services.',
+  'clinic-management': 'Organization profile, branches, staff accounts, and role permissions.',
   staff: 'Team directory, roles, and provider profiles.',
   shifts: 'Staff scheduling, coverage, and shift assignments.',
   reports: 'Operational and clinical reports across your organization.',
@@ -79,6 +81,7 @@ const CLINIC_ROUTE_IDS = [
   'billing',
   'invoices',
   'services',
+  'clinic-management',
   'staff',
   'shifts',
   'reports',
@@ -97,13 +100,17 @@ function settingsRoute(): RouteDefinition {
 
 export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
   ...Object.fromEntries(
-    CLINIC_ROUTE_IDS.filter((id) => id !== 'patients' && id !== 'settings').map((id) => [
-      id,
-      placeholderRoute(id),
-    ]),
+    CLINIC_ROUTE_IDS.filter(
+      (id) => id !== 'patients' && id !== 'settings' && id !== 'clinic-management',
+    ).map((id) => [id, placeholderRoute(id)]),
   ),
   patients: patientsRoute(),
   settings: settingsRoute(),
+  'clinic-management': {
+    title: 'Clinic Management',
+    description: ROUTE_DESCRIPTIONS['clinic-management'],
+    render: () => <ClinicManagementPage />,
+  },
 }
 
 export function resolveDevSection(segments: string[]): DevSection {

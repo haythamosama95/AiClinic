@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   BarChart3,
+  Building2,
   Calendar,
   ClipboardList,
   FileText,
@@ -74,6 +75,7 @@ export const CLINIC_NAV_GROUPS: NavGroup[] = [
       { id: 'billing', label: 'Billing', icon: Receipt },
       { id: 'invoices', label: 'Invoices', icon: FileText, count: 5 },
       { id: 'services', label: 'Services', icon: LayoutGrid },
+      { id: 'clinic-management', label: 'Clinic Management', icon: Building2 },
       { id: 'staff', label: 'Staff', icon: UserRound },
       { id: 'shifts', label: 'Shifts', icon: Calendar },
       { id: 'reports', label: 'Reports', icon: BarChart3 },
