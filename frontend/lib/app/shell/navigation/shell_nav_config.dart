@@ -82,6 +82,10 @@ abstract final class ShellNavConfig {
     return location == AppRoutes.foundationDemo;
   }
 
+  static bool isFullWidthLocation(String location) {
+    return location == AppRoutes.patients || location.startsWith('${AppRoutes.patients}/');
+  }
+
   static DevSection devSectionForUri(Uri uri) {
     if (!isDesignSystemLocation(uri.path)) {
       return DevSection.foundations;

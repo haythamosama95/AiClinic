@@ -492,7 +492,6 @@ class _AppDialogPanel extends StatelessWidget {
     final colors = context.appColors;
     final elevation = context.appElevation;
     final constraints = _sizeConstraints(context, size, maxWidth: maxWidth);
-    final chromeEstimate = showHeader ? 140.0 : 32.0;
 
     return Semantics(
       scopesRoute: true,
@@ -515,9 +514,11 @@ class _AppDialogPanel extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadius.xl),
               child: LayoutBuilder(
                 builder: (context, layoutConstraints) {
-                  final maxBodyHeight = layoutConstraints.maxHeight.isFinite
-                      ? (layoutConstraints.maxHeight - chromeEstimate).clamp(0.0, double.infinity)
-                      : double.infinity;
+                  final bodyPadding = EdgeInsets.symmetric(
+                    horizontal: showHeader ? AppSpacing.space6 : 0,
+                    vertical: showHeader ? AppSpacing.space4 : 0,
+                  );
+                  final scrollBody = SingleChildScrollView(padding: bodyPadding, child: child);
 
                   return Column(
                     mainAxisSize: MainAxisSize.min,
@@ -566,16 +567,7 @@ class _AppDialogPanel extends StatelessWidget {
                             ),
                           ),
                         ),
-                      ConstrainedBox(
-                        constraints: BoxConstraints(maxHeight: maxBodyHeight),
-                        child: SingleChildScrollView(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: showHeader ? AppSpacing.space6 : 0,
-                            vertical: showHeader ? AppSpacing.space4 : 0,
-                          ),
-                          child: child,
-                        ),
-                      ),
+                      if (layoutConstraints.maxHeight.isFinite) Flexible(child: scrollBody) else scrollBody,
                       if (footer != null)
                         DecoratedBox(
                           decoration: BoxDecoration(
