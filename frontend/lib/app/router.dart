@@ -6,15 +6,17 @@ import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/shell_page_builder.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
 import 'package:ai_clinic/features/design_system/presentation/design_system_page.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
+import 'package:ai_clinic/app/navigation/login_query_params.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
 import 'package:ai_clinic/core/ui/theme/theme_transition_controller.dart';
+import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -26,7 +28,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   ref.listen<AuthSessionState>(authSessionProvider, (_, _) {
     refreshSignal.value++;
   });
-  ref.listen<SetupUiState>(setupNotifierProvider, (_, _) {
+  ref.listen<ClinicSetupState>(clinicSetupProvider, (_, _) {
     refreshSignal.value++;
   });
 
@@ -36,9 +38,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     navigatorKey: ref.read(rootNavigatorKeyProvider),
-    initialLocation: AppRoutes.home,
+    initialLocation: AppRoutes.login,
     refreshListenable: refreshSignal,
     routes: [
+      GoRoute(path: AppRoutes.login, builder: (context, state) => const LoginPage()),
+      // LoginPage should read [LoginQueryParams.forgotPasswordQueryKey] to show forgot-password UI.
+      GoRoute(
+        path: AppRoutes.forgotPassword,
+        redirect: (context, state) => LoginQueryParams.loginWithForgotPasswordIntent(),
+      ),
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
         routes: [
@@ -53,9 +61,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.protectedPlaceholder,
             builder: (context, state) => uiPendingPlaceholder('Startup', state),
           ),
-          GoRoute(path: AppRoutes.login, builder: (context, state) => uiPendingPlaceholder('Auth', state)),
-          GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
-          GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
+          GoRoute(path: AppRoutes.bootstrap, redirect: (context, state) => AppRoutes.home),
           GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
           GoRoute(
             path: AppRoutes.staffPasswordReset,
@@ -129,14 +135,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);
       final auth = ref.read(authSessionProvider);
-      final setup = ref.read(setupNotifierProvider);
+      final setup = ref.read(clinicSetupProvider);
       final location = state.matchedLocation;
 
       if (ShellDevNav.allowsOpenAccess(location)) {
         return null;
       }
 
-      if (!auth.isAuthenticated && ShellNavConfig.allowsUnauthenticatedPreview(location)) {
+      if (!auth.isAuthenticated && ShellDevNav.isEnabled && ShellNavConfig.allowsUnauthenticatedPreview(location)) {
         return null;
       }
 
@@ -159,7 +165,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
 
           if (!AuthRouteGuard.canAccessProtectedFeatureRoute(auth)) {
-            return auth.isAuthenticated ? AppRoutes.bootstrap : AppRoutes.login;
+            return auth.isAuthenticated ? AppRoutes.home : AppRoutes.login;
           }
         }
 
@@ -170,15 +176,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       final startupRedirect = switch (session.currentView) {
-        StartupCurrentView.startupCheck => location == AppRoutes.home ? null : AppRoutes.home,
+        StartupCurrentView.startupCheck =>
+          location == AppRoutes.login || location == AppRoutes.home ? null : AppRoutes.login,
         StartupCurrentView.setupGuidance => location == AppRoutes.setupGuidance ? null : AppRoutes.setupGuidance,
         StartupCurrentView.protectedRouteBlocked =>
           location == AppRoutes.protectedBlocked ? null : AppRoutes.protectedBlocked,
         StartupCurrentView.unauthenticatedEntry => () {
-          if (!auth.isAuthenticated && location == AppRoutes.home) {
-            return null;
-          }
-
           final authRedirect = resolveAuthRedirect(location);
           if (authRedirect != null) {
             return authRedirect;
@@ -189,15 +192,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
 
           if (location == AppRoutes.startupEntry) {
-            return AppRoutes.home;
+            return AppRoutes.login;
           }
 
           if (location == AppRoutes.foundationDemo) {
             return AppRoutes.login;
           }
 
-          const preAuthShellRoutes = {AppRoutes.home, AppRoutes.login, AppRoutes.forgotPassword};
-          return preAuthShellRoutes.contains(location) ? null : AppRoutes.home;
+          const preAuthShellRoutes = {AppRoutes.login, AppRoutes.forgotPassword};
+          return preAuthShellRoutes.contains(location) ? null : AppRoutes.login;
         }(),
       };
 
@@ -206,10 +209,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (session.currentView == StartupCurrentView.unauthenticatedEntry) {
-        if (!auth.isAuthenticated && location == AppRoutes.home) {
-          return null;
-        }
-
         final authRedirect = resolveAuthRedirect(location);
         if (authRedirect != null) {
           return authRedirect;

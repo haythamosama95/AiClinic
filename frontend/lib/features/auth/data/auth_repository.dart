@@ -1,15 +1,23 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:ai_clinic/core/config/in_memory_gotrue_async_storage.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/domain/repositories/auth_repository.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 
 /// Wraps Supabase Auth for staff sign-in lifecycle (no cross-restart persistence).
+///
+/// Workstation model: password sign-in only. OAuth and magic-link flows are
+/// unsupported; any in-memory PKCE verifier is cleared on [signOut].
 class AuthRepositoryImpl implements AuthRepository {
-  AuthRepositoryImpl(this._client);
+  AuthRepositoryImpl(
+    this._client, {
+    InMemoryGotrueAsyncStorage pkceStorage = const InMemoryGotrueAsyncStorage(),
+  }) : _pkceStorage = pkceStorage;
 
   final SupabaseClient _client;
+  final InMemoryGotrueAsyncStorage _pkceStorage;
 
   @override
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
@@ -28,14 +36,20 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> signOut() async {
     await _client.auth.signOut();
+    _pkceStorage.reset();
   }
 
   /// Clears any auth session from client storage on cold start (FR-004).
   ///
   /// Safe to call when no session exists; used with [EmptyLocalStorage] so reopening
-  /// the app never restores a prior workstation session.
+  /// the app never restores a prior workstation session. Skips the network when
+  /// [currentSession] is already null.
   @override
   Future<void> clearPersistedSessionOnColdStart() async {
+    if (_client.auth.currentSession == null) {
+      return;
+    }
+
     try {
       await _client.auth.signOut();
     } on AuthException {

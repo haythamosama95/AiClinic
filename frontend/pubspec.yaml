@@ -58,6 +58,7 @@ dependencies:
   printing: ^5.14.2
   pdfx: ^2.9.2
   syncfusion_flutter_datagrid: ^32.2.9
+  url_launcher: ^6.3.2
 
 # Patches flutter_quill#2487: selection paint crashes on empty lines / RTL text
 # until https://github.com/singerdmx/flutter-quill/pull/2736 merges.
@@ -93,6 +94,9 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/images/auth/testimonial_1.jpg
+    - assets/images/auth/testimonial_2.jpg
+    - assets/images/auth/testimonial_3.jpg
     - assets/images/patient_avatar_female.png
     - assets/images/patient_avatar_male.png
     - assets/dev/egyptian_medication_names.json

@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
@@ -29,6 +31,23 @@ abstract final class ShellNavConfig {
     return [
       for (final item in kClinicNavFooter)
         if (item.id != 'dev' || ShellDevNav.isEnabled) item,
+      ...devActionItems(),
+    ];
+  }
+
+  /// Debug-only dev tooling entries in the sidebar footer (siblings of Settings/Dev).
+  static List<AppNavItem> devActionItems() {
+    if (!ShellDevNav.isEnabled) {
+      return const [];
+    }
+
+    return [
+      for (final itemId in ShellDevNav.actionItemIds)
+        AppNavItem(
+          id: itemId,
+          label: ShellDevNav.labelFor(itemId) ?? itemId,
+          icon: ShellDevNav.iconFor(itemId) ?? Icons.build_outlined,
+        ),
     ];
   }
 
@@ -36,7 +55,10 @@ abstract final class ShellNavConfig {
 
   static String? routeFor(String itemId) => _routesByItemId[itemId] ?? ShellDevNav.routeFor(itemId);
 
-  /// Shell placeholder routes reachable without signing in (scaffold preview).
+  /// Shell routes reachable without signing in during debug scaffold preview.
+  ///
+  /// Open-access design-system routes are included so the router allows navigation,
+  /// but [shouldUseUnauthenticatedPreviewPlaceholder] keeps them on live builders.
   static bool allowsUnauthenticatedPreview(String location) {
     if (ShellDevNav.allowsOpenAccess(location)) {
       return true;
@@ -44,6 +66,12 @@ abstract final class ShellNavConfig {
 
     final itemId = itemIdForLocation(location);
     return itemId != null && itemId != 'dev';
+  }
+
+  /// When true, shell child routes must render static placeholders instead of
+  /// authenticated feature pages (see auth review §2.2).
+  static bool shouldUseUnauthenticatedPreviewPlaceholder(String location) {
+    return allowsUnauthenticatedPreview(location) && !ShellDevNav.allowsOpenAccess(location);
   }
 
   static bool isSettingsLocation(String location) {

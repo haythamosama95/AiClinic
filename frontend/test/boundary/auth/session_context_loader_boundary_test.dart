@@ -42,7 +42,7 @@ void main() {
       final clinic = await ctx.ensureClinic(label: 'session_refresh');
       await ctx.signInAdmin();
       await ctx.auth.refreshSession();
-      final claims = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken);
+      final claims = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken).claims;
       expect(claims['organization_id'], isNotNull);
       clinic;
     });
@@ -95,12 +95,12 @@ void main() {
       const ManifestScenario('sessionContext.setupRequired');
       await ctx.resetInstallation();
       await ctx.signInAdmin();
-      final claimsBefore = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken);
+      final claimsBefore = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken).claims;
       expect(claimsBefore['setup_required'], isTrue);
       await ctx.ensureClinic(label: 'session_setup');
       await ctx.signInAdmin();
       await ctx.auth.refreshSession();
-      final claimsAfter = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken);
+      final claimsAfter = decodeAccessTokenClaims(ctx.auth.currentSession!.accessToken).claims;
       expect(claimsAfter['setup_required'], isNot(true));
     });
 

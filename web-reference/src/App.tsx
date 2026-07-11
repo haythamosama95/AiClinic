@@ -86,6 +86,17 @@ export function App() {
             )
         }
 
+        if (activeId === 'settings' && segments[1]) {
+            return (
+                <Breadcrumb
+                    items={[
+                        { label: 'Settings', onClick: () => navigate('settings') },
+                        { label: breadcrumbLabel(segments) },
+                    ]}
+                />
+            )
+        }
+
         if (!navItem) return undefined
 
         return <Breadcrumb items={[{ label: navItem.label }]} />

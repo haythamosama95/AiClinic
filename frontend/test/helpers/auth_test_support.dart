@@ -8,6 +8,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 AuthSessionContext sampleAuthSessionContext({
   bool setupRequired = false,
   StaffRole role = StaffRole.administrator,
+  bool isBootstrapAdmin = false,
   List<String> branchIds = const ['00000000-0000-4000-8000-000000000001'],
   String? activeBranchId,
   Set<String> permissions = const {'patients.view'},
@@ -17,7 +18,7 @@ AuthSessionContext sampleAuthSessionContext({
       staffMemberId: '00000000-0000-4000-8000-000000000010',
       fullName: 'Test Staff',
       role: role,
-      isBootstrapAdmin: false,
+      isBootstrapAdmin: isBootstrapAdmin,
       isActive: true,
     ),
     organizationId: setupRequired ? null : '00000000-0000-4000-8000-000000000020',

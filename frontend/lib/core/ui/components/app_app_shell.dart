@@ -40,15 +40,12 @@ class AppAppShell extends StatelessWidget {
                 Expanded(
                   child: SingleChildScrollView(
                     child: Align(
-                      alignment: Alignment.topCenter,
+                      alignment: AlignmentDirectional.topStart,
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
                           maxWidth: fullWidth ? double.infinity : AppShellTokens.contentMaxWidth,
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(AppSpacing.space6),
-                          child: child,
-                        ),
+                        child: Padding(padding: const EdgeInsetsDirectional.all(AppSpacing.space6), child: child),
                       ),
                     ),
                   ),

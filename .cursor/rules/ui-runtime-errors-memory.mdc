@@ -1,0 +1,16 @@
+---
+description: Do not read ui-runtime-errors.md unless the user explicitly asks
+alwaysApply: true
+---
+
+# UI runtime error memory — opt-in only
+
+Do **not** open, read, or consult `docs/ui/memory/ui-runtime-errors.md` by default.
+
+Only read or update that file when the user **explicitly** instructs you to, for example:
+
+- They `@`-mention the file or ask you to check/consult/update it
+- They ask you to fix and document a UI runtime bug (use the `ui-runtime-bug-fix` skill)
+- A task document they gave you explicitly says to read it for that task
+
+Otherwise, skip it — even when working on Flutter UI, design-system components, or web-to-Flutter ports.

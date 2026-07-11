@@ -2,7 +2,7 @@
 
 Spec target: port the **Login page** of `web-reference/src/pages/auth/LoginPage.tsx` into the Flutter `frontend/` App abstraction layer, surfaced as the `/login` route (V1-1, US1 sign-in). Single phase.
 
-> ⚠️ **Read `docs/ui/memory/ui-runtime-errors.md` first.** This page embeds `AppTextInput`, `AppPasswordInput`, `AppButton`, and a motion backdrop + focus trap. Before coding, confirm the group-specific regressions to avoid:
+> ⚠️ **Set-specific runtime regressions.** This page embeds `AppTextInput`, `AppPasswordInput`, `AppButton`, and a motion backdrop + focus trap. Before coding, confirm the group-specific regressions to avoid (consult `docs/ui/memory/ui-runtime-errors.md` only when explicitly instructed):
 > - The login page renders **outside** `AuthenticatedShell` (no `Scaffold`/`Material` from the shell) → embed inputs inside a `Scaffold` so the Material primitive ancestors (TextField, InkWell) are valid (memory §1, §23). `AppTextInput`/`AppPasswordInput` already wrap their `TextField` in `appWrapMaterialInput`, but the **link buttons** (`AppButton variant: link` "Forgot your password?" and the carousel `IconButton`s) need a `Material` ancestor for ink.
 > - The page hosts a carousel using `AnimationController` → initialize the controller with a static `AppMotion.resolveDuration(...)` in `initState` and only defer `forward()` to `didChangeDependencies` after applying reduced-motion (memory §2, §27). Never read `MediaQuery` (reduced motion) in `initState`.
 > - A `FocusScope`/`FocusTraversalPolicy` around the form is the Flutter analog of the web `trapFocus`. Do **not** share one `FocusNode` between an ancestor `Focus` and a descendant `TextField` (memory §4); keep `FocusNode` only on the `TextField`.

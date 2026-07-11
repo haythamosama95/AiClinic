@@ -1,6 +1,6 @@
 # UI Runtime Error Memory
 
-Brief notes from fixing design-system showcase crashes (2026-07-07). Read this before adding or porting form and display components.
+Brief notes from fixing design-system showcase crashes (2026-07-07). Consult this file only when explicitly instructed — not on every UI task.
 
 ## 1. `No Material widget found` (TextField / Slider)
 
@@ -675,6 +675,7 @@ void appToast(BuildContext context, AppToastInput input) {
 7. Form-field hint tooltip? → Pass `preferBelow: false` on `AppTooltip` to match web `side="top"`.
 8. Row/Column inside `SingleChildScrollView`? → Do not use `CrossAxisAlignment.stretch` on a `Row` when the parent gives unbounded height; use `start` and derive sticky/viewport height from `MediaQuery` when `constraints.maxHeight` is infinite.
 9. Material `Slider` inside a scroll view? → **Do not use Material `Slider`**; its `OverlayPortal` cannot be disabled. Build a custom track/thumb slider instead (see `app_slider.dart`).
+10. Token/multi-select with chips + inline query `TextField` in `Wrap`? → Hide the query field when every option is selected and the user is not searching; use a fixed ~72px width when visible so `Wrap` does not leave a blank second row (see entry #38).
 
 ## Checklist for new display components
 
@@ -731,32 +732,33 @@ return LayoutBuilder(
 
 ---
 
-## 29. `StateError` — unsafe `ref` in `dispose` (`AppTopBar`)
+## 29. Provider write in `dispose` (`AppTopBar` / `CommandBarController`)
 
-**Symptom:** Red screen / console exception when auth redirects unmount the shell (e.g. hot restart, sign-out) — "Bad state: Using `ref` when a widget is about to or has been unmounted is unsafe" at `_AppTopBarState.dispose`.
+**Symptom:** Console exception when auth redirects unmount the shell (e.g. login → home, hot restart, sign-out). Either "Bad state: Using `ref` when a widget is about to or has been unmounted is unsafe" or "Tried to modify a provider while the widget tree was building" at `_AppTopBarState.dispose` → `CommandBarController.registerTrigger`.
 
-**Cause:** `dispose()` called `ref.read(commandBarProvider.notifier)` to clear the command-bar trigger key. Riverpod forbids `ref` once the `ConsumerState` element is deactivated because `ref` depends on `BuildContext`.
+**Cause:** `dispose()` cleared the command-bar trigger by writing provider state. Riverpod forbids both `ref` after deactivation and **any** provider mutation during widget lifecycle finalization (`dispose` runs while `finalizeTree` is in progress).
 
-**Fix:** Cache the notifier in a `late final` field during `initState` and call it from `dispose` instead of `ref.read`:
+**Fix:** Cache the notifier in `initState` (never `ref.read` in `dispose`). Defer the unregister with `Future(() => …)` and only clear when the disposing widget still owns the trigger — avoids wiping a newly mounted `AppTopBar` during login → home transitions:
 
 ```dart
-late final CommandBarController _commandBarController;
-
-@override
-void initState() {
-  super.initState();
-  _commandBarController = ref.read(commandBarProvider.notifier);
-  // ...
+// command_bar_controller.dart
+void unregisterTriggerIfCurrent(GlobalKey key) {
+  if (state.triggerKey == key) {
+    state = state.copyWith(clearTriggerKey: true);
+  }
 }
 
+// app_top_bar.dart
 @override
 void dispose() {
-  _commandBarController.registerTrigger(null);
+  final triggerKey = _triggerKey;
+  final controller = _commandBarController;
+  Future(() => controller.unregisterTriggerIfCurrent(triggerKey));
   super.dispose();
 }
 ```
 
-**Affected files (fixed):** `app_top_bar.dart`.
+**Affected files (fixed):** `app_top_bar.dart`, `command_bar_controller.dart`.
 
 ---
 
@@ -817,5 +819,200 @@ Give `ThemeTransitionHost` a stable `ValueKey` in `MaterialApp.builder` so shell
 1. Provider cleanup in `dispose()`? → Save the notifier/controller in a field during `initState`; never call `ref.read` / `ref.watch` in `dispose` (see entry #29).
 2. Registering callbacks/runners at mount? → Do not assign `Notifier.state` in `initState`; use a mutable registry from a plain `Provider` instead (see entry #31).
 3. Page uses `Expanded` / viewport-fill layout? → Ensure `AppShell` `fillViewport` (or `effectiveFillViewport` during transitions) stays true while that page is **visible**, not only after navigation completes (see entry #30).
+
+---
+
+## 32. `RenderFlex` overflow (`LoginPage` modal + dev panel)
+
+**Symptom:** Yellow/black overflow stripe on app start in debug — "overflowed by 36 pixels on the bottom" at `login_page.dart` root `Column` (line ~176). Constraints show a tight SafeArea height (e.g. `h=688`) with a large login panel (~648px) plus the debug `AuthDevWidgets.panel` (~76px) beneath it.
+
+**Cause:** The centered `Column` stacks `_LoginPanel` (capped at `min(screenHeight * 0.9, 680)`) and the debug-only dev-login shortcuts. On short viewports or when SafeArea/padding reduce available height, the combined intrinsic height exceeds the bounded `Column` parent. The panel height math does not reserve space for the dev footer.
+
+**Fix:** Wrap the centered column in `LayoutBuilder` + `SingleChildScrollView` + `ConstrainedBox(minHeight: constraints.maxHeight)` so content stays vertically centered when it fits and scrolls when the login panel plus dev panel exceed the viewport:
+
+```dart
+LayoutBuilder(
+  builder: (context, constraints) {
+    return SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [...]),
+        ),
+      ),
+    );
+  },
+)
+```
+
+**Affected files (fixed):** `login_page.dart`.
+
+---
+
+## 33. Provider write in `dispose` (`LoginPage` / `AuthNotifier`)
+
+**Symptom:** Console exception after successful login redirect — "Bad state: Using `ref` when a widget is about to or has been unmounted is unsafe" at `_LoginPageState.dispose` when clearing sign-in UI state.
+
+**Cause:** `dispose()` called `ref.read(authSessionProvider)` and/or `ref.read(authNotifierProvider.notifier).resetSignInForm()`. Same Riverpod lifecycle rule as entry #29: `ref` is invalid after deactivation, and provider writes during `finalizeTree` are unsafe.
+
+**Fix:** Cache `AuthNotifier` in `initState` (never `ref.read` in `dispose`). Track `isAuthenticated` with `ref.listenManual(authSessionProvider, …)` into a field. Defer `resetSignInForm()` with `Future(() => …)` only when the cached flag is still false:
+
+```dart
+late final AuthNotifier _authNotifier;
+ProviderSubscription<AuthSessionState>? _authSessionSub;
+var _isAuthenticated = false;
+
+@override
+void initState() {
+  super.initState();
+  _authNotifier = ref.read(authNotifierProvider.notifier);
+  _isAuthenticated = ref.read(authSessionProvider).isAuthenticated;
+  _authSessionSub = ref.listenManual(
+    authSessionProvider,
+    (_, next) => _isAuthenticated = next.isAuthenticated,
+  );
+}
+
+@override
+void dispose() {
+  _authSessionSub?.close();
+  if (!_isAuthenticated) {
+    final notifier = _authNotifier;
+    Future(() => notifier.resetSignInForm());
+  }
+  // … dispose controllers
+}
+```
+
+**Affected files (fixed):** `login_page.dart`.
+
+---
+
+## 34. `RenderFlex` overflow + duplicate `GlobalKey` (`SetupScreen` / `SetupStepPanel`)
+
+**Symptom:** On Settings → Setup, yellow/black overflow stripe ("overflowed by N pixels on the bottom") at `setup_screen.dart` root `Column`. Console repeats `Multiple widgets used the same GlobalKey` when switching setup steps or after auth session refresh.
+
+**Cause:** (1) The setup page stacks a header, optional completion banner, and the tall `SetupWizard` in a `Column`. When the settings content slot passes a bounded max height (large breakpoint `Row` + `Expanded`, or viewport-fill shell framing), the column is forced into that height and overflows. (2) `SetupStepPanel` used a custom `AnimatedSwitcher.layoutBuilder` that kept **both** the outgoing and incoming step subtrees mounted during the slide transition. Each step contains `AppSelect` / `AppCombobox` → `AppPopover` widgets that own `GlobalKey`s for overlay anchoring; mounting two steps at once attaches the same key objects twice.
+
+**Fix:** Scroll the setup page body when height is bounded (same pattern as entry #28). Only mount the active step in the switcher — do not stack `previousChildren` when children contain overlay/popover primitives:
+
+```dart
+// setup_screen.dart
+return LayoutBuilder(
+  builder: (context, constraints) {
+    if (constraints.hasBoundedHeight) {
+      return SingleChildScrollView(child: body);
+    }
+    return body;
+  },
+);
+
+// setup_step_panel.dart
+layoutBuilder: (currentChild, previousChildren) => currentChild ?? const SizedBox.shrink(),
+```
+
+**Affected files (fixed):** `setup_screen.dart`, `setup_step_panel.dart`.
+
+---
+
+## 35. `AppProgress` bar fill invisible / stuck (`FractionallySizedBox`)
+
+**Symptom:** Determinate progress bars (e.g. clinic setup wizard header) appear as a static muted track; the fill never grows when `value` or wizard step changes even though the `%` label updates.
+
+**Cause:** `_buildBar` used `FractionallySizedBox` with only `widthFactor`. When `heightFactor` is omitted, the child keeps loose height constraints; `ColoredBox` has no intrinsic height, so the fill renders at **0px tall** (width is correct but invisible).
+
+**Fix:** Always set `heightFactor: 1` (and `alignment: AlignmentDirectional.centerStart`) on bar-track `FractionallySizedBox` children so the fill spans the track height:
+
+```dart
+FractionallySizedBox(
+  widthFactor: fraction,
+  heightFactor: 1,
+  alignment: AlignmentDirectional.centerStart,
+  child: ColoredBox(color: colors.actionPrimary),
+)
+```
+
+Apply the same pattern to the reduced-motion indeterminate bar segment.
+
+**Affected files (fixed):** `app_progress.dart`.
+
+---
+
+## 36. Password field loses focus on every keystroke (`AppPasswordInput`)
+
+**Symptom:** In settings clinic setup (staff step), typing into the password field drops focus after each character; other text fields in the same form behave normally.
+
+**Cause:** `AppPasswordInput.didUpdateWidget` reassigned `_controller.text` whenever `initialValue` changed from the parent. Staff setup syncs password to Riverpod on every `onChanged`, so each keystroke triggered a rebuild and a controller write. Unlike `AppTextInput`, there was no guard to skip sync while the user is editing. Reassigning `TextEditingController.text` resets selection and drops focus.
+
+**Fix:** Match `AppTextInput` — only apply `initialValue` when the owned controller is still empty:
+
+```dart
+if (_ownsController &&
+    widget.initialValue != oldWidget.initialValue &&
+    widget.initialValue != null &&
+    _controller.text.isEmpty) {
+  _controller.text = widget.initialValue!;
+}
+```
+
+Also add `ValueKey(itemId)` on `EntityList` cards so list items keep stable element identity across draft rebuilds.
+
+**Affected files (fixed):** `app_password_input.dart`, `entity_list.dart`.
+
+## 37. Settings nav rail tab never highlights except General (`SettingsNavRail`)
+
+**Symptom:** On the settings page, clicking Setup (or any tab other than General) switches the content panel, but the left nav rail keeps General highlighted.
+
+**Cause:** `SettingsPage` read `GoRouterState.matchedLocation` to resolve the active tab. Inside a `ShellRoute` builder, `matchedLocation` is the **leaf segment only** (e.g. `setup`), not the full path `/settings/setup`. `AppRoutes.settingsScreenFromPath` expects a full path with `settings` as the first segment, so a bare segment falls through to the default `'general'`.
+
+**Fix:** Resolve the active tab from `GoRouterState.uri.path` instead:
+
+```dart
+final location = GoRouterState.of(context).uri.path;
+final activeScreen = AppRoutes.settingsScreenFromPath(location);
+```
+
+**Affected files (fixed):** `settings_page.dart`.
+
+## 38. Settings nav item flashes black on click (`SettingsNavRail`)
+
+**Symptom:** Tapping a settings nav rail item briefly shows a black background before the selected teal state appears.
+
+**Cause:** `InkWell` uses the theme default splash/highlight overlay (dark Material ink). The web reference uses plain buttons with `hover:bg-surface-hover` and no ripple.
+
+**Fix:** Replace `InkWell` with `GestureDetector` and drive hover/selected backgrounds from `Material.color` via the existing `MouseRegion` hover state (same pattern as horizontal `AppTabs`).
+
+**Affected files (fixed):** `settings_nav_rail.dart`.
+
+---
+
+## 39. Extra blank row in multi-select after all options selected (`AppMultiSelect`)
+
+**Symptom:** In Staff setup (and other `AppMultiSelect` usages), after selecting every available branch the field shows selected chips plus an empty second line of vertical space inside the bordered input.
+
+**Cause:** Chips and the query `TextField` live in a `Wrap`. The `TextField` always stayed in the tree with `ConstrainedBox(minWidth: 64)` even when `_filtered` was empty (all options already selected). `Wrap` placed the empty field on a new run, leaving a full input-height blank row.
+
+**Fix:** Hide the inline query field when there is nothing left to pick and the user is not searching (`value` non-empty, `_filtered` empty, controller empty, not focused). Match the web `min-w-[8ch]` token width when the field is shown so it stays on the chip row:
+
+```dart
+bool get _showQueryField =>
+    widget.value.isEmpty ||
+    _filtered.isNotEmpty ||
+    _controller.text.isNotEmpty ||
+    _focused;
+
+// In Wrap children:
+if (_showQueryField) SizedBox(width: 72, child: field),
+```
+
+Tapping the shell still opens the popover (`No more options`) without forcing focus onto a hidden field.
+
+**Affected files (fixed):** `app_multi_select.dart`.
+
+## Checklist for new settings / wizard pages
+
+1. Tall `Column` in settings content (`Expanded` slot or bounded shell)? → `mainAxisSize: MainAxisSize.min` plus `LayoutBuilder` + conditional `SingleChildScrollView` when `constraints.hasBoundedHeight` (see entries #28, #34).
+2. `AnimatedSwitcher` between steps/screens with `AppSelect`, `AppCombobox`, `AppPopover`, or other `GlobalKey` owners? → Do **not** keep `previousChildren` in a stacked `layoutBuilder`; mount only `currentChild` (see entry #34). Settings tab switches already use `ShellPageTransition`, which shows one page at a time.
+3. `FractionallySizedBox` fill inside a fixed-height track? → Set `heightFactor: 1` so `ColoredBox` children are not 0px tall (see entry #35).
 
 ---
