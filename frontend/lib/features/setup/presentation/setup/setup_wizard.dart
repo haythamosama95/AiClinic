@@ -9,14 +9,14 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_step_panel.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_step_rail.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/steps/branch_step.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/steps/organization_step.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/steps/services_step.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/steps/staff_step.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_step_panel.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_step_rail.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/steps/branch_step.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/steps/organization_step.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/steps/services_step.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/steps/staff_step.dart';
 
 const _stepCount = 4;
 const _smBreakpoint = 600.0;
@@ -35,13 +35,13 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   final _staffStepKey = GlobalKey();
 
   Future<void> _goNext() async {
-    final setupState = ref.read(clinicSetupDraftProvider);
+    final setupState = ref.read(clinicSetupProvider);
     final step = setupState.step;
     final draft = setupState.draft;
     final stepErrors = validateStep(step, draft);
 
     if (hasErrors(stepErrors)) {
-      final notifier = ref.read(clinicSetupDraftProvider.notifier);
+      final notifier = ref.read(clinicSetupProvider.notifier);
       switch (step) {
         case 1:
           notifier.revealBranchValidationErrors(stepErrors);
@@ -56,7 +56,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
 
     setState(() => _errors = {});
 
-    final notifier = ref.read(clinicSetupDraftProvider.notifier);
+    final notifier = ref.read(clinicSetupProvider.notifier);
     final isLastStep = step == _stepCount - 1;
 
     await notifier.persistDraft();
@@ -74,11 +74,11 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   }
 
   void _goBack() {
-    final step = ref.read(clinicSetupDraftProvider).step;
+    final step = ref.read(clinicSetupProvider).step;
     if (step == 0) return;
 
     setState(() => _errors = {});
-    ref.read(clinicSetupDraftProvider.notifier).setStep(step - 1);
+    ref.read(clinicSetupProvider.notifier).setStep(step - 1);
   }
 
   Widget _stepContent(int step) {
@@ -141,7 +141,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
 
   @override
   Widget build(BuildContext context) {
-    final setupState = ref.watch(clinicSetupDraftProvider);
+    final setupState = ref.watch(clinicSetupProvider);
     final step = setupState.step;
     final progress = ((step + 1) / _stepCount) * 100;
     final isLastStep = step == _stepCount - 1;

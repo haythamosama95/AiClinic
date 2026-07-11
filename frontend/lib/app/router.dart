@@ -11,9 +11,9 @@ import 'package:ai_clinic/features/settings/presentation/screens/branches_screen
 import 'package:ai_clinic/features/settings/presentation/screens/general_screen.dart';
 import 'package:ai_clinic/features/settings/presentation/screens/notifications_screen.dart';
 import 'package:ai_clinic/features/settings/presentation/screens/services_screen.dart';
-import 'package:ai_clinic/features/settings/presentation/screens/setup_screen.dart';
+import 'package:ai_clinic/features/setup/presentation/pages/setup_page.dart';
 import 'package:ai_clinic/features/settings/presentation/screens/staff_screen.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -33,7 +33,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   ref.listen<AuthSessionState>(authSessionProvider, (_, _) {
     refreshSignal.value++;
   });
-  ref.listen<SetupUiState>(setupNotifierProvider, (_, _) {
+  ref.listen<ClinicSetupState>(clinicSetupProvider, (_, _) {
     refreshSignal.value++;
   });
 
@@ -61,7 +61,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.protectedPlaceholder,
             builder: (context, state) => uiPendingPlaceholder('Startup', state),
           ),
-          GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
+          GoRoute(path: AppRoutes.bootstrap, builder: (context, state) => const SetupPage()),
           GoRoute(path: AppRoutes.staffCreate, builder: (context, state) => uiPendingPlaceholder('Setup', state)),
           GoRoute(
             path: AppRoutes.staffPasswordReset,
@@ -128,7 +128,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 builder: (context, state, child) => SettingsPage(child: child),
                 routes: [
                   GoRoute(path: 'general', builder: (context, state) => const GeneralScreen()),
-                  GoRoute(path: 'setup', builder: (context, state) => const SetupScreen()),
                   GoRoute(
                     path: 'branches',
                     builder: (context, state) => const BranchesScreen(),
@@ -171,7 +170,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);
       final auth = ref.read(authSessionProvider);
-      final setup = ref.read(setupNotifierProvider);
+      final setup = ref.read(clinicSetupProvider);
       final location = state.matchedLocation;
 
       if (ShellDevNav.allowsOpenAccess(location)) {
@@ -201,7 +200,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           }
 
           if (!AuthRouteGuard.canAccessProtectedFeatureRoute(auth)) {
-            return auth.isAuthenticated ? AppRoutes.settingsSetup : AppRoutes.login;
+            return auth.isAuthenticated ? AppRoutes.bootstrap : AppRoutes.login;
           }
         }
 

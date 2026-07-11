@@ -35,7 +35,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
       expect(
         AuthRouteGuard.postLoginDestination(
@@ -54,7 +54,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
 
@@ -67,7 +67,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: false).copyWith(organizationId: null),
           ),
         ),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
 

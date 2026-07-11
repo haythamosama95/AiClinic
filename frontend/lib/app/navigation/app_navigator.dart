@@ -21,7 +21,7 @@ class AppNavigator {
   // Auth / startup
   void goHome() => _context.go(AppRoutes.home);
   void goLogin() => _context.go(AppRoutes.login);
-  void goBootstrap() => _context.go(AppRoutes.settingsSetup);
+  void goBootstrap() => _context.go(AppRoutes.bootstrap);
   void goForgotPassword() => _context.go('${AppRoutes.login}?forgot=1');
   void goStartupEntry() => _context.go(AppRoutes.startupEntry);
   void goStaffCreate() => _context.go(AppRoutes.staffCreate);

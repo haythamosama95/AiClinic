@@ -54,19 +54,18 @@ void main() {
 
     test('settingsScreenFromPath resolves active tab from full settings path', () {
       expect(AppRoutes.settingsScreenFromPath('/settings/general'), 'general');
-      expect(AppRoutes.settingsScreenFromPath('/settings/setup'), 'setup');
       expect(AppRoutes.settingsScreenFromPath('/settings/branches'), 'branches');
       expect(AppRoutes.settingsScreenFromPath('/settings/staff'), 'staff');
       expect(AppRoutes.settingsScreenFromPath('/settings/services'), 'services');
       expect(AppRoutes.settingsScreenFromPath('/settings/notifications'), 'notifications');
       expect(AppRoutes.settingsScreenFromPath('/settings/branches/branch-1/edit'), 'branches');
-      expect(AppRoutes.settingsScreenFromPath('setup'), 'general');
+      expect(AppRoutes.settingsScreenFromPath('/settings/unknown'), 'general');
+      expect(AppRoutes.settingsScreenFromPath('/settings'), 'general');
     });
 
     test('settings screen tabs and nested flows share one shell page transition key', () {
       const stablePaths = [
         AppRoutes.settingsGeneral,
-        AppRoutes.settingsSetup,
         AppRoutes.settingsBranches,
         AppRoutes.settingsStaff,
         AppRoutes.settingsServices,

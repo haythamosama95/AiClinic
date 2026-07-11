@@ -8,8 +8,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_bootstrap_sign_in.dart';
 import 'package:ai_clinic/core/ui/components/app_dialog.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 
 /// Dev Options nav item and handlers for resetting clinic installation data.
 abstract final class ShellDevResetClinic {
@@ -65,13 +64,13 @@ abstract final class ShellDevResetClinic {
       return;
     }
 
-    final ok = await ref.read(setupNotifierProvider.notifier).resetInstallationForDevelopment();
+    final ok = await ref.read(clinicSetupProvider.notifier).resetInstallationForDevelopment();
     if (!context.mounted) {
       return;
     }
 
     if (ok) {
-      await ref.read(clinicSetupDraftProvider.notifier).resetSetup();
+      await ref.read(clinicSetupProvider.notifier).resetSetup();
       await ref.read(authSessionProvider.notifier).signOut();
       if (context.mounted) {
         context.go(AppRoutes.login);
@@ -81,7 +80,7 @@ abstract final class ShellDevResetClinic {
       return;
     }
 
-    final errorMessage = ref.read(setupNotifierProvider).errorMessage;
+    final errorMessage = ref.read(clinicSetupProvider).submitError;
     if (errorMessage != null) {
       appToast(context, AppToastInput(message: errorMessage, variant: AppToastVariant.danger));
     }

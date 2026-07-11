@@ -5,7 +5,7 @@ import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_organization_input.dart';

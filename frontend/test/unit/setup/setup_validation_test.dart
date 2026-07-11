@@ -1,6 +1,5 @@
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 BranchDraft _branch({

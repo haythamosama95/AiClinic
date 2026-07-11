@@ -9,9 +9,9 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_field_hints.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
 
 /// Organization step (web `OrganizationStep`).
 class OrganizationStep extends ConsumerWidget {
@@ -22,9 +22,9 @@ class OrganizationStep extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final organization = ref.watch(
-      clinicSetupDraftProvider.select((state) => state.draft.organization),
+      clinicSetupProvider.select((state) => state.draft.organization),
     );
-    final notifier = ref.read(clinicSetupDraftProvider.notifier);
+    final notifier = ref.read(clinicSetupProvider.notifier);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

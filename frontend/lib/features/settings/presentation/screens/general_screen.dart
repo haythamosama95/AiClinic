@@ -6,29 +6,21 @@ import 'package:ai_clinic/core/ui/components/app_description_list.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
 import 'package:ai_clinic/features/settings/presentation/screens/_empty_screen.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_providers.dart';
 
 class GeneralScreen extends ConsumerWidget {
   const GeneralScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final draft = ref.watch(clinicSetupDraftProvider).draft;
+    final orgAsync = ref.watch(clinicSetupOrganizationProvider);
     final colors = context.appColors;
 
-    final timezoneLabel = timezoneOptions
-            .where((option) => option.value == draft.organization.timezone)
-            .map((option) => option.label)
-            .firstOrNull ??
-        draft.organization.timezone;
-    final currencyLabel = currencyOptions
-            .where((option) => option.value == draft.organization.currency)
-            .map((option) => option.label)
-            .firstOrNull ??
-        draft.organization.currency;
-    final organizationName = draft.organization.name.isEmpty ? '—' : draft.organization.name;
+    final org = orgAsync.asData?.value;
+    final timezoneLabel = org?.timezone ?? '—';
+    final currencyLabel = org?.currencyCode ?? '—';
+    final organizationName = (org?.name.isNotEmpty ?? false) ? org!.name : '—';
 
     return EmptySettingsScreen(
       icon: Icons.business,

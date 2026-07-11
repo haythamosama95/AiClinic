@@ -1,6 +1,6 @@
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/features/service_catalog/application/service_form_validation.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/setup/domain/branch_field_validation.dart';
 import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
 

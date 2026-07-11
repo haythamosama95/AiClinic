@@ -8,7 +8,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 /// Route guard rules for auth session states (see `contracts/auth-session.md`).
 abstract final class AuthRouteGuard {
   /// Clinic setup wizard — sole destination while bootstrap is incomplete.
-  static const String clinicSetupRoute = AppRoutes.settingsSetup;
+  static const String clinicSetupRoute = AppRoutes.bootstrap;
 
   /// Routes reachable without an authenticated session.
   static bool isPublicUnauthenticatedRoute(String location) {
@@ -537,14 +537,6 @@ abstract final class AuthRouteGuard {
       if (needsClinicSetup(context)) {
         if (location == clinicSetupRoute) {
           return null;
-        }
-
-        if (location == AppRoutes.bootstrap) {
-          return clinicSetupRoute;
-        }
-
-        if (location == AppRoutes.login || location == AppRoutes.forgotPassword) {
-          return clinicSetupRoute;
         }
 
         return clinicSetupRoute;

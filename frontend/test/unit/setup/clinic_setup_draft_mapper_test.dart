@@ -4,7 +4,7 @@ import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/clinic_setup_draft_mapper.dart';
+import 'package:ai_clinic/features/setup/domain/clinic_setup_draft_mapper.dart';
 import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
 import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:flutter_test/flutter_test.dart';

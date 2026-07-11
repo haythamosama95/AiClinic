@@ -19,7 +19,6 @@ class _SettingsNavItem {
 
 const _settingsNavItems = <_SettingsNavItem>[
   _SettingsNavItem(id: 'general', label: 'General', icon: Icons.business),
-  _SettingsNavItem(id: 'setup', label: 'Setup', icon: Icons.auto_fix_high),
   _SettingsNavItem(id: 'branches', label: 'Branches', icon: Icons.location_on),
   _SettingsNavItem(id: 'staff', label: 'Staff', icon: Icons.group),
   _SettingsNavItem(id: 'services', label: 'Services', icon: Icons.medical_services),

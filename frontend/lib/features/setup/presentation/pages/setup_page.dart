@@ -12,12 +12,12 @@ import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_hydration_provider.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_wizard.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_hydration_provider.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_wizard.dart';
 
-class SetupScreen extends ConsumerWidget {
-  const SetupScreen({super.key});
+class SetupPage extends ConsumerWidget {
+  const SetupPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -47,12 +47,12 @@ class SetupScreen extends ConsumerWidget {
       loading: () => _SetupHydrationLoading(colors: colors),
       error: (error, _) =>
           _SetupHydrationError(colors: colors, onRetry: () => ref.invalidate(clinicSetupHydrationProvider)),
-      data: (_) => _SetupScreenBody(
+      data: (_) => _SetupPageBody(
         setupDone: setupDone,
         canRunBootstrapSetup: canRunBootstrapSetup,
         colors: colors,
         onRunSetupAgain: () async {
-          await ref.read(clinicSetupDraftProvider.notifier).resetSetup();
+          await ref.read(clinicSetupProvider.notifier).resetSetup();
           ref.invalidate(clinicSetupHydrationProvider);
         },
       ),
@@ -132,8 +132,8 @@ class _SetupHydrationError extends StatelessWidget {
   }
 }
 
-class _SetupScreenBody extends StatelessWidget {
-  const _SetupScreenBody({
+class _SetupPageBody extends StatelessWidget {
+  const _SetupPageBody({
     required this.setupDone,
     required this.canRunBootstrapSetup,
     required this.colors,

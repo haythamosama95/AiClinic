@@ -65,7 +65,7 @@ void main() {
 
       expect(
         AuthRouteGuard.adminSettingsRedirect(location: AppRoutes.settingsOrganization, auth: auth),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
 

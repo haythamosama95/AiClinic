@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/components/app_form_field.dart';
 import 'package:ai_clinic/core/ui/components/app_location_input.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_field_hints.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
 
 /// Google Maps location field for clinic setup (web `MapsLocationInput`).
 class MapsLocationInput extends StatefulWidget {

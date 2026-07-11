@@ -8,8 +8,8 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_field_hints.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
 
 /// Seven-day working hours editor (web `WorkingHoursEditor`).
 class WorkingHoursEditor extends StatelessWidget {

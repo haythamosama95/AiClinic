@@ -6,29 +6,20 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
 
-String collapsedStaffRoleLabel(String role) {
-  for (final option in STAFF_ROLE_OPTIONS) {
-    if (option.value == role) {
-      return option.label;
-    }
-  }
-  return role;
-}
-
-/// Collapsed staff summary row (mirrors [CollapsedBranchCard]).
-class CollapsedStaffCard extends StatelessWidget {
-  const CollapsedStaffCard({
-    required this.member,
+/// Collapsed branch summary row (web `CollapsedBranchCard`).
+class CollapsedBranchCard extends StatelessWidget {
+  const CollapsedBranchCard({
+    required this.branch,
     required this.index,
     required this.onExpand,
     required this.onRemove,
     super.key,
   });
 
-  final StaffDraft member;
+  final BranchDraft branch;
   final int index;
   final VoidCallback onExpand;
   final VoidCallback onRemove;
@@ -36,12 +27,11 @@ class CollapsedStaffCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final branchCount = member.branchIds.length;
+    final openDays = branch.workingDays.where((day) => day.enabled).length;
     final subtitle = [
-      collapsedStaffRoleLabel(member.role),
-      if (member.username.isNotEmpty) member.username,
-      if (member.mobile.isNotEmpty) member.mobile,
-      if (branchCount > 0) '$branchCount ${branchCount == 1 ? 'branch' : 'branches'}',
+      if (branch.code.isNotEmpty) branch.code,
+      if (branch.mobile.isNotEmpty) branch.mobile,
+      '$openDays open days',
     ].join(' · ');
 
     return CollapsedSummaryEnterTransition(
@@ -73,7 +63,7 @@ class CollapsedStaffCard extends StatelessWidget {
                           child: const SizedBox(
                             width: 36,
                             height: 36,
-                            child: Icon(Icons.person, size: 16, color: AppColorPrimitives.teal700),
+                            child: Icon(Icons.location_on, size: 16, color: AppColorPrimitives.violet600),
                           ),
                         ),
                         const SizedBox(width: AppSpacing.space3),
@@ -83,7 +73,7 @@ class CollapsedStaffCard extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                member.name.isNotEmpty ? member.name : 'Staff member ${index + 1}',
+                                branch.name.isNotEmpty ? branch.name : 'Branch ${index + 1}',
                                 style: AppTypography.bodyStrong(context),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -108,7 +98,7 @@ class CollapsedStaffCard extends StatelessWidget {
           const SizedBox(width: AppSpacing.space2),
           AppIconButton(
             icon: const Icon(Icons.delete_outline, size: 16),
-            label: 'Remove staff member',
+            label: 'Remove branch',
             variant: AppIconButtonVariant.danger,
             size: AppIconButtonSize.md,
             onPressed: onRemove,

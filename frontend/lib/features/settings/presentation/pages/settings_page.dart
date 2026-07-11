@@ -3,11 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/app_routes.dart';
-import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_page_header.dart';
 import 'package:ai_clinic/core/ui/theme/app_shell_tokens.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/settings/presentation/models/settings_screen_meta.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_nav_rail.dart';
 import 'package:ai_clinic/features/settings/presentation/widgets/settings_screen_panel.dart';
 
@@ -25,7 +24,6 @@ class SettingsPage extends ConsumerWidget {
     // Use the full URI path: inside [ShellRoute], [GoRouterState.matchedLocation] is
     // only the leaf segment (e.g. `setup`), not `/settings/setup`.
     final location = GoRouterState.of(context).uri.path;
-    final setupLocked = ref.watch(authSessionProvider).context?.needsClinicSetup ?? false;
     final activeScreen = AppRoutes.settingsScreenFromPath(location);
     final activeMeta = settingsScreens.firstWhere(
       (screen) => screen.id == activeScreen,
@@ -47,7 +45,7 @@ class SettingsPage extends ConsumerWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final body = _SettingsBody(mainPanel: mainPanel, activeScreen: activeScreen, setupLocked: setupLocked);
+        final body = _SettingsBody(mainPanel: mainPanel, activeScreen: activeScreen);
 
         if (constraints.hasBoundedHeight) {
           return Column(
@@ -84,11 +82,10 @@ class SettingsPage extends ConsumerWidget {
 
 /// Nav rail and screen content with independent scroll regions on large screens.
 class _SettingsBody extends StatelessWidget {
-  const _SettingsBody({required this.mainPanel, required this.activeScreen, required this.setupLocked});
+  const _SettingsBody({required this.mainPanel, required this.activeScreen});
 
   final Widget mainPanel;
   final String activeScreen;
-  final bool setupLocked;
 
   @override
   Widget build(BuildContext context) {
@@ -97,11 +94,7 @@ class _SettingsBody extends StatelessWidget {
         final isLarge = constraints.maxWidth >= _lgBreakpoint;
         final navRail = SettingsNavRail(
           active: activeScreen,
-          isItemEnabled: setupLocked ? (id) => id == 'setup' : null,
           onNavigate: (id) {
-            if (setupLocked && id != 'setup') {
-              return;
-            }
             context.go(AppRoutes.settingsScreenPath(id));
           },
         );

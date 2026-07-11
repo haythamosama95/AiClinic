@@ -19,7 +19,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
 
@@ -32,14 +32,14 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
 
     test('authenticated setup_required on setup wizard stays', () {
       expect(
         AuthRouteGuard.resolveRedirect(
-          location: AppRoutes.settingsSetup,
+          location: AppRoutes.bootstrap,
           auth: AuthSessionState(
             status: AuthSessionStatus.authenticated,
             context: sampleAuthSessionContext(setupRequired: true),
@@ -58,7 +58,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
 
@@ -71,11 +71,11 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
 
-    test('authenticated setup_required on bootstrap redirects to setup wizard', () {
+    test('authenticated setup_required on bootstrap stays on setup wizard', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.bootstrap,
@@ -84,7 +84,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.settingsSetup,
+        isNull,
       );
     });
 
@@ -118,7 +118,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
 
@@ -131,7 +131,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: true),
           ),
         ),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
 

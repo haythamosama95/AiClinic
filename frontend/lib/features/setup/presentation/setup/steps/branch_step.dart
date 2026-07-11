@@ -13,14 +13,14 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_field_hints.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/widgets/collapsed_branch_card.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/widgets/maps_location_input.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/widgets/working_hours_editor.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_branch_card.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/widgets/maps_location_input.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/widgets/working_hours_editor.dart';
 
 /// Branch step (web `BranchStep`).
 class BranchStep extends StatefulWidget {
@@ -83,7 +83,7 @@ class _BranchStepState extends State<BranchStep> {
   bool _validateAndConfirm(
     List<BranchDraft> branches,
     String branchId,
-    ClinicSetupDraftNotifier notifier,
+    ClinicSetupNotifier notifier,
     Set<String> confirmedIds,
   ) {
     final index = branches.indexWhere((branch) => branch.id == branchId);
@@ -105,7 +105,7 @@ class _BranchStepState extends State<BranchStep> {
     return true;
   }
 
-  Future<void> _saveBranch(List<BranchDraft> branches, String branchId, ClinicSetupDraftNotifier notifier) async {
+  Future<void> _saveBranch(List<BranchDraft> branches, String branchId, ClinicSetupNotifier notifier) async {
     if (_savingBranchId != null) return;
 
     setState(() => _savingBranchId = branchId);
@@ -142,10 +142,10 @@ class _BranchStepState extends State<BranchStep> {
   Widget build(BuildContext context) {
     return Consumer(
       builder: (context, ref, _) {
-        final draft = ref.watch(clinicSetupDraftProvider.select((state) => state.draft));
-        final confirmedIds = ref.watch(clinicSetupDraftProvider.select((state) => state.confirmedBranchIds));
-        final focusBranchId = ref.watch(clinicSetupDraftProvider.select((state) => state.validationFocusEntityId));
-        final notifier = ref.read(clinicSetupDraftProvider.notifier);
+        final draft = ref.watch(clinicSetupProvider.select((state) => state.draft));
+        final confirmedIds = ref.watch(clinicSetupProvider.select((state) => state.confirmedBranchIds));
+        final focusBranchId = ref.watch(clinicSetupProvider.select((state) => state.validationFocusEntityId));
+        final notifier = ref.read(clinicSetupProvider.notifier);
         final colors = context.appColors;
 
         if (focusBranchId != null && focusBranchId != _activeBranchId) {
@@ -195,7 +195,7 @@ class _BranchStepState extends State<BranchStep> {
 
         void removeBranch(String id) {
           notifier.removeBranch(id);
-          final branches = ref.read(clinicSetupDraftProvider).draft.branches;
+          final branches = ref.read(clinicSetupProvider).draft.branches;
           setState(() {
             if (branches.isEmpty) {
               final newBranch = notifier.addBranch();

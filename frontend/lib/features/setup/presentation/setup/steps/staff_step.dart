@@ -16,12 +16,12 @@ import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_field_hints.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/widgets/collapsed_staff_card.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_staff_card.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
 
 /// Staff step (web `StaffStep`).
 class StaffStep extends ConsumerStatefulWidget {
@@ -70,7 +70,7 @@ class _StaffStepState extends ConsumerState<StaffStep> {
     }
   }
 
-  bool _validateAndConfirm(List<StaffDraft> staff, String staffId, int branchCount, ClinicSetupDraftNotifier notifier) {
+  bool _validateAndConfirm(List<StaffDraft> staff, String staffId, int branchCount, ClinicSetupNotifier notifier) {
     final index = staff.indexWhere((member) => member.id == staffId);
     if (index < 0) return true;
 
@@ -94,7 +94,7 @@ class _StaffStepState extends ConsumerState<StaffStep> {
     List<StaffDraft> staff,
     String staffId,
     int branchCount,
-    ClinicSetupDraftNotifier notifier,
+    ClinicSetupNotifier notifier,
   ) async {
     if (_savingStaffId != null) return;
 
@@ -130,10 +130,10 @@ class _StaffStepState extends ConsumerState<StaffStep> {
 
   @override
   Widget build(BuildContext context) {
-    final draft = ref.watch(clinicSetupDraftProvider.select((state) => state.draft));
-    final confirmedIds = ref.watch(clinicSetupDraftProvider.select((state) => state.confirmedStaffIds));
-    final focusStaffId = ref.watch(clinicSetupDraftProvider.select((state) => state.validationFocusEntityId));
-    final notifier = ref.read(clinicSetupDraftProvider.notifier);
+    final draft = ref.watch(clinicSetupProvider.select((state) => state.draft));
+    final confirmedIds = ref.watch(clinicSetupProvider.select((state) => state.confirmedStaffIds));
+    final focusStaffId = ref.watch(clinicSetupProvider.select((state) => state.validationFocusEntityId));
+    final notifier = ref.read(clinicSetupProvider.notifier);
     final colors = context.appColors;
 
     if (focusStaffId != null && focusStaffId != _activeStaffId) {
@@ -195,7 +195,7 @@ class _StaffStepState extends ConsumerState<StaffStep> {
 
     void removeStaff(String id) {
       notifier.removeStaff(id);
-      final staff = ref.read(clinicSetupDraftProvider).draft.staff;
+      final staff = ref.read(clinicSetupProvider).draft.staff;
       setState(() {
         if (staff.isEmpty) {
           final newMember = notifier.addStaff();

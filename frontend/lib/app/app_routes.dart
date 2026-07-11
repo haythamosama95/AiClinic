@@ -25,12 +25,11 @@ abstract final class AppRoutes {
   /// Clinic workstation settings (authenticated, setup complete).
   static const settings = '/settings';
   static const settingsGeneral = '/settings/general';
-  static const settingsSetup = '/settings/setup';
   static const settingsNotifications = '/settings/notifications';
   static const settingsIdleTimeout = '/settings/idle-timeout';
 
   /// Settings page screen segments (web `SETTINGS_SCREENS` ids).
-  static const settingsScreenSegments = <String>['general', 'setup', 'branches', 'staff', 'services', 'notifications'];
+  static const settingsScreenSegments = <String>['general', 'branches', 'staff', 'services', 'notifications'];
 
   /// Resolves the active settings screen id from a location path (web `resolveScreen`).
   static String settingsScreenFromPath(String path) {
@@ -179,7 +178,6 @@ abstract final class AppRoutes {
   /// Static paths for each settings screen tab.
   static const settingsScreenPaths = <String>[
     settingsGeneral,
-    settingsSetup,
     settingsBranches,
     settingsStaff,
     settingsServices,

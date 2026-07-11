@@ -98,7 +98,7 @@ void main() {
 
       expect(
         AuthRouteGuard.billingRouteRedirect(location: AppRoutes.billingInvoices, auth: auth),
-        AppRoutes.settingsSetup,
+        AppRoutes.bootstrap,
       );
     });
   });

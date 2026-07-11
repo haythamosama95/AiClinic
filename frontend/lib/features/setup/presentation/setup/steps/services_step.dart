@@ -15,11 +15,11 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_field_hints.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
-import 'package:ai_clinic/features/settings/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
 
 /// Services step (web `ServicesStep`).
 class ServicesStep extends ConsumerStatefulWidget {
@@ -45,7 +45,7 @@ class _ServicesStepState extends ConsumerState<ServicesStep> {
     }
   }
 
-  Future<void> _submitService(List<ServiceDraft> services, String serviceId, ClinicSetupDraftNotifier notifier) async {
+  Future<void> _submitService(List<ServiceDraft> services, String serviceId, ClinicSetupNotifier notifier) async {
     if (_savingServiceId != null) return;
 
     setState(() => _savingServiceId = serviceId);
@@ -77,7 +77,7 @@ class _ServicesStepState extends ConsumerState<ServicesStep> {
     notifier.confirmService(serviceId);
   }
 
-  bool _validateAndConfirm(List<ServiceDraft> services, String serviceId, ClinicSetupDraftNotifier notifier) {
+  bool _validateAndConfirm(List<ServiceDraft> services, String serviceId, ClinicSetupNotifier notifier) {
     final index = services.indexWhere((service) => service.id == serviceId);
     if (index < 0) return true;
 
@@ -94,9 +94,9 @@ class _ServicesStepState extends ConsumerState<ServicesStep> {
 
   @override
   Widget build(BuildContext context) {
-    final draft = ref.watch(clinicSetupDraftProvider.select((state) => state.draft));
-    final confirmedIds = ref.watch(clinicSetupDraftProvider.select((state) => state.confirmedServiceIds));
-    final notifier = ref.read(clinicSetupDraftProvider.notifier);
+    final draft = ref.watch(clinicSetupProvider.select((state) => state.draft));
+    final confirmedIds = ref.watch(clinicSetupProvider.select((state) => state.confirmedServiceIds));
+    final notifier = ref.read(clinicSetupProvider.notifier);
     final colors = context.appColors;
     final currency = draft.organization.currency;
 
@@ -121,7 +121,7 @@ class _ServicesStepState extends ConsumerState<ServicesStep> {
     void removeService(String id) {
       notifier.removeService(id);
       setState(() => _localErrors = {});
-      if (ref.read(clinicSetupDraftProvider).draft.services.isEmpty) {
+      if (ref.read(clinicSetupProvider).draft.services.isEmpty) {
         notifier.addService();
       }
     }
