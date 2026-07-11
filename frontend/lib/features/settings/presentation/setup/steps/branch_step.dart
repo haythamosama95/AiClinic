@@ -144,8 +144,17 @@ class _BranchStepState extends State<BranchStep> {
       builder: (context, ref, _) {
         final draft = ref.watch(clinicSetupDraftProvider.select((state) => state.draft));
         final confirmedIds = ref.watch(clinicSetupDraftProvider.select((state) => state.confirmedBranchIds));
+        final focusBranchId = ref.watch(clinicSetupDraftProvider.select((state) => state.validationFocusEntityId));
         final notifier = ref.read(clinicSetupDraftProvider.notifier);
         final colors = context.appColors;
+
+        if (focusBranchId != null && focusBranchId != _activeBranchId) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() => _activeBranchId = focusBranchId);
+            notifier.clearValidationFocus();
+          });
+        }
 
         if (_activeBranchId.isEmpty && draft.branches.isNotEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {

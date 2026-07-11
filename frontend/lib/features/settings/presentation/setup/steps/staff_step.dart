@@ -132,8 +132,17 @@ class _StaffStepState extends ConsumerState<StaffStep> {
   Widget build(BuildContext context) {
     final draft = ref.watch(clinicSetupDraftProvider.select((state) => state.draft));
     final confirmedIds = ref.watch(clinicSetupDraftProvider.select((state) => state.confirmedStaffIds));
+    final focusStaffId = ref.watch(clinicSetupDraftProvider.select((state) => state.validationFocusEntityId));
     final notifier = ref.read(clinicSetupDraftProvider.notifier);
     final colors = context.appColors;
+
+    if (focusStaffId != null && focusStaffId != _activeStaffId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _activeStaffId = focusStaffId);
+        notifier.clearValidationFocus();
+      });
+    }
 
     if (_activeStaffId.isEmpty && draft.staff.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

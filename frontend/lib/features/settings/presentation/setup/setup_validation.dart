@@ -198,6 +198,39 @@ String? _validateServicePrice(double? price) {
 
 bool hasErrors(Map<String, String> errors) => errors.isNotEmpty;
 
+Set<String> confirmedBranchIdsForSetup(List<BranchDraft> branches) {
+  final confirmed = <String>{};
+  for (var index = 0; index < branches.length; index++) {
+    final branchErrors = validateSingleBranch(branches[index], index, allBranches: branches);
+    if (!hasErrors(branchErrors)) {
+      confirmed.add(branches[index].id);
+    }
+  }
+  return confirmed;
+}
+
+Set<String> confirmedStaffIdsForSetup(List<StaffDraft> staff, int branchCount) {
+  final confirmed = <String>{};
+  for (var index = 0; index < staff.length; index++) {
+    final memberErrors = validateSingleStaff(staff[index], index, allStaff: staff, branchCount: branchCount);
+    if (!hasErrors(memberErrors)) {
+      confirmed.add(staff[index].id);
+    }
+  }
+  return confirmed;
+}
+
+Set<String> confirmedServiceIdsForSetup(List<ServiceDraft> services) {
+  final confirmed = <String>{};
+  for (var index = 0; index < services.length; index++) {
+    final serviceErrors = validateSingleService(services[index], index, allServices: services);
+    if (!hasErrors(serviceErrors)) {
+      confirmed.add(services[index].id);
+    }
+  }
+  return confirmed;
+}
+
 Map<String, String> validateStep(int step, SetupDraft draft) {
   switch (step) {
     case 0:

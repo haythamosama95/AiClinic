@@ -74,12 +74,7 @@ const List<DayOfWeekMeta> DAYS_OF_WEEK = daysOfWeek;
 
 @immutable
 class WorkingDay {
-  const WorkingDay({
-    required this.day,
-    required this.enabled,
-    required this.openTime,
-    required this.closeTime,
-  });
+  const WorkingDay({required this.day, required this.enabled, required this.openTime, required this.closeTime});
 
   final DayId day;
   final bool enabled;
@@ -95,12 +90,7 @@ class WorkingDay {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'day': day,
-    'enabled': enabled,
-    'openTime': openTime,
-    'closeTime': closeTime,
-  };
+  Map<String, dynamic> toJson() => {'day': day, 'enabled': enabled, 'openTime': openTime, 'closeTime': closeTime};
 
   factory WorkingDay.fromJson(Map<String, dynamic> json) {
     return WorkingDay(
@@ -245,18 +235,10 @@ class ServiceDraft {
   final double? price;
 
   ServiceDraft copyWith({String? id, String? name, double? price, bool clearPrice = false}) {
-    return ServiceDraft(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      price: clearPrice ? null : (price ?? this.price),
-    );
+    return ServiceDraft(id: id ?? this.id, name: name ?? this.name, price: clearPrice ? null : (price ?? this.price));
   }
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'price': price,
-  };
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'price': price};
 
   factory ServiceDraft.fromJson(Map<String, dynamic> json) {
     final rawPrice = json['price'];
@@ -284,11 +266,7 @@ class OrganizationDraft {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'timezone': timezone,
-    'currency': currency,
-  };
+  Map<String, dynamic> toJson() => {'name': name, 'timezone': timezone, 'currency': currency};
 
   factory OrganizationDraft.fromJson(Map<String, dynamic> json) {
     return OrganizationDraft(
@@ -301,12 +279,7 @@ class OrganizationDraft {
 
 @immutable
 class SetupDraft {
-  const SetupDraft({
-    required this.organization,
-    required this.branches,
-    required this.staff,
-    required this.services,
-  });
+  const SetupDraft({required this.organization, required this.branches, required this.staff, required this.services});
 
   final OrganizationDraft organization;
   final List<BranchDraft> branches;
@@ -366,36 +339,12 @@ class SettingsScreenMeta {
 }
 
 const List<SettingsScreenMeta> settingsScreens = [
-  SettingsScreenMeta(
-    id: 'general',
-    label: 'General',
-    description: 'Organization profile and regional defaults',
-  ),
-  SettingsScreenMeta(
-    id: 'setup',
-    label: 'Setup',
-    description: 'Guided clinic configuration wizard',
-  ),
-  SettingsScreenMeta(
-    id: 'branches',
-    label: 'Branches',
-    description: 'Locations, hours, and contact details',
-  ),
-  SettingsScreenMeta(
-    id: 'staff',
-    label: 'Staff',
-    description: 'Team members, roles, and access',
-  ),
-  SettingsScreenMeta(
-    id: 'services',
-    label: 'Services',
-    description: 'Procedures and billable catalog',
-  ),
-  SettingsScreenMeta(
-    id: 'notifications',
-    label: 'Notifications',
-    description: 'Alerts and delivery preferences',
-  ),
+  SettingsScreenMeta(id: 'general', label: 'General', description: 'Organization profile and regional defaults'),
+  SettingsScreenMeta(id: 'setup', label: 'Setup', description: 'Guided clinic configuration wizard'),
+  SettingsScreenMeta(id: 'branches', label: 'Branches', description: 'Locations, hours, and contact details'),
+  SettingsScreenMeta(id: 'staff', label: 'Staff', description: 'Team members, roles, and access'),
+  SettingsScreenMeta(id: 'services', label: 'Services', description: 'Procedures and billable catalog'),
+  SettingsScreenMeta(id: 'notifications', label: 'Notifications', description: 'Alerts and delivery preferences'),
 ];
 
 /// Web export name: `SETTINGS_SCREENS`.
@@ -421,15 +370,23 @@ String _generateDraftEntityId() {
   return '${DateTime.now().microsecondsSinceEpoch}_$_draftEntityIdCounter';
 }
 
+/// Whether [id] was generated locally for an unsaved setup entity.
+///
+/// Hydrated backend rows use UUIDs; wizard-created rows use
+/// `<microsecondsSinceEpoch>_<counter>`.
+bool isSetupDraftEntityId(String id) {
+  final underscore = id.indexOf('_');
+  if (underscore <= 0) {
+    return false;
+  }
+  return RegExp(r'^\d+$').hasMatch(id.substring(0, underscore));
+}
+
 List<WorkingDay> createDefaultWorkingDays() {
   return DAYS_OF_WEEK
       .map(
-        (day) => WorkingDay(
-          day: day.id,
-          enabled: day.id != 'fri' && day.id != 'sat',
-          openTime: '09:00',
-          closeTime: '17:00',
-        ),
+        (day) =>
+            WorkingDay(day: day.id, enabled: day.id != 'fri' && day.id != 'sat', openTime: '09:00', closeTime: '17:00'),
       )
       .toList();
 }
@@ -458,20 +415,12 @@ StaffDraft createEmptyStaff() {
 }
 
 ServiceDraft createEmptyService() {
-  return ServiceDraft(
-    id: _generateDraftEntityId(),
-    name: '',
-    price: null,
-  );
+  return ServiceDraft(id: _generateDraftEntityId(), name: '', price: null);
 }
 
 SetupDraft createDefaultSetup() {
   return SetupDraft(
-    organization: const OrganizationDraft(
-      name: '',
-      timezone: 'Africa/Cairo',
-      currency: 'EGP',
-    ),
+    organization: const OrganizationDraft(name: '', timezone: 'Africa/Cairo', currency: 'EGP'),
     branches: [createEmptyBranch()],
     staff: [createEmptyStaff()],
     services: [createEmptyService()],

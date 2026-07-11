@@ -41,6 +41,15 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     final stepErrors = validateStep(step, draft);
 
     if (hasErrors(stepErrors)) {
+      final notifier = ref.read(clinicSetupDraftProvider.notifier);
+      switch (step) {
+        case 1:
+          notifier.revealBranchValidationErrors(stepErrors);
+        case 2:
+          notifier.revealStaffValidationErrors(stepErrors);
+        case 3:
+          notifier.revealServiceValidationErrors(stepErrors);
+      }
       setState(() => _errors = stepErrors);
       return;
     }

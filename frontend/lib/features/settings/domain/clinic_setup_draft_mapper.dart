@@ -1,6 +1,10 @@
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
+import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart';
+import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/settings/domain/organization_profile.dart';
+import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_branch_input.dart';
 import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_input.dart';
@@ -16,6 +20,113 @@ const _setupDayToWeekday = <String, BranchWeekday>{
   'sat': BranchWeekday.saturday,
   'sun': BranchWeekday.sunday,
 };
+
+const _weekdayToSetupDay = <BranchWeekday, String>{
+  BranchWeekday.monday: 'mon',
+  BranchWeekday.tuesday: 'tue',
+  BranchWeekday.wednesday: 'wed',
+  BranchWeekday.thursday: 'thu',
+  BranchWeekday.friday: 'fri',
+  BranchWeekday.saturday: 'sat',
+  BranchWeekday.sunday: 'sun',
+};
+
+List<WorkingDay> scheduleToWorkingDays(BranchWorkingSchedule? schedule) {
+  final resolved = schedule ?? BranchWorkingSchedule.defaultSchedule();
+  return resolved.days
+      .map(
+        (hours) => WorkingDay(
+          day: _weekdayToSetupDay[hours.day] ?? 'mon',
+          enabled: hours.isWorkingDay,
+          openTime: hours.openTime ?? '09:00',
+          closeTime: hours.closeTime ?? '17:00',
+        ),
+      )
+      .toList(growable: false);
+}
+
+/// Normalizes backend phone values to the 10-digit national format used by setup.
+String normalizeSetupNationalPhone(String? raw) {
+  final digits = raw?.replaceAll(RegExp(r'\D'), '') ?? '';
+  if (digits.isEmpty) {
+    return '';
+  }
+  if (digits.length == 10) {
+    return digits;
+  }
+  if (digits.length == 12 && digits.startsWith('20')) {
+    return digits.substring(2);
+  }
+  if (digits.length > 10) {
+    return digits.substring(digits.length - 10);
+  }
+  return digits;
+}
+
+OrganizationDraft organizationProfileToDraft(OrganizationProfile profile) {
+  return OrganizationDraft(
+    name: profile.name,
+    timezone: profile.timezone ?? 'Africa/Cairo',
+    currency: profile.currencyCode ?? 'EGP',
+  );
+}
+
+BranchDraft branchListItemToDraft(BranchListItem branch) {
+  return BranchDraft(
+    id: branch.id,
+    name: branch.name,
+    code: branch.code ?? '',
+    mobile: normalizeSetupNationalPhone(branch.phone),
+    mapLocation: branch.mapsUrl ?? '',
+    workingDays: scheduleToWorkingDays(branch.workingSchedule),
+  );
+}
+
+String staffRoleToDraftValue(StaffRole role) {
+  return switch (role) {
+    StaffRole.administrator => 'administrator',
+    StaffRole.labStaff => 'nurse',
+    StaffRole.doctor => 'doctor',
+    StaffRole.receptionist => 'receptionist',
+  };
+}
+
+StaffDraft staffListItemToDraft(StaffListItem staff) {
+  return StaffDraft(
+    id: staff.id,
+    name: staff.fullName,
+    mobile: normalizeSetupNationalPhone(staff.phone),
+    username: staff.username ?? '',
+    password: '',
+    role: staffRoleToDraftValue(staff.role),
+    branchIds: staff.branches.map((branch) => branch.id).whereType<String>().toList(growable: false),
+  );
+}
+
+ServiceDraft serviceListItemToDraft(ServiceListItem service) {
+  return ServiceDraft(id: service.serviceId, name: service.name, price: service.defaultPrice.asDouble);
+}
+
+/// Builds a setup wizard draft from steady-state backend entities.
+SetupDraft setupDraftFromBackend({
+  OrganizationProfile? organization,
+  List<BranchListItem> branches = const [],
+  List<StaffListItem> staff = const [],
+  List<ServiceListItem> services = const [],
+}) {
+  final organizationDraft = organization != null
+      ? organizationProfileToDraft(organization)
+      : const OrganizationDraft(name: '', timezone: 'Africa/Cairo', currency: 'EGP');
+
+  return SetupDraft(
+    organization: organizationDraft,
+    branches: branches.isNotEmpty ? branches.map(branchListItemToDraft).toList(growable: false) : [createEmptyBranch()],
+    staff: staff.isNotEmpty ? staff.map(staffListItemToDraft).toList(growable: false) : [createEmptyStaff()],
+    services: services.isNotEmpty
+        ? services.map(serviceListItemToDraft).toList(growable: false)
+        : [createEmptyService()],
+  );
+}
 
 BranchWorkingSchedule workingDaysToSchedule(List<WorkingDay> workingDays) {
   final byDayId = {for (final day in workingDays) day.day: day};

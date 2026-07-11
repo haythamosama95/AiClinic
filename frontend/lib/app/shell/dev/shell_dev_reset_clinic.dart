@@ -1,8 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:ai_clinic/app/app_routes.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/shell/dev/shell_dev_bootstrap_sign_in.dart';
 import 'package:ai_clinic/core/ui/components/app_dialog.dart';
+import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/features/settings/presentation/providers/clinic_setup_draft_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/setup_notifier.dart';
 
@@ -18,8 +23,8 @@ abstract final class ShellDevResetClinic {
 
   static const confirmationTitle = 'Reset clinic data?';
   static const confirmationMessage =
-      'This removes all organization and branch data from the server while keeping your bootstrap administrator login. '
-      'You will need to run setup again before using the clinic.';
+      'This removes all organization and branch data from the server. '
+      'You will be signed out and need to sign in again before running setup.';
 
   static Future<void> handleNavSelection(BuildContext context, WidgetRef ref) async {
     if (!isEnabled) {
@@ -51,6 +56,15 @@ abstract final class ShellDevResetClinic {
   }
 
   static Future<void> run(BuildContext context, WidgetRef ref, {VoidCallback? onSuccess}) async {
+    final signInError = await ShellDevBootstrapSignIn.ensureSignedIn(ref);
+    if (!context.mounted) {
+      return;
+    }
+    if (signInError != null) {
+      appToast(context, AppToastInput(message: signInError, variant: AppToastVariant.danger));
+      return;
+    }
+
     final ok = await ref.read(setupNotifierProvider.notifier).resetInstallationForDevelopment();
     if (!context.mounted) {
       return;
@@ -58,14 +72,18 @@ abstract final class ShellDevResetClinic {
 
     if (ok) {
       await ref.read(clinicSetupDraftProvider.notifier).resetSetup();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Clinic data reset.')));
+      await ref.read(authSessionProvider.notifier).signOut();
+      if (context.mounted) {
+        context.go(AppRoutes.login);
+        appToast(context, const AppToastInput(message: 'Clinic data reset.', variant: AppToastVariant.success));
+      }
       onSuccess?.call();
       return;
     }
 
     final errorMessage = ref.read(setupNotifierProvider).errorMessage;
     if (errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
+      appToast(context, AppToastInput(message: errorMessage, variant: AppToastVariant.danger));
     }
   }
 }

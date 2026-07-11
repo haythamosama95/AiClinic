@@ -24,7 +24,6 @@ import 'package:ai_clinic/app/presentation/placeholder_page.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/features/auth/presentation/dev/auth_dev_widgets.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_fill_dummy_clinic.dart';
-import 'package:ai_clinic/app/shell/dev/shell_dev_nav_handler.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_reset_clinic.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 
@@ -156,21 +155,11 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
   }
 
   Future<void> _devFillDummyClinic() async {
-    await ShellDevNavHandler.handleFromLogin(
-      context,
-      ref,
-      confirm: ShellDevFillDummyClinic.confirm,
-      run: ShellDevFillDummyClinic.run,
-    );
+    await ShellDevFillDummyClinic.handleNavSelection(context, ref);
   }
 
   Future<void> _devResetClinic() async {
-    await ShellDevNavHandler.handleFromLogin(
-      context,
-      ref,
-      confirm: ShellDevResetClinic.confirm,
-      run: ShellDevResetClinic.run,
-    );
+    await ShellDevResetClinic.handleNavSelection(context, ref);
   }
 
   void _showForgotPasswordMessage() {

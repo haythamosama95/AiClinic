@@ -1,5 +1,6 @@
 import 'package:ai_clinic/features/settings/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
+import 'package:ai_clinic/features/settings/presentation/setup/setup_validation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 BranchDraft _branch({
@@ -144,6 +145,16 @@ void main() {
       final errors = validateServices([_service(price: 12.345)]);
 
       expect(errors['service-0-price'], contains('two decimal places'));
+    });
+  });
+
+  group('confirmedBranchIdsForSetup', () {
+    test('confirms only branches that pass wizard validation', () {
+      final branches = [_branch(id: 'valid', code: 'MAIN'), _branch(id: 'invalid', code: 'SECOND', mapLocation: '')];
+
+      final confirmed = confirmedBranchIdsForSetup(branches);
+
+      expect(confirmed, {'valid'});
     });
   });
 }
