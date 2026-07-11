@@ -1067,3 +1067,4 @@ Column(
 ```
 
 **Affected files (fixed):** `app_dialog.dart`.
+
