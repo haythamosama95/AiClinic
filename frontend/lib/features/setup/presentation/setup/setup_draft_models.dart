@@ -220,7 +220,7 @@ class StaffDraft {
       mobile: json['mobile'] as String? ?? '',
       username: json['username'] as String? ?? '',
       password: json['password'] as String? ?? '',
-      role: json['role'] as String? ?? 'receptionist',
+      role: json['role'] as String? ?? '',
       branchIds: rawBranchIds?.map((id) => id as String).toList() ?? const [],
     );
   }
@@ -373,7 +373,7 @@ StaffDraft createEmptyStaff() {
     mobile: '',
     username: '',
     password: '',
-    role: 'receptionist',
+    role: '',
     branchIds: const [],
   );
 }

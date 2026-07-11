@@ -59,7 +59,7 @@ class StaffProfile {
 @immutable
 /// In-memory authenticated session context for routing and permission checks.
 class AuthSessionContext {
-  const AuthSessionContext({
+  AuthSessionContext({
     required this.staffProfile,
     required this.organizationId,
     required this.branchIds,
@@ -67,7 +67,7 @@ class AuthSessionContext {
     required this.permissions,
     required this.setupRequired,
     this.organizationTimezone,
-  });
+  }) : needsClinicSetup = _computeNeedsClinicSetup(setupRequired, organizationId);
 
   final StaffProfile staffProfile;
   final String? organizationId;
@@ -79,10 +79,10 @@ class AuthSessionContext {
   /// IANA timezone from the active organization (`organizations.timezone`).
   final String? organizationTimezone;
 
-  bool get hasBranchAssignment => branchIds.isNotEmpty;
-
   /// True when the clinic still needs first-time bootstrap (JWT flag or missing org).
-  bool get needsClinicSetup => setupRequired || organizationId == null || organizationId!.trim().isEmpty;
+  final bool needsClinicSetup;
+
+  bool get hasBranchAssignment => branchIds.isNotEmpty;
 
   /// True when organization bootstrap is complete.
   bool get hasProperClinicSetup => !needsClinicSetup;
@@ -110,5 +110,9 @@ class AuthSessionContext {
           ? this.organizationTimezone
           : organizationTimezone as String?,
     );
+  }
+
+  static bool _computeNeedsClinicSetup(bool setupRequired, String? organizationId) {
+    return setupRequired || organizationId == null || organizationId.trim().isEmpty;
   }
 }

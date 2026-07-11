@@ -227,7 +227,10 @@ class _SetupBody extends StatelessWidget {
             ),
           ),
         ],
-        if (!setupDone && canRunBootstrapSetup) ...[const SizedBox(height: AppSpacing.space6), const SetupWizard()],
+        if (!setupDone && canRunBootstrapSetup) ...[
+          if (showPageHeader) const SizedBox(height: AppSpacing.space6),
+          SetupWizard(embedded: !showPageHeader),
+        ],
       ],
     );
   }

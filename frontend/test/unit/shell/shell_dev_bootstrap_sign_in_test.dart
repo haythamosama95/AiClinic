@@ -2,8 +2,6 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_bootstrap_sign_in.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/domain/repositories/auth_repository.dart' as domain;
-import 'package:ai_clinic/features/auth/domain/usecases/auth_use_case_providers.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,7 +46,6 @@ void main() {
               },
             ),
           ),
-          signInUseCaseProvider.overrideWith((ref) => SignIn(ref.watch(authRepositoryProvider))),
         ],
       );
       addTearDown(container.dispose);

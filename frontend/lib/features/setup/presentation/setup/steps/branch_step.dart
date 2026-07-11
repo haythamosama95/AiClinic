@@ -16,6 +16,7 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_form_layout.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_branch_card.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
@@ -409,9 +410,9 @@ class _BranchForm extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.space4),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 640;
+          Builder(
+            builder: (context) {
+              final useTwoColumns = setupFormUseTwoColumns(context);
               final nameField = AppFormField(
                 id: '${branch.id}-name',
                 label: 'Branch name',
@@ -441,7 +442,7 @@ class _BranchForm extends StatelessWidget {
                 ),
               );
 
-              if (isWide) {
+              if (useTwoColumns) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

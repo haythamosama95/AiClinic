@@ -3,6 +3,7 @@ import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/features/auth/domain/permission_keys.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import '../../helpers/auth_test_support.dart';
+import '../../helpers/role_permission_seed.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

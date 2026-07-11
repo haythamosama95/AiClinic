@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/settings/presentation/screens/staff_screen.da
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
+import 'package:ai_clinic/app/navigation/login_query_params.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
@@ -45,7 +46,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refreshSignal,
     routes: [
       GoRoute(path: AppRoutes.login, builder: (context, state) => const LoginPage()),
-      GoRoute(path: AppRoutes.forgotPassword, redirect: (context, state) => '${AppRoutes.login}?forgot=1'),
+      // LoginPage should read [LoginQueryParams.forgotPasswordQueryKey] to show forgot-password UI.
+      GoRoute(
+        path: AppRoutes.forgotPassword,
+        redirect: (context, state) => LoginQueryParams.loginWithForgotPasswordIntent(),
+      ),
       ShellRoute(
         builder: (context, state, child) => AuthenticatedShell(child: child),
         routes: [
@@ -124,7 +129,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             },
             routes: [
               ShellRoute(
-                builder: (context, state, child) => SettingsPage(child: child),
+                builder: (context, state, child) => shellDevGatedPage(
+                  context,
+                  state,
+                  authenticatedPage: SettingsPage(child: child),
+                ),
                 routes: [
                   GoRoute(path: 'general', builder: (context, state) => const GeneralScreen()),
                   GoRoute(

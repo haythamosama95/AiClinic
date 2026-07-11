@@ -64,7 +64,7 @@ void main() {
 
     test('CAL-A07: refresh without branch shows selection error', () async {
       final container = createContainer(
-        const AuthSessionState(
+        AuthSessionState(
           status: AuthSessionStatus.authenticated,
           context: AuthSessionContext(
             staffProfile: StaffProfile(

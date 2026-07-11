@@ -55,7 +55,10 @@ abstract final class ShellNavConfig {
 
   static String? routeFor(String itemId) => _routesByItemId[itemId] ?? ShellDevNav.routeFor(itemId);
 
-  /// Shell placeholder routes reachable without signing in (scaffold preview).
+  /// Shell routes reachable without signing in during debug scaffold preview.
+  ///
+  /// Open-access design-system routes are included so the router allows navigation,
+  /// but [shouldUseUnauthenticatedPreviewPlaceholder] keeps them on live builders.
   static bool allowsUnauthenticatedPreview(String location) {
     if (ShellDevNav.allowsOpenAccess(location)) {
       return true;
@@ -63,6 +66,12 @@ abstract final class ShellNavConfig {
 
     final itemId = itemIdForLocation(location);
     return itemId != null && itemId != 'dev';
+  }
+
+  /// When true, shell child routes must render static placeholders instead of
+  /// authenticated feature pages (see auth review §2.2).
+  static bool shouldUseUnauthenticatedPreviewPlaceholder(String location) {
+    return allowsUnauthenticatedPreview(location) && !ShellDevNav.allowsOpenAccess(location);
   }
 
   static bool isSettingsLocation(String location) {

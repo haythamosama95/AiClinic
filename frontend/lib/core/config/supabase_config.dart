@@ -141,12 +141,46 @@ final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
 });
 
+/// Outcome of decoding a Supabase access-token JWT payload.
+sealed class AccessTokenClaimsDecodeResult {
+  const AccessTokenClaimsDecodeResult();
+
+  /// Claim map when decoding succeeded; empty for [AccessTokenClaimsExpired] and
+  /// [AccessTokenClaimsInvalid].
+  Map<String, dynamic> get claims => switch (this) {
+    AccessTokenClaimsSuccess(:final claims) => claims,
+    AccessTokenClaimsExpired() || AccessTokenClaimsInvalid() => const {},
+  };
+
+  bool get isSuccess => this is AccessTokenClaimsSuccess;
+}
+
+/// Valid, non-expired JWT with custom claims from `get_custom_claims`.
+final class AccessTokenClaimsSuccess extends AccessTokenClaimsDecodeResult {
+  const AccessTokenClaimsSuccess(this.claims);
+
+  @override
+  final Map<String, dynamic> claims;
+}
+
+/// JWT `exp` is in the past (clock skew, paused app, stale persisted session).
+final class AccessTokenClaimsExpired extends AccessTokenClaimsDecodeResult {
+  const AccessTokenClaimsExpired();
+}
+
+/// Malformed token, non-object payload, or other decode failure.
+final class AccessTokenClaimsInvalid extends AccessTokenClaimsDecodeResult {
+  const AccessTokenClaimsInvalid();
+}
+
 /// Decodes JWT custom claims issued by `get_custom_claims`.
-/// Returns empty map for expired or malformed tokens.
-Map<String, dynamic> decodeAccessTokenClaims(String accessToken) {
+///
+/// Distinguishes expiry from missing/invalid payloads so callers can sign out
+/// with an accurate failure category instead of treating expiry as missing claims.
+AccessTokenClaimsDecodeResult decodeAccessTokenClaims(String accessToken) {
   final parts = accessToken.split('.');
   if (parts.length < 2) {
-    return const {};
+    return const AccessTokenClaimsInvalid();
   }
 
   try {
@@ -154,7 +188,7 @@ Map<String, dynamic> decodeAccessTokenClaims(String accessToken) {
     final payload = utf8.decode(base64Url.decode(normalized));
     final decoded = jsonDecode(payload);
     if (decoded is! Map<String, dynamic>) {
-      return const {};
+      return const AccessTokenClaimsInvalid();
     }
 
     final exp = decoded['exp'];
@@ -162,14 +196,14 @@ Map<String, dynamic> decodeAccessTokenClaims(String accessToken) {
       final expiryDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true);
       if (expiryDate.isBefore(DateTime.now().toUtc())) {
         AppLog.warning('supabase.jwt.expired exp=$expiryDate');
-        return const {};
+        return const AccessTokenClaimsExpired();
       }
     }
 
-    return decoded;
+    return AccessTokenClaimsSuccess(decoded);
   } on FormatException {
-    return const {};
+    return const AccessTokenClaimsInvalid();
   } on Exception {
-    return const {};
+    return const AccessTokenClaimsInvalid();
   }
 }

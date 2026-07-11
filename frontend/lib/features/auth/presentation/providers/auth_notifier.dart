@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/core/logging/app_log.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/auth_use_case_providers.dart';
+import 'package:ai_clinic/core/utils/copy_with_sentinel.dart';
+import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 
@@ -19,6 +22,19 @@ const String kSignInNotReadyMessage = 'Clinic services are still starting. Wait 
 /// Shown when staff request a password reset from the login screen.
 const String kForgotPasswordMessage = 'To reset your password, contact your clinic administrator.';
 
+/// Shown when post-login session resolution exceeds [kPostLoginResolutionTimeout].
+const String kPostLoginResolutionTimeoutMessage =
+    'Sign-in is taking longer than expected. If this continues after a backend update, sign out, restart the app, and try again.';
+
+/// Documented GoTrue code for invalid password sign-in (not present on [ErrorCode] enum).
+const String _kInvalidCredentialsCode = 'invalid_credentials';
+
+/// Maximum time to wait for [authSessionProvider] to settle after sign-in.
+///
+/// Replaces the former poll loop (`kPostLoginResolutionMaxAttempts` ×
+/// `kPostLoginResolutionPollInterval`).
+const Duration kPostLoginResolutionTimeout = Duration(seconds: 3);
+
 @immutable
 class AuthUiState {
   const AuthUiState({this.isSubmitting = false, this.errorMessage, this.isInfoMessage = false});
@@ -27,11 +43,15 @@ class AuthUiState {
   final String? errorMessage;
   final bool isInfoMessage;
 
-  AuthUiState copyWith({bool? isSubmitting, String? errorMessage, bool? isInfoMessage, bool clearError = false}) {
+  AuthUiState copyWith({
+    bool? isSubmitting,
+    Object? errorMessage = copyWithSentinel,
+    bool? isInfoMessage,
+  }) {
     return AuthUiState(
       isSubmitting: isSubmitting ?? this.isSubmitting,
-      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-      isInfoMessage: clearError ? false : (isInfoMessage ?? this.isInfoMessage),
+      errorMessage: identical(errorMessage, copyWithSentinel) ? this.errorMessage : errorMessage as String?,
+      isInfoMessage: isInfoMessage ?? this.isInfoMessage,
     );
   }
 }
@@ -51,17 +71,17 @@ class AuthNotifier extends Notifier<AuthUiState> {
   }
 
   Future<void> signIn({required String username, required String password}) async {
-    final usernameError = validateStaffUsername(username);
-    if (usernameError != null || password.isEmpty) {
+    if (!validateCredentials(username: username, password: password)) {
+      final usernameError = validateStaffUsername(username);
       state = state.copyWith(errorMessage: usernameError ?? 'Password is required.');
       return;
     }
 
-    state = state.copyWith(isSubmitting: true, clearError: true);
+    state = state.copyWith(isSubmitting: true, errorMessage: null, isInfoMessage: false);
 
     try {
       await ref.read(authSessionProvider.notifier).ensureReadyForSignIn();
-      await ref.read(signInUseCaseProvider)(username: username, password: password);
+      await ref.read(authRepositoryProvider).signIn(username: username, password: password);
       await ref.read(authSessionProvider.notifier).syncAfterSignIn();
       await _waitForPostLoginResolution();
     } on AuthException catch (error) {
@@ -77,34 +97,73 @@ class AuthNotifier extends Notifier<AuthUiState> {
   }
 
   static String _authExceptionCategory(AuthException error) {
-    final details = '${error.code ?? ''} ${error.message}'.toLowerCase();
-    if (details.contains('invalid') || details.contains('credential') || details.contains('password')) {
+    if (_isInvalidCredentialsError(error)) {
       return 'invalid_credentials';
     }
-    if (details.contains('network') || details.contains('503') || details.contains('timeout')) {
+    if (_isUnavailableAuthError(error)) {
       return 'unavailable';
     }
     return 'auth_error';
   }
 
   static String _unexpectedErrorCategory(Object error) {
-    final details = error.toString().toLowerCase();
-    if (details.contains('staff claims') || details.contains('staff profile')) {
+    if (_isStaffProvisioningError(error)) {
       return 'missing_staff_permissions';
     }
-    if (details.contains('postgrest') || details.contains('jwt') || details.contains('permission denied')) {
+    if (_isUnavailableInfrastructureError(error)) {
       return 'unavailable';
     }
     return 'unexpected';
   }
 
-  String _messageForUnexpectedSignInError(Object error) {
-    final details = error.toString().toLowerCase();
-    if (details.contains('staff claims') || details.contains('staff profile')) {
-      return 'This account is missing clinic staff permissions. Contact your clinic administrator.';
+  static bool _isInvalidCredentialsError(AuthException error) {
+    final code = error.code;
+    if (code != null) {
+      if (code == _kInvalidCredentialsCode || code == ErrorCode.userNotFound.code) {
+        return true;
+      }
+      return false;
     }
 
-    if (details.contains('postgrest') || details.contains('jwt') || details.contains('permission denied')) {
+    final message = error.message.toLowerCase();
+    return message.contains('invalid login credentials') || message.contains('invalid_grant');
+  }
+
+  static bool _isUnavailableAuthError(AuthException error) {
+    final code = error.code;
+    if (code != null) {
+      return const {
+        ErrorCode.overRequestRateLimit,
+        ErrorCode.overEmailSendRateLimit,
+        ErrorCode.overSmsSendRateLimit,
+        ErrorCode.requestTimeout,
+        ErrorCode.hookTimeout,
+        ErrorCode.hookTimeoutAfterRetry,
+        ErrorCode.unexpectedFailure,
+        ErrorCode.captchaFailed,
+      }.any((value) => value.code == code);
+    }
+
+    if (error is AuthRetryableFetchException) {
+      return true;
+    }
+
+    final details = '${error.statusCode ?? ''} ${error.message}'.toLowerCase();
+    return details.contains('network') || details.contains('503') || details.contains('timeout');
+  }
+
+  static bool _isStaffProvisioningError(Object error) {
+    final details = error.toString().toLowerCase();
+    return details.contains('staff claims') || details.contains('staff profile');
+  }
+
+  static bool _isUnavailableInfrastructureError(Object error) {
+    final details = error.toString().toLowerCase();
+    return details.contains('postgrest') || details.contains('jwt') || details.contains('permission denied');
+  }
+
+  String _messageForUnexpectedSignInError(Object error) {
+    if (_isStaffProvisioningError(error) || _isUnavailableInfrastructureError(error)) {
       return kSignInUnavailableMessage;
     }
 
@@ -112,8 +171,7 @@ class AuthNotifier extends Notifier<AuthUiState> {
   }
 
   String _messageForAuthException(AuthException error) {
-    final details = '${error.code ?? ''} ${error.message}'.toLowerCase();
-    if (details.contains('invalid') || details.contains('credential') || details.contains('password')) {
+    if (_isInvalidCredentialsError(error)) {
       return kGenericSignInFailureMessage;
     }
 
@@ -121,28 +179,56 @@ class AuthNotifier extends Notifier<AuthUiState> {
   }
 
   Future<void> _waitForPostLoginResolution() async {
-    const attempts = 150;
-    for (var i = 0; i < attempts; i++) {
-      final session = ref.read(authSessionProvider);
+    final completer = Completer<void>();
+    late final ProviderSubscription<AuthSessionState> subscription;
+
+    void onSessionUpdate(AuthSessionState session) {
       if (session.status == AuthSessionStatus.authenticated) {
         state = const AuthUiState();
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
         return;
       }
 
       if (session.status == AuthSessionStatus.unauthenticated && session.failureMessage != null) {
         state = state.copyWith(isSubmitting: false, errorMessage: session.failureMessage);
-        return;
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
       }
+    }
 
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+    subscription = ref.listen<AuthSessionState>(
+      authSessionProvider,
+      (_, next) => onSessionUpdate(next),
+      fireImmediately: true,
+    );
+
+    try {
+      await completer.future.timeout(kPostLoginResolutionTimeout);
+    } on TimeoutException {
+      await _handlePostLoginResolutionTimeout();
+    } finally {
+      subscription.close();
+    }
+  }
+
+  Future<void> _handlePostLoginResolutionTimeout() async {
+    final session = ref.read(authSessionProvider);
+    if (session.status == AuthSessionStatus.authenticated) {
+      state = const AuthUiState();
+      return;
+    }
+
+    if (session.status == AuthSessionStatus.unauthenticated && session.failureMessage != null) {
+      state = state.copyWith(isSubmitting: false, errorMessage: session.failureMessage);
+      return;
     }
 
     AppLog.warning('auth.sign_in.failed category=post_login_timeout');
-    state = state.copyWith(
-      isSubmitting: false,
-      errorMessage:
-          'Sign-in is taking longer than expected. If this continues after a backend update, sign out, restart the app, and try again.',
-    );
+    await ref.read(authSessionProvider.notifier).signOut();
+    state = state.copyWith(isSubmitting: false, errorMessage: kPostLoginResolutionTimeoutMessage);
   }
 
   /// Shows inline guidance when staff tap "Forgot your password?" on the login screen.
@@ -153,7 +239,7 @@ class AuthNotifier extends Notifier<AuthUiState> {
   /// Clears a displayed sign-in error without affecting an in-flight submission.
   void clearSignInError() {
     if (state.errorMessage == null) return;
-    state = state.copyWith(clearError: true);
+    state = state.copyWith(errorMessage: null, isInfoMessage: false);
   }
 
   /// Resets transient sign-in UI state when leaving the login screen.

@@ -18,93 +18,24 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
-import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_form_layout.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
 
 /// Services step (web `ServicesStep`).
-class ServicesStep extends ConsumerStatefulWidget {
+class ServicesStep extends ConsumerWidget {
   const ServicesStep({required this.errors, super.key});
 
   final Map<String, String> errors;
 
   @override
-  ConsumerState<ServicesStep> createState() => _ServicesStepState();
-}
-
-class _ServicesStepState extends ConsumerState<ServicesStep> {
-  Map<String, String> _localErrors = {};
-  String? _savingServiceId;
-
-  Map<String, String> get _mergedErrors => {...widget.errors, ..._localErrors};
-
-  Future<void> _ensureMinLoadingDuration(DateTime startedAt) async {
-    final elapsed = DateTime.now().difference(startedAt);
-    final remaining = kSetupSaveMinLoadingDuration - elapsed;
-    if (remaining > Duration.zero) {
-      await Future<void>.delayed(remaining);
-    }
-  }
-
-  Future<void> _submitService(List<ServiceDraft> services, String serviceId, ClinicSetupNotifier notifier) async {
-    if (_savingServiceId != null) return;
-
-    setState(() => _savingServiceId = serviceId);
-    final startedAt = DateTime.now();
-    await Future<void>.delayed(Duration.zero);
-
-    final index = services.indexWhere((service) => service.id == serviceId);
-    if (index < 0) {
-      if (mounted) setState(() => _savingServiceId = null);
-      return;
-    }
-
-    final serviceErrors = validateSingleService(services[index], index, allServices: services);
-    await _ensureMinLoadingDuration(startedAt);
-    if (!mounted) return;
-
-    if (hasErrors(serviceErrors)) {
-      setState(() {
-        _localErrors = serviceErrors;
-        _savingServiceId = null;
-      });
-      return;
-    }
-
-    setState(() {
-      _localErrors = {};
-      _savingServiceId = null;
-    });
-    notifier.confirmService(serviceId);
-  }
-
-  bool _validateAndConfirm(List<ServiceDraft> services, String serviceId, ClinicSetupNotifier notifier) {
-    final index = services.indexWhere((service) => service.id == serviceId);
-    if (index < 0) return true;
-
-    final serviceErrors = validateSingleService(services[index], index, allServices: services);
-    if (hasErrors(serviceErrors)) {
-      setState(() => _localErrors = serviceErrors);
-      return false;
-    }
-
-    setState(() => _localErrors = {});
-    notifier.confirmService(serviceId);
-    return true;
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(clinicSetupProvider.select((state) => state.draft));
-    final confirmedIds = ref.watch(clinicSetupProvider.select((state) => state.confirmedServiceIds));
     final notifier = ref.read(clinicSetupProvider.notifier);
     final colors = context.appColors;
     final currency = draft.organization.currency;
 
     void updateServiceName(String id, String name) {
       notifier.updateService(id, name: name);
-      if (confirmedIds.contains(id)) {
-        notifier.unconfirmService(id);
-      }
     }
 
     void updateServicePrice(String id, double? price) {
@@ -113,29 +44,17 @@ class _ServicesStepState extends ConsumerState<ServicesStep> {
       } else {
         notifier.updateService(id, price: price);
       }
-      if (confirmedIds.contains(id)) {
-        notifier.unconfirmService(id);
-      }
     }
 
     void removeService(String id) {
       notifier.removeService(id);
-      setState(() => _localErrors = {});
       if (ref.read(clinicSetupProvider).draft.services.isEmpty) {
         notifier.addService();
       }
     }
 
     void addService() {
-      if (draft.services.isNotEmpty) {
-        final lastService = draft.services.last;
-        if (!confirmedIds.contains(lastService.id) && !_validateAndConfirm(draft.services, lastService.id, notifier)) {
-          return;
-        }
-      }
-
       notifier.addService();
-      setState(() => _localErrors = {});
     }
 
     return Column(
@@ -174,22 +93,19 @@ class _ServicesStepState extends ConsumerState<ServicesStep> {
           ],
         ),
         const SizedBox(height: AppSpacing.space6),
-        if (_mergedErrors['_form'] != null) ...[
+        if (errors['_form'] != null) ...[
           Semantics(
             liveRegion: true,
-            child: Text(
-              _mergedErrors['_form']!,
-              style: AppTypography.body(context).copyWith(color: colors.statusDangerFg),
-            ),
+            child: Text(errors['_form']!, style: AppTypography.body(context).copyWith(color: colors.statusDangerFg)),
           ),
           const SizedBox(height: AppSpacing.space4),
         ],
         AppCard(
           variant: CardVariant.flat,
           padding: CardPadding.lg,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 640;
+          child: Builder(
+            builder: (context) {
+              final isWide = setupFormUseTwoColumns(context);
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -219,8 +135,6 @@ class _ServicesStepState extends ConsumerState<ServicesStep> {
                           ),
                           const SizedBox(width: AppSpacing.space3),
                           SizedBox(width: appInputMetrics(context, AppInputSize.md).height),
-                          const SizedBox(width: AppSpacing.space3),
-                          SizedBox(width: appInputMetrics(context, AppInputSize.md).height),
                         ],
                       ),
                     ),
@@ -231,14 +145,11 @@ class _ServicesStepState extends ConsumerState<ServicesStep> {
                       service: draft.services[index],
                       index: index,
                       currency: currency,
-                      errors: _mergedErrors,
+                      errors: errors,
                       isWide: isWide,
-                      isConfirmed: confirmedIds.contains(draft.services[index].id),
-                      isSaving: _savingServiceId == draft.services[index].id,
                       showDivider: index < draft.services.length - 1,
                       onUpdateName: (name) => updateServiceName(draft.services[index].id, name),
                       onUpdatePrice: (price) => updateServicePrice(draft.services[index].id, price),
-                      onSubmit: () => _submitService(draft.services, draft.services[index].id, notifier),
                       onRemove: () => removeService(draft.services[index].id),
                     ),
                   ],
@@ -269,12 +180,9 @@ class _ServiceRow extends StatelessWidget {
     required this.currency,
     required this.errors,
     required this.isWide,
-    required this.isConfirmed,
-    required this.isSaving,
     required this.showDivider,
     required this.onUpdateName,
     required this.onUpdatePrice,
-    required this.onSubmit,
     required this.onRemove,
   });
 
@@ -283,12 +191,9 @@ class _ServiceRow extends StatelessWidget {
   final String currency;
   final Map<String, String> errors;
   final bool isWide;
-  final bool isConfirmed;
-  final bool isSaving;
   final bool showDivider;
   final ValueChanged<String> onUpdateName;
   final ValueChanged<double?> onUpdatePrice;
-  final VoidCallback onSubmit;
   final VoidCallback onRemove;
 
   @override
@@ -325,14 +230,6 @@ class _ServiceRow extends StatelessWidget {
 
     final inputHeight = appInputMetrics(context, AppInputSize.md).height;
 
-    final confirmButton = AppIconButton(
-      icon: const Icon(Icons.check, size: 16),
-      label: isConfirmed ? 'Service saved' : 'Save service',
-      variant: AppIconButtonVariant.primary,
-      dimension: inputHeight,
-      onPressed: isSaving ? null : onSubmit,
-    );
-
     final removeButton = AppIconButton(
       icon: const Icon(Icons.delete_outline, size: 16),
       label: 'Remove service',
@@ -354,11 +251,6 @@ class _ServiceRow extends StatelessWidget {
           const SizedBox(width: AppSpacing.space3),
           Padding(
             padding: EdgeInsets.only(top: actionTopInset),
-            child: confirmButton,
-          ),
-          const SizedBox(width: AppSpacing.space3),
-          Padding(
-            padding: EdgeInsets.only(top: actionTopInset),
             child: removeButton,
           ),
         ],
@@ -372,13 +264,7 @@ class _ServiceRow extends StatelessWidget {
           const SizedBox(height: AppSpacing.space3),
           priceField,
           const SizedBox(height: AppSpacing.space3),
-          Row(
-            children: [
-              confirmButton,
-              const SizedBox(width: AppSpacing.space2),
-              removeButton,
-            ],
-          ),
+          Align(alignment: AlignmentDirectional.centerEnd, child: removeButton),
         ],
       );
     }

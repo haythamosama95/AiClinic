@@ -227,21 +227,23 @@ class _AppMultiSelectState extends State<AppMultiSelect> {
               disabled: widget.disabled,
               focused: _focused,
             ),
-            child: Wrap(
-              spacing: AppSpacing.space1,
-              runSpacing: AppSpacing.space1,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final item in widget.value)
-                  AppChip(
-                    removable: true,
-                    disabled: widget.disabled,
-                    onRemove: () => _remove(item.id),
-                    child: Text(item.label),
+            child: widget.value.isEmpty
+                ? field
+                : Wrap(
+                    spacing: AppSpacing.space1,
+                    runSpacing: AppSpacing.space1,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      for (final item in widget.value)
+                        AppChip(
+                          removable: true,
+                          disabled: widget.disabled,
+                          onRemove: () => _remove(item.id),
+                          child: Text(item.label),
+                        ),
+                      if (_showQueryField) SizedBox(width: 72, child: field),
+                    ],
                   ),
-                if (_showQueryField) SizedBox(width: 72, child: field),
-              ],
-            ),
           ),
         ),
       ),

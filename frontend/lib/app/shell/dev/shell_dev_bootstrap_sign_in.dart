@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/features/auth/domain/usecases/auth_use_case_providers.dart';
+import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/presentation/dev/auth_dev_widgets.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 
@@ -29,7 +29,7 @@ abstract final class ShellDevBootstrapSignIn {
 
     try {
       await read(authSessionProvider.notifier).ensureReadyForSignIn();
-      await read(signInUseCaseProvider)(
+      await read(authRepositoryProvider).signIn(
         username: AuthDevBootstrapCredentials.username,
         password: AuthDevBootstrapCredentials.password,
       );

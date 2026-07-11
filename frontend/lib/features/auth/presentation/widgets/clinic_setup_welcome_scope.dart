@@ -4,13 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/auth/presentation/providers/clinic_setup_welcome_shown_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/clinic_setup_welcome_dialog.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/clinic_setup_complete_dialog.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/clinic_setup_dialog.dart';
-
-/// Tracks whether the welcome dialog was shown for the current signed-in spell.
-bool _clinicSetupWelcomeShown = false;
 
 /// Prevents overlapping setup-flow presentations.
 bool _clinicSetupFlowRunning = false;
@@ -60,10 +58,12 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
       return;
     }
 
+    final staffMemberId = session.staffProfile.staffMemberId;
+    final welcomeShownNotifier = ref.read(clinicSetupWelcomeShownProvider(staffMemberId).notifier);
+
     _clinicSetupFlowRunning = true;
     try {
-      if (!_clinicSetupWelcomeShown) {
-        _clinicSetupWelcomeShown = true;
+      if (welcomeShownNotifier.tryMarkShown()) {
         await ClinicSetupWelcomeDialog.show(context);
       }
 
@@ -98,9 +98,20 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
       }
 
       if (previous?.isAuthenticated == true && !next.isAuthenticated) {
-        _clinicSetupWelcomeShown = false;
+        final staffMemberId = previous?.context?.staffProfile.staffMemberId;
+        if (staffMemberId != null) {
+          ref.invalidate(clinicSetupWelcomeShownProvider(staffMemberId));
+        }
         _clinicSetupCelebrationShown = false;
         return;
+      }
+
+      final previousStaffMemberId = previous?.context?.staffProfile.staffMemberId;
+      final nextStaffMemberId = next.context?.staffProfile.staffMemberId;
+      if (previousStaffMemberId != null &&
+          nextStaffMemberId != null &&
+          previousStaffMemberId != nextStaffMemberId) {
+        ref.invalidate(clinicSetupWelcomeShownProvider(previousStaffMemberId));
       }
 
       final wasLocked = previous?.context?.needsClinicSetup ?? false;

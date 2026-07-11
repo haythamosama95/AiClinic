@@ -819,9 +819,36 @@ LayoutBuilder(
 
 **Symptom:** Console exception after successful login redirect — "Bad state: Using `ref` when a widget is about to or has been unmounted is unsafe" at `_LoginPageState.dispose` when clearing sign-in UI state.
 
-**Cause:** `dispose()` called `ref.read(authNotifierProvider.notifier).resetSignInForm()`. Same Riverpod lifecycle rule as entry #29: `ref` is invalid after deactivation, and provider writes during `finalizeTree` are unsafe.
+**Cause:** `dispose()` called `ref.read(authSessionProvider)` and/or `ref.read(authNotifierProvider.notifier).resetSignInForm()`. Same Riverpod lifecycle rule as entry #29: `ref` is invalid after deactivation, and provider writes during `finalizeTree` are unsafe.
 
-**Fix:** Cache `AuthNotifier` in `initState` and defer `resetSignInForm()` with `Future(() => …)`:
+**Fix:** Cache `AuthNotifier` in `initState` (never `ref.read` in `dispose`). Track `isAuthenticated` with `ref.listenManual(authSessionProvider, …)` into a field. Defer `resetSignInForm()` with `Future(() => …)` only when the cached flag is still false:
+
+```dart
+late final AuthNotifier _authNotifier;
+ProviderSubscription<AuthSessionState>? _authSessionSub;
+var _isAuthenticated = false;
+
+@override
+void initState() {
+  super.initState();
+  _authNotifier = ref.read(authNotifierProvider.notifier);
+  _isAuthenticated = ref.read(authSessionProvider).isAuthenticated;
+  _authSessionSub = ref.listenManual(
+    authSessionProvider,
+    (_, next) => _isAuthenticated = next.isAuthenticated,
+  );
+}
+
+@override
+void dispose() {
+  _authSessionSub?.close();
+  if (!_isAuthenticated) {
+    final notifier = _authNotifier;
+    Future(() => notifier.resetSignInForm());
+  }
+  // … dispose controllers
+}
+```
 
 **Affected files (fixed):** `login_page.dart`.
 

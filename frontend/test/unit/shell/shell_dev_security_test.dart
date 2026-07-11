@@ -29,6 +29,26 @@ void main() {
       }
     });
 
+    test('DV-S-004: open access routes are design-system only', () {
+      ShellDevNav.assertOpenAccessRoutesAreDesignSystemOnly();
+
+      for (final route in ShellDevNav.openAccessRoutes) {
+        expect(ShellDevNav.isValidOpenAccessRoute(route), isTrue);
+        expect(ShellDevNav.isDesignSystemRoute(route), isTrue);
+      }
+
+      const productionRoutes = [
+        AppRoutes.home,
+        AppRoutes.settings,
+        AppRoutes.patients,
+        AppRoutes.login,
+      ];
+      for (final route in productionRoutes) {
+        expect(ShellDevNav.openAccessRoutes, isNot(contains(route)));
+        expect(ShellDevNav.isValidOpenAccessRoute(route), isFalse);
+      }
+    });
+
     test('DV-S-002: dev action items visible in debug footer nav', () {
       if (!kDebugMode) {
         return;

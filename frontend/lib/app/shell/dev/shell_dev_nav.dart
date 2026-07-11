@@ -14,12 +14,38 @@ abstract final class ShellDevNav {
 
   static const Map<String, String> _routesByItemId = {themeShowcaseId: AppRoutes.foundationDemo};
 
+  /// Routes that bypass auth entirely in debug builds.
+  ///
+  /// Must contain **only** design-system paths. Production shell routes must never
+  /// be added here — use [ShellNavConfig.allowsUnauthenticatedPreview] for scaffold
+  /// preview instead (those routes still render static placeholders).
+  static const Set<String> openAccessRoutes = {AppRoutes.foundationDemo};
+
   static bool get isEnabled => kDebugMode;
 
   static bool isDesignSystemRoute(String location) => location == AppRoutes.foundationDemo;
 
+  /// Returns true when [route] may be registered in [openAccessRoutes].
+  static bool isValidOpenAccessRoute(String route) => isDesignSystemRoute(route);
+
   /// Debug-only: design system page is reachable without login and startup view locks.
-  static bool allowsOpenAccess(String location) => kDebugMode && isDesignSystemRoute(location);
+  ///
+  /// Uses exact path matching on [openAccessRoutes] so prefix drift cannot open
+  /// production routes by mistake.
+  static bool allowsOpenAccess(String location) {
+    if (!kDebugMode) {
+      return false;
+    }
+    return openAccessRoutes.contains(location);
+  }
+
+  /// Debug assert: every open-access route is a design-system path.
+  static void assertOpenAccessRoutesAreDesignSystemOnly() {
+    assert(
+      openAccessRoutes.every(isValidOpenAccessRoute),
+      'ShellDevNav.openAccessRoutes must only contain design-system paths.',
+    );
+  }
 
   static List<String> get footerItemIds => [themeShowcaseId, ...actionItemIds];
 

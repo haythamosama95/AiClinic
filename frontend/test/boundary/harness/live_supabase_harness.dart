@@ -68,7 +68,7 @@ class LiveSupabaseHarness {
       if (session == null) {
         markTestSkipped('Bootstrap admin sign-in failed; check auth seed.');
       }
-      final claims = decodeAccessTokenClaims(session!.accessToken);
+      final claims = decodeAccessTokenClaims(session!.accessToken).claims;
       if (claims['staff_member_id'] == null) {
         markTestSkipped(
           'JWT missing staff_member_id. Enable GoTrue custom_access_token hook on local auth '

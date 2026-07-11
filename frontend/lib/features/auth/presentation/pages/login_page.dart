@@ -20,9 +20,12 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
-import 'package:ai_clinic/app/presentation/placeholder_page.dart';
-import 'package:ai_clinic/app/shell/authenticated_shell.dart';
+import 'package:go_router/go_router.dart';
+
+import 'package:ai_clinic/app/navigation/login_query_params.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/dev/auth_dev_widgets.dart';
+import 'package:ai_clinic/features/auth/presentation/widgets/login_static_backdrop.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_fill_dummy_clinic.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_reset_clinic.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
@@ -92,14 +95,19 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
   late final TextEditingController _passwordController;
   late final FocusNode _passwordFocusNode;
   late final AuthNotifier _authNotifier;
+  ProviderSubscription<AuthSessionState>? _authSessionSub;
   final _submitFocusNode = FocusNode();
 
   var _enterStarted = false;
+  var _forgotQueryHandled = false;
+  var _isAuthenticated = false;
 
   @override
   void initState() {
     super.initState();
     _authNotifier = ref.read(authNotifierProvider.notifier);
+    _isAuthenticated = ref.read(authSessionProvider).isAuthenticated;
+    _authSessionSub = ref.listenManual(authSessionProvider, (_, next) => _isAuthenticated = next.isAuthenticated);
     _enterController = AnimationController(vsync: this, duration: AppMotion.resolveDuration(AppMotionPreset.modal));
     _usernameController = TextEditingController();
     _passwordController = TextEditingController();
@@ -116,12 +124,29 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
     final reducedMotion = AppMotion.prefersReducedMotion(context);
     _enterController.duration = AppMotion.resolveDuration(AppMotionPreset.modal, reducedMotion: reducedMotion);
     _enterController.forward();
+    _maybeTriggerForgotPasswordFromQuery();
+  }
+
+  void _maybeTriggerForgotPasswordFromQuery() {
+    if (_forgotQueryHandled) return;
+
+    final queryParameters = GoRouterState.of(context).uri.queryParameters;
+    if (!LoginQueryParams.isForgotPasswordIntent(queryParameters)) return;
+
+    _forgotQueryHandled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _showForgotPasswordMessage();
+    });
   }
 
   @override
   void dispose() {
-    final authNotifier = _authNotifier;
-    Future(() => authNotifier.resetSignInForm());
+    _authSessionSub?.close();
+    if (!_isAuthenticated) {
+      final notifier = _authNotifier;
+      Future(() => notifier.resetSignInForm());
+    }
     _enterController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
@@ -176,11 +201,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with SingleTickerProvider
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const IgnorePointer(
-            child: AuthenticatedShell(
-              child: PlaceholderPage(title: 'Home', description: 'Your clinic workspace overview and quick actions.'),
-            ),
-          ),
+          const IgnorePointer(child: LoginStaticBackdrop()),
           _LoginBackdrop(animation: _enterController),
           SafeArea(
             child: Padding(

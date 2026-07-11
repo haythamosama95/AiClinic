@@ -1,3 +1,4 @@
+import 'package:ai_clinic/core/config/in_memory_gotrue_async_storage.dart';
 import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
@@ -23,10 +24,15 @@ class _RecordingGoTrue implements GoTrueClient {
 
   final _RecordingSupabaseClient client;
   int signOutCalls = 0;
+  Session? session;
+
+  @override
+  Session? get currentSession => session;
 
   @override
   Future<void> signOut({SignOutScope scope = SignOutScope.local}) async {
     signOutCalls++;
+    session = null;
   }
 
   @override
@@ -53,6 +59,11 @@ class _ThrowingSignOutClient implements SupabaseClient {
 }
 
 class _ThrowingGoTrue implements GoTrueClient {
+  Session? session;
+
+  @override
+  Session? get currentSession => session;
+
   @override
   Future<void> signOut({SignOutScope scope = SignOutScope.local}) async {
     throw const AuthException('No session');
@@ -75,20 +86,85 @@ class _InvalidStartupNotifier extends StartupSessionNotifier {
 }
 
 void main() {
-  test('clearPersistedSessionOnColdStart invokes signOut', () async {
+  group('InMemoryGotrueAsyncStorage', () {
+    test('isolated instances do not share PKCE entries', () async {
+      final first = InMemoryGotrueAsyncStorage.isolated();
+      final second = InMemoryGotrueAsyncStorage.isolated();
+
+      await first.setItem(key: 'pkce', value: 'verifier-a');
+      expect(await second.getItem(key: 'pkce'), isNull);
+    });
+
+    test('reset clears stored PKCE entries', () async {
+      final storage = InMemoryGotrueAsyncStorage.isolated();
+      await storage.setItem(key: 'pkce', value: 'verifier');
+
+      storage.reset();
+
+      expect(await storage.getItem(key: 'pkce'), isNull);
+    });
+  });
+
+  test('clearPersistedSessionOnColdStart invokes signOut when session exists', () async {
+    final client = _RecordingSupabaseClient();
+    final goTrue = client.auth as _RecordingGoTrue;
+    goTrue.session = Session(
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      tokenType: 'bearer',
+      user: User(
+        id: 'user-1',
+        appMetadata: const {},
+        userMetadata: const {},
+        aud: 'authenticated',
+        createdAt: DateTime.utc(2026, 1, 1).toIso8601String(),
+      ),
+    );
+    final repository = AuthRepositoryImpl(client);
+
+    await repository.clearPersistedSessionOnColdStart();
+
+    expect(goTrue.signOutCalls, 1);
+  });
+
+  test('clearPersistedSessionOnColdStart skips signOut when session is null', () async {
     final client = _RecordingSupabaseClient();
     final repository = AuthRepositoryImpl(client);
 
     await repository.clearPersistedSessionOnColdStart();
 
-    expect((client.auth as _RecordingGoTrue).signOutCalls, 1);
+    expect((client.auth as _RecordingGoTrue).signOutCalls, 0);
   });
 
   test('clearPersistedSessionOnColdStart swallows AuthException', () async {
     final client = _ThrowingSignOutClient();
+    final goTrue = client.auth as _ThrowingGoTrue;
+    goTrue.session = Session(
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      tokenType: 'bearer',
+      user: User(
+        id: 'user-1',
+        appMetadata: const {},
+        userMetadata: const {},
+        aud: 'authenticated',
+        createdAt: DateTime.utc(2026, 1, 1).toIso8601String(),
+      ),
+    );
     final repository = AuthRepositoryImpl(client);
 
     await expectLater(repository.clearPersistedSessionOnColdStart(), completes);
+  });
+
+  test('signOut clears injected PKCE storage', () async {
+    final client = _RecordingSupabaseClient();
+    final pkceStorage = InMemoryGotrueAsyncStorage.isolated();
+    await pkceStorage.setItem(key: 'pkce', value: 'verifier');
+    final repository = AuthRepositoryImpl(client, pkceStorage: pkceStorage);
+
+    await repository.signOut();
+
+    expect(await pkceStorage.getItem(key: 'pkce'), isNull);
   });
 
   test('signIn normalizes username before calling auth client', () async {

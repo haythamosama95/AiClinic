@@ -38,7 +38,7 @@ class CollapsedStaffCard extends StatelessWidget {
     final colors = context.appColors;
     final branchCount = member.branchIds.length;
     final subtitle = [
-      collapsedStaffRoleLabel(member.role),
+      if (member.role.isNotEmpty) collapsedStaffRoleLabel(member.role),
       if (member.username.isNotEmpty) member.username,
       if (member.mobile.isNotEmpty) member.mobile,
       if (branchCount > 0) '$branchCount ${branchCount == 1 ? 'branch' : 'branches'}',

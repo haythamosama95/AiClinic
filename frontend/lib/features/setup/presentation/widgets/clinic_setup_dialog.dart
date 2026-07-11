@@ -17,12 +17,12 @@ abstract final class ClinicSetupDialog {
 
     await AppDialog.show<void>(
       context,
-      title: 'Set up your clinic',
-      description: 'A quick walkthrough to configure your organization, branches, team, and services.',
+      title: 'Clinic setup',
       size: AppDialogSize.full,
       maxWidth: maxWidth,
       barrierDismissible: false,
       showCloseButton: false,
+      showHeader: false,
       child: Consumer(
         builder: (context, ref, _) {
           ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {

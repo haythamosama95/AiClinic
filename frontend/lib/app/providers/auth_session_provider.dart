@@ -14,6 +14,16 @@ import 'package:ai_clinic/features/settings/data/idle_timeout_preferences_store.
 import 'package:ai_clinic/app/providers/session_context_loader.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
 
+/// Max time to wait for staff profile / permissions context before failing auth.
+const Duration kSessionContextLoadingTimeout = Duration(seconds: 10);
+
+/// Max time to wait for the Supabase sign-out network call after optimistic UI update.
+const Duration kSignOutNetworkTimeout = Duration(seconds: 10);
+
+/// Shown on login when session context loading exceeds [kSessionContextLoadingTimeout].
+const String kSessionContextLoadingTimeoutMessage =
+    'Sign-in is taking longer than expected. Check your connection and try again.';
+
 /// High-level auth lifecycle used by routing and permission services.
 enum AuthSessionStatus { unknown, unauthenticated, loading, authenticated }
 
@@ -62,6 +72,8 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   Future<void>? _ensureSupabaseReadyTask;
   bool _clearedPersistedSessionOnColdStart = false;
   bool? _hadProperClinicSetup;
+  String? _pendingContextLoadToken;
+  Future<AuthSessionContext>? _pendingContextLoad;
 
   @override
   AuthSessionState build() {
@@ -103,7 +115,10 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
 
       // Run once per process so cold start never restores a prior workstation session.
       if (!_clearedPersistedSessionOnColdStart) {
-        await ref.read(authRepositoryProvider).clearPersistedSessionOnColdStart();
+        final repository = ref.read(authRepositoryProvider);
+        if (repository.currentSession != null) {
+          await repository.clearPersistedSessionOnColdStart();
+        }
         _clearedPersistedSessionOnColdStart = true;
       }
 
@@ -158,7 +173,10 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
     } catch (error) {
       AppLog.warning('auth.session.context_failed reason=${_contextFailureReason(error)}');
       await ref.read(authRepositoryProvider).signOut();
-      state = AuthSessionState(status: AuthSessionStatus.unauthenticated, failureMessage: error.toString());
+      state = AuthSessionState(
+        status: AuthSessionStatus.unauthenticated,
+        failureMessage: _failureMessageForContextError(error),
+      );
       _syncIdleMonitoring();
     }
   }
@@ -217,11 +235,44 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
   SessionContextLoader get _contextLoader =>
       SessionContextLoader(ref.read(supabaseClientProvider), ref.read(permissionRepositoryProvider));
 
-  Future<AuthSessionContext> _loadSessionContext(Session session) => _contextLoader.load(session);
+  Future<AuthSessionContext> _loadSessionContext(Session session) {
+    final accessToken = session.accessToken;
+    final pending = _pendingContextLoad;
+    if (pending != null && _pendingContextLoadToken == accessToken) {
+      return pending;
+    }
+
+    final load = _runSessionContextLoad(session, accessToken);
+    _pendingContextLoadToken = accessToken;
+    _pendingContextLoad = load;
+    return load;
+  }
+
+  Future<AuthSessionContext> _runSessionContextLoad(Session session, String accessToken) async {
+    try {
+      return await _contextLoader.load(session).timeout(kSessionContextLoadingTimeout);
+    } on TimeoutException {
+      AppLog.warning('auth.session.context_load_timed_out');
+      throw TimeoutException(kSessionContextLoadingTimeoutMessage);
+    } finally {
+      if (_pendingContextLoadToken == accessToken) {
+        _pendingContextLoad = null;
+        _pendingContextLoadToken = null;
+      }
+    }
+  }
+
+  static String _failureMessageForContextError(Object error) {
+    if (error is TimeoutException) {
+      return kSessionContextLoadingTimeoutMessage;
+    }
+    return error.toString();
+  }
 
   void setActiveBranch(String branchId) {
     final context = state.context;
     if (context == null || !context.branchIds.contains(branchId)) {
+      AppLog.fine('auth.session.set_active_branch_noop branchId=$branchId');
       return;
     }
     state = state.copyWith(context: context.copyWith(activeBranchId: branchId));
@@ -235,14 +286,18 @@ class AuthSessionNotifier extends Notifier<AuthSessionState> {
 
   Future<void> signOut() async {
     _intentionalSignOut = true;
-    try {
-      await ref.read(authRepositoryProvider).signOut();
-    } finally {
-      _intentionalSignOut = false;
-    }
     _hadProperClinicSetup = null;
     state = const AuthSessionState(status: AuthSessionStatus.unauthenticated);
     _syncIdleMonitoring();
+
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .signOut()
+          .timeout(kSignOutNetworkTimeout, onTimeout: () => AppLog.warning('auth.session.sign_out_timed_out'));
+    } finally {
+      _intentionalSignOut = false;
+    }
   }
 
   /// Automatic sign-out after idle timeout (FR-005a); does not use [signOut] message semantics.

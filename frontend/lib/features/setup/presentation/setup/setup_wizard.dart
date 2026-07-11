@@ -23,7 +23,10 @@ const _smBreakpoint = 600.0;
 
 /// Setup wizard shell (web `SetupWizard`).
 class SetupWizard extends ConsumerStatefulWidget {
-  const SetupWizard({super.key});
+  const SetupWizard({this.embedded = false, super.key});
+
+  /// When true, omits outer card chrome so the wizard header sits flush inside a dialog shell.
+  final bool embedded;
 
   @override
   ConsumerState<SetupWizard> createState() => _SetupWizardState();
@@ -148,6 +151,108 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     final colors = context.appColors;
     final elevation = Theme.of(context).extension<AppElevation>();
 
+    final content = Stack(
+      children: [
+        const Positioned.fill(child: _BlueprintGridBackdrop()),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: colors.borderSubtle)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.space6,
+                  AppSpacing.space5,
+                  AppSpacing.space6,
+                  AppSpacing.space5,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.auto_fix_high, size: 18, color: AppColorPrimitives.teal600),
+                          const SizedBox(width: AppSpacing.space2),
+                          Text(
+                            'Clinic setup',
+                            style: AppTypography.h3(
+                              context,
+                            ).copyWith(color: AppColorPrimitives.teal600, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.space4),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Step ${step + 1} of $_stepCount',
+                            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                          ),
+                          const SizedBox(height: AppSpacing.space2),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: AppProgress(variant: ProgressVariant.bar, value: progress, showLabel: false),
+                              ),
+                              const SizedBox(width: AppSpacing.space2),
+                              Text(
+                                '${progress.round()}%',
+                                style: AppTypography.caption(context).copyWith(
+                                  color: colors.textTertiary,
+                                  fontFeatures: const [FontFeature.tabularFigures()],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.space6),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final showRail = constraints.maxWidth >= _smBreakpoint;
+                  final body = _stepPanel(step, colors, isLastStep, setupState.isSubmitting, setupState.submitError);
+
+                  if (!showRail) {
+                    return body;
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: 208, child: SetupStepRail(currentStep: step)),
+                      const SizedBox(width: AppSpacing.space8),
+                      Expanded(child: body),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return ColoredBox(color: colors.surfaceDefault, child: content);
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceDefault,
@@ -155,112 +260,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         border: Border.all(color: colors.borderSubtle),
         boxShadow: elevation?.shadows1 ?? AppElevationShadows.level1Light,
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppRadius.x2l),
-        child: Stack(
-          children: [
-            const Positioned.fill(child: _BlueprintGridBackdrop()),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: colors.borderSubtle)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.space6,
-                      AppSpacing.space5,
-                      AppSpacing.space6,
-                      AppSpacing.space5,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.auto_fix_high, size: 18, color: AppColorPrimitives.teal600),
-                              const SizedBox(width: AppSpacing.space2),
-                              Text(
-                                'Clinic setup',
-                                style: AppTypography.h3(
-                                  context,
-                                ).copyWith(color: AppColorPrimitives.teal600, fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.space4),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 320),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                'Step ${step + 1} of $_stepCount',
-                                style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
-                              ),
-                              const SizedBox(height: AppSpacing.space2),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Expanded(
-                                    child: AppProgress(variant: ProgressVariant.bar, value: progress, showLabel: false),
-                                  ),
-                                  const SizedBox(width: AppSpacing.space2),
-                                  Text(
-                                    '${progress.round()}%',
-                                    style: AppTypography.caption(context).copyWith(
-                                      color: colors.textTertiary,
-                                      fontFeatures: const [FontFeature.tabularFigures()],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.space6),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final showRail = constraints.maxWidth >= _smBreakpoint;
-                      final body = _stepPanel(
-                        step,
-                        colors,
-                        isLastStep,
-                        setupState.isSubmitting,
-                        setupState.submitError,
-                      );
-
-                      if (!showRail) {
-                        return body;
-                      }
-
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(width: 208, child: SetupStepRail(currentStep: step)),
-                          const SizedBox(width: AppSpacing.space8),
-                          Expanded(child: body),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(AppRadius.x2l), child: content),
     );
   }
 }

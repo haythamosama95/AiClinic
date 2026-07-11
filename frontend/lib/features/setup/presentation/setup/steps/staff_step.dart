@@ -19,6 +19,7 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
+import 'package:ai_clinic/features/setup/presentation/setup/setup_form_layout.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_staff_card.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_summary_enter_transition.dart';
@@ -90,12 +91,7 @@ class _StaffStepState extends ConsumerState<StaffStep> {
     return true;
   }
 
-  Future<void> _saveStaff(
-    List<StaffDraft> staff,
-    String staffId,
-    int branchCount,
-    ClinicSetupNotifier notifier,
-  ) async {
+  Future<void> _saveStaff(List<StaffDraft> staff, String staffId, int branchCount, ClinicSetupNotifier notifier) async {
     if (_savingStaffId != null) return;
 
     setState(() => _savingStaffId = staffId);
@@ -387,10 +383,10 @@ class _StaffForm extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.space4),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 640;
-              if (isWide) {
+          Builder(
+            builder: (context) {
+              final useTwoColumns = setupFormUseTwoColumns(context);
+              if (useTwoColumns) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -467,10 +463,10 @@ class _StaffForm extends StatelessWidget {
             },
           ),
           const SizedBox(height: AppSpacing.space4),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 640;
-              if (isWide) {
+          Builder(
+            builder: (context) {
+              final useTwoColumns = setupFormUseTwoColumns(context);
+              if (useTwoColumns) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -547,10 +543,10 @@ class _StaffForm extends StatelessWidget {
             },
           ),
           const SizedBox(height: AppSpacing.space4),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth >= 640;
-              if (isWide) {
+          Builder(
+            builder: (context) {
+              final useTwoColumns = setupFormUseTwoColumns(context);
+              if (useTwoColumns) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -563,7 +559,8 @@ class _StaffForm extends StatelessWidget {
                         error: errors['$prefix-role'],
                         child: AppSelect(
                           id: '${member.id}-role',
-                          value: member.role,
+                          value: member.role.isEmpty ? null : member.role,
+                          placeholder: 'Select a role',
                           onChanged: (role) => onUpdate(role: role),
                           options: STAFF_ROLE_OPTIONS
                               .map((option) => AppSelectOption(value: option.value, label: option.label))
@@ -607,7 +604,8 @@ class _StaffForm extends StatelessWidget {
                     error: errors['$prefix-role'],
                     child: AppSelect(
                       id: '${member.id}-role',
-                      value: member.role,
+                      value: member.role.isEmpty ? null : member.role,
+                      placeholder: 'Select a role',
                       onChanged: (role) => onUpdate(role: role),
                       options: STAFF_ROLE_OPTIONS
                           .map((option) => AppSelectOption(value: option.value, label: option.label))

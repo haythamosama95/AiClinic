@@ -4,6 +4,7 @@ import 'package:ai_clinic/core/ui/components/app_checkbox.dart';
 import 'package:ai_clinic/core/ui/components/app_input_styles.dart';
 import 'package:ai_clinic/core/ui/components/app_time_picker.dart';
 import 'package:ai_clinic/core/ui/components/app_tooltip.dart';
+import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
@@ -12,79 +13,132 @@ import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.d
 import 'package:ai_clinic/features/setup/presentation/setup/setup_field_hints.dart';
 
 /// Seven-day working hours editor (web `WorkingHoursEditor`).
-class WorkingHoursEditor extends StatelessWidget {
+class WorkingHoursEditor extends StatefulWidget {
   const WorkingHoursEditor({required this.value, required this.onChange, this.errors, super.key});
 
   final List<WorkingDay> value;
   final ValueChanged<List<WorkingDay>> onChange;
   final Map<String, String>? errors;
 
+  @override
+  State<WorkingHoursEditor> createState() => _WorkingHoursEditorState();
+}
+
+class _WorkingHoursEditorState extends State<WorkingHoursEditor> {
+  var _expanded = false;
+
   void _updateDay(String dayId, WorkingDay patch) {
-    onChange(value.map((day) => day.day == dayId ? patch : day).toList());
+    widget.onChange(widget.value.map((day) => day.day == dayId ? patch : day).toList());
+  }
+
+  void _toggleExpanded() {
+    setState(() => _expanded = !_expanded);
+  }
+
+  @override
+  void didUpdateWidget(WorkingHoursEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final hasErrors = widget.errors?.isNotEmpty ?? false;
+    final hadErrors = oldWidget.errors?.isNotEmpty ?? false;
+    if (!_expanded && hasErrors && !hadErrors) {
+      setState(() => _expanded = true);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final enabledCount = value.where((day) => day.enabled).length;
+    final reducedMotion = AppMotion.prefersReducedMotion(context);
+    final enabledCount = widget.value.where((day) => day.enabled).length;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Text('Working days & hours', style: AppTypography.bodyStrong(context)),
-            const SizedBox(width: AppSpacing.space2),
-            AppTooltip(
-              message: SetupFieldHints.branchWorkingHours,
-              preferBelow: false,
-              child: Semantics(
-                button: true,
-                label: 'More about Working days & hours',
-                child: IconButton(
-                  onPressed: () {},
-                  icon: Icon(Icons.help_outline, size: 16, color: colors.iconMuted),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 20, height: 20),
-                  style: IconButton.styleFrom(
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: colors.borderDefault),
+        color: colors.surfaceDefault,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            button: true,
+            expanded: _expanded,
+            label: 'Working days & hours',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _toggleExpanded,
+                borderRadius: BorderRadius.vertical(
+                  top: const Radius.circular(AppRadius.lg),
+                  bottom: Radius.circular(_expanded ? 0 : AppRadius.lg),
+                ),
+                hoverColor: colors.surfaceHover,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
+                  child: Row(
+                    children: [
+                      Text('Working days & hours', style: AppTypography.bodyStrong(context)),
+                      const SizedBox(width: AppSpacing.space2),
+                      AppTooltip(
+                        message: SetupFieldHints.branchWorkingHours,
+                        preferBelow: false,
+                        child: Semantics(
+                          button: true,
+                          label: 'More about Working days & hours',
+                          child: IconButton(
+                            onPressed: () {},
+                            icon: Icon(Icons.help_outline, size: 16, color: colors.iconMuted),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints.tightFor(width: 20, height: 20),
+                            style: IconButton.styleFrom(
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '$enabledCount day${enabledCount == 1 ? '' : 's'} open',
+                        style: AppTypography.caption(
+                          context,
+                        ).copyWith(color: colors.textTertiary, fontFeatures: const [FontFeature.tabularFigures()]),
+                      ),
+                      const SizedBox(width: AppSpacing.space2),
+                      Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 20, color: colors.iconMuted),
+                    ],
                   ),
                 ),
               ),
             ),
-            const Spacer(),
-            Text(
-              '$enabledCount day${enabledCount == 1 ? '' : 's'} open',
-              style: AppTypography.caption(
-                context,
-              ).copyWith(color: colors.textTertiary, fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+          ClipRect(
+            child: AnimatedSize(
+              duration: AppMotion.resolveDuration(AppMotionPreset.slideInline, reducedMotion: reducedMotion),
+              curve: AppMotion.outCurve,
+              alignment: Alignment.topCenter,
+              clipBehavior: Clip.hardEdge,
+              child: _expanded
+                  ? Column(
+                      children: [
+                        Divider(height: 1, thickness: 1, color: colors.borderSubtle),
+                        for (var i = 0; i < DAYS_OF_WEEK.length; i++) ...[
+                          if (i > 0) Divider(height: 1, thickness: 1, color: colors.borderSubtle),
+                          _WorkingDayRow(
+                            dayMeta: DAYS_OF_WEEK[i],
+                            day: widget.value.firstWhere((d) => d.day == DAYS_OF_WEEK[i].id),
+                            timeError: widget.errors?['${DAYS_OF_WEEK[i].id}-time'],
+                            onUpdate: (patch) => _updateDay(DAYS_OF_WEEK[i].id, patch),
+                          ),
+                        ],
+                      ],
+                    )
+                  : const SizedBox.shrink(),
             ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.space3),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(color: colors.borderDefault),
-            color: colors.surfaceDefault,
           ),
-          child: Column(
-            children: [
-              for (var i = 0; i < DAYS_OF_WEEK.length; i++) ...[
-                if (i > 0) Divider(height: 1, thickness: 1, color: colors.borderSubtle),
-                _WorkingDayRow(
-                  dayMeta: DAYS_OF_WEEK[i],
-                  day: value.firstWhere((d) => d.day == DAYS_OF_WEEK[i].id),
-                  timeError: errors?['${DAYS_OF_WEEK[i].id}-time'],
-                  onUpdate: (patch) => _updateDay(DAYS_OF_WEEK[i].id, patch),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

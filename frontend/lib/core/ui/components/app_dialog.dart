@@ -34,6 +34,7 @@ class AppDialog extends StatefulWidget {
     this.barrierDismissible = true,
     this.blur = true,
     this.showCloseButton = true,
+    this.showHeader = true,
     super.key,
   });
 
@@ -47,6 +48,7 @@ class AppDialog extends StatefulWidget {
   final bool barrierDismissible;
   final bool blur;
   final bool showCloseButton;
+  final bool showHeader;
 
   /// Presents a dialog and returns when it is dismissed.
   static Future<T?> show<T>(
@@ -60,6 +62,7 @@ class AppDialog extends StatefulWidget {
     bool barrierDismissible = true,
     bool blur = true,
     bool showCloseButton = true,
+    bool showHeader = true,
   }) {
     return showDialog<T>(
       context: context,
@@ -74,6 +77,7 @@ class AppDialog extends StatefulWidget {
         barrierDismissible: barrierDismissible,
         blur: blur,
         showCloseButton: showCloseButton,
+        showHeader: showHeader,
         onClose: () => Navigator.of(dialogContext).pop(),
         child: child,
       ),
@@ -130,6 +134,7 @@ class _AppDialogState extends State<AppDialog> {
         barrierDismissible: widget.barrierDismissible,
         blur: widget.blur,
         showCloseButton: widget.showCloseButton,
+        showHeader: widget.showHeader,
         footer: widget.footer,
         child: widget.child,
       );
@@ -330,6 +335,7 @@ class _AppDialogShell extends StatefulWidget {
     required this.barrierDismissible,
     required this.blur,
     required this.showCloseButton,
+    required this.showHeader,
     this.maxWidth,
     this.footer,
   });
@@ -344,6 +350,7 @@ class _AppDialogShell extends StatefulWidget {
   final bool barrierDismissible;
   final bool blur;
   final bool showCloseButton;
+  final bool showHeader;
 
   @override
   State<_AppDialogShell> createState() => _AppDialogShellState();
@@ -395,6 +402,7 @@ class _AppDialogShellState extends State<_AppDialogShell> with SingleTickerProvi
           footer: widget.footer,
           onClose: widget.onClose,
           showCloseButton: widget.showCloseButton,
+          showHeader: widget.showHeader,
           child: widget.child,
         ),
       ),
@@ -464,6 +472,7 @@ class _AppDialogPanel extends StatelessWidget {
     required this.child,
     required this.onClose,
     required this.showCloseButton,
+    required this.showHeader,
     this.maxWidth,
     this.footer,
   });
@@ -476,13 +485,14 @@ class _AppDialogPanel extends StatelessWidget {
   final Widget? footer;
   final VoidCallback onClose;
   final bool showCloseButton;
+  final bool showHeader;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final elevation = context.appElevation;
     final constraints = _sizeConstraints(context, size, maxWidth: maxWidth);
-    const chromeEstimate = 140.0;
+    final chromeEstimate = showHeader ? 140.0 : 32.0;
 
     return Semantics(
       scopesRoute: true,
@@ -513,54 +523,55 @@ class _AppDialogPanel extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border(bottom: BorderSide(color: colors.borderSubtle)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            AppSpacing.space6,
-                            AppSpacing.space4,
-                            AppSpacing.space4,
-                            AppSpacing.space4,
+                      if (showHeader)
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border(bottom: BorderSide(color: colors.borderSubtle)),
                           ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(title, style: AppTypography.h3(context).copyWith(color: colors.textPrimary)),
-                                    if (description != null) ...[
-                                      const SizedBox(height: AppSpacing.space1),
-                                      Text(
-                                        description!,
-                                        style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
-                                      ),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.space6,
+                              AppSpacing.space4,
+                              AppSpacing.space4,
+                              AppSpacing.space4,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(title, style: AppTypography.h3(context).copyWith(color: colors.textPrimary)),
+                                      if (description != null) ...[
+                                        const SizedBox(height: AppSpacing.space1),
+                                        Text(
+                                          description!,
+                                          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
-                              ),
-                              if (showCloseButton) ...[
-                                const SizedBox(width: AppSpacing.space4),
-                                AppIconButton(
-                                  icon: const Icon(Icons.close, size: 18),
-                                  label: 'Close',
-                                  size: AppIconButtonSize.sm,
-                                  onPressed: onClose,
-                                ),
+                                if (showCloseButton) ...[
+                                  const SizedBox(width: AppSpacing.space4),
+                                  AppIconButton(
+                                    icon: const Icon(Icons.close, size: 18),
+                                    label: 'Close',
+                                    size: AppIconButtonSize.sm,
+                                    onPressed: onClose,
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
-                      ),
                       ConstrainedBox(
                         constraints: BoxConstraints(maxHeight: maxBodyHeight),
                         child: SingleChildScrollView(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.space6,
-                            vertical: AppSpacing.space4,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: showHeader ? AppSpacing.space6 : 0,
+                            vertical: showHeader ? AppSpacing.space4 : 0,
                           ),
                           child: child,
                         ),

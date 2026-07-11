@@ -46,17 +46,15 @@ abstract final class AuthRouteGuard {
     return location != AppRoutes.patients;
   }
 
-  static bool needsClinicSetup(AuthSessionContext context) => context.needsClinicSetup;
-
   static bool canAccessPatientList(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canViewPatients();
   }
 
   static bool canAccessPatientRegistration(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canCreatePatients();
@@ -67,14 +65,14 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessPatientEdit(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canEditPatients();
   }
 
   static bool canAccessPatientDelete(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canDeletePatients();
@@ -86,21 +84,21 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessAppointmentHub(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canAccessAppointments();
   }
 
   static bool canAccessAppointmentBooking(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canCreateAppointments();
   }
 
   static bool canAccessAppointmentCancelActions(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canCancelAppointments();
@@ -112,7 +110,7 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessVisitDocumentation(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     final permissions = PermissionService(auth.context);
@@ -120,7 +118,7 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessVisitDetail(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     final permissions = PermissionService(auth.context);
@@ -137,7 +135,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    if (needsClinicSetup(auth.context!)) {
+    if ((auth.context?.needsClinicSetup ?? true)) {
       return clinicSetupRoute;
     }
 
@@ -162,7 +160,7 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessInvoiceList(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canViewInvoices();
@@ -173,14 +171,14 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessInsuranceProviders(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canManageInsurance();
   }
 
   static bool canAccessBillingSettings(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     final permissions = PermissionService(auth.context);
@@ -196,14 +194,14 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessShiftCalendar(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canViewShifts();
   }
 
   static bool canAccessShiftCreate(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canManageShifts();
@@ -223,7 +221,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    if (needsClinicSetup(auth.context!)) {
+    if ((auth.context?.needsClinicSetup ?? true)) {
       return clinicSetupRoute;
     }
 
@@ -247,7 +245,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    if (needsClinicSetup(auth.context!)) {
+    if ((auth.context?.needsClinicSetup ?? true)) {
       return clinicSetupRoute;
     }
 
@@ -273,7 +271,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    if (needsClinicSetup(auth.context!)) {
+    if ((auth.context?.needsClinicSetup ?? true)) {
       return clinicSetupRoute;
     }
 
@@ -296,7 +294,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    if (needsClinicSetup(auth.context!)) {
+    if ((auth.context?.needsClinicSetup ?? true)) {
       return clinicSetupRoute;
     }
 
@@ -332,7 +330,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    if (!needsClinicSetup(auth.context!)) {
+    if (!(auth.context?.needsClinicSetup ?? true)) {
       return null;
     }
 
@@ -352,14 +350,14 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessServiceEditor(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return PermissionService(auth.context).canManageServices();
   }
 
   static bool canAccessServiceCatalogList(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     final permissions = PermissionService(auth.context);
@@ -376,7 +374,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    if (needsClinicSetup(auth.context!)) {
+    if ((auth.context?.needsClinicSetup ?? true)) {
       return clinicSetupRoute;
     }
 
@@ -405,7 +403,7 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessOrganizationSettings(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     final role = auth.context!.staffProfile.role;
@@ -413,7 +411,7 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessBranchManagement(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return auth.context!.permissions.contains(PermissionKeys.manageBranches);
@@ -425,14 +423,14 @@ abstract final class AuthRouteGuard {
   }
 
   static bool canAccessStaffManagement(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     return auth.context!.permissions.contains(PermissionKeys.manageStaff);
   }
 
   static bool canAccessPermissionMatrix(AuthSessionState auth) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
     final role = auth.context!.staffProfile.role;
@@ -449,7 +447,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    if (needsClinicSetup(auth.context!)) {
+    if ((auth.context?.needsClinicSetup ?? true)) {
       return clinicSetupRoute;
     }
 
@@ -473,7 +471,7 @@ abstract final class AuthRouteGuard {
 
   /// Redirects V1-1 minimal provisioning routes to settings administration when setup is complete (US6).
   static String? steadyStateProvisioningRedirect({required String location, required AuthSessionState auth}) {
-    if (!auth.isAuthenticated || needsClinicSetup(auth.context!)) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return null;
     }
 
@@ -494,7 +492,7 @@ abstract final class AuthRouteGuard {
       return false;
     }
 
-    return !needsClinicSetup(auth.context!);
+    return !(auth.context?.needsClinicSetup ?? true);
   }
 
   /// Post-login destination from JWT `setup_required` (see `contracts/auth-session.md`).
@@ -503,7 +501,7 @@ abstract final class AuthRouteGuard {
       return AppRoutes.login;
     }
 
-    return needsClinicSetup(auth.context!) ? clinicSetupRoute : AppRoutes.home;
+    return (auth.context?.needsClinicSetup ?? true) ? clinicSetupRoute : AppRoutes.home;
   }
 
   /// Returns a redirect target path, or `null` when [location] may render.
@@ -533,8 +531,7 @@ abstract final class AuthRouteGuard {
     }
 
     if (auth.isAuthenticated) {
-      final context = auth.context!;
-      if (needsClinicSetup(context)) {
+      if (auth.context?.needsClinicSetup ?? true) {
         if (location == clinicSetupRoute) {
           return null;
         }
