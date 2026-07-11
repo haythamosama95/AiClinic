@@ -26,9 +26,10 @@ import 'package:ai_clinic/features/setup/presentation/setup/widgets/collapsed_su
 
 /// Staff step (web `StaffStep`).
 class StaffStep extends ConsumerStatefulWidget {
-  const StaffStep({required this.errors, super.key});
+  const StaffStep({required this.errors, this.bootstrapMode = false, super.key});
 
   final Map<String, String> errors;
+  final bool bootstrapMode;
 
   @override
   ConsumerState<StaffStep> createState() => _StaffStepState();
@@ -71,11 +72,30 @@ class _StaffStepState extends ConsumerState<StaffStep> {
     }
   }
 
-  bool _validateAndConfirm(List<StaffDraft> staff, String staffId, int branchCount, ClinicSetupNotifier notifier) {
+  bool _validateAndConfirm(
+    List<StaffDraft> staff,
+    String staffId,
+    int branchCount,
+    ClinicSetupNotifier notifier, {
+    String? primaryBranchId,
+  }) {
     final index = staff.indexWhere((member) => member.id == staffId);
     if (index < 0) return true;
 
-    final memberErrors = validateSingleStaff(staff[index], index, allStaff: staff, branchCount: branchCount);
+    if (widget.bootstrapMode && primaryBranchId != null) {
+      notifier.updateStaff(staffId, branchIds: [primaryBranchId]);
+      staff = staff
+          .map((member) => member.id == staffId ? member.copyWith(branchIds: [primaryBranchId]) : member)
+          .toList();
+    }
+
+    final memberErrors = validateSingleStaff(
+      staff[index],
+      index,
+      allStaff: staff,
+      branchCount: branchCount,
+      bootstrapMode: widget.bootstrapMode,
+    );
     if (hasErrors(memberErrors)) {
       setState(() => _localErrors = memberErrors);
       return false;
@@ -91,7 +111,13 @@ class _StaffStepState extends ConsumerState<StaffStep> {
     return true;
   }
 
-  Future<void> _saveStaff(List<StaffDraft> staff, String staffId, int branchCount, ClinicSetupNotifier notifier) async {
+  Future<void> _saveStaff(
+    List<StaffDraft> staff,
+    String staffId,
+    int branchCount,
+    ClinicSetupNotifier notifier, {
+    String? primaryBranchId,
+  }) async {
     if (_savingStaffId != null) return;
 
     setState(() => _savingStaffId = staffId);
@@ -104,7 +130,20 @@ class _StaffStepState extends ConsumerState<StaffStep> {
       return;
     }
 
-    final memberErrors = validateSingleStaff(staff[index], index, allStaff: staff, branchCount: branchCount);
+    if (widget.bootstrapMode && primaryBranchId != null) {
+      notifier.updateStaff(staffId, branchIds: [primaryBranchId]);
+      staff = staff
+          .map((member) => member.id == staffId ? member.copyWith(branchIds: [primaryBranchId]) : member)
+          .toList();
+    }
+
+    final memberErrors = validateSingleStaff(
+      staff[index],
+      index,
+      allStaff: staff,
+      branchCount: branchCount,
+      bootstrapMode: widget.bootstrapMode,
+    );
     await _ensureMinLoadingDuration(startedAt);
     if (!mounted) return;
 
@@ -165,6 +204,7 @@ class _StaffStepState extends ConsumerState<StaffStep> {
         ? -1
         : draft.staff.indexWhere((member) => member.id == resolvedActiveId);
     final activeMember = activeIndex >= 0 ? draft.staff[activeIndex] : null;
+    final primaryBranchId = draft.branches.isNotEmpty ? draft.branches.first.id : null;
 
     void updateStaff(
       String id, {
@@ -204,7 +244,14 @@ class _StaffStepState extends ConsumerState<StaffStep> {
     }
 
     void addStaff() {
-      if (activeMember != null && !_validateAndConfirm(draft.staff, activeMember.id, draft.branches.length, notifier)) {
+      if (activeMember != null &&
+          !_validateAndConfirm(
+            draft.staff,
+            activeMember.id,
+            draft.branches.length,
+            notifier,
+            primaryBranchId: primaryBranchId,
+          )) {
         return;
       }
 
@@ -219,7 +266,15 @@ class _StaffStepState extends ConsumerState<StaffStep> {
       if (staffId == resolvedActiveId) return;
 
       if (activeMember != null && !confirmedIds.contains(activeMember.id)) {
-        if (!_validateAndConfirm(draft.staff, activeMember.id, draft.branches.length, notifier)) return;
+        if (!_validateAndConfirm(
+          draft.staff,
+          activeMember.id,
+          draft.branches.length,
+          notifier,
+          primaryBranchId: primaryBranchId,
+        )) {
+          return;
+        }
       }
 
       setState(() {
@@ -235,7 +290,7 @@ class _StaffStepState extends ConsumerState<StaffStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _StaffStepHeader(colors: colors),
+        _StaffStepHeader(colors: colors, bootstrapMode: widget.bootstrapMode),
         const SizedBox(height: AppSpacing.space6),
         if (_mergedErrors['_form'] != null) ...[
           Semantics(
@@ -282,9 +337,16 @@ class _StaffStepState extends ConsumerState<StaffStep> {
                   member: activeMember,
                   index: activeIndex >= 0 ? activeIndex : 0,
                   branchOptions: branchOptions,
+                  bootstrapMode: widget.bootstrapMode,
                   errors: _mergedErrors,
                   isSaving: _savingStaffId == activeMember.id,
-                  onSave: () => _saveStaff(draft.staff, activeMember.id, draft.branches.length, notifier),
+                  onSave: () => _saveStaff(
+                    draft.staff,
+                    activeMember.id,
+                    draft.branches.length,
+                    notifier,
+                    primaryBranchId: primaryBranchId,
+                  ),
                   onUpdate:
                       ({
                         String? name,
@@ -325,6 +387,7 @@ class _StaffForm extends StatelessWidget {
     required this.member,
     required this.index,
     required this.branchOptions,
+    required this.bootstrapMode,
     required this.errors,
     required this.isSaving,
     required this.onSave,
@@ -337,6 +400,7 @@ class _StaffForm extends StatelessWidget {
   final StaffDraft member;
   final int index;
   final List<AppComboboxItem> branchOptions;
+  final bool bootstrapMode;
   final Map<String, String> errors;
   final bool isSaving;
   final Future<void> Function() onSave;
@@ -546,48 +610,52 @@ class _StaffForm extends StatelessWidget {
           Builder(
             builder: (context) {
               final useTwoColumns = setupFormUseTwoColumns(context);
+              final roleField = AppFormField(
+                id: '${member.id}-role',
+                label: 'Role',
+                requiredMark: true,
+                hint: SetupFieldHints.staffRole,
+                error: errors['$prefix-role'],
+                child: AppSelect(
+                  id: '${member.id}-role',
+                  value: member.role.isEmpty ? null : member.role,
+                  placeholder: 'Select a role',
+                  onChanged: (role) => onUpdate(role: role),
+                  options: STAFF_ROLE_OPTIONS
+                      .map((option) => AppSelectOption(value: option.value, label: option.label))
+                      .toList(),
+                  invalid: errors['$prefix-role'] != null,
+                ),
+              );
+
+              if (bootstrapMode) {
+                return roleField;
+              }
+
+              final branchesField = AppFormField(
+                id: '${member.id}-branches',
+                label: 'Branches assigned',
+                requiredMark: true,
+                hint: SetupFieldHints.staffBranches,
+                error: errors['$prefix-branches'],
+                child: AppMultiSelect(
+                  id: '${member.id}-branches',
+                  value: selectedBranches,
+                  onValueChange: (items) => onUpdate(branchIds: items.map((item) => item.id).toList()),
+                  options: branchOptions,
+                  placeholder: 'Select branches',
+                  invalid: errors['$prefix-branches'] != null,
+                  disabled: branchOptions.isEmpty,
+                ),
+              );
+
               if (useTwoColumns) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: AppFormField(
-                        id: '${member.id}-role',
-                        label: 'Role',
-                        requiredMark: true,
-                        hint: SetupFieldHints.staffRole,
-                        error: errors['$prefix-role'],
-                        child: AppSelect(
-                          id: '${member.id}-role',
-                          value: member.role.isEmpty ? null : member.role,
-                          placeholder: 'Select a role',
-                          onChanged: (role) => onUpdate(role: role),
-                          options: STAFF_ROLE_OPTIONS
-                              .map((option) => AppSelectOption(value: option.value, label: option.label))
-                              .toList(),
-                          invalid: errors['$prefix-role'] != null,
-                        ),
-                      ),
-                    ),
+                    Expanded(child: roleField),
                     const SizedBox(width: AppSpacing.space4),
-                    Expanded(
-                      child: AppFormField(
-                        id: '${member.id}-branches',
-                        label: 'Branches assigned',
-                        requiredMark: true,
-                        hint: SetupFieldHints.staffBranches,
-                        error: errors['$prefix-branches'],
-                        child: AppMultiSelect(
-                          id: '${member.id}-branches',
-                          value: selectedBranches,
-                          onValueChange: (items) => onUpdate(branchIds: items.map((item) => item.id).toList()),
-                          options: branchOptions,
-                          placeholder: 'Select branches',
-                          invalid: errors['$prefix-branches'] != null,
-                          disabled: branchOptions.isEmpty,
-                        ),
-                      ),
-                    ),
+                    Expanded(child: branchesField),
                   ],
                 );
               }
@@ -596,40 +664,9 @@ class _StaffForm extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  AppFormField(
-                    id: '${member.id}-role',
-                    label: 'Role',
-                    requiredMark: true,
-                    hint: SetupFieldHints.staffRole,
-                    error: errors['$prefix-role'],
-                    child: AppSelect(
-                      id: '${member.id}-role',
-                      value: member.role.isEmpty ? null : member.role,
-                      placeholder: 'Select a role',
-                      onChanged: (role) => onUpdate(role: role),
-                      options: STAFF_ROLE_OPTIONS
-                          .map((option) => AppSelectOption(value: option.value, label: option.label))
-                          .toList(),
-                      invalid: errors['$prefix-role'] != null,
-                    ),
-                  ),
+                  roleField,
                   const SizedBox(height: AppSpacing.space4),
-                  AppFormField(
-                    id: '${member.id}-branches',
-                    label: 'Branches assigned',
-                    requiredMark: true,
-                    hint: SetupFieldHints.staffBranches,
-                    error: errors['$prefix-branches'],
-                    child: AppMultiSelect(
-                      id: '${member.id}-branches',
-                      value: selectedBranches,
-                      onValueChange: (items) => onUpdate(branchIds: items.map((item) => item.id).toList()),
-                      options: branchOptions,
-                      placeholder: 'Select branches',
-                      invalid: errors['$prefix-branches'] != null,
-                      disabled: branchOptions.isEmpty,
-                    ),
-                  ),
+                  branchesField,
                 ],
               );
             },
@@ -652,9 +689,10 @@ class _StaffForm extends StatelessWidget {
 }
 
 class _StaffStepHeader extends StatelessWidget {
-  const _StaffStepHeader({required this.colors});
+  const _StaffStepHeader({required this.colors, required this.bootstrapMode});
 
   final AppSemanticColors colors;
+  final bool bootstrapMode;
 
   @override
   Widget build(BuildContext context) {
@@ -678,7 +716,9 @@ class _StaffStepHeader extends StatelessWidget {
               Text('Staff', style: AppTypography.h2(context).copyWith(color: colors.textPrimary)),
               const SizedBox(height: AppSpacing.space1),
               Text(
-                'Create accounts for your team. Each person needs a role and at least one branch assignment.',
+                bootstrapMode
+                    ? 'Create accounts for your team. Everyone is assigned to your first branch; add more locations after setup.'
+                    : 'Create accounts for your team. Each person needs a role and at least one branch assignment.',
                 style: AppTypography.body(context).copyWith(color: colors.textSecondary),
               ),
             ],

@@ -12,6 +12,11 @@ abstract final class ProvisioningRules {
     return caller.role == StaffRole.administrator;
   }
 
+  /// Whether the signed-in staff member may update another staff member's username.
+  static bool canUpdateStaffUsername(StaffProfile caller) {
+    return caller.role == StaffRole.administrator;
+  }
+
   /// Roles offered in the create-staff form for the current caller.
   static List<StaffRole> selectableRoles(StaffProfile caller) {
     const operational = [StaffRole.administrator, StaffRole.doctor, StaffRole.receptionist, StaffRole.labStaff];

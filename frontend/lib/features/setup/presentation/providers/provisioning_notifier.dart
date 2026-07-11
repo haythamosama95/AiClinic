@@ -247,8 +247,9 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       state = state.copyWith(errorMessage: 'Enter a new password for the staff member.');
       return null;
     }
-    if (trimmedPassword.length < 6) {
-      state = state.copyWith(errorMessage: 'Password must be at least 6 characters.');
+    final passwordError = StaffPasswordValidation.validateInitialPassword(trimmedPassword);
+    if (passwordError != null) {
+      state = state.copyWith(errorMessage: passwordError);
       return null;
     }
 
@@ -294,7 +295,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
 
-    if (!ProvisioningRules.canResetStaffPassword(session.staffProfile)) {
+    if (!ProvisioningRules.canUpdateStaffUsername(session.staffProfile)) {
       state = state.copyWith(errorMessage: 'Only clinic administrators can update staff usernames.');
       return null;
     }

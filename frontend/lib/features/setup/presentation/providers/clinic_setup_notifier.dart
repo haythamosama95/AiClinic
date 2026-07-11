@@ -24,6 +24,7 @@ import 'package:ai_clinic/features/setup/application/setup_rpc_messages.dart';
 import 'package:ai_clinic/features/setup/domain/clinic_setup_draft_mapper.dart';
 import 'package:ai_clinic/features/setup/domain/persist_clinic_setup_draft.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
+import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_providers.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
@@ -45,6 +46,7 @@ class ClinicSetupState {
     this.isSubmitting = false,
     this.submitError,
     this.validationFocusEntityId,
+    this.sessionNeedsClinicSetup,
   });
 
   final SetupDraft draft;
@@ -60,7 +62,25 @@ class ClinicSetupState {
 
   final String? validationFocusEntityId;
 
-  bool get isBootstrapWizardInProgress => !completed;
+  /// Cached from [AuthSessionContext.needsClinicSetup]; `null` until the first
+  /// session read completes (e.g. during [ClinicSetupNotifier.loadDraft]).
+  final bool? sessionNeedsClinicSetup;
+
+  /// Whether the bootstrap / re-run setup wizard is actively in progress.
+  ///
+  /// Session `needsClinicSetup` is authoritative for first-run bootstrap.
+  /// When the backend reports setup complete, the local `completed` flag drives
+  /// steady-state "Run setup again" UX (mirrors [isSetupCompleteProvider]).
+  bool get isBootstrapWizardInProgress {
+    final needsSetup = sessionNeedsClinicSetup;
+    if (needsSetup == true) {
+      return true;
+    }
+    if (needsSetup == false) {
+      return !completed;
+    }
+    return false;
+  }
 
   ClinicSetupState copyWith({
     SetupDraft? draft,
@@ -74,6 +94,7 @@ class ClinicSetupState {
     String? submitError,
     bool clearSubmitError = false,
     Object? validationFocusEntityId = _validationFocusSentinel,
+    Object? sessionNeedsClinicSetup = _sessionNeedsClinicSetupSentinel,
   }) {
     return ClinicSetupState(
       draft: draft ?? this.draft,
@@ -88,15 +109,22 @@ class ClinicSetupState {
       validationFocusEntityId: identical(validationFocusEntityId, _validationFocusSentinel)
           ? this.validationFocusEntityId
           : validationFocusEntityId as String?,
+      sessionNeedsClinicSetup: identical(sessionNeedsClinicSetup, _sessionNeedsClinicSetupSentinel)
+          ? this.sessionNeedsClinicSetup
+          : sessionNeedsClinicSetup as bool?,
     );
   }
 }
 
 const _validationFocusSentinel = Object();
+const _sessionNeedsClinicSetupSentinel = Object();
 
 final clinicSetupProvider = StateNotifierProvider<ClinicSetupNotifier, ClinicSetupState>((ref) {
   final notifier = ClinicSetupNotifier(ref);
   ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+    if (!notifier._draftLoaded) {
+      return;
+    }
     unawaited(notifier.syncWithSession(next.context));
   });
   return notifier;
@@ -115,6 +143,18 @@ final isSetupCompleteProvider = Provider<bool>((ref) {
   return ref.watch(clinicSetupProvider).completed;
 });
 
+/// Session-authoritative bootstrap wizard progress for routing guards.
+///
+/// Mirrors [ClinicSetupState.isBootstrapWizardInProgress] but is suitable for
+/// `ref.watch` without reading notifier state in isolation.
+final isBootstrapWizardInProgressProvider = Provider<bool>((ref) {
+  final session = ref.watch(authSessionProvider).context;
+  if (session != null && session.needsClinicSetup) {
+    return true;
+  }
+  return !ref.watch(clinicSetupProvider).completed;
+});
+
 /// Unified clinic setup notifier.
 ///
 /// Merges the first-run atomic bootstrap wizard (formerly [SetupNotifier]) with
@@ -128,16 +168,18 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
   }
 
   final Ref _ref;
+  bool _draftLoaded = false;
 
   /// Loads the persisted draft and completion flag from [SharedPreferences].
   Future<void> loadDraft() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final session = _ref.read(authSessionProvider).context;
+
       final raw = prefs.getString(_setupDraftKey);
       var completed = prefs.getString(_setupCompleteKey) == 'true';
       final completedSteps = _readCompletedSteps(prefs.getString(_setupCompletedStepsKey));
 
-      final session = _ref.read(authSessionProvider).context;
       if (!completed && session != null && !session.needsClinicSetup) {
         completed = true;
       }
@@ -146,17 +188,31 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
           ? createDefaultSetup()
           : SetupDraft.fromJson(jsonDecode(raw) as Map<String, dynamic>);
 
-      state = ClinicSetupState(draft: draft, completed: completed, completedSteps: completedSteps);
+      state = ClinicSetupState(
+        draft: draft,
+        completed: completed,
+        completedSteps: completedSteps,
+        sessionNeedsClinicSetup: session?.needsClinicSetup,
+      );
       await syncWithSession(_ref.read(authSessionProvider).context);
     } on Object {
       state = ClinicSetupState(draft: createDefaultSetup());
+    } finally {
+      _draftLoaded = true;
     }
   }
 
   /// Aligns cached completion flags with the latest backend session (e.g. after clinic reset).
   Future<void> syncWithSession(AuthSessionContext? session) async {
     if (session == null) {
+      if (state.sessionNeedsClinicSetup != null) {
+        state = state.copyWith(sessionNeedsClinicSetup: null);
+      }
       return;
+    }
+
+    if (state.sessionNeedsClinicSetup != session.needsClinicSetup) {
+      state = state.copyWith(sessionNeedsClinicSetup: session.needsClinicSetup);
     }
 
     if (!session.needsClinicSetup) {
@@ -167,7 +223,12 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
       return;
     }
 
-    state = ClinicSetupState(draft: createDefaultSetup(), step: 0, completed: false);
+    state = ClinicSetupState(
+      draft: createDefaultSetup(),
+      step: 0,
+      completed: false,
+      sessionNeedsClinicSetup: session.needsClinicSetup,
+    );
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_setupCompleteKey);
@@ -375,6 +436,10 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
   /// `bootstrap_finish_setup` RPC. In steady-state mode, persists changes via
   /// individual CRUD operations (`persistSetupDraftToBackend`).
   Future<bool> completeSetup() async {
+    if (state.isSubmitting) {
+      return false;
+    }
+
     state = state.copyWith(isSubmitting: true, clearSubmitError: true);
     await persistDraft();
 
@@ -393,10 +458,17 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
         final input = toBootstrapFinishSetupInput(state.draft);
         await _ref.read(finishBootstrapSetupUseCaseProvider)(input);
         await _ref.read(authSessionProvider.notifier).refreshSessionContext();
+        final refreshedSession = _ref.read(authSessionProvider).context;
+        await hydrateFromBackend();
         invalidateAppointmentSurfaceProviders(_ref);
         AppLog.info('setup.finish.ok');
 
-        state = state.copyWith(completed: true, isSubmitting: false, completedSteps: {0, 1, 2, 3});
+        state = state.copyWith(
+          completed: true,
+          isSubmitting: false,
+          completedSteps: {0, 1, 2, 3},
+          sessionNeedsClinicSetup: refreshedSession?.needsClinicSetup ?? false,
+        );
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(_setupCompleteKey, 'true');
@@ -485,7 +557,12 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
       invalidateAppointmentSurfaceProviders(_ref);
       AppLog.info('setup.finish.steady_state.ok');
 
-      state = state.copyWith(completed: true, isSubmitting: false, completedSteps: {0, 1, 2, 3});
+      state = state.copyWith(
+        completed: true,
+        isSubmitting: false,
+        completedSteps: {0, 1, 2, 3},
+        sessionNeedsClinicSetup: session?.needsClinicSetup ?? false,
+      );
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_setupCompleteKey, 'true');
@@ -496,13 +573,16 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
       return true;
     } on RpcFailure catch (error) {
       AppLog.warning('setup.finish.steady_state.rpc_failed code=${error.code}');
+      await hydrateFromBackend();
       state = state.copyWith(isSubmitting: false, submitError: setupMessageForRpc(error));
       return false;
     } on StateError catch (error) {
+      await hydrateFromBackend();
       state = state.copyWith(isSubmitting: false, submitError: error.message);
       return false;
     } catch (error) {
       AppLog.warning('setup.finish.steady_state.failed reason=${error.runtimeType}');
+      await hydrateFromBackend();
       state = state.copyWith(
         isSubmitting: false,
         submitError: 'Unable to save clinic setup. Check connectivity and try again.',
@@ -549,6 +629,14 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
 
   /// Wipes org/branch data via dev RPC and reloads session claims for another setup run.
   Future<bool> resetInstallationForDevelopment() async {
+    assert(kDebugMode, 'resetInstallationForDevelopment is debug-only');
+    if (!kDebugMode) {
+      return false;
+    }
+    if (state.isSubmitting) {
+      return false;
+    }
+
     state = state.copyWith(isSubmitting: true, clearSubmitError: true);
     AppLog.info('setup.dev_reset.start');
 
@@ -560,13 +648,17 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
       );
 
       await _ref.read(authSessionProvider.notifier).refreshSessionContext();
+      final refreshedSession = _ref.read(authSessionProvider).context;
       AppLog.info(
-        'setup.dev_reset.session_refreshed setup_required=${_ref.read(authSessionProvider).context?.setupRequired}',
+        'setup.dev_reset.session_refreshed setup_required=${refreshedSession?.setupRequired}',
       );
 
       invalidateAppointmentSurfaceProviders(_ref);
       await resetSetup();
-      state = state.copyWith(isSubmitting: false);
+      state = state.copyWith(
+        isSubmitting: false,
+        sessionNeedsClinicSetup: refreshedSession?.needsClinicSetup,
+      );
       return true;
     } on RpcFailure catch (error) {
       AppLog.warning('setup.dev_reset.rpc_failed code=${error.code}');
@@ -594,12 +686,11 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
 
     AppLog.info('setup.hydrate.start');
 
-    final organization = await _ref
-        .read(fetchOrganizationProfileUseCaseProvider)(organizationId: organizationId)
-        .catchError((_) => null);
-    final branches = await _ref
-        .read(listBranchesUseCaseProvider)(organizationId: organizationId)
-        .catchError((_) => const <BranchListItem>[]);
+    // Single fetch path for org/branches — shared with shell chrome and settings.
+    _ref.invalidate(clinicSetupOrganizationProvider);
+    _ref.invalidate(clinicSetupBranchesProvider);
+    final organization = await _ref.read(clinicSetupOrganizationProvider.future).catchError((_) => null);
+    final branches = await _ref.read(clinicSetupBranchesProvider.future).catchError((_) => const <BranchListItem>[]);
     final staff = await _loadStaffForSetup();
     final services = await _loadServicesForSetup();
 

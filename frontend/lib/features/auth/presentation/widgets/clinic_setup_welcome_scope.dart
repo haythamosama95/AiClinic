@@ -10,12 +10,6 @@ import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_not
 import 'package:ai_clinic/features/setup/presentation/widgets/clinic_setup_complete_dialog.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/clinic_setup_dialog.dart';
 
-/// Prevents overlapping setup-flow presentations.
-bool _clinicSetupFlowRunning = false;
-
-/// Prevents showing the completion celebration more than once per sign-in spell.
-bool _clinicSetupCelebrationShown = false;
-
 /// Presents the first-run clinic setup flow: welcome → setup dialog → completion dialog.
 class ClinicSetupWelcomeScope extends ConsumerStatefulWidget {
   const ClinicSetupWelcomeScope({required this.child, super.key});
@@ -27,6 +21,12 @@ class ClinicSetupWelcomeScope extends ConsumerStatefulWidget {
 }
 
 class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScope> {
+  /// Prevents overlapping setup-flow presentations.
+  bool _clinicSetupFlowRunning = false;
+
+  /// Prevents showing the completion celebration more than once per sign-in spell.
+  bool _clinicSetupCelebrationShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -79,7 +79,12 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
 
       final draftBeforeSetup = ref.read(clinicSetupProvider).draft;
       final completed = await ClinicSetupDialog.show(context);
-      if (!mounted || !completed) {
+      if (!mounted) {
+        return;
+      }
+
+      if (!completed) {
+        _scheduleSetupFlowIfStillRequired();
         return;
       }
 
@@ -88,6 +93,31 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
     } finally {
       _clinicSetupFlowRunning = false;
     }
+  }
+
+  void _scheduleSetupFlowIfStillRequired() {
+    final auth = ref.read(authSessionProvider);
+    final session = auth.context;
+    if (!auth.isAuthenticated || session == null || !session.needsClinicSetup) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_maybeStartSetupFlow());
+      }
+    });
+  }
+
+  void _resetFlowState() {
+    _clinicSetupFlowRunning = false;
+    _clinicSetupCelebrationShown = false;
+  }
+
+  @override
+  void dispose() {
+    _resetFlowState();
+    super.dispose();
   }
 
   @override
@@ -102,7 +132,7 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
         if (staffMemberId != null) {
           ref.invalidate(clinicSetupWelcomeShownProvider(staffMemberId));
         }
-        _clinicSetupCelebrationShown = false;
+        _resetFlowState();
         return;
       }
 

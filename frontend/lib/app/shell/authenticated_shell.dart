@@ -39,7 +39,7 @@ class AuthenticatedShell extends ConsumerWidget {
     );
 
     final auth = ref.watch(authSessionProvider);
-    final setupLocked = auth.context?.needsClinicSetup ?? false;
+    final setupLocked = auth.context?.needsClinicSetup ?? true;
     final chrome = ref.watch(shellChromeProvider);
     final collapsed = ref.watch(shellSidebarCollapsedProvider);
 
