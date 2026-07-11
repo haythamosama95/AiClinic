@@ -27,8 +27,24 @@ export type Patient = {
   diagnoses: Diagnosis[]
   lastVisit?: string
   nextAppointment?: string
-  aiSummary?: string
   createdAt: string
+}
+
+export type PatientVisit = {
+  id: string
+  patientId: string
+  date: string
+  doctor: string
+  branch: string
+}
+
+export type PatientDocument = {
+  id: string
+  patientId: string
+  visitId: string
+  name: string
+  fileType: string
+  sizeBytes: number
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
@@ -56,6 +72,14 @@ const lastNames = [
 const doctors = [
   'Dr. Sarah Chen', 'Dr. Michael Park', 'Dr. Emily Watson',
   'Dr. James Liu', 'Dr. Anna Kowalski',
+]
+const branches = ['Downtown Clinic', 'Nasr City', 'Alexandria']
+const documentNames = [
+  'Lab results.pdf',
+  'Prescription.pdf',
+  'Referral letter.pdf',
+  'X-ray report.pdf',
+  'Discharge summary.pdf',
 ]
 const diagnosesCatalog = [
   { code: 'I10', name: 'Essential Hypertension' },
@@ -126,9 +150,35 @@ export const MOCK_PATIENTS: Patient[] = Array.from({ length: 32 }, (_, i) => {
     }),
     lastVisit: toIsoDate(lastVisit),
     nextAppointment: nextAppt ? toIsoDate(nextAppt) : undefined,
-    aiSummary: `Patient presents with managed ${pick(diagnosesCatalog).name.toLowerCase()}. Last visit showed stable vitals. Consider follow-up in ${2 + (i % 4)} weeks.`,
     createdAt: toIsoDate(new Date(dob.getFullYear() - 1, dob.getMonth(), dob.getDate())),
   }
+})
+
+export const MOCK_PATIENT_VISITS: PatientVisit[] = MOCK_PATIENTS.flatMap((patient, i) => {
+  const visitCount = 2 + (i % 4)
+  return Array.from({ length: visitCount }, (_, j) => {
+    const visitDate = new Date()
+    visitDate.setDate(visitDate.getDate() - j * 14 - (i % 7))
+    return {
+      id: `visit-${patient.id}-${j}`,
+      patientId: patient.id,
+      date: toIsoDate(visitDate),
+      doctor: doctors[(i + j) % doctors.length],
+      branch: branches[(i + j) % branches.length],
+    }
+  })
+})
+
+export const MOCK_PATIENT_DOCUMENTS: PatientDocument[] = MOCK_PATIENT_VISITS.flatMap((visit, i) => {
+  const docCount = i % 3 === 0 ? 0 : 1 + (i % 2)
+  return Array.from({ length: docCount }, (_, j) => ({
+    id: `doc-${visit.id}-${j}`,
+    patientId: visit.patientId,
+    visitId: visit.id,
+    name: documentNames[(i + j) % documentNames.length],
+    fileType: 'PDF',
+    sizeBytes: 48_000 + ((i * 17 + j * 11) % 400) * 1024,
+  }))
 })
 
 export const MOCK_PATIENT_INVOICES: PatientInvoice[] = Array.from({ length: 28 }, (_, i) => {
@@ -158,6 +208,49 @@ export function getPatientById(id: string): Patient | undefined {
 
 export function getInvoicesForPatient(patientId: string): PatientInvoice[] {
   return MOCK_PATIENT_INVOICES.filter((inv) => inv.patientId === patientId)
+}
+
+export function getVisitsForPatient(patientId: string): PatientVisit[] {
+  return MOCK_PATIENT_VISITS.filter((v) => v.patientId === patientId).sort(
+    (a, b) => b.date.localeCompare(a.date),
+  )
+}
+
+export function getDocumentsForPatient(patientId: string): PatientDocument[] {
+  return MOCK_PATIENT_DOCUMENTS.filter((d) => d.patientId === patientId)
+}
+
+export function getVisitById(visitId: string): PatientVisit | undefined {
+  return MOCK_PATIENT_VISITS.find((v) => v.id === visitId)
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+export function downloadPatientDocument(
+  doc: PatientDocument,
+  visit?: PatientVisit,
+): void {
+  const visitLine = visit
+    ? `Linked visit: ${formatDate(visit.date)} · ${visit.doctor} · ${visit.branch}`
+    : 'Linked visit: Not available'
+  const content = [
+    `Document: ${doc.name}`,
+    `Type: ${doc.fileType}`,
+    visitLine,
+    '',
+    'This is mock content for the web reference UI.',
+  ].join('\n')
+  const blob = new Blob([content], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = doc.name.replace(/\.pdf$/i, '.txt')
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 export function patientFullName(patient: Patient): string {
