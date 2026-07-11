@@ -113,7 +113,12 @@ class _AppPopoverState extends State<AppPopover> with SingleTickerProviderStateM
 
   @override
   void dispose() {
-    _removeOverlay(immediate: true);
+    // Remove the overlay without touching the animation controller — resetting
+    // _controller.value during unmount notifies AnimatedBuilder listeners while
+    // the widget tree is locked (sign-out / route teardown).
+    final entry = _overlayEntry;
+    _overlayEntry = null;
+    entry?.remove();
     _controller.dispose();
     super.dispose();
   }
@@ -174,14 +179,11 @@ class _AppPopoverState extends State<AppPopover> with SingleTickerProviderStateM
     Overlay.of(context).insert(_overlayEntry!);
   }
 
-  void _removeOverlay({bool immediate = false}) {
+  void _removeOverlay() {
     final entry = _overlayEntry;
     if (entry == null) return;
     _overlayEntry = null;
     entry.remove();
-    if (immediate) {
-      _controller.value = 0;
-    }
   }
 
   OverlayEntry _createOverlayEntry() {

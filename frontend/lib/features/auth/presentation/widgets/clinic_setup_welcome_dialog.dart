@@ -18,7 +18,7 @@ abstract final class ClinicSetupWelcomeDialog {
       context,
       title: 'Welcome to $appName',
       size: AppDialogSize.md,
-      barrierDismissible: true,
+      barrierDismissible: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,

@@ -10,12 +10,6 @@ import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_not
 import 'package:ai_clinic/features/setup/presentation/widgets/clinic_setup_complete_dialog.dart';
 import 'package:ai_clinic/features/setup/presentation/widgets/clinic_setup_dialog.dart';
 
-/// Prevents overlapping setup-flow presentations.
-bool _clinicSetupFlowRunning = false;
-
-/// Prevents showing the completion celebration more than once per sign-in spell.
-bool _clinicSetupCelebrationShown = false;
-
 /// Presents the first-run clinic setup flow: welcome → setup dialog → completion dialog.
 class ClinicSetupWelcomeScope extends ConsumerStatefulWidget {
   const ClinicSetupWelcomeScope({required this.child, super.key});
@@ -27,6 +21,14 @@ class ClinicSetupWelcomeScope extends ConsumerStatefulWidget {
 }
 
 class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScope> {
+  /// Prevents overlapping setup-flow presentations (single-flight). Instance-level
+  /// rather than module-level so a re-created shell cannot share stale state with
+  /// other mounts (review §4.3).
+  bool _clinicSetupFlowRunning = false;
+
+  /// Prevents showing the completion celebration more than once per sign-in spell.
+  bool _clinicSetupCelebrationShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -117,6 +119,14 @@ class _ClinicSetupWelcomeScopeState extends ConsumerState<ClinicSetupWelcomeScop
       final wasLocked = previous?.context?.needsClinicSetup ?? false;
       final isLocked = next.context?.needsClinicSetup ?? false;
       if (wasLocked && !isLocked && next.isAuthenticated && !_clinicSetupCelebrationShown) {
+        // When the wizard dialog is running, the in-dialog completion path owns the
+        // celebration presentation (it shows the dialog as soon as `completed ==
+        // true` returns from ClinicSetupDialog.show). This listener path only
+        // handles out-of-dialog completions (e.g. dev seed via markSetupComplete +
+        // refreshSessionContext) so the two paths don't race on the flag (review §6.7).
+        if (_clinicSetupFlowRunning) {
+          return;
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             unawaited(_presentCelebration());

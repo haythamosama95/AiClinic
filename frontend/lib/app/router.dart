@@ -12,6 +12,7 @@ import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/app/navigation/login_query_params.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/shell/dev/dev_clinic_reset_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_integration.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
@@ -133,7 +134,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final session = ref.read(startupSessionProvider);
       final auth = ref.read(authSessionProvider);
-      final setup = ref.read(clinicSetupProvider);
       final location = state.matchedLocation;
 
       if (ShellDevNav.allowsOpenAccess(location)) {
@@ -141,6 +141,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (!auth.isAuthenticated && ShellDevNav.isEnabled && ShellNavConfig.allowsUnauthenticatedPreview(location)) {
+        if (ref.read(devClinicResetProvider).inProgress) {
+          return AppRoutes.login;
+        }
         return null;
       }
 
@@ -151,7 +154,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       String? resolveAuthRedirect(String route) => AuthRouteGuard.resolveRedirect(
         location: route,
         auth: auth,
-        bootstrapStaffWizardInProgress: setup.isBootstrapWizardInProgress,
+        bootstrapStaffWizardInProgress: ref.read(isBootstrapSetupRequiredProvider),
       );
 
       final isProtectedFeatureRoute = AuthRouteGuard.requiresProtectedSetupComplete(location);
@@ -175,7 +178,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       final startupRedirect = switch (session.currentView) {
         StartupCurrentView.startupCheck =>
-          location == AppRoutes.login || location == AppRoutes.home ? null : AppRoutes.login,
+          // During the cold-start configuration window the session is unknown, so the
+          // authenticated shell must never render. Only the login route is left through;
+          // everything else (including /home) is sent to /login until config resolves.
+          location == AppRoutes.login ? null : AppRoutes.login,
         StartupCurrentView.setupGuidance => location == AppRoutes.setupGuidance ? null : AppRoutes.setupGuidance,
         StartupCurrentView.protectedRouteBlocked =>
           location == AppRoutes.protectedBlocked ? null : AppRoutes.protectedBlocked,

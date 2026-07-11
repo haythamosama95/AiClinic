@@ -1,5 +1,6 @@
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/shell/dev/dev_clinic_reset_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_fill_dummy_clinic.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_reset_clinic.dart';
@@ -37,12 +38,7 @@ void main() {
         expect(ShellDevNav.isDesignSystemRoute(route), isTrue);
       }
 
-      const productionRoutes = [
-        AppRoutes.home,
-        AppRoutes.settings,
-        AppRoutes.patients,
-        AppRoutes.login,
-      ];
+      const productionRoutes = [AppRoutes.home, AppRoutes.settings, AppRoutes.patients, AppRoutes.login];
       for (final route in productionRoutes) {
         expect(ShellDevNav.openAccessRoutes, isNot(contains(route)));
         expect(ShellDevNav.isValidOpenAccessRoute(route), isFalse);
@@ -120,12 +116,39 @@ void main() {
         isTrue,
       );
     });
+
+    test('DV-S-007: auth redirect suppressed while clinic reset in progress', () {
+      if (!kDebugMode) {
+        return;
+      }
+
+      expect(
+        _wouldSuppressAuthRedirect(
+          auth: const AuthSessionState(status: AuthSessionStatus.unauthenticated),
+          seedState: const DevClinicSeedState(),
+          resetInProgress: true,
+        ),
+        isTrue,
+      );
+    });
   });
 }
 
 /// Mirrors [shellDevSuppressAuthRedirect] without requiring a sealed [Ref].
-bool _wouldSuppressAuthRedirect({required AuthSessionState auth, required DevClinicSeedState seedState}) {
-  if (!kDebugMode || !auth.isAuthenticated) {
+bool _wouldSuppressAuthRedirect({
+  required AuthSessionState auth,
+  required DevClinicSeedState seedState,
+  bool resetInProgress = false,
+}) {
+  if (!kDebugMode) {
+    return false;
+  }
+
+  if (resetInProgress) {
+    return true;
+  }
+
+  if (!auth.isAuthenticated) {
     return false;
   }
 

@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/router.dart';
+import 'package:ai_clinic/app/shell/dev/dev_clinic_reset_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_bootstrap_sign_in.dart';
 import 'package:ai_clinic/core/ui/components/app_dialog.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
@@ -55,34 +55,37 @@ abstract final class ShellDevResetClinic {
   }
 
   static Future<void> run(BuildContext context, WidgetRef ref, {VoidCallback? onSuccess}) async {
-    final signInError = await ShellDevBootstrapSignIn.ensureSignedIn(ref);
-    if (!context.mounted) {
-      return;
-    }
-    if (signInError != null) {
-      appToast(context, AppToastInput(message: signInError, variant: AppToastVariant.danger));
-      return;
-    }
-
-    final ok = await ref.read(clinicSetupProvider.notifier).resetInstallationForDevelopment();
-    if (!context.mounted) {
-      return;
-    }
-
-    if (ok) {
-      await ref.read(clinicSetupProvider.notifier).resetSetup();
-      await ref.read(authSessionProvider.notifier).signOut();
-      if (context.mounted) {
-        context.go(AppRoutes.login);
-        appToast(context, const AppToastInput(message: 'Clinic data reset.', variant: AppToastVariant.success));
+    ref.read(devClinicResetProvider.notifier).setInProgress(true);
+    try {
+      final signInError = await ShellDevBootstrapSignIn.ensureSignedIn(ref);
+      if (signInError != null) {
+        _showToast(ref, AppToastInput(message: signInError, variant: AppToastVariant.danger));
+        return;
       }
-      onSuccess?.call();
-      return;
-    }
 
-    final errorMessage = ref.read(clinicSetupProvider).submitError;
-    if (errorMessage != null) {
-      appToast(context, AppToastInput(message: errorMessage, variant: AppToastVariant.danger));
+      final ok = await ref.read(clinicSetupProvider.notifier).resetInstallationForDevelopment();
+      if (ok) {
+        await ref.read(clinicSetupProvider.notifier).resetSetup();
+        await ref.read(authSessionProvider.notifier).signOut();
+        ref.read(appRouterProvider).go(AppRoutes.login);
+        _showToast(ref, const AppToastInput(message: 'Clinic data reset.', variant: AppToastVariant.success));
+        onSuccess?.call();
+        return;
+      }
+
+      final errorMessage = ref.read(clinicSetupProvider).submitError;
+      if (errorMessage != null) {
+        _showToast(ref, AppToastInput(message: errorMessage, variant: AppToastVariant.danger));
+      }
+    } finally {
+      ref.read(devClinicResetProvider.notifier).setInProgress(false);
+    }
+  }
+
+  static void _showToast(WidgetRef ref, AppToastInput input) {
+    final toastContext = ref.read(appRouterProvider).routerDelegate.navigatorKey.currentContext;
+    if (toastContext != null && toastContext.mounted) {
+      appToast(toastContext, input);
     }
   }
 }

@@ -667,7 +667,7 @@ void appToast(BuildContext context, AppToastInput input) {
 ## Checklist for new input components
 
 1. Does it use `TextField`, `Slider`, `InkWell`, or `DropdownButton`? → Add `appWrapMaterialInput`.
-2. Does it use `AppPopover` or read `MediaQuery` / theme in `initState`? → Defer to `didChangeDependencies` or use static motion tokens. For controlled `open:` changes, defer `_open` / `_close` in `didUpdateWidget` with `addPostFrameCallback` (see entry #10). While open, schedule `_overlayEntry?.markNeedsBuild()` via `_scheduleOverlayRefresh()` on child updates so overlay content stays in sync (see entry #12) — never call `markNeedsBuild` synchronously from `didUpdateWidget`, and skip refresh while closing or when the layer link is detached (see entry #13). Do **not** put `Tooltip` / `MenuAnchor` inside `AppPopover` child content — use inline text instead (see entry #11).
+2. Does it use `AppPopover` or read `MediaQuery` / theme in `initState`? → Defer to `didChangeDependencies` or use static motion tokens. For controlled `open:` changes, defer `_open` / `_close` in `didUpdateWidget` with `addPostFrameCallback` (see entry #10). While open, schedule `_overlayEntry?.markNeedsBuild()` via `_scheduleOverlayRefresh()` on child updates so overlay content stays in sync (see entry #12) — never call `markNeedsBuild` synchronously from `didUpdateWidget`, and skip refresh while closing or when the layer link is detached (see entry #13). In `dispose`, remove the overlay entry only — do not reset `AnimationController.value` (see entry #39). Do **not** put `Tooltip` / `MenuAnchor` inside `AppPopover` child content — use inline text instead (see entry #11).
 3. Does it format dates with a non-default locale? → Ensure locale is initialized in `ensureIntlDateFormattingInitialized`.
 4. Does a `Focus` wrapper share `focusNode` with an inner `TextField`? → Keep `focusNode` on the `TextField` only; assign `FocusNode.onKeyEvent` on that node instead of wrapping with `Focus` (see `app_combobox.dart`, `app_number_input.dart`).
 5. Single-line field in a fixed-height shell? → Wrap with `appCenterInputField` so typed text is vertically centered (bare `TextField` + `isCollapsed` aligns to top).
@@ -975,10 +975,36 @@ Tapping the shell still opens the popover (`No more options`) without forcing fo
 
 **Affected files (fixed):** `app_multi_select.dart`.
 
+---
+
+## 39. `setState() or markNeedsBuild() called when widget tree was locked` (`AppPopover` dispose)
+
+**Symptom:** Animation library assertion on sign-out or route teardown when an open `AppPopover` (combobox, select, multi-select, date picker, etc.) is unmounted. Stack: `_AppPopoverState.dispose` → `_removeOverlay` → `AnimationController.value=` → `AnimatedBuilder._handleChange`.
+
+**Cause:** `dispose` called `_removeOverlay(immediate: true)`, which set `_controller.value = 0` to skip the close animation. That notifies the overlay's `AnimatedBuilder` listeners while Flutter is finalizing the element tree (`BuildOwner.lockState` during unmount). Same class of lifecycle violation as entry #10, but during teardown instead of build.
+
+**Fix:** In `dispose`, remove the `OverlayEntry` directly and dispose the controller without resetting its value:
+
+```dart
+@override
+void dispose() {
+  final entry = _overlayEntry;
+  _overlayEntry = null;
+  entry?.remove();
+  _controller.dispose();
+  super.dispose();
+}
+```
+
+Do not call `_controller.value =` or `forward`/`reverse` from `dispose`.
+
+**Affected files (fixed):** `app_popover.dart`.
+
 ## Checklist for new settings / wizard pages
 
 1. Tall `Column` in settings content (`Expanded` slot or bounded shell)? → `mainAxisSize: MainAxisSize.min` plus `LayoutBuilder` + conditional `SingleChildScrollView` when `constraints.hasBoundedHeight` (see entries #28, #33).
 2. `AnimatedSwitcher` between steps/screens with `AppSelect`, `AppCombobox`, `AppPopover`, or other `GlobalKey` owners? → Do **not** keep `previousChildren` in a stacked `layoutBuilder`; mount only `currentChild` (see entry #33). Settings tab switches already use `ShellPageTransition`, which shows one page at a time.
 3. `FractionallySizedBox` fill inside a fixed-height track? → Set `heightFactor: 1` so `ColoredBox` children are not 0px tall (see entry #34).
+4. `AppPopover` on screens torn down during sign-out or route replace? → In `dispose`, remove the `OverlayEntry` only; do **not** reset `AnimationController.value` (notifies `AnimatedBuilder` while the tree is locked — see entry #39).
 
 ---

@@ -6,25 +6,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:ai_clinic/app/application/clinic_setup_orchestrator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_spec.dart';
-import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
-import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
-import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/staff_list_item.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
+import 'package:ai_clinic/features/setup/application/provisioning_rpc_messages.dart';
 import 'package:ai_clinic/features/setup/application/setup_rpc_messages.dart';
+import 'package:ai_clinic/features/setup/domain/bootstrap_finish_setup_result.dart';
 import 'package:ai_clinic/features/setup/domain/clinic_setup_draft_mapper.dart';
-import 'package:ai_clinic/features/setup/domain/persist_clinic_setup_draft.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
-import 'package:ai_clinic/features/setup/presentation/providers/provisioning_notifier.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_draft_models.dart';
 import 'package:ai_clinic/features/setup/presentation/setup/setup_validation.dart';
 
@@ -60,6 +52,14 @@ class ClinicSetupState {
 
   final String? validationFocusEntityId;
 
+  /// Whether the first-run wizard is in progress.
+  ///
+  /// Backend session state is authoritative for "is setup done". The local
+  /// `completed` flag is a UI hint only and can lag the JWT on cold start, so we
+  /// expose both: [isBootstrapWizardInProgress] defers to the session flag when
+  /// available (see [isBootstrapSetupRequiredProvider]) and otherwise falls back
+  /// to `!completed`. Routing consumers should prefer
+  /// [isBootstrapSetupRequiredProvider] so they never act on a stale local flag.
   bool get isBootstrapWizardInProgress => !completed;
 
   ClinicSetupState copyWith({
@@ -97,6 +97,12 @@ const _validationFocusSentinel = Object();
 final clinicSetupProvider = StateNotifierProvider<ClinicSetupNotifier, ClinicSetupState>((ref) {
   final notifier = ClinicSetupNotifier(ref);
   ref.listen<AuthSessionState>(authSessionProvider, (previous, next) {
+    // Skip session syncs until the initial draft load has finished so the cold-start
+    // `unknown -> unauthenticated` transition cannot resurrect a wiped draft that
+    // `loadDraft` is still holding across its `SharedPreferences` await (see review §3.3).
+    if (!notifier.initialLoadDone) {
+      return;
+    }
     unawaited(notifier.syncWithSession(next.context));
   });
   return notifier;
@@ -115,6 +121,20 @@ final isSetupCompleteProvider = Provider<bool>((ref) {
   return ref.watch(clinicSetupProvider).completed;
 });
 
+/// Authoritative "is first-run bootstrap still required" flag used by routing.
+///
+/// Derived from the JWT-backed session context (`needsClinicSetup`) rather than
+/// the local `completed` flag so the router cannot act on a stale local draft
+/// during the cold-start window before `loadDraft`/`syncWithSession` reconcile.
+final isBootstrapSetupRequiredProvider = Provider<bool>((ref) {
+  final session = ref.watch(authSessionProvider).context;
+  if (session != null) {
+    return session.needsClinicSetup;
+  }
+  // No context yet (unknown/loading): assume required so the guard stays closed.
+  return ref.watch(clinicSetupProvider).isBootstrapWizardInProgress;
+});
+
 /// Unified clinic setup notifier.
 ///
 /// Merges the first-run atomic bootstrap wizard (formerly [SetupNotifier]) with
@@ -128,6 +148,14 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
   }
 
   final Ref _ref;
+
+  /// Whether the initial draft load from [SharedPreferences] has completed.
+  ///
+  /// Session-sync listeners skip until this is `true` to avoid resurrecting a
+  /// reset draft during the cold-start race (review §3.3).
+  bool _initialLoadDone = false;
+
+  bool get initialLoadDone => _initialLoadDone;
 
   /// Loads the persisted draft and completion flag from [SharedPreferences].
   Future<void> loadDraft() async {
@@ -147,9 +175,11 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
           : SetupDraft.fromJson(jsonDecode(raw) as Map<String, dynamic>);
 
       state = ClinicSetupState(draft: draft, completed: completed, completedSteps: completedSteps);
+      _initialLoadDone = true;
       await syncWithSession(_ref.read(authSessionProvider).context);
     } on Object {
       state = ClinicSetupState(draft: createDefaultSetup());
+      _initialLoadDone = true;
     }
   }
 
@@ -372,9 +402,21 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
   /// Persists the cached draft to the backend.
   ///
   /// In first-run mode (`needsClinicSetup == true`), calls the atomic
-  /// `bootstrap_finish_setup` RPC. In steady-state mode, persists changes via
-  /// individual CRUD operations (`persistSetupDraftToBackend`).
+  /// `bootstrap_finish_setup` RPC to create the organization, primary branch, and
+  /// staff accounts together, then persists the remaining branches, staff branch
+  /// assignments, and services through the steady-state CRUD path so the wizard
+  /// no longer silently discards them (review §3.1). The draft is then
+  /// re-hydrated from the backend so it reflects truth rather than the input.
+  ///
+  /// In steady-state mode, persists changes via individual CRUD operations
+  /// (`persistSetupDraftToBackend`).
   Future<bool> completeSetup() async {
+    // Re-entrancy guard: a programmatic double-invocation could fire the RPCs
+    // twice and corrupt local state (review §3.4).
+    if (state.isSubmitting) {
+      return false;
+    }
+
     state = state.copyWith(isSubmitting: true, clearSubmitError: true);
     await persistDraft();
 
@@ -391,12 +433,27 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
       AppLog.info('setup.finish.start');
       try {
         final input = toBootstrapFinishSetupInput(state.draft);
-        await _ref.read(finishBootstrapSetupUseCaseProvider)(input);
+        final result = await _ref.read(finishBootstrapSetupUseCaseProvider)(input);
         await _ref.read(authSessionProvider.notifier).refreshSessionContext();
-        invalidateAppointmentSurfaceProviders(_ref);
+
+        // The atomic RPC only stores the primary branch + staff (each auto-assigned
+        // to that branch). Persist the remaining branches, the user's selected staff
+        // branch assignments, and services through the steady-state path so nothing
+        // the wizard collected is silently dropped (review §3.1).
+        var partialFailureMessage = await _persistRemainingBootstrapEntities(result);
+
+        // Always hydrate so the draft mirrors backend truth (which may be a subset
+        // if the steady-state follow-up partially failed).
+        await hydrateFromBackend();
+        _orchestrator.notifyClinicDataChanged();
         AppLog.info('setup.finish.ok');
 
-        state = state.copyWith(completed: true, isSubmitting: false, completedSteps: {0, 1, 2, 3});
+        state = state.copyWith(
+          completed: true,
+          isSubmitting: false,
+          completedSteps: {0, 1, 2, 3},
+          submitError: partialFailureMessage,
+        );
         try {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(_setupCompleteKey, 'true');
@@ -430,59 +487,10 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
 
     AppLog.info('setup.finish.steady_state.start');
     try {
-      final existingBranches = await _ref
-          .read(listBranchesUseCaseProvider)(organizationId: organizationId)
-          .catchError((_) => const <BranchListItem>[]);
-      final existingStaff = await _loadStaffForSetup();
-      final existingServices = await _loadServicesForSetup();
-      final serviceRepo = _ref.read(serviceCatalogRepositoryProvider);
-
-      await persistSetupDraftToBackend(
-        draft: state.draft,
-        existingBranches: existingBranches,
-        existingStaff: existingStaff,
-        existingServices: existingServices,
-        gateways: PersistSetupDraftGateways(
-          updateOrganization: (input) => _ref.read(updateOrganizationUseCaseProvider)(input),
-          createBranch: (input) => _ref.read(createBranchUseCaseProvider)(input),
-          updateBranch: (input) => _ref.read(updateBranchUseCaseProvider)(input),
-          deleteBranch: ({required String branchId}) => _ref.read(deleteBranchUseCaseProvider)(branchId: branchId),
-          createStaffAccount: (input) => _ref.read(createStaffAccountUseCaseProvider)(input),
-          updateStaffMember: (input) => _ref.read(updateStaffMemberUseCaseProvider)(input),
-          deleteStaffMember: ({required String staffMemberId}) =>
-              _ref.read(deleteStaffMemberUseCaseProvider)(staffMemberId: staffMemberId),
-          createService: ({required String name, required String defaultPrice}) async {
-            final result = await serviceRepo.createService(
-              name: name,
-              defaultPrice: defaultPrice,
-              globalStatus: GlobalStatus.active,
-              assignAllBranches: true,
-            );
-            return result.serviceId;
-          },
-          updateService:
-              ({
-                required String serviceId,
-                required DateTime expectedUpdatedAt,
-                required String name,
-                required String defaultPrice,
-              }) async {
-                await serviceRepo.updateService(
-                  serviceId: serviceId,
-                  expectedUpdatedAt: expectedUpdatedAt,
-                  name: name,
-                  defaultPrice: defaultPrice,
-                  globalStatus: GlobalStatus.active,
-                );
-              },
-          softDeleteService: ({required String serviceId, required DateTime expectedUpdatedAt}) async {
-            await serviceRepo.softDeleteService(serviceId: serviceId, expectedUpdatedAt: expectedUpdatedAt);
-          },
-        ),
-      );
+      await _orchestrator.persistSteadyState(state.draft);
 
       await hydrateFromBackend();
-      invalidateAppointmentSurfaceProviders(_ref);
+      _orchestrator.notifyClinicDataChanged();
       AppLog.info('setup.finish.steady_state.ok');
 
       state = state.copyWith(completed: true, isSubmitting: false, completedSteps: {0, 1, 2, 3});
@@ -496,18 +504,67 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
       return true;
     } on RpcFailure catch (error) {
       AppLog.warning('setup.finish.steady_state.rpc_failed code=${error.code}');
+      // Partial failure may have left the backend partway through the save. Hydrate
+      // so the draft reflects whatever actually committed (review §3.5).
+      await _safeHydrateFromBackend();
       state = state.copyWith(isSubmitting: false, submitError: setupMessageForRpc(error));
       return false;
     } on StateError catch (error) {
+      await _safeHydrateFromBackend();
       state = state.copyWith(isSubmitting: false, submitError: error.message);
       return false;
     } catch (error) {
       AppLog.warning('setup.finish.steady_state.failed reason=${error.runtimeType}');
+      await _safeHydrateFromBackend();
       state = state.copyWith(
         isSubmitting: false,
-        submitError: 'Unable to save clinic setup. Check connectivity and try again.',
+        submitError: 'Unable to save clinic setup. Some changes may not have been saved; review your setup.',
       );
       return false;
+    }
+  }
+
+  ClinicSetupOrchestrator get _orchestrator => _ref.read(clinicSetupOrchestratorProvider);
+
+  /// Persists the extra branches, staff branch assignments, and services that the
+  /// atomic `bootstrap_finish_setup` RPC does not store. Delegates to the
+  /// orchestrator which remaps the primary branch + staff to their backend ids
+  /// and runs the steady-state CRUD path.
+  ///
+  /// Returns a partial-failure message (or `null` when everything committed) so
+  /// callers can surface it without masking the fact that the atomic core
+  /// succeeded.
+  Future<String?> _persistRemainingBootstrapEntities(BootstrapFinishSetupResult result) async {
+    if (state.draft.branches.length <= 1 &&
+        state.draft.services.isEmpty &&
+        state.draft.staff.every((member) => member.branchIds.length <= 1)) {
+      return null;
+    }
+
+    try {
+      await _orchestrator.persistRemainingBootstrapEntities(
+        primaryBranchId: result.branchId,
+        staffMemberIds: result.staffMemberIds,
+        draft: state.draft,
+      );
+      return null;
+    } on RpcFailure catch (error) {
+      AppLog.warning('setup.finish.remaining_persist.rpc_failed code=${error.code}');
+      return setupMessageForRpc(error);
+    } on StateError catch (error) {
+      AppLog.warning('setup.finish.remaining_persist.state_error');
+      return error.message;
+    } catch (error) {
+      AppLog.warning('setup.finish.remaining_persist.failed reason=${error.runtimeType}');
+      return 'Some branches, staff assignments, or services could not be saved. Review your setup in Settings.';
+    }
+  }
+
+  Future<void> _safeHydrateFromBackend() async {
+    try {
+      await hydrateFromBackend();
+    } catch (error) {
+      AppLog.warning('setup.hydrate.after_failure reason=${error.runtimeType}');
     }
   }
 
@@ -549,6 +606,17 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
 
   /// Wipes org/branch data via dev RPC and reloads session claims for another setup run.
   Future<bool> resetInstallationForDevelopment() async {
+    // Dev-only destructive operation: hard-guard at the notifier layer so it can
+    // never run outside a debug build (review §6.8). The shell widget also gates the
+    // UI, but this is the authoritative runtime guard.
+    if (!kDebugMode) {
+      return false;
+    }
+    // Re-entrancy guard, mirroring completeSetup (review §3.4).
+    if (state.isSubmitting) {
+      return false;
+    }
+
     state = state.copyWith(isSubmitting: true, clearSubmitError: true);
     AppLog.info('setup.dev_reset.start');
 
@@ -564,7 +632,7 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
         'setup.dev_reset.session_refreshed setup_required=${_ref.read(authSessionProvider).context?.setupRequired}',
       );
 
-      invalidateAppointmentSurfaceProviders(_ref);
+      _orchestrator.notifyClinicDataChanged();
       await resetSetup();
       state = state.copyWith(isSubmitting: false);
       return true;
@@ -584,31 +652,21 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
 
   /// Fetches organization, branches, staff, and services from the backend and
   /// applies them to the setup draft. Skipped during first-time bootstrap when
-  /// no organization exists yet.
+  /// no organization exists yet. Delegates the cross-feature fetch to the
+  /// orchestrator (review §6.2) and applies setup-specific state (dev passwords,
+  /// confirmed IDs) locally.
   Future<void> hydrateFromBackend() async {
     final session = _ref.read(authSessionProvider).context;
-    final organizationId = session?.organizationId?.trim();
-    if (organizationId == null || organizationId.isEmpty || (session?.needsClinicSetup ?? false)) {
+    if (session == null || session.needsClinicSetup) {
       return;
     }
 
     AppLog.info('setup.hydrate.start');
 
-    final organization = await _ref
-        .read(fetchOrganizationProfileUseCaseProvider)(organizationId: organizationId)
-        .catchError((_) => null);
-    final branches = await _ref
-        .read(listBranchesUseCaseProvider)(organizationId: organizationId)
-        .catchError((_) => const <BranchListItem>[]);
-    final staff = await _loadStaffForSetup();
-    final services = await _loadServicesForSetup();
-
-    final draft = setupDraftFromBackend(
-      organization: organization,
-      branches: branches,
-      staff: staff,
-      services: services,
-    );
+    final draft = await _orchestrator.hydrateDraftFromBackend();
+    if (draft == null) {
+      return;
+    }
 
     final hydratedStaff = kDebugMode
         ? draft.staff
@@ -700,40 +758,5 @@ class ClinicSetupNotifier extends StateNotifier<ClinicSetupState> {
       'RPC_NOT_APPLIED' => provisioningMessageForRpc(failure),
       _ => setupMessageForRpc(failure),
     };
-  }
-
-  Future<List<StaffListItem>> _loadStaffForSetup() async {
-    final auth = _ref.read(authSessionProvider);
-    if (!AuthRouteGuard.canAccessStaffManagement(auth)) {
-      return const [];
-    }
-
-    return _ref.read(listStaffUseCaseProvider)(filter: StaffListFilter.all).catchError((_) => const <StaffListItem>[]);
-  }
-
-  Future<List<ServiceListItem>> _loadServicesForSetup() async {
-    final auth = _ref.read(authSessionProvider);
-    if (!AuthRouteGuard.canAccessServiceCatalogList(auth)) {
-      return const [];
-    }
-
-    const pageSize = 100;
-    var offset = 0;
-    final all = <ServiceListItem>[];
-
-    while (true) {
-      final page = await _ref
-          .read(serviceCatalogRepositoryProvider)
-          .listServices(limit: pageSize, offset: offset)
-          .catchError((_) => const ServiceListPageResult(items: [], total: 0));
-
-      all.addAll(page.items);
-      if (page.items.isEmpty || all.length >= page.total) {
-        break;
-      }
-      offset += pageSize;
-    }
-
-    return all;
   }
 }

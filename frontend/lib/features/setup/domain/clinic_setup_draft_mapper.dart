@@ -45,7 +45,13 @@ List<WorkingDay> scheduleToWorkingDays(BranchWorkingSchedule? schedule) {
       .toList(growable: false);
 }
 
-/// Normalizes backend phone values to the 10-digit national format used by setup.
+/// Normalizes backend phone values for display in the setup wizard.
+///
+/// Egypt national numbers (10 digits, or 12 digits with the `20` country code)
+/// are reduced to their 10-digit form. Non-Egypt numbers that are not 10 digits
+/// are returned in full rather than silently truncated to the last 10 digits, so
+/// admins reviewing international clinics do not see mangled phone values
+/// (review §5.4). The 10-digit input is still enforced at entry time.
 String normalizeSetupNationalPhone(String? raw) {
   final digits = raw?.replaceAll(RegExp(r'\D'), '') ?? '';
   if (digits.isEmpty) {
@@ -57,9 +63,7 @@ String normalizeSetupNationalPhone(String? raw) {
   if (digits.length == 12 && digits.startsWith('20')) {
     return digits.substring(2);
   }
-  if (digits.length > 10) {
-    return digits.substring(digits.length - 10);
-  }
+  // Any other length: return the full digit string instead of truncating.
   return digits;
 }
 
@@ -79,13 +83,14 @@ BranchDraft branchListItemToDraft(BranchListItem branch) {
     mobile: normalizeSetupNationalPhone(branch.phone),
     mapLocation: branch.mapsUrl ?? '',
     workingDays: scheduleToWorkingDays(branch.workingSchedule),
+    isDraft: false,
   );
 }
 
 String staffRoleToDraftValue(StaffRole role) {
   return switch (role) {
     StaffRole.administrator => 'administrator',
-    StaffRole.labStaff => 'nurse',
+    StaffRole.labStaff => 'lab_staff',
     StaffRole.doctor => 'doctor',
     StaffRole.receptionist => 'receptionist',
   };
@@ -100,11 +105,12 @@ StaffDraft staffListItemToDraft(StaffListItem staff) {
     password: '',
     role: staffRoleToDraftValue(staff.role),
     branchIds: staff.branches.map((branch) => branch.id).whereType<String>().toList(growable: false),
+    isDraft: false,
   );
 }
 
 ServiceDraft serviceListItemToDraft(ServiceListItem service) {
-  return ServiceDraft(id: service.serviceId, name: service.name, price: service.defaultPrice.asDouble);
+  return ServiceDraft(id: service.serviceId, name: service.name, price: service.defaultPrice.asDouble, isDraft: false);
 }
 
 /// Builds a setup wizard draft from steady-state backend entities.
@@ -152,6 +158,9 @@ BranchWorkingSchedule workingDaysToSchedule(List<WorkingDay> workingDays) {
 
 StaffRole? staffRoleFromDraft(String role) {
   final normalized = role.trim().toLowerCase();
+  // Backward-compatible aliases for older wizard drafts that used the legacy
+  // 'owner'/'nurse' option values before they were aligned with the StaffRole
+  // enum (review §5.1). New drafts store 'administrator'/'lab_staff'.
   if (normalized == 'owner') {
     return StaffRole.administrator;
   }

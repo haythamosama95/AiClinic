@@ -3,57 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/logging/app_log.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/features/auth/domain/auth_session.dart';
+import 'package:ai_clinic/features/auth/domain/staff_username.dart';
+import 'package:ai_clinic/features/setup/application/provisioning_rpc_messages.dart';
 import 'package:ai_clinic/features/setup/domain/usecases/setup_use_case_providers.dart';
 import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart';
 import 'package:ai_clinic/features/setup/domain/create_staff_account_result.dart';
 import 'package:ai_clinic/features/setup/domain/admin_reset_staff_password_result.dart';
 import 'package:ai_clinic/features/setup/domain/admin_update_staff_username_result.dart';
-import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/setup/domain/provisioning_rules.dart';
-import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
 import 'package:ai_clinic/features/setup/domain/staff_member_summary.dart';
-import 'package:ai_clinic/features/auth/domain/staff_username.dart';
-import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-
-/// User-facing messages for provisioning RPC error codes.
-String provisioningMessageForRpc(RpcFailure failure) {
-  return switch (failure.code) {
-    'ORG_SETUP_INCOMPLETE' => 'Create your clinic organization and first branch before adding staff accounts.',
-    'FORBIDDEN' => 'You do not have permission to create staff accounts.',
-    'USERNAME_EXISTS' => 'A staff account with this username already exists.',
-    'INVALID_BRANCH' => 'One or more selected branches are invalid.',
-    'INVALID_INPUT' => failure.message,
-    'WEAK_PASSWORD' => failure.message,
-    'RPC_NOT_APPLIED' => failure.message,
-    _ => 'Unable to create the staff account. Check connectivity and try again.',
-  };
-}
-
-/// User-facing messages for password-reset RPC error codes.
-String passwordResetMessageForRpc(RpcFailure failure) {
-  return switch (failure.code) {
-    'FORBIDDEN' => 'You do not have permission to reset staff passwords.',
-    'STAFF_NOT_FOUND' => 'That staff member was not found. Refresh the list and try again.',
-    'CROSS_ORG_DENIED' => 'That staff member is outside your clinic organization.',
-    'INVALID_INPUT' => failure.message,
-    'WEAK_PASSWORD' => failure.message,
-    'RPC_NOT_APPLIED' => failure.message,
-    _ => 'Unable to reset the password. Check connectivity and try again.',
-  };
-}
-
-/// User-facing messages for username-update RPC error codes.
-String usernameUpdateMessageForRpc(RpcFailure failure) {
-  return switch (failure.code) {
-    'FORBIDDEN' => 'You do not have permission to change staff usernames.',
-    'STAFF_NOT_FOUND' => 'That staff member was not found. Refresh the list and try again.',
-    'CROSS_ORG_DENIED' => 'That staff member is outside your clinic organization.',
-    'USERNAME_EXISTS' => 'A staff account with this username already exists.',
-    'INVALID_INPUT' => failure.message,
-    'RPC_NOT_APPLIED' => failure.message,
-    _ => 'Unable to update the username. Check connectivity and try again.',
-  };
-}
+import 'package:ai_clinic/features/settings/domain/provisioning_rules.dart';
+import 'package:ai_clinic/features/setup/domain/staff_password_validation.dart';
 
 @immutable
 class ProvisioningUiState {
@@ -243,12 +204,11 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       state = state.copyWith(errorMessage: 'Select a staff member to reset.');
       return null;
     }
-    if (trimmedPassword.isEmpty) {
-      state = state.copyWith(errorMessage: 'Enter a new password for the staff member.');
-      return null;
-    }
-    if (trimmedPassword.length < 6) {
-      state = state.copyWith(errorMessage: 'Password must be at least 6 characters.');
+    // Apply the same complexity policy as initial staff creation so the reset path
+    // cannot mint a weaker password than creation allows (review §5.7).
+    final passwordError = StaffPasswordValidation.validateInitialPassword(trimmedPassword);
+    if (passwordError != null) {
+      state = state.copyWith(errorMessage: passwordError);
       return null;
     }
 
@@ -294,7 +254,7 @@ class ProvisioningNotifier extends Notifier<ProvisioningUiState> {
       return null;
     }
 
-    if (!ProvisioningRules.canResetStaffPassword(session.staffProfile)) {
+    if (!ProvisioningRules.canUpdateStaffUsername(session.staffProfile)) {
       state = state.copyWith(errorMessage: 'Only clinic administrators can update staff usernames.');
       return null;
     }

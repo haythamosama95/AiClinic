@@ -63,6 +63,7 @@ Future<void> persistSetupDraftToBackend({
   required List<BranchListItem> existingBranches,
   required List<StaffListItem> existingStaff,
   required List<ServiceListItem> existingServices,
+  Map<String, String> initialBranchIdMap = const {},
 }) async {
   await gateways.updateOrganization(
     UpdateOrganizationInput(
@@ -72,14 +73,14 @@ Future<void> persistSetupDraftToBackend({
     ),
   );
 
-  final branchIdMap = <String, String>{};
+  final branchIdMap = Map<String, String>.from(initialBranchIdMap);
   for (final branch in draft.branches) {
     final schedule = workingDaysToSchedule(branch.workingDays);
     final phone = branch.mobile.trim().isEmpty ? null : branch.mobile.trim();
     final code = branch.code.trim().isEmpty ? null : branch.code.trim();
     final mapsUrl = branch.mapLocation.trim().isEmpty ? null : branch.mapLocation.trim();
 
-    if (isSetupDraftEntityId(branch.id)) {
+    if (branch.isDraft) {
       final backendId = await gateways.createBranch(
         CreateBranchInput(
           name: branch.name.trim(),
@@ -124,7 +125,7 @@ Future<void> persistSetupDraftToBackend({
     final branchIds = _resolveBranchIds(member.branchIds, branchIdMap);
     final phone = member.mobile.trim().isEmpty ? null : member.mobile.trim();
 
-    if (isSetupDraftEntityId(member.id)) {
+    if (member.isDraft) {
       await gateways.createStaffAccount(
         CreateStaffAccountInput(
           username: normalizeStaffUsername(member.username),
@@ -162,7 +163,7 @@ Future<void> persistSetupDraftToBackend({
   for (final service in draft.services) {
     final defaultPrice = _serviceDefaultPriceWire(service.price);
 
-    if (isSetupDraftEntityId(service.id)) {
+    if (service.isDraft) {
       await gateways.createService(name: service.name.trim(), defaultPrice: defaultPrice);
     } else {
       draftBackendServiceIds.add(service.id);

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:ai_clinic/app/presentation/placeholder_page.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
+import 'package:ai_clinic/app/shell/dev/dev_clinic_reset_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_notifier.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_overlay.dart';
 import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
@@ -46,15 +47,12 @@ void shellDevListenForRouterRefresh(Ref ref, VoidCallback onChanged) {
   }
 
   ref.listen<DevClinicSeedState>(devClinicSeedProvider, (_, _) => onChanged());
+  ref.listen<DevClinicResetState>(devClinicResetProvider, (_, _) => onChanged());
 }
 
 /// Returns [authenticatedPage] when signed in; otherwise a static shell placeholder
 /// during debug scaffold preview so feature pages that assume a session never build.
-Widget shellDevGatedPage(
-  BuildContext context,
-  GoRouterState state, {
-  required Widget authenticatedPage,
-}) {
+Widget shellDevGatedPage(BuildContext context, GoRouterState state, {required Widget authenticatedPage}) {
   final auth = ProviderScope.containerOf(context).read(authSessionProvider);
   final location = state.uri.path;
   if (!auth.isAuthenticated &&
@@ -72,7 +70,15 @@ Widget shellDevGatedPage(
 
 /// When true, auth redirects are suppressed so in-place dev seeding is not interrupted.
 bool shellDevSuppressAuthRedirect(Ref ref, AuthSessionState auth) {
-  if (!kDebugMode || !auth.isAuthenticated) {
+  if (!kDebugMode) {
+    return false;
+  }
+
+  if (ref.read(devClinicResetProvider).inProgress) {
+    return true;
+  }
+
+  if (!auth.isAuthenticated) {
     return false;
   }
 

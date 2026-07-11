@@ -6,8 +6,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AuthRouteGuard extended', () {
-    test('unknown session on protected route does not redirect', () {
-      expect(AuthRouteGuard.resolveRedirect(location: AppRoutes.home, auth: AuthSessionState.initial()), isNull);
+    test('unknown session on protected route redirects to login', () {
+      // Cold-start unknown/loading must not render the authenticated shell (review §2.1).
+      expect(
+        AuthRouteGuard.resolveRedirect(location: AppRoutes.home, auth: AuthSessionState.initial()),
+        AppRoutes.login,
+      );
+    });
+
+    test('unknown session on a public route is left through', () {
+      expect(
+        AuthRouteGuard.resolveRedirect(location: AppRoutes.login, auth: AuthSessionState.initial()),
+        isNull,
+      );
     });
 
     test('authenticated setup_required on login redirects to home for setup dialog', () {

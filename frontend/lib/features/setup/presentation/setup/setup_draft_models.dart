@@ -49,11 +49,10 @@ const List<SelectOption> currencyOptions = [
 const List<SelectOption> CURRENCY_OPTIONS = currencyOptions;
 
 const List<SelectOption> staffRoleOptions = [
-  SelectOption(value: 'owner', label: 'Owner'),
   SelectOption(value: 'administrator', label: 'Administrator'),
   SelectOption(value: 'doctor', label: 'Doctor'),
   SelectOption(value: 'receptionist', label: 'Receptionist'),
-  SelectOption(value: 'nurse', label: 'Nurse'),
+  SelectOption(value: 'lab_staff', label: 'Lab staff'),
 ];
 
 /// Web export name: `STAFF_ROLE_OPTIONS`.
@@ -111,6 +110,7 @@ class BranchDraft {
     required this.mobile,
     required this.mapLocation,
     required this.workingDays,
+    this.isDraft = true,
   });
 
   final String id;
@@ -120,6 +120,11 @@ class BranchDraft {
   final String mapLocation;
   final List<WorkingDay> workingDays;
 
+  /// Explicit marker for locally-created, unsaved entities vs. hydrated backend
+  /// rows. Replaces the stringly-typed `isSetupDraftEntityId` id heuristic so the
+  /// create-vs-update diff logic cannot misclassify a backend id (review §5.5).
+  final bool isDraft;
+
   BranchDraft copyWith({
     String? id,
     String? name,
@@ -127,6 +132,7 @@ class BranchDraft {
     String? mobile,
     String? mapLocation,
     List<WorkingDay>? workingDays,
+    bool? isDraft,
   }) {
     return BranchDraft(
       id: id ?? this.id,
@@ -135,6 +141,7 @@ class BranchDraft {
       mobile: mobile ?? this.mobile,
       mapLocation: mapLocation ?? this.mapLocation,
       workingDays: workingDays ?? this.workingDays,
+      isDraft: isDraft ?? this.isDraft,
     );
   }
 
@@ -145,12 +152,14 @@ class BranchDraft {
     'mobile': mobile,
     'mapLocation': mapLocation,
     'workingDays': workingDays.map((day) => day.toJson()).toList(),
+    'isDraft': isDraft,
   };
 
   factory BranchDraft.fromJson(Map<String, dynamic> json) {
     final rawDays = json['workingDays'] as List<dynamic>?;
+    final id = json['id'] as String;
     return BranchDraft(
-      id: json['id'] as String,
+      id: id,
       name: json['name'] as String? ?? '',
       code: json['code'] as String? ?? '',
       mobile: json['mobile'] as String? ?? '',
@@ -158,6 +167,8 @@ class BranchDraft {
       workingDays: rawDays == null
           ? createDefaultWorkingDays()
           : rawDays.map((day) => WorkingDay.fromJson(day as Map<String, dynamic>)).toList(),
+      // Backward compat: old drafts didn't store isDraft; infer from the id shape.
+      isDraft: (json['isDraft'] as bool?) ?? isSetupDraftEntityId(id),
     );
   }
 }
@@ -172,6 +183,7 @@ class StaffDraft {
     required this.password,
     required this.role,
     required this.branchIds,
+    this.isDraft = true,
   });
 
   final String id;
@@ -182,6 +194,10 @@ class StaffDraft {
   final String role;
   final List<String> branchIds;
 
+  /// Explicit marker for locally-created, unsaved entities vs. hydrated backend
+  /// rows (review §5.5).
+  final bool isDraft;
+
   StaffDraft copyWith({
     String? id,
     String? name,
@@ -190,6 +206,7 @@ class StaffDraft {
     String? password,
     String? role,
     List<String>? branchIds,
+    bool? isDraft,
   }) {
     return StaffDraft(
       id: id ?? this.id,
@@ -199,6 +216,7 @@ class StaffDraft {
       password: password ?? this.password,
       role: role ?? this.role,
       branchIds: branchIds ?? this.branchIds,
+      isDraft: isDraft ?? this.isDraft,
     );
   }
 
@@ -207,45 +225,63 @@ class StaffDraft {
     'name': name,
     'mobile': mobile,
     'username': username,
-    'password': password,
+    // Never persist staff passwords to disk (review §3.2). The password remains in
+    // memory for the wizard run and must be re-entered after a cold restart.
+    'password': null,
     'role': role,
     'branchIds': branchIds,
+    'isDraft': isDraft,
   };
 
   factory StaffDraft.fromJson(Map<String, dynamic> json) {
     final rawBranchIds = json['branchIds'] as List<dynamic>?;
+    final id = json['id'] as String;
     return StaffDraft(
-      id: json['id'] as String,
+      id: id,
       name: json['name'] as String? ?? '',
       mobile: json['mobile'] as String? ?? '',
       username: json['username'] as String? ?? '',
       password: json['password'] as String? ?? '',
       role: json['role'] as String? ?? '',
       branchIds: rawBranchIds?.map((id) => id as String).toList() ?? const [],
+      // Backward compat: old drafts didn't store isDraft; infer from the id shape.
+      isDraft: (json['isDraft'] as bool?) ?? isSetupDraftEntityId(id),
     );
   }
 }
 
 @immutable
 class ServiceDraft {
-  const ServiceDraft({required this.id, required this.name, required this.price});
+  const ServiceDraft({required this.id, required this.name, required this.price, this.isDraft = true});
 
   final String id;
   final String name;
   final double? price;
 
-  ServiceDraft copyWith({String? id, String? name, double? price, bool clearPrice = false}) {
-    return ServiceDraft(id: id ?? this.id, name: name ?? this.name, price: clearPrice ? null : (price ?? this.price));
+  /// Explicit marker for locally-created, unsaved entities vs. hydrated backend
+  /// rows (review §5.5).
+  final bool isDraft;
+
+  ServiceDraft copyWith({String? id, String? name, double? price, bool clearPrice = false, bool? isDraft}) {
+    return ServiceDraft(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      price: clearPrice ? null : (price ?? this.price),
+      isDraft: isDraft ?? this.isDraft,
+    );
   }
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'price': price};
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'price': price, 'isDraft': isDraft};
 
   factory ServiceDraft.fromJson(Map<String, dynamic> json) {
     final rawPrice = json['price'];
+    final id = json['id'] as String;
     return ServiceDraft(
-      id: json['id'] as String,
+      id: id,
       name: json['name'] as String? ?? '',
       price: rawPrice == null ? null : (rawPrice as num).toDouble(),
+      // Backward compat: old drafts didn't store isDraft; infer from the id shape.
+      isDraft: (json['isDraft'] as bool?) ?? isSetupDraftEntityId(id),
     );
   }
 }

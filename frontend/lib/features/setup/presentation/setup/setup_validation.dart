@@ -189,9 +189,16 @@ String? _validateServicePrice(double? price) {
   if (price < 0) {
     return 'Price must be zero or greater';
   }
-  final cents = (price * 100).round();
-  if ((cents / 100 - price).abs() > 0.001) {
-    return 'Enter a valid price with at most two decimal places';
+  // Validate at-most-two-decimals on the price's shortest string form rather than
+  // via floating-point multiplication, which can spuriously reject legitimately
+  // entered two-decimal prices (review §5.3). Serialization later normalizes via
+  // toStringAsFixed(2).
+  final text = price.toString();
+  if (text.contains('.')) {
+    final decimals = text.split('.').last;
+    if (decimals.length > 2) {
+      return 'Enter a valid price with at most two decimal places';
+    }
   }
   return null;
 }

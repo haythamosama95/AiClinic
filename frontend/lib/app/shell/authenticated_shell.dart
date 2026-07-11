@@ -39,7 +39,9 @@ class AuthenticatedShell extends ConsumerWidget {
     );
 
     final auth = ref.watch(authSessionProvider);
-    final setupLocked = auth.context?.needsClinicSetup ?? false;
+    // Default to locked when the session context is unknown (cold-start / loading)
+    // so the shell chrome never renders interactive during the pre-auth window.
+    final setupLocked = auth.context?.needsClinicSetup ?? true;
     final chrome = ref.watch(shellChromeProvider);
     final collapsed = ref.watch(shellSidebarCollapsedProvider);
 

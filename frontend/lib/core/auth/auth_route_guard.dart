@@ -375,15 +375,22 @@ abstract final class AuthRouteGuard {
     if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
-    final role = auth.context!.staffProfile.role;
-    return role == StaffRole.administrator;
+    final context = auth.context;
+    if (context == null) {
+      return false;
+    }
+    return context.staffProfile.role == StaffRole.administrator;
   }
 
   static bool canAccessBranchManagement(AuthSessionState auth) {
     if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
-    return auth.context!.permissions.contains(PermissionKeys.manageBranches);
+    final context = auth.context;
+    if (context == null) {
+      return false;
+    }
+    return context.permissions.contains(PermissionKeys.manageBranches);
   }
 
   /// Clinic setup tab: organization profile and/or branch administration.
@@ -395,15 +402,22 @@ abstract final class AuthRouteGuard {
     if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
-    return auth.context!.permissions.contains(PermissionKeys.manageStaff);
+    final context = auth.context;
+    if (context == null) {
+      return false;
+    }
+    return context.permissions.contains(PermissionKeys.manageStaff);
   }
 
   static bool canAccessPermissionMatrix(AuthSessionState auth) {
     if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
     }
-    final role = auth.context!.staffProfile.role;
-    return role == StaffRole.administrator;
+    final context = auth.context;
+    if (context == null) {
+      return false;
+    }
+    return context.staffProfile.role == StaffRole.administrator;
   }
 
   /// Returns redirect target when [location] is an admin settings route the session cannot access.
@@ -496,7 +510,13 @@ abstract final class AuthRouteGuard {
     bool bootstrapStaffWizardInProgress = false,
   }) {
     if (auth.status == AuthSessionStatus.unknown || auth.status == AuthSessionStatus.loading) {
-      return null;
+      // Treat an unresolved session like unauthenticated for non-public routes so a
+      // deep link cannot render AuthenticatedShell with enabled chrome before auth
+      // resolves. Public routes (login/forgot-password/startup) are left through.
+      if (isPublicUnauthenticatedRoute(location)) {
+        return null;
+      }
+      return AppRoutes.login;
     }
 
     if (auth.isAuthenticated) {
