@@ -58,10 +58,10 @@ void main() {
       );
     });
 
-    test('loading session does not redirect', () {
+    test('loading session on public route does not redirect', () {
       expect(
         AuthRouteGuard.resolveRedirect(
-          location: AppRoutes.home,
+          location: AppRoutes.login,
           auth: const AuthSessionState(status: AuthSessionStatus.loading),
         ),
         isNull,

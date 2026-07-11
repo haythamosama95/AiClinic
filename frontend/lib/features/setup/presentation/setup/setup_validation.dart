@@ -224,8 +224,12 @@ String? _validateServicePrice(double? price) {
   if (price < 0) {
     return 'Price must be zero or greater';
   }
-  // Validate via fixed-point string to avoid binary float rounding (e.g. 19.99 * 100).
-  return validateServicePriceText(price.toStringAsFixed(2));
+  // Reject more than two decimal places without rounding (e.g. 12.345).
+  final cents = (price * 100).round();
+  if ((cents / 100 - price).abs() > 1e-6) {
+    return 'Enter a valid price with at most two decimal places';
+  }
+  return null;
 }
 
 bool hasErrors(Map<String, String> errors) => errors.isNotEmpty;
