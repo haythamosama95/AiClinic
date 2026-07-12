@@ -62,6 +62,49 @@ void main() {
       expect(client.rpcCallCounts['list_appointments'], 1);
     });
 
+    test('refresh resolves branch when auth session becomes available', () async {
+      final authNotifier = MutableAuthSessionNotifier(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            branchIds: const [],
+            activeBranchId: null,
+          ),
+        ),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(() => authNotifier),
+          appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final initial = await readAfterInit(container);
+      expect(initial.items, isEmpty);
+      expect(initial.error, contains('active branch'));
+
+      authNotifier.replace(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: calendarTestBranchAId,
+            branchIds: [calendarTestBranchAId],
+          ),
+        ),
+      );
+      await pumpEventQueue();
+
+      final state = container.read(appointmentCalendarProvider);
+      expect(state.selectedBranchId, calendarTestBranchAId);
+      expect(state.error, isNull);
+      expect(state.items, hasLength(1));
+      expect(client.lastParams?['p_branch_id'], calendarTestBranchAId);
+    });
+
     test('CAL-A07: refresh without branch shows selection error', () async {
       final container = createContainer(
         AuthSessionState(

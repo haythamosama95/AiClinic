@@ -107,8 +107,13 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
     return initial;
   }
 
+  String? _effectiveBranchId() {
+    return _normalizedOrNull(state.selectedBranchId) ??
+        _normalizedOrNull(ref.read(authSessionProvider).context?.activeBranchId);
+  }
+
   Future<void> refresh() async {
-    final branchId = _normalizedOrNull(state.selectedBranchId);
+    final branchId = _effectiveBranchId();
     if (branchId == null) {
       state = state.copyWith(
         loading: false,
@@ -116,6 +121,10 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
         error: 'Select an active branch before viewing the calendar.',
       );
       return;
+    }
+
+    if (state.selectedBranchId != branchId) {
+      state = state.copyWith(selectedBranchId: branchId);
     }
 
     state = state.copyWith(loading: true, error: null);
@@ -211,6 +220,12 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
 final appointmentCalendarProvider = NotifierProvider<AppointmentCalendarController, AppointmentCalendarState>(
   AppointmentCalendarController.new,
 );
+
+/// Eagerly warms the calendar provider so appointment data is ready when the
+/// calendar page opens (mirrors [appointmentQueueShellWarmProvider]).
+final appointmentCalendarShellWarmProvider = Provider<void>((ref) {
+  ref.watch(appointmentCalendarProvider);
+});
 
 final appointmentCalendarBranchesProvider = FutureProvider.autoDispose<List<BranchListItem>>((ref) async {
   final auth = ref.watch(authSessionProvider).context;

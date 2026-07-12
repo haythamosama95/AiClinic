@@ -22,6 +22,7 @@ import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patient_detail_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
+import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
@@ -97,10 +98,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '${AppRoutes.patients}/:patientId/edit', builder: shellPlaceholderPage),
 
           // Appointments (V1-4)
-          GoRoute(path: AppRoutes.appointments, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.appointments, redirect: (_, _) => AppRoutes.appointmentsCalendar),
           GoRoute(path: AppRoutes.appointmentsBook, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.appointmentsQueue, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.appointmentsCalendar, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.appointmentsCalendar, builder: (context, state) => const AppointmentCalendarPage()),
           GoRoute(path: '${AppRoutes.appointments}/:appointmentId', builder: shellPlaceholderPage),
           GoRoute(path: '${AppRoutes.appointments}/schedule/:doctorId', builder: shellPlaceholderPage),
 

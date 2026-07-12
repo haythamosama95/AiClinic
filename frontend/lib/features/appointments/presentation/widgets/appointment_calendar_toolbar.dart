@@ -1,0 +1,136 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_filters.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
+import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
+
+/// Toolbar height below the appointments page header.
+const appointmentCalendarToolbarHeight = 52.0;
+
+/// Calendar toolbar with period navigation, view modes, filters, and booking.
+class AppointmentCalendarToolbar extends ConsumerWidget {
+  const AppointmentCalendarToolbar({
+    required this.branchesAsync,
+    required this.doctorsAsync,
+    required this.appliedBranchId,
+    required this.appliedDoctorId,
+    required this.appliedStatuses,
+    required this.hasActiveFilters,
+    required this.onApplyFilters,
+    required this.onClearFilters,
+    this.onBookAppointment,
+    super.key,
+  });
+
+  final AsyncValue<List<BranchListItem>> branchesAsync;
+  final AsyncValue<List<StaffListItem>> doctorsAsync;
+  final String? appliedBranchId;
+  final String? appliedDoctorId;
+  final Set<AppointmentStatus> appliedStatuses;
+  final bool hasActiveFilters;
+  final ValueChanged<AppointmentCalendarFilters> onApplyFilters;
+  final VoidCallback onClearFilters;
+  final VoidCallback? onBookAppointment;
+
+  static const _modes = <AppointmentCalendarMode>[
+    AppointmentCalendarMode.day,
+    AppointmentCalendarMode.week,
+    AppointmentCalendarMode.month,
+    AppointmentCalendarMode.schedule,
+    AppointmentCalendarMode.doctors,
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appointmentCalendarProvider);
+    final controller = ref.read(appointmentCalendarProvider.notifier);
+    final showNavigation = state.mode != AppointmentCalendarMode.schedule;
+    final title = AppointmentCalendarDisplay.headerTitle(state.mode, state.focusDate);
+
+    return AppToolbar(
+      start: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showNavigation) ...[
+            AppIconButton(
+              icon: const Icon(Icons.chevron_left),
+              label: 'Previous period',
+              onPressed: controller.previousPeriod,
+            ),
+            AppIconButton(
+              icon: const Icon(Icons.chevron_right),
+              label: 'Next period',
+              onPressed: controller.nextPeriod,
+            ),
+            const SizedBox(width: AppSpacing.space2),
+          ],
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
+            child: Text(
+              title,
+              style: AppTypography.bodyStrong(context),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+      end: Wrap(
+        spacing: AppSpacing.space2,
+        runSpacing: AppSpacing.space2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (onBookAppointment != null)
+            AppButton(size: AppButtonSize.sm, onPressed: onBookAppointment, child: const Text('Book')),
+          AppointmentCalendarFilterButton(
+            branchesAsync: branchesAsync,
+            doctorsAsync: doctorsAsync,
+            appliedBranchId: appliedBranchId,
+            appliedDoctorId: appliedDoctorId,
+            appliedStatuses: appliedStatuses,
+            showDoctorFilter: true,
+            hasActiveFilters: hasActiveFilters,
+            onApplyFilters: onApplyFilters,
+            onClearFilters: onClearFilters,
+          ),
+          AppButton(
+            size: AppButtonSize.sm,
+            variant: AppButtonVariant.secondary,
+            onPressed: controller.goToToday,
+            child: const Text('Today'),
+          ),
+          AppSegmentedControl<String>(
+            ariaLabel: 'Calendar view mode',
+            size: AppSegmentedControlSize.sm,
+            value: state.mode.name,
+            onChanged: (value) {
+              final mode = AppointmentCalendarMode.values.where((entry) => entry.name == value).firstOrNull;
+              if (mode != null) {
+                controller.setMode(mode);
+              }
+            },
+            options: [
+              for (final mode in _modes)
+                SegmentedOption(value: mode.name, label: Text(_viewLabel(mode), style: AppTypography.caption(context))),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _viewLabel(AppointmentCalendarMode mode) {
+    return switch (mode) {
+      AppointmentCalendarMode.day => 'Day',
+      AppointmentCalendarMode.week => 'Week',
+      AppointmentCalendarMode.month => 'Month',
+      AppointmentCalendarMode.schedule => 'Schedule',
+      AppointmentCalendarMode.doctors => 'Doctors',
+    };
+  }
+}

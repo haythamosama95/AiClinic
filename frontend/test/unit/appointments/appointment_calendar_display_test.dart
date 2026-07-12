@@ -11,6 +11,21 @@ void main() {
   group('AppointmentCalendarDisplay', () {
     final schedule = BranchWorkingSchedule.defaultSchedule();
 
+    test('resolveBranchSchedule falls back when hours are not configured', () {
+      final resolved = AppointmentCalendarDisplay.resolveBranchSchedule(BranchWorkingSchedule.emptySchedule());
+
+      expect(resolved.hasConfiguredWorkingHours, isTrue);
+      expect(resolved, BranchWorkingSchedule.defaultSchedule());
+    });
+
+    test('resolveBranchSchedule keeps configured branch hours', () {
+      final configured = BranchWorkingSchedule([
+        BranchWorkingDayHours(day: BranchWeekday.friday, isWorkingDay: true, openTime: '09:00', closeTime: '17:00'),
+      ]);
+
+      expect(AppointmentCalendarDisplay.resolveBranchSchedule(configured), configured);
+    });
+
     test('day layout uses configured open and close hours', () {
       final layout = AppointmentCalendarDisplay.timeSlotLayout(
         schedule: schedule,
@@ -231,10 +246,7 @@ void main() {
         );
         final items = [cancelled, noShow, scheduled];
 
-        expect(
-          AppointmentCalendarDisplay.filterVisibleAppointments(items, schedule),
-          hasLength(1),
-        );
+        expect(AppointmentCalendarDisplay.filterVisibleAppointments(items, schedule), hasLength(1));
         expect(
           AppointmentCalendarDisplay.filterVisibleAppointments(
             items,

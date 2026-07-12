@@ -90,6 +90,17 @@ class AppointmentCalendarDisplay {
     );
   }
 
+  /// Branch hours used for slot layout and client-side visibility filtering.
+  ///
+  /// Falls back to [BranchWorkingSchedule.defaultSchedule] when the branch has no
+  /// configured hours so appointments from the API are not hidden before setup.
+  static BranchWorkingSchedule resolveBranchSchedule(BranchWorkingSchedule? schedule) {
+    if (schedule == null || !schedule.hasConfiguredWorkingHours) {
+      return BranchWorkingSchedule.defaultSchedule();
+    }
+    return schedule;
+  }
+
   static bool isClosedOnDate(BranchWorkingSchedule schedule, DateTime date) {
     return !AppointmentBranchWorkingHours.isWorkingDay(schedule, date);
   }
