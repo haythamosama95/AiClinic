@@ -11,6 +11,8 @@ import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
+import 'app_data_table_animated_body.dart';
+
 enum TableDensity { compact, standard, comfortable }
 
 enum TableAlign { start, end, center }
@@ -67,6 +69,8 @@ class AppDataTable<T> extends StatefulWidget {
     this.footer,
     this.onRowClick,
     this.rowActions,
+    this.animateRows = false,
+    this.headerTextStyle,
     this.ariaLabel = 'Data table',
     super.key,
   });
@@ -90,6 +94,8 @@ class AppDataTable<T> extends StatefulWidget {
   final Widget? footer;
   final ValueChanged<T>? onRowClick;
   final Widget? Function(T row)? rowActions;
+  final bool animateRows;
+  final TextStyle? headerTextStyle;
   final String ariaLabel;
 
   double get rowHeight => switch (density) {
@@ -166,7 +172,7 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
   }
 
   Widget _headerLabel(BuildContext context, TableColumn<T> column, AppSemanticColors colors) {
-    final headerStyle = AppTypography.overline(context).copyWith(color: colors.textTertiary);
+    final headerStyle = widget.headerTextStyle ?? AppTypography.overline(context).copyWith(color: colors.textTertiary);
     final alignment = _cellAlignment(column.align);
 
     if (!column.sortable) {
@@ -276,9 +282,11 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
         return Semantics(
           container: true,
           label: widget.ariaLabel,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceDefault,
+          child: Container(
+            decoration: BoxDecoration(color: colors.surfaceDefault, borderRadius: BorderRadius.circular(AppRadius.lg)),
+            // Foreground border stays above row hover layers (background borders are
+            // painted under children and get covered by InkWell / hover fills).
+            foregroundDecoration: BoxDecoration(
               border: Border.all(color: colors.borderDefault),
               borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
@@ -288,41 +296,10 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SfDataGridTheme(
-                    data: SfDataGridThemeData(
-                      headerColor: colors.surfaceMuted,
-                      gridLineColor: colors.borderSubtle,
-                      gridLineStrokeWidth: 1,
-                      rowHoverColor: widget.onRowClick == null ? Colors.transparent : colors.surfaceHover,
-                    ),
-                    child: SfDataGrid(
-                      source: _source,
-                      columns: _buildGridColumns(colors),
-                      rowHeight: widget.rowHeight,
-                      headerRowHeight: widget.rowHeight,
-                      shrinkWrapRows: true,
-                      frozenColumnsCount: widget.frozenColumnsCount,
-                      gridLinesVisibility: GridLinesVisibility.horizontal,
-                      headerGridLinesVisibility: GridLinesVisibility.none,
-                      columnWidthMode: ColumnWidthMode.fill,
-                      selectionMode: SelectionMode.none,
-                      highlightRowOnHover: widget.onRowClick != null,
-                      showHorizontalScrollbar: true,
-                      showVerticalScrollbar: false,
-                      onCellTap: widget.onRowClick == null
-                          ? null
-                          : (details) {
-                              final rowIndex = details.rowColumnIndex.rowIndex - 1;
-                              if (rowIndex < 0 || rowIndex >= widget.data.length || widget.loading) return;
-                              if (details.column.columnName == _selectionColumnName ||
-                                  details.column.columnName == _actionsColumnName) {
-                                return;
-                              }
-                              widget.onRowClick!(widget.data[rowIndex]);
-                            },
-                      placeholder: const SizedBox.shrink(),
-                    ),
-                  ),
+                  if (widget.animateRows && widget.showBodyInTable)
+                    _buildAnimatedTable(context, colors)
+                  else
+                    _buildGridTable(context, colors),
                   if (!widget.loading && widget.errorState != null)
                     widget.errorState!
                   else if (!widget.loading && widget.data.isEmpty && widget.emptyState != null)
@@ -334,6 +311,179 @@ class _AppDataTableState<T> extends State<AppDataTable<T>> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildGridTable(BuildContext context, AppSemanticColors colors) {
+    return SfDataGridTheme(
+      data: SfDataGridThemeData(
+        headerColor: colors.surfaceMuted,
+        gridLineColor: colors.borderSubtle,
+        gridLineStrokeWidth: 1,
+        rowHoverColor: widget.onRowClick == null ? Colors.transparent : colors.surfaceHover,
+      ),
+      child: SfDataGrid(
+        source: _source,
+        columns: _buildGridColumns(colors),
+        rowHeight: widget.rowHeight,
+        headerRowHeight: widget.rowHeight,
+        shrinkWrapRows: true,
+        frozenColumnsCount: widget.frozenColumnsCount,
+        gridLinesVisibility: GridLinesVisibility.horizontal,
+        headerGridLinesVisibility: GridLinesVisibility.none,
+        columnWidthMode: ColumnWidthMode.fill,
+        selectionMode: SelectionMode.none,
+        highlightRowOnHover: widget.onRowClick != null,
+        showHorizontalScrollbar: true,
+        showVerticalScrollbar: false,
+        onCellTap: widget.onRowClick == null
+            ? null
+            : (details) {
+                final rowIndex = details.rowColumnIndex.rowIndex - 1;
+                if (rowIndex < 0 || rowIndex >= widget.data.length || widget.loading) return;
+                if (details.column.columnName == _selectionColumnName ||
+                    details.column.columnName == _actionsColumnName) {
+                  return;
+                }
+                widget.onRowClick!(widget.data[rowIndex]);
+              },
+        placeholder: const SizedBox.shrink(),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedTable(BuildContext context, AppSemanticColors colors) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildAnimatedHeader(context, colors),
+        if (widget.loading && widget.data.isEmpty)
+          _buildAnimatedLoadingBody(context, colors)
+        else
+          AppDataTableAnimatedBody<T>(
+            table: widget,
+            buildRow: (context, item, index, {backgroundColor}) => buildAppDataTableRowContent<T>(
+              context: context,
+              table: widget,
+              item: item,
+              rowIndex: index,
+              backgroundColor: backgroundColor,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildAnimatedHeader(BuildContext context, AppSemanticColors colors) {
+    final cells = <Widget>[];
+
+    if (widget.selectable) {
+      cells.add(
+        _buildAnimatedHeaderCell(
+          context: context,
+          colors: colors,
+          align: TableAlign.center,
+          child: const SizedBox.shrink(),
+        ),
+      );
+    }
+
+    for (final column in widget.columns) {
+      cells.add(
+        _buildAnimatedHeaderCell(
+          context: context,
+          colors: colors,
+          align: column.align,
+          child: _headerLabel(context, column, colors),
+        ),
+      );
+    }
+
+    if (widget.rowActions != null) {
+      cells.add(
+        _buildAnimatedHeaderCell(
+          context: context,
+          colors: colors,
+          align: TableAlign.center,
+          child: Semantics(label: 'Actions', child: const SizedBox.shrink()),
+        ),
+      );
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceMuted,
+        border: Border(bottom: BorderSide(color: colors.borderSubtle)),
+      ),
+      child: SizedBox(
+        height: widget.rowHeight,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [for (final cell in cells) Expanded(child: cell)],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedHeaderCell({
+    required BuildContext context,
+    required AppSemanticColors colors,
+    required TableAlign align,
+    required Widget child,
+  }) {
+    return ColoredBox(
+      color: colors.surfaceMuted,
+      child: Container(
+        alignment: switch (align) {
+          TableAlign.start => Alignment.centerLeft,
+          TableAlign.end => Alignment.centerRight,
+          TableAlign.center => Alignment.center,
+        },
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
+        child: DefaultTextStyle(
+          style: widget.headerTextStyle ?? AppTypography.overline(context).copyWith(color: colors.textTertiary),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedLoadingBody(BuildContext context, AppSemanticColors colors) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(widget.loadingRows, (index) {
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: colors.borderSubtle)),
+          ),
+          child: SizedBox(
+            height: widget.rowHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.selectable)
+                  Expanded(
+                    child: Container(
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
+                      child: const AppSkeleton(variant: SkeletonVariant.rectangular, width: 16, height: 16),
+                    ),
+                  ),
+                for (final _ in widget.columns)
+                  Expanded(
+                    child: Container(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3),
+                      child: const AppSkeleton(variant: SkeletonVariant.rectangular, width: 120, height: 16),
+                    ),
+                  ),
+                if (widget.rowActions != null) const Expanded(child: SizedBox.shrink()),
+              ],
+            ),
+          ),
+        );
+      }),
     );
   }
 

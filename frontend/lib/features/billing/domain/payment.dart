@@ -30,7 +30,7 @@ class Payment {
   static Payment? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();
     final method = PaymentMethod.tryParse(row['method']?.toString());
-    final amount = Money.tryParse(row['amount']?.toString());
+    final amount = _parseAmount(row['amount']);
     final recordedBy = _parseRecordedBy(row['recorded_by']);
     final recordedAtRaw = row['recorded_at']?.toString();
     if (id == null || id.isEmpty || method == null || amount == null || recordedBy == null || recordedAtRaw == null) {
@@ -52,6 +52,19 @@ class Payment {
       recordedByDisplayName: recordedBy.displayName,
       recordedAt: recordedAt,
     );
+  }
+
+  static Money? _parseAmount(Object? raw) {
+    if (raw == null) {
+      return null;
+    }
+    if (raw is Money) {
+      return raw;
+    }
+    if (raw is num) {
+      return Money.tryParse(raw.toString());
+    }
+    return Money.tryParse(raw.toString());
   }
 
   static ({String id, String? displayName})? _parseRecordedBy(Object? raw) {

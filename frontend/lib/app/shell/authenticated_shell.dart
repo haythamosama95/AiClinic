@@ -63,7 +63,7 @@ class AuthenticatedShell extends ConsumerWidget {
       child: ShellDevShellWrapper(
         child: AppShell(
           pageKey: location,
-          fullWidth: isDesignSystemPage && designSystemFullWidth,
+          fullWidth: ShellNavConfig.isFullWidthLocation(location) || (isDesignSystemPage && designSystemFullWidth),
           fillViewport: isDesignSystemPage,
           sidebar: AppSidebar(
             items: ShellNavConfig.groups,

@@ -43,7 +43,7 @@ void main() {
           patientId: '11111111-1111-4111-8111-111111111111',
           fullName: 'Updated',
           expectedUpdatedAt: DateTime.utc(2026, 1, 2),
-          dateOfBirth: DateTime(1990, 5, 15),
+          dateOfBirth: DateTime.utc(1990, 5, 15),
           gender: PatientGender.female,
           maritalStatus: PatientMaritalStatus.single,
           notes: '  refreshed  ',

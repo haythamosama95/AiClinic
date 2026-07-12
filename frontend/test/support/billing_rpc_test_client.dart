@@ -46,6 +46,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'balance': '100.00',
       'created_at': '2026-06-02T10:00:00.000Z',
       'issued_at': '2026-06-02T11:00:00.000Z',
+      'payments': [],
     },
     {
       'id': '55555555-5555-4555-8555-555555555555',
@@ -62,6 +63,17 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'balance': '0.00',
       'created_at': '2026-06-01T10:00:00.000Z',
       'issued_at': '2026-06-01T11:00:00.000Z',
+      'payments': [
+        {
+          'id': 'pay-1',
+          'method': 'card',
+          'amount': '80.00',
+          'reference': null,
+          'note': null,
+          'recorded_by': {'id': 'staff-1', 'display_name': 'Reception'},
+          'recorded_at': '2026-06-01T12:00:00.000Z',
+        },
+      ],
     },
     {
       'id': '66666666-6666-4666-8666-666666666666',
@@ -78,6 +90,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'balance': '60.00',
       'created_at': '2026-06-03T10:00:00.000Z',
       'issued_at': '2026-06-03T11:00:00.000Z',
+      'payments': [],
     },
   ];
 

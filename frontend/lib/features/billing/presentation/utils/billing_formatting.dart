@@ -3,16 +3,22 @@ import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/features/billing/domain/payment_method.dart';
 
 /// Presentation helpers for billing amounts and dates (V1-6).
 abstract final class BillingFormatting {
-  static String formatMoney(Money amount, {String currency = 'USD'}) {
-    final symbol = _currencySymbol(currency);
-    final value = amount.wireValue;
-    if (symbol != null) {
-      return '$symbol$value';
+  static String formatMoney(Money amount, {String currency = 'USD', String? locale}) {
+    final formatLocale = locale ?? 'en_US';
+    try {
+      return NumberFormat.currency(locale: formatLocale, name: currency.toUpperCase()).format(amount.asDouble);
+    } on Object {
+      final symbol = _currencySymbol(currency);
+      final value = amount.wireValue;
+      if (symbol != null) {
+        return '$symbol$value';
+      }
+      return '$value $currency';
     }
-    return '$value $currency';
   }
 
   static String? _currencySymbol(String currency) {
@@ -38,6 +44,15 @@ abstract final class BillingFormatting {
       return number;
     }
     return 'Draft · ${invoiceId.substring(0, 8)}';
+  }
+
+  static IconData paymentMethodIcon(PaymentMethod method) {
+    return switch (method) {
+      PaymentMethod.cash => Icons.payments_outlined,
+      PaymentMethod.card => Icons.credit_card_outlined,
+      PaymentMethod.bankTransfer => Icons.account_balance_outlined,
+      PaymentMethod.insuranceSettlement => Icons.health_and_safety_outlined,
+    };
   }
 }
 

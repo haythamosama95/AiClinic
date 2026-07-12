@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -71,9 +72,9 @@ class _AppSelectState extends State<AppSelect> {
   String _typeahead = '';
   Timer? _typeaheadTimer;
 
-  bool get _isControlled => widget.value != null;
+  bool get _isControlled => widget.onChanged != null;
 
-  String get _value => _isControlled ? widget.value! : (_internalValue ?? '');
+  String get _value => _isControlled ? (widget.value ?? '') : (_internalValue ?? widget.initialValue ?? '');
 
   AppSelectOption? get _selected {
     for (final opt in widget.options) {
@@ -243,6 +244,8 @@ class _AppSelectState extends State<AppSelect> {
       ),
     );
 
+    final estimatedListHeight = math.min(240.0, widget.options.length * metrics.height + AppSpacing.space2);
+
     return Semantics(
       button: true,
       enabled: !widget.disabled,
@@ -253,6 +256,7 @@ class _AppSelectState extends State<AppSelect> {
       child: AppPopover(
         open: _open && !_interactionDisabled,
         onOpenChange: _setOpen,
+        estimatedContentHeight: estimatedListHeight,
         child: listbox,
         triggerBuilder: (context, isOpen, onToggle) => Focus(
           focusNode: _focusNode,

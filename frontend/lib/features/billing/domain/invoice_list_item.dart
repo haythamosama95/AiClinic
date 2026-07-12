@@ -1,5 +1,6 @@
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:flutter/foundation.dart';
 
 /// Summary row from `list_invoices` / `list_patient_invoices` (V1-6).
@@ -18,6 +19,7 @@ class InvoiceListItem {
     this.patientDisplayName,
     this.branchCode,
     this.issuedAt,
+    this.payments = const [],
   });
 
   final String id;
@@ -32,6 +34,7 @@ class InvoiceListItem {
   final Money balance;
   final DateTime createdAt;
   final DateTime? issuedAt;
+  final List<Payment> payments;
 
   /// Subtotal minus invoice-level discount (line discounts are reflected in subtotal server-side).
   String get displayTotal => (subtotal - discountAmount).wireValue;
@@ -49,11 +52,11 @@ class InvoiceListItem {
       return null;
     }
 
-    final subtotal = Money.tryParse(row['subtotal']?.toString());
-    final discountAmount = Money.tryParse(row['discount_amount']?.toString());
-    final insuranceCoveredAmount = Money.tryParse(row['insurance_covered_amount']?.toString());
-    final paidAmount = Money.tryParse(row['paid_amount']?.toString());
-    final balance = Money.tryParse(row['balance']?.toString());
+    final subtotal = _parseMoney(row['subtotal']);
+    final discountAmount = _parseMoney(row['discount_amount']);
+    final insuranceCoveredAmount = _parseMoney(row['insurance_covered_amount']);
+    final paidAmount = _parseMoney(row['paid_amount']);
+    final balance = _parseMoney(row['balance']);
     if (subtotal == null ||
         discountAmount == null ||
         insuranceCoveredAmount == null ||
@@ -78,6 +81,56 @@ class InvoiceListItem {
       balance: balance,
       createdAt: createdAt,
       issuedAt: issuedAt,
+      payments: _parsePayments(row['payments']),
+    );
+  }
+
+  static List<Payment> _parsePayments(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+
+    final payments = <Payment>[];
+    for (final entry in raw) {
+      if (entry is! Map) {
+        continue;
+      }
+      final payment = Payment.fromRow(Map<String, dynamic>.from(entry));
+      if (payment != null) {
+        payments.add(payment);
+      }
+    }
+    return payments;
+  }
+
+  static Money? _parseMoney(Object? raw) {
+    if (raw == null) {
+      return null;
+    }
+    if (raw is Money) {
+      return raw;
+    }
+    if (raw is num) {
+      return Money.tryParse(raw.toString());
+    }
+    return Money.tryParse(raw.toString());
+  }
+
+  InvoiceListItem copyWith({List<Payment>? payments}) {
+    return InvoiceListItem(
+      id: id,
+      status: status,
+      subtotal: subtotal,
+      discountAmount: discountAmount,
+      insuranceCoveredAmount: insuranceCoveredAmount,
+      paidAmount: paidAmount,
+      balance: balance,
+      createdAt: createdAt,
+      invoiceNumber: invoiceNumber,
+      patientDisplayName: patientDisplayName,
+      branchCode: branchCode,
+      issuedAt: issuedAt,
+      payments: payments ?? this.payments,
     );
   }
 }

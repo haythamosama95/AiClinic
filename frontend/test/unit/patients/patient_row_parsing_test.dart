@@ -2,6 +2,19 @@ import 'package:ai_clinic/features/patients/domain/patient_row_parsing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('formatPatientDateWire', () {
+    test('serializes calendar components without timezone shift', () {
+      expect(formatPatientDateWire(DateTime(1990, 5, 15, 23, 30)), '1990-05-15');
+      expect(formatPatientDateWire(DateTime.utc(1990, 5, 15)), '1990-05-15');
+    });
+  });
+
+  group('normalizePatientDate', () {
+    test('normalizes to UTC midnight preserving calendar day', () {
+      expect(normalizePatientDate(DateTime(1990, 5, 15, 23, 30)), DateTime.utc(1990, 5, 15));
+    });
+  });
+
   group('parsePatientDate', () {
     test('parses ISO date strings to date-only DateTime', () {
       expect(parsePatientDate('2001-12-31'), DateTime.utc(2001, 12, 31));

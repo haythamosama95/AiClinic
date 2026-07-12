@@ -4,9 +4,11 @@ import {
   ArrowUpDown,
   MoreHorizontal,
 } from 'lucide-react'
+import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { Checkbox } from '@/components/ui/checkbox/Checkbox'
 import { IconButton } from '@/components/actions/IconButton'
+import { ContextMenu, type MenuEntry } from '@/components/navigation/Menu'
 import { Skeleton } from '@/components/skeleton/Skeleton'
 import { cn } from '@/lib/cn'
 import { useDensity } from '@/providers/DensityProvider'
@@ -44,9 +46,13 @@ export type DataTableProps<T> = {
   footer?: ReactNode
   onRowClick?: (row: T) => void
   rowActions?: (row: T) => ReactNode
+  rowContextMenu?: (row: T) => MenuEntry[]
+  animateRows?: boolean
   className?: string
   'aria-label'?: string
 }
+
+const MotionTr = motion.tr
 
 const densityRowHeight: Record<TableDensity, string> = {
   compact: 'h-9',
@@ -80,6 +86,8 @@ export function DataTable<T>({
   footer,
   onRowClick,
   rowActions,
+  rowContextMenu,
+  animateRows = false,
   className,
   'aria-label': ariaLabel = 'Data table',
 }: DataTableProps<T>) {
@@ -207,31 +215,31 @@ export function DataTable<T>({
             ) : null}
 
             {!loading && !errorState
-              ? data.map((row, rowIndex) => {
-                const id = getRowId(row)
+              ? data.map((rowData, rowIndex) => {
+                const id = getRowId(rowData)
                 const selected = selectedIds.has(id)
 
-                return (
-                  <tr
-                    key={id}
-                    className={cn(
-                      'border-b border-border-subtle transition-colors duration-[var(--duration-instant)]',
-                      densityRowHeight[density],
-                      zebra && rowIndex % 2 === 1 && 'bg-surface-muted',
-                      selected && 'bg-surface-selected',
-                      onRowClick && 'cursor-pointer hover:bg-surface-hover',
-                    )}
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
-                    onKeyDown={
-                      onRowClick
-                        ? (e) => {
-                          if (e.key === 'Enter') onRowClick(row)
-                        }
-                        : undefined
+                const rowClassName = cn(
+                  'border-b border-border-subtle transition-colors duration-[var(--duration-instant)]',
+                  densityRowHeight[density],
+                  zebra && rowIndex % 2 === 1 && 'bg-surface-muted',
+                  selected && 'bg-surface-selected',
+                  onRowClick && 'cursor-pointer hover:bg-surface-hover',
+                )
+
+                const rowInteractionProps = {
+                  onClick: onRowClick ? () => onRowClick(rowData) : undefined,
+                  onKeyDown: onRowClick
+                    ? (e: React.KeyboardEvent<HTMLTableRowElement>) => {
+                      if (e.key === 'Enter') onRowClick(rowData)
                     }
-                    tabIndex={onRowClick ? 0 : undefined}
-                    aria-selected={selectable ? selected : undefined}
-                  >
+                    : undefined,
+                  tabIndex: onRowClick ? 0 : undefined,
+                  'aria-selected': selectable ? selected : undefined,
+                }
+
+                const rowCells = (
+                  <>
                     {selectable ? (
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
@@ -252,12 +260,12 @@ export function DataTable<T>({
                           selected && stickyFirstColumn && colIndex === 0 && 'bg-surface-selected',
                         )}
                       >
-                        {col.accessor(row)}
+                        {col.accessor(rowData)}
                       </td>
                     ))}
                     {rowActions ? (
                       <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                        {rowActions(row) ?? (
+                        {rowActions(rowData) ?? (
                           <IconButton
                             icon={<MoreHorizontal size={16} />}
                             label="Row actions"
@@ -266,8 +274,39 @@ export function DataTable<T>({
                         )}
                       </td>
                     ) : null}
+                  </>
+                )
+
+                const rowElement = animateRows ? (
+                  <MotionTr
+                    key={id}
+                    layout
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{
+                      duration: 0.2,
+                      delay: Math.min(rowIndex * 0.025, 0.12),
+                    }}
+                    className={rowClassName}
+                    {...rowInteractionProps}
+                  >
+                    {rowCells}
+                  </MotionTr>
+                ) : (
+                  <tr key={id} className={rowClassName} {...rowInteractionProps}>
+                    {rowCells}
                   </tr>
                 )
+
+                if (rowContextMenu) {
+                  return (
+                    <ContextMenu key={id} entries={rowContextMenu(rowData)}>
+                      {rowElement}
+                    </ContextMenu>
+                  )
+                }
+
+                return rowElement
               })
               : null}
           </tbody>

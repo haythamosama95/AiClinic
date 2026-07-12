@@ -702,6 +702,7 @@ void appToast(BuildContext context, AppToastInput input) {
 2. App-global overlay host in `MaterialApp.builder`? → The builder wraps the navigator child, so the host context cannot see `Overlay`. Bind the overlay lazily from a **route** `BuildContext` on first show (see entry #27).
 3. `Semantics(scopesRoute: true)` on modal panels? → Also set `explicitChildNodes: true`.
 4. `AnimationController.forward()` in overlay enter animations? → Set a default duration in `initState`; defer `forward()` to `didChangeDependencies` when duration depends on reduced motion (see entries #2, #27).
+5. `AppDialog` with header + scroll body + footer? → Use `Flexible` for the `SingleChildScrollView` when `LayoutBuilder` reports finite `maxHeight`; do not subtract a fixed `chromeEstimate` from body height (see entry #40).
 
 ---
 
@@ -1042,3 +1043,27 @@ Do not call `_controller.value =` or `forward`/`reverse` from `dispose`.
 4. `AppPopover` on screens torn down during sign-out or route replace? → In `dispose`, remove the `OverlayEntry` only; do **not** reset `AnimationController.value` (notifies `AnimatedBuilder` while the tree is locked — see entry #39).
 
 ---
+
+## 40. `RenderFlex` overflow (`AppDialog` panel `Column`)
+
+**Symptom:** Yellow/black overflow stripe at the bottom of a large dialog with header, scroll body, and footer (e.g. Add Patient on the patients page) — "overflowed by N pixels on the bottom" at `_AppDialogPanel` `Column` in `app_dialog.dart`.
+
+**Cause:** Body `maxHeight` was computed as `layoutConstraints.maxHeight - chromeEstimate` with a fixed `chromeEstimate` of 140px when `showHeader` is true. That ignored the footer (~68px) and did not match the real header height (~82px). Header + body cap + footer exceeded the dialog `maxHeight` (e.g. 82 + 654 + 68 = 804 vs 794 → 10px overflow).
+
+**Fix:** Drop the fixed chrome subtraction. When `LayoutBuilder` reports finite `maxHeight`, wrap the scroll body in `Flexible` so the `Column` allocates remaining space after header and footer lay out at intrinsic height:
+
+```dart
+Column(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    if (showHeader) header,
+    if (layoutConstraints.maxHeight.isFinite)
+      Flexible(child: SingleChildScrollView(child: child))
+    else
+      SingleChildScrollView(child: child),
+    if (footer != null) footer,
+  ],
+)
+```
+
+**Affected files (fixed):** `app_dialog.dart`.
