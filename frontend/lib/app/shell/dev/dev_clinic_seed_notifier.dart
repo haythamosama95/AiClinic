@@ -13,6 +13,12 @@ import 'package:ai_clinic/features/setup/data/bootstrap_repository.dart';
 import 'package:ai_clinic/features/setup/data/provisioning_repository.dart';
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
+import 'package:ai_clinic/features/billing/data/billing_settings_repository.dart';
+import 'package:ai_clinic/features/billing/data/insurance_provider_repository.dart';
+import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
+import 'package:ai_clinic/features/billing/data/payment_repository.dart';
+import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
+import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_surface_invalidation.dart';
 import 'package:ai_clinic/features/setup/application/setup_rpc_messages.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
@@ -50,6 +56,12 @@ final devClinicSeedServiceProvider = Provider<DevClinicSeedService>((ref) {
     appointments: ref.watch(appointmentRepositoryProvider),
     visits: ref.watch(visitRepositoryProvider),
     shiftRepository: ref.watch(shiftRepositoryProvider),
+    visitAttachments: ref.watch(visitAttachmentServiceProvider),
+    invoices: ref.watch(invoiceRepositoryProvider),
+    payments: ref.watch(paymentRepositoryProvider),
+    insuranceProviders: ref.watch(insuranceProviderRepositoryProvider),
+    billingSettings: ref.watch(billingSettingsRepositoryProvider),
+    serviceCatalog: ref.watch(serviceCatalogRepositoryProvider),
   );
 });
 

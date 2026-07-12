@@ -8,10 +8,12 @@ import 'package:ai_clinic/app/session_activity_scope.dart';
 import 'package:ai_clinic/features/settings/application/idle_timeout_settings_notifier.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/app/providers/startup_session_provider.dart';
+import 'package:ai_clinic/app/providers/locale_provider.dart';
 import 'package:ai_clinic/app/providers/theme_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/theme/app_theme.dart';
 import 'package:ai_clinic/core/ui/theme/theme_transition_host.dart';
+import 'package:ai_clinic/l10n/app_localizations.dart';
 
 /// Root widget that wires together startup state, routing, and theming.
 class AiClinicApp extends ConsumerStatefulWidget {
@@ -59,6 +61,7 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final locale = ref.watch(localeProvider);
 
     return SessionActivityScope(
       child: MaterialApp.router(
@@ -67,10 +70,16 @@ class _AiClinicAppState extends ConsumerState<AiClinicApp> with WidgetsBindingOb
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
         themeMode: themeMode,
+        locale: locale,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: router,
-        builder: (context, child) => ThemeTransitionHost(
-          key: const ValueKey('theme-transition-host'),
-          child: AppToastHost(child: child ?? const SizedBox.shrink()),
+        builder: (context, child) => Directionality(
+          textDirection: textDirectionForLocale(locale),
+          child: ThemeTransitionHost(
+            key: const ValueKey('theme-transition-host'),
+            child: AppToastHost(child: child ?? const SizedBox.shrink()),
+          ),
         ),
       ),
     );

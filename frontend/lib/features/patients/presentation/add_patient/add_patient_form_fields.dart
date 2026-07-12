@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/components/app_avatar.dart';
 import 'package:ai_clinic/core/ui/components/app_date_picker.dart';
 import 'package:ai_clinic/core/ui/components/app_divider.dart';
@@ -26,6 +27,9 @@ const _registrationGenderOptions = [PatientGender.male, PatientGender.female];
 const _maritalStatusOptions = PatientMaritalStatus.values;
 
 /// Add-patient form body (web `AddPatientFormFields`).
+///
+/// Shared with the edit-patient dialog via optional [branchName],
+/// [branchBannerLabel], and [identityPreviewSubtitle].
 class AddPatientFormFields extends ConsumerStatefulWidget {
   const AddPatientFormFields({
     required this.values,
@@ -36,6 +40,10 @@ class AddPatientFormFields extends ConsumerStatefulWidget {
     required this.onSubmit,
     required this.onFieldChange,
     this.autoFocus = false,
+    this.branchName,
+    this.branchBannerLabel = 'Registering at ',
+    this.identityPreviewSubtitle,
+    this.fieldIdPrefix = 'add-patient',
     super.key,
   });
 
@@ -47,6 +55,10 @@ class AddPatientFormFields extends ConsumerStatefulWidget {
   final bool autoFocus;
   final VoidCallback onSubmit;
   final void Function(String key, Object? value) onFieldChange;
+  final String? branchName;
+  final String branchBannerLabel;
+  final String? identityPreviewSubtitle;
+  final String fieldIdPrefix;
 
   @override
   ConsumerState<AddPatientFormFields> createState() => _AddPatientFormFieldsState();
@@ -92,7 +104,7 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
 
   @override
   Widget build(BuildContext context) {
-    final branchName = ref.watch(activeBranchNameProvider).value ?? 'your active branch';
+    final branchName = widget.branchName ?? ref.watch(activeBranchNameProvider).value ?? 'your active branch';
 
     return Form(
       child: Focus(
@@ -101,12 +113,13 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _BranchBanner(branchName: branchName),
+            _BranchBanner(branchName: branchName, labelPrefix: widget.branchBannerLabel),
             const SizedBox(height: AppSpacing.space6),
             _IdentityPreview(
               trimmedName: widget.trimmedName,
               showPreview: widget.showPreview,
               reducedMotion: widget.reducedMotion,
+              subtitle: widget.identityPreviewSubtitle ?? context.l10n.newRecordMrsAssignedOnSave,
             ),
             const SizedBox(height: AppSpacing.space6),
             _PatientDetailsSection(
@@ -114,11 +127,17 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
               errors: widget.errors,
               autoFocus: widget.autoFocus,
               onFieldChange: widget.onFieldChange,
+              fieldIdPrefix: widget.fieldIdPrefix,
             ),
             const SizedBox(height: AppSpacing.space6),
             const AppDivider(),
             const SizedBox(height: AppSpacing.space6),
-            _ClinicalNotesSection(values: widget.values, errors: widget.errors, onFieldChange: widget.onFieldChange),
+            _ClinicalNotesSection(
+              values: widget.values,
+              errors: widget.errors,
+              onFieldChange: widget.onFieldChange,
+              fieldIdPrefix: widget.fieldIdPrefix,
+            ),
             if (widget.errors.form != null) ...[
               const SizedBox(height: AppSpacing.space6),
               Semantics(
@@ -137,9 +156,10 @@ class _AddPatientFormFieldsState extends ConsumerState<AddPatientFormFields> {
 }
 
 class _BranchBanner extends StatelessWidget {
-  const _BranchBanner({required this.branchName});
+  const _BranchBanner({required this.branchName, required this.labelPrefix});
 
   final String branchName;
+  final String labelPrefix;
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +182,7 @@ class _BranchBanner extends StatelessWidget {
                 TextSpan(
                   style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
                   children: [
-                    const TextSpan(text: 'Registering at '),
+                    TextSpan(text: labelPrefix),
                     TextSpan(
                       text: branchName,
                       style: AppTypography.bodySm(
@@ -181,11 +201,17 @@ class _BranchBanner extends StatelessWidget {
 }
 
 class _IdentityPreview extends StatelessWidget {
-  const _IdentityPreview({required this.trimmedName, required this.showPreview, required this.reducedMotion});
+  const _IdentityPreview({
+    required this.trimmedName,
+    required this.showPreview,
+    required this.reducedMotion,
+    required this.subtitle,
+  });
 
   final String trimmedName;
   final bool showPreview;
   final bool reducedMotion;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -211,16 +237,21 @@ class _IdentityPreview extends StatelessWidget {
         );
       },
       child: showPreview
-          ? _IdentityPreviewCard(key: const ValueKey<String>('identity-preview'), trimmedName: trimmedName)
+          ? _IdentityPreviewCard(
+              key: const ValueKey<String>('identity-preview'),
+              trimmedName: trimmedName,
+              subtitle: subtitle,
+            )
           : const SizedBox.shrink(key: ValueKey<String>('identity-preview-empty')),
     );
   }
 }
 
 class _IdentityPreviewCard extends StatelessWidget {
-  const _IdentityPreviewCard({required this.trimmedName, super.key});
+  const _IdentityPreviewCard({required this.trimmedName, required this.subtitle, super.key});
 
   final String trimmedName;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +284,7 @@ class _IdentityPreviewCard extends StatelessWidget {
                     style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
                   ),
                   Text(
-                    'New record · MRN assigned on save',
+                    subtitle,
                     style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
                   ),
                 ],
@@ -272,12 +303,14 @@ class _PatientDetailsSection extends StatelessWidget {
     required this.errors,
     required this.onFieldChange,
     required this.autoFocus,
+    required this.fieldIdPrefix,
   });
 
   final PatientRegistrationForm values;
   final PatientFormErrors errors;
   final void Function(String key, Object? value) onFieldChange;
   final bool autoFocus;
+  final String fieldIdPrefix;
 
   @override
   Widget build(BuildContext context) {
@@ -300,7 +333,7 @@ class _PatientDetailsSection extends StatelessWidget {
     const columnGap = SizedBox(width: AppSpacing.space4);
 
     final fullNameField = AppFormField(
-      id: 'add-patient-fullName',
+      id: '$fieldIdPrefix-fullName',
       label: 'Full name',
       requiredMark: true,
       hint: 'Legal name as it appears on government ID.',
@@ -308,7 +341,7 @@ class _PatientDetailsSection extends StatelessWidget {
       child: Focus(
         autofocus: autoFocus,
         child: AppTextInput(
-          id: 'add-patient-fullName',
+          id: '$fieldIdPrefix-fullName',
           initialValue: values.fullName,
           onChanged: (value) => onFieldChange('fullName', value),
           placeholder: 'e.g. Sara Hassan Ibrahim',
@@ -318,12 +351,12 @@ class _PatientDetailsSection extends StatelessWidget {
     );
 
     final dobField = AppFormField(
-      id: 'add-patient-dob',
+      id: '$fieldIdPrefix-dob',
       label: 'Date of birth',
       hint: 'Used with name for duplicate detection.',
       error: errors.dateOfBirth,
       child: AppDatePicker(
-        id: 'add-patient-dob',
+        id: '$fieldIdPrefix-dob',
         value: values.dateOfBirth,
         onChanged: (date) => onFieldChange('dateOfBirth', date),
         placeholder: 'Select date',
@@ -333,12 +366,12 @@ class _PatientDetailsSection extends StatelessWidget {
     );
 
     final genderField = AppFormField(
-      id: 'add-patient-gender',
+      id: '$fieldIdPrefix-gender',
       label: 'Gender',
       hint: 'Optional. Shown on the patient profile.',
       error: errors.gender,
       child: AppSelect(
-        id: 'add-patient-gender',
+        id: '$fieldIdPrefix-gender',
         value: values.gender?.wireValue,
         onChanged: (value) => onFieldChange('gender', PatientGender.tryParse(value)),
         options: _registrationGenderOptions
@@ -350,14 +383,14 @@ class _PatientDetailsSection extends StatelessWidget {
     );
 
     final phoneField = AppFormField(
-      id: 'add-patient-phone',
+      id: '$fieldIdPrefix-phone',
       label: 'Mobile number',
       hint: 'Used for reminders and duplicate checks.',
       error: errors.phone,
       child: Directionality(
         textDirection: TextDirection.ltr,
         child: AppPhoneInput(
-          id: 'add-patient-phone',
+          id: '$fieldIdPrefix-phone',
           initialValue: values.phone,
           onValueChange: (phone) => onFieldChange('phone', phone),
           invalid: errors.phone != null,
@@ -366,12 +399,12 @@ class _PatientDetailsSection extends StatelessWidget {
     );
 
     final maritalField = AppFormField(
-      id: 'add-patient-maritalStatus',
+      id: '$fieldIdPrefix-maritalStatus',
       label: 'Marital state',
       hint: 'Optional. Shown on the patient profile.',
       error: errors.maritalStatus,
       child: AppSelect(
-        id: 'add-patient-maritalStatus',
+        id: '$fieldIdPrefix-maritalStatus',
         value: values.maritalStatus?.wireValue,
         onChanged: (value) => onFieldChange('maritalStatus', PatientMaritalStatus.tryParse(value)),
         options: _maritalStatusOptions
@@ -410,11 +443,17 @@ class _PatientDetailsSection extends StatelessWidget {
 }
 
 class _ClinicalNotesSection extends StatelessWidget {
-  const _ClinicalNotesSection({required this.values, required this.errors, required this.onFieldChange});
+  const _ClinicalNotesSection({
+    required this.values,
+    required this.errors,
+    required this.onFieldChange,
+    required this.fieldIdPrefix,
+  });
 
   final PatientRegistrationForm values;
   final PatientFormErrors errors;
   final void Function(String key, Object? value) onFieldChange;
+  final String fieldIdPrefix;
 
   @override
   Widget build(BuildContext context) {
@@ -428,12 +467,12 @@ class _ClinicalNotesSection extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.space4),
         AppFormField(
-          id: 'add-patient-notes',
+          id: '$fieldIdPrefix-notes',
           label: 'Notes',
           helperText: 'Allergies, referral source, or front-desk remarks.',
           error: errors.notes,
           child: AppTextarea(
-            id: 'add-patient-notes',
+            id: '$fieldIdPrefix-notes',
             initialValue: values.notes,
             onChanged: (value) => onFieldChange('notes', value),
             placeholder: 'e.g. Referred by Dr. Nabil. Penicillin allergy noted verbally.',

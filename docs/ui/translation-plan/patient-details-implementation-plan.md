@@ -53,9 +53,14 @@ shipped and is explicitly **out of scope**.
    | Web field | Flutter `PatientDetail` counterpart | Decision |
    |---|---|---|
    | `mrn` | — | **ignored** |
-   | `status` (active/inactive/archived) | — | **ignored** (no status Badge) |
-   | `email` | — | **ignored** (no Mail row) |
-   | `address` | — | **ignored** (no MapPin row) |
+| `status` (active/inactive/archived) | — | **ignored** (no status Badge) |
+  | `email` | — | **ignored** (no Mail row) |
+  | `address` | — | **ignored** (no MapPin row) |
+
+   **Phase 4 adds** a **Billing** tab (the web's 3rd tab) bound to the Flutter
+   `patientInvoicesProvider`, a **Patient edit** dialog (web has none — synthesized from the
+   Flutter Add-patient dialog), and **EN/AR production localization** (web's `DirectionProvider`
+   is the model; the Flutter port only mirrored the showcase half before). See §3 Phase 4.
 
    Flutter-own fields **not** on the web identity line — `maritalStatus`, `notes`, `branchName`,
    `createdAt`, `createdByDisplay` — are **optional enrichments**: the implementer MAY surface
@@ -152,6 +157,31 @@ shipped and is explicitly **out of scope**.
 | `context.nav.goPatients()` / `pushPatientDetail` | `app/navigation/app_navigator.dart` | "Back to patients" action; already used by list |
 | `authSessionProvider` (`activeBranchId`) | `app/providers/auth_session_provider.dart` | `PatientDetailHistoryQuery.branchId` for upcoming |
 
+#### Phase 4 — additional assets to reuse
+
+| Asset | Path | Used by |
+|---|---|---|
+| `patientInvoicesProvider` (`FutureProvider.autoDispose.family<InvoiceListPageResult,String>`) | `features/billing/presentation/providers/invoice_detail_provider.dart:53` | Billing tab (by `patientId`) |
+| `InvoiceListItem` (summary row: `id, invoiceNumber?, status, patientDisplayName?, subtotal/discountAmount/insuranceCoveredAmount/paidAmount/balance` (Money), `createdAt, issuedAt?`) | `features/billing/domain/invoice_list_item.dart:7` | invoice cards |
+| `InvoiceStatus` enum (`draft, issued, partiallyPaid, paid, voided` + `label`, `isTerminal`, `isVoidable`) | `features/billing/domain/invoice_status.dart:1` | status `AppBadge` |
+| `BillingFormatting` (`statusBadgeStyle(InvoiceStatus)` → variant+icon; currency/date formatters; `invoiceDisplayNumber`) | `features/billing/presentation/utils/billing_formatting.dart:1` | invoice card colors + money |
+| `Money` (Decimal-backed; `wireValue`, `parse`, arithmetic) | `features/billing/domain/money.dart:6` | invoice `balance` rendering |
+| `AuthRouteGuard.canAccessInvoiceList` | `core/auth/auth_route_guard.dart` | billing tab permission gate |
+| `UpdatePatientInput` (`patientId, fullName, expectedUpdatedAt, phone?, dateOfBirth?, gender?, maritalStatus?, notes?, acknowledgeDuplicate`) | `features/patients/domain/update_patient_input.dart:5` | edit notifier |
+| `updatePatientUseCaseProvider` / `UpdatePatient` | `domain/usecases/update_patient.dart` + `patient_use_case_providers.dart` | edit notifier submit |
+| `checkDuplicatesUseCaseProvider` / `CheckDuplicates` (already has `excludePatientId`) | `domain/usecases/check_duplicates.dart` | edit duplicate detection (self-excluded) |
+| `PatientRegistrationForm` + `PatientFormErrors` + `validateRegistration` | `models/patient_registration_form.dart` | edit form values (prefill from `PatientDetail`) |
+| `AddPatientFormFields` (branch banner + identity preview + Patient details + Clinical notes sections) | `presentation/add_patient/add_patient_form_fields.dart` | **refactor for reuse** by `EditPatientFormFields` (prefill) |
+| `PatientRegistrationNotifier` (the add flow template: validate → checkDuplicates → create → toast) | `presentation/providers/patient_registration_notifier.dart` | **template** for `PatientEditNotifier` |
+| `DuplicatePatientDialog` | `presentation/add_patient/duplicate_patient_dialog.dart` | edit duplicate confirmation (reused as-is) |
+| `patientMessageForRpc` (RPC failure → user message) | `features/patients/application/patient_rpc_messages.dart` | edit error mapping |
+| `AppLocalizations` (generated, 31 keys, `localizationsDelegates`, `delegate`, `supportedLocales=[en]`) + `app_en.arb` | `frontend/lib/l10n/app_localizations.dart`, `frontend/lib/l10n/app_en.arb` | localization wiring |
+| `l10n.yaml` (`arb-dir=lib/l10n`, template `app_en.arb`, gen-l10n on `generate: true`) | `frontend/l10n.yaml` | adding `app_ar.arb` |
+| `ensureIntlDateFormattingInitialized()` (preloads `en_GB` + `ar_EG`) | `frontend/lib/core/utils/intl_date_formatting.dart:14` | Arabic date formatting once locale wired |
+| `themeModeProvider` (persisted-via-SharedPreferences Riverpod notifier) | `app/providers/theme_provider.dart` | pattern for the new `localeProvider` |
+| `flutter_localizations` + `intl` deps, `generate: true` | `pubspec.yaml:33-35,89` | localization deps (present) |
+| Web `DirectionProvider` (persisted, locale↔direction coupled) | `web-reference/src/providers/DirectionProvider.tsx` | model for `localeProvider` coupling + persistence |
+
 ### Domain models in play
 
 - `PatientDetail` (`features/patients/domain/patient_detail.dart:9`): `id, fullName, phone?, dateOfBirth?, gender?, maritalStatus?, notes?, branchId, branchName, createdAt, updatedAt, createdByDisplay?`.
@@ -182,6 +212,20 @@ these are feature widgets consumed only by the detail page.
 
 The page itself: **`features/patients/presentation/pages/patient_detail_page.dart`** → `PatientDetailPage`
 (`ConsumerStatefulWidget` with `SingleTickerProviderStateMixin`, mirroring `patients_page.dart:22`).
+
+### Phase 4 — additional feature-local + app-level widgets
+
+| File | Export name | Web analog | Purpose | Phase |
+|---|---|---|---|---|
+| `features/patients/presentation/widgets/patient_invoice_card.dart` | `PatientInvoiceCard` | `InvoiceCard` (`PatientDetailPage.tsx:219-267`) | invoice record card bound to `InvoiceListItem` — status band + balance + issued line (no due-date per Flutter data rule) | 4 |
+| `features/patients/presentation/providers/patient_edit_notifier.dart` | `PatientEditNotifier`, `PatientEditState`, `patientEditProvider` | (none on web — synthesized from Flutter `PatientRegistrationNotifier`) | family-by-`patientId` edit form state: preload → validate → `checkDuplicates` (self-excluded) → `updatePatient` → toast → invalidate detail | 4 |
+| `features/patients/presentation/edit_patient/edit_patient_dialog.dart` | `EditPatientDialog` | (none on web — mirrors Flutter `AddPatientDialog`) | `AppDialog` hosting `EditPatientFormFields` + reused `DuplicatePatientDialog` | 4 |
+| `features/patients/presentation/edit_patient/edit_patient_form_fields.dart` | `EditPatientFormFields` | (none — mirrors Flutter `AddPatientFormFields`) | prefill variant of the add fields; **preferred: refactor shared `AddPatientFormFields` to accept `initialValues`+`branchName`+`previewSubtitle` instead** | 4 |
+| `frontend/lib/app/providers/locale_provider.dart` | `localeProvider`, `LocaleNotifier` | web `DirectionProvider` | persisted Riverpod `Locale` notifier (SharedPreferences), couples `ar`→RTL at `MaterialApp` builder | 4 |
+| `frontend/lib/l10n/app_ar.arb` | (ARB catalog) | — | Arabic translation of all keys in `app_en.arb` + new patient-detail/edit keys | 4 |
+| `frontend/lib/core/ui/l10n/app_localizations_x.dart` | `context.l10n` extension | — | `AppLocalizations.of(context)!` accessor for feature widgets | 4 |
+| **MOD** `presentation/widgets/patient_detail_section.dart` | `PatientDetailSection.billing` (4th) | web `billing` tab | enables the billing tab | 4 |
+| **MOD** `core/ui/...` — none (l10n wiring is in `app/app.dart`) | — | — | no new `core/ui/components/app_*.dart`; the `context.l10n` extension lives under `core/ui/l10n/` (a new subfolder) | 4 |
 
 ### Local tab-state decision
 `PatientDetailSection` is plain `enum` + page `State` field (default `pastVisits`). No Riverpod
@@ -258,6 +302,85 @@ above. Run `flutter analyze`.
    branch accordingly. (If `getPatient` returns null rather than throwing, treat `AsyncData(null)`
    as the not-found branch.)
 3. Run `flutter analyze` across all new/changed files; fix lints. Do **not** commit unless asked.
+
+### Phase 4 — Billing tab, Patient edit page, EN/AR localization
+
+> **Web-reference status for these three differs — read carefully:**
+> - **Billing tab / invoice cards:** the web `PatientDetailPage.tsx` HAS a Billing tab + `InvoiceCard` + `invoiceDueMeta`. The *status enum diverges* (`draft/sent/paid/overdue/cancelled` on web vs `draft/issued/partiallyPaid/paid/voided` in the Flutter `InvoiceStatus`), and the money type is `int` on web vs `Money` (Decimal-backed) in Flutter. **The Flutter data layer is authoritative** — port the *card shape* from web, bind it to `InvoiceListItem` / `patientInvoicesProvider`.
+> - **Patient edit page:** the web has **NO edit page/dialog/form** — the "Edit patient" context-menu item just navigates to the read-only detail page, and the showcase "Edit patient" button is a no-`onClick` mock. So there is **no web source to translate 1:1**. The Flutter edit page is **synthesized** by mirroring the shipped Flutter **Add-patient** dialog (`add_patient_form_fields.dart` + `patient_registration_notifier.dart`) — the only patient form the codebase has — and adapting it to update. The web `findPatientDuplicates(values, excludePatientId?)` signature (with its `excludePatientId`) is the forward-looking hint that edit reuses the add duplicate-detection flow with a self-exclusion.
+> - **EN/AR localization:** the web has a `DirectionProvider` (persisted, locale↔direction coupled) that both showcases AND production widgets (`MoneyField`, `DatePicker`, `UserMenu`) consume. The Flutter port only replicated the *showcase* half (`devPreviewProvider` + `_copyEn`/`_copyAr`). Phase 4 wires the production half: install `AppLocalizations` in `MaterialApp.router`, add `app_ar.arb`, add a `localeProvider`, and route the patient-detail (and edit) copy through ARB keys. This is the only Phase-4 piece that touches `core/` and `app/` (not just `features/patients/`).
+
+#### 4a. Billing tab + invoice cards
+
+| Element | Widget(s) | File(s) | Reuse | Wrapper | Deps |
+|---|---|---|---|---|---|
+| Tab enum extension | add `billing` to `PatientDetailSection` (4th value) | MOD `presentation/widgets/patient_detail_section.dart` | existing enum | EXTEND | none |
+| Invoice card | `PatientInvoiceCard({invoice: InvoiceListItem})` — port web `InvoiceCard` shape: `PatientRecordCard` with a status-colored top band (`BillingFormatting.statusBadgeStyle(invoice.status)` → `AppBadge` variant + accent) showing `invoiceNumber` (mono caption) + status `AppBadge`; body "Balance" overline + `invoice.balance` (render via `Money` → formatted with `BillingFormatting` currency) `AppTypography.display` tabular; bottom grid "Issued" (`invoice.issuedAt ?? invoice.createdAt` formatted) / "Payment" (due date label). Web `invoiceDueMeta` due-date arithmetic re-computed against `clock.now()`, returning `{label, urgent}`; `urgent` colors the label via the band's accent color. | CREATE `presentation/widgets/patient_invoice_card.dart` | `PatientRecordCard`, `AppBadge`, `BillingFormatting`, `Money`, `clock` (testable time), `AppTypography` | NEW | `PatientRecordCard`, `BillingFormatting` |
+| Due-date helper | `_invoiceDueLabel({dueDate, status})` — port web `invoiceDueMeta` (`:94-116`): `paid`/`voided` → `"Due <date>"` non-urgent; `overdue` or past-due → `"<n> days overdue"` urgent; `0` → `"Due today"`; `≤7` → `"Due in n days"`/`"Due tomorrow"`; else `"Due <date>"`. Uses `clock.now()` and `PatientPresentationFormatting.date`. There is **no `dueDate` field** on `InvoiceListItem` — see caveat below. | inline in `patient_invoice_card.dart` (or extend `billing_formatting.dart`) | `clock`, `DateFormat` | NEW (private fn) | `PatientPresentationFormatting` |
+| Billing tab body | watch `patientInvoicesProvider(patientId)` → `AsyncValue` switch: loading → skeleton grid; data (sorted desc by `issuedAt ?? createdAt`) → `PatientRecordGrid` of `PatientInvoiceCard`; empty → `AppEmptyState` first-run "No invoices"/"No billing records for this patient." (web :494-500); error/permission-denied (provider returns empty `InvoiceListPageResult` when `canAccessInvoiceList` false) → render a **permission** `AppEmptyState` or simply hide the tab; decision below. | inline in page file (Phase 4) | `PatientRecordGrid`, `PatientInvoiceCard`, `AppEmptyState`, `AppSkeletonizerZone` | NEW (private) | P4 widget, `patientInvoicesProvider` |
+| File-size on card | (n/a — invoice card has no file column) | — | — | — | — |
+
+**Caveat — `InvoiceListItem` has no `dueDate`.** The web `InvoiceCard` shows a "Payment"/due line based on `invoice.dueDate`. The Flutter `InvoiceListItem` (`invoice_list_item.dart:7-83`) exposes `createdAt`, `issuedAt` but **no `dueDate`** and **no `invoiceNumber` is guaranteed** (nullable). Per the brief's "ignore web fields not in frontend" rule:
+- If `invoiceNumber` is null → render the invoice `id` shortened via `PatientPresentationFormatting.displayId`.
+- **Drop the "Payment"/due-date line** when there is no `dueDate`. Replace the web bottom 2-col grid (Issued / Payment) with a single **Issued** line (`issuedAt ?? createdAt`). Do **not** fabricate a due date. Note this divergence in the card's doc comment. (If a `dueDate` is later added to the domain, the `_invoiceDueLabel` helper above is ready to bind.)
+- Keep the status-colored top band + balance display (the binding visual identity of the web `InvoiceCard`).
+
+**Invoice status color mapping** — prefer the Flutter `BillingFormatting.statusBadgeStyle(InvoiceStatus)` (already implemented, `billing_formatting.dart:70`), which returns an `InvoiceStatusBadgeStyle { variant, icon }` aligned to the **Flutter** enum (`draft/issued/partiallyPaid/paid/voided`). Do **not** port the web `INVOICE_STATUS_BAND` map (which is keyed on web statuses `sent`/`overdue`/`cancelled` that don't exist in Flutter).
+
+**Permissions:** `patientInvoicesProvider` (`invoice_detail_provider.dart:53-62`) gates on `AuthRouteGuard.canAccessInvoiceList(auth)` and returns an empty page result on denial. Decision: when the returned `items` is empty AND the user lacks permission, render the billing tab as a locked `AppEmptyState` ("You don't have access to billing records.") rather than the first-run "No invoices" empty state (so a permitted-but-empty patient differs from a no-access user). Compute the permission flag by watching `authSessionProvider.select(AuthRouteGuard.canAccessInvoiceList)` in the page.
+
+#### 4b. Patient edit page
+
+Web has no edit. Synthesize by mirroring the **Flutter** Add-patient dialog (the authoritative form pattern), adapted for update.
+
+| Element | Widget(s) | File(s) | Reuse | Wrapper | Deps |
+|---|---|---|---|---|---|
+| Edit notifier | `PatientEditNotifier extends StateNotifier<PatientEditState>` (mirrors `PatientRegistrationNotifier`) — family by `patientId`; `build` preloads from `patientDetailProvider(patientId)` once, building `PatientRegistrationForm.from<PatientDetail>` + storing `expectedUpdatedAt`; `updateField`/`_clearFieldError` identical to add; `submit()` validates → if `!acknowledgedDuplicate`, `checkDuplicatesUseCaseProvider(fullName, phone, dateOfBirth, excludePatientId: patientId)` (self-excluded via the existing `excludePatientId` param on `CheckDuplicates`) → on candidates open dialog → else `updatePatientUseCaseProvider(UpdatePatientInput(...))` with `expectedUpdatedAt` → on success toast + invalidate `patientDetailProvider(patientId)` and return. Handles `RpcFailure` (incl. stale-update `STALE_UPDATE`) via `patientMessageForRpc` (extend with `updatePatientMessageForRpc` if new codes appear). | CREATE `presentation/providers/patient_edit_notifier.dart` | `PatientRegistrationForm`, `PatientFormErrors`, `UpdatePatientInput`, `checkDuplicatesUseCaseProvider`, `updatePatientUseCaseProvider`, `patientDetailProvider`, `appToast`, `clock` | NEW | add notifier as template |
+| Edit provider | `patientEditProvider = StateNotifierProvider.family<PatientEditNotifier, PatientEditState, String>` (non-autoDispose so the form survives the dialog; reset on `build`). Alternatively autoDispose + keyed by patientId. | inline in `patient_edit_notifier.dart` | Riverpod | NEW | `PatientEditNotifier` |
+| Edit form fields | `EditPatientFormFields` — **reuse `AddPatientFormFields` wholesale** by parameterization rather than copy: refactor `AddPatientFormFields` to accept an optional `initialValues: PatientRegistrationForm?` (when null, `PatientRegistrationForm.empty`), a `branchName` for the banner (`activeBranchNameProvider` for add vs `patientDetail.branchName` for edit), and an `identityPreviewSubtitle` ("New record · MRN assigned on save" for add vs "Editing · <fullName>" for edit). If refactoring the shared widget is risky, create a parallel `EditPatientFormFields` under `presentation/edit_patient/` mirroring the add file but prefilling fields from `PatientDetail`. **Recommended: refactor shared** to keep the two forms from diverging. | MOD `presentation/add_patient/add_patient_form_fields.dart` (parameterize) OR CREATE `presentation/edit_patient/edit_patient_form_fields.dart` | `AppFormField`+`AppTextInput`/`AppDatePicker`/`AppSelect`/`AppPhoneInput`/`AppTextarea` (existing, already used by add) | EXTEND-or-NEW | add form fields |
+| Edit dialog | `EditPatientDialog` — `AppDialog` (size lg) titled "Edit patient" (ARB-keyed), description "Update the patient's demographic and clinical information." (ARB); body = `EditPatientFormFields` prefilled from `patientDetailProvider`; footer Cancel (secondary) + "Save changes" (primary, `form=edit-form`, loading via `state.submitting`, `Icon(save)`); hosts `DuplicatePatientDialog` (reused unchanged — it already takes candidates + `onAcknowledge`/`onOpenExisting`). On success: close dialog, `ref.invalidate(patientDetailProvider(patientId))` so the detail page refreshes the identity card. | CREATE `presentation/edit_patient/edit_patient_dialog.dart` | `AppDialog`, `AppButton`, `DuplicatePatientDialog`, `patientEditProvider`, `appToast` | NEW | edit notifier, edit form fields, `DuplicatePatientDialog` |
+| Edit entry point on detail page | Add an `AppButton.secondary` "Edit patient" (`Icon(edit)`, ARB-keyed) to the identity card's action row (top-right of `_PatientIdentityCard`, mirroring the showcase `RecordDetailPattern.tsx:55-57` "Edit patient" button) → opens `EditPatientDialog(patientId:)` via `showDialog`. (The web detail page does NOT have this button — it only exists in the showcase pattern. This is a deliberate frontend augmentation because there is no web detail edit affordance.) | inline in page file (Phase 4) | `AppButton`, `AppDialog`, `EditPatientDialog` | NEW (private) | `EditPatientDialog` |
+| Stale-update guard | `UpdatePatientInput.expectedUpdatedAt` provides optimistic-concurrency — on `RpcFailure` with a stale code, surface a confirm dialog ("This record was modified by someone else. Reload and discard your edits?") then `ref.invalidate(patientDetailProvider)` to refresh. Inline or via a small `_StaleUpdateDialog`. | inline in `patient_edit_notifier.dart` / dialog | `AppDialog` | NEW (private) | `RpcResult`/`RpcFailure` |
+| Edit route | The `/patients/:patientId/edit` route stays as `shellPlaceholderPage` — **edit is a dialog**, not a page (mirroring the add flow which is also a dialog, and the web's nonexistent edit route). Do **not** rebind it. `context.nav.pushPatientEdit` exists but is **unused** by this plan; left for a future page-based edit. | none — no router change | — | — | — |
+
+**Field reconciliation (Flutter `PatientDetail` ↔ edit form):**
+- `fullName` → `fullName` field (required, min 2).
+- `phone?` → `phone` field (optional, 8-15 digits if present).
+- `dateOfBirth?` → `dateOfBirth` field (optional, max today).
+- `gender?` → `gender` select.
+- `maritalStatus?` → `maritalStatus` select.
+- `notes?` → `notes` textarea.
+- `expectedUpdatedAt` → carried as the optimistic-concurrency token; **never** user-editable.
+- `branchId`/`branchName`/`id`/`createdAt`/`createdByDisplay` → read-only, not in the edit form. The `update_patient` RPC derives branch from `expectedUpdatedAt` row; the patient stays at their registering branch.
+- `acknowledgeDuplicate` → reused from the add duplicate flow; `checkDuplicatesUseCaseProvider`'s `excludePatientId` ensures the patient being edited is not flagged as a duplicate of itself.
+
+**Duplicate flow reuse:** `DuplicatePatientDialog` (`add_patient/duplicate_patient_dialog.dart`) is already presenter-agnostic (takes `candidates`, `onAcknowledge`, `onOpenExisting`). The edit notifier reuses it; the "Create anyway" semantics become "Save anyway". `onOpenExisting` navigates to the candidate patient (rare in edit, but supported).
+
+#### 4c. EN/AR localization
+
+Bind the patient-detail + edit copy to the gen-l10n `AppLocalizations` system and wire Arabic.
+
+| Element | What to do | File(s) | Reuse | Deps |
+|---|---|---|---|---|
+| Install delegates | add `localizationsDelegates: AppLocalizations.localizationsDelegates` and `supportedLocales: AppLocalizations.supportedLocales` to `MaterialApp.router` in `app.dart`; add a `locale:` argument driven by a new `localeProvider` (parallels `themeModeProvider`). | MOD `frontend/lib/app/app.dart` | `AppLocalizations.localizationsDelegates` (already generated) | `localeProvider` |
+| Locale provider | `localeProvider = NotifierProvider<LocaleNotifier, Locale>` — defaults to `Locale('en')`, persists to `SharedPreferences` key `aiclinic.locale`, and **couples** `Locale('ar')`→`Directionality.rtl` at the `MaterialApp` level (set `builder` to wrap root in `Directionality` based on locale, matching the web `DirectionProvider` coupling). Companion `textDirectionProvider` derived from locale, OR set `MaterialApp`'s `builder` to inject `Directionality`. | CREATE `frontend/lib/app/providers/locale_provider.dart` | `SharedPreferences`, `themeModeProvider` (as the persistence pattern to copy) | none |
+| Arabic ARB | Create `app_ar.arb` mirroring ALL 31 keys of `app_en.arb` (+ new patient-detail keys), Arabic strings. gen-l10n auto-emits `app_localizations_ar.dart`, extends `supportedLocales` to `[en, ar]`, and extends `isSupported`. | CREATE `frontend/lib/l10n/app_ar.arb` | `app_en.arb` as the key skeleton | `flutter gen-l10n` |
+| New ARB keys (patient detail + edit) | Add keys to BOTH `app_en.arb` and `app_ar.arb`: `patientDetailBreadcrumb`, `patientNotFound`, `patientNotFoundDescription`, `backToPatients`, `pastVisits`, `upcoming`, `documents`, `billing`, `noVisitsYet`, `noVisitsYetDescription`, `noUpcomingAppointments`, `noUpcomingAppointmentsDescription`, `noDocuments`, `noDocumentsDescription`, `noInvoices`, `noInvoicesDescription`, `billingNoAccess`, `attendingPhysician`, `linkedVisit`, `patientFile`, `downloadFile`, `saveChanges`, `editingPatient`, `editPatientDescription`, `registeredAt`, `newRecordMrsAssignedOnSave`, `editingSuffix` (+ reuse existing `genderMale/Female/Other/PreferNotToSay/Unknown/NotSpecified`, `cancel`, `save`, `edit`, `retry`, `loading`, `discardChangesTitle/Message`, `keepEditing`, `discard`). Flat camelCase, feature-prefix where natural. | MOD `app_en.arb`, `app_ar.arb` | existing key-naming convention (flat, family-prefixed) | gen-l10n |
+| l10n accessor | Add `extension AppLocalizationsX on BuildContext { AppLocalizations get l10n => AppLocalizations.of(this)!; }` in `core/ui/` (or `core/utils/`) so widgets do `context.l10n.patientNotFound`. Non-null because after the delegates are installed, `of(context)` resolves for supported locales. | CREATE `frontend/lib/core/ui/l10n/app_localizations_x.dart` (or `core/utils/`) | none | `AppLocalizations` |
+| Replace literals in patient-detail page | Replace the hard-coded EN literals in `patient_detail_page.dart`, card widgets, empty states, dialog with `context.l10n.<key>`. The tab labels (`PatientDetailSection.label`) become a `labelOf(BuildContext, PatientDetailSection)` fn returning the ARB key, since enum values can't call `BuildContext`. | MOD `patient_detail_page.dart`, `patient_visit_card.dart`, `patient_document_card.dart`, `patient_upcoming_appointment_card.dart`, `patient_invoice_card.dart` (P4), `patient_detail_section.dart`, `edit_patient_dialog.dart` (P4) | `context.l10n` extension | ARB keys |
+| Date/number locale | The card date-stamps and DOB line already resolve locale via `Localizations.localeOf`. With Arabic registered, `DateFormat` picks `ar_EG` symbols (already preloaded by `ensureIntlDateFormattingInitialized()`). Money/invoice balance formatting in `BillingFormatting` must pass the active locale (`NumberFormat.currency(locale: ...)`). | MOD `billing_formatting.dart` (currency locale) where it formats | `intl`, `Localizations.localeOf` | `app_ar.arb` |
+| Showcase copy untouched | The `_copyEn`/`_copyAr` showcase convention is **not** migrated to ARB — it stays as-is (per the inputs-forms plan decision). Phase 4 only affects **production feature** copy (patients feature), not design-system showcase copy. | none | `devPreviewProvider` unchanged | — |
+
+**ARB→web translation heuristic for new keys:** for each new key, the EN string is the literal already in the patient-detail page (taken from the web `PatientDetailPage.tsx` copy, e.g. "No visits yet", "Attending physician", "Download file"). The AR string is its Arabic translation, mirroring the style of the existing showcase `_copyAr` constants (e.g. "لا توجد زيارات بعد", "الطبيب المعالج", "تنزيل الملف"). The web-reference `PatientDetailPage.tsx` copy is the **source for the EN values**; the showcase `_copyAr` constants across `design_system/presentation/components/**` are the **style reference for the AR values** (the showcase files are the only Arabic strings already in the repo).
+
+**Wiring (Phase 4):**
+1. Add `patientInvoicesProvider` import to `patient_detail_page.dart`; wire the billing tab body.
+2. Add `billing` to `PatientDetailSection` + the tab strip + `labelOf` ARB helper.
+3. Create edit notifier/dialog/form wiring; add the "Edit patient" button to the identity card; on success invalidate `patientDetailProvider`.
+4. Create `app_ar.arb`; add new keys to both ARBs; run `flutter gen-l10n`.
+5. Wire `MaterialApp.router` (`app.dart`): `localizationsDelegates` + `supportedLocales` + `locale:` from `localeProvider` + `builder:` wrapping in `Directionality`.
+6. Create the `context.l10n` extension and replace literals in the patients feature page/widgets/dialog.
+7. Run `flutter analyze`; `flutter gen-l10n` (or `flutter pub get`) to regenerate. Do **not** commit unless asked.
 
 ---
 
@@ -369,27 +492,43 @@ deferred (§6).
 
 ## 6. Out-of-scope / defer
 
-- **Billing tab / `InvoiceCard` / `MoneyDisplay` / due-meta logic** — dropped; no billing data
-  layer in the patients feature. (Billing exists as its own `/billing` feature module.)
-- **Patient edit page** (`/patients/:id/edit`) — remains a `shellPlaceholderPage`; separate task.
+> **Note:** the original three deferred items — **Billing tab**, **Patient edit page**, and
+> **EN/AR production localization** — are now in **Phase 4 (§3)**. The remaining deferrals are
+> listed below.
+
 - **`getPatient` returning null** — verify whether `patientDetailProvider` throws or yields
   `AsyncData(null)`; branch the not-found UI accordingly. (Implementation detail, not a new
   design.)
-- **Download invocation** — rendering the gated "Download file" button is in scope; the actual
-  byte-stream/URL download call is **deferred** (locate the existing visit-attachment download
-  path in the `visits` feature or add one later). Button `onPressed` is a TODO/no-op for now.
+- **Download invocation** — rendering the gated "Download file" button is in scope (Phase 3); the
+  actual byte-stream/URL download call stays **deferred** even after Phase 4 (locate the existing
+  visit-attachment download path in the `visits` feature or add one later). Button `onPressed`
+  is a TODO/no-op for now.
 - **Linked-visit doctor/branch on document cards** — `PatientVisitDocument` exposes only
   `visitDate`; enriching the documents RPC to include doctor/branch (or a separate
   `getVisitById`-style lookup) is deferred. Phase-3 card shows the linked-visit date only.
-- **Localization (EN/AR) of copy** — single-language EN for now; AR + `l10n` wiring is deferred.
+- **Invoice `dueDate` line** — dropped (no `dueDate` on `InvoiceListItem`). The web
+  `invoiceDueMeta` helper is implemented but binds only if/when a `dueDate` field is added to the
+  billing domain; the shipping card shows Issued only.
+- **Invoice detail navigation** — tapping an invoice card does **not** open `/billing/invoices/:id`
+  in this plan (that route is a stub `shellPlaceholderPage`). Tapping is a no-op or a
+  `context.nav.pushBillingInvoiceDetail(id)` call left commented for when the invoice detail page
+  ships (out of scope here). The `pushBillingInvoiceEdit` helper likewise unused.
+- **Page-based edit** — edit is a **dialog** (mirroring add). The `/patients/:patientId/edit`
+  route stays a `shellPlaceholderPage` and `context.nav.pushPatientEdit` stays unused; a future
+  full-page edit (web has neither) can rebind it.
 - **`status` Badge on identity** — dropped (no status field). If a status field is added later,
   reintroduce the web Badge using `AppBadge`.
 - **`maritalStatus` / `notes` / `createdByDisplay`** — frontend-only optional enrichments; only
   surfaced if the implementer adds a secondary meta line. Not required by the binding web layout.
 - **`PatientDetailHistoryTabProvider`** — left in place; superseded by page-local
-  `PatientDetailSection` for the 3-tab layout. Not deleted.
-- **No new `core/ui` abstractions** — all new widgets are feature-local under
-  `presentation/widgets/`; the `widgets.dart` barrel is not edited.
+  `PatientDetailSection` for the 4-tab layout (3 + billing). Not deleted.
+- **Showcase `_copyEn`/`_copyAr` migration** — the design-system showcase bilingual convention
+  is **not** migrated to ARB in Phase 4; it stays as-is. Phase 4 ARB wiring affects only
+  production feature copy (patients detail/edit), not showcase copy.
+- **No new `core/ui/components/app_*.dart`** — all feature widgets are under
+  `presentation\widgets/`\, `presentation\edit_patient`\, or `presentation\providers/`. The
+  `widgets.dart` barrel is not edited. The lone `core/`-level additions are the l10n extension
+  (`core/ui/l10n/`) and the locale provider (`app/providers/`).
 
 ---
 
@@ -398,7 +537,7 @@ deferred (§6).
 The Patient Details page lives in a single file with colocated sub-components (the show-registry
 has no entry for it). Inventory of the bundles ported (and dropped):
 
-| Export / sub-component | Title | Showcase file | Underlying UI component | Flutter target |
+| Export / sub-component | Title | Source | Binding reference | Flutter target |
 |---|---|---|---|---|
 | `PatientDetailPage` | Patient Details (page) | — (prod page) | `PatientDetailPage.tsx:358-504` | `PatientDetailPage` (page) |
 | `Breadcrumb` | — | — | `@/components/navigation/Breadcrumb` | reuse `AppBreadcrumb` |
@@ -415,12 +554,19 @@ has no entry for it). Inventory of the bundles ported (and dropped):
 | `VisitCard` | Visit record card | — | `PatientDetailPage.tsx:167-217` | NEW `PatientVisitCard` (feature-local) |
 | `DocumentCard` | Document record card | — | `PatientDetailPage.tsx:274-356` | NEW `PatientDocumentCard` (feature-local) |
 | *— (synthesized from VisitCard)* | Upcoming appointment card | — | (none) | NEW `PatientUpcomingAppointmentCard` (feature-local) |
-| `InvoiceCard` | Invoice record card | — | `PatientDetailPage.tsx:219-267` | **DROPPED** (no billing provider) |
-| `INVOICE_STATUS_BAND` / `invoiceStatusColor` / `invoiceDueMeta` | Invoice styling + due logic | — | `PatientDetailPage.tsx:51-116` | **DROPPED** |
-| `MoneyDisplay` | Money display | — | `@/components/money/MoneyDisplay` | **DROPPED** (billing) |
+| `InvoiceCard` *(Phase 4)* | Invoice record card | — | `PatientDetailPage.tsx:219-267` | NEW `PatientInvoiceCard` (feature-local) bound to `InvoiceListItem` |
+| `INVOICE_STATUS_BAND` | Invoice status band | — | `PatientDetailPage.tsx:51-75` | replaced by Flutter `BillingFormatting.statusBadgeStyle` |
+| `invoiceStatusColor` | Invoice status color | — | `@/data/patients:271-276` | replaced by Flutter `InvoiceStatus` enum + `BillingFormatting` |
+| `invoiceDueMeta` *(Phase 4)* | Invoice due-date logic | — | `PatientDetailPage.tsx:94-116` | NEW `_invoiceDueLabel` (DROPPED binding — no `dueDate` field; ready to bind if added) |
+| `MoneyDisplay` | Money display | — | `@/components/money/MoneyDisplay` | replaced by `Money` (Decimal) + `BillingFormatting` currency |
 | `formatFileSize` | File-size formatter | — | `@/data/patients:formatFileSize` | NEW `_formatFileSize` (extend `PatientPresentationFormatting`) |
 | `practitionerInitials` | Doctor initials | — | `PatientDetailPage.tsx:87-92` | NEW `_practitionerInitials` (inline in `patient_visit_card.dart`) |
 | `documentExtension` | File-extension extractor | — | `PatientDetailPage.tsx:269-272` | **DROPPED** — replaced by `VisitAttachmentFileType.label` |
+| *(no web edit page)* | Patient edit | — | (none — web only navigates to detail) | NEW `EditPatientDialog`+`PatientEditNotifier` synthesized from **Flutter `AddPatientDialog`** |
+| `findPatientDuplicates(values, excludePatientId?)` | Duplicate detection (edit-ready) | — | `@/data/patients` (web) | reuse Flutter `checkDuplicatesUseCaseProvider` (already has `excludePatientId`) |
+| `DirectionProvider` | Locale/direction provider | — | `web-reference/src/providers/DirectionProvider.tsx` | NEW `localeProvider` (Riverpod, persisted, locale↔direction coupled) |
+| `useDirection().locale` | Production locale consumer | — | `MoneyField`/`DatePicker`/`UserMenu.tsx` | NEW `context.l10n` + ARB wiring in `app.dart` |
+| `COPY` (per-showcase EN/AR) | Showcase bilingual copy | — | each `*Showcase.tsx` | existing `_copyEn`/`_copyAr` (NOT migrated — see §6) |
 
 ### Shared web building blocks (Flutter equivalents)
 
@@ -428,4 +574,6 @@ has no entry for it). Inventory of the bundles ported (and dropped):
 - `motion`/`motionPresets`/`staggerChildren`/`resolveTransition` → `AppMotion`/`AppMotionPreset`/`AppMotion.animatedPreset` (reduced-motion aware).
 - `lucide-react` icons (`Phone`, `Mail`, `MapPin`, `Building2`, `Download`) → Material `Icons`/`CupertinoIcons` equivalents (e.g. `Icons.phone_outlined`, `Icons.location_on_outlined`, `Icons.apartment`, `Icons.download_outlined`). Only `Phone` + `Building2` + `Download` are used (Mail/MapPin rows dropped).
 - Web `formatDate` (en-GB `d MMM y`) → `PatientPresentationFormatting.date` (`yMMMd`) for the DOB line; card date-stamp columns use locale-resolved `DateFormat('d')`/`MMM`/`'y'` + `EEEE`.
-- Web `getVisitsForPatient`/`getDocumentsForPatient`/`getInvoicesForPatient`/`getPatientById`/`getVisitById` (sync in-memory) → Flutter async `FutureProvider` family (`patientPastVisitsProvider`, `patientVisitDocumentsProvider`, `patientDetailProvider`, `patientUpcomingAppointmentsProvider`). `getVisitById` is **not** available in the docs feature — linked-visit only shows `visitDate`.
+- Web `getVisitsForPatient`/`getDocumentsForPatient`/`getInvoicesForPatient`/`getPatientById`/`getVisitById` (sync in-memory) → Flutter async `FutureProvider` family (`patientPastVisitsProvider`, `patientVisitDocumentsProvider`, `patientDetailProvider`, `patientUpcomingAppointmentsProvider`, **`patientInvoicesProvider`** Phase 4). `getVisitById` is **not** available in the docs feature — linked-visit only shows `visitDate`.
+- Web `InvoiceStatus` enum (`draft/sent/paid/overdue/cancelled`) → Flutter `InvoiceStatus` (`draft/issued/partiallyPaid/paid/voided`) — **Flutter authoritative**; web statuses not fabricated.
+- Web `PatientInvoice.total` (`int`) → Flutter `InvoiceListItem.balance` (`Money` Decimal) — balance renders via `Money`/`BillingFormatting`, not a raw int.

@@ -41,7 +41,7 @@ class InsuranceProviderRepository with AppRpcInvoker {
     _assertNonEmpty('name', name);
 
     final result = await invokeRpc('insurance_provider_upsert', {
-      if (id != null && id.trim().isNotEmpty) 'p_id': id.trim(),
+      'p_id': id != null && id.trim().isNotEmpty ? id.trim() : null,
       'p_name': name.trim(),
       'p_contact_info': contactInfo,
       'p_is_active': isActive,

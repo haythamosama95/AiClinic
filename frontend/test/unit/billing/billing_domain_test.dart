@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_list_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
@@ -83,6 +84,69 @@ void main() {
         }),
         isNull,
       );
+    });
+  });
+
+  group('InvoiceListItem', () {
+    test('fromRow parses nested payments', () {
+      final item = InvoiceListItem.fromRow({
+        'id': 'inv-1',
+        'status': 'partially_paid',
+        'subtotal': '100.00',
+        'discount_amount': '0.00',
+        'insurance_covered_amount': '0.00',
+        'paid_amount': '40.00',
+        'balance': '60.00',
+        'created_at': '2026-06-01T10:00:00.000Z',
+        'payments': [
+          {
+            'id': 'pay-1',
+            'method': 'cash',
+            'amount': '40.00',
+            'recorded_by': {'id': 'staff-uuid', 'display_name': 'Reception'},
+            'recorded_at': '2026-06-01T12:00:00.000Z',
+          },
+        ],
+      });
+
+      expect(item, isNotNull);
+      expect(item!.payments, hasLength(1));
+      expect(item.payments.first.method, PaymentMethod.cash);
+      expect(item.payments.first.amount.wireValue, '40.00');
+    });
+
+    test('fromRow parses numeric wire amounts from list_patient_invoices', () {
+      final item = InvoiceListItem.fromRow({
+        'id': 'inv-1',
+        'status': 'partially_paid',
+        'subtotal': 125.0,
+        'discount_amount': 0.0,
+        'insurance_covered_amount': 0.0,
+        'paid_amount': 75.0,
+        'balance': 50.0,
+        'created_at': '2026-06-01T10:00:00.000Z',
+        'payments': [
+          {
+            'id': 'pay-1',
+            'method': 'cash',
+            'amount': 125.0,
+            'recorded_by': {'id': 'staff-uuid', 'display_name': 'Reception'},
+            'recorded_at': '2026-06-01T12:00:00.000Z',
+          },
+          {
+            'id': 'pay-2',
+            'method': 'cash',
+            'amount': -50.0,
+            'recorded_by': {'id': 'staff-uuid', 'display_name': 'Reception'},
+            'recorded_at': '2026-06-01T12:30:00.000Z',
+          },
+        ],
+      });
+
+      expect(item, isNotNull);
+      expect(item!.payments, hasLength(2));
+      expect(item.paidAmount.wireValue, '75.00');
+      expect(item.balance.wireValue, '50.00');
     });
   });
 }

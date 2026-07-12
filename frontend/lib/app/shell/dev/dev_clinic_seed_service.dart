@@ -18,8 +18,17 @@ import 'package:ai_clinic/features/setup/domain/create_staff_account_input.dart'
 import 'package:ai_clinic/features/setup/domain/repositories/bootstrap_repository.dart';
 import 'package:ai_clinic/features/setup/domain/repositories/provisioning_repository.dart';
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
+import 'package:ai_clinic/features/billing/data/billing_settings_repository.dart';
+import 'package:ai_clinic/features/billing/data/insurance_provider_repository.dart';
+import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
+import 'package:ai_clinic/features/billing/data/payment_repository.dart';
+import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
+import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
+import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/visits/domain/visit_status.dart';
+import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_attachments.dart';
+import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_billing.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_schedule.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_spec.dart';
 import 'package:ai_clinic/app/shell/dev/dev_egyptian_investigations_asset.dart';
@@ -43,6 +52,31 @@ class _BranchSeedContext {
   final List<String> patientIds;
 }
 
+class _SeededVisit {
+  const _SeededVisit({
+    required this.visitId,
+    required this.branchId,
+    required this.branchCode,
+    required this.patientIndex,
+    required this.seedKey,
+    required this.isCompleted,
+  });
+
+  final String visitId;
+  final String branchId;
+  final String branchCode;
+  final int patientIndex;
+  final int seedKey;
+  final bool isCompleted;
+}
+
+class _BillingPrerequisites {
+  const _BillingPrerequisites({this.insuranceProviderId, this.consultationServiceId});
+
+  final String? insuranceProviderId;
+  final String? consultationServiceId;
+}
+
 /// Resets the installation and seeds a multi-branch demo clinic (debug builds only).
 class DevClinicSeedService {
   DevClinicSeedService({
@@ -54,6 +88,12 @@ class DevClinicSeedService {
     required AppointmentRepository appointments,
     required VisitRepository visits,
     required ShiftRepository shiftRepository,
+    required VisitAttachmentService visitAttachments,
+    required InvoiceRepository invoices,
+    required PaymentRepository payments,
+    required InsuranceProviderRepository insuranceProviders,
+    required BillingSettingsRepository billingSettings,
+    required ServiceCatalogRepository serviceCatalog,
   }) : _bootstrap = bootstrap,
        _branches = branches,
        _provisioning = provisioning,
@@ -61,7 +101,13 @@ class DevClinicSeedService {
        _patients = patients,
        _appointments = appointments,
        _visits = visits,
-       _shiftRepository = shiftRepository;
+       _shiftRepository = shiftRepository,
+       _visitAttachments = visitAttachments,
+       _invoices = invoices,
+       _payments = payments,
+       _insuranceProviders = insuranceProviders,
+       _billingSettings = billingSettings,
+       _serviceCatalog = serviceCatalog;
 
   final BootstrapRepository _bootstrap;
   final BranchRepository _branches;
@@ -71,6 +117,12 @@ class DevClinicSeedService {
   final AppointmentRepository _appointments;
   final VisitRepository _visits;
   final ShiftRepository _shiftRepository;
+  final VisitAttachmentService _visitAttachments;
+  final InvoiceRepository _invoices;
+  final PaymentRepository _payments;
+  final InsuranceProviderRepository _insuranceProviders;
+  final BillingSettingsRepository _billingSettings;
+  final ServiceCatalogRepository _serviceCatalog;
 
   Future<void> run({
     required AuthSessionContext auth,
@@ -238,7 +290,16 @@ class DevClinicSeedService {
 
     await _seedShifts(branchContexts: branchContexts, onProgress: report);
 
-    await _seedAppointmentsAndVisits(branchContexts: branchContexts, onProgress: report);
+    final organizationId = bootstrapResult.organizationId;
+    if (organizationId.isEmpty) {
+      throw StateError('Organization ID missing after bootstrap setup.');
+    }
+
+    final seededVisits = await _seedAppointmentsAndVisits(branchContexts: branchContexts, onProgress: report);
+
+    final billingPrerequisites = await _seedBillingPrerequisites(onProgress: report);
+    await _seedVisitAttachments(organizationId: organizationId, seededVisits: seededVisits, onProgress: report);
+    await _seedVisitBilling(seededVisits: seededVisits, prerequisites: billingPrerequisites, onProgress: report);
 
     report('Refreshing session…');
     await refreshSession();
@@ -323,10 +384,11 @@ class DevClinicSeedService {
     }
   }
 
-  Future<void> _seedAppointmentsAndVisits({
+  Future<List<_SeededVisit>> _seedAppointmentsAndVisits({
     required List<_BranchSeedContext> branchContexts,
     required DevClinicSeedProgress onProgress,
   }) async {
+    final seededVisits = <_SeededVisit>[];
     final referenceUtc = DateTime.now().toUtc();
     var appointmentCount = 0;
     final totalAppointments =
@@ -400,10 +462,13 @@ class DevClinicSeedService {
             dayOffset: dayOffset,
             seedKey: seedKey,
             activeVisitByDoctorBranch: activeVisitByDoctorBranch,
+            seededVisits: seededVisits,
           );
         }
       }
     }
+
+    return seededVisits;
   }
 
   Future<void> _applyAppointmentTarget({
@@ -416,6 +481,7 @@ class DevClinicSeedService {
     required int dayOffset,
     required int seedKey,
     required Map<String, String> activeVisitByDoctorBranch,
+    required List<_SeededVisit> seededVisits,
   }) async {
     final doctorBranchKey = _doctorBranchKey(branchId, doctorId);
 
@@ -445,6 +511,7 @@ class DevClinicSeedService {
     }
 
     final visit = await _visits.createVisit(appointmentId: appointmentId);
+    final completing = DevClinicSeedSchedule.shouldCompleteVisit(targetStatus);
 
     final note = DevClinicSeedSchedule.clinicalNoteContentFor(
       kind: documentation,
@@ -459,7 +526,6 @@ class DevClinicSeedService {
       throw StateError('Visit documentation timestamp missing after create for dev seed.');
     }
 
-    final completing = DevClinicSeedSchedule.shouldCompleteVisit(targetStatus);
     if (completing) {
       // Treatment plans participate in complete_visit concurrency checks, so create
       // them before saving documentation to keep saved.updatedAt as the latest token.
@@ -487,11 +553,245 @@ class DevClinicSeedService {
     if (completing) {
       await _visits.completeVisit(visitId: visit.visitId, expectedUpdatedAt: saved.updatedAt);
       activeVisitByDoctorBranch.remove(doctorBranchKey);
+      seededVisits.add(
+        _SeededVisit(
+          visitId: visit.visitId,
+          branchId: branchId,
+          branchCode: branchCode,
+          patientIndex: patientIndex,
+          seedKey: seedKey,
+          isCompleted: true,
+        ),
+      );
       return;
     }
 
+    seededVisits.add(
+      _SeededVisit(
+        visitId: visit.visitId,
+        branchId: branchId,
+        branchCode: branchCode,
+        patientIndex: patientIndex,
+        seedKey: seedKey,
+        isCompleted: false,
+      ),
+    );
+
     if (DevClinicSeedSchedule.leavesDoctorInProgress(status: targetStatus, seedKey: seedKey)) {
       activeVisitByDoctorBranch[doctorBranchKey] = visit.visitId;
+    }
+  }
+
+  Future<_BillingPrerequisites> _seedBillingPrerequisites({required DevClinicSeedProgress onProgress}) async {
+    onProgress('Preparing billing catalog…');
+
+    await _billingSettings.update(allowPartialPayments: true);
+
+    final insuranceProviderId = await _insuranceProviders.upsertProvider(
+      name: 'Dev Seed Insurance Co.',
+      contactInfo: 'claims@dev-seed.example.com',
+    );
+
+    final serviceResult = await _serviceCatalog.createService(
+      name: 'Dev Seed Consultation',
+      defaultPrice: DevClinicSeedBilling.primaryItemUnitPrice(),
+      globalStatus: GlobalStatus.active,
+      assignAllBranches: true,
+    );
+
+    return _BillingPrerequisites(
+      insuranceProviderId: insuranceProviderId,
+      consultationServiceId: serviceResult.serviceId,
+    );
+  }
+
+  Future<void> _seedVisitAttachments({
+    required String organizationId,
+    required List<_SeededVisit> seededVisits,
+    required DevClinicSeedProgress onProgress,
+  }) async {
+    if (seededVisits.isEmpty) {
+      return;
+    }
+
+    var attachmentCount = 0;
+    final totalAttachments = seededVisits.fold<int>(0, (total, visit) {
+      return total +
+          DevClinicSeedAttachments.attachmentsFor(
+            seedKey: visit.seedKey,
+            branchCode: visit.branchCode,
+            patientIndex: visit.patientIndex,
+          ).length;
+    });
+
+    for (final visit in seededVisits) {
+      final specs = DevClinicSeedAttachments.attachmentsFor(
+        seedKey: visit.seedKey,
+        branchCode: visit.branchCode,
+        patientIndex: visit.patientIndex,
+      );
+
+      for (final spec in specs) {
+        attachmentCount++;
+        if (attachmentCount == 1 || attachmentCount % 10 == 0 || attachmentCount == totalAttachments) {
+          onProgress('Uploading visit documents ($attachmentCount/$totalAttachments)…');
+        }
+
+        await _visitAttachments.uploadAndRegister(
+          organizationId: organizationId,
+          branchId: visit.branchId,
+          visitId: visit.visitId,
+          pick: VisitAttachmentPickInput(
+            filename: spec.filename,
+            bytes: DevClinicSeedAttachments.dummyBytesFor(spec.fileType),
+          ),
+          label: spec.label,
+        );
+      }
+    }
+  }
+
+  Future<void> _seedVisitBilling({
+    required List<_SeededVisit> seededVisits,
+    required _BillingPrerequisites prerequisites,
+    required DevClinicSeedProgress onProgress,
+  }) async {
+    final completedVisits = seededVisits.where((visit) => visit.isCompleted).toList(growable: false);
+    if (completedVisits.isEmpty) {
+      return;
+    }
+
+    var invoiceCount = 0;
+    final totalInvoices = completedVisits.where((visit) {
+      return DevClinicSeedBilling.shouldSeedInvoice(DevClinicSeedBilling.scenarioFor(visit.seedKey));
+    }).length;
+
+    for (final visit in completedVisits) {
+      final scenario = DevClinicSeedBilling.scenarioFor(visit.seedKey);
+      if (!DevClinicSeedBilling.shouldSeedInvoice(scenario)) {
+        continue;
+      }
+
+      invoiceCount++;
+      if (invoiceCount == 1 || invoiceCount % 5 == 0 || invoiceCount == totalInvoices) {
+        onProgress('Creating visit invoices ($invoiceCount/$totalInvoices)…');
+      }
+
+      await _applyBillingScenario(visit: visit, scenario: scenario, prerequisites: prerequisites);
+    }
+  }
+
+  Future<void> _applyBillingScenario({
+    required _SeededVisit visit,
+    required DevClinicBillingScenario scenario,
+    required _BillingPrerequisites prerequisites,
+  }) async {
+    final invoiceId = await _invoices.createFromVisit(visitId: visit.visitId);
+    var detail = await _invoices.getDetail(invoiceId: invoiceId);
+
+    if (DevClinicSeedBilling.shouldUseServiceCatalog(scenario)) {
+      final serviceId = prerequisites.consultationServiceId;
+      if (serviceId == null || serviceId.isEmpty) {
+        throw StateError('Consultation service was not created for dev billing seed.');
+      }
+
+      await _serviceCatalog.addInvoiceItemFromService(
+        invoiceId: invoiceId,
+        expectedUpdatedAt: detail.updatedAt,
+        serviceId: serviceId,
+      );
+      detail = await _invoices.getDetail(invoiceId: invoiceId);
+    } else if (DevClinicSeedBilling.shouldAddManualItems(scenario)) {
+      final itemId = await _invoices.addItem(
+        invoiceId: invoiceId,
+        expectedUpdatedAt: detail.updatedAt,
+        description: DevClinicSeedBilling.primaryItemDescription(
+          branchCode: visit.branchCode,
+          patientIndex: visit.patientIndex,
+        ),
+        quantity: '1',
+        unitPrice: DevClinicSeedBilling.primaryItemUnitPrice(),
+      );
+      detail = await _invoices.getDetail(invoiceId: invoiceId);
+
+      if (DevClinicSeedBilling.shouldApplyLineDiscount(scenario)) {
+        await _invoices.applyLineDiscount(
+          itemId: itemId,
+          expectedUpdatedAt: detail.updatedAt,
+          kind: DevClinicSeedBilling.lineDiscountKind(scenario),
+          value: DevClinicSeedBilling.lineDiscountValue(scenario),
+        );
+        detail = await _invoices.getDetail(invoiceId: invoiceId);
+      }
+
+      if (scenario != DevClinicBillingScenario.withLineDiscount) {
+        await _invoices.addItem(
+          invoiceId: invoiceId,
+          expectedUpdatedAt: detail.updatedAt,
+          description: DevClinicSeedBilling.secondaryItemDescription(),
+          quantity: DevClinicSeedBilling.secondaryItemQuantity(),
+          unitPrice: DevClinicSeedBilling.secondaryItemUnitPrice(),
+        );
+        detail = await _invoices.getDetail(invoiceId: invoiceId);
+      }
+    }
+
+    if (DevClinicSeedBilling.shouldApplyInvoiceDiscount(scenario)) {
+      await _invoices.applyInvoiceDiscount(
+        invoiceId: invoiceId,
+        expectedUpdatedAt: detail.updatedAt,
+        kind: DevClinicSeedBilling.invoiceDiscountKind(scenario),
+        value: DevClinicSeedBilling.invoiceDiscountValue(scenario),
+      );
+      detail = await _invoices.getDetail(invoiceId: invoiceId);
+    }
+
+    if (DevClinicSeedBilling.shouldApplyInsurance(scenario)) {
+      final providerId = prerequisites.insuranceProviderId;
+      if (providerId == null || providerId.isEmpty) {
+        throw StateError('Insurance provider was not created for dev billing seed.');
+      }
+
+      await _invoices.setInsuranceCoverage(
+        invoiceId: invoiceId,
+        expectedUpdatedAt: detail.updatedAt,
+        providerId: providerId,
+        coveredAmount: DevClinicSeedBilling.insuranceCoveredAmount(scenario),
+      );
+      detail = await _invoices.getDetail(invoiceId: invoiceId);
+    }
+
+    if (DevClinicSeedBilling.shouldIssue(scenario)) {
+      await _invoices.issue(invoiceId: invoiceId, expectedUpdatedAt: detail.updatedAt);
+      detail = await _invoices.getDetail(invoiceId: invoiceId);
+    }
+
+    for (final payment in DevClinicSeedBilling.paymentsFor(scenario)) {
+      if (payment.isRefund) {
+        await _payments.recordRefund(
+          invoiceId: invoiceId,
+          method: payment.method,
+          amount: payment.amount,
+          note: payment.note ?? 'Dev seed refund',
+        );
+      } else {
+        await _payments.recordPayment(
+          invoiceId: invoiceId,
+          method: payment.method,
+          amount: payment.amount,
+          reference: payment.reference,
+          note: payment.note,
+        );
+      }
+      detail = await _invoices.getDetail(invoiceId: invoiceId);
+    }
+
+    if (DevClinicSeedBilling.shouldVoid(scenario)) {
+      await _invoices.voidInvoice(
+        invoiceId: invoiceId,
+        expectedUpdatedAt: detail.updatedAt,
+        reason: DevClinicSeedBilling.voidReason(branchCode: visit.branchCode, patientIndex: visit.patientIndex),
+      );
     }
   }
 

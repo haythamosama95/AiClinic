@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_field_validation.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
@@ -77,6 +78,17 @@ class PatientRegistrationForm {
   });
 
   static const empty = PatientRegistrationForm();
+
+  factory PatientRegistrationForm.fromPatientDetail(PatientDetail detail) {
+    return PatientRegistrationForm(
+      fullName: detail.fullName,
+      phone: detail.phone ?? '',
+      dateOfBirth: detail.dateOfBirth,
+      gender: detail.gender,
+      maritalStatus: detail.maritalStatus,
+      notes: detail.notes ?? '',
+    );
+  }
 
   final String fullName;
   final String phone;

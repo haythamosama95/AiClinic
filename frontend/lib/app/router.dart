@@ -18,6 +18,8 @@ import 'package:ai_clinic/app/shell/dev/shell_dev_nav.dart';
 import 'package:ai_clinic/app/shell/navigation/shell_nav_config.dart';
 import 'package:ai_clinic/core/ui/theme/theme_transition_controller.dart';
 import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
+import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/patient_detail_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
@@ -82,7 +84,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Patient management
           GoRoute(path: AppRoutes.patients, builder: (context, state) => const PatientsPage()),
           GoRoute(path: AppRoutes.patientsNew, builder: shellPlaceholderPage),
-          GoRoute(path: '${AppRoutes.patients}/:patientId', builder: shellPlaceholderPage),
+          GoRoute(
+            path: '${AppRoutes.patients}/:patientId',
+            builder: (context, state) => PatientDetailPage(
+              patientId: state.pathParameters['patientId']!,
+              extra: PatientDetailRouteExtra.fromExtra(state.extra),
+            ),
+          ),
           GoRoute(path: '${AppRoutes.patients}/:patientId/edit', builder: shellPlaceholderPage),
 
           // Appointments (V1-4)
