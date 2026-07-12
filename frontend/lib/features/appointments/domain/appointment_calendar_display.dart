@@ -6,6 +6,7 @@ import 'package:syncfusion_flutter_calendar/calendar.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_branch_working_hours.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_status_style.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_working_hours.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
@@ -291,28 +292,23 @@ class AppointmentCalendarDisplay {
     AppointmentStatus.noShow,
   ];
 
-  static Color statusColor(AppointmentStatus status) {
-    return switch (status) {
-      // Muted gray / soft slate blue
-      AppointmentStatus.scheduled => const Color(0xFF8B9CB3),
-      // Standard blue
-      AppointmentStatus.confirmed => const Color(0xFF2563EB),
-      // Bright yellow-gold
-      AppointmentStatus.checkedIn => const Color(0xFFEAB308),
-      // Orange
-      AppointmentStatus.inProgress => const Color(0xFFEA580C),
-      // Green
-      AppointmentStatus.completed => const Color(0xFF16A34A),
-      // Red
-      AppointmentStatus.cancelled => const Color(0xFFDC2626),
-      // Desaturated purple / dark charcoal
-      AppointmentStatus.noShow => const Color(0xFF5C5470),
-      AppointmentStatus.unknown => const Color(0xFF6B7280),
-    };
+  static AppointmentCalendarStatusStyle statusStyle(AppointmentStatus status, Brightness brightness) {
+    return AppointmentCalendarStatusPalette.styleFor(status, brightness);
   }
 
-  /// Gray used for appointments excluded by the status filter.
-  static const Color filteredOutStatusColor = Color(0xFF9CA3AF);
+  static AppointmentCalendarStatusStyle filteredOutStyle(Brightness brightness) {
+    return AppointmentCalendarStatusPalette.filteredOutStyle(brightness);
+  }
+
+  /// Accent color for Syncfusion appointment fields and strip rails.
+  static Color statusColor(AppointmentStatus status, Brightness brightness) {
+    return statusStyle(status, brightness).accent;
+  }
+
+  /// Gray accent used for appointments excluded by the status filter.
+  static Color filteredOutStatusColor(Brightness brightness) {
+    return filteredOutStyle(brightness).accent;
+  }
 
   /// Opacity applied to appointments excluded by the status filter.
   static const double filteredOutOpacity = 0.4;
@@ -325,11 +321,15 @@ class AppointmentCalendarDisplay {
   }
 
   /// Calendar tile color respecting the optional status highlight filter.
-  static Color appointmentTileColor(AppointmentStatus status, Set<AppointmentStatus> highlightedStatuses) {
+  static Color appointmentTileColor(
+    AppointmentStatus status,
+    Set<AppointmentStatus> highlightedStatuses,
+    Brightness brightness,
+  ) {
     if (isStatusHighlighted(status, highlightedStatuses)) {
-      return statusColor(status);
+      return statusColor(status, brightness);
     }
-    return filteredOutStatusColor;
+    return filteredOutStatusColor(brightness);
   }
 
   static (double, double) _hourRangeForDay(BranchWorkingSchedule schedule, DateTime date) {

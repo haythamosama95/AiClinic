@@ -52,6 +52,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   int _itemsFingerprint = 0;
   int _resourceFingerprint = 0;
   int _statusFilterFingerprint = 0;
+  int _themeFingerprint = -1;
+  Brightness _syncedBrightness = Brightness.light;
   Set<String> _revealedAppointmentIds = {};
   int _revealGeneration = 0;
   int _lastRevealSourceFingerprint = -1;
@@ -165,6 +167,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           evenResourceRowColor: colors.surfaceCanvas,
           oddResourceRowColor: oddResourceRowColor,
           highlightedStatuses: state.selectedStatuses,
+          brightness: Theme.of(context).brightness,
         );
       }
       _syncCalendarView(state);
@@ -614,6 +617,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required Color evenResourceRowColor,
     required Color oddResourceRowColor,
     required Set<AppointmentStatus> highlightedStatuses,
+    required Brightness brightness,
   }) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _dragSession != null || _resizeSession != null) {
@@ -626,6 +630,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         evenResourceRowColor: evenResourceRowColor,
         oddResourceRowColor: oddResourceRowColor,
         highlightedStatuses: highlightedStatuses,
+        brightness: brightness,
       );
     });
   }
@@ -637,6 +642,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required Color evenResourceRowColor,
     required Color oddResourceRowColor,
     required Set<AppointmentStatus> highlightedStatuses,
+    required Brightness brightness,
   }) {
     final itemsFingerprint = Object.hashAll(
       items.map(
@@ -660,14 +666,18 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final statusFilterFingerprint = Object.hashAll(
       highlightedStatuses.toList()..sort((a, b) => a.index.compareTo(b.index)),
     );
+    final themeFingerprint = brightness.index;
     if (itemsFingerprint == _itemsFingerprint &&
         resourceFingerprint == _resourceFingerprint &&
-        statusFilterFingerprint == _statusFilterFingerprint) {
+        statusFilterFingerprint == _statusFilterFingerprint &&
+        themeFingerprint == _themeFingerprint) {
       return;
     }
     _itemsFingerprint = itemsFingerprint;
     _resourceFingerprint = resourceFingerprint;
     _statusFilterFingerprint = statusFilterFingerprint;
+    _themeFingerprint = themeFingerprint;
+    _syncedBrightness = brightness;
     _dataSource.updateItems(
       items,
       doctors: doctors,
@@ -675,6 +685,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       evenResourceRowColor: evenResourceRowColor,
       oddResourceRowColor: oddResourceRowColor,
       highlightedStatuses: highlightedStatuses,
+      brightness: brightness,
     );
   }
 
@@ -1371,6 +1382,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required bool includeDoctorResources,
     required Color evenResourceRowColor,
     required Color oddResourceRowColor,
+    Brightness? brightness,
   }) {
     _dataSource.updateItems(
       items,
@@ -1378,6 +1390,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       includeDoctorResources: includeDoctorResources,
       evenResourceRowColor: evenResourceRowColor,
       oddResourceRowColor: oddResourceRowColor,
+      brightness: brightness ?? _syncedBrightness,
     );
   }
 

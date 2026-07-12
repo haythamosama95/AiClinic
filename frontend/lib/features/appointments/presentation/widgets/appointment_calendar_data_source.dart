@@ -12,6 +12,7 @@ const appointmentCalendarUnassignedResourceId = '__unassigned__';
 /// Syncfusion data source for branch appointment rows.
 class AppointmentCalendarDataSource extends CalendarDataSource {
   Set<AppointmentStatus> _highlightedStatuses = const {};
+  Brightness _brightness = Brightness.light;
 
   AppointmentCalendarDataSource(List<AppointmentListItem> items, {List<StaffListItem> doctors = const []}) {
     _apply(
@@ -30,10 +31,12 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
     Color evenResourceRowColor = Colors.transparent,
     Color oddResourceRowColor = Colors.transparent,
     Set<AppointmentStatus>? highlightedStatuses,
+    Brightness brightness = Brightness.light,
   }) {
     if (highlightedStatuses != null) {
       _highlightedStatuses = highlightedStatuses;
     }
+    _brightness = brightness;
     _apply(
       items,
       doctors,
@@ -55,6 +58,7 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
       items,
       assignResources: includeDoctorResources,
       highlightedStatuses: _highlightedStatuses,
+      brightness: _brightness,
     );
     resources = includeDoctorResources
         ? _mapDoctorResources(doctors, evenRowColor: evenResourceRowColor, oddRowColor: oddResourceRowColor)
@@ -65,6 +69,7 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
     List<AppointmentListItem> items, {
     required bool assignResources,
     required Set<AppointmentStatus> highlightedStatuses,
+    required Brightness brightness,
   }) {
     return [
       for (final item in items)
@@ -74,7 +79,7 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
           endTime: item.endTime.toLocal(),
           subject: item.patientName,
           notes: assignResources ? null : item.doctorDisplayName,
-          color: AppointmentCalendarDisplay.appointmentTileColor(item.status, highlightedStatuses),
+          color: AppointmentCalendarDisplay.appointmentTileColor(item.status, highlightedStatuses, brightness),
           resourceIds: assignResources ? _resourceIdsFor(item) : null,
         ),
     ];

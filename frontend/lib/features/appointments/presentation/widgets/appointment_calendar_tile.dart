@@ -49,9 +49,13 @@ class AppointmentCalendarTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final appointment = details.appointments.first;
     final bounds = details.bounds;
-    final statusColor = appointment.color;
-    final textColor = AppointmentCalendarStatusSwatch.textOn(statusColor);
-    final mutedTextColor = AppointmentCalendarStatusSwatch.textOnMuted(statusColor);
+    final brightness = Theme.of(context).brightness;
+    final status = item?.status ?? AppointmentStatus.unknown;
+    final style = isDimmed
+        ? AppointmentCalendarDisplay.filteredOutStyle(brightness)
+        : AppointmentCalendarDisplay.statusStyle(status, brightness);
+    final textColor = style.text;
+    final mutedTextColor = style.textMuted;
     final isCompact = bounds.height < _compactHeightThreshold;
 
     return GestureDetector(
@@ -62,7 +66,7 @@ class AppointmentCalendarTile extends StatelessWidget {
         child: Opacity(
           opacity: isDimmed ? AppointmentCalendarDisplay.filteredOutOpacity : 1,
           child: DecoratedBox(
-            decoration: AppointmentCalendarStatusSwatch.decoration(statusColor),
+            decoration: AppointmentCalendarStatusSwatch.decoration(style),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(AppRadius.md - 1),
               child: Stack(
@@ -73,14 +77,14 @@ class AppointmentCalendarTile extends StatelessWidget {
                     right: 0,
                     top: 0,
                     height: 1,
-                    child: ColoredBox(color: Colors.white.withValues(alpha: 0.22)),
+                    child: ColoredBox(color: AppointmentCalendarStatusSwatch.highlightSheen(brightness)),
                   ),
                   if (_usesHorizontalLayout && !isCompact)
                     _HorizontalEncounterStrip(
                       appointment: appointment,
                       item: item,
                       bounds: bounds,
-                      statusColor: statusColor,
+                      accentColor: style.accent,
                       textColor: textColor,
                       mutedTextColor: mutedTextColor,
                     )
@@ -125,7 +129,7 @@ class _HorizontalEncounterStrip extends StatelessWidget {
     required this.appointment,
     required this.item,
     required this.bounds,
-    required this.statusColor,
+    required this.accentColor,
     required this.textColor,
     required this.mutedTextColor,
   });
@@ -133,7 +137,7 @@ class _HorizontalEncounterStrip extends StatelessWidget {
   final Appointment appointment;
   final AppointmentListItem? item;
   final Rect bounds;
-  final Color statusColor;
+  final Color accentColor;
   final Color textColor;
   final Color mutedTextColor;
 
@@ -162,7 +166,15 @@ class _HorizontalEncounterStrip extends StatelessWidget {
         children: [
           SizedBox(
             width: isTight ? 2 : 3,
-            child: ColoredBox(color: statusColor),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [accentColor.withValues(alpha: 0.85), accentColor],
+                ),
+              ),
+            ),
           ),
           Expanded(
             child: Padding(

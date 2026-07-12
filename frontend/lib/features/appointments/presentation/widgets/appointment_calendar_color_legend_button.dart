@@ -136,7 +136,8 @@ class _LegendRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppointmentCalendarDisplay.statusColor(status);
+    final brightness = Theme.of(context).brightness;
+    final style = AppointmentCalendarDisplay.statusStyle(status, brightness);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
@@ -145,7 +146,7 @@ class _LegendRow extends StatelessWidget {
           Container(
             width: 14,
             height: 14,
-            decoration: AppointmentCalendarStatusSwatch.decoration(color, radius: AppRadius.sm),
+            decoration: AppointmentCalendarStatusSwatch.decoration(style, radius: AppRadius.sm),
           ),
           const SizedBox(width: AppSpacing.space2),
           Expanded(child: Text(status.label, style: AppTypography.bodySm(context))),

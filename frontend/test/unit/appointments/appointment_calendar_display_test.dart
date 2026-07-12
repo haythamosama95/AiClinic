@@ -149,21 +149,53 @@ void main() {
     });
 
     group('CAL-I — display (unit)', () {
-      test('CAL-I01: statusColor maps each appointment status', () {
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled), const Color(0xFF8B9CB3));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed), const Color(0xFF2563EB));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.checkedIn), const Color(0xFFEAB308));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.inProgress), const Color(0xFFEA580C));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.completed), const Color(0xFF16A34A));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.cancelled), const Color(0xFFDC2626));
-        expect(AppointmentCalendarDisplay.statusColor(AppointmentStatus.noShow), const Color(0xFF5C5470));
+      test('CAL-I01: statusColor maps each appointment status (light theme)', () {
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.scheduled, Brightness.light),
+          const Color(0xFF6E8499),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed, Brightness.light),
+          const Color(0xFF5B6FD8),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.checkedIn, Brightness.light),
+          const Color(0xFFC4A035),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.inProgress, Brightness.light),
+          const Color(0xFFD96B52),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.completed, Brightness.light),
+          const Color(0xFF3D9A72),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.cancelled, Brightness.light),
+          const Color(0xFFC05868),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.noShow, Brightness.light),
+          const Color(0xFF8A7B9C),
+        );
+      });
+
+      test('CAL-I01b: statusColor adapts to dark theme', () {
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed, Brightness.dark),
+          const Color(0xFF8494F0),
+        );
+        expect(
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.completed, Brightness.dark),
+          const Color(0xFF58B88A),
+        );
       });
 
       test('CAL-I02: calendarStatusLegend lists calendar statuses excluding unknown', () {
         expect(AppointmentCalendarDisplay.calendarStatusLegend, hasLength(7));
         expect(AppointmentCalendarDisplay.calendarStatusLegend, isNot(contains(AppointmentStatus.unknown)));
         for (final status in AppointmentCalendarDisplay.calendarStatusLegend) {
-          expect(AppointmentCalendarDisplay.statusColor(status), isNotNull);
+          expect(AppointmentCalendarDisplay.statusColor(status, Brightness.light), isNotNull);
         }
       });
 
@@ -174,12 +206,12 @@ void main() {
         expect(AppointmentCalendarDisplay.isStatusHighlighted(AppointmentStatus.scheduled, highlighted), isFalse);
         expect(AppointmentCalendarDisplay.isStatusHighlighted(AppointmentStatus.scheduled, const {}), isTrue);
         expect(
-          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.confirmed, highlighted),
-          AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed),
+          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.confirmed, highlighted, Brightness.light),
+          AppointmentCalendarDisplay.statusColor(AppointmentStatus.confirmed, Brightness.light),
         );
         expect(
-          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.scheduled, highlighted),
-          AppointmentCalendarDisplay.filteredOutStatusColor,
+          AppointmentCalendarDisplay.appointmentTileColor(AppointmentStatus.scheduled, highlighted, Brightness.light),
+          AppointmentCalendarDisplay.filteredOutStatusColor(Brightness.light),
         );
       });
 
