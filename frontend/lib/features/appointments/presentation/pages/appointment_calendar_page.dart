@@ -397,8 +397,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                         monthViewSettings: const MonthViewSettings(
                           showAgenda: true,
                           appointmentDisplayMode: MonthAppointmentDisplayMode.indicator,
+                          agendaItemHeight: 56,
                         ),
-                        scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 52),
+                        scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 56),
                         specialRegions: [
                           for (final region in slotLayout.shadeRegions)
                             TimeRegion(
@@ -445,6 +446,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                             child: AppointmentCalendarTile(
                               details: details,
                               item: item,
+                              mode: state.mode,
                               isDimmed: isDimmed,
                               onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
                             ),
