@@ -6,14 +6,7 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 /// Page-level header with optional breadcrumb, actions, and tabs slots (web `PageHeader`).
 class AppPageHeader extends StatelessWidget {
-  const AppPageHeader({
-    required this.title,
-    this.description,
-    this.breadcrumb,
-    this.actions,
-    this.tabs,
-    super.key,
-  });
+  const AppPageHeader({required this.title, this.description, this.breadcrumb, this.actions, this.tabs, super.key});
 
   final String title;
   final String? description;
@@ -34,22 +27,15 @@ class AppPageHeader extends StatelessWidget {
         spacing: AppSpacing.space4,
         children: [
           ?breadcrumb,
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.start,
-            spacing: AppSpacing.space4,
-            runSpacing: AppSpacing.space4,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 0),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   spacing: AppSpacing.space1,
                   children: [
-                    Text(
-                      title,
-                      style: AppTypography.h1(context).copyWith(color: colors.textPrimary),
-                    ),
+                    Text(title, style: AppTypography.h1(context).copyWith(color: colors.textPrimary)),
                     if (description != null)
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: _maxDescriptionWidth),
@@ -61,12 +47,7 @@ class AppPageHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              if (actions != null)
-                Wrap(
-                  spacing: AppSpacing.space2,
-                  runSpacing: AppSpacing.space2,
-                  children: [actions!],
-                ),
+              if (actions != null) ...[const SizedBox(width: AppSpacing.space4), actions!],
             ],
           ),
           ?tabs,

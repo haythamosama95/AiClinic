@@ -25,7 +25,6 @@ import 'package:ai_clinic/features/appointments/presentation/widgets/appointment
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_toolbar.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_view_header.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_page_shell.dart';
-import 'package:ai_clinic/features/appointments/presentation/models/appointment_section.dart';
 
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_reschedule_confirm_dialog.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
@@ -202,8 +201,17 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       WidgetsBinding.instance.addPostFrameCallback((_) => _fullscreenOverlay?.markNeedsBuild());
     }
 
+    final onBookAppointment = _bookAppointmentAction(
+      canCreate: canCreate,
+      state: state,
+      schedule: schedule,
+      doctors: doctors,
+    );
+
     return AppointmentPageShell(
-      activeSection: AppointmentSection.calendar,
+      actions: onBookAppointment == null
+          ? null
+          : AppButton(size: AppButtonSize.md, onPressed: onBookAppointment, child: const Text('Book appointment')),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -324,26 +332,6 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           onClearFilters: controller.clearFilters,
           isFullscreen: isFullscreen,
           onToggleFullscreen: () => _toggleCalendarFullscreen(isFullscreen: isFullscreen),
-          onBookAppointment: canCreate && state.selectedBranchId != null && state.selectedBranchId!.isNotEmpty
-              ? () {
-                  final slotRange = AppointmentCalendarDisplay.slotRangeFromTap(
-                    tappedDate: state.focusDate,
-                    schedule: schedule,
-                    mode: state.mode,
-                    slotMinutes: slotLayout.timeIntervalMinutes,
-                  );
-                  unawaited(
-                    _showBookingSheet(
-                      branchId: state.selectedBranchId!,
-                      schedule: schedule,
-                      slotStart: slotRange.start,
-                      slotEnd: slotRange.end,
-                      initialDoctorId: state.selectedDoctorId,
-                      doctors: doctors,
-                    ),
-                  );
-                }
-              : null,
         ),
         const SizedBox(height: AppSpacing.space4),
         Expanded(
@@ -1526,6 +1514,36 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     );
   }
 
+  VoidCallback? _bookAppointmentAction({
+    required bool canCreate,
+    required AppointmentCalendarState state,
+    required BranchWorkingSchedule schedule,
+    required List<StaffListItem> doctors,
+  }) {
+    if (!canCreate || state.selectedBranchId == null || state.selectedBranchId!.isEmpty) {
+      return null;
+    }
+
+    return () {
+      final slotRange = AppointmentCalendarDisplay.slotRangeFromTap(
+        tappedDate: state.focusDate,
+        schedule: schedule,
+        mode: state.mode,
+        slotMinutes: state.timeIntervalMinutes,
+      );
+      unawaited(
+        _showBookingSheet(
+          branchId: state.selectedBranchId!,
+          schedule: schedule,
+          slotStart: slotRange.start,
+          slotEnd: slotRange.end,
+          initialDoctorId: state.selectedDoctorId,
+          doctors: doctors,
+        ),
+      );
+    };
+  }
+
   Future<void> _showBookingSheet({
     required String branchId,
     required BranchWorkingSchedule schedule,
@@ -1680,10 +1698,7 @@ class _CalendarPermissionDenied extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AppointmentPageShell(
-      activeSection: AppointmentSection.calendar,
-      child: AppEmptyState(variant: AppEmptyStateVariant.noAccess),
-    );
+    return const AppointmentPageShell(child: AppEmptyState(variant: AppEmptyStateVariant.noAccess));
   }
 }
 

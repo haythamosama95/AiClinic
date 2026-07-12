@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
-import 'package:ai_clinic/features/appointments/presentation/models/appointment_section.dart';
-import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_section_nav.dart';
 
-/// Shared appointments page chrome with sub-navigation tabs.
+/// Calendar page chrome with a page header and optional actions.
 class AppointmentPageShell extends StatelessWidget {
   const AppointmentPageShell({
-    required this.activeSection,
     required this.child,
-    this.description = 'Schedule visits, manage the queue, and book appointments.',
+    this.title = 'Calendar',
+    this.description = 'View and manage scheduled visits across your branches.',
+    this.actions,
     super.key,
   });
 
-  final AppointmentSection activeSection;
   final Widget child;
+  final String title;
   final String description;
+  final Widget? actions;
 
   @override
   Widget build(BuildContext context) {
@@ -25,14 +25,7 @@ class AppointmentPageShell extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            AppPageHeader(
-              title: 'Appointments',
-              description: description,
-              tabs: SizedBox(
-                width: double.infinity,
-                child: AppointmentSectionNav(activeSection: activeSection),
-              ),
-            ),
+            AppPageHeader(title: title, description: description, actions: actions),
             const SizedBox(height: AppSpacing.space6),
           ],
         );

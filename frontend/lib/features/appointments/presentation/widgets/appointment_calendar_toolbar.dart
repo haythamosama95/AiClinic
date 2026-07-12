@@ -25,7 +25,6 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
     required this.hasActiveFilters,
     required this.onApplyFilters,
     required this.onClearFilters,
-    this.onBookAppointment,
     this.isFullscreen = false,
     this.onToggleFullscreen,
     super.key,
@@ -39,7 +38,6 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
   final bool hasActiveFilters;
   final ValueChanged<AppointmentCalendarFilters> onApplyFilters;
   final VoidCallback onClearFilters;
-  final VoidCallback? onBookAppointment;
   final bool isFullscreen;
   final VoidCallback? onToggleFullscreen;
 
@@ -106,8 +104,6 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
               label: isFullscreen ? 'Exit fullscreen' : 'Expand calendar',
               onPressed: onToggleFullscreen,
             ),
-          if (onBookAppointment != null)
-            AppButton(size: AppButtonSize.sm, onPressed: onBookAppointment, child: const Text('Book')),
           if (showTimeInterval) const AppointmentCalendarTimeIntervalButton(),
           const AppointmentCalendarColorLegendButton(),
           AppointmentCalendarFilterButton(
