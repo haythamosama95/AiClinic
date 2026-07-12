@@ -15,10 +15,7 @@ void main() {
     });
 
     test('unknown session on a public route is left through', () {
-      expect(
-        AuthRouteGuard.resolveRedirect(location: AppRoutes.login, auth: AuthSessionState.initial()),
-        isNull,
-      );
+      expect(AuthRouteGuard.resolveRedirect(location: AppRoutes.login, auth: AuthSessionState.initial()), isNull);
     });
 
     test('authenticated setup_required on login redirects to home for setup dialog', () {
@@ -107,7 +104,7 @@ void main() {
       );
     });
 
-    test('setup_complete staff create redirects to settings staff form (US6)', () {
+    test('setup_complete staff create redirects to clinic management hub (US6)', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.staffCreate,
@@ -116,11 +113,11 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: false, permissions: {'settings.manage_staff'}),
           ),
         ),
-        AppRoutes.settingsStaffNew,
+        AppRoutes.clinicManagement,
       );
     });
 
-    test('setup_complete legacy password reset redirects to settings staff list', () {
+    test('setup_complete legacy password reset redirects to clinic management hub', () {
       expect(
         AuthRouteGuard.resolveRedirect(
           location: AppRoutes.staffPasswordReset,
@@ -129,7 +126,7 @@ void main() {
             context: sampleAuthSessionContext(setupRequired: false, permissions: {'settings.manage_staff'}),
           ),
         ),
-        AppRoutes.settingsStaff,
+        AppRoutes.clinicManagement,
       );
     });
 

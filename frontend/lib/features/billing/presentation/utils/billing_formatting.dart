@@ -9,10 +9,13 @@ import 'package:ai_clinic/features/billing/domain/payment_method.dart';
 abstract final class BillingFormatting {
   static String formatMoney(Money amount, {String currency = 'USD', String? locale}) {
     final formatLocale = locale ?? 'en_US';
+    final symbol = _currencySymbol(currency);
     try {
+      if (symbol != null) {
+        return NumberFormat.currency(locale: formatLocale, symbol: symbol).format(amount.asDouble);
+      }
       return NumberFormat.currency(locale: formatLocale, name: currency.toUpperCase()).format(amount.asDouble);
     } on Object {
-      final symbol = _currencySymbol(currency);
       final value = amount.wireValue;
       if (symbol != null) {
         return '$symbol$value';
