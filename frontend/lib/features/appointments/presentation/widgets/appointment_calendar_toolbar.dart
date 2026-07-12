@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_color_legend_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_filters.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_time_interval_button.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 
@@ -55,6 +56,12 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
     final state = ref.watch(appointmentCalendarProvider);
     final controller = ref.read(appointmentCalendarProvider.notifier);
     final showNavigation = state.mode != AppointmentCalendarMode.schedule;
+    final showTimeInterval = switch (state.mode) {
+      AppointmentCalendarMode.day => true,
+      AppointmentCalendarMode.week => true,
+      AppointmentCalendarMode.doctors => true,
+      _ => false,
+    };
     final title = AppointmentCalendarDisplay.headerTitle(state.mode, state.focusDate);
 
     return AppToolbar(
@@ -93,6 +100,7 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
             ),
           if (onBookAppointment != null)
             AppButton(size: AppButtonSize.sm, onPressed: onBookAppointment, child: const Text('Book')),
+          if (showTimeInterval) const AppointmentCalendarTimeIntervalButton(),
           const AppointmentCalendarColorLegendButton(),
           AppointmentCalendarFilterButton(
             branchesAsync: branchesAsync,

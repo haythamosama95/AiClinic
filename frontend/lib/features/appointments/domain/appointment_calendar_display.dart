@@ -48,6 +48,10 @@ class AppointmentCalendarDisplay {
 
   static const double defaultViewportHeight = 640;
   static const int defaultTimeIntervalMinutes = 30;
+
+  /// Selectable grid intervals exposed in the calendar header.
+  static const List<int> supportedTimeIntervalMinutes = [15, 30, 60];
+
   static const double minTimeIntervalHeight = 44;
 
   /// Wider than Syncfusion's default (60) so doctor-timeline appointment cards
@@ -76,7 +80,11 @@ class AppointmentCalendarDisplay {
     required AppointmentCalendarMode mode,
     required DateTime focusDate,
     double viewportHeight = defaultViewportHeight,
+    int timeIntervalMinutes = defaultTimeIntervalMinutes,
   }) {
+    final intervalMinutes = supportedTimeIntervalMinutes.contains(timeIntervalMinutes)
+        ? timeIntervalMinutes
+        : defaultTimeIntervalMinutes;
     final (startHour, endHour) = switch (mode) {
       AppointmentCalendarMode.day => _hourRangeForDay(schedule, focusDate),
       AppointmentCalendarMode.doctors => _hourRangeForDay(schedule, focusDate),
@@ -85,7 +93,7 @@ class AppointmentCalendarDisplay {
       AppointmentCalendarMode.month => (8.0, 18.0),
     };
 
-    final slotCount = ((endHour - startHour) * 60 / defaultTimeIntervalMinutes).ceil().clamp(1, 48);
+    final slotCount = ((endHour - startHour) * 60 / intervalMinutes).ceil().clamp(1, 48);
     final slotAreaHeight = (viewportHeight - timeSlotChromeHeight).clamp(minTimeIntervalHeight, double.infinity);
     final intervalHeight = (slotAreaHeight / slotCount).clamp(minTimeIntervalHeight, double.infinity);
 
@@ -96,7 +104,7 @@ class AppointmentCalendarDisplay {
       endHour: endHour,
       timeIntervalHeight: intervalHeight,
       timeIntervalWidth: timeIntervalWidth,
-      timeIntervalMinutes: defaultTimeIntervalMinutes,
+      timeIntervalMinutes: intervalMinutes,
       nonWorkingDays: nonWorkingDays(schedule),
       shadeRegions: mode == AppointmentCalendarMode.week ? shadeRegionsForWeek(schedule, focusDate) : const [],
     );

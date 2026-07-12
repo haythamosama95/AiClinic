@@ -279,6 +279,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       mode: state.mode,
       focusDate: state.focusDate,
       viewportHeight: (viewportHeight - appointmentCalendarToolbarHeight).clamp(240.0, viewportHeight),
+      timeIntervalMinutes: state.timeIntervalMinutes,
     );
     final calendarSurface = colors.surfaceDefault;
     final allowDragAndDrop = canCreate && _supportsDragAndDrop(state.mode);

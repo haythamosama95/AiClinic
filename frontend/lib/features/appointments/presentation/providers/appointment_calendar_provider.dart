@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_calendar_period.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_fetch_scope.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
@@ -27,6 +28,7 @@ class AppointmentCalendarState {
     this.selectedBranchId,
     this.selectedDoctorId,
     this.selectedStatuses = const {},
+    this.timeIntervalMinutes = AppointmentCalendarDisplay.defaultTimeIntervalMinutes,
     this.loading = false,
     this.error,
   });
@@ -37,6 +39,7 @@ class AppointmentCalendarState {
   final String? selectedBranchId;
   final String? selectedDoctorId;
   final Set<AppointmentStatus> selectedStatuses;
+  final int timeIntervalMinutes;
   final bool loading;
   final String? error;
 
@@ -47,6 +50,7 @@ class AppointmentCalendarState {
     Object? selectedBranchId = _sentinel,
     Object? selectedDoctorId = _sentinel,
     Set<AppointmentStatus>? selectedStatuses,
+    int? timeIntervalMinutes,
     bool? loading,
     Object? error = _sentinel,
   }) {
@@ -57,6 +61,7 @@ class AppointmentCalendarState {
       selectedBranchId: identical(selectedBranchId, _sentinel) ? this.selectedBranchId : selectedBranchId as String?,
       selectedDoctorId: identical(selectedDoctorId, _sentinel) ? this.selectedDoctorId : selectedDoctorId as String?,
       selectedStatuses: selectedStatuses ?? this.selectedStatuses,
+      timeIntervalMinutes: timeIntervalMinutes ?? this.timeIntervalMinutes,
       loading: loading ?? this.loading,
       error: identical(error, _sentinel) ? this.error : error as String?,
     );
@@ -206,6 +211,14 @@ class AppointmentCalendarController extends Notifier<AppointmentCalendarState> {
   /// Updates only the doctor filter while preserving the current branch filter.
   Future<void> setDoctorFilter(String? doctorId) async {
     await applyFilters(branchId: state.selectedBranchId, doctorId: doctorId, statuses: state.selectedStatuses);
+  }
+
+  void setTimeIntervalMinutes(int minutes) {
+    if (!AppointmentCalendarDisplay.supportedTimeIntervalMinutes.contains(minutes) ||
+        minutes == state.timeIntervalMinutes) {
+      return;
+    }
+    state = state.copyWith(timeIntervalMinutes: minutes);
   }
 
   static String? _normalizedOrNull(String? value) {

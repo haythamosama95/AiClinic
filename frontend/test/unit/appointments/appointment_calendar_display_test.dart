@@ -85,6 +85,30 @@ void main() {
       expect(layout.timeIntervalHeight, closeTo(expectedHeight, 0.01));
     });
 
+    test('custom time interval changes slot count and minutes', () {
+      final layout = AppointmentCalendarDisplay.timeSlotLayout(
+        schedule: schedule,
+        mode: AppointmentCalendarMode.day,
+        focusDate: DateTime(2026, 6, 4),
+        timeIntervalMinutes: 15,
+      );
+
+      expect(layout.timeIntervalMinutes, 15);
+      final slotCount = ((layout.endHour - layout.startHour) * 60 / 15).ceil();
+      expect(slotCount, greaterThan(((layout.endHour - layout.startHour) * 60 / 30).ceil()));
+    });
+
+    test('unsupported time interval falls back to default', () {
+      final layout = AppointmentCalendarDisplay.timeSlotLayout(
+        schedule: schedule,
+        mode: AppointmentCalendarMode.day,
+        focusDate: DateTime(2026, 6, 4),
+        timeIntervalMinutes: 20,
+      );
+
+      expect(layout.timeIntervalMinutes, AppointmentCalendarDisplay.defaultTimeIntervalMinutes);
+    });
+
     test('nonWorkingDays marks Sunday closed in default schedule', () {
       final closed = AppointmentCalendarDisplay.nonWorkingDays(schedule);
       expect(closed, contains(DateTime.sunday));
