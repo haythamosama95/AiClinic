@@ -336,7 +336,9 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
 
     try {
       if (_isEditMode) {
-        await ref.read(appointmentRepositoryProvider).updateAppointment(
+        await ref
+            .read(appointmentRepositoryProvider)
+            .updateAppointment(
               appointmentId: widget.existingAppointment!.id,
               patientId: _selectedPatient!.id,
               doctorId: doctorId,
@@ -345,7 +347,9 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
               notes: notes,
             );
       } else {
-        await ref.read(appointmentRepositoryProvider).createAppointment(
+        await ref
+            .read(appointmentRepositoryProvider)
+            .createAppointment(
               branchId: widget.branchId,
               patientId: _selectedPatient!.id,
               doctorId: doctorId,
@@ -401,7 +405,6 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
     return trimmed.isEmpty ? null : trimmed;
   }
 
-
   TimeOfDay _minutesToTime(int minutes) => TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 
   @override
@@ -425,11 +428,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
         children: [
           AppAlert(title: _settingsError!, variant: AppAlertVariant.danger),
           const SizedBox(height: AppSpacing.space4),
-          AppButton(
-            variant: AppButtonVariant.secondary,
-            onPressed: _loadSettings,
-            child: const Text('Retry'),
-          ),
+          AppButton(variant: AppButtonVariant.secondary, onPressed: _loadSettings, child: const Text('Retry')),
         ],
       );
     }
@@ -499,32 +498,29 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
             const SizedBox(height: AppSpacing.space2),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 180),
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: _patientResults.length,
-                separatorBuilder: (_, _) => Divider(height: 1, color: colors.borderSubtle),
-                itemBuilder: (context, index) {
-                  final patient = _patientResults[index];
-                  return ListTile(
-                    key: Key('patient_picker_result_$index'),
-                    title: Text(patient.fullName, style: AppTypography.bodySm(context)),
-                    subtitle: Text(
-                      patient.phone ?? patient.registeringBranchName,
-                      style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
-                    ),
-                    onTap: _isSaving
-                        ? null
-                        : () {
-                            setState(() {
-                              _selectedPatient = patient;
-                              _patientResults = const [];
-                              _patientSearchController.clear();
-                              _lastPatientQuery = '';
-                              _formError = null;
-                            });
-                          },
-                  );
-                },
+              child: SingleChildScrollView(
+                child: AppList(
+                  children: [
+                    for (var index = 0; index < _patientResults.length; index++)
+                      AppListItem(
+                        key: Key('patient_picker_result_$index'),
+                        primary: Text(_patientResults[index].fullName),
+                        secondary: Text(_patientResults[index].phone ?? _patientResults[index].registeringBranchName),
+                        onTap: _isSaving
+                            ? null
+                            : () {
+                                final patient = _patientResults[index];
+                                setState(() {
+                                  _selectedPatient = patient;
+                                  _patientResults = const [];
+                                  _patientSearchController.clear();
+                                  _lastPatientQuery = '';
+                                  _formError = null;
+                                });
+                              },
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -615,12 +611,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
           AppFormField(
             id: 'appointment_booking_notes',
             label: 'Notes (optional)',
-            child: AppTextarea(
-              controller: _notesController,
-              disabled: _isSaving,
-              rows: 3,
-              onChanged: (_) {},
-            ),
+            child: AppTextarea(controller: _notesController, disabled: _isSaving, rows: 3, onChanged: (_) {}),
           ),
           const SizedBox(height: AppSpacing.space6),
           AppButton(

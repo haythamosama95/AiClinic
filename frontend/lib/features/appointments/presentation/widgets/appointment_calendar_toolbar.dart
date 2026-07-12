@@ -83,7 +83,15 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
           ],
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 220),
-            child: Text(title, style: AppTypography.bodyStrong(context), maxLines: 1, overflow: TextOverflow.ellipsis),
+            child: showNavigation
+                ? AppCalendarDateJumpPopover(
+                    currentDate: state.focusDate,
+                    onDateSelected: controller.setFocusDate,
+                    triggerBuilder: (context, isOpen, onToggle) {
+                      return AppCalendarDateJumpTitleTrigger(title: title, isOpen: isOpen, onToggle: onToggle);
+                    },
+                  )
+                : Text(title, style: AppTypography.bodyStrong(context), maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ],
       ),

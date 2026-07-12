@@ -58,8 +58,29 @@ class AppointmentCalendarDisplay {
   /// can show patient/time details instead of a compact sliver.
   static const double doctorsTimelineTimeIntervalWidth = 120;
 
-  /// Day/week header chrome above the scrollable time-slot grid.
-  static const double timeSlotChromeHeight = 80;
+  /// Height of the day/week column header row in the Syncfusion calendar.
+  static const double viewHeaderBadgeSize = 26;
+
+  /// Symmetric vertical padding inside each day/week column header cell.
+  static const double viewHeaderVerticalPadding = 6;
+
+  /// Height of the day/week column header row in the Syncfusion calendar.
+  static const double viewHeaderHeight = viewHeaderVerticalPadding * 2 + viewHeaderBadgeSize;
+
+  /// Width of the time-label gutter to the left of day columns (Syncfusion default).
+  static const double timeLabelWidth = 50;
+
+  /// Chrome above the scrollable time-slot grid (view header + borders).
+  static const double timeSlotChromeHeight = viewHeaderHeight;
+
+  static List<DateTime> visibleHeaderDays(AppointmentCalendarMode mode, DateTime focusDate) {
+    final anchor = DateTime(focusDate.year, focusDate.month, focusDate.day);
+    return switch (mode) {
+      AppointmentCalendarMode.day => [anchor],
+      AppointmentCalendarMode.week => List.generate(7, (index) => _weekStart(anchor).add(Duration(days: index))),
+      _ => const [],
+    };
+  }
 
   /// Header title text matching Syncfusion calendar header formatting.
   static String headerTitle(AppointmentCalendarMode mode, DateTime focusDate) {

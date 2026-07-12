@@ -52,6 +52,7 @@ export 'package:ai_clinic/core/ui/components/app_timeline.dart';
 export 'package:ai_clinic/core/ui/components/app_bulk_action_bar.dart';
 export 'package:ai_clinic/core/ui/components/app_data_table.dart';
 export 'package:ai_clinic/core/ui/components/app_calendar.dart';
+export 'package:ai_clinic/core/ui/components/app_calendar_date_jump_popover.dart';
 export 'package:ai_clinic/core/ui/components/app_scroll_area.dart';
 export 'package:ai_clinic/core/ui/components/app_resizable_panels.dart';
 

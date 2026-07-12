@@ -703,6 +703,7 @@ void appToast(BuildContext context, AppToastInput input) {
 3. `Semantics(scopesRoute: true)` on modal panels? → Also set `explicitChildNodes: true`.
 4. `AnimationController.forward()` in overlay enter animations? → Set a default duration in `initState`; defer `forward()` to `didChangeDependencies` when duration depends on reduced motion (see entries #2, #27).
 5. `AppDialog` with header + scroll body + footer? → Use `Flexible` for the `SingleChildScrollView` when `LayoutBuilder` reports finite `maxHeight`; do not subtract a fixed `chromeEstimate` from body height (see entry #40).
+6. Tappable rows inside dialog body (`ListTile`, `InkWell`)? → Use `AppList` + `AppListItem` (or wrap in `Material`) — `AppDialog` `DecoratedBox` is not a `Material` ancestor (see entry #41).
 
 ---
 
@@ -1067,4 +1068,62 @@ Column(
 ```
 
 **Affected files (fixed):** `app_dialog.dart`.
+
+---
+
+## 41. `ListTile` ink invisible inside `AppDialog` (`DecoratedBox`)
+
+**Symptom:** Console floods with framework assertions when patient search results appear in the appointment booking dialog: "ListTile background color or ink splashes may be invisible." Widget key `patient_picker_result_0`; ancestor chain shows `ListTile` inside `AppDialog` → `DecoratedBox` with `surfaceDefault` background.
+
+**Cause:** `ListTile` paints its splash/hover on the nearest `Material` ancestor. `AppDialog` panel shells use `DecoratedBox` + `BoxDecoration(color: …)` without an intermediate `Material`, so ink effects are hidden and Flutter asserts in debug.
+
+**Fix:** Do **not** use raw `ListTile` inside `AppDialog` (or any decorated shell). Use design-system list primitives that already wrap interactive rows in `Material` + `InkWell`:
+
+```dart
+SingleChildScrollView(
+  child: AppList(
+    children: [
+      for (var i = 0; i < results.length; i++)
+        AppListItem(
+          primary: Text(results[i].fullName),
+          secondary: Text(results[i].phone ?? results[i].branchName),
+          onTap: () => onSelect(results[i]),
+        ),
+    ],
+  ),
+)
+```
+
+If `ListTile` is unavoidable, wrap each tile in `Material(color: Colors.transparent, child: ListTile(…))`.
+
+**Affected files (fixed):** `appointment_booking_sheet.dart`.
+
+---
+
+## 41. `ListTile` ink invisible inside `AppDialog` (`DecoratedBox`)
+
+**Symptom:** Console floods with framework assertions when patient search results appear in the appointment booking dialog: "ListTile background color or ink splashes may be invisible." Widget key `patient_picker_result_0`; ancestor chain shows `ListTile` inside `AppDialog` → `DecoratedBox` with `surfaceDefault` background.
+
+**Cause:** `ListTile` paints its splash/hover on the nearest `Material` ancestor. `AppDialog` panel shells use `DecoratedBox` + `BoxDecoration(color: …)` without an intermediate `Material`, so ink effects are hidden and Flutter asserts in debug.
+
+**Fix:** Do **not** use raw `ListTile` inside `AppDialog` (or any decorated shell). Use design-system list primitives that already wrap interactive rows in `Material` + `InkWell`:
+
+```dart
+SingleChildScrollView(
+  child: AppList(
+    children: [
+      for (var i = 0; i < results.length; i++)
+        AppListItem(
+          primary: Text(results[i].fullName),
+          secondary: Text(results[i].phone ?? results[i].branchName),
+          onTap: () => onSelect(results[i]),
+        ),
+    ],
+  ),
+)
+```
+
+If `ListTile` is unavoidable, wrap each tile in `Material(color: Colors.transparent, child: ListTile(…))`.
+
+**Affected files (fixed):** `appointment_booking_sheet.dart`.
 

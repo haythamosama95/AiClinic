@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
+import 'package:ai_clinic/core/ui/components/app_calendar_date_jump_popover.dart';
 import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
 import 'package:ai_clinic/core/ui/components/app_segmented_control.dart';
 import 'package:ai_clinic/core/ui/theme/app_color_primitives.dart';
@@ -114,9 +115,11 @@ class _AppCalendarState extends State<AppCalendar> {
             title: title,
             labels: labels,
             view: _view,
+            currentDate: _currentDate,
             onPrevious: () => _navigate(-1),
             onNext: () => _navigate(1),
             onViewChange: _setView,
+            onDateSelected: _setDate,
             onToday: () => _setDate(DateTime(today.year, today.month, today.day)),
           ),
           if (_view == CalendarView.month)
@@ -208,9 +211,11 @@ class _CalendarHeader extends StatelessWidget {
     required this.title,
     required this.labels,
     required this.view,
+    required this.currentDate,
     required this.onPrevious,
     required this.onNext,
     required this.onViewChange,
+    required this.onDateSelected,
     required this.onToday,
   });
 
@@ -218,9 +223,11 @@ class _CalendarHeader extends StatelessWidget {
   final String title;
   final _CalendarLabels labels;
   final CalendarView view;
+  final DateTime currentDate;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final ValueChanged<CalendarView> onViewChange;
+  final ValueChanged<DateTime> onDateSelected;
   final VoidCallback onToday;
 
   @override
@@ -253,7 +260,13 @@ class _CalendarHeader extends StatelessWidget {
                   onPressed: onNext,
                 ),
                 const SizedBox(width: AppSpacing.space2),
-                Text(title, style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary)),
+                AppCalendarDateJumpPopover(
+                  currentDate: currentDate,
+                  onDateSelected: onDateSelected,
+                  triggerBuilder: (context, isOpen, onToggle) {
+                    return AppCalendarDateJumpTitleTrigger(title: title, isOpen: isOpen, onToggle: onToggle);
+                  },
+                ),
               ],
             ),
             AppSegmentedControl<String>(
@@ -492,6 +505,74 @@ class _TimeGridView extends StatelessWidget {
   }
 }
 
+class AppCalendarDayColumnHeader extends StatelessWidget {
+  const AppCalendarDayColumnHeader({
+    required this.colors,
+    required this.day,
+    required this.weekday,
+    required this.isToday,
+    required this.isLast,
+    this.badgeSize = 26,
+    this.verticalPadding = AppSpacing.space2,
+    super.key,
+  });
+
+  final AppSemanticColors colors;
+  final DateTime day;
+  final String weekday;
+  final bool isToday;
+  final bool isLast;
+  final double badgeSize;
+  final double verticalPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final dayNumberStyle = AppTypography.bodyStrong(context).copyWith(
+      fontSize: 14,
+      height: 18 / 14,
+      color: isToday ? colors.actionPrimaryFg : colors.textPrimary,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final weekdayStyle = AppTypography.bodySm(context).copyWith(
+      fontSize: 12,
+      height: 16 / 12,
+      color: isToday ? colors.textPrimary : colors.textTertiary,
+      fontWeight: isToday ? FontWeight.w600 : FontWeight.w400,
+    );
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(right: isLast ? BorderSide.none : BorderSide(color: colors.borderSubtle)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: verticalPadding),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: isToday ? colors.actionPrimary : colors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: isToday ? null : Border.all(color: colors.borderSubtle),
+                ),
+                child: SizedBox(
+                  width: badgeSize,
+                  height: badgeSize,
+                  child: Center(child: Text('${day.day}', style: dayNumberStyle)),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.space2),
+              Text(weekday, style: weekdayStyle),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DayColumnHeader extends StatelessWidget {
   const _DayColumnHeader({
     required this.colors,
@@ -509,26 +590,7 @@ class _DayColumnHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isToday ? colors.surfaceSelected : null,
-        border: Border(right: isLast ? BorderSide.none : BorderSide(color: colors.borderSubtle)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space2),
-        child: Column(
-          children: [
-            Text(weekday, style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
-            Text(
-              '${day.day}',
-              style: AppTypography.bodyStrong(
-                context,
-              ).copyWith(color: colors.textPrimary, fontFeatures: const [FontFeature.tabularFigures()]),
-            ),
-          ],
-        ),
-      ),
-    );
+    return AppCalendarDayColumnHeader(colors: colors, day: day, weekday: weekday, isToday: isToday, isLast: isLast);
   }
 }
 
