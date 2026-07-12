@@ -15,3 +15,8 @@ Widget shellPlaceholderPage(BuildContext context, GoRouterState state) {
     description: ShellRouteMeta.descriptionFor(itemId),
   );
 }
+
+/// Phase 1 placeholder for [AppRoutes.clinicManagement]; swapped in Phase 2.
+Widget clinicManagementPlaceholderPage(BuildContext context, GoRouterState state) {
+  return shellPlaceholderPage(context, state);
+}

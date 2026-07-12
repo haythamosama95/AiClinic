@@ -3,7 +3,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_calendar_peri
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

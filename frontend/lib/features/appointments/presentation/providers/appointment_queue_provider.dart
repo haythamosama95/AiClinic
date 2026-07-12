@@ -16,9 +16,9 @@ import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.
 import 'package:ai_clinic/features/appointments/domain/appointment_queue_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_today_range.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
 
 @immutable
 class AppointmentQueueState {

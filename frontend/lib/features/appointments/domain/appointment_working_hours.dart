@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 
 /// Client-side branch working-hours checks aligned with appointment calendar display.
 class AppointmentWorkingHours {

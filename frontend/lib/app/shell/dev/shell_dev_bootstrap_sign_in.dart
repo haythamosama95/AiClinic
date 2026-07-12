@@ -8,7 +8,7 @@ import 'package:ai_clinic/features/auth/data/auth_repository.dart';
 import 'package:ai_clinic/features/auth/presentation/dev/auth_dev_widgets.dart';
 import 'package:ai_clinic/features/auth/presentation/providers/auth_notifier.dart';
 
-typedef _DevToolReader = T Function<T>(ProviderListenable<T> provider);
+typedef DevToolReader = T Function<T>(ProviderListenable<T> provider);
 
 /// Signs in as the local bootstrap administrator when dev tooling needs an RPC session.
 abstract final class ShellDevBootstrapSignIn {
@@ -18,7 +18,7 @@ abstract final class ShellDevBootstrapSignIn {
   static Future<String?> ensureSignedIn(WidgetRef ref) => ensureSignedInWithReader(ref.read);
 
   @visibleForTesting
-  static Future<String?> ensureSignedInWithReader(_DevToolReader read) async {
+  static Future<String?> ensureSignedInWithReader(DevToolReader read) async {
     if (!kDebugMode) {
       return 'Dev tools are not available in release builds.';
     }
@@ -29,10 +29,9 @@ abstract final class ShellDevBootstrapSignIn {
 
     try {
       await read(authSessionProvider.notifier).ensureReadyForSignIn();
-      await read(authRepositoryProvider).signIn(
-        username: AuthDevBootstrapCredentials.username,
-        password: AuthDevBootstrapCredentials.password,
-      );
+      await read(
+        authRepositoryProvider,
+      ).signIn(username: AuthDevBootstrapCredentials.username, password: AuthDevBootstrapCredentials.password);
       await read(authSessionProvider.notifier).syncAfterSignIn();
       return _waitForAuthenticatedSession(read);
     } on AuthException {
@@ -48,7 +47,7 @@ abstract final class ShellDevBootstrapSignIn {
     }
   }
 
-  static Future<String?> _waitForAuthenticatedSession(_DevToolReader read) async {
+  static Future<String?> _waitForAuthenticatedSession(DevToolReader read) async {
     const attempts = 150;
     for (var i = 0; i < attempts; i++) {
       final session = read(authSessionProvider);

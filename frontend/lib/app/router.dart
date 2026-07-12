@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:ai_clinic/app/app_routes.dart';
 import 'package:ai_clinic/app/presentation/shell_page_builder.dart';
 import 'package:ai_clinic/app/presentation/ui_pending_placeholder_page.dart';
+import 'package:ai_clinic/features/clinic-management/presentation/pages/clinic_management_page.dart';
 import 'package:ai_clinic/features/design_system/presentation/design_system_page.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/clinic_setup_notifier.dart';
 import 'package:ai_clinic/app/shell/authenticated_shell.dart';
@@ -21,6 +22,8 @@ import 'package:ai_clinic/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patient_detail_page.dart';
 import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dart';
+
+String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
 /// Rebuilds router redirects whenever startup or auth session state changes.
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -127,18 +130,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: AppRoutes.shiftsNew, builder: shellPlaceholderPage),
           GoRoute(path: '${AppRoutes.shifts}/:shiftId', builder: shellPlaceholderPage),
 
+          // Clinic management (V1-2 admin hub)
+          GoRoute(path: AppRoutes.clinicManagement, builder: (context, state) => const ClinicManagementPage()),
+
           // Settings
           GoRoute(path: AppRoutes.settings, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsIdleTimeout, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsOrganization, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsBranches, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsBranchesNew, builder: shellPlaceholderPage),
-          GoRoute(path: '${AppRoutes.settingsBranches}/:branchId/edit', builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsStaff, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsStaffNew, builder: shellPlaceholderPage),
-          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId', builder: shellPlaceholderPage),
-          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId/reset-password', builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsPermissions, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsOrganization, redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsBranches, redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsBranchesNew, redirect: _redirectToClinicManagement),
+          GoRoute(path: '${AppRoutes.settingsBranches}/:branchId/edit', redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsStaff, redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsStaffNew, redirect: _redirectToClinicManagement),
+          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId', redirect: _redirectToClinicManagement),
+          GoRoute(path: '${AppRoutes.settingsStaff}/:staffId/reset-password', redirect: _redirectToClinicManagement),
+          GoRoute(path: AppRoutes.settingsPermissions, redirect: _redirectToClinicManagement),
         ],
       ),
     ],
@@ -232,6 +238,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         final adminRedirect = AuthRouteGuard.adminSettingsRedirect(location: location, auth: auth);
         if (adminRedirect != null) {
           return adminRedirect;
+        }
+
+        final clinicManagementRedirect = AuthRouteGuard.clinicManagementRouteRedirect(location: location, auth: auth);
+        if (clinicManagementRedirect != null) {
+          return clinicManagementRedirect;
         }
 
         final patientRedirect = AuthRouteGuard.patientRouteRedirect(location: location, auth: auth);

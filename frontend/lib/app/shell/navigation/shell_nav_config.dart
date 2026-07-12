@@ -20,7 +20,8 @@ abstract final class ShellNavConfig {
     'billing': AppRoutes.billing,
     'invoices': AppRoutes.billingInvoices,
     'services': AppRoutes.settingsServices,
-    'staff': AppRoutes.settingsStaff,
+    'clinic-management': AppRoutes.clinicManagement,
+    'staff': AppRoutes.clinicManagement,
     'shifts': AppRoutes.shiftsCalendar,
     'reports': AppRoutes.reports,
     'settings': AppRoutes.settings,
@@ -83,7 +84,9 @@ abstract final class ShellNavConfig {
   }
 
   static bool isFullWidthLocation(String location) {
-    return location == AppRoutes.patients || location.startsWith('${AppRoutes.patients}/');
+    return location == AppRoutes.patients ||
+        location.startsWith('${AppRoutes.patients}/') ||
+        location == AppRoutes.clinicManagement;
   }
 
   static DevSection devSectionForUri(Uri uri) {
@@ -178,8 +181,13 @@ abstract final class ShellNavConfig {
     if (location.startsWith(AppRoutes.settingsServices)) {
       return 'services';
     }
-    if (location.startsWith(AppRoutes.settingsStaff)) {
-      return 'staff';
+    if (location == AppRoutes.clinicManagement) {
+      return 'clinic-management';
+    }
+    if (AppRoutes.adminSettingsPaths.contains(location) ||
+        location.startsWith('${AppRoutes.settingsBranches}/') ||
+        (location.startsWith('${AppRoutes.settingsStaff}/') && location != AppRoutes.settingsStaffNew)) {
+      return 'clinic-management';
     }
     if (location.startsWith(AppRoutes.shifts)) {
       return 'shifts';

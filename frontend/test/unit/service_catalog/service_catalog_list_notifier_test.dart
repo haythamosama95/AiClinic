@@ -67,8 +67,6 @@ void main() {
 }
 
 class _ListServicesRpcClient extends RpcCaptureSupabaseClient {
-  Map<String, dynamic>? lastParams;
-
   @override
   PostgrestFilterBuilder<T> rpc<T>(String fn, {Map<String, dynamic>? params, dynamic get = false}) {
     lastParams = params;

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:ai_clinic/app/providers/session_context_loader.dart';
-import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
 import 'package:ai_clinic/features/auth/domain/repositories/permission_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,126 +10,112 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 void main() {
   group('SessionContextLoader.parseBranchIdsFromClaim', () {
     test('filters null and undefined string literals', () {
-      expect(
-        SessionContextLoader.parseBranchIdsFromClaim('null,undefined,  ,branch-a'),
-        ['branch-a'],
-      );
+      expect(SessionContextLoader.parseBranchIdsFromClaim('null,undefined,  ,branch-a'), ['branch-a']);
     });
 
     test('trims whitespace and drops empty segments', () {
-      expect(
-        SessionContextLoader.parseBranchIdsFromClaim(' branch-a , branch-b '),
-        ['branch-a', 'branch-b'],
-      );
+      expect(SessionContextLoader.parseBranchIdsFromClaim(' branch-a , branch-b '), ['branch-a', 'branch-b']);
     });
   });
 
   group('SessionContextLoader.load', () {
-  test('throws expired_access_token category for expired JWT', () async {
-    final loader = SessionContextLoader(_ThrowingSupabaseClient(), _FakePermissionRepository());
-    final session = Session(
-      accessToken: _fakeJwt({
-        'exp': DateTime.now().toUtc().subtract(const Duration(hours: 1)).millisecondsSinceEpoch ~/ 1000,
-        'staff_member_id': 'b0000000-0000-4000-8000-000000000001',
-      }),
-      tokenType: 'bearer',
-      user: const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: ''),
-      refreshToken: 'refresh',
-    );
+    test('throws expired_access_token category for expired JWT', () async {
+      final loader = SessionContextLoader(_ThrowingSupabaseClient(), _FakePermissionRepository());
+      final session = Session(
+        accessToken: _fakeJwt({
+          'exp': DateTime.now().toUtc().subtract(const Duration(hours: 1)).millisecondsSinceEpoch ~/ 1000,
+          'staff_member_id': 'b0000000-0000-4000-8000-000000000001',
+        }),
+        tokenType: 'bearer',
+        user: const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: ''),
+        refreshToken: 'refresh',
+      );
 
-    expect(
-      () => loader.load(session),
-      throwsA(
-        predicate<StateError>((error) => error.message.contains('access token has expired')),
-      ),
-    );
-    expect(
-      SessionContextLoader.contextFailureReason(
-        StateError('Authenticated session access token has expired.'),
-      ),
-      'expired_access_token',
-    );
-  });
+      expect(
+        () => loader.load(session),
+        throwsA(predicate<StateError>((error) => error.message.contains('access token has expired'))),
+      );
+      expect(
+        SessionContextLoader.contextFailureReason(StateError('Authenticated session access token has expired.')),
+        'expired_access_token',
+      );
+    });
 
-  test('throws missing_staff_claims when staff_member_id absent', () async {
-    final loader = SessionContextLoader(_ThrowingSupabaseClient(), _FakePermissionRepository());
-    final session = Session(
-      accessToken: _fakeJwt({'staff_role': 'administrator'}),
-      tokenType: 'bearer',
-      user: const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: ''),
-      refreshToken: 'refresh',
-    );
+    test('throws missing_staff_claims when staff_member_id absent', () async {
+      final loader = SessionContextLoader(_ThrowingSupabaseClient(), _FakePermissionRepository());
+      final session = Session(
+        accessToken: _fakeJwt({'staff_role': 'administrator'}),
+        tokenType: 'bearer',
+        user: const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: ''),
+        refreshToken: 'refresh',
+      );
 
-    expect(
-      () => loader.load(session),
-      throwsA(
-        predicate<StateError>((error) => error.message.contains('missing staff claims')),
-      ),
-    );
-  });
+      expect(
+        () => loader.load(session),
+        throwsA(predicate<StateError>((error) => error.message.contains('missing staff claims'))),
+      );
+    });
 
-  test('retries a failed query once before succeeding', () async {
-    final client = _RetryOnceSupabaseClient(
-      staffRow: {
-        'id': 'b0000000-0000-4000-8000-000000000001',
-        'full_name': 'Retry Staff',
-        'role': 'doctor',
-        'is_bootstrap_admin': false,
-        'is_active': true,
-      },
-    );
-    final loader = SessionContextLoader(
-      client,
-      _FakePermissionRepository(permissions: {'patients.view'}),
-      queryTimeout: const Duration(milliseconds: 200),
-      retryBackoff: const Duration(milliseconds: 10),
-    );
-    final session = Session(
-      accessToken: _fakeJwt({
-        'staff_member_id': 'b0000000-0000-4000-8000-000000000001',
-      }),
-      tokenType: 'bearer',
-      user: const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: ''),
-      refreshToken: 'refresh',
-    );
+    test('retries a failed query once before succeeding', () async {
+      final client = _RetryOnceSupabaseClient(
+        staffRow: {
+          'id': 'b0000000-0000-4000-8000-000000000001',
+          'full_name': 'Retry Staff',
+          'role': 'doctor',
+          'is_bootstrap_admin': false,
+          'is_active': true,
+        },
+      );
+      final loader = SessionContextLoader(
+        client,
+        _FakePermissionRepository(permissions: {'patients.view'}),
+        queryTimeout: const Duration(milliseconds: 200),
+        retryBackoff: const Duration(milliseconds: 10),
+      );
+      final session = Session(
+        accessToken: _fakeJwt({'staff_member_id': 'b0000000-0000-4000-8000-000000000001'}),
+        tokenType: 'bearer',
+        user: const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: ''),
+        refreshToken: 'refresh',
+      );
 
-    final context = await loader.load(session);
+      final context = await loader.load(session);
 
-    expect(context.staffProfile.role, StaffRole.doctor);
-    expect(client.staffMembersAttempts, 2);
-  });
+      expect(context.staffProfile.role, StaffRole.doctor);
+      expect(client.staffMembersAttempts, 2);
+    });
 
-  test('loads branch ids from claim while filtering placeholders', () async {
-    const branchId = '22222222-2222-4222-8222-222222222222';
-    final client = _SessionTableTestClient(
-      staffRow: {
-        'id': 'b0000000-0000-4000-8000-000000000001',
-        'full_name': 'Branch Staff',
-        'role': 'receptionist',
-        'is_bootstrap_admin': false,
-        'is_active': true,
-      },
-      primaryBranchRow: {'branch_id': branchId},
-      organizationRow: {'timezone': 'Africa/Cairo'},
-    );
-    final loader = SessionContextLoader(client, _FakePermissionRepository());
-    final session = Session(
-      accessToken: _fakeJwt({
-        'staff_member_id': 'b0000000-0000-4000-8000-000000000001',
-        'organization_id': '11111111-1111-4111-8111-111111111111',
-        'branch_ids': 'null,undefined,$branchId',
-      }),
-      tokenType: 'bearer',
-      user: const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: ''),
-      refreshToken: 'refresh',
-    );
+    test('loads branch ids from claim while filtering placeholders', () async {
+      const branchId = '22222222-2222-4222-8222-222222222222';
+      final client = _SessionTableTestClient(
+        staffRow: {
+          'id': 'b0000000-0000-4000-8000-000000000001',
+          'full_name': 'Branch Staff',
+          'role': 'receptionist',
+          'is_bootstrap_admin': false,
+          'is_active': true,
+        },
+        primaryBranchRow: {'branch_id': branchId},
+        organizationRow: {'timezone': 'Africa/Cairo'},
+      );
+      final loader = SessionContextLoader(client, _FakePermissionRepository());
+      final session = Session(
+        accessToken: _fakeJwt({
+          'staff_member_id': 'b0000000-0000-4000-8000-000000000001',
+          'organization_id': '11111111-1111-4111-8111-111111111111',
+          'branch_ids': 'null,undefined,$branchId',
+        }),
+        tokenType: 'bearer',
+        user: const User(id: 'user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: ''),
+        refreshToken: 'refresh',
+      );
 
-    final context = await loader.load(session);
+      final context = await loader.load(session);
 
-    expect(context.branchIds, [branchId]);
-    expect(context.activeBranchId, branchId);
-    expect(context.organizationTimezone, 'Africa/Cairo');
-  });
+      expect(context.branchIds, [branchId]);
+      expect(context.activeBranchId, branchId);
+      expect(context.organizationTimezone, 'Africa/Cairo');
+    });
   });
 }
 
@@ -234,11 +219,7 @@ class _RetryOnceMaybeSingle extends Fake implements PostgrestTransformBuilder<Ma
 }
 
 class _SessionTableTestClient extends Fake implements SupabaseClient {
-  _SessionTableTestClient({
-    required this.staffRow,
-    this.primaryBranchRow,
-    this.organizationRow,
-  });
+  _SessionTableTestClient({required this.staffRow, this.primaryBranchRow, this.organizationRow});
 
   final Map<String, dynamic> staffRow;
   final Map<String, dynamic>? primaryBranchRow;
@@ -254,12 +235,7 @@ class _SessionTableTestClient extends Fake implements SupabaseClient {
 }
 
 class _SessionTableQueryBuilder extends Fake implements SupabaseQueryBuilder {
-  _SessionTableQueryBuilder({
-    required this.table,
-    required this.staffRow,
-    this.primaryBranchRow,
-    this.organizationRow,
-  });
+  _SessionTableQueryBuilder({required this.table, required this.staffRow, this.primaryBranchRow, this.organizationRow});
 
   final String table;
   final Map<String, dynamic> staffRow;
@@ -278,12 +254,7 @@ class _SessionTableQueryBuilder extends Fake implements SupabaseQueryBuilder {
 }
 
 class _SessionTableFilter extends Fake implements PostgrestFilterBuilder<List<Map<String, dynamic>>> {
-  _SessionTableFilter({
-    required this.table,
-    required this.staffRow,
-    this.primaryBranchRow,
-    this.organizationRow,
-  });
+  _SessionTableFilter({required this.table, required this.staffRow, this.primaryBranchRow, this.organizationRow});
 
   final String table;
   final Map<String, dynamic> staffRow;

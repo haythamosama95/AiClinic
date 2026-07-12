@@ -8,7 +8,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_calendar_peri
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_working_hours.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 
 /// Muted time blocks (before open / after close) for week-style views.
 class AppointmentCalendarShadeRegion {

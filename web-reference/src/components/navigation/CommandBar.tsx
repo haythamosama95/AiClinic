@@ -79,11 +79,11 @@ export function CommandBar({
     const q = query.trim().toLowerCase()
     const base = q
       ? items.filter(
-          (item) =>
-            item.label.toLowerCase().includes(q) ||
-            item.meta?.toLowerCase().includes(q) ||
-            item.group.toLowerCase().includes(q),
-        )
+        (item) =>
+          item.label.toLowerCase().includes(q) ||
+          item.meta?.toLowerCase().includes(q) ||
+          item.group.toLowerCase().includes(q),
+      )
       : recentItems.length > 0
         ? recentItems
         : items
@@ -369,6 +369,7 @@ export function buildDefaultCommandItems(onNavigate?: (id: string) => void): Com
     nav('patients', 'Patients'),
     nav('appointments', 'Appointments'),
     nav('billing', 'Billing'),
+    nav('clinic-management', 'Clinic Management'),
     nav('reports', 'Reports'),
     {
       id: 'patient-1',

@@ -101,6 +101,9 @@ class _AppComboboxState extends State<AppCombobox> {
   void initState() {
     super.initState();
     _items = widget.items ?? [];
+    if (widget.value != null) {
+      _controller.text = widget.value!.label;
+    }
     _focusNode
       ..addListener(_handleFocusChange)
       ..onKeyEvent = _handleKeyEvent;

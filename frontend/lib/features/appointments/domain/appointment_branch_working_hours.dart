@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 
 /// Validates appointment slots against a branch [BranchWorkingSchedule].
 class AppointmentBranchWorkingHours {

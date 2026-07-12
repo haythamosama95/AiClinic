@@ -1,6 +1,6 @@
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/domain/permission_matrix_row.dart';
-import 'package:ai_clinic/features/settings/domain/permission_matrix_view.dart';
+import 'package:ai_clinic/features/clinic-management/domain/permission_matrix_row.dart';
+import 'package:ai_clinic/features/clinic-management/domain/permission_matrix_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

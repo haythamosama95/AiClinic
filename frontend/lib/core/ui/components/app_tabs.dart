@@ -16,10 +16,11 @@ enum AppTabsVariant { underline, segmented, vertical }
 
 /// A single tab entry in [AppTabs].
 class AppTabItem {
-  const AppTabItem({required this.id, required this.label, this.disabled = false});
+  const AppTabItem({required this.id, required this.label, this.icon, this.disabled = false});
 
   final String id;
   final String label;
+  final IconData? icon;
   final bool disabled;
 }
 
@@ -369,10 +370,19 @@ class _AppTabButtonState extends State<_AppTabButton> {
             final focusRing = focused
                 ? [BoxShadow(color: appInputFocusRingColor(context), blurRadius: 0, spreadRadius: 2)]
                 : null;
-            final label = Text(
-              widget.item.label,
-              style: textStyle.copyWith(color: _textColor(colors)),
-              textAlign: widget.isVertical ? TextAlign.start : TextAlign.center,
+            final label = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.item.icon != null) ...[
+                  Icon(widget.item.icon, size: 16, color: _textColor(colors)),
+                  const SizedBox(width: AppSpacing.space2),
+                ],
+                Text(
+                  widget.item.label,
+                  style: textStyle.copyWith(color: _textColor(colors)),
+                  textAlign: widget.isVertical ? TextAlign.start : TextAlign.center,
+                ),
+              ],
             );
 
             if (widget.isVertical) {

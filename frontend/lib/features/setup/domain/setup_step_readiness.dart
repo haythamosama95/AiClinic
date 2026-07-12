@@ -1,6 +1,6 @@
 import 'package:ai_clinic/features/setup/domain/bootstrap_field_options.dart';
 import 'package:ai_clinic/features/setup/domain/branch_field_validation.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 
 /// Whether the organization wizard step has enough valid input to continue.
 bool isOrganizationStepReady({required String name, required String? currency, required String? timezone}) {

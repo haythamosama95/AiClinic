@@ -4,10 +4,10 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
-import 'package:ai_clinic/features/settings/domain/branch_list_filter.dart';
-import 'package:ai_clinic/features/settings/domain/branch_working_schedule.dart';
-import 'package:ai_clinic/features/settings/domain/create_branch_input.dart';
-import 'package:ai_clinic/features/settings/domain/update_branch_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_filter.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
+import 'package:ai_clinic/features/clinic-management/domain/create_branch_input.dart';
+import 'package:ai_clinic/features/clinic-management/domain/update_branch_input.dart';
 
 import '../harness/boundary_assertions.dart';
 import '../harness/boundary_test_context.dart';

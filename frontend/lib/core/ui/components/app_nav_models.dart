@@ -78,7 +78,7 @@ const kClinicNavGroups = <AppNavGroup>[
       AppNavItem(id: 'billing', label: 'Billing', icon: Icons.receipt_long_outlined),
       AppNavItem(id: 'invoices', label: 'Invoices', icon: Icons.description_outlined),
       AppNavItem(id: 'services', label: 'Services', icon: Icons.grid_view_outlined),
-      AppNavItem(id: 'staff', label: 'Staff', icon: Icons.person_outline),
+      AppNavItem(id: 'clinic-management', label: 'Clinic Management', icon: Icons.apartment_outlined),
       AppNavItem(id: 'shifts', label: 'Shifts', icon: Icons.event_outlined),
       AppNavItem(id: 'reports', label: 'Reports', icon: Icons.bar_chart_outlined),
     ],

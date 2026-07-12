@@ -23,11 +23,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final chips = tester.getSize(find.byType(AppChip).first);
     final chipsAll = find.byType(AppChip);
-    print('chip count=${chipsAll.evaluate().length}');
+    expect(chipsAll, findsNWidgets(2));
     for (var i = 0; i < chipsAll.evaluate().length; i++) {
-      print('chip $i size=${tester.getSize(chipsAll.at(i))} pos=${tester.getTopLeft(chipsAll.at(i))}');
+      expect(tester.getSize(chipsAll.at(i)).width, lessThanOrEqualTo(140));
     }
   });
 }
