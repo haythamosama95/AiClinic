@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,9 +17,7 @@ import 'package:ai_clinic/features/appointments/presentation/widgets/appointment
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
-import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
-import 'package:ai_clinic/features/patients/domain/patient_search_query.dart';
-import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_picker.dart';
 
 /// Booking form opened from a calendar slot with pre-filled start and end times.
 class AppointmentBookingSheet extends ConsumerStatefulWidget {
@@ -88,7 +84,6 @@ class AppointmentBookingSheet extends ConsumerStatefulWidget {
 
 class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingSheet> {
   final _formKey = GlobalKey<FormState>();
-  final _patientSearchController = TextEditingController();
   final _notesController = TextEditingController();
 
   AppointmentSettings? _settings;
@@ -99,12 +94,6 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
   late DateTime _endTime;
   PatientListItem? _selectedPatient;
   String? _selectedDoctorId;
-
-  List<PatientListItem> _patientResults = const [];
-  bool _searchingPatients = false;
-  String? _patientSearchError;
-  String _lastPatientQuery = '';
-  Timer? _patientSearchDebounce;
 
   bool _isSaving = false;
   String? _formError;
@@ -139,8 +128,6 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
 
   @override
   void dispose() {
-    _patientSearchDebounce?.cancel();
-    _patientSearchController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -169,58 +156,6 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
         _settingsError = error is RpcFailure
             ? appointmentMessageForRpc(error)
             : UserErrorMapper.mapToUserMessage(error);
-      });
-    }
-  }
-
-  void _onPatientSearchChanged(String query) {
-    _lastPatientQuery = query;
-    _patientSearchDebounce?.cancel();
-    _patientSearchDebounce = Timer(const Duration(milliseconds: 300), () {
-      if (!mounted) {
-        return;
-      }
-      unawaited(_searchPatients(query));
-    });
-  }
-
-  Future<void> _searchPatients(String query) async {
-    if (!PatientSearchQuery.canInvokeRpc(query.isEmpty ? null : query)) {
-      setState(() {
-        _patientResults = const [];
-        _patientSearchError = null;
-        _searchingPatients = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _searchingPatients = true;
-      _patientSearchError = null;
-    });
-
-    try {
-      final page = await ref.read(searchPatientsUseCaseProvider)(
-        query: query.isEmpty ? null : query,
-        scope: PatientListScope.thisBranch,
-        branchId: widget.branchId,
-        limit: 10,
-      );
-      if (!mounted || _lastPatientQuery != query) {
-        return;
-      }
-      setState(() {
-        _searchingPatients = false;
-        _patientResults = page.items;
-      });
-    } catch (_) {
-      if (!mounted || _lastPatientQuery != query) {
-        return;
-      }
-      setState(() {
-        _searchingPatients = false;
-        _patientResults = const [];
-        _patientSearchError = 'Could not search patients.';
       });
     }
   }
@@ -407,12 +342,27 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
 
   TimeOfDay _minutesToTime(int minutes) => TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 
+  String _pad(int value) => value.toString().padLeft(2, '0');
+
+  int? _parseTime(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(trimmed);
+    if (match == null) {
+      return null;
+    }
+    return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final settings = _settings;
     final today = DateTime(clock.now().year, clock.now().month, clock.now().day);
     final hoursLabel = AppointmentBranchWorkingHours.hoursLabelForDate(widget.schedule, _startTime);
+    final canEdit = _canEditSchedule && !_isSaving;
 
     if (_loadingSettings) {
       return const Padding(
@@ -448,82 +398,23 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
             const SizedBox(height: AppSpacing.space4),
           ],
           if (_formError != null) ...[
-            Text(_formError!, style: AppTypography.bodySm(context).copyWith(color: colors.statusDangerFg)),
+            Semantics(
+              liveRegion: true,
+              child: Text(_formError!, style: AppTypography.bodySm(context).copyWith(color: colors.statusDangerFg)),
+            ),
             const SizedBox(height: AppSpacing.space4),
           ],
-          AppFormField(
-            id: 'appointment_booking_patient_search',
-            label: 'Patient',
-            helperText: _canEditSchedule
-                ? PatientSearchQuery.helperForDraft(_patientSearchController.text)
-                : 'Patient cannot be changed after confirmation.',
-            child: AppTextInput(
-              key: const Key('appointment_booking_patient_search'),
-              controller: _patientSearchController,
-              placeholder: 'Search by name or phone',
-              disabled: _isSaving || _selectedPatient != null || !_canEditSchedule,
-              onChanged: _canEditSchedule ? _onPatientSearchChanged : null,
-            ),
+          PatientPicker(
+            branchId: widget.branchId,
+            value: _selectedPatient,
+            enabled: canEdit,
+            onChanged: (patient) => setState(() {
+              _selectedPatient = patient;
+              _formError = null;
+            }),
+            searchFieldKey: const Key('appointment_booking_patient_search'),
+            clearButtonKey: const Key('patient_picker_clear'),
           ),
-          if (_searchingPatients) ...[
-            const SizedBox(height: AppSpacing.space2),
-            const AppProgress(indeterminate: true),
-          ],
-          if (_patientSearchError != null) ...[
-            const SizedBox(height: AppSpacing.space2),
-            Text(_patientSearchError!, style: AppTypography.bodySm(context).copyWith(color: colors.statusDangerFg)),
-          ],
-          if (_selectedPatient != null) ...[
-            const SizedBox(height: AppSpacing.space2),
-            AppCard(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${_selectedPatient!.fullName}${_selectedPatient!.phone != null ? ' · ${_selectedPatient!.phone}' : ''}',
-                      style: AppTypography.bodySm(context),
-                    ),
-                  ),
-                  if (!_isSaving && _canEditSchedule)
-                    AppButton(
-                      key: const Key('patient_picker_clear'),
-                      variant: AppButtonVariant.ghost,
-                      onPressed: () => setState(() => _selectedPatient = null),
-                      child: const Text('Clear'),
-                    ),
-                ],
-              ),
-            ),
-          ] else if (_patientResults.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.space2),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 180),
-              child: SingleChildScrollView(
-                child: AppList(
-                  children: [
-                    for (var index = 0; index < _patientResults.length; index++)
-                      AppListItem(
-                        key: Key('patient_picker_result_$index'),
-                        primary: Text(_patientResults[index].fullName),
-                        secondary: Text(_patientResults[index].phone ?? _patientResults[index].registeringBranchName),
-                        onTap: _isSaving
-                            ? null
-                            : () {
-                                final patient = _patientResults[index];
-                                setState(() {
-                                  _selectedPatient = patient;
-                                  _patientResults = const [];
-                                  _patientSearchController.clear();
-                                  _lastPatientQuery = '';
-                                  _formError = null;
-                                });
-                              },
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ],
           const SizedBox(height: AppSpacing.space4),
           if (widget.doctors.isNotEmpty)
             AppointmentDoctorSelector(
@@ -536,7 +427,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
             )
           else
             Text(
-              'No active doctors are configured. You can still book without assigning one.',
+              'No active doctors are configured. You can still book without a preferred doctor.',
               style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
             ),
           const SizedBox(height: AppSpacing.space4),
@@ -548,7 +439,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
               value: DateTime(_startTime.year, _startTime.month, _startTime.day),
               min: today,
               max: today.add(const Duration(days: 365)),
-              disabled: _isSaving || !_canEditSchedule,
+              disabled: !canEdit,
               onChanged: (date) {
                 if (date == null) {
                   return;
@@ -570,7 +461,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                   child: AppTimePicker(
                     key: const Key('appointment_booking_pick_start'),
                     value: '${_pad(_startTime.hour)}:${_pad(_startTime.minute)}',
-                    disabled: _isSaving || !_canEditSchedule,
+                    disabled: !canEdit,
                     onChanged: (value) {
                       final minutes = _parseTime(value);
                       if (minutes == null) {
@@ -589,7 +480,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
                   child: AppTimePicker(
                     key: const Key('appointment_booking_pick_end'),
                     value: '${_pad(_endTime.hour)}:${_pad(_endTime.minute)}',
-                    disabled: _isSaving || !_canEditSchedule,
+                    disabled: !canEdit,
                     onChanged: (value) {
                       final minutes = _parseTime(value);
                       if (minutes == null) {
@@ -624,19 +515,5 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
         ],
       ),
     );
-  }
-
-  String _pad(int value) => value.toString().padLeft(2, '0');
-
-  int? _parseTime(String? value) {
-    final trimmed = value?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return null;
-    }
-    final match = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(trimmed);
-    if (match == null) {
-      return null;
-    }
-    return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
   }
 }

@@ -26,17 +26,18 @@ class AppointmentDoctorSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppFormField(
       id: 'appointment_doctor',
-      label: 'Doctor (optional)',
+      label: 'Preferred doctor',
+      helperText: 'Select when the patient requested a specific doctor. Leave unassigned if they have no preference.',
       child: AppSelect(
         key: key,
         options: AppointmentDoctorSelectItems.buildOptions(
           branchId: branchId,
           doctors: doctors,
-          emptyLabel: 'No doctor assigned',
+          emptyLabel: 'No preference',
         ),
         value: value ?? '',
         disabled: !enabled,
-        placeholder: 'No doctor assigned',
+        placeholder: 'No preference',
         onChanged: (doctorId) => onChanged(doctorId.isEmpty ? null : doctorId),
       ),
     );
