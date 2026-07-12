@@ -117,10 +117,19 @@ class _AppDatePickerState extends State<AppDatePicker> {
     if (!_isControlled && widget.initialValue != oldWidget.initialValue && _internalValue == null) {
       _internalValue = widget.initialValue;
     }
-    if (_isControlled && widget.value != oldWidget.value && !_editingText) {
-      _syncTextFromValue();
-      if (widget.value != null) {
-        _viewMonth = widget.value!;
+    if (_isControlled && !_editingText) {
+      final newValue = widget.value;
+      final oldValue = oldWidget.value;
+      final valueChanged = newValue == null
+          ? oldValue != null
+          : oldValue == null
+          ? true
+          : !appIsSameDay(newValue, oldValue);
+      if (valueChanged) {
+        _syncTextFromValue();
+        if (newValue != null) {
+          _viewMonth = newValue;
+        }
       }
     }
   }
@@ -156,15 +165,16 @@ class _AppDatePickerState extends State<AppDatePicker> {
   }
 
   void _select(DateTime date) {
-    if (widget.min != null && appDateOnly(date).isBefore(appDateOnly(widget.min!))) return;
-    if (widget.max != null && appDateOnly(date).isAfter(appDateOnly(widget.max!))) return;
+    final normalized = DateTime(date.year, date.month, date.day);
+    if (widget.min != null && appDateOnly(normalized).isBefore(appDateOnly(widget.min!))) return;
+    if (widget.max != null && appDateOnly(normalized).isAfter(appDateOnly(widget.max!))) return;
 
     if (!_isControlled) {
-      setState(() => _internalValue = date);
+      setState(() => _internalValue = normalized);
     }
-    widget.onChanged?.call(date);
+    widget.onChanged?.call(normalized);
     _editingText = false;
-    _controller.text = _formatDisplay(date, context);
+    _controller.text = _formatDisplay(normalized, context);
     _setOpen(false);
   }
 

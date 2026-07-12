@@ -12,6 +12,7 @@ import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/presentation/edit_patient/edit_patient_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/active_branch_name_provider.dart';
@@ -21,6 +22,7 @@ import 'package:ai_clinic/features/patients/presentation/utils/patient_presentat
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_detail_section.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_document_card.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_invoice_card.dart';
+import 'package:ai_clinic/features/patients/presentation/widgets/patient_notes_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_record_grid.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_visit_record_card.dart';
 
@@ -86,6 +88,10 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     );
   }
 
+  void _openPatientNotes(String notes) {
+    PatientNotesDialog.show(context, notes: notes);
+  }
+
   bool _isPatientNotFound(Object error) {
     return error is RpcFailure && error.code == 'NOT_FOUND';
   }
@@ -107,6 +113,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         phone: detail.phone,
         dateOfBirth: detail.dateOfBirth,
         gender: detail.gender,
+        maritalStatus: detail.maritalStatus,
         branchName: detail.branchName,
       );
     }
@@ -407,6 +414,9 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
               tabItems: _tabItems(context),
               skeletonize: skeletonizeHeader,
               onSectionChanged: (section) => setState(() => _section = section),
+              onViewNotes: detail?.notes != null && detail!.notes!.trim().isNotEmpty
+                  ? () => _openPatientNotes(detail.notes!)
+                  : null,
               onEdit: detail != null ? _openEditPatient : null,
             ),
           ],
@@ -443,7 +453,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
               ),
             );
     } else if (detailAsync.isLoading) {
-      final identity = _identityView(preview: preview);
+      final identity = _identityView(detail: detailAsync.value, preview: preview);
       content = _buildMainContent(
         context: context,
         identity: identity,
@@ -483,12 +493,20 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
 }
 
 class _PatientIdentityView {
-  const _PatientIdentityView({required this.fullName, this.phone, this.dateOfBirth, this.gender, this.branchName});
+  const _PatientIdentityView({
+    required this.fullName,
+    this.phone,
+    this.dateOfBirth,
+    this.gender,
+    this.maritalStatus,
+    this.branchName,
+  });
 
   final String fullName;
   final String? phone;
   final DateTime? dateOfBirth;
   final PatientGender? gender;
+  final PatientMaritalStatus? maritalStatus;
   final String? branchName;
 }
 
@@ -499,6 +517,7 @@ class _PatientIdentityCard extends StatelessWidget {
     required this.tabItems,
     required this.onSectionChanged,
     this.skeletonize = false,
+    this.onViewNotes,
     this.onEdit,
   });
 
@@ -507,6 +526,7 @@ class _PatientIdentityCard extends StatelessWidget {
   final List<AppTabItem> tabItems;
   final ValueChanged<PatientDetailSection> onSectionChanged;
   final bool skeletonize;
+  final VoidCallback? onViewNotes;
   final VoidCallback? onEdit;
 
   @override
@@ -553,8 +573,9 @@ class _PatientIdentityCard extends StatelessWidget {
     final l10n = context.l10n;
     final age = PatientPresentationFormatting.ageYears(identity.dateOfBirth);
     final dobLabel = identity.dateOfBirth != null
-        ? '${l10n.dateOfBirthLabel} ${PatientPresentationFormatting.date.format(identity.dateOfBirth!)}'
+        ? '${l10n.dateOfBirthLabel} ${PatientPresentationFormatting.formatCalendarDate(identity.dateOfBirth!)}'
         : '—';
+    final maritalLabel = identity.maritalStatus?.label;
     final branchName = identity.branchName?.trim();
 
     return AppCard(
@@ -595,6 +616,13 @@ class _PatientIdentityCard extends StatelessWidget {
                       color: BadgeColor.neutral,
                       label: dobLabel,
                     ),
+                    if (maritalLabel != null)
+                      AppBadge(
+                        size: BadgeSize.md,
+                        variant: BadgeVariant.soft,
+                        color: BadgeColor.neutral,
+                        label: maritalLabel,
+                      ),
                     AppBadge(
                       size: BadgeSize.md,
                       variant: BadgeVariant.soft,
@@ -627,13 +655,29 @@ class _PatientIdentityCard extends StatelessWidget {
               ],
             ),
           ),
-          if (onEdit != null)
-            AppButton(
-              variant: AppButtonVariant.primary,
-              size: AppButtonSize.md,
-              leadingIcon: const Icon(Icons.edit_outlined, size: 16),
-              onPressed: onEdit,
-              child: Text(l10n.editPatient),
+          if (onViewNotes != null || onEdit != null)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (onViewNotes != null) ...[
+                  AppButton(
+                    variant: AppButtonVariant.secondary,
+                    size: AppButtonSize.md,
+                    leadingIcon: const Icon(Icons.notes_outlined, size: 16),
+                    onPressed: onViewNotes,
+                    child: Text(l10n.notesLabel),
+                  ),
+                  if (onEdit != null) const SizedBox(width: AppSpacing.space2),
+                ],
+                if (onEdit != null)
+                  AppButton(
+                    variant: AppButtonVariant.primary,
+                    size: AppButtonSize.md,
+                    leadingIcon: const Icon(Icons.edit_outlined, size: 16),
+                    onPressed: onEdit,
+                    child: Text(l10n.editPatient),
+                  ),
+              ],
             ),
         ],
       ),

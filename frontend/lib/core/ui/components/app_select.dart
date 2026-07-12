@@ -72,9 +72,9 @@ class _AppSelectState extends State<AppSelect> {
   String _typeahead = '';
   Timer? _typeaheadTimer;
 
-  bool get _isControlled => widget.value != null;
+  bool get _isControlled => widget.onChanged != null;
 
-  String get _value => _isControlled ? widget.value! : (_internalValue ?? '');
+  String get _value => _isControlled ? (widget.value ?? '') : (_internalValue ?? widget.initialValue ?? '');
 
   AppSelectOption? get _selected {
     for (final opt in widget.options) {

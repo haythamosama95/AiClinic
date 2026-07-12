@@ -19,10 +19,11 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
+import 'package:ai_clinic/features/patients/domain/patient_row_parsing.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_registration_form.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/active_branch_name_provider.dart';
 
-const _registrationGenderOptions = [PatientGender.male, PatientGender.female];
+const _genderOptions = [PatientGender.male, PatientGender.female];
 
 const _maritalStatusOptions = PatientMaritalStatus.values;
 
@@ -283,10 +284,7 @@ class _IdentityPreviewCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
                   ),
-                  Text(
-                    subtitle,
-                    style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
-                  ),
+                  Text(subtitle, style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
                 ],
               ),
             ),
@@ -358,7 +356,7 @@ class _PatientDetailsSection extends StatelessWidget {
       child: AppDatePicker(
         id: '$fieldIdPrefix-dob',
         value: values.dateOfBirth,
-        onChanged: (date) => onFieldChange('dateOfBirth', date),
+        onChanged: (date) => onFieldChange('dateOfBirth', date == null ? null : normalizePatientDate(date)),
         placeholder: 'Select date',
         max: DateTime.now(),
         invalid: errors.dateOfBirth != null,
@@ -374,9 +372,7 @@ class _PatientDetailsSection extends StatelessWidget {
         id: '$fieldIdPrefix-gender',
         value: values.gender?.wireValue,
         onChanged: (value) => onFieldChange('gender', PatientGender.tryParse(value)),
-        options: _registrationGenderOptions
-            .map((gender) => AppSelectOption(value: gender.wireValue, label: gender.label))
-            .toList(),
+        options: _genderOptions.map((gender) => AppSelectOption(value: gender.wireValue, label: gender.label)).toList(),
         placeholder: 'Select gender',
         invalid: errors.gender != null,
       ),

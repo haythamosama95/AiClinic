@@ -10,6 +10,7 @@ import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/domain/patient_search_page.dart';
 import 'package:ai_clinic/features/patients/domain/repositories/patient_repository.dart';
+import 'package:ai_clinic/features/patients/domain/patient_row_parsing.dart';
 import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_list_filters.dart';
 
@@ -96,7 +97,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     final result = await invokeRpc('check_patient_duplicates', {
       if (fullName != null) 'p_full_name': fullName.trim(),
       if (phone != null) 'p_phone': phone.trim(),
-      if (dateOfBirth != null) 'p_date_of_birth': dateOfBirth.toIso8601String().split('T').first,
+      if (dateOfBirth != null) 'p_date_of_birth': formatPatientDateWire(dateOfBirth),
       'p_exclude_patient_id': ?excludePatientId,
     });
 
@@ -124,7 +125,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
       'p_full_name': name,
       'p_phone': phone,
       'p_acknowledge_duplicate': input.acknowledgeDuplicate,
-      if (input.dateOfBirth != null) 'p_date_of_birth': input.dateOfBirth!.toIso8601String().split('T').first,
+      if (input.dateOfBirth != null) 'p_date_of_birth': formatPatientDateWire(input.dateOfBirth!),
       if (input.gender != null) 'p_gender': input.gender!.wireValue,
       if (input.maritalStatus != null) 'p_marital_status': input.maritalStatus!.wireValue,
       if (input.notes != null) 'p_notes': input.notes!.trim(),
@@ -152,7 +153,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
       'p_expected_updated_at': input.expectedUpdatedAt.toUtc().toIso8601String(),
       'p_acknowledge_duplicate': input.acknowledgeDuplicate,
       if (input.phone != null) 'p_phone': input.phone!.trim(),
-      if (input.dateOfBirth != null) 'p_date_of_birth': input.dateOfBirth!.toIso8601String().split('T').first,
+      if (input.dateOfBirth != null) 'p_date_of_birth': formatPatientDateWire(input.dateOfBirth!),
       if (input.gender != null) 'p_gender': input.gender!.wireValue,
       if (input.maritalStatus != null) 'p_marital_status': input.maritalStatus!.wireValue,
       if (input.notes != null) 'p_notes': input.notes!.trim(),

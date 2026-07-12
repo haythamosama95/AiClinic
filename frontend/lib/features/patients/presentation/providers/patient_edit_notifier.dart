@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/patients/domain/update_patient_input.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_registration_form.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_list_notifier.dart';
 
 @immutable
 class PatientEditState {
@@ -69,8 +70,7 @@ class PatientEditState {
       duplicateCandidates: duplicateCandidates ?? this.duplicateCandidates,
       duplicateOpen: duplicateOpen ?? this.duplicateOpen,
       acknowledgedDuplicate: acknowledgedDuplicate ?? this.acknowledgedDuplicate,
-      pendingOpenPatientId:
-          clearPendingOpenPatientId ? null : (pendingOpenPatientId ?? this.pendingOpenPatientId),
+      pendingOpenPatientId: clearPendingOpenPatientId ? null : (pendingOpenPatientId ?? this.pendingOpenPatientId),
       expectedUpdatedAt: expectedUpdatedAt ?? this.expectedUpdatedAt,
       branchName: branchName ?? this.branchName,
       hydrated: hydrated ?? this.hydrated,
@@ -79,17 +79,15 @@ class PatientEditState {
   }
 }
 
-final patientEditProvider =
-    StateNotifierProvider.family<PatientEditNotifier, PatientEditState, String>((ref, patientId) {
+final patientEditProvider = StateNotifierProvider.family<PatientEditNotifier, PatientEditState, String>((
+  ref,
+  patientId,
+) {
   final notifier = PatientEditNotifier(ref, patientId);
 
-  ref.listen<AsyncValue<PatientDetail>>(
-    patientDetailProvider(patientId),
-    (_, next) {
-      next.whenData(notifier.preloadFromDetail);
-    },
-    fireImmediately: true,
-  );
+  ref.listen<AsyncValue<PatientDetail>>(patientDetailProvider(patientId), (_, next) {
+    next.whenData(notifier.preloadFromDetail);
+  }, fireImmediately: true);
 
   return notifier;
 });
@@ -164,19 +162,13 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
 
   /// Acknowledges the duplicate warning and saves the patient anyway.
   Future<bool> saveAnyway() async {
-    state = state.copyWith(
-      acknowledgedDuplicate: true,
-      duplicateOpen: false,
-    );
+    state = state.copyWith(acknowledgedDuplicate: true, duplicateOpen: false);
     return submit();
   }
 
   /// Closes the duplicate dialog and signals navigation to an existing patient.
   void openExistingPatient(String patientId) {
-    state = state.copyWith(
-      duplicateOpen: false,
-      pendingOpenPatientId: patientId,
-    );
+    state = state.copyWith(duplicateOpen: false, pendingOpenPatientId: patientId);
   }
 
   /// Reloads the form from the server after a stale-update conflict.
@@ -190,9 +182,7 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
   Future<bool> submit() async {
     final expectedUpdatedAt = state.expectedUpdatedAt;
     if (expectedUpdatedAt == null) {
-      state = state.copyWith(
-        errors: const PatientFormErrors(form: 'Patient details are still loading. Try again.'),
-      );
+      state = state.copyWith(errors: const PatientFormErrors(form: 'Patient details are still loading. Try again.'));
       return false;
     }
 
@@ -214,11 +204,7 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
         );
 
         if (candidates.isNotEmpty) {
-          state = state.copyWith(
-            submitting: false,
-            duplicateCandidates: candidates,
-            duplicateOpen: true,
-          );
+          state = state.copyWith(submitting: false, duplicateCandidates: candidates, duplicateOpen: true);
           return false;
         }
       }
@@ -244,30 +230,21 @@ class PatientEditNotifier extends StateNotifier<PatientEditState> {
       if (toastContext != null && toastContext.mounted) {
         appToast(
           toastContext,
-          AppToastInput(
-            message: '${state.values.fullName.trim()} updated.',
-            variant: AppToastVariant.success,
-          ),
+          AppToastInput(message: '${state.values.fullName.trim()} updated.', variant: AppToastVariant.success),
         );
       }
 
       _ref.invalidate(patientDetailProvider(_patientId));
+      _ref.invalidate(patientListProvider);
       state = state.copyWith(submitting: false);
       return true;
     } on RpcFailure catch (failure) {
       if (failure.isStalePatient) {
-        state = state.copyWith(
-          submitting: false,
-          staleUpdateOpen: true,
-          errors: PatientFormErrors.empty,
-        );
+        state = state.copyWith(submitting: false, staleUpdateOpen: true, errors: PatientFormErrors.empty);
         return false;
       }
 
-      state = state.copyWith(
-        submitting: false,
-        errors: PatientFormErrors(form: patientMessageForRpc(failure)),
-      );
+      state = state.copyWith(submitting: false, errors: PatientFormErrors(form: patientMessageForRpc(failure)));
       return false;
     } catch (_) {
       state = state.copyWith(

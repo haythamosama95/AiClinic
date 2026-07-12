@@ -39,6 +39,11 @@ class _PatientsPageState extends ConsumerState<PatientsPage> with SingleTickerPr
   void initState() {
     super.initState();
     _enterController = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(patientListProvider.notifier).reload();
+      }
+    });
   }
 
   @override
