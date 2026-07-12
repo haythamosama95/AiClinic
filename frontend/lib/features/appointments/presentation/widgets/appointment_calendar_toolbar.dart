@@ -24,6 +24,8 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
     required this.onApplyFilters,
     required this.onClearFilters,
     this.onBookAppointment,
+    this.isFullscreen = false,
+    this.onToggleFullscreen,
     super.key,
   });
 
@@ -36,6 +38,8 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
   final ValueChanged<AppointmentCalendarFilters> onApplyFilters;
   final VoidCallback onClearFilters;
   final VoidCallback? onBookAppointment;
+  final bool isFullscreen;
+  final VoidCallback? onToggleFullscreen;
 
   static const _modes = <AppointmentCalendarMode>[
     AppointmentCalendarMode.day,
@@ -71,12 +75,7 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
           ],
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 220),
-            child: Text(
-              title,
-              style: AppTypography.bodyStrong(context),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: Text(title, style: AppTypography.bodyStrong(context), maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ],
       ),
@@ -85,6 +84,12 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
         runSpacing: AppSpacing.space2,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          if (onToggleFullscreen != null)
+            AppIconButton(
+              icon: Icon(isFullscreen ? Icons.close_fullscreen : Icons.open_in_full),
+              label: isFullscreen ? 'Exit fullscreen' : 'Expand calendar',
+              onPressed: onToggleFullscreen,
+            ),
           if (onBookAppointment != null)
             AppButton(size: AppButtonSize.sm, onPressed: onBookAppointment, child: const Text('Book')),
           AppointmentCalendarFilterButton(
@@ -116,7 +121,10 @@ class AppointmentCalendarToolbar extends ConsumerWidget {
             },
             options: [
               for (final mode in _modes)
-                SegmentedOption(value: mode.name, label: Text(_viewLabel(mode), style: AppTypography.caption(context))),
+                SegmentedOption(
+                  value: mode.name,
+                  label: Text(_viewLabel(mode), style: AppTypography.caption(context)),
+                ),
             ],
           ),
         ],

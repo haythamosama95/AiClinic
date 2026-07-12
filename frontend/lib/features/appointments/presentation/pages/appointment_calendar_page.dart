@@ -20,6 +20,7 @@ import 'package:ai_clinic/features/appointments/data/appointment_repository.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_reschedule_validation.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_fullscreen_overlay.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_toolbar.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_page_shell.dart';
 import 'package:ai_clinic/features/appointments/presentation/models/appointment_section.dart';
@@ -56,6 +57,12 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   bool _isProcessingDrag = false;
   _CalendarDragSession? _dragSession;
   _CalendarResizeSession? _resizeSession;
+  final GlobalKey _calendarHostKey = GlobalKey();
+  OverlayEntry? _fullscreenOverlay;
+  bool _isCalendarFullscreen = false;
+  double? _calendarHostHeight;
+  WidgetBuilder? _fullscreenCalendarBuilder;
+  Future<void> Function()? _closeFullscreenOverlay;
 
   @override
   void initState() {
@@ -65,8 +72,60 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
   @override
   void dispose() {
+    _fullscreenOverlay?.remove();
     _calendarController.dispose();
     super.dispose();
+  }
+
+  void _toggleCalendarFullscreen({required bool isFullscreen}) {
+    if (isFullscreen) {
+      unawaited(_closeFullscreenOverlay?.call());
+    } else {
+      _openCalendarFullscreen();
+    }
+  }
+
+  void _openCalendarFullscreen() {
+    if (_isCalendarFullscreen || _fullscreenCalendarBuilder == null) {
+      return;
+    }
+
+    final hostContext = _calendarHostKey.currentContext;
+    final sourceRect = hostContext == null ? null : globalRectOnScreen(hostContext);
+    if (sourceRect == null) {
+      return;
+    }
+
+    final box = hostContext!.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      _calendarHostHeight = box.size.height;
+    }
+
+    _fullscreenOverlay = OverlayEntry(
+      builder: (overlayContext) {
+        return AppointmentCalendarFullscreenOverlay(
+          sourceRect: sourceRect,
+          onClose: _closeCalendarFullscreen,
+          onReady: (close) => _closeFullscreenOverlay = close,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.space4),
+            child: _fullscreenCalendarBuilder!(overlayContext),
+          ),
+        );
+      },
+    );
+
+    Overlay.of(context, rootOverlay: true).insert(_fullscreenOverlay!);
+    setState(() => _isCalendarFullscreen = true);
+  }
+
+  void _closeCalendarFullscreen() {
+    _closeFullscreenOverlay = null;
+    _fullscreenOverlay?.remove();
+    _fullscreenOverlay = null;
+    if (mounted) {
+      setState(() => _isCalendarFullscreen = false);
+    }
   }
 
   @override
@@ -114,6 +173,30 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         (state.mode == AppointmentCalendarMode.day || state.mode == AppointmentCalendarMode.doctors) &&
         AppointmentCalendarDisplay.isClosedOnDate(schedule, state.focusDate);
 
+    _fullscreenCalendarBuilder = (overlayContext) {
+      final overlayHeight = MediaQuery.sizeOf(overlayContext).height - (AppSpacing.space4 * 2);
+      return _buildCalendar(
+        context: overlayContext,
+        colors: overlayContext.appColors,
+        state: state,
+        controller: controller,
+        branchesAsync: branchesAsync,
+        doctorsAsync: doctorsAsync,
+        schedule: schedule,
+        doctors: doctors,
+        canCreate: canCreate,
+        visibleItems: visibleItems,
+        oddResourceRowColor: oddResourceRowColor,
+        loading: state.loading,
+        viewportHeight: overlayHeight,
+        hasActiveFilters: hasActiveFilters,
+        isFullscreen: true,
+      );
+    };
+    if (_isCalendarFullscreen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _fullscreenOverlay?.markNeedsBuild());
+    }
+
     return AppointmentPageShell(
       activeSection: AppointmentSection.calendar,
       child: Column(
@@ -138,22 +221,31 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
             ),
           Expanded(
             child: LayoutBuilder(
-              builder: (context, constraints) => _buildCalendar(
-                context: context,
-                colors: colors,
-                state: state,
-                controller: controller,
-                branchesAsync: branchesAsync,
-                doctorsAsync: doctorsAsync,
-                schedule: schedule,
-                doctors: doctors,
-                canCreate: canCreate,
-                visibleItems: visibleItems,
-                oddResourceRowColor: oddResourceRowColor,
-                loading: state.loading,
-                viewportHeight: constraints.maxHeight,
-                hasActiveFilters: hasActiveFilters,
-              ),
+              builder: (context, constraints) {
+                final calendar = _buildCalendar(
+                  context: context,
+                  colors: colors,
+                  state: state,
+                  controller: controller,
+                  branchesAsync: branchesAsync,
+                  doctorsAsync: doctorsAsync,
+                  schedule: schedule,
+                  doctors: doctors,
+                  canCreate: canCreate,
+                  visibleItems: visibleItems,
+                  oddResourceRowColor: oddResourceRowColor,
+                  loading: state.loading,
+                  viewportHeight: constraints.maxHeight,
+                  hasActiveFilters: hasActiveFilters,
+                  isFullscreen: false,
+                );
+
+                if (_isCalendarFullscreen) {
+                  return SizedBox(key: _calendarHostKey, height: _calendarHostHeight, child: const SizedBox.shrink());
+                }
+
+                return KeyedSubtree(key: _calendarHostKey, child: calendar);
+              },
             ),
           ),
         ],
@@ -176,6 +268,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required bool loading,
     required double viewportHeight,
     required bool hasActiveFilters,
+    required bool isFullscreen,
   }) {
     final slotLayout = AppointmentCalendarDisplay.timeSlotLayout(
       schedule: schedule,
@@ -183,20 +276,21 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       focusDate: state.focusDate,
       viewportHeight: (viewportHeight - appointmentCalendarToolbarHeight).clamp(240.0, viewportHeight),
     );
-    final textTheme = Theme.of(context).textTheme;
-    final pageBackground = colors.surfaceCanvas;
+    final calendarSurface = colors.surfaceDefault;
     final allowDragAndDrop = canCreate && _supportsDragAndDrop(state.mode);
     final calendarTheme = SfCalendarThemeData(
-      backgroundColor: pageBackground,
-      headerBackgroundColor: pageBackground,
-      viewHeaderBackgroundColor: pageBackground,
-      agendaBackgroundColor: pageBackground,
-      allDayPanelColor: pageBackground,
+      backgroundColor: calendarSurface,
+      headerBackgroundColor: calendarSurface,
+      viewHeaderBackgroundColor: calendarSurface,
+      agendaBackgroundColor: calendarSurface,
+      allDayPanelColor: calendarSurface,
       cellBorderColor: colors.borderSubtle,
-      headerTextStyle: textTheme.titleMedium?.copyWith(color: colors.textPrimary),
-      viewHeaderDayTextStyle: textTheme.labelSmall?.copyWith(color: colors.textSecondary),
-      viewHeaderDateTextStyle: textTheme.labelMedium?.copyWith(color: colors.textPrimary),
-      timeTextStyle: textTheme.labelSmall?.copyWith(color: colors.textSecondary),
+      headerTextStyle: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+      viewHeaderDayTextStyle: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+      viewHeaderDateTextStyle: AppTypography.bodySm(
+        context,
+      ).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w600),
+      timeTextStyle: AppTypography.caption(context).copyWith(color: colors.textSecondary),
       todayHighlightColor: colors.actionPrimary,
     );
 
@@ -216,6 +310,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
             statuses: filters.statuses,
           ),
           onClearFilters: controller.clearFilters,
+          isFullscreen: isFullscreen,
+          onToggleFullscreen: () => _toggleCalendarFullscreen(isFullscreen: isFullscreen),
           onBookAppointment: canCreate && state.selectedBranchId != null && state.selectedBranchId!.isNotEmpty
               ? () {
                   final slotRange = AppointmentCalendarDisplay.slotRangeFromTap(
@@ -237,212 +333,221 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                 }
               : null,
         ),
+        const SizedBox(height: AppSpacing.space4),
         Expanded(
-          child: loading
-              ? const _CalendarSkeletonBody()
-              : SfCalendarTheme(
-                  data: calendarTheme,
-                  child: SfCalendar(
-                    controller: _calendarController,
-                    view: _calendarViewFor(state.mode),
-                    allowedViews: const [
-                      CalendarView.day,
-                      CalendarView.week,
-                      CalendarView.month,
-                      CalendarView.schedule,
-                      CalendarView.timelineDay,
-                    ],
-                    dataSource: _dataSource,
-                    initialDisplayDate: state.focusDate,
-                    backgroundColor: pageBackground,
-                    cellBorderColor: colors.borderSubtle,
-                    headerHeight: 0,
-                    resourceViewSettings: ResourceViewSettings(
-                      showAvatar: false,
-                      size: _timelineResourceRowHeight,
-                      visibleResourceCount: -1,
-                      displayNameTextStyle: textTheme.labelMedium?.copyWith(color: colors.textPrimary),
-                    ),
-                    showNavigationArrow: false,
-                    showTodayButton: false,
-                    showDatePickerButton: false,
-                    allowViewNavigation: false,
-                    headerStyle: CalendarHeaderStyle(
-                      backgroundColor: pageBackground,
-                      textStyle: textTheme.titleMedium?.copyWith(color: colors.textPrimary),
-                    ),
-                    viewHeaderStyle: ViewHeaderStyle(backgroundColor: pageBackground),
-                    selectionDecoration: const BoxDecoration(
-                      color: Colors.transparent,
-                      border: Border.fromBorderSide(BorderSide(color: Colors.transparent, width: 0)),
-                    ),
-                    blackoutDates: state.mode == AppointmentCalendarMode.month
-                        ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
-                        : const [],
-                    timeSlotViewSettings: TimeSlotViewSettings(
-                      startHour: slotLayout.startHour,
-                      endHour: slotLayout.endHour,
-                      timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
-                      timeIntervalHeight: slotLayout.timeIntervalHeight,
-                      timelineAppointmentHeight: _timelineResourceRowHeight,
-                      nonWorkingDays: slotLayout.nonWorkingDays,
-                      timeFormat: 'HH:mm',
-                      dateFormat: 'd',
-                      dayFormat: 'EEE',
-                    ),
-                    monthViewSettings: const MonthViewSettings(
-                      showAgenda: true,
-                      appointmentDisplayMode: MonthAppointmentDisplayMode.indicator,
-                    ),
-                    scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 52),
-                    specialRegions: [
-                      for (final region in slotLayout.shadeRegions)
-                        TimeRegion(
-                          startTime: region.start,
-                          endTime: region.end,
-                          enablePointerInteraction: false,
-                          color: colors.surfaceMuted.withValues(alpha: 0.45),
+          child: AppCard(
+            variant: CardVariant.flat,
+            padding: CardPadding.sm,
+            child: SizedBox.expand(
+              child: loading
+                  ? const _CalendarSkeletonBody()
+                  : SfCalendarTheme(
+                      data: calendarTheme,
+                      child: SfCalendar(
+                        controller: _calendarController,
+                        view: _calendarViewFor(state.mode),
+                        allowedViews: const [
+                          CalendarView.day,
+                          CalendarView.week,
+                          CalendarView.month,
+                          CalendarView.schedule,
+                          CalendarView.timelineDay,
+                        ],
+                        dataSource: _dataSource,
+                        initialDisplayDate: state.focusDate,
+                        backgroundColor: calendarSurface,
+                        cellBorderColor: colors.borderSubtle,
+                        headerHeight: 0,
+                        resourceViewSettings: ResourceViewSettings(
+                          showAvatar: false,
+                          size: _timelineResourceRowHeight,
+                          visibleResourceCount: -1,
+                          displayNameTextStyle: AppTypography.bodySm(
+                            context,
+                          ).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w600),
                         ),
-                      if (state.mode == AppointmentCalendarMode.doctors)
-                        ...AppointmentCalendarDisplay.resourceRowStripeRegions(
-                          resourceIds: [
-                            for (final resource in _dataSource.resources ?? const <CalendarResource>[]) resource.id,
-                          ],
-                          focusDate: state.focusDate,
+                        showNavigationArrow: false,
+                        showTodayButton: false,
+                        showDatePickerButton: false,
+                        allowViewNavigation: false,
+                        headerStyle: CalendarHeaderStyle(
+                          backgroundColor: calendarSurface,
+                          textStyle: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                        ),
+                        viewHeaderStyle: ViewHeaderStyle(backgroundColor: calendarSurface),
+                        selectionDecoration: const BoxDecoration(
+                          color: Colors.transparent,
+                          border: Border.fromBorderSide(BorderSide(color: Colors.transparent, width: 0)),
+                        ),
+                        blackoutDates: state.mode == AppointmentCalendarMode.month
+                            ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
+                            : const [],
+                        timeSlotViewSettings: TimeSlotViewSettings(
                           startHour: slotLayout.startHour,
                           endHour: slotLayout.endHour,
-                          stripeColor: oddResourceRowColor,
+                          timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
+                          timeIntervalHeight: slotLayout.timeIntervalHeight,
+                          timelineAppointmentHeight: _timelineResourceRowHeight,
+                          nonWorkingDays: slotLayout.nonWorkingDays,
+                          timeFormat: 'HH:mm',
+                          dateFormat: 'd',
+                          dayFormat: 'EEE',
                         ),
-                    ],
-                    appointmentBuilder: (context, details) {
-                      final id = appointmentIdFromAppointmentDetails(details);
-                      if (id != null &&
-                          (_dragSession?.item.id == id || _resizeSession?.item.id == id) &&
-                          !AppointmentCalendarDisplay.isAlignedToSlotGrid(
-                            details.bounds,
-                            slotLayout.timeIntervalHeight,
-                            timelineAxisIsHorizontal: state.mode == AppointmentCalendarMode.doctors,
-                          )) {
-                        return const SizedBox.shrink();
-                      }
-                      final isRevealed = id == null || _revealedAppointmentIds.contains(id);
-                      final item = id == null ? null : state.items.where((entry) => entry.id == id).firstOrNull;
-                      final isDimmed =
-                          item != null &&
-                          !AppointmentCalendarDisplay.isStatusHighlighted(item.status, state.selectedStatuses);
-                      return Skeletonizer(
-                        enabled: !isRevealed,
-                        enableSwitchAnimation: true,
-                        effect: ShimmerEffect(
-                          baseColor: colors.surfaceMuted,
-                          highlightColor: colors.surfaceMuted.withValues(alpha: 0.55),
+                        monthViewSettings: const MonthViewSettings(
+                          showAgenda: true,
+                          appointmentDisplayMode: MonthAppointmentDisplayMode.indicator,
                         ),
-                        containersColor: colors.surfaceMuted,
-                        child: _AppointmentTile(
-                          details: details,
-                          isDimmed: isDimmed,
-                          onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
-                        ),
-                      );
-                    },
-                    onViewChanged: (details) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        unawaited(_onViewChanged(details, controller));
-                      });
-                    },
-                    allowDragAndDrop: allowDragAndDrop,
-                    allowAppointmentResize: allowDragAndDrop,
-                    dragAndDropSettings: const DragAndDropSettings(showTimeIndicator: false),
-                    onDragStart: allowDragAndDrop
-                        ? (details) => _onAppointmentDragStart(
-                            details,
-                            items: visibleItems,
-                            slotMinutes: slotLayout.timeIntervalMinutes,
-                            doctors: doctors,
-                            includeDoctorResources: _usesDoctorResources(state.mode),
-                            evenResourceRowColor: colors.surfaceCanvas,
-                            oddResourceRowColor: oddResourceRowColor,
-                          )
-                        : null,
-                    onDragUpdate: allowDragAndDrop
-                        ? (details) => _onAppointmentDragUpdate(
-                            details,
-                            slotMinutes: slotLayout.timeIntervalMinutes,
-                            doctors: doctors,
-                            includeDoctorResources: _usesDoctorResources(state.mode),
-                            evenResourceRowColor: colors.surfaceCanvas,
-                            oddResourceRowColor: oddResourceRowColor,
-                          )
-                        : null,
-                    onTap: (details) {
-                      _onCalendarSelectionTap(details, state.mode);
-                      _onCalendarTap(
-                        details,
-                        state.items,
-                        branchId: state.selectedBranchId,
-                        schedule: schedule,
-                        mode: state.mode,
-                        slotMinutes: slotLayout.timeIntervalMinutes,
-                        doctors: doctors,
-                        canCreate: canCreate,
-                      );
-                    },
-                    onDragEnd: allowDragAndDrop
-                        ? (details) {
-                            unawaited(
-                              _onAppointmentDragEnd(
+                        scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 52),
+                        specialRegions: [
+                          for (final region in slotLayout.shadeRegions)
+                            TimeRegion(
+                              startTime: region.start,
+                              endTime: region.end,
+                              enablePointerInteraction: false,
+                              color: colors.surfaceMuted.withValues(alpha: 0.45),
+                            ),
+                          if (state.mode == AppointmentCalendarMode.doctors)
+                            ...AppointmentCalendarDisplay.resourceRowStripeRegions(
+                              resourceIds: [
+                                for (final resource in _dataSource.resources ?? const <CalendarResource>[]) resource.id,
+                              ],
+                              focusDate: state.focusDate,
+                              startHour: slotLayout.startHour,
+                              endHour: slotLayout.endHour,
+                              stripeColor: oddResourceRowColor,
+                            ),
+                        ],
+                        appointmentBuilder: (context, details) {
+                          final id = appointmentIdFromAppointmentDetails(details);
+                          if (id != null &&
+                              (_dragSession?.item.id == id || _resizeSession?.item.id == id) &&
+                              !AppointmentCalendarDisplay.isAlignedToSlotGrid(
+                                details.bounds,
+                                slotLayout.timeIntervalHeight,
+                                timelineAxisIsHorizontal: state.mode == AppointmentCalendarMode.doctors,
+                              )) {
+                            return const SizedBox.shrink();
+                          }
+                          final isRevealed = id == null || _revealedAppointmentIds.contains(id);
+                          final item = id == null ? null : state.items.where((entry) => entry.id == id).firstOrNull;
+                          final isDimmed =
+                              item != null &&
+                              !AppointmentCalendarDisplay.isStatusHighlighted(item.status, state.selectedStatuses);
+                          return Skeletonizer(
+                            enabled: !isRevealed,
+                            enableSwitchAnimation: true,
+                            effect: ShimmerEffect(
+                              baseColor: colors.surfaceMuted,
+                              highlightColor: colors.surfaceMuted.withValues(alpha: 0.55),
+                            ),
+                            containersColor: colors.surfaceMuted,
+                            child: _AppointmentTile(
+                              details: details,
+                              isDimmed: isDimmed,
+                              onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
+                            ),
+                          );
+                        },
+                        onViewChanged: (details) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            unawaited(_onViewChanged(details, controller));
+                          });
+                        },
+                        allowDragAndDrop: allowDragAndDrop,
+                        allowAppointmentResize: allowDragAndDrop,
+                        dragAndDropSettings: const DragAndDropSettings(showTimeIndicator: false),
+                        onDragStart: allowDragAndDrop
+                            ? (details) => _onAppointmentDragStart(
                                 details,
                                 items: visibleItems,
-                                schedule: schedule,
-                                mode: state.mode,
                                 slotMinutes: slotLayout.timeIntervalMinutes,
                                 doctors: doctors,
                                 includeDoctorResources: _usesDoctorResources(state.mode),
                                 evenResourceRowColor: colors.surfaceCanvas,
                                 oddResourceRowColor: oddResourceRowColor,
-                              ),
-                            );
-                          }
-                        : null,
-                    onAppointmentResizeStart: allowDragAndDrop
-                        ? (details) => _onAppointmentResizeStart(
-                            details,
-                            items: visibleItems,
-                            slotMinutes: slotLayout.timeIntervalMinutes,
-                            doctors: doctors,
-                            includeDoctorResources: _usesDoctorResources(state.mode),
-                            evenResourceRowColor: colors.surfaceCanvas,
-                            oddResourceRowColor: oddResourceRowColor,
-                          )
-                        : null,
-                    onAppointmentResizeUpdate: allowDragAndDrop
-                        ? (details) => _onAppointmentResizeUpdate(
-                            details,
-                            slotMinutes: slotLayout.timeIntervalMinutes,
-                            doctors: doctors,
-                            includeDoctorResources: _usesDoctorResources(state.mode),
-                            evenResourceRowColor: colors.surfaceCanvas,
-                            oddResourceRowColor: oddResourceRowColor,
-                          )
-                        : null,
-                    onAppointmentResizeEnd: allowDragAndDrop
-                        ? (details) {
-                            unawaited(
-                              _onAppointmentResizeEnd(
+                              )
+                            : null,
+                        onDragUpdate: allowDragAndDrop
+                            ? (details) => _onAppointmentDragUpdate(
                                 details,
-                                items: visibleItems,
-                                schedule: schedule,
                                 slotMinutes: slotLayout.timeIntervalMinutes,
                                 doctors: doctors,
                                 includeDoctorResources: _usesDoctorResources(state.mode),
                                 evenResourceRowColor: colors.surfaceCanvas,
                                 oddResourceRowColor: oddResourceRowColor,
-                              ),
-                            );
-                          }
-                        : null,
-                  ),
-                ),
+                              )
+                            : null,
+                        onTap: (details) {
+                          _onCalendarSelectionTap(details, state.mode);
+                          _onCalendarTap(
+                            details,
+                            state.items,
+                            branchId: state.selectedBranchId,
+                            schedule: schedule,
+                            mode: state.mode,
+                            slotMinutes: slotLayout.timeIntervalMinutes,
+                            doctors: doctors,
+                            canCreate: canCreate,
+                          );
+                        },
+                        onDragEnd: allowDragAndDrop
+                            ? (details) {
+                                unawaited(
+                                  _onAppointmentDragEnd(
+                                    details,
+                                    items: visibleItems,
+                                    schedule: schedule,
+                                    mode: state.mode,
+                                    slotMinutes: slotLayout.timeIntervalMinutes,
+                                    doctors: doctors,
+                                    includeDoctorResources: _usesDoctorResources(state.mode),
+                                    evenResourceRowColor: colors.surfaceCanvas,
+                                    oddResourceRowColor: oddResourceRowColor,
+                                  ),
+                                );
+                              }
+                            : null,
+                        onAppointmentResizeStart: allowDragAndDrop
+                            ? (details) => _onAppointmentResizeStart(
+                                details,
+                                items: visibleItems,
+                                slotMinutes: slotLayout.timeIntervalMinutes,
+                                doctors: doctors,
+                                includeDoctorResources: _usesDoctorResources(state.mode),
+                                evenResourceRowColor: colors.surfaceCanvas,
+                                oddResourceRowColor: oddResourceRowColor,
+                              )
+                            : null,
+                        onAppointmentResizeUpdate: allowDragAndDrop
+                            ? (details) => _onAppointmentResizeUpdate(
+                                details,
+                                slotMinutes: slotLayout.timeIntervalMinutes,
+                                doctors: doctors,
+                                includeDoctorResources: _usesDoctorResources(state.mode),
+                                evenResourceRowColor: colors.surfaceCanvas,
+                                oddResourceRowColor: oddResourceRowColor,
+                              )
+                            : null,
+                        onAppointmentResizeEnd: allowDragAndDrop
+                            ? (details) {
+                                unawaited(
+                                  _onAppointmentResizeEnd(
+                                    details,
+                                    items: visibleItems,
+                                    schedule: schedule,
+                                    slotMinutes: slotLayout.timeIntervalMinutes,
+                                    doctors: doctors,
+                                    includeDoctorResources: _usesDoctorResources(state.mode),
+                                    evenResourceRowColor: colors.surfaceCanvas,
+                                    oddResourceRowColor: oddResourceRowColor,
+                                  ),
+                                );
+                              }
+                            : null,
+                      ),
+                    ),
+            ),
+          ),
         ),
       ],
     );
@@ -1541,13 +1646,15 @@ class _AppointmentTile extends StatelessWidget {
               border: Border.all(color: tileColor),
             ),
             alignment: Alignment.topLeft,
-            child: Text(
-              appointment.notes == null || appointment.notes!.isEmpty
-                  ? appointment.subject
-                  : '${appointment.subject}\n${appointment.notes}',
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2, color: textColor),
+            child: SelectionContainer.disabled(
+              child: Text(
+                appointment.subject,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.caption(
+                  context,
+                ).copyWith(fontWeight: FontWeight.w600, height: 1.2, color: textColor, decoration: TextDecoration.none),
+              ),
             ),
           ),
         ),
