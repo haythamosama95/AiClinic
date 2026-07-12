@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
-import 'package:ai_clinic/features/settings/domain/usecases/settings_use_case_providers.dart';
+import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_management_use_case_providers.dart';
 
 /// Resolves the display name of the user's active branch for registration copy.
 final activeBranchNameProvider = FutureProvider<String>((ref) async {
