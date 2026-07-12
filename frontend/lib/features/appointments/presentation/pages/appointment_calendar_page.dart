@@ -21,6 +21,7 @@ import 'package:ai_clinic/features/appointments/domain/appointment_reschedule_va
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_booking_sheet.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_fullscreen_overlay.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_tile.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_toolbar.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_page_shell.dart';
 import 'package:ai_clinic/features/appointments/presentation/models/appointment_section.dart';
@@ -441,8 +442,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                               highlightColor: colors.surfaceMuted.withValues(alpha: 0.55),
                             ),
                             containersColor: colors.surfaceMuted,
-                            child: _AppointmentTile(
+                            child: AppointmentCalendarTile(
                               details: details,
+                              item: item,
                               isDimmed: isDimmed,
                               onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
                             ),
@@ -1614,53 +1616,6 @@ class _CalendarResizeSession {
   bool includeDoctorResources;
   Color evenResourceRowColor;
   Color oddResourceRowColor;
-}
-
-class _AppointmentTile extends StatelessWidget {
-  const _AppointmentTile({required this.details, required this.isDimmed, required this.onTap});
-
-  final CalendarAppointmentDetails details;
-  final bool isDimmed;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final appointment = details.appointments.first;
-    final tileColor = appointment.color;
-    final brightness = ThemeData.estimateBrightnessForColor(tileColor);
-    final textColor = brightness == Brightness.dark ? Colors.white : Colors.black87;
-    final bounds = details.bounds;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: bounds.width,
-        height: bounds.height,
-        child: Opacity(
-          opacity: isDimmed ? AppointmentCalendarDisplay.filteredOutOpacity : 1,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space1),
-            decoration: BoxDecoration(
-              color: tileColor.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: tileColor),
-            ),
-            alignment: Alignment.topLeft,
-            child: SelectionContainer.disabled(
-              child: Text(
-                appointment.subject,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.caption(
-                  context,
-                ).copyWith(fontWeight: FontWeight.w600, height: 1.2, color: textColor, decoration: TextDecoration.none),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _CalendarPermissionDenied extends StatelessWidget {

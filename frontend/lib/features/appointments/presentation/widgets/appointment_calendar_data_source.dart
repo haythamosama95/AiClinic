@@ -73,7 +73,7 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
           startTime: item.startTime.toLocal(),
           endTime: item.endTime.toLocal(),
           subject: item.patientName,
-          notes: null,
+          notes: assignResources ? null : item.doctorDisplayName,
           color: AppointmentCalendarDisplay.appointmentTileColor(item.status, highlightedStatuses),
           resourceIds: assignResources ? _resourceIdsFor(item) : null,
         ),
