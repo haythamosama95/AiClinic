@@ -391,6 +391,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                           endHour: slotLayout.endHour,
                           timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
                           timeIntervalHeight: slotLayout.timeIntervalHeight,
+                          timeIntervalWidth: slotLayout.timeIntervalWidth,
                           timelineAppointmentHeight: _timelineResourceRowHeight,
                           nonWorkingDays: slotLayout.nonWorkingDays,
                           timeFormat: 'HH:mm',
@@ -428,7 +429,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                               (_dragSession?.item.id == id || _resizeSession?.item.id == id) &&
                               !AppointmentCalendarDisplay.isAlignedToSlotGrid(
                                 details.bounds,
-                                slotLayout.timeIntervalHeight,
+                                state.mode == AppointmentCalendarMode.doctors
+                                    ? slotLayout.timeIntervalWidth
+                                    : slotLayout.timeIntervalHeight,
                                 timelineAxisIsHorizontal: state.mode == AppointmentCalendarMode.doctors,
                               )) {
                             return const SizedBox.shrink();

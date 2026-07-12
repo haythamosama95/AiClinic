@@ -38,7 +38,7 @@ void main() {
       expect(layout.timeIntervalHeight, greaterThanOrEqualTo(AppointmentCalendarDisplay.minTimeIntervalHeight));
     });
 
-    test('doctors layout matches day layout', () {
+    test('doctors layout matches day layout and widens timeline columns', () {
       final dayLayout = AppointmentCalendarDisplay.timeSlotLayout(
         schedule: schedule,
         mode: AppointmentCalendarMode.day,
@@ -53,6 +53,7 @@ void main() {
       expect(doctorsLayout.startHour, dayLayout.startHour);
       expect(doctorsLayout.endHour, dayLayout.endHour);
       expect(doctorsLayout.shadeRegions, isEmpty);
+      expect(doctorsLayout.timeIntervalWidth, AppointmentCalendarDisplay.doctorsTimelineTimeIntervalWidth);
     });
 
     test('week layout spans union of working-day hours', () {

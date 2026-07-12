@@ -33,6 +33,7 @@ class AppointmentCalendarTile extends StatelessWidget {
   final VoidCallback onTap;
 
   static const _compactHeightThreshold = 28.0;
+  static const _minContentHeight = 14.0;
   static const _horizontalMinHeight = 36.0;
   static const _horizontalFullWidth = 220.0;
   static const _horizontalMediumWidth = 120.0;
@@ -57,6 +58,7 @@ class AppointmentCalendarTile extends StatelessWidget {
     final textColor = style.text;
     final mutedTextColor = style.textMuted;
     final isCompact = bounds.height < _compactHeightThreshold;
+    final hasRoomForContent = bounds.height >= _minContentHeight;
 
     return GestureDetector(
       onTap: onTap,
@@ -79,41 +81,39 @@ class AppointmentCalendarTile extends StatelessWidget {
                     height: 1,
                     child: ColoredBox(color: AppointmentCalendarStatusSwatch.highlightSheen(brightness)),
                   ),
-                  if (_usesHorizontalLayout && !isCompact)
-                    _HorizontalEncounterStrip(
-                      appointment: appointment,
-                      item: item,
-                      bounds: bounds,
-                      accentColor: style.accent,
-                      textColor: textColor,
-                      mutedTextColor: mutedTextColor,
-                    )
-                  else
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isCompact ? AppSpacing.space1 : AppSpacing.space2,
-                        vertical: isCompact ? 2 : AppSpacing.space1,
-                      ),
-                      child: SelectionContainer.disabled(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
+                  if (hasRoomForContent)
+                    if (_usesHorizontalLayout)
+                      _HorizontalEncounterStrip(
+                        appointment: appointment,
+                        item: item,
+                        bounds: bounds,
+                        accentColor: style.accent,
+                        textColor: textColor,
+                        mutedTextColor: mutedTextColor,
+                      )
+                    else
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isCompact ? AppSpacing.space1 : AppSpacing.space2,
+                          vertical: isCompact ? 1 : AppSpacing.space1,
+                        ),
+                        child: SelectionContainer.disabled(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
                               appointment.subject,
                               maxLines: isCompact ? 1 : 2,
                               overflow: TextOverflow.ellipsis,
                               style: AppTypography.caption(context).copyWith(
                                 color: textColor,
                                 fontWeight: FontWeight.w600,
-                                height: 1.15,
+                                height: 1.0,
                                 decoration: TextDecoration.none,
                               ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
                 ],
               ),
             ),

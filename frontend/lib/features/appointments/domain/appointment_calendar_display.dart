@@ -25,6 +25,7 @@ class AppointmentCalendarTimeSlotLayout {
     required this.startHour,
     required this.endHour,
     required this.timeIntervalHeight,
+    required this.timeIntervalWidth,
     required this.timeIntervalMinutes,
     required this.nonWorkingDays,
     required this.shadeRegions,
@@ -33,6 +34,9 @@ class AppointmentCalendarTimeSlotLayout {
   final double startHour;
   final double endHour;
   final double timeIntervalHeight;
+
+  /// Width of each time column in doctor timeline views (`CalendarView.timelineDay`).
+  final double timeIntervalWidth;
   final int timeIntervalMinutes;
   final List<int> nonWorkingDays;
   final List<AppointmentCalendarShadeRegion> shadeRegions;
@@ -45,6 +49,10 @@ class AppointmentCalendarDisplay {
   static const double defaultViewportHeight = 640;
   static const int defaultTimeIntervalMinutes = 30;
   static const double minTimeIntervalHeight = 44;
+
+  /// Wider than Syncfusion's default (60) so doctor-timeline appointment cards
+  /// can show patient/time details instead of a compact sliver.
+  static const double doctorsTimelineTimeIntervalWidth = 120;
 
   /// Day/week header chrome above the scrollable time-slot grid.
   static const double timeSlotChromeHeight = 80;
@@ -81,10 +89,13 @@ class AppointmentCalendarDisplay {
     final slotAreaHeight = (viewportHeight - timeSlotChromeHeight).clamp(minTimeIntervalHeight, double.infinity);
     final intervalHeight = (slotAreaHeight / slotCount).clamp(minTimeIntervalHeight, double.infinity);
 
+    final timeIntervalWidth = mode == AppointmentCalendarMode.doctors ? doctorsTimelineTimeIntervalWidth : -2.0;
+
     return AppointmentCalendarTimeSlotLayout(
       startHour: startHour,
       endHour: endHour,
       timeIntervalHeight: intervalHeight,
+      timeIntervalWidth: timeIntervalWidth,
       timeIntervalMinutes: defaultTimeIntervalMinutes,
       nonWorkingDays: nonWorkingDays(schedule),
       shadeRegions: mode == AppointmentCalendarMode.week ? shadeRegionsForWeek(schedule, focusDate) : const [],
