@@ -61,6 +61,10 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     shiftLookup: widget.shiftLookup,
   );
 
+  AppointmentStatus? get _revertTarget => previousStatusTargetFor(_listItem);
+
+  String get _revertLabel => revertStatusActionLabelFor(_listItem);
+
   String get _forwardLabel => forwardStatusActionLabelFor(
     _listItem,
     organizationTimezone: _organizationTimezone,
@@ -114,6 +118,16 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         siblingAppointments: widget.siblingAppointments,
         shiftLookup: widget.shiftLookup,
       );
+    }
+    return null;
+  }
+
+  String? _revertDisabledReason() {
+    if (!_canAdvance) {
+      return 'You do not have permission to manage appointments.';
+    }
+    if (_revertTarget == null) {
+      return 'There is no previous status to revert to.';
     }
     return null;
   }
@@ -253,6 +267,80 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
     });
   }
 
+  Future<void> _handleRevertStatus() async {
+    if (_disabledReasonFor('revert', _revertDisabledReason()) != null) {
+      return;
+    }
+
+    final target = _revertTarget;
+    if (target == null) {
+      return;
+    }
+
+    final confirmed = await AppDialog.show<bool>(
+      context,
+      title: 'Revert to ${target.label.toLowerCase()}?',
+      description: 'This will undo the last status change for ${detail.patientName}.',
+      size: AppDialogSize.sm,
+      child: Builder(
+        builder: (dialogContext) => Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            AppButton(
+              variant: AppButtonVariant.secondary,
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Keep current status'),
+            ),
+            const SizedBox(width: AppSpacing.space2),
+            AppButton(
+              variant: AppButtonVariant.primary,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_revertLabel),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    await _runAction('revert', () async {
+      try {
+        await ref
+            .read(appointmentRepositoryProvider)
+            .updateAppointmentStatus(appointmentId: detail.id, newStatus: target);
+
+        if (!mounted) {
+          return;
+        }
+        widget.onChanged();
+        appToast(
+          context,
+          AppToastInput(
+            message: '${detail.patientName} is back to ${target.label.toLowerCase()}.',
+            variant: AppToastVariant.success,
+          ),
+        );
+      } on RpcFailure catch (error) {
+        if (mounted) {
+          appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+        }
+      } catch (_) {
+        if (mounted) {
+          appToast(
+            context,
+            const AppToastInput(
+              message: 'Could not revert the appointment status. Please try again.',
+              variant: AppToastVariant.danger,
+            ),
+          );
+        }
+      }
+    });
+  }
+
   Future<void> _handleCancel() async {
     if (_disabledReasonFor('cancel', _cancelDisabledReason()) != null) {
       return;
@@ -305,21 +393,23 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
       title: 'Mark as no-show?',
       description: 'Record that ${detail.patientName} did not arrive for this visit.',
       size: AppDialogSize.sm,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          AppButton(
-            variant: AppButtonVariant.secondary,
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep appointment'),
-          ),
-          const SizedBox(width: AppSpacing.space2),
-          AppButton(
-            variant: AppButtonVariant.danger,
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Mark no-show'),
-          ),
-        ],
+      child: Builder(
+        builder: (dialogContext) => Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            AppButton(
+              variant: AppButtonVariant.secondary,
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Keep appointment'),
+            ),
+            const SizedBox(width: AppSpacing.space2),
+            AppButton(
+              variant: AppButtonVariant.danger,
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Mark no-show'),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -359,6 +449,15 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
   @override
   Widget build(BuildContext context) {
     final specs = <_StatusActionSpec>[
+      if (_revertTarget != null)
+        _StatusActionSpec(
+          key: const Key('appointment_control_revert_status'),
+          icon: Icons.undo_outlined,
+          label: _revertLabel,
+          disabledReason: _disabledReasonFor('revert', _revertDisabledReason()),
+          isLoading: _busyActionKey == 'revert',
+          onPressed: _handleRevertStatus,
+        ),
       _StatusActionSpec(
         key: const Key('appointment_control_advance_status'),
         icon: Icons.play_arrow_rounded,

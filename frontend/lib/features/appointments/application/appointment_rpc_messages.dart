@@ -8,6 +8,7 @@ String appointmentMessageForRpc(RpcFailure failure) {
       'This patient already has an appointment on the same day. Update the existing appointment instead.',
     'DOCTOR_ALREADY_IN_PROGRESS' =>
       'This doctor already has a patient in progress. Complete that visit before starting another.',
+    'VISIT_IN_PROGRESS' => 'Cannot undo while a visit exists for this appointment. Complete or cancel the visit first.',
     'INVALID_TRANSITION' => switch (failure.message.toLowerCase()) {
       final message when message.contains('appointment day') =>
         'This status change is only allowed on or after the appointment day.',
