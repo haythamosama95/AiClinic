@@ -394,7 +394,7 @@ class _AppDialogShellState extends State<_AppDialogShell> with SingleTickerProvi
         animation: _animation,
         barrierDismissible: widget.barrierDismissible,
         blur: widget.blur,
-        child: _AppDialogPanel(
+        child: AppDialogPanel(
           title: widget.title,
           description: widget.description,
           size: widget.size,
@@ -464,8 +464,9 @@ class _AppDialogTransition extends StatelessWidget {
   }
 }
 
-class _AppDialogPanel extends StatelessWidget {
-  const _AppDialogPanel({
+/// Dialog panel chrome (header, scroll body, footer) for custom dialog hosts.
+class AppDialogPanel extends StatelessWidget {
+  const AppDialogPanel({
     required this.title,
     required this.description,
     required this.size,
@@ -475,6 +476,7 @@ class _AppDialogPanel extends StatelessWidget {
     required this.showHeader,
     this.maxWidth,
     this.footer,
+    super.key,
   });
 
   final String title;

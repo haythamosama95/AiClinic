@@ -240,6 +240,40 @@ void main() {
         );
       });
 
+      test('CAL-I02c: default status chips hide cancelled and no-show', () {
+        const selected = <AppointmentStatus>{};
+
+        expect(AppointmentCalendarDisplay.isDefaultStatusFilter(selected), isTrue);
+        expect(AppointmentCalendarDisplay.isStatusChipSelected(AppointmentStatus.scheduled, selected), isTrue);
+        expect(AppointmentCalendarDisplay.isStatusChipSelected(AppointmentStatus.cancelled, selected), isFalse);
+        expect(AppointmentCalendarDisplay.isStatusChipSelected(AppointmentStatus.noShow, selected), isFalse);
+      });
+
+      test('CAL-I02d: status chip toggles map to selectedStatuses storage', () {
+        expect(AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.cancelled, const {}), {
+          AppointmentStatus.cancelled,
+        });
+        expect(
+          AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.cancelled, const {AppointmentStatus.cancelled}),
+          const <AppointmentStatus>{},
+        );
+        expect(AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.scheduled, const {}), const {
+          AppointmentStatus.confirmed,
+          AppointmentStatus.checkedIn,
+          AppointmentStatus.inProgress,
+          AppointmentStatus.completed,
+        });
+        expect(
+          AppointmentCalendarDisplay.toggleStatusChip(AppointmentStatus.scheduled, const {
+            AppointmentStatus.confirmed,
+            AppointmentStatus.checkedIn,
+            AppointmentStatus.inProgress,
+            AppointmentStatus.completed,
+          }),
+          const <AppointmentStatus>{},
+        );
+      });
+
       test('CAL-I03: resourceRowStripeRegions stripes odd-indexed doctor rows', () {
         final regions = AppointmentCalendarDisplay.resourceRowStripeRegions(
           resourceIds: const ['doc-1', 'doc-2', 'doc-3'],

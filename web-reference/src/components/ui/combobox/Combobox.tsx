@@ -73,6 +73,11 @@ export function Combobox({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const listId = `${id}-listbox`
 
+  useEffect(() => {
+    if (!staticItems || onSearch) return
+    setItems(staticItems)
+  }, [staticItems, onSearch])
+
   const runSearch = useCallback(
     async (q: string) => {
       if (onSearch) {
@@ -86,11 +91,13 @@ export function Combobox({
       } else if (staticItems) {
         const lower = q.toLowerCase()
         setItems(
-          staticItems.filter(
-            (item) =>
-              item.label.toLowerCase().includes(lower) ||
-              item.meta?.toLowerCase().includes(lower),
-          ),
+          lower
+            ? staticItems.filter(
+              (item) =>
+                item.label.toLowerCase().includes(lower) ||
+                item.meta?.toLowerCase().includes(lower),
+            )
+            : staticItems,
         )
       }
     },
@@ -99,12 +106,16 @@ export function Combobox({
 
   useEffect(() => {
     if (!open) return
+    if (!onSearch && staticItems) {
+      runSearch(query)
+      return
+    }
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => runSearch(query), debounceMs)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [query, open, debounceMs, runSearch])
+  }, [query, open, debounceMs, runSearch, onSearch, staticItems])
 
   const select = (item: ComboboxItem) => {
     if (item.disabled) return

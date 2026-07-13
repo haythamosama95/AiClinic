@@ -24,6 +24,8 @@ class PatientPicker extends ConsumerStatefulWidget {
     this.enabled = true,
     this.scope = PatientListScope.thisBranch,
     this.hint,
+    this.validationError,
+    this.requiredMark = false,
     this.searchFieldKey,
     this.clearButtonKey,
     super.key,
@@ -35,6 +37,8 @@ class PatientPicker extends ConsumerStatefulWidget {
   final bool enabled;
   final PatientListScope scope;
   final String? hint;
+  final String? validationError;
+  final bool requiredMark;
   final Key? searchFieldKey;
   final Key? clearButtonKey;
 
@@ -159,6 +163,8 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
       return _SelectedPatientCard(
         patient: selected,
         hint: widget.hint,
+        requiredMark: widget.requiredMark,
+        validationError: widget.validationError,
         clearButtonKey: widget.clearButtonKey,
         onClear: widget.enabled ? _clearSelection : null,
       );
@@ -171,9 +177,10 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
     return AppFormField(
       id: 'patient_picker_search',
       label: 'Patient',
+      requiredMark: widget.requiredMark,
       hint: widget.hint ?? 'Search by name, MRN, email, or phone.',
       helperText: helperText,
-      error: _searchError,
+      error: widget.validationError ?? _searchError,
       child: AppCombobox(
         key: widget.searchFieldKey ?? const Key('patient_picker_search'),
         id: 'patient_picker_search',
@@ -187,10 +194,19 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
 }
 
 class _SelectedPatientCard extends StatelessWidget {
-  const _SelectedPatientCard({required this.patient, this.hint, this.clearButtonKey, this.onClear});
+  const _SelectedPatientCard({
+    required this.patient,
+    this.hint,
+    this.requiredMark = false,
+    this.validationError,
+    this.clearButtonKey,
+    this.onClear,
+  });
 
   final PatientListItem patient;
   final String? hint;
+  final bool requiredMark;
+  final String? validationError;
   final Key? clearButtonKey;
   final VoidCallback? onClear;
 
@@ -201,6 +217,8 @@ class _SelectedPatientCard extends StatelessWidget {
     return AppFormField(
       id: 'patient_picker_selected',
       label: 'Patient',
+      requiredMark: requiredMark,
+      error: validationError,
       hint: hint ?? 'Search by name, MRN, email, or phone.',
       child: DecoratedBox(
         decoration: BoxDecoration(

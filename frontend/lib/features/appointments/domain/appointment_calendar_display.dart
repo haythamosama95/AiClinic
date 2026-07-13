@@ -307,6 +307,74 @@ class AppointmentCalendarDisplay {
     return selectedStatuses.contains(status);
   }
 
+  /// Whether the calendar is using the default status filter (active workflow only).
+  static bool isDefaultStatusFilter(Set<AppointmentStatus> selectedStatuses) => selectedStatuses.isEmpty;
+
+  static Set<AppointmentStatus> get _calendarWorkflowStatuses => {
+    for (final status in calendarStatusLegend)
+      if (!isHiddenOnCalendar(status)) status,
+  };
+
+  static Set<AppointmentStatus> get _calendarHiddenStatuses => {
+    for (final status in calendarStatusLegend)
+      if (isHiddenOnCalendar(status)) status,
+  };
+
+  /// Whether a status chip should appear selected in the calendar filter panel.
+  static bool isStatusChipSelected(AppointmentStatus status, Set<AppointmentStatus> selectedStatuses) {
+    if (isHiddenOnCalendar(status)) {
+      return selectedStatuses.contains(status);
+    }
+
+    final workflowInFilter = selectedStatuses.intersection(_calendarWorkflowStatuses);
+    if (workflowInFilter.isEmpty) {
+      return true;
+    }
+    return workflowInFilter.contains(status);
+  }
+
+  /// Updates [selectedStatuses] after toggling a status chip in the filter panel.
+  static Set<AppointmentStatus> toggleStatusChip(AppointmentStatus status, Set<AppointmentStatus> selectedStatuses) {
+    final workflow = _calendarWorkflowStatuses;
+    final hidden = _calendarHiddenStatuses;
+    final hiddenIncluded = selectedStatuses.intersection(hidden);
+    final workflowInFilter = selectedStatuses.intersection(workflow);
+
+    if (isHiddenOnCalendar(status)) {
+      final nextHidden = Set<AppointmentStatus>.from(hiddenIncluded);
+      if (nextHidden.contains(status)) {
+        nextHidden.remove(status);
+      } else {
+        nextHidden.add(status);
+      }
+      if (workflowInFilter.isEmpty) {
+        return nextHidden;
+      }
+      return {...workflowInFilter, ...nextHidden};
+    }
+
+    final chipSelected = isStatusChipSelected(status, selectedStatuses);
+    if (chipSelected) {
+      if (workflowInFilter.isEmpty) {
+        final nextWorkflow = Set<AppointmentStatus>.from(workflow)..remove(status);
+        return {...nextWorkflow, ...hiddenIncluded};
+      }
+
+      final nextWorkflow = Set<AppointmentStatus>.from(workflowInFilter)..remove(status);
+      if (nextWorkflow.isEmpty || nextWorkflow.containsAll(workflow)) {
+        return hiddenIncluded;
+      }
+      return {...nextWorkflow, ...hiddenIncluded};
+    }
+
+    final nextWorkflow = Set<AppointmentStatus>.from(workflowInFilter.isEmpty ? workflow : workflowInFilter)
+      ..add(status);
+    if (nextWorkflow.containsAll(workflow)) {
+      return hiddenIncluded;
+    }
+    return {...nextWorkflow, ...hiddenIncluded};
+  }
+
   static List<AppointmentListItem> filterVisibleAppointments(
     List<AppointmentListItem> items,
     BranchWorkingSchedule schedule, {
