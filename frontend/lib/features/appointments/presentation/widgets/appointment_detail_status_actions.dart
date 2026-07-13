@@ -19,7 +19,7 @@ import 'package:ai_clinic/features/appointments/presentation/utils/appointment_d
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_start_doctor_dialog.dart';
 
-/// Inline ghost action buttons for managing an appointment from the status journey card.
+/// Inline outlined action buttons for managing an appointment from the status journey card.
 class AppointmentDetailStatusActions extends ConsumerStatefulWidget {
   const AppointmentDetailStatusActions({
     required this.detail,
@@ -452,7 +452,7 @@ class _StatusActionButton extends StatelessWidget {
 
     final button = AppButton(
       key: spec.key,
-      variant: AppButtonVariant.ghost,
+      variant: AppButtonVariant.secondary,
       size: AppButtonSize.sm,
       loading: spec.isLoading,
       disabled: !isInteractive,

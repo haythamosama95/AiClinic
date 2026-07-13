@@ -271,22 +271,48 @@ class _HorizontalStatusTimeline extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            for (var index = 0; index < steps.length; index++)
-              Expanded(
-                child: _HorizontalTimelineTrackSegment(
-                  status: steps[index],
-                  previousStatus: index == 0 ? null : steps[index - 1],
-                  stepState: AppointmentStatusTimeline.stepState(current: currentStatus, step: steps[index]),
-                  isTerminalContext: isTerminal,
-                  isFirst: index == 0,
-                  isLast: index == steps.length - 1,
-                  stepIndex: index,
-                  currentIndex: currentIndex,
-                ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final stepCount = steps.length;
+            final segmentWidth = width / stepCount;
+            const trackHeight = _HorizontalTimelineTrack.trackHeight;
+            const nodeSize = _HorizontalTimelineTrack.nodeSize;
+            const nodeRadius = nodeSize / 2;
+            const connectorThickness = 2.0;
+            final connectorTop = (trackHeight - connectorThickness) / 2;
+            final connectorSpan = segmentWidth - nodeSize;
+
+            return SizedBox(
+              height: trackHeight,
+              width: width,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  if (stepCount > 1)
+                    for (var index = 0; index < stepCount - 1; index++)
+                      Positioned(
+                        left: segmentWidth * (index + 0.5) + nodeRadius,
+                        top: connectorTop,
+                        width: connectorSpan,
+                        child: _HorizontalTimelineConnector(
+                          fromStatus: steps[index],
+                          isActive: !isTerminal && currentIndex > index,
+                        ),
+                      ),
+                  for (var index = 0; index < stepCount; index++)
+                    Positioned(
+                      left: segmentWidth * index + (segmentWidth - nodeSize) / 2,
+                      top: (trackHeight - nodeSize) / 2,
+                      child: _HorizontalTimelineNode(
+                        status: steps[index],
+                        stepState: AppointmentStatusTimeline.stepState(current: currentStatus, step: steps[index]),
+                      ),
+                    ),
+                ],
               ),
-          ],
+            );
+          },
         ),
         const SizedBox(height: AppSpacing.space4),
         IntrinsicHeight(
@@ -316,103 +342,63 @@ class _HorizontalStatusTimeline extends StatelessWidget {
   }
 }
 
-class _HorizontalTimelineTrackSegment extends StatelessWidget {
-  const _HorizontalTimelineTrackSegment({
-    required this.status,
-    required this.previousStatus,
-    required this.stepState,
-    required this.isTerminalContext,
-    required this.isFirst,
-    required this.isLast,
-    required this.stepIndex,
-    required this.currentIndex,
-  });
+class _HorizontalTimelineTrack {
+  const _HorizontalTimelineTrack._();
 
-  final AppointmentStatus status;
-  final AppointmentStatus? previousStatus;
-  final AppointmentTimelineStepState stepState;
-  final bool isTerminalContext;
-  final bool isFirst;
-  final bool isLast;
-  final int stepIndex;
-  final int currentIndex;
+  static const double trackHeight = 44;
+  static const double nodeSize = 36;
+}
 
-  static const double _trackHeight = 44;
-  static const double _nodeSize = 36;
-  static const double _connectorTop = (_trackHeight - 2) / 2;
+class _HorizontalTimelineConnector extends StatelessWidget {
+  const _HorizontalTimelineConnector({required this.fromStatus, required this.isActive});
+
+  final AppointmentStatus fromStatus;
+  final bool isActive;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final statusColor = AppointmentCalendarDisplay.statusColor(fromStatus, Theme.of(context).brightness);
+    final motionDuration = AppointmentStatusMotion.durationOf(context);
+
+    return AnimatedContainer(
+      duration: motionDuration,
+      curve: AppointmentStatusMotion.curve,
+      height: 2,
+      color: isActive ? statusColor.withValues(alpha: 0.75) : colors.borderDefault,
+    );
+  }
+}
+
+class _HorizontalTimelineNode extends StatelessWidget {
+  const _HorizontalTimelineNode({required this.status, required this.stepState});
+
+  final AppointmentStatus status;
+  final AppointmentTimelineStepState stepState;
+
+  static const double _nodeSize = _HorizontalTimelineTrack.nodeSize;
+
+  @override
+  Widget build(BuildContext context) {
     final isCurrent = stepState == AppointmentTimelineStepState.current;
     final isCompleted = stepState == AppointmentTimelineStepState.completed;
     final isSkipped = stepState == AppointmentTimelineStepState.skipped;
 
     final statusColor = AppointmentCalendarDisplay.statusColor(status, Theme.of(context).brightness);
-    final previousStatusColor = previousStatus == null
-        ? colors.borderDefault
-        : AppointmentCalendarDisplay.statusColor(previousStatus!, Theme.of(context).brightness);
     final nodeColor = isSkipped
         ? statusColor.withValues(alpha: 0.35)
         : isCurrent || isCompleted
         ? statusColor
         : statusColor.withValues(alpha: 0.5);
 
-    final connectorBeforeActive = !isTerminalContext && stepIndex > 0 && currentIndex >= stepIndex;
-    final connectorAfterActive = !isTerminalContext && !isLast && currentIndex > stepIndex;
-    final motionDuration = AppointmentStatusMotion.durationOf(context);
-
-    return SizedBox(
-      height: _trackHeight,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final halfWidth = constraints.maxWidth / 2;
-
-          return Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              if (!isFirst)
-                Positioned(
-                  left: 0,
-                  width: halfWidth,
-                  top: _connectorTop,
-                  child: AnimatedContainer(
-                    duration: motionDuration,
-                    curve: AppointmentStatusMotion.curve,
-                    height: 2,
-                    color: connectorBeforeActive ? previousStatusColor.withValues(alpha: 0.75) : colors.borderDefault,
-                  ),
-                ),
-              if (!isLast)
-                Positioned(
-                  left: halfWidth,
-                  width: halfWidth,
-                  top: _connectorTop,
-                  child: AnimatedContainer(
-                    duration: motionDuration,
-                    curve: AppointmentStatusMotion.curve,
-                    height: 2,
-                    color: connectorAfterActive ? statusColor.withValues(alpha: 0.75) : colors.borderDefault,
-                  ),
-                ),
-              Positioned.fill(
-                child: Center(
-                  child: _TimelineNode(
-                    icon: isCompleted ? Icons.check_rounded : _iconForStatus(status),
-                    color: nodeColor,
-                    statusColor: statusColor,
-                    isCurrent: isCurrent,
-                    isCompleted: isCompleted,
-                    isSkipped: isSkipped,
-                    fixedSize: _nodeSize,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+    return _TimelineNode(
+      icon: isCompleted ? Icons.check_rounded : _iconForStatus(status),
+      color: nodeColor,
+      statusColor: statusColor,
+      isCurrent: isCurrent,
+      isCompleted: isCompleted,
+      isSkipped: isSkipped,
+      fixedSize: _nodeSize,
     );
   }
 }
@@ -692,9 +678,8 @@ class _TimelineNode extends StatelessWidget {
     final iconSize = fixedSize != null ? 18.0 : (isCurrent ? 20.0 : 18.0);
     final motionDuration = AppointmentStatusMotion.durationOf(context);
 
-    final backgroundColor = isCompleted || isCurrent
-        ? Color.lerp(colors.surfaceDefault, statusColor, isSkipped ? 0.1 : 0.2)!
-        : statusColor.withValues(alpha: 0.08);
+    final fillStrength = isSkipped ? 0.1 : (isCompleted || isCurrent ? 0.2 : 0.08);
+    final backgroundColor = Color.lerp(colors.surfaceDefault, statusColor, fillStrength)!;
 
     Widget node = AnimatedContainer(
       duration: motionDuration,
