@@ -1100,6 +1100,29 @@ If `ListTile` is unavoidable, wrap each tile in `Material(color: Colors.transpar
 
 ---
 
+## 43. `NoSuchMethodError`: `firstOrNull` on `WhereIterable` (`AppointmentDetailPage`)
+
+**Symptom:** Red screen opening an appointment detail page. `Class 'WhereIterable<BranchListItem>' has no instance getter 'firstOrNull'` in `_resolveBranchName` at `appointment_detail_page.dart`.
+
+**Cause:** `_resolveBranchName` accepted an untyped `AsyncValue branchesAsync`. The `data:` callback parameter was inferred as `dynamic`, so `.where(...).firstOrNull` used dynamic dispatch. `firstOrNull` is an `Iterable` extension method, not an instance getter — it is not resolved at runtime on `dynamic`.
+
+**Fix:** Type the async value so the extension applies at compile time:
+
+```dart
+String? _resolveBranchName(String branchId, AsyncValue<List<BranchListItem>> branchesAsync) {
+  return branchesAsync.maybeWhen(
+    data: (branches) => branches.where((branch) => branch.id == branchId).firstOrNull?.name,
+    orElse: () => null,
+  );
+}
+```
+
+**Affected files (fixed):** `appointment_detail_page.dart`.
+
+**Checklist:** When calling `firstOrNull` / `lastOrNull` / other extension methods on Riverpod `AsyncValue` data, ensure the `AsyncValue<T>` generic is explicit — never pass bare `AsyncValue`.
+
+---
+
 ## 42. `setState() or markNeedsBuild() called during build` (`AppointmentCalendarPage` / `SfCalendar`)
 
 **Symptom:** Foundation/widgets assertion when opening the appointments calendar (or when mode/focus date changes). Stack shows `_AppointmentCalendarPageState._syncCalendarView` → `CalendarController.view=` → `_SfCalendarState._calendarValueChangedListener` → `_OpacityWidgetState._update`, while `AppointmentCalendarPage` is still building.
