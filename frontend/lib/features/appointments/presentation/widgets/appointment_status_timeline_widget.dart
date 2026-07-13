@@ -422,28 +422,25 @@ class _HorizontalStepCard extends StatelessWidget {
     final isCompleted = stepState == AppointmentTimelineStepState.completed;
     final isSkipped = stepState == AppointmentTimelineStepState.skipped;
     final isUpcoming = stepState == AppointmentTimelineStepState.upcoming;
-    final motionDuration = AppointmentStatusMotion.durationOf(context);
 
-    return AnimatedContainer(
-      duration: motionDuration,
-      curve: AppointmentStatusMotion.curve,
-      decoration: _statusStepCardDecoration(context: context, status: status, stepState: stepState),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.space4,
-          vertical: AppSpacing.space2 + AppSpacing.space1,
-        ),
-        child: _TimelineStepContent(
-          status: status,
-          isCurrent: isCurrent,
-          isCompleted: isCompleted,
-          isSkipped: isSkipped,
-          isUpcoming: isUpcoming,
-          isTerminalContext: isTerminalContext,
-          stepNumber: stepNumber,
-          colors: context.appColors,
-          compact: true,
-        ),
+    return _StatusStepCard(
+      status: status,
+      stepState: stepState,
+      isTerminalContext: isTerminalContext,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.space4,
+        vertical: AppSpacing.space2 + AppSpacing.space1,
+      ),
+      child: _TimelineStepContent(
+        status: status,
+        isCurrent: isCurrent,
+        isCompleted: isCompleted,
+        isSkipped: isSkipped,
+        isUpcoming: isUpcoming,
+        isTerminalContext: isTerminalContext,
+        stepNumber: stepNumber,
+        colors: context.appColors,
+        compact: true,
       ),
     );
   }
@@ -546,28 +543,76 @@ class _TimelineStepRow extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(bottom: isLast ? 0 : AppSpacing.space6),
-              child: AnimatedContainer(
-                duration: motionDuration,
-                curve: AppointmentStatusMotion.curve,
-                decoration: _statusStepCardDecoration(context: context, status: status, stepState: stepState),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.space4),
-                  child: _TimelineStepContent(
-                    status: status,
-                    isCurrent: isCurrent,
-                    isCompleted: isCompleted,
-                    isSkipped: isSkipped,
-                    isUpcoming: isUpcoming,
-                    isTerminalContext: isTerminalContext,
-                    stepNumber: stepNumber,
-                    colors: colors,
-                  ),
+              child: _StatusStepCard(
+                status: status,
+                stepState: stepState,
+                isTerminalContext: isTerminalContext,
+                padding: const EdgeInsets.all(AppSpacing.space4),
+                child: _TimelineStepContent(
+                  status: status,
+                  isCurrent: isCurrent,
+                  isCompleted: isCompleted,
+                  isSkipped: isSkipped,
+                  isUpcoming: isUpcoming,
+                  isTerminalContext: isTerminalContext,
+                  stepNumber: stepNumber,
+                  colors: colors,
                 ),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _StatusStepCard extends StatelessWidget {
+  const _StatusStepCard({
+    required this.status,
+    required this.stepState,
+    required this.isTerminalContext,
+    required this.padding,
+    required this.child,
+  });
+
+  final AppointmentStatus status;
+  final AppointmentTimelineStepState stepState;
+  final bool isTerminalContext;
+  final EdgeInsetsGeometry padding;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isCurrent = stepState == AppointmentTimelineStepState.current;
+    final useAnimatedBorder = isCurrent && !isTerminalContext;
+    final motionDuration = AppointmentStatusMotion.durationOf(context);
+    final brightness = Theme.of(context).brightness;
+    final style = AppointmentCalendarDisplay.statusStyle(status, brightness);
+
+    final card = AnimatedContainer(
+      duration: motionDuration,
+      curve: AppointmentStatusMotion.curve,
+      decoration: _statusStepCardDecoration(
+        context: context,
+        status: status,
+        stepState: stepState,
+        includeBorder: !useAnimatedBorder,
+      ),
+      child: Padding(padding: padding, child: child),
+    );
+
+    if (!useAnimatedBorder) {
+      return card;
+    }
+
+    return AppAnimatedBorderCard(
+      active: true,
+      borderColor: style.border,
+      highlightColor: style.accent,
+      borderRadius: AppRadius.md,
+      borderWidth: 1.5,
+      child: card,
     );
   }
 }
@@ -725,6 +770,7 @@ BoxDecoration _statusStepCardDecoration({
   required BuildContext context,
   required AppointmentStatus status,
   required AppointmentTimelineStepState stepState,
+  bool includeBorder = true,
 }) {
   final brightness = Theme.of(context).brightness;
   final colors = context.appColors;
@@ -755,10 +801,12 @@ BoxDecoration _statusStepCardDecoration({
       colors: [blendGradient(style.gradientStart), blendGradient(style.gradientEnd)],
     ),
     borderRadius: BorderRadius.circular(AppRadius.md),
-    border: Border.all(
-      color: style.border.withValues(alpha: borderAlpha),
-      width: isCurrent ? 1.5 : 1,
-    ),
+    border: includeBorder
+        ? Border.all(
+            color: style.border.withValues(alpha: borderAlpha),
+            width: isCurrent ? 1.5 : 1,
+          )
+        : null,
     boxShadow: [
       BoxShadow(
         color: style.accent.withValues(alpha: isCurrent ? (isDark ? 0.18 : 0.12) : (isDark ? 0.08 : 0.05)),

@@ -43,6 +43,7 @@ export 'package:ai_clinic/core/ui/components/app_description_list.dart';
 export 'package:ai_clinic/core/ui/components/app_divider.dart';
 export 'package:ai_clinic/core/ui/components/app_list.dart';
 export 'package:ai_clinic/core/ui/components/app_money_display.dart';
+export 'package:ai_clinic/core/ui/components/app_animated_border_card.dart';
 export 'package:ai_clinic/core/ui/components/app_card.dart';
 export 'package:ai_clinic/core/ui/components/app_code_block.dart';
 export 'package:ai_clinic/core/ui/components/app_progress.dart';
