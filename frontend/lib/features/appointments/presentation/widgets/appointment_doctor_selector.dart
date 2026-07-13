@@ -13,6 +13,7 @@ class AppointmentDoctorSelector extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.enabled = true,
+    this.hint,
     super.key,
   });
 
@@ -21,13 +22,14 @@ class AppointmentDoctorSelector extends StatelessWidget {
   final String? value;
   final ValueChanged<String?> onChanged;
   final bool enabled;
+  final String? hint;
 
   @override
   Widget build(BuildContext context) {
     return AppFormField(
       id: 'appointment_doctor',
       label: 'Preferred doctor',
-      helperText: 'Select when the patient requested a specific doctor. Leave unassigned if they have no preference.',
+      hint: hint ?? 'Assign a doctor when the patient asked for one. Leave unassigned if they have no preference.',
       child: AppSelect(
         key: key,
         options: AppointmentDoctorSelectItems.buildOptions(

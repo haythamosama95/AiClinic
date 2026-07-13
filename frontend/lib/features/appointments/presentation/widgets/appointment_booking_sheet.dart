@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,10 +15,13 @@ import 'package:ai_clinic/features/appointments/domain/appointment_settings.dart
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_working_hours.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_doctor_selector.dart';
+import 'package:ai_clinic/features/clinic-management/domain/branch_list_item.dart';
 import 'package:ai_clinic/features/clinic-management/domain/branch_working_schedule.dart';
 import 'package:ai_clinic/features/clinic-management/domain/staff_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
+import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
 import 'package:ai_clinic/features/patients/presentation/widgets/patient_picker.dart';
 
 /// Booking form opened from a calendar slot with pre-filled start and end times.
@@ -92,6 +97,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
 
   late DateTime _startTime;
   late DateTime _endTime;
+  late String _selectedBranchId;
   PatientListItem? _selectedPatient;
   String? _selectedDoctorId;
 
@@ -106,6 +112,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
   @override
   void initState() {
     super.initState();
+    _selectedBranchId = widget.branchId;
     _startTime = widget.slotStart.toLocal();
     _endTime = widget.slotEnd.toLocal();
     _selectedDoctorId = widget.initialDoctorId;
@@ -139,7 +146,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
     });
 
     try {
-      final settings = await ref.read(appointmentRepositoryProvider).getSettings(branchId: widget.branchId);
+      final settings = await ref.read(appointmentRepositoryProvider).getSettings(branchId: _selectedBranchId);
       if (!mounted) {
         return;
       }
@@ -201,7 +208,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
       return 'Duration must be at least ${settings.minDurationMinutes} minutes.';
     }
 
-    final schedule = settings.workingSchedule ?? widget.schedule;
+    final schedule = _effectiveSchedule(settings);
     final hoursMessage = AppointmentBranchWorkingHours.validationMessage(
       schedule: schedule,
       startTime: _startTime,
@@ -254,7 +261,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
       return;
     }
 
-    final schedule = settings.workingSchedule ?? widget.schedule;
+    final schedule = _effectiveSchedule(settings);
     if (!AppointmentWorkingHours.isWithinSchedule(schedule: schedule, start: _startTime, end: _endTime)) {
       setState(() => _formError = 'Appointment must be within branch working hours.');
       return;
@@ -285,7 +292,7 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
         await ref
             .read(appointmentRepositoryProvider)
             .createAppointment(
-              branchId: widget.branchId,
+              branchId: _selectedBranchId,
               patientId: _selectedPatient!.id,
               doctorId: doctorId,
               type: AppointmentType.planned,
@@ -340,6 +347,35 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  BranchWorkingSchedule _effectiveSchedule(AppointmentSettings settings) {
+    final branches = ref
+        .read(appointmentCalendarBranchesProvider)
+        .maybeWhen(data: (items) => items, orElse: () => const <BranchListItem>[]);
+    final branch = branches.where((item) => item.id == _selectedBranchId).firstOrNull;
+    return settings.workingSchedule ?? branch?.workingSchedule ?? widget.schedule;
+  }
+
+  void _onBranchChanged(String branchId, List<BranchListItem> branches) {
+    if (branchId.isEmpty || branchId == _selectedBranchId) {
+      return;
+    }
+
+    final doctorId = _selectedDoctorId;
+    if (doctorId != null && doctorId.isNotEmpty) {
+      final doctor = widget.doctors.where((item) => item.id == doctorId).firstOrNull;
+      if (doctor != null && !doctor.isAssignedToBranch(branchId)) {
+        _selectedDoctorId = null;
+      }
+    }
+
+    setState(() {
+      _selectedBranchId = branchId;
+      _formError = null;
+      _conflictMessage = null;
+    });
+    unawaited(_loadSettings());
+  }
+
   TimeOfDay _minutesToTime(int minutes) => TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 
   String _pad(int value) => value.toString().padLeft(2, '0');
@@ -360,9 +396,10 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final settings = _settings;
+    final branchesAsync = ref.watch(appointmentCalendarBranchesProvider);
     final today = DateTime(clock.now().year, clock.now().month, clock.now().day);
-    final hoursLabel = AppointmentBranchWorkingHours.hoursLabelForDate(widget.schedule, _startTime);
     final canEdit = _canEditSchedule && !_isSaving;
+    final canChangeBranch = canEdit && !_isEditMode;
 
     if (_loadingSettings) {
       return const Padding(
@@ -405,7 +442,9 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
             const SizedBox(height: AppSpacing.space4),
           ],
           PatientPicker(
-            branchId: widget.branchId,
+            branchId: _selectedBranchId,
+            scope: PatientListScope.allBranches,
+            hint: 'Search across all branches by name, MRN, email, or phone.',
             value: _selectedPatient,
             enabled: canEdit,
             onChanged: (patient) => setState(() {
@@ -416,51 +455,113 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
             clearButtonKey: const Key('patient_picker_clear'),
           ),
           const SizedBox(height: AppSpacing.space4),
-          if (widget.doctors.isNotEmpty)
-            AppointmentDoctorSelector(
-              key: const Key('doctor_selector'),
-              branchId: widget.branchId,
-              doctors: widget.doctors,
-              value: _selectedDoctorId,
-              enabled: !_isSaving,
-              onChanged: (doctorId) => setState(() => _selectedDoctorId = doctorId),
-            )
-          else
-            Text(
-              'No active doctors are configured. You can still book without a preferred doctor.',
-              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
-            ),
-          const SizedBox(height: AppSpacing.space4),
-          AppFormField(
-            id: 'appointment_booking_pick_date',
-            label: 'Date',
-            child: AppDatePicker(
-              key: const Key('appointment_booking_pick_date'),
-              value: DateTime(_startTime.year, _startTime.month, _startTime.day),
-              min: today,
-              max: today.add(const Duration(days: 365)),
-              disabled: !canEdit,
-              onChanged: (date) {
-                if (date == null) {
-                  return;
-                }
-                _setStartTime(_combineDateAndTime(date, TimeOfDay.fromDateTime(_startTime)));
-                _setEndTime(_combineDateAndTime(date, TimeOfDay.fromDateTime(_endTime)));
-              },
-            ),
-          ),
-          const SizedBox(height: AppSpacing.space4),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: AppFormField(
-                  id: 'appointment_booking_pick_start',
-                  label: 'Start time',
-                  helperText: hoursLabel == null ? null : 'Branch hours: $hoursLabel',
+                  id: 'appointment_booking_branch',
+                  label: 'Branch',
+                  hint: 'The clinic location where this visit takes place.',
+                  child: branchesAsync.when(
+                    data: (items) {
+                      if (items.isEmpty) {
+                        return Text(
+                          widget.branchName?.trim().isNotEmpty == true ? widget.branchName!.trim() : 'Branch',
+                          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                        );
+                      }
+
+                      return AppSelect(
+                        key: const Key('appointment_booking_branch'),
+                        options: [for (final branch in items) AppSelectOption(value: branch.id, label: branch.name)],
+                        value: _selectedBranchId,
+                        disabled: !canChangeBranch || items.isEmpty,
+                        placeholder: 'Select branch',
+                        onChanged: canChangeBranch ? (branchId) => _onBranchChanged(branchId, items) : null,
+                      );
+                    },
+                    loading: () => const AppProgress(variant: ProgressVariant.circular, indeterminate: true),
+                    error: (_, _) => AppSelect(
+                      key: const Key('appointment_booking_branch'),
+                      options: [
+                        if (_selectedBranchId.isNotEmpty)
+                          AppSelectOption(
+                            value: _selectedBranchId,
+                            label: widget.branchName?.trim().isNotEmpty == true
+                                ? widget.branchName!.trim()
+                                : 'Selected branch',
+                          ),
+                      ],
+                      value: _selectedBranchId,
+                      disabled: true,
+                      placeholder: 'Branch unavailable',
+                      onChanged: null,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.space3),
+              Expanded(
+                child: widget.doctors.isNotEmpty
+                    ? AppointmentDoctorSelector(
+                        key: const Key('doctor_selector'),
+                        branchId: _selectedBranchId,
+                        doctors: widget.doctors,
+                        value: _selectedDoctorId,
+                        enabled: !_isSaving,
+                        hint:
+                            'Assign a doctor when the patient asked for one. Leave unassigned if they have no preference.',
+                        onChanged: (doctorId) => setState(() => _selectedDoctorId = doctorId),
+                      )
+                    : AppFormField(
+                        id: 'appointment_doctor',
+                        label: 'Preferred doctor',
+                        hint:
+                            'Assign a doctor when the patient asked for one. Leave unassigned if they have no preference.',
+                        child: Text(
+                          'No active doctors are configured. You can still book without a preferred doctor.',
+                          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.space4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                flex: 5,
+                child: AppFormField(
+                  id: 'appointment_booking_pick_date',
+                  label: 'Date',
+                  hint: 'The day of the visit.',
+                  child: AppDatePicker(
+                    key: const Key('appointment_booking_pick_date'),
+                    value: DateTime(_startTime.year, _startTime.month, _startTime.day),
+                    min: today,
+                    max: today.add(const Duration(days: 365)),
+                    disabled: !canEdit,
+                    onChanged: (date) {
+                      if (date == null) {
+                        return;
+                      }
+                      _setStartTime(_combineDateAndTime(date, TimeOfDay.fromDateTime(_startTime)));
+                      _setEndTime(_combineDateAndTime(date, TimeOfDay.fromDateTime(_endTime)));
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.space3),
+              Expanded(
+                flex: 4,
+                child: _BookingTimeField(
+                  hint: 'When the visit begins. Must fall within branch working hours.',
                   child: AppTimePicker(
                     key: const Key('appointment_booking_pick_start'),
                     value: '${_pad(_startTime.hour)}:${_pad(_startTime.minute)}',
+                    use24Hour: false,
                     disabled: !canEdit,
                     onChanged: (value) {
                       final minutes = _parseTime(value);
@@ -474,12 +575,13 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
               ),
               const SizedBox(width: AppSpacing.space3),
               Expanded(
-                child: AppFormField(
-                  id: 'appointment_booking_pick_end',
-                  label: 'End time',
+                flex: 4,
+                child: _BookingTimeField(
+                  hint: 'When the visit ends. Must be after the start time.',
                   child: AppTimePicker(
                     key: const Key('appointment_booking_pick_end'),
                     value: '${_pad(_endTime.hour)}:${_pad(_endTime.minute)}',
+                    use24Hour: false,
                     disabled: !canEdit,
                     onChanged: (value) {
                       final minutes = _parseTime(value);
@@ -493,15 +595,11 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.space1),
-          Text(
-            'Duration: $_durationMinutes min',
-            style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
-          ),
           const SizedBox(height: AppSpacing.space4),
           AppFormField(
             id: 'appointment_booking_notes',
             label: 'Notes (optional)',
+            hint: 'Internal notes for staff. Not visible to the patient.',
             child: AppTextarea(controller: _notesController, disabled: _isSaving, rows: 3, onChanged: (_) {}),
           ),
           const SizedBox(height: AppSpacing.space6),
@@ -514,6 +612,49 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Time input with a tooltip aligned to labeled fields in the booking row.
+class _BookingTimeField extends StatelessWidget {
+  const _BookingTimeField({required this.hint, required this.child});
+
+  final String hint;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            AppTooltip(
+              message: hint,
+              preferBelow: false,
+              child: Semantics(
+                button: true,
+                label: 'More information',
+                child: IconButton(
+                  onPressed: () {},
+                  icon: Icon(Icons.help_outline, size: 16, color: colors.iconMuted),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 20, height: 20),
+                  style: IconButton.styleFrom(
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.space2),
+        child,
+      ],
     );
   }
 }

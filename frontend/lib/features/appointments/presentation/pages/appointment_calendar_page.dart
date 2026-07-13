@@ -66,6 +66,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   double? _calendarHostHeight;
   WidgetBuilder? _fullscreenCalendarBuilder;
   Future<void> Function()? _closeFullscreenOverlay;
+  bool _calendarViewSyncScheduled = false;
 
   @override
   void initState() {
@@ -170,7 +171,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           brightness: Theme.of(context).brightness,
         );
       }
-      _syncCalendarView(state);
+      _scheduleCalendarViewSync();
     }
 
     final isClosedDay =
@@ -705,6 +706,20 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       highlightedStatuses: highlightedStatuses,
       brightness: brightness,
     );
+  }
+
+  void _scheduleCalendarViewSync() {
+    if (_calendarViewSyncScheduled) {
+      return;
+    }
+    _calendarViewSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _calendarViewSyncScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      _syncCalendarView(ref.read(appointmentCalendarProvider));
+    });
   }
 
   void _syncCalendarView(AppointmentCalendarState state) {
@@ -1560,6 +1575,12 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       slotEnd: slotEnd,
       initialDoctorId: initialDoctorId,
       doctors: doctors,
+      branchName: ref
+          .read(appointmentCalendarBranchesProvider)
+          .maybeWhen(
+            data: (branches) => branches.where((item) => item.id == branchId).firstOrNull?.name,
+            orElse: () => null,
+          ),
     );
     if (booked == true && mounted) {
       await ref.read(appointmentCalendarProvider.notifier).refresh();

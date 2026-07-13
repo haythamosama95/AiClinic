@@ -1100,6 +1100,30 @@ If `ListTile` is unavoidable, wrap each tile in `Material(color: Colors.transpar
 
 ---
 
+## 42. `setState() or markNeedsBuild() called during build` (`AppointmentCalendarPage` / `SfCalendar`)
+
+**Symptom:** Foundation/widgets assertion when opening the appointments calendar (or when mode/focus date changes). Stack shows `_AppointmentCalendarPageState._syncCalendarView` → `CalendarController.view=` → `_SfCalendarState._calendarValueChangedListener` → `_OpacityWidgetState._update`, while `AppointmentCalendarPage` is still building.
+
+**Cause:** `build` called `_syncCalendarView(state)` synchronously to push Riverpod mode/focus into `CalendarController`. Assigning `view` or `displayDate` notifies Syncfusion's internal listeners, which reset fade animations and call `setState` mid-build — same lifecycle rule as entries #10 and #27.
+
+**Fix:** Defer controller sync to after the frame (mirror `_scheduleDataSourceSync`). Coalesce multiple schedules per frame and read fresh provider state in the callback:
+
+```dart
+void _scheduleCalendarViewSync() {
+  if (_calendarViewSyncScheduled) return;
+  _calendarViewSyncScheduled = true;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _calendarViewSyncScheduled = false;
+    if (!mounted) return;
+    _syncCalendarView(ref.read(appointmentCalendarProvider));
+  });
+}
+```
+
+**Affected files (fixed):** `appointment_calendar_page.dart`.
+
+---
+
 ## 41. `ListTile` ink invisible inside `AppDialog` (`DecoratedBox`)
 
 **Symptom:** Console floods with framework assertions when patient search results appear in the appointment booking dialog: "ListTile background color or ink splashes may be invisible." Widget key `patient_picker_result_0`; ancestor chain shows `ListTile` inside `AppDialog` → `DecoratedBox` with `surfaceDefault` background.
