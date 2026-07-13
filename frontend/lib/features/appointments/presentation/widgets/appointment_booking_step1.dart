@@ -26,6 +26,7 @@ class AppointmentBookingStep1 extends StatelessWidget {
     required this.selectedPatient,
     required this.selectedDoctorId,
     required this.canEdit,
+    this.canEditDoctor,
     required this.canChangeBranch,
     required this.fallbackBranchName,
     required this.onPatientChanged,
@@ -45,6 +46,7 @@ class AppointmentBookingStep1 extends StatelessWidget {
   final PatientListItem? selectedPatient;
   final String? selectedDoctorId;
   final bool canEdit;
+  final bool? canEditDoctor;
   final bool canChangeBranch;
   final String? fallbackBranchName;
   final ValueChanged<PatientListItem?> onPatientChanged;
@@ -95,10 +97,7 @@ class AppointmentBookingStep1 extends StatelessWidget {
           const SizedBox(height: AppSpacing.space4),
           _doctorField(context, colors, branchDoctors),
         ],
-        if (notesField != null) ...[
-          const SizedBox(height: AppSpacing.space4),
-          notesField!,
-        ],
+        if (notesField != null) ...[const SizedBox(height: AppSpacing.space4), notesField!],
         if (branchId.isNotEmpty && selectedPatient != null) ...[
           const SizedBox(height: AppSpacing.space6),
           AppBookingSummaryCard(
@@ -125,13 +124,15 @@ class AppointmentBookingStep1 extends StatelessWidget {
   }
 
   Widget _doctorField(BuildContext context, AppSemanticColors colors, int branchDoctors) {
+    final doctorEnabled = (canEditDoctor ?? canEdit) && branchId.isNotEmpty;
+
     if (doctors.isNotEmpty) {
       return AppointmentDoctorSelector(
         key: const Key('doctor_selector'),
         branchId: branchId,
         doctors: doctors,
         value: selectedDoctorId,
-        enabled: canEdit && branchId.isNotEmpty,
+        enabled: doctorEnabled,
         hint: branchId.isEmpty
             ? 'Select a branch first.'
             : '$branchDoctors doctor${branchDoctors == 1 ? '' : 's'} schedule at this branch.',
@@ -154,10 +155,7 @@ class AppointmentBookingStep1 extends StatelessWidget {
 
   Widget _branchField(BuildContext context, AppSemanticColors colors) {
     if (branchesLoading) {
-      return const SizedBox(
-        height: 40,
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      );
+      return const SizedBox(height: 40, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
     }
 
     if (branches.isEmpty) {

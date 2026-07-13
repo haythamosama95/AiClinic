@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
+import 'package:ai_clinic/core/ui/components/app_menu.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
@@ -23,6 +24,7 @@ class AppointmentCalendarTile extends StatelessWidget {
     required this.mode,
     required this.isDimmed,
     required this.onTap,
+    this.contextMenuEntries,
     super.key,
   });
 
@@ -31,6 +33,7 @@ class AppointmentCalendarTile extends StatelessWidget {
   final AppointmentCalendarMode mode;
   final bool isDimmed;
   final VoidCallback onTap;
+  final List<AppMenuEntry>? contextMenuEntries;
 
   static const _compactHeightThreshold = 28.0;
   static const _minContentHeight = 14.0;
@@ -60,7 +63,7 @@ class AppointmentCalendarTile extends StatelessWidget {
     final isCompact = bounds.height < _compactHeightThreshold;
     final hasRoomForContent = bounds.height >= _minContentHeight;
 
-    return GestureDetector(
+    final tile = GestureDetector(
       onTap: onTap,
       child: SizedBox(
         width: bounds.width,
@@ -121,6 +124,13 @@ class AppointmentCalendarTile extends StatelessWidget {
         ),
       ),
     );
+
+    final entries = contextMenuEntries;
+    if (entries == null || entries.isEmpty) {
+      return tile;
+    }
+
+    return AppContextMenu(entries: entries, child: tile);
   }
 }
 

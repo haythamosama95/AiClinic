@@ -196,12 +196,13 @@ class AppointmentRepository with AppRpcInvoker {
 
   /// Updates a non-terminal planned appointment via `update_appointment`.
   ///
-  /// Scheduled appointments may change patient, doctor, time, and notes.
+  /// Scheduled appointments may change patient, doctor, branch, time, and notes.
   /// Confirmed or in-progress appointments may only change doctor and notes.
   Future<CreateAppointmentResult> updateAppointment({
     required String appointmentId,
     required String patientId,
     String? doctorId,
+    String? branchId,
     required DateTime startTime,
     int? durationMinutes,
     DateTime? endTime,
@@ -225,11 +226,13 @@ class AppointmentRepository with AppRpcInvoker {
     }
 
     final trimmedDoctorId = doctorId?.trim();
+    final trimmedBranchId = branchId?.trim();
     final params = <String, dynamic>{
       'p_appointment_id': appointmentId.trim(),
       'p_patient_id': patientId.trim(),
       'p_doctor_id': (trimmedDoctorId != null && trimmedDoctorId.isNotEmpty) ? trimmedDoctorId : null,
       'p_start_time': startTime.toUtc().toIso8601String(),
+      if (trimmedBranchId != null && trimmedBranchId.isNotEmpty) 'p_branch_id': trimmedBranchId,
       ...?(durationMinutes != null) ? {'p_duration_minutes': durationMinutes} : null,
       ...?(endTime != null) ? {'p_end_time': endTime.toUtc().toIso8601String()} : null,
       ...?(notes != null) ? {'p_notes': notes.trim()} : null,

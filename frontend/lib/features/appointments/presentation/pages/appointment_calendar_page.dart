@@ -22,8 +22,10 @@ import 'package:ai_clinic/features/appointments/presentation/widgets/appointment
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_data_source.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_fullscreen_overlay.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_tile.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_tile_context_menu.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_toolbar.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_calendar_view_header.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_cancel_dialog.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_page_shell.dart';
 
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_reschedule_confirm_dialog.dart';
@@ -157,6 +159,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final doctors = _filteredDoctors(allDoctors, selectedDoctorId: state.selectedDoctorId, mode: state.mode);
     final hasActiveFilters = state.hasActiveFilters(initialBranchId: authState.context?.activeBranchId);
     final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
+    final canCancel = ref.watch(permissionServiceProvider).canCancelAppointments();
     final oddResourceRowColor = colors.surfaceMuted.withValues(alpha: 0.3);
     _scheduleRevealIfNeeded(visibleItems, loading: state.loading);
     if (!state.loading) {
@@ -190,6 +193,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         schedule: schedule,
         doctors: doctors,
         canCreate: canCreate,
+        canCancel: canCancel,
         visibleItems: visibleItems,
         oddResourceRowColor: oddResourceRowColor,
         loading: state.loading,
@@ -246,6 +250,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                   schedule: schedule,
                   doctors: doctors,
                   canCreate: canCreate,
+                  canCancel: canCancel,
                   visibleItems: visibleItems,
                   oddResourceRowColor: oddResourceRowColor,
                   loading: state.loading,
@@ -277,6 +282,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required BranchWorkingSchedule schedule,
     required List<StaffListItem> doctors,
     required bool canCreate,
+    required bool canCancel,
     required List<AppointmentListItem> visibleItems,
     required Color oddResourceRowColor,
     required bool loading,
@@ -454,6 +460,27 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                       item.status,
                                       state.selectedStatuses,
                                     );
+                                final menuEntries = item != null && isRevealed
+                                    ? appointmentCalendarTileMenuEntries(
+                                        item: item,
+                                        canEdit: canCreate,
+                                        canCancel: canCancel,
+                                        onEdit: () => _editAppointment(
+                                          item,
+                                          branchId: state.selectedBranchId,
+                                          schedule: schedule,
+                                          doctors: doctors,
+                                          branchName: branchesAsync.maybeWhen(
+                                            data: (branches) => branches
+                                                .where((entry) => entry.id == state.selectedBranchId)
+                                                .firstOrNull
+                                                ?.name,
+                                            orElse: () => null,
+                                          ),
+                                        ),
+                                        onCancel: () => _cancelAppointment(item),
+                                      )
+                                    : null;
                                 return Skeletonizer(
                                   enabled: !isRevealed,
                                   enableSwitchAnimation: true,
@@ -468,6 +495,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                     mode: state.mode,
                                     isDimmed: isDimmed,
                                     onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
+                                    contextMenuEntries: menuEntries,
                                   ),
                                 );
                               },
@@ -1600,6 +1628,90 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
     context.nav.pushAppointmentDetail(item.id, preview: item);
+  }
+
+  Future<void> _editAppointment(
+    AppointmentListItem item, {
+    required String? branchId,
+    required BranchWorkingSchedule schedule,
+    required List<StaffListItem> doctors,
+    String? branchName,
+  }) async {
+    if (branchId == null || branchId.isEmpty) {
+      return;
+    }
+
+    try {
+      final detail = await ref.read(appointmentRepositoryProvider).getAppointment(appointmentId: item.id);
+      if (!mounted) {
+        return;
+      }
+
+      final updated = await AppointmentBookingSheet.show(
+        context,
+        branchId: branchId,
+        schedule: schedule,
+        slotStart: detail.startTime.toLocal(),
+        slotEnd: detail.endTime.toLocal(),
+        initialDoctorId: detail.doctorId,
+        doctors: doctors,
+        existingAppointment: detail,
+        branchName: branchName,
+      );
+      if (updated == true && mounted) {
+        await ref.read(appointmentCalendarProvider.notifier).refresh();
+      }
+    } on RpcFailure catch (error) {
+      if (mounted) {
+        appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+      }
+    } catch (_) {
+      if (mounted) {
+        appToast(
+          context,
+          const AppToastInput(
+            message: 'Could not open the appointment for editing. Please try again.',
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelAppointment(AppointmentListItem item) async {
+    final reason = await AppointmentCancelDialog.show(context, appointment: item);
+    if (reason == null || !mounted) {
+      return;
+    }
+
+    try {
+      await ref.read(appointmentRepositoryProvider).cancelAppointment(appointmentId: item.id, reason: reason);
+      if (!mounted) {
+        return;
+      }
+      await ref.read(appointmentCalendarProvider.notifier).refresh();
+      if (!mounted) {
+        return;
+      }
+      appToast(
+        context,
+        AppToastInput(message: '${item.patientName}\'s appointment was cancelled.', variant: AppToastVariant.success),
+      );
+    } on RpcFailure catch (error) {
+      if (mounted) {
+        appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+      }
+    } catch (_) {
+      if (mounted) {
+        appToast(
+          context,
+          const AppToastInput(
+            message: 'Could not cancel the appointment. Please try again.',
+            variant: AppToastVariant.danger,
+          ),
+        );
+      }
+    }
   }
 
   static bool _usesDoctorResources(AppointmentCalendarMode mode) {
