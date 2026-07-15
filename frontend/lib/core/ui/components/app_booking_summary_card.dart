@@ -40,19 +40,50 @@ class AppBookingSummaryCard extends StatelessWidget {
               AppBookingSummaryLayout.grid2 => constraints.maxWidth >= 280 ? 2 : 1,
             };
             final spacing = AppSpacing.space3;
-            final itemWidth = columns == 1
-                ? constraints.maxWidth
-                : (constraints.maxWidth - spacing * (columns - 1)) / columns;
 
-            return Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
+            if (columns == 1) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  for (var index = 0; index < items.length; index++) ...[
+                    if (index > 0) SizedBox(height: spacing),
+                    _SummaryRow(item: items[index], colors: colors, compact: layout == AppBookingSummaryLayout.grid2),
+                  ],
+                ],
+              );
+            }
+
+            final rows = <List<AppBookingSummaryItem>>[];
+            for (var index = 0; index < items.length; index += columns) {
+              final end = (index + columns).clamp(0, items.length);
+              rows.add(items.sublist(index, end));
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final item in items)
-                  SizedBox(
-                    width: itemWidth,
-                    child: _SummaryRow(item: item, colors: colors, compact: layout == AppBookingSummaryLayout.grid2),
+                for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) ...[
+                  if (rowIndex > 0) SizedBox(height: spacing),
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var index = 0; index < rows[rowIndex].length; index++) ...[
+                          if (index > 0) _FadingVerticalDivider(color: colors.borderDefault, width: spacing),
+                          Expanded(
+                            child: Center(
+                              child: _SummaryRow(
+                                item: rows[rowIndex][index],
+                                colors: colors,
+                                compact: layout == AppBookingSummaryLayout.grid2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
+                ],
               ],
             );
           },
@@ -71,6 +102,33 @@ enum AppBookingSummaryLayout {
   grid2,
 }
 
+class _FadingVerticalDivider extends StatelessWidget {
+  const _FadingVerticalDivider({required this.color, required this.width});
+
+  final Color color;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [color.withValues(alpha: 0), color, color.withValues(alpha: 0)],
+              stops: const [0, 0.5, 1],
+            ),
+          ),
+          child: const SizedBox(width: 1, height: double.infinity),
+        ),
+      ),
+    );
+  }
+}
+
 class _SummaryRow extends StatelessWidget {
   const _SummaryRow({required this.item, required this.colors, this.compact = false});
 
@@ -80,28 +138,31 @@ class _SummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final iconSize = compact ? 20.0 : 22.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(item.icon, size: compact ? 20 : 22, color: colors.iconMuted),
-        const SizedBox(width: AppSpacing.space3),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                item.label.toUpperCase(),
-                style: AppTypography.caption(context).copyWith(color: colors.textTertiary, letterSpacing: 0.4),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                item.value,
-                maxLines: compact ? 2 : 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(item.icon, size: iconSize, color: colors.iconMuted),
+            const SizedBox(width: AppSpacing.space3),
+            Text(
+              item.label.toUpperCase(),
+              style: AppTypography.caption(context).copyWith(color: colors.textTertiary, letterSpacing: 0.4),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          item.value,
+          maxLines: compact ? 2 : 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w500),
         ),
       ],
     );

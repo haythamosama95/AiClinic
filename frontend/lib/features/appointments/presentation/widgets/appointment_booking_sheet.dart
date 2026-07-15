@@ -840,16 +840,8 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
           AppButton(
             key: const Key('appointment_booking_choose_time'),
             onPressed: _isSaving ? null : () => unawaited(_skipsTimeStep ? _submit() : _goNext()),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_skipsTimeStep ? 'Save changes' : 'Choose time'),
-                if (!_skipsTimeStep) ...[
-                  const SizedBox(width: AppSpacing.space2),
-                  const Icon(Icons.arrow_forward, size: 16),
-                ],
-              ],
-            ),
+            trailingIcon: _skipsTimeStep ? null : const Icon(Icons.arrow_forward),
+            child: Text(_skipsTimeStep ? 'Save changes' : 'Choose time'),
           )
         else
           AppButton(
@@ -857,14 +849,8 @@ class _AppointmentBookingSheetState extends ConsumerState<AppointmentBookingShee
             loading: _isSaving,
             disabled: _isSaving,
             onPressed: _isSaving ? null : () => unawaited(_submit()),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.event_available, size: 16),
-                const SizedBox(width: AppSpacing.space2),
-                Text(_isEditMode ? 'Save changes' : 'Confirm booking'),
-              ],
-            ),
+            leadingIcon: const Icon(Icons.event_available),
+            child: Text(_isEditMode ? 'Save changes' : 'Confirm booking'),
           ),
       ],
     );
