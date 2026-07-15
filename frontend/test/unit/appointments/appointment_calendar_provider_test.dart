@@ -1,5 +1,6 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/auth/domain/auth_session.dart';
@@ -60,6 +61,49 @@ void main() {
       expect(state.error, isNull);
       expect(state.items, hasLength(1));
       expect(client.rpcCallCounts['list_appointments'], 1);
+    });
+
+    test('refresh resolves branch when auth session becomes available', () async {
+      final authNotifier = MutableAuthSessionNotifier(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            branchIds: const [],
+            activeBranchId: null,
+          ),
+        ),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          authSessionProvider.overrideWith(() => authNotifier),
+          appointmentRepositoryProvider.overrideWith((ref) => AppointmentRepository(client)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final initial = await readAfterInit(container);
+      expect(initial.items, isEmpty);
+      expect(initial.error, contains('active branch'));
+
+      authNotifier.replace(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: calendarTestBranchAId,
+            branchIds: [calendarTestBranchAId],
+          ),
+        ),
+      );
+      await pumpEventQueue();
+
+      final state = container.read(appointmentCalendarProvider);
+      expect(state.selectedBranchId, calendarTestBranchAId);
+      expect(state.error, isNull);
+      expect(state.items, hasLength(1));
+      expect(client.lastParams?['p_branch_id'], calendarTestBranchAId);
     });
 
     test('CAL-A07: refresh without branch shows selection error', () async {
@@ -321,6 +365,31 @@ void main() {
       await pumpEventQueue();
 
       expect(client.rpcCallCounts['list_appointments'], 2);
+    });
+
+    test('setTimeIntervalMinutes updates grid interval', () async {
+      final container = createContainer(
+        AuthSessionState(
+          status: AuthSessionStatus.authenticated,
+          context: sampleAuthSessionContext(
+            permissions: {'appointments.read'},
+            activeBranchId: '00000000-0000-4000-8000-000000000001',
+          ),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      final state = await readAfterInit(container);
+      expect(state.timeIntervalMinutes, AppointmentCalendarDisplay.defaultTimeIntervalMinutes);
+
+      container.read(appointmentCalendarProvider.notifier).setTimeIntervalMinutes(15);
+      expect(container.read(appointmentCalendarProvider).timeIntervalMinutes, 15);
+
+      container.read(appointmentCalendarProvider.notifier).setTimeIntervalMinutes(15);
+      expect(container.read(appointmentCalendarProvider).timeIntervalMinutes, 15);
+
+      container.read(appointmentCalendarProvider.notifier).setTimeIntervalMinutes(99);
+      expect(container.read(appointmentCalendarProvider).timeIntervalMinutes, 15);
     });
   });
 }

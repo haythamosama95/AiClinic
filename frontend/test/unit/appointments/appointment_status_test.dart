@@ -66,12 +66,23 @@ void main() {
   });
 
   group('AppointmentStatus.canTransitionTo', () {
-    test('confirmed may transition to checked_in, cancelled, or no_show', () {
+    test('confirmed may transition to checked_in, cancelled, no_show, or scheduled (revert)', () {
       expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.checkedIn), isTrue);
+      expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.scheduled), isTrue);
       expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.cancelled), isTrue);
       expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.noShow), isTrue);
       expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.confirmed), isFalse);
       expect(AppointmentStatus.confirmed.canTransitionTo(AppointmentStatus.completed), isFalse);
+    });
+
+    test('checked_in may revert to confirmed or advance to in_progress', () {
+      expect(AppointmentStatus.checkedIn.canTransitionTo(AppointmentStatus.confirmed), isTrue);
+      expect(AppointmentStatus.checkedIn.canTransitionTo(AppointmentStatus.inProgress), isTrue);
+    });
+
+    test('in_progress may revert to checked_in or complete via visit', () {
+      expect(AppointmentStatus.inProgress.canTransitionTo(AppointmentStatus.checkedIn), isTrue);
+      expect(AppointmentStatus.inProgress.canTransitionTo(AppointmentStatus.completed), isTrue);
     });
 
     test('scheduled may transition to confirmed or cancel paths', () {

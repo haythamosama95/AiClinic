@@ -20,6 +20,7 @@ class AppButton extends StatefulWidget {
     this.trailingIcon,
     this.borderRadius,
     this.omitTrailingBorder = false,
+    this.backgroundGradient,
     super.key,
   });
 
@@ -38,6 +39,9 @@ class AppButton extends StatefulWidget {
 
   /// Hides the trailing (end) border — used when the button is the start segment of a split button.
   final bool omitTrailingBorder;
+
+  /// When set, renders a gradient fill instead of the variant's solid background.
+  final Gradient? backgroundGradient;
 
   @override
   State<AppButton> createState() => _AppButtonState();
@@ -71,10 +75,19 @@ class _AppButtonState extends State<AppButton> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final metrics = _metricsFor(widget.size, widget.variant);
-    final palette = _paletteFor(colors, widget.variant, hovered: _hovered, pressed: _pressed, disabled: _isDisabled);
+    final usesGradient = widget.backgroundGradient != null && !_isDisabled;
+    final palette = _paletteFor(
+      colors,
+      widget.variant,
+      hovered: _hovered,
+      pressed: _pressed,
+      disabled: _isDisabled,
+      usesGradient: usesGradient,
+    );
     final borderRadius =
         widget.borderRadius ?? (widget.variant == AppButtonVariant.link ? null : BorderRadius.circular(AppRadius.md));
-    final border = _resolveBorder(palette.border, widget.omitTrailingBorder);
+    final border = usesGradient ? null : _resolveBorder(palette.border, widget.omitTrailingBorder);
+    final gradientOverlay = usesGradient ? _gradientOverlayColor(hovered: _hovered, pressed: _pressed) : null;
 
     final labelStyle = switch (widget.size) {
       AppButtonSize.sm => AppTypography.bodySm(
@@ -126,12 +139,19 @@ class _AppButtonState extends State<AppButton> {
         child: Container(
           height: metrics.height,
           padding: metrics.padding,
-          decoration: BoxDecoration(color: palette.background, borderRadius: borderRadius, border: border),
+          decoration: BoxDecoration(
+            gradient: usesGradient ? widget.backgroundGradient : null,
+            color: usesGradient ? null : palette.background,
+            borderRadius: borderRadius,
+            border: border,
+          ),
           foregroundDecoration: widget.variant == AppButtonVariant.link && _hovered && !_isDisabled
               ? BoxDecoration(
                   border: Border(bottom: BorderSide(color: palette.foreground, width: 1)),
                 )
-              : null,
+              : gradientOverlay == null
+              ? null
+              : BoxDecoration(color: gradientOverlay, borderRadius: borderRadius),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -192,6 +212,16 @@ class _AppButtonState extends State<AppButton> {
   Border? _resolveBorder(Border? border, bool omitTrailingBorder) {
     if (border == null || !omitTrailingBorder) return border;
     return Border(top: border.top, bottom: border.bottom, left: border.left);
+  }
+
+  Color? _gradientOverlayColor({required bool hovered, required bool pressed}) {
+    if (pressed) {
+      return Colors.black.withValues(alpha: 0.12);
+    }
+    if (hovered) {
+      return Colors.white.withValues(alpha: 0.1);
+    }
+    return null;
   }
 }
 
@@ -284,6 +314,7 @@ _ButtonPalette _paletteFor(
   required bool hovered,
   required bool pressed,
   required bool disabled,
+  bool usesGradient = false,
 }) {
   if (disabled) {
     if (variant == AppButtonVariant.link) {
@@ -300,6 +331,10 @@ _ButtonPalette _paletteFor(
     if (pressed) return active;
     if (hovered) return hover;
     return base;
+  }
+
+  if (usesGradient) {
+    return _ButtonPalette(background: Colors.transparent, foreground: colors.actionPrimaryFg);
   }
 
   return switch (variant) {

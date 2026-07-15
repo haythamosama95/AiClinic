@@ -11,17 +11,19 @@ export function Popover({
   align = 'start',
   className,
   contentClassName,
+  modal = false,
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   trigger: React.ReactNode
   children: React.ReactNode
+  modal?: boolean
   align?: 'start' | 'center' | 'end'
   className?: string
   contentClassName?: string
 }) {
   return (
-    <PopoverPrimitive.Root open={open} onOpenChange={onOpenChange}>
+    <PopoverPrimitive.Root open={open} onOpenChange={onOpenChange} modal={modal}>
       <PopoverPrimitive.Trigger asChild className={className}>
         {trigger}
       </PopoverPrimitive.Trigger>
@@ -38,7 +40,7 @@ export function Popover({
             exit={{ opacity: 0, scale: 0.98 }}
             transition={resolveTransition(motionPresets['fade-scale'])}
             className={cn(
-              'z-popover rounded-lg border border-border-default bg-surface-raised shadow-elevation-2 outline-none',
+              'z-[var(--z-popover)] rounded-lg border border-border-default bg-surface-raised shadow-elevation-2 outline-none',
               contentClassName,
             )}
           >

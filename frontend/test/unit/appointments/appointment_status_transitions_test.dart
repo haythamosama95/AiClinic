@@ -150,5 +150,21 @@ void main() {
       expect(canRescheduleAppointment(item()), isTrue);
       expect(canRescheduleAppointment(item(status: AppointmentStatus.confirmed)), isFalse);
     });
+
+    test('revert targets previous step in main flow', () {
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.confirmed)), AppointmentStatus.scheduled);
+      expect(revertStatusActionLabelFor(item(status: AppointmentStatus.confirmed)), 'Undo confirm');
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.checkedIn)), AppointmentStatus.confirmed);
+      expect(revertStatusActionLabelFor(item(status: AppointmentStatus.checkedIn)), 'Undo check-in');
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.inProgress)), AppointmentStatus.checkedIn);
+      expect(revertStatusActionLabelFor(item(status: AppointmentStatus.inProgress)), 'Undo start');
+    });
+
+    test('scheduled and terminal statuses cannot revert', () {
+      expect(previousStatusTargetFor(item()), isNull);
+      expect(canRevertAppointmentStatus(item()), isFalse);
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.completed)), isNull);
+      expect(previousStatusTargetFor(item(status: AppointmentStatus.cancelled)), isNull);
+    });
   });
 }

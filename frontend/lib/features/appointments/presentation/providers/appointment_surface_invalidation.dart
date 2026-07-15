@@ -9,4 +9,6 @@ void invalidateAppointmentSurfaceProviders(Ref ref) {
   ref.invalidate(appointmentQueueProvider);
   ref.invalidate(appointmentCalendarProvider);
   ref.invalidate(appointmentQueueShiftDoctorLookupProvider);
+  ref.invalidate(appointmentCalendarBranchesProvider);
+  ref.invalidate(appointmentCalendarDoctorsProvider);
 }

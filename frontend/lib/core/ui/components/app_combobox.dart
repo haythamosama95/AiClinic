@@ -130,6 +130,7 @@ class _AppComboboxState extends State<AppCombobox> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _open = false;
     _focusNode
       ..removeListener(_handleFocusChange)
       ..onKeyEvent = null
@@ -138,16 +139,21 @@ class _AppComboboxState extends State<AppCombobox> {
     super.dispose();
   }
 
+  void _updateState(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
+
   void _handleFocusChange() {
     if (_focusNode.hasFocus) {
-      setState(() => _open = true);
+      _updateState(() => _open = true);
       _scheduleSearch(_controller.text);
     }
   }
 
   void _setOpen(bool open) {
     if (_open == open) return;
-    setState(() => _open = open);
+    _updateState(() => _open = open);
     if (open) {
       _scheduleSearch(_controller.text);
     }
@@ -162,20 +168,20 @@ class _AppComboboxState extends State<AppCombobox> {
     if (!mounted) return;
 
     if (widget.onSearch != null) {
-      setState(() => _loading = true);
+      _updateState(() => _loading = true);
       try {
         final results = await widget.onSearch!(query);
         if (!mounted) return;
-        setState(() {
+        _updateState(() {
           _items = results;
           _highlight = 0;
         });
       } finally {
-        if (mounted) setState(() => _loading = false);
+        if (mounted) _updateState(() => _loading = false);
       }
     } else if (widget.items != null) {
       final lower = query.toLowerCase();
-      setState(() {
+      _updateState(() {
         _items = widget.items!
             .where(
               (item) => item.label.toLowerCase().contains(lower) || (item.meta?.toLowerCase().contains(lower) ?? false),
@@ -190,18 +196,23 @@ class _AppComboboxState extends State<AppCombobox> {
 
   void _select(AppComboboxItem item) {
     if (item.disabled) return;
-    widget.onValueChange?.call(item);
+    _debounce?.cancel();
     _controller.text = item.label;
-    setState(() {
+    _updateState(() {
       _open = false;
       _highlight = 0;
+    });
+    _focusNode.unfocus();
+    // Defer so the popover closes before a parent may remove this combobox.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onValueChange?.call(item);
     });
   }
 
   void _clearSelection() {
     widget.onValueChange?.call(null);
     _controller.clear();
-    setState(() => _highlight = 0);
+    _updateState(() => _highlight = 0);
     _scheduleSearch('');
   }
 
@@ -209,7 +220,7 @@ class _AppComboboxState extends State<AppCombobox> {
     if (widget.value != null) {
       widget.onValueChange?.call(null);
     }
-    setState(() => _open = true);
+    _updateState(() => _open = true);
     _scheduleSearch(text);
   }
 
@@ -219,13 +230,13 @@ class _AppComboboxState extends State<AppCombobox> {
     final selectable = _selectableItems;
     switch (event.logicalKey) {
       case LogicalKeyboardKey.arrowDown:
-        setState(() {
+        _updateState(() {
           _open = true;
           _highlight = (_highlight + 1).clamp(0, selectable.isEmpty ? 0 : selectable.length - 1);
         });
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowUp:
-        setState(() => _highlight = (_highlight - 1).clamp(0, selectable.isEmpty ? 0 : selectable.length - 1));
+        _updateState(() => _highlight = (_highlight - 1).clamp(0, selectable.isEmpty ? 0 : selectable.length - 1));
         return KeyEventResult.handled;
       case LogicalKeyboardKey.enter:
         if (_open) {
@@ -233,13 +244,13 @@ class _AppComboboxState extends State<AppCombobox> {
             _select(selectable[_highlight]);
           } else if (_showCreate) {
             widget.onCreate?.call(_controller.text);
-            setState(() => _open = false);
+            _updateState(() => _open = false);
           }
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
       case LogicalKeyboardKey.escape:
-        setState(() {
+        _updateState(() {
           _open = false;
           if (widget.value == null) _controller.clear();
         });
@@ -309,11 +320,11 @@ class _AppComboboxState extends State<AppCombobox> {
       showEmpty: _showEmpty,
       showCreate: _showCreate,
       createLabel: _createLabel(_controller.text),
-      onHighlight: (index) => setState(() => _highlight = index),
+      onHighlight: (index) => _updateState(() => _highlight = index),
       onSelect: _select,
       onCreate: () {
         widget.onCreate?.call(_controller.text);
-        setState(() => _open = false);
+        _updateState(() => _open = false);
       },
     );
 
@@ -508,7 +519,11 @@ class _ComboboxOption extends StatelessWidget {
       color: highlighted && !item.disabled ? colors.surfaceHover : Colors.transparent,
       child: InkWell(
         onTap: item.disabled ? null : onSelect,
-        onHover: item.disabled ? null : (_) => onHover(),
+        onHover: item.disabled
+            ? null
+            : (hovered) {
+                if (hovered) onHover();
+              },
         child: Opacity(
           opacity: item.disabled ? 0.6 : 1,
           child: Padding(

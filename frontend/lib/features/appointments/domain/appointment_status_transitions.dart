@@ -5,6 +5,31 @@ import 'package:ai_clinic/features/appointments/domain/appointment_status.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_status_day_rules.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_type.dart';
 
+/// Previous lifecycle step for [item] when the user undoes the last status change.
+AppointmentStatus? previousStatusTargetFor(AppointmentListItem item) {
+  return switch (item.status) {
+    AppointmentStatus.confirmed => AppointmentStatus.scheduled,
+    AppointmentStatus.checkedIn => AppointmentStatus.confirmed,
+    AppointmentStatus.inProgress => AppointmentStatus.checkedIn,
+    _ => null,
+  };
+}
+
+/// Whether [item] may revert one step to the previous status in the main flow.
+bool canRevertAppointmentStatus(AppointmentListItem item) {
+  return previousStatusTargetFor(item) != null;
+}
+
+/// Label for the revert action button.
+String revertStatusActionLabelFor(AppointmentListItem item) {
+  return switch (previousStatusTargetFor(item)) {
+    AppointmentStatus.scheduled => 'Undo confirm',
+    AppointmentStatus.confirmed => 'Undo check-in',
+    AppointmentStatus.checkedIn => 'Undo start',
+    _ => 'Undo status',
+  };
+}
+
 /// Forward lifecycle target for [item] when the user taps the primary action (V1-4 US5).
 AppointmentStatus? forwardStatusTargetFor(
   AppointmentListItem item, {

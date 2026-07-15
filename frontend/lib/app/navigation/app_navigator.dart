@@ -51,7 +51,7 @@ class AppNavigator {
   void goAppointments() => _context.go(AppRoutes.appointments);
   void goAppointmentsBook() => _context.push(AppRoutes.appointmentsBook);
   void goAppointmentsQueue() => _context.push(AppRoutes.appointmentsQueue);
-  void goAppointmentsCalendar() => _context.push(AppRoutes.appointmentsCalendar);
+  void goAppointmentsCalendar() => _context.go(AppRoutes.appointmentsCalendar);
   void pushAppointmentDetail(String appointmentId, {AppointmentListItem? preview}) =>
       _context.push(AppRoutes.appointmentDetail(appointmentId), extra: AppointmentDetailRouteExtra(preview: preview));
   void goAppointmentsSchedule(String doctorId) => _context.push(AppRoutes.appointmentsSchedule(doctorId));

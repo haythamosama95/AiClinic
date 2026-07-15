@@ -37,7 +37,7 @@ final appointmentQueueShiftDoctorLookupProvider = FutureProvider.autoDispose<App
   final shifts = await shiftRepository.listShifts(branchId: scope.branchId, dateFrom: today, dateTo: today);
   final branchStaff = await shiftRepository.listActiveStaffForBranch(scope.branchId);
 
-  final doctors = _resolveQueueShiftDoctors(
+  final doctors = resolveQueueShiftDoctors(
     branchStaff: branchStaff,
     shifts: shifts,
     fallbackStaff: await ref.read(listStaffUseCaseProvider)(filter: StaffListFilter.active),
@@ -51,7 +51,7 @@ final appointmentQueueShiftDoctorLookupProvider = FutureProvider.autoDispose<App
 });
 
 /// Doctors eligible for shift display — branch staff first, then org-wide fallback.
-List<StaffListItem> _resolveQueueShiftDoctors({
+List<StaffListItem> resolveQueueShiftDoctors({
   required List<ShiftBranchStaffMember> branchStaff,
   required List<ShiftListItem> shifts,
   required List<StaffListItem> fallbackStaff,

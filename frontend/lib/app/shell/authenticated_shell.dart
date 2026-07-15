@@ -14,6 +14,7 @@ import 'package:ai_clinic/app/shell/providers/shell_sidebar_collapsed_provider.d
 import 'package:ai_clinic/core/ui/components/app_command_bar.dart';
 import 'package:ai_clinic/core/ui/components/app_sidebar.dart';
 import 'package:ai_clinic/core/ui/components/app_top_bar.dart';
+import 'package:ai_clinic/features/appointments/presentation/providers/appointment_calendar_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_queue_provider.dart';
 import 'package:ai_clinic/features/auth/presentation/widgets/clinic_setup_welcome_scope.dart';
 
@@ -27,6 +28,7 @@ class AuthenticatedShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (ref.watch(permissionServiceProvider).canAccessAppointments()) {
       ref.watch(appointmentQueueShellWarmProvider);
+      ref.watch(appointmentCalendarShellWarmProvider);
     }
 
     final location = GoRouterState.of(context).matchedLocation;
@@ -48,6 +50,7 @@ class AuthenticatedShell extends ConsumerWidget {
     final isDesignSystemPage = ShellNavConfig.isDesignSystemLocation(location);
     final designSystemFullWidth = ShellNavConfig.isDesignSystemFullWidth(uri);
     final fullWidth = ShellNavConfig.isFullWidthLocation(location) || (isDesignSystemPage && designSystemFullWidth);
+    final fillViewport = isDesignSystemPage || ShellNavConfig.isFillViewportLocation(location);
 
     return CommandBarScope(
       enabled: !setupLocked,
@@ -65,7 +68,7 @@ class AuthenticatedShell extends ConsumerWidget {
         child: AppShell(
           pageKey: location,
           fullWidth: fullWidth,
-          fillViewport: isDesignSystemPage,
+          fillViewport: fillViewport,
           sidebar: AppSidebar(
             items: ShellNavConfig.groups,
             footerItems: ShellNavConfig.footerItems(),

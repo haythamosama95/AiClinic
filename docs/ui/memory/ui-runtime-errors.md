@@ -703,6 +703,7 @@ void appToast(BuildContext context, AppToastInput input) {
 3. `Semantics(scopesRoute: true)` on modal panels? → Also set `explicitChildNodes: true`.
 4. `AnimationController.forward()` in overlay enter animations? → Set a default duration in `initState`; defer `forward()` to `didChangeDependencies` when duration depends on reduced motion (see entries #2, #27).
 5. `AppDialog` with header + scroll body + footer? → Use `Flexible` for the `SingleChildScrollView` when `LayoutBuilder` reports finite `maxHeight`; do not subtract a fixed `chromeEstimate` from body height (see entry #40).
+6. Tappable rows inside dialog body (`ListTile`, `InkWell`)? → Use `AppList` + `AppListItem` (or wrap in `Material`) — `AppDialog` `DecoratedBox` is not a `Material` ancestor (see entry #41).
 
 ---
 
@@ -1067,4 +1068,165 @@ Column(
 ```
 
 **Affected files (fixed):** `app_dialog.dart`.
+
+---
+
+## 41. `ListTile` ink invisible inside `AppDialog` (`DecoratedBox`)
+
+**Symptom:** Console floods with framework assertions when patient search results appear in the appointment booking dialog: "ListTile background color or ink splashes may be invisible." Widget key `patient_picker_result_0`; ancestor chain shows `ListTile` inside `AppDialog` → `DecoratedBox` with `surfaceDefault` background.
+
+**Cause:** `ListTile` paints its splash/hover on the nearest `Material` ancestor. `AppDialog` panel shells use `DecoratedBox` + `BoxDecoration(color: …)` without an intermediate `Material`, so ink effects are hidden and Flutter asserts in debug.
+
+**Fix:** Do **not** use raw `ListTile` inside `AppDialog` (or any decorated shell). Use design-system list primitives that already wrap interactive rows in `Material` + `InkWell`:
+
+```dart
+SingleChildScrollView(
+  child: AppList(
+    children: [
+      for (var i = 0; i < results.length; i++)
+        AppListItem(
+          primary: Text(results[i].fullName),
+          secondary: Text(results[i].phone ?? results[i].branchName),
+          onTap: () => onSelect(results[i]),
+        ),
+    ],
+  ),
+)
+```
+
+If `ListTile` is unavoidable, wrap each tile in `Material(color: Colors.transparent, child: ListTile(…))`.
+
+**Affected files (fixed):** `appointment_booking_sheet.dart`.
+
+---
+
+## 44. `RenderFlex` overflow (`AppointmentCalendarTile` medium strip `Row`)
+
+**Symptom:** Yellow/black overflow stripe on appointment calendar tiles in day/month/schedule views — "overflowed by N pixels on the right" at `_buildMediumStrip` `Row` in `appointment_calendar_tile.dart` (~line 234). Constraints show a tight tile width (~149px) with time range, patient name, and status chip all competing horizontally.
+
+**Cause:** Layout breakpoints (`_showFullStrip`, `_showMediumStrip`, status chip at `bounds.width >= 160`) used the raw Syncfusion `bounds.width`, but the encounter strip content area is smaller after the accent bar (~3px) and horizontal padding (~16px). At `bounds.width` ~168 the status chip rendered even though only ~149px remained for the `Row`. Fixed children (`_TimeBlock` ~101px + `_StatusChip` ~79px + spacers) exceeded that width before the `Expanded` patient section received any space.
+
+**Fix:** Derive `_contentWidth` (bounds minus chrome) and use it for strip mode thresholds and status visibility. Only show the medium-strip status chip when `_contentWidth >= 196`. Wrap the time block in `Flexible` in the medium strip and ellipsize its label so it can shrink when space is still tight:
+
+```dart
+double get _contentWidth {
+  final accentWidth = _isTightHeight ? 2.0 : 3.0;
+  final horizontalPadding = _isTightHeight ? AppSpacing.space1 * 2 : AppSpacing.space2 * 2;
+  return (bounds.width - accentWidth - horizontalPadding).clamp(0.0, double.infinity);
+}
+
+bool get _showStatusInMediumStrip =>
+    _contentWidth >= AppointmentCalendarTile._horizontalMediumWithStatusWidth;
+
+// medium strip Row
+Flexible(flex: 2, child: _TimeBlock(..., compact: true)),
+Expanded(flex: 3, child: _LabeledStripSection(...)),
+if (_showStatusInMediumStrip) _StatusChip(..., compact: true),
+```
+
+**Affected files (fixed):** `appointment_calendar_tile.dart`.
+
+---
+
+## 43. `NoSuchMethodError`: `firstOrNull` on `WhereIterable` (`AppointmentDetailPage`)
+
+**Symptom:** Red screen opening an appointment detail page. `Class 'WhereIterable<BranchListItem>' has no instance getter 'firstOrNull'` in `_resolveBranchName` at `appointment_detail_page.dart`.
+
+**Cause:** `_resolveBranchName` accepted an untyped `AsyncValue branchesAsync`. The `data:` callback parameter was inferred as `dynamic`, so `.where(...).firstOrNull` used dynamic dispatch. `firstOrNull` is an `Iterable` extension method, not an instance getter — it is not resolved at runtime on `dynamic`.
+
+**Fix:** Type the async value so the extension applies at compile time:
+
+```dart
+String? _resolveBranchName(String branchId, AsyncValue<List<BranchListItem>> branchesAsync) {
+  return branchesAsync.maybeWhen(
+    data: (branches) => branches.where((branch) => branch.id == branchId).firstOrNull?.name,
+    orElse: () => null,
+  );
+}
+```
+
+**Affected files (fixed):** `appointment_detail_page.dart`.
+
+**Checklist:** When calling `firstOrNull` / `lastOrNull` / other extension methods on Riverpod `AsyncValue` data, ensure the `AsyncValue<T>` generic is explicit — never pass bare `AsyncValue`.
+
+---
+
+## 42. `setState() or markNeedsBuild() called during build` (`AppointmentCalendarPage` / `SfCalendar`)
+
+**Symptom:** Foundation/widgets assertion when opening the appointments calendar (or when mode/focus date changes). Stack shows `_AppointmentCalendarPageState._syncCalendarView` → `CalendarController.view=` → `_SfCalendarState._calendarValueChangedListener` → `_OpacityWidgetState._update`, while `AppointmentCalendarPage` is still building.
+
+**Cause:** `build` called `_syncCalendarView(state)` synchronously to push Riverpod mode/focus into `CalendarController`. Assigning `view` or `displayDate` notifies Syncfusion's internal listeners, which reset fade animations and call `setState` mid-build — same lifecycle rule as entries #10 and #27.
+
+**Fix:** Defer controller sync to after the frame (mirror `_scheduleDataSourceSync`). Coalesce multiple schedules per frame and read fresh provider state in the callback:
+
+```dart
+void _scheduleCalendarViewSync() {
+  if (_calendarViewSyncScheduled) return;
+  _calendarViewSyncScheduled = true;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _calendarViewSyncScheduled = false;
+    if (!mounted) return;
+    _syncCalendarView(ref.read(appointmentCalendarProvider));
+  });
+}
+```
+
+**Affected files (fixed):** `appointment_calendar_page.dart`.
+
+---
+
+## 41. `ListTile` ink invisible inside `AppDialog` (`DecoratedBox`)
+
+**Symptom:** Console floods with framework assertions when patient search results appear in the appointment booking dialog: "ListTile background color or ink splashes may be invisible." Widget key `patient_picker_result_0`; ancestor chain shows `ListTile` inside `AppDialog` → `DecoratedBox` with `surfaceDefault` background.
+
+**Cause:** `ListTile` paints its splash/hover on the nearest `Material` ancestor. `AppDialog` panel shells use `DecoratedBox` + `BoxDecoration(color: …)` without an intermediate `Material`, so ink effects are hidden and Flutter asserts in debug.
+
+**Fix:** Do **not** use raw `ListTile` inside `AppDialog` (or any decorated shell). Use design-system list primitives that already wrap interactive rows in `Material` + `InkWell`:
+
+```dart
+SingleChildScrollView(
+  child: AppList(
+    children: [
+      for (var i = 0; i < results.length; i++)
+        AppListItem(
+          primary: Text(results[i].fullName),
+          secondary: Text(results[i].phone ?? results[i].branchName),
+          onTap: () => onSelect(results[i]),
+        ),
+    ],
+  ),
+)
+```
+
+If `ListTile` is unavoidable, wrap each tile in `Material(color: Colors.transparent, child: ListTile(…))`.
+
+**Affected files (fixed):** `appointment_booking_sheet.dart`.
+
+---
+
+## 44. `RenderFlex` overflow (`AppointmentCalendarTile` medium strip `Row`)
+
+**Symptom:** Yellow/black overflow stripe on appointment calendar tiles in day/month/schedule views — "overflowed by N pixels on the right" at `_buildMediumStrip` `Row` in `appointment_calendar_tile.dart` (~line 234). Constraints show a tight tile width (~149px) with time range, patient name, and status chip all competing horizontally.
+
+**Cause:** Layout breakpoints (`_showFullStrip`, `_showMediumStrip`, status chip at `bounds.width >= 160`) used the raw Syncfusion `bounds.width`, but the encounter strip content area is smaller after the accent bar (~3px) and horizontal padding (~16px). At `bounds.width` ~168 the status chip rendered even though only ~149px remained for the `Row`. Fixed children (`_TimeBlock` ~101px + `_StatusChip` ~79px + spacers) exceeded that width before the `Expanded` patient section received any space.
+
+**Fix:** Derive `_contentWidth` (bounds minus chrome) and use it for strip mode thresholds and status visibility. Only show the medium-strip status chip when `_contentWidth >= 196`. Wrap the time block in `Flexible` in the medium strip and ellipsize its label so it can shrink when space is still tight:
+
+```dart
+double get _contentWidth {
+  final accentWidth = _isTightHeight ? 2.0 : 3.0;
+  final horizontalPadding = _isTightHeight ? AppSpacing.space1 * 2 : AppSpacing.space2 * 2;
+  return (bounds.width - accentWidth - horizontalPadding).clamp(0.0, double.infinity);
+}
+
+bool get _showStatusInMediumStrip =>
+    _contentWidth >= AppointmentCalendarTile._horizontalMediumWithStatusWidth;
+
+// medium strip Row
+Flexible(flex: 2, child: _TimeBlock(..., compact: true)),
+Expanded(flex: 3, child: _LabeledStripSection(...)),
+if (_showStatusInMediumStrip) _StatusChip(..., compact: true),
+```
+
+**Affected files (fixed):** `appointment_calendar_tile.dart`.
 

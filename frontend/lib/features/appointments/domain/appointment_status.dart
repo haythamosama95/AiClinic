@@ -70,14 +70,16 @@ enum AppointmentStatus {
             target == AppointmentStatus.cancelled ||
             target == AppointmentStatus.noShow,
       AppointmentStatus.confirmed =>
-        target == AppointmentStatus.checkedIn ||
+        target == AppointmentStatus.scheduled ||
+            target == AppointmentStatus.checkedIn ||
             target == AppointmentStatus.cancelled ||
             target == AppointmentStatus.noShow,
       AppointmentStatus.checkedIn =>
-        target == AppointmentStatus.inProgress ||
+        target == AppointmentStatus.confirmed ||
+            target == AppointmentStatus.inProgress ||
             target == AppointmentStatus.cancelled ||
             target == AppointmentStatus.noShow,
-      AppointmentStatus.inProgress => target == AppointmentStatus.completed,
+      AppointmentStatus.inProgress => target == AppointmentStatus.checkedIn || target == AppointmentStatus.completed,
       _ => false,
     };
   }

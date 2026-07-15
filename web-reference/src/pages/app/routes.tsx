@@ -3,6 +3,7 @@ import { ALL_NAV_ITEMS } from '@/components/navigation/nav-model'
 import { getPatientById, patientFullName } from '@/data/patients'
 import { PlaceholderPage } from '@/pages/app/PlaceholderPage'
 import { DevPage, type DevSection } from '@/pages/app/DevPage'
+import { AppointmentsPage } from '@/features/appointments/AppointmentsPage'
 import { ClinicManagementPage } from '@/features/clinic-management/ClinicManagementPage'
 import { PatientDetailPage } from '@/pages/app/patients/PatientDetailPage'
 import { PatientsPage } from '@/pages/app/patients/PatientsPage'
@@ -101,10 +102,18 @@ function settingsRoute(): RouteDefinition {
 export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
   ...Object.fromEntries(
     CLINIC_ROUTE_IDS.filter(
-      (id) => id !== 'patients' && id !== 'settings' && id !== 'clinic-management',
+      (id) =>
+        id !== 'patients' &&
+        id !== 'settings' &&
+        id !== 'clinic-management' &&
+        id !== 'appointments',
     ).map((id) => [id, placeholderRoute(id)]),
   ),
   patients: patientsRoute(),
+  appointments: {
+    ...metaForNavId('appointments'),
+    render: () => <AppointmentsPage />,
+  },
   settings: settingsRoute(),
   'clinic-management': {
     title: 'Clinic Management',
