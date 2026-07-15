@@ -102,7 +102,7 @@ class _AppointmentDetailEditButtonState extends ConsumerState<AppointmentDetailE
 
     final button = AppButton(
       key: const Key('appointment_detail_edit'),
-      variant: AppButtonVariant.ghost,
+      variant: AppButtonVariant.primary,
       size: AppButtonSize.md,
       loading: _isLoading,
       leadingIcon: const Icon(Icons.edit_outlined),

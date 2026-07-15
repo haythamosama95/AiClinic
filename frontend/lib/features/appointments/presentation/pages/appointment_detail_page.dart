@@ -628,7 +628,7 @@ class _AppointmentDetailScaffold extends StatelessWidget {
         ...headerActions,
         if (patientId != null)
           AppButton(
-            variant: AppButtonVariant.ghost,
+            variant: AppButtonVariant.primary,
             size: AppButtonSize.md,
             leadingIcon: const Icon(Icons.person_outline),
             onPressed: () => context.nav.pushPatientDetail(patientId!),

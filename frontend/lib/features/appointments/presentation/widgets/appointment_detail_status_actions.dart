@@ -8,6 +8,7 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/application/appointment_rpc_messages.dart';
 import 'package:ai_clinic/features/appointments/data/appointment_repository.dart';
+import 'package:ai_clinic/features/appointments/domain/appointment_calendar_display.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_detail.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_list_item.dart';
 import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.dart';
@@ -448,6 +449,9 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final currentStatusColor = AppointmentCalendarDisplay.statusColor(detail.status, brightness);
+
     final specs = <_StatusActionSpec>[
       if (_revertTarget != null)
         _StatusActionSpec(
@@ -457,6 +461,9 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
           disabledReason: _disabledReasonFor('revert', _revertDisabledReason()),
           isLoading: _busyActionKey == 'revert',
           onPressed: _handleRevertStatus,
+          backgroundGradient: LinearGradient(
+            colors: [currentStatusColor, AppointmentCalendarDisplay.statusColor(_revertTarget!, brightness)],
+          ),
         ),
       _StatusActionSpec(
         key: const Key('appointment_control_advance_status'),
@@ -465,11 +472,17 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         disabledReason: _disabledReasonFor('advance', _advanceDisabledReason()),
         isLoading: _busyActionKey == 'advance',
         onPressed: _handleAdvanceStatus,
+        backgroundGradient: _forwardTarget == null
+            ? null
+            : LinearGradient(
+                colors: [currentStatusColor, AppointmentCalendarDisplay.statusColor(_forwardTarget!, brightness)],
+              ),
       ),
       _StatusActionSpec(
         key: const Key('appointment_control_no_show'),
         icon: Icons.person_off_outlined,
         label: 'Mark no-show',
+        variant: AppButtonVariant.danger,
         disabledReason: _disabledReasonFor('no_show', _markNoShowDisabledReason()),
         isLoading: _busyActionKey == 'no_show',
         onPressed: _handleMarkNoShow,
@@ -478,6 +491,7 @@ class _AppointmentDetailStatusActionsState extends ConsumerState<AppointmentDeta
         key: const Key('appointment_control_cancel'),
         icon: Icons.event_busy_outlined,
         label: 'Cancel appointment',
+        variant: AppButtonVariant.danger,
         disabledReason: _disabledReasonFor('cancel', _cancelDisabledReason()),
         isLoading: _busyActionKey == 'cancel',
         onPressed: _handleCancel,
@@ -518,6 +532,8 @@ class _StatusActionSpec {
     required this.icon,
     required this.label,
     required this.onPressed,
+    this.variant = AppButtonVariant.secondary,
+    this.backgroundGradient,
     this.disabledReason,
     this.isLoading = false,
   });
@@ -525,6 +541,8 @@ class _StatusActionSpec {
   final Key key;
   final IconData icon;
   final String label;
+  final AppButtonVariant variant;
+  final Gradient? backgroundGradient;
   final String? disabledReason;
   final bool isLoading;
   final VoidCallback onPressed;
@@ -551,10 +569,11 @@ class _StatusActionButton extends StatelessWidget {
 
     final button = AppButton(
       key: spec.key,
-      variant: AppButtonVariant.secondary,
-      size: AppButtonSize.sm,
+      variant: spec.variant,
+      size: AppButtonSize.md,
       loading: spec.isLoading,
       disabled: !isInteractive,
+      backgroundGradient: spec.backgroundGradient,
       leadingIcon: Icon(spec.icon, size: 18),
       onPressed: isInteractive ? spec.onPressed : null,
       child: Text(spec.label),
