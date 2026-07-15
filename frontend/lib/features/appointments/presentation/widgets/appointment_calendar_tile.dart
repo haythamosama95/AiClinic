@@ -40,6 +40,7 @@ class AppointmentCalendarTile extends StatelessWidget {
   static const _horizontalMinHeight = 36.0;
   static const _horizontalFullWidth = 220.0;
   static const _horizontalMediumWidth = 120.0;
+  static const _horizontalMediumWithStatusWidth = 196.0;
   static final _timeFormat = DateFormat('HH:mm');
 
   bool get _usesHorizontalLayout => switch (mode) {
@@ -151,10 +152,21 @@ class _HorizontalEncounterStrip extends StatelessWidget {
   final Color textColor;
   final Color mutedTextColor;
 
-  bool get _showFullStrip => bounds.width >= AppointmentCalendarTile._horizontalFullWidth;
+  bool get _isTightHeight => bounds.height < AppointmentCalendarTile._horizontalMinHeight;
+
+  /// Width available to the encounter strip after the accent bar and padding.
+  double get _contentWidth {
+    final accentWidth = _isTightHeight ? 2.0 : 3.0;
+    final horizontalPadding = _isTightHeight ? AppSpacing.space1 * 2 : AppSpacing.space2 * 2;
+    return (bounds.width - accentWidth - horizontalPadding).clamp(0.0, double.infinity);
+  }
+
+  bool get _showFullStrip => _contentWidth >= AppointmentCalendarTile._horizontalFullWidth;
   bool get _showMediumStrip =>
-      bounds.width >= AppointmentCalendarTile._horizontalMediumWidth &&
+      _contentWidth >= AppointmentCalendarTile._horizontalMediumWidth &&
       bounds.height >= AppointmentCalendarTile._horizontalMinHeight;
+  bool get _showStatusInMediumStrip =>
+      _contentWidth >= AppointmentCalendarTile._horizontalMediumWithStatusWidth;
 
   String get _patientName => item?.patientName ?? appointment.subject;
   String get _doctorName => item?.doctorDisplayName ?? appointment.notes ?? 'Unassigned';
@@ -168,14 +180,12 @@ class _HorizontalEncounterStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isTight = bounds.height < AppointmentCalendarTile._horizontalMinHeight;
-
     return SelectionContainer.disabled(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
-            width: isTight ? 2 : 3,
+            width: _isTightHeight ? 2 : 3,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -189,8 +199,8 @@ class _HorizontalEncounterStrip extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: isTight ? AppSpacing.space1 : AppSpacing.space2,
-                vertical: isTight ? 2 : AppSpacing.space1,
+                horizontal: _isTightHeight ? AppSpacing.space1 : AppSpacing.space2,
+                vertical: _isTightHeight ? 2 : AppSpacing.space1,
               ),
               child: _showFullStrip
                   ? _buildFullStrip(context)
@@ -234,9 +244,13 @@ class _HorizontalEncounterStrip extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _TimeBlock(label: _timeRangeLabel, textColor: textColor, compact: true),
+        Flexible(
+          flex: 2,
+          child: _TimeBlock(label: _timeRangeLabel, textColor: textColor, compact: true),
+        ),
         const SizedBox(width: AppSpacing.space2),
         Expanded(
+          flex: 3,
           child: _LabeledStripSection(
             icon: Icons.person_outline,
             label: _patientName,
@@ -244,7 +258,7 @@ class _HorizontalEncounterStrip extends StatelessWidget {
             compact: true,
           ),
         ),
-        if (bounds.width >= 160) ...[
+        if (_showStatusInMediumStrip) ...[
           const SizedBox(width: AppSpacing.space2),
           _StatusChip(status: _status, textColor: textColor, compact: true),
         ],
@@ -273,11 +287,13 @@ class _TimeBlock extends StatelessWidget {
       children: [
         Icon(Icons.schedule_outlined, size: iconSize, color: textColor.withValues(alpha: 0.88)),
         const SizedBox(width: AppSpacing.space1),
-        Text(
-          label,
-          maxLines: 1,
-          softWrap: false,
-          style: AppTypography.mono(context).copyWith(
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.mono(context).copyWith(
             color: textColor,
             fontWeight: FontWeight.w600,
             fontSize: compact ? 12 : 13,
@@ -285,6 +301,7 @@ class _TimeBlock extends StatelessWidget {
             height: 1.15,
             decoration: TextDecoration.none,
           ),
+        ),
         ),
       ],
     );

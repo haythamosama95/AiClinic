@@ -1100,6 +1100,34 @@ If `ListTile` is unavoidable, wrap each tile in `Material(color: Colors.transpar
 
 ---
 
+## 44. `RenderFlex` overflow (`AppointmentCalendarTile` medium strip `Row`)
+
+**Symptom:** Yellow/black overflow stripe on appointment calendar tiles in day/month/schedule views — "overflowed by N pixels on the right" at `_buildMediumStrip` `Row` in `appointment_calendar_tile.dart` (~line 234). Constraints show a tight tile width (~149px) with time range, patient name, and status chip all competing horizontally.
+
+**Cause:** Layout breakpoints (`_showFullStrip`, `_showMediumStrip`, status chip at `bounds.width >= 160`) used the raw Syncfusion `bounds.width`, but the encounter strip content area is smaller after the accent bar (~3px) and horizontal padding (~16px). At `bounds.width` ~168 the status chip rendered even though only ~149px remained for the `Row`. Fixed children (`_TimeBlock` ~101px + `_StatusChip` ~79px + spacers) exceeded that width before the `Expanded` patient section received any space.
+
+**Fix:** Derive `_contentWidth` (bounds minus chrome) and use it for strip mode thresholds and status visibility. Only show the medium-strip status chip when `_contentWidth >= 196`. Wrap the time block in `Flexible` in the medium strip and ellipsize its label so it can shrink when space is still tight:
+
+```dart
+double get _contentWidth {
+  final accentWidth = _isTightHeight ? 2.0 : 3.0;
+  final horizontalPadding = _isTightHeight ? AppSpacing.space1 * 2 : AppSpacing.space2 * 2;
+  return (bounds.width - accentWidth - horizontalPadding).clamp(0.0, double.infinity);
+}
+
+bool get _showStatusInMediumStrip =>
+    _contentWidth >= AppointmentCalendarTile._horizontalMediumWithStatusWidth;
+
+// medium strip Row
+Flexible(flex: 2, child: _TimeBlock(..., compact: true)),
+Expanded(flex: 3, child: _LabeledStripSection(...)),
+if (_showStatusInMediumStrip) _StatusChip(..., compact: true),
+```
+
+**Affected files (fixed):** `appointment_calendar_tile.dart`.
+
+---
+
 ## 43. `NoSuchMethodError`: `firstOrNull` on `WhereIterable` (`AppointmentDetailPage`)
 
 **Symptom:** Red screen opening an appointment detail page. `Class 'WhereIterable<BranchListItem>' has no instance getter 'firstOrNull'` in `_resolveBranchName` at `appointment_detail_page.dart`.
@@ -1173,4 +1201,32 @@ SingleChildScrollView(
 If `ListTile` is unavoidable, wrap each tile in `Material(color: Colors.transparent, child: ListTile(…))`.
 
 **Affected files (fixed):** `appointment_booking_sheet.dart`.
+
+---
+
+## 44. `RenderFlex` overflow (`AppointmentCalendarTile` medium strip `Row`)
+
+**Symptom:** Yellow/black overflow stripe on appointment calendar tiles in day/month/schedule views — "overflowed by N pixels on the right" at `_buildMediumStrip` `Row` in `appointment_calendar_tile.dart` (~line 234). Constraints show a tight tile width (~149px) with time range, patient name, and status chip all competing horizontally.
+
+**Cause:** Layout breakpoints (`_showFullStrip`, `_showMediumStrip`, status chip at `bounds.width >= 160`) used the raw Syncfusion `bounds.width`, but the encounter strip content area is smaller after the accent bar (~3px) and horizontal padding (~16px). At `bounds.width` ~168 the status chip rendered even though only ~149px remained for the `Row`. Fixed children (`_TimeBlock` ~101px + `_StatusChip` ~79px + spacers) exceeded that width before the `Expanded` patient section received any space.
+
+**Fix:** Derive `_contentWidth` (bounds minus chrome) and use it for strip mode thresholds and status visibility. Only show the medium-strip status chip when `_contentWidth >= 196`. Wrap the time block in `Flexible` in the medium strip and ellipsize its label so it can shrink when space is still tight:
+
+```dart
+double get _contentWidth {
+  final accentWidth = _isTightHeight ? 2.0 : 3.0;
+  final horizontalPadding = _isTightHeight ? AppSpacing.space1 * 2 : AppSpacing.space2 * 2;
+  return (bounds.width - accentWidth - horizontalPadding).clamp(0.0, double.infinity);
+}
+
+bool get _showStatusInMediumStrip =>
+    _contentWidth >= AppointmentCalendarTile._horizontalMediumWithStatusWidth;
+
+// medium strip Row
+Flexible(flex: 2, child: _TimeBlock(..., compact: true)),
+Expanded(flex: 3, child: _LabeledStripSection(...)),
+if (_showStatusInMediumStrip) _StatusChip(..., compact: true),
+```
+
+**Affected files (fixed):** `appointment_calendar_tile.dart`.
 
