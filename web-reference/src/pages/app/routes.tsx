@@ -5,6 +5,7 @@ import { PlaceholderPage } from '@/pages/app/PlaceholderPage'
 import { DevPage, type DevSection } from '@/pages/app/DevPage'
 import { AppointmentsPage } from '@/features/appointments/AppointmentsPage'
 import { ClinicManagementPage } from '@/features/clinic-management/ClinicManagementPage'
+import { VisitPage } from '@/features/visits/VisitPage'
 import { PatientDetailPage } from '@/pages/app/patients/PatientDetailPage'
 import { PatientsPage } from '@/pages/app/patients/PatientsPage'
 import { SettingsPage } from '@/pages/app/settings/SettingsPage'
@@ -106,13 +107,24 @@ export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
         id !== 'patients' &&
         id !== 'settings' &&
         id !== 'clinic-management' &&
-        id !== 'appointments',
+        id !== 'appointments' &&
+        id !== 'encounters',
     ).map((id) => [id, placeholderRoute(id)]),
   ),
   patients: patientsRoute(),
   appointments: {
     ...metaForNavId('appointments'),
     render: () => <AppointmentsPage />,
+  },
+  encounters: {
+    ...metaForNavId('encounters'),
+    render: ({ segments, navigate }) => (
+      <VisitPage
+        patientId={segments[1]}
+        summaryView={segments[2] === 'chronicle' ? 'chronicle' : 'card'}
+        onNavigate={navigate}
+      />
+    ),
   },
   settings: settingsRoute(),
   'clinic-management': {
@@ -191,7 +203,7 @@ export function resolveRoute(
   return {
     content: route.render(ctx),
     meta,
-    fullWidth: false,
+    fullWidth: root === 'encounters',
   }
 }
 

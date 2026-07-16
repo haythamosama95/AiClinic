@@ -35,8 +35,8 @@ export function AppShell({
         >
           <div
             className={cn(
-              'mx-auto w-full px-6 py-6',
-              !fullWidth && 'max-w-6xl',
+              'mx-auto w-full py-6',
+              fullWidth ? 'px-6 sm:px-8 lg:px-10' : 'max-w-6xl px-6',
             )}
           >
             {children}
