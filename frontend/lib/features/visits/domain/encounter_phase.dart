@@ -37,8 +37,8 @@ enum EncounterPhase {
 
   IconData get icon => switch (this) {
     context => Icons.info_outline_rounded,
-    subjective => Icons.chat_bubble_outline_rounded,
-    objective => Icons.monitor_heart_outlined,
+    subjective => Icons.assignment_outlined,
+    objective => Icons.biotech_outlined,
     plan => Icons.medical_services_outlined,
     review => Icons.summarize_outlined,
   };

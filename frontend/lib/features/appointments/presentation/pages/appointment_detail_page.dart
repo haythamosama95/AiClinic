@@ -24,6 +24,7 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_siblings_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_open_visit_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
 
@@ -130,7 +131,10 @@ class _AppointmentDetailContentView extends ConsumerWidget {
       title: detail.patientName,
       subtitle: detail.status.label,
       patientId: detail.patientId,
-      headerActions: [AppointmentDetailEditButton(detail: detail)],
+      headerActions: [
+        AppointmentDetailOpenVisitButton(detail: detail),
+        AppointmentDetailEditButton(detail: detail),
+      ],
       onBack: onBack,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

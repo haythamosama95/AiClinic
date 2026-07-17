@@ -25,6 +25,7 @@ import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dar
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+import 'package:ai_clinic/features/visits/presentation/pages/visit_document_page.dart';
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
@@ -116,7 +117,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Visits (V1-5)
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
-            builder: shellPlaceholderPage,
+            builder: (context, state) => VisitDocumentPage(visitId: state.pathParameters['visitId']!),
           ),
           GoRoute(path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}', builder: shellPlaceholderPage),
 
