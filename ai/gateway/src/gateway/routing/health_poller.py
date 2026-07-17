@@ -15,6 +15,8 @@ from gateway.obs.metrics import (
     set_inflight,
     set_runner_health,
 )
+from gateway.obs.trace_bus import TraceBus
+from gateway.obs.trace_helpers import body_text_for_trace, summarize_body
 from gateway.routing.lifecycle import (
     LifecycleCounters,
     PollOutcome,
@@ -31,9 +33,16 @@ if TYPE_CHECKING:
 class HealthPoller:
     """Background task that polls configured runners on a fixed cadence."""
 
-    def __init__(self, config: GatewayConfig, registry: RunnerRegistry) -> None:
+    def __init__(
+        self,
+        config: GatewayConfig,
+        registry: RunnerRegistry,
+        *,
+        trace_bus: TraceBus | None = None,
+    ) -> None:
         self._config = config
         self._registry = registry
+        self._trace_bus = trace_bus
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._client: httpx.AsyncClient | None = None
@@ -66,7 +75,49 @@ class HealthPoller:
                 if entry is None:
                     continue
                 old_status = entry.status
+                poll_request_id = str(uuid.uuid4())
+                if self._trace_bus is not None:
+                    await self._trace_bus.emit(
+                        direction="gateway_to_runner",
+                        method="GET",
+                        path="/v1/models",
+                        kind="poll",
+                        runner_id=runner_id,
+                        request_id=poll_request_id,
+                        request_summary="health poll",
+                    )
                 result = await poll_runner(entry.base_url, client=client)
+
+                response_summary: str | None = None
+                response_body: str | None = None
+                if result.loaded_model is not None:
+                    payload = {
+                        "model": result.loaded_model.name,
+                        "outcome": result.outcome.value,
+                    }
+                    response_summary = summarize_body(payload)
+                    response_body = body_text_for_trace(payload)
+                elif result.outcome.value != "ok":
+                    response_summary = f"outcome={result.outcome.value}"
+                    response_body = response_summary
+
+                if self._trace_bus is not None:
+                    status_code = 200 if result.outcome in (
+                        PollOutcome.OK,
+                        PollOutcome.LOADING,
+                    ) else 503
+                    await self._trace_bus.emit(
+                        direction="runner_to_gateway",
+                        method="GET",
+                        path="/v1/models",
+                        kind="poll",
+                        runner_id=runner_id,
+                        status_code=status_code,
+                        latency_ms=result.latency_ms,
+                        request_id=poll_request_id,
+                        response_summary=response_summary,
+                        response_body=response_body,
+                    )
 
                 avg_latency = entry.avg_latency_ms
                 if result.latency_ms is not None:

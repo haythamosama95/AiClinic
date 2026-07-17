@@ -1,14 +1,14 @@
-# AI Control Plane Dashboard
+# AI Gateway Signal Monitor
 
-A zero-build static dashboard served by the AI Gateway. It visualizes gateway liveness,
-readiness, runner lifecycle, Prometheus metrics, JWT auth state, Phase 5 capabilities, and the
-endpoint catalog exposed by Phases 1–5.
+Zero-build static dashboard served by the AI Gateway at `/dashboard`. Operators use it
+to watch gateway health, runner registry, Prometheus metrics, and **live trace traffic**
+between clients, the gateway, and Ollama runners.
 
 ## Prerequisites
 
-- AI Gateway dependencies installed (`ai/gateway/.venv`)
-- Local Supabase running when using **Sign in** (see `backend/local/.env` for URL/port)
-- Optional: paste a staff JWT manually if sign-in is not configured
+- AI Gateway dependencies (`ai/gateway/.venv`)
+- Local Supabase when using dashboard sign-in (`backend/local/.env`)
+- Or paste a staff JWT with `ai.access` manually
 
 ## Run locally
 
@@ -17,71 +17,48 @@ cd ai/gateway
 ./scripts/start_dev.sh
 ```
 
-`start_dev.sh` loads `SUPABASE_JWT_SECRET` from `backend/local/.env` when present so
-tokens from dashboard sign-in validate against the Gateway.
+Open [http://localhost:8090/dashboard](http://localhost:8090/dashboard).
 
-Open [http://localhost:8090/dashboard](http://localhost:8090/dashboard) in a browser.
+With `dashboard_auto_sign_in: true` in `gateway.yaml`, the dashboard signs in on load.
+Tokens are stored in `localStorage` on this origin only.
 
-### Sign in (automatic)
+## Panels
 
-When `dashboard_auto_sign_in: true` in `gateway.yaml` (enabled in local dev), the dashboard
-**signs in as bootstrap admin on load** — no manual step. Tokens are refreshed automatically when
-they expire.
-
-You can still use the manual form to sign in as a different user, or **Clear** to reset the token.
-
-The dashboard polls the gateway on the same origin (no extra CORS setup):
-
-| Source | Auth | Purpose |
+| Panel | Endpoint(s) | Auth |
 | --- | --- | --- |
-| `GET /health` | None | Liveness badge |
-| `GET /metrics` | None | Charts |
-| `GET /v1/status` | Bearer JWT | Gateway snapshot, safe config, runners, endpoint catalog |
-| `GET /ready` | Bearer JWT | Readiness badge |
-| `GET /v1/capabilities` | Bearer JWT | Phase 5 capabilities mirror (runners, stub tasks/commands) |
-| `POST /v1/ai/generate` | Bearer JWT | Phase 5 generate stub probe (expect `501 not_implemented`) |
-| `GET /v1/runners/{id}/models` | Bearer JWT | On-demand proxy of runner `GET /v1/models` |
+| System strip | `/health`, `/ready`, uptime from `/v1/status` | JWT for `/ready` |
+| **Live trace** | `GET /v1/trace/stream` (fetch + Bearer), `/v1/trace/events` | JWT |
+| Runner registry | `/v1/status` runners + poller config | JWT |
+| Capabilities | `GET /v1/capabilities` | JWT |
+| Metrics | `GET /metrics` | None |
+| Endpoint workbench | Any catalog route | JWT when required |
+| Generate stub | `POST /v1/ai/generate` | JWT |
+| Runner models | `GET /v1/runners/{id}/models` | JWT |
+| Dashboard auth | `/v1/dashboard/sign-in`, token paste | Mixed |
+| Security snapshot | `/v1/status` `config_safe` | JWT |
 
-Tokens are stored in `localStorage` (`dashboard_jwt_token`) on this origin only.
+## Live trace
 
-## Panels (Phases 1–5)
+The trace panel connects via **fetch streaming** (not `EventSource`) so the Bearer JWT
+is sent on every stream request. Health poller `GET /v1/models` calls appear as
+`gateway_to_runner` / `runner_to_gateway` with `kind: poll`. Dashboard proxy calls use
+`kind: proxy`. Client API traffic on `/v1/*` plus `/health`, `/ready`, and `/metrics` appears as
+`client_to_gateway` / `gateway_to_client`.
 
-| Panel | Phase | Maps to `phase-capabilities.md` |
-| --- | --- | --- |
-| Architecture | 1 | Gateway vs runner addresses, client-routability |
-| Overview | 2–4 | `/health`, `/ready` (incl. `ai_no_capacity`, `401` without token) |
-| Runners | 3–5 | Registry, lifecycle (incl. `BUSY`), poller timing, `/v1/models` poll |
-| Metrics | 2–4 | `/metrics`, request rate, status codes, runner health/latency |
-| Endpoint explorer | 2–5 | Try-it for live routes; lock icon marks JWT-protected paths |
-| Phase coverage | 1–5 | Live checklist vs `docs/ai/phase-capabilities.md` |
-| Security | 1–4 | Invariants, JWT auth, error envelope, safe config |
-| Capabilities | 5 | Live `GET /v1/capabilities` — runners, empty `tasks`/`commands` stubs |
-| Generate stub | 5 | `POST /v1/ai/generate` test button (501 envelope) |
+Filter chips map to query params on `/v1/trace/stream` and `/v1/trace/events`.
+Bodies are PHI-redacted using the same rules as structured logs.
 
-If the `ai/dashboard/` directory is missing, the gateway still runs; only the `/dashboard` static
-mount is skipped.
-
-## Layout
+## Files
 
 | File | Role |
 | --- | --- |
-| `index.html` | Shell and panel scaffolding |
-| `styles.css` | Dark-theme layout (no build step) |
-| `app.js` | Polling, charts, endpoint explorer, JWT token entry, phase gating |
+| `index.html` | Panel shell |
+| `styles.css` | Oscilloscope-inspired layout (no build step) |
+| `app.js` | Polling, auth, trace stream, workbench |
 
-## Extend per phase
+## Contract tests
 
-### Phase 5 — Capabilities & generate stub (shipped)
-
-- **Capabilities** panel polls `GET /v1/capabilities` when a JWT is present; shows per-runner
-  `status`, `model`, `digest`, `features`, `context_tokens`, and stub messaging for empty
-  `tasks[]` / `commands[]`.
-- **Generate stub** panel POSTs a minimal body to `/v1/ai/generate` and displays the
-  `501 not_implemented` envelope.
-- Lifecycle rail includes **BUSY**; runner cards use a distinct busy badge.
-- Phase 5 endpoints unlock in the explorer when `/v1/capabilities` responds `200`.
-
-## Contract
-
-`GET /v1/status` must never include secrets (`jwt_secret`, `internal_shared_secret`, etc.). Contract
-tests live in `ai/gateway/tests/contract/test_status.py`.
+```bash
+cd ai/gateway
+.venv/bin/pytest tests/contract/test_status.py tests/contract/test_trace.py -q
+```

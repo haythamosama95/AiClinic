@@ -84,12 +84,50 @@ def _ollama_online() -> bool:
         return False
 
 
+def _compose_status() -> dict[str, Any]:
+    result = _run_script("status-json", timeout=15)
+    raw = result.stdout.strip()
+    if not raw:
+        return {
+            "container_running": False,
+            "ollama_reachable": False,
+            "gpu_enabled": _gpu_enabled(),
+            "gpu_available": _gpu_available(),
+            "host_models": "unknown",
+        }
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"error": "invalid status-json output"}
+    if not isinstance(data, dict):
+        return {"error": "invalid status-json shape"}
+    return data
+
+
+def _ollama_logs_tail(lines: int = 80) -> str:
+    lines = max(10, min(lines, 500))
+    result = _run_script("logs-tail", str(lines), timeout=30)
+    return (result.stdout or result.stderr or "").strip()
+
+
+def server_config() -> dict[str, Any]:
+    return {
+        "host": DEFAULT_HOST,
+        "port": DEFAULT_PORT,
+        "ollama_url": OLLAMA_URL,
+        "gateway_url": GATEWAY_URL,
+        "runner_proxy_prefix": OLLAMA_PROXY_PREFIX,
+        "gateway_proxy_prefix": GATEWAY_PROXY_PREFIX,
+    }
+
+
 def runtime_status() -> dict[str, Any]:
     ps_rows = _ollama_ps()
     processor = ps_rows[0].get("processor") if ps_rows else None
     loaded_model = ps_rows[0].get("name") if ps_rows else None
     gpu_on = _gpu_enabled()
     gpu_ready = _gpu_available()
+    compose = _compose_status()
     return {
         "ollama_online": _ollama_online(),
         "ollama_url": OLLAMA_URL,
@@ -98,6 +136,7 @@ def runtime_status() -> dict[str, Any]:
         "processor": processor,
         "loaded_model": loaded_model,
         "loaded_models": ps_rows,
+        "compose": compose,
     }
 
 
@@ -327,9 +366,46 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def _handle_runtime_post(self) -> None:
+        try:
+            body = self._read_json_body()
+        except ValueError as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
+            return
+        if "enabled" in body:
+            enabled = bool(body.get("enabled"))
+            result = set_gpu(enabled)
+            status = HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST
+            self._send_json(status, result)
+            return
+        self._send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Expected JSON body with enabled: boolean"})
+
     def do_GET(self) -> None:
-        if self.path == "/api/runtime":
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/runtime":
             self._send_json(HTTPStatus.OK, runtime_status())
+            return
+        if path == "/api/config":
+            self._send_json(HTTPStatus.OK, server_config())
+            return
+        if path == "/api/compose/status":
+            payload = _compose_status()
+            payload["ollama_online"] = _ollama_online()
+            payload["loaded_models"] = _ollama_ps()
+            self._send_json(HTTPStatus.OK, payload)
+            return
+        if path == "/api/runtime/logs":
+            query = urllib.parse.parse_qs(parsed.query)
+            try:
+                lines = int((query.get("lines") or ["80"])[0])
+            except ValueError:
+                lines = 80
+            self._send_json(
+                HTTPStatus.OK,
+                {"lines": max(10, min(lines, 500)), "text": _ollama_logs_tail(lines)},
+            )
             return
         if self.path == "/api/gateway/capabilities":
             self._proxy_to_gateway("GET", "/v1/capabilities")
@@ -352,16 +428,8 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if self.path == "/api/gateway/auto-sign-in":
             self._proxy_to_gateway("POST", "/v1/dashboard/auto-sign-in")
             return
-        if self.path == "/api/runtime/gpu":
-            try:
-                body = self._read_json_body()
-            except ValueError as exc:
-                self._send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
-                return
-            enabled = bool(body.get("enabled"))
-            result = set_gpu(enabled)
-            status = HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST
-            self._send_json(status, result)
+        if self.path in {"/api/runtime", "/api/runtime/gpu"}:
+            self._handle_runtime_post()
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 

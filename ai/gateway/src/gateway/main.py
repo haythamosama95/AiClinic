@@ -23,12 +23,20 @@ from gateway.api.internal_runners import router as internal_runners_router
 from gateway.api.metrics import router as metrics_router
 from gateway.api.runners import router as runners_router
 from gateway.api.status import router as status_router
+from gateway.api.trace import router as trace_router
 from gateway.auth.jwt_validator import JwtValidator
 from gateway.auth.role_map import RoleMapReloader, RoleMapStore
 from gateway.config.settings import GatewayConfig, load_config
 from gateway.obs import logging as obs_logging
 from gateway.obs.logging import log_record
 from gateway.obs.metrics import record_request
+from gateway.obs.trace_bus import TraceBus
+from gateway.obs.trace_helpers import (
+    body_text_for_trace,
+    emit_client_trace,
+    should_emit_client_trace,
+    summarize_body,
+)
 from gateway.routing.health_poller import HealthPoller
 from gateway.routing.registry import RunnerRegistry
 
@@ -112,7 +120,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         interval_s=60,
     )
     _role_map_reloader.start()
-    _poller = HealthPoller(app.state.config, app.state.registry)
+    _poller = HealthPoller(
+        app.state.config,
+        app.state.registry,
+        trace_bus=app.state.trace_bus,
+    )
     await _poller.start()
     yield
     if _poller is not None:
@@ -135,6 +147,7 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
     app = FastAPI(title="AI Gateway", version="0.1.0", lifespan=lifespan)
     app.state.config = cfg
     app.state.registry = _registry
+    app.state.trace_bus = TraceBus(log_verbatim=cfg.log_verbatim)
     app.state.started_monotonic = time.monotonic()
 
     install_exception_handlers(app)
@@ -152,6 +165,21 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.state.request_id = request_id
         started = time.monotonic()
+
+        request_body_text: str | None = None
+        if request.method in ("POST", "PUT", "PATCH"):
+            raw_body = await request.body()
+
+            async def receive():
+                return {"type": "http.request", "body": raw_body, "more_body": False}
+
+            request._receive = receive  # noqa: SLF001
+            if raw_body:
+                try:
+                    request_body_text = body_text_for_trace(json.loads(raw_body))
+                except (json.JSONDecodeError, TypeError):
+                    request_body_text = body_text_for_trace(raw_body)
+
         response = await call_next(request)
         latency_ms = (time.monotonic() - started) * 1000.0
         status = response.status_code
@@ -161,17 +189,18 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
         record_request(request.method, endpoint, status)
 
         error_code: str | None = None
-        if status >= 400:
-            body_bytes = getattr(response, "body", None)
-            if body_bytes:
-                try:
-                    payload = json.loads(body_bytes)
-                    if isinstance(payload, dict):
-                        err = payload.get("error")
-                        if isinstance(err, dict):
-                            error_code = err.get("code")
-                except (json.JSONDecodeError, TypeError):
-                    pass
+        response_body_text: str | None = None
+        body_bytes = getattr(response, "body", None)
+        if body_bytes:
+            try:
+                parsed_body = json.loads(body_bytes)
+                response_body_text = body_text_for_trace(parsed_body)
+                if status >= 400 and isinstance(parsed_body, dict):
+                    err = parsed_body.get("error")
+                    if isinstance(err, dict):
+                        error_code = err.get("code")
+            except (json.JSONDecodeError, TypeError):
+                response_body_text = body_text_for_trace(body_bytes)
 
         outcome = _request_outcome(status, error_code)
         log_record(
@@ -182,6 +211,35 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
             error_code=error_code,
             latency_ms=latency_ms,
         )
+
+        trace_bus: TraceBus | None = getattr(request.app.state, "trace_bus", None)
+        if trace_bus is not None and should_emit_client_trace(endpoint):
+            response_summary = summarize_body(response_body_text) if response_body_text else None
+            request_summary = summarize_body(request_body_text) if request_body_text else None
+            await emit_client_trace(
+                trace_bus,
+                direction="client_to_gateway",
+                method=request.method,
+                path=endpoint,
+                status_code=status,
+                latency_ms=latency_ms,
+                request_id=request_id,
+                kind="api",
+                request_summary=request_summary,
+                request_body=request_body_text,
+            )
+            await emit_client_trace(
+                trace_bus,
+                direction="gateway_to_client",
+                method=request.method,
+                path=endpoint,
+                status_code=status,
+                latency_ms=latency_ms,
+                request_id=request_id,
+                kind="api",
+                response_summary=response_summary,
+                response_body=response_body_text,
+            )
         return response
 
     app.include_router(health_router)
@@ -191,6 +249,7 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
     app.include_router(status_router)
     app.include_router(capabilities_router)
     app.include_router(generate_stub_router)
+    app.include_router(trace_router)
     if cfg.enable_push_registration:
         app.include_router(internal_runners_router)
 

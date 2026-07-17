@@ -4,392 +4,481 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Ollama model runner console — local inference playground">
-  <title>AI Model Runner</title>
+  <meta name="description" content="Local Ollama operator console — inference, runtime, and gateway bridge">
+  <title>Model Runner · AiClinic</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Syne:wght@600;700&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
-  <div class="app-shell">
-    <header class="hero" id="console-header">
-      <div class="hero__grid-bg" aria-hidden="true"></div>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
 
-      <div class="hero__content">
-        <div class="hero__identity">
-          <p class="hero__eyebrow">AiClinic · Runner</p>
-          <h1 class="hero__title">Model Console</h1>
-          <p class="hero__subtitle">Local Ollama playground · gateway observability mirror</p>
+  <div class="app" id="app">
+    <!-- Signature: loaded model rail -->
+    <header class="rail-header" id="rail-header">
+      <div class="rail-header__brand">
+        <p class="rail-header__eyebrow">AiClinic · Node operator</p>
+        <h1 class="rail-header__title">Model Runner</h1>
+      </div>
+
+      <div class="model-rail" id="model-rail" role="region" aria-label="Models loaded in memory">
+        <div class="model-rail__label" aria-hidden="true">RAM</div>
+        <div class="model-rail__track" id="model-rail-track">
+          <p class="model-rail__empty" id="model-rail-empty">No model in memory — send a prompt to load one</p>
         </div>
+      </div>
 
-        <div class="hero__status-bar">
-          <div class="hero__badges">
-            <span class="badge badge--live" id="connection-indicator" data-state="unknown" role="status"
-              aria-live="polite">
-              <span class="badge__dot" aria-hidden="true"></span>
-              <span class="badge__label" id="connection-label">Connecting…</span>
-            </span>
-
-            <span class="badge badge--model" id="loaded-model-badge" data-loaded="unknown" role="status">
-              <span class="badge__icon" aria-hidden="true">◇</span>
-              <span class="badge__label" id="loaded-model-label">No model loaded</span>
-            </span>
-          </div>
-
-          <div class="hero__actions">
-            <label class="hero__poll-label" for="poll-interval">
-              Poll
-              <input type="number" class="hero__poll-input" id="poll-interval" min="3" max="120" value="8"
-                aria-label="Poll interval in seconds">
-              s
-            </label>
-            <span class="hero__last-refresh" id="last-refresh" aria-live="polite">—</span>
-            <button type="button" class="btn btn--refresh" id="refresh-btn" aria-label="Refresh runner status">
-              <span class="btn__icon" aria-hidden="true">↻</span>
-              Refresh
-            </button>
-          </div>
-        </div>
+      <div class="rail-header__status">
+        <span class="status-pill" id="connection-pill" data-state="unknown" role="status" aria-live="polite">
+          <span class="status-pill__dot" aria-hidden="true"></span>
+          <span id="connection-label">Connecting…</span>
+        </span>
+        <span class="rail-header__refresh mono" id="last-refresh" aria-live="polite">—</span>
+        <button type="button" class="btn btn--icon" id="refresh-btn" aria-label="Refresh status">
+          <span aria-hidden="true">↻</span>
+        </button>
       </div>
     </header>
 
-    <main class="console-main">
-      <!-- Runtime -->
-      <section class="panel panel--runtime" id="runtime-panel" aria-labelledby="runtime-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="runtime-heading">Compute runtime</h2>
-          <p class="panel__desc">Ollama inference device · restarts the container when toggled</p>
-        </header>
-        <div class="runtime-grid">
-          <div class="runtime-status" id="runtime-status" role="status" aria-live="polite">
-            <span class="runtime-status__label">Processor</span>
-            <span class="runtime-status__value mono" id="runtime-processor">—</span>
-            <span class="runtime-status__hint" id="runtime-gpu-hint">—</span>
-          </div>
-          <label class="toggle toggle--runtime">
-            <input type="checkbox" id="runtime-gpu-toggle">
-            <span class="toggle__label">Use NVIDIA GPU</span>
-          </label>
-          <button type="button" class="btn btn--primary" id="runtime-gpu-apply" disabled>Apply &amp; restart
-            Ollama</button>
-        </div>
-        <p class="runtime-note" id="runtime-note">
-          Requires <span class="mono">nvidia-container-toolkit</span> on the host. Toggling stops and
-          restarts the Ollama container (~10–30 s).
-        </p>
-      </section>
+    <div class="app-body">
+      <nav class="side-nav" aria-label="Console sections">
+        <ul class="side-nav__list" role="tablist">
+          <li><button type="button" class="side-nav__btn side-nav__btn--active" role="tab" aria-selected="true"
+              data-panel="playground" id="tab-playground">Playground</button></li>
+          <li><button type="button" class="side-nav__btn" role="tab" aria-selected="false" data-panel="generate"
+              id="tab-generate">Generate</button></li>
+          <li><button type="button" class="side-nav__btn" role="tab" aria-selected="false" data-panel="models"
+              id="tab-models">Models</button></li>
+          <li><button type="button" class="side-nav__btn" role="tab" aria-selected="false" data-panel="explorer"
+              id="tab-explorer">API</button></li>
+          <li><button type="button" class="side-nav__btn" role="tab" aria-selected="false" data-panel="runtime"
+              id="tab-runtime">Runtime</button></li>
+          <li><button type="button" class="side-nav__btn" role="tab" aria-selected="false" data-panel="gateway"
+              id="tab-gateway">Gateway</button></li>
+          <li><button type="button" class="side-nav__btn" role="tab" aria-selected="false" data-panel="settings"
+              id="tab-settings">Settings</button></li>
+        </ul>
+      </nav>
 
-      <!-- Connection -->
-      <section class="panel panel--connection" id="connection-panel" aria-labelledby="connection-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="connection-heading">Runner endpoint</h2>
-          <p class="panel__desc">Bound to localhost — not reachable from clinic clients</p>
-        </header>
-        <div class="connection-grid">
-          <label class="field">
-            <span class="field__label">Base URL</span>
-            <input type="text" class="field__input mono" id="runner-base-url" value="/api/runner" spellcheck="false"
-              autocomplete="off">
-          </label>
-          <div class="connection-actions">
-            <button type="button" class="btn btn--primary" id="save-base-url-btn">Apply</button>
-            <button type="button" class="btn btn--ghost" id="probe-btn">Probe /v1/models</button>
-          </div>
-        </div>
-        <p class="connection-note">
-          Gateway polls this address internally. Use the
-          <a href="http://localhost:8090/dashboard" class="link" target="_blank" rel="noopener">control plane
-            dashboard</a>
-          for registry and JWT-protected proxy probes.
-        </p>
-      </section>
-
-      <!-- Overview -->
-      <section class="panel panel--overview" id="overview-section" aria-labelledby="overview-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="overview-heading">Status</h2>
-          <p class="panel__desc">Live discovery from <code>GET /v1/models</code></p>
-        </header>
-        <div class="overview-grid" id="overview-cards">
-          <article class="stat-card" data-metric="latency">
-            <span class="stat-card__label">Last probe</span>
-            <span class="stat-card__value" id="metric-latency">—</span>
-            <span class="stat-card__hint" id="metric-latency-hint">ms</span>
-          </article>
-          <article class="stat-card" data-metric="models">
-            <span class="stat-card__label">Models reported</span>
-            <span class="stat-card__value" id="metric-model-count">—</span>
-            <span class="stat-card__hint">in /v1/models</span>
-          </article>
-          <article class="stat-card" data-metric="context">
-            <span class="stat-card__label">Context window</span>
-            <span class="stat-card__value" id="metric-context">—</span>
-            <span class="stat-card__hint">tokens</span>
-          </article>
-          <article class="stat-card" data-metric="digest">
-            <span class="stat-card__label">Digest</span>
-            <span class="stat-card__value stat-card__value--mono" id="metric-digest">—</span>
-            <span class="stat-card__hint">sha256 pin</span>
-          </article>
-        </div>
-      </section>
-
-      <!-- Gateway discovery (Phase 5) -->
-      <section class="panel panel--gateway" id="gateway-panel" aria-labelledby="gateway-heading">
-        <header class="panel__header panel__header--split">
-          <div>
-            <h2 class="panel__title" id="gateway-heading">Gateway discovery</h2>
-            <p class="panel__desc">How this runner appears in <code>GET /v1/capabilities</code> · Phase 5 routing</p>
-          </div>
-          <span class="panel__count mono" id="gateway-capabilities-fetched" aria-live="polite">—</span>
-        </header>
-
-        <div class="gateway-layout">
-          <div class="gateway-config">
-            <label class="field">
-              <span class="field__label">Runner ID (gateway.yaml)</span>
-              <input type="text" class="field__input mono" id="gateway-runner-id" value="ollama-local"
-                spellcheck="false" autocomplete="off">
-            </label>
-            <label class="field">
-              <span class="field__label">Declared capabilities</span>
-              <input type="text" class="field__input mono" id="gateway-declared-caps" value="json_grammar"
-                spellcheck="false" autocomplete="off" placeholder="comma-separated">
-            </label>
-            <label class="field field--wide">
-              <span class="field__label">Gateway JWT <span class="field__hint">optional — for live fetch</span></span>
-              <input type="password" class="field__input mono" id="gateway-jwt-input" spellcheck="false"
-                autocomplete="off" placeholder="Bearer token or use auto sign-in">
-            </label>
-            <div class="gateway-config__actions">
-              <button type="button" class="btn btn--primary" id="gateway-fetch-btn">Fetch capabilities</button>
-              <button type="button" class="btn btn--ghost" id="gateway-auto-sign-in-btn">Dev auto sign-in</button>
-            </div>
-            <p class="gateway-config__message mono" id="gateway-fetch-message" role="status" aria-live="polite"></p>
-          </div>
-
-          <div class="gateway-routing-note">
-            <h3 class="gateway-routing-note__title">Routing selection</h3>
-            <ol class="gateway-routing-note__steps">
-              <li>Capability match — runner must declare required capabilities</li>
-              <li>Health filter — prefer <code>READY</code>, deprioritize <code>DEGRADED</code>; exclude
-                <code>STARTING</code>/<code>UNREACHABLE</code></li>
-              <li>Least-busy + round-robin tie-break among eligible runners</li>
-            </ol>
-            <p class="gateway-routing-note__body">
-              Lifecycle states: <code>UNKNOWN</code> → <code>STARTING</code> → <code>READY</code> /
-              <code>BUSY</code> → <code>DEGRADED</code> → <code>UNREACHABLE</code>. When every runner is
-              unreachable, gateway <code>GET /ready</code> returns <code>503 ai_no_capacity</code>.
-            </p>
-          </div>
-
-          <div class="gateway-preview-grid">
-            <article class="gateway-preview-card">
-              <h3 class="gateway-preview-card__title">Local preview</h3>
-              <p class="gateway-preview-card__desc">Derived from this console’s <code>/v1/models</code> probe</p>
-              <pre class="gateway-preview-card__body mono" id="gateway-local-preview" tabindex="0">—</pre>
-            </article>
-            <article class="gateway-preview-card">
-              <h3 class="gateway-preview-card__title">Live gateway report</h3>
-              <p class="gateway-preview-card__desc">Proxied <code>GET /v1/capabilities</code> (JWT required)</p>
-              <pre class="gateway-preview-card__body mono" id="gateway-live-capabilities" tabindex="0">—</pre>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <!-- Gateway observability (Phase 6) -->
-      <section class="panel panel--observability" id="observability-panel" aria-labelledby="observability-heading">
-        <header class="panel__header panel__header--split">
-          <div>
-            <h2 class="panel__title" id="observability-heading">Gateway observability</h2>
-            <p class="panel__desc">How the gateway sees this runner · <code>GET /v1/status</code> + <code>/metrics</code></p>
-          </div>
-          <span class="panel__count mono" id="observability-fetched" aria-live="polite">—</span>
-        </header>
-
-        <div class="observability-layout">
-          <div class="observability-stats" id="observability-stats">
-            <article class="obs-stat">
-              <span class="obs-stat__label">Registry status</span>
-              <span class="obs-stat__value" id="obs-runner-status">—</span>
-            </article>
-            <article class="obs-stat">
-              <span class="obs-stat__label">Health gauge</span>
-              <span class="obs-stat__value" id="obs-runner-health">—</span>
-            </article>
-            <article class="obs-stat">
-              <span class="obs-stat__label">Avg poll latency</span>
-              <span class="obs-stat__value" id="obs-runner-latency">—</span>
-            </article>
-            <article class="obs-stat">
-              <span class="obs-stat__label">In-flight</span>
-              <span class="obs-stat__value" id="obs-runner-inflight">—</span>
-            </article>
-          </div>
-
-          <p class="observability-hint" id="observability-hint">
-            Save a gateway JWT in Gateway discovery to poll live registry metrics for runner
-            <code id="obs-runner-id-label">ollama-local</code>.
-          </p>
-
-          <details class="observability-raw" id="observability-raw-details">
-            <summary class="observability-raw__summary">Runner metrics snippet (Prometheus)</summary>
-            <pre class="observability-raw__body mono" id="observability-metrics-raw" tabindex="0">—</pre>
-          </details>
-        </div>
-      </section>
-
-      <!-- Push registration info (Phase 6) -->
-      <section class="panel panel--push" id="push-panel" aria-labelledby="push-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="push-heading">Push registration</h2>
-          <p class="panel__desc">Gateway-internal mode · not exposed to clinic clients</p>
-        </header>
-        <div class="push-layout">
-          <dl class="push-dl" id="push-dl">
-            <div class="push-dl__row">
-              <dt>Gateway mode</dt>
-              <dd id="push-mode">—</dd>
-            </div>
-            <div class="push-dl__row">
-              <dt>Endpoints</dt>
-              <dd class="mono" id="push-endpoints">—</dd>
-            </div>
-            <div class="push-dl__row">
-              <dt>Console role</dt>
-              <dd id="push-console-role">—</dd>
-            </div>
-          </dl>
-          <p class="push-note" id="push-note">
-            When push mode is disabled (default), the gateway polls this runner via pull-based health checks.
-            Heartbeats require <code>X-Internal-Secret</code> and are configured outside this UI.
-          </p>
-        </div>
-      </section>
-
-      <div class="inference-workspace" id="inference-workspace">
-        <div class="workspace-trace" aria-hidden="true"></div>
-
-        <!-- Chat Playground -->
-        <section class="workspace-panel workspace-panel--playground" id="playground-panel"
-          aria-labelledby="playground-heading">
-          <header class="workspace-panel__header">
-            <div class="workspace-panel__titles">
-              <p class="workspace-panel__eyebrow">Inference</p>
-              <h2 class="workspace-panel__title" id="playground-heading">Chat playground</h2>
-              <p class="workspace-panel__desc"><code>POST /api/chat</code> via runner proxy</p>
+      <main class="main" id="main-content">
+        <!-- Playground -->
+        <section class="panel panel--active" id="panel-playground" role="tabpanel" aria-labelledby="tab-playground">
+          <header class="panel__head">
+            <div>
+              <h2 class="panel__title">Chat playground</h2>
+              <p class="panel__desc">Exercise <code>POST /api/chat</code> with streaming and thinking mode</p>
             </div>
           </header>
 
-          <div class="playground-toolbar" role="toolbar" aria-label="Chat controls">
-            <label class="playground-field playground-field--model">
-              <span class="playground-field__label">Model</span>
-              <select class="playground-field__select mono" id="playground-model" aria-label="Select model">
-                <option value="">— load models first —</option>
+          <div class="toolbar" role="toolbar" aria-label="Chat controls">
+            <label class="field field--grow">
+              <span class="field__label">Model</span>
+              <select class="field__input mono" id="playground-model">
+                <option value="">— probe models first —</option>
               </select>
             </label>
-            <label class="playground-field">
-              <span class="playground-field__label">Temperature</span>
-              <input type="number" class="playground-field__input" id="playground-temperature" min="0" max="2"
-                step="0.1" value="0.7">
+            <label class="field">
+              <span class="field__label">Thinking</span>
+              <select class="field__input" id="playground-think">
+                <option value="default">Model default</option>
+                <option value="on">Force on</option>
+                <option value="off">Force off</option>
+              </select>
             </label>
-            <label class="playground-field">
-              <span class="playground-field__label">Max tokens</span>
-              <input type="number" class="playground-field__input" id="playground-max-tokens" min="1" max="32768"
-                step="1" value="512">
+            <label class="field field--narrow">
+              <span class="field__label">Temp</span>
+              <input type="number" class="field__input" id="playground-temperature" min="0" max="2" step="0.1"
+                value="0.7">
             </label>
-            <label class="playground-toggle">
+            <label class="field field--narrow">
+              <span class="field__label">Max tokens</span>
+              <input type="number" class="field__input" id="playground-max-tokens" min="1" max="32768" value="512">
+            </label>
+            <label class="check">
               <input type="checkbox" id="playground-stream" checked>
-              <span class="playground-toggle__label">Stream response</span>
+              <span>Stream</span>
             </label>
-            <button type="button" class="btn btn--ghost" id="playground-clear-btn">Clear history</button>
+            <button type="button" class="btn btn--ghost" id="playground-clear-btn">Clear</button>
           </div>
 
-          <div class="playground-stage">
-            <div class="playground-messages" id="playground-messages" role="log" aria-live="polite"
-              aria-relevant="additions">
-              <p class="playground-messages__empty" id="playground-empty">Send a message to run inference on the
-                runner.</p>
+          <div class="split split--playground">
+            <div class="split__primary">
+              <div class="chat-log" id="playground-messages" role="log" aria-live="polite" aria-relevant="additions">
+                <p class="chat-log__empty" id="playground-empty">Send a message to run inference on this node.</p>
+              </div>
+              <form class="chat-compose" id="playground-form">
+                <label class="sr-only" for="playground-input">Message</label>
+                <textarea class="chat-compose__input" id="playground-input" rows="3"
+                  placeholder="Type a prompt… (Enter to send, Shift+Enter for newline)" required></textarea>
+                <div class="chat-compose__actions">
+                  <span class="chat-compose__status" id="playground-status" aria-live="polite"></span>
+                  <button type="submit" class="btn btn--primary" id="playground-send-btn">Send</button>
+                  <button type="button" class="btn btn--ghost" id="playground-stop-btn" hidden>Stop</button>
+                </div>
+              </form>
             </div>
 
-            <form class="playground-compose" id="playground-form">
-              <label class="sr-only" for="playground-input">Message</label>
-              <textarea class="playground-compose__input" id="playground-input" rows="3"
-                placeholder="Ask the model something… (Enter to send, Shift+Enter for newline)" required></textarea>
-              <div class="playground-compose__actions">
-                <span class="playground-compose__status" id="playground-status" aria-live="polite"></span>
-                <button type="submit" class="btn btn--primary" id="playground-send-btn">
-                  <span class="btn__icon" aria-hidden="true">▶</span>
-                  Send
-                </button>
-                <button type="button" class="btn btn--ghost" id="playground-stop-btn" hidden>Stop</button>
+            <aside class="split__inspector" aria-labelledby="inspector-heading">
+              <h3 class="inspector__title" id="inspector-heading">Request / response</h3>
+              <p class="inspector__metrics mono" id="telemetry-metrics" aria-live="polite">Awaiting inference…</p>
+              <div class="inspector-tabs" role="tablist" aria-label="Inspector views">
+                <button type="button" class="inspector-tab inspector-tab--active" role="tab" aria-selected="true"
+                  data-telemetry-tab="parsed">Parsed</button>
+                <button type="button" class="inspector-tab" role="tab" aria-selected="false"
+                  data-telemetry-tab="request">Request</button>
+                <button type="button" class="inspector-tab" role="tab" aria-selected="false"
+                  data-telemetry-tab="stream">Stream</button>
               </div>
-            </form>
+              <pre class="inspector-pane inspector-pane--active mono" id="telemetry-pane-parsed" role="tabpanel"
+                tabindex="0">—</pre>
+              <pre class="inspector-pane mono" id="telemetry-pane-request" role="tabpanel" hidden
+                tabindex="0">—</pre>
+              <pre class="inspector-pane mono" id="telemetry-pane-stream" role="tabpanel" hidden
+                tabindex="0">—</pre>
+            </aside>
           </div>
         </section>
 
-        <!-- Raw Input -->
-        <section class="workspace-panel workspace-panel--telemetry" id="telemetry-panel"
-          aria-labelledby="telemetry-heading">
-          <header class="workspace-panel__header">
-            <div class="workspace-panel__titles">
-              <p class="workspace-panel__eyebrow">Telemetry</p>
-              <h2 class="workspace-panel__title" id="telemetry-heading">Raw input</h2>
-              <p class="workspace-panel__desc">Parsed response and request payload</p>
+        <!-- Generate -->
+        <section class="panel" id="panel-generate" role="tabpanel" aria-labelledby="tab-generate" hidden>
+          <header class="panel__head">
+            <div>
+              <h2 class="panel__title">Completion generate</h2>
+              <p class="panel__desc">Raw <code>POST /api/generate</code> — single-turn completion</p>
             </div>
           </header>
 
-          <div class="telemetry-metrics mono" id="telemetry-metrics" aria-live="polite">
-            Awaiting inference…
+          <div class="toolbar">
+            <label class="field field--grow">
+              <span class="field__label">Model</span>
+              <select class="field__input mono" id="generate-model">
+                <option value="">— select model —</option>
+              </select>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="generate-stream" checked>
+              <span>Stream</span>
+            </label>
           </div>
 
-          <div class="telemetry-tabs" role="tablist" aria-label="Raw input views">
-            <button type="button" class="telemetry-tab telemetry-tab--active" role="tab" aria-selected="true"
-              data-telemetry-tab="parsed" id="telemetry-tab-parsed">Parsed</button>
-            <button type="button" class="telemetry-tab" role="tab" aria-selected="false" data-telemetry-tab="request"
-              id="telemetry-tab-request">Request</button>
+          <label class="field field--block">
+            <span class="field__label">Prompt</span>
+            <textarea class="field__textarea mono" id="generate-prompt" rows="5"
+              placeholder="Enter a completion prompt…"></textarea>
+          </label>
+
+          <div class="actions-row">
+            <button type="button" class="btn btn--primary" id="generate-run-btn">Run generate</button>
+            <button type="button" class="btn btn--ghost" id="generate-stop-btn" hidden>Stop</button>
+            <span class="actions-row__status mono" id="generate-status" aria-live="polite"></span>
           </div>
 
-          <div class="telemetry-panes">
-            <pre class="telemetry-pane telemetry-pane--active mono" id="telemetry-pane-parsed" role="tabpanel"
-              tabindex="0">—</pre>
-            <pre class="telemetry-pane mono" id="telemetry-pane-request" role="tabpanel" hidden
-              tabindex="0">—</pre>
+          <pre class="output-block mono" id="generate-output" tabindex="0">—</pre>
+        </section>
+
+        <!-- Models -->
+        <section class="panel" id="panel-models" role="tabpanel" aria-labelledby="tab-models" hidden>
+          <header class="panel__head panel__head--split">
+            <div>
+              <h2 class="panel__title">Model inventory</h2>
+              <p class="panel__desc">Discovered via <code>GET /v1/models</code> and <code>GET /api/tags</code></p>
+            </div>
+            <button type="button" class="btn btn--ghost" id="models-refresh-btn">Refresh inventory</button>
+          </header>
+
+          <div class="stat-row" id="models-stats">
+            <article class="stat">
+              <span class="stat__label">Probe latency</span>
+              <span class="stat__value" id="metric-latency">—</span>
+            </article>
+            <article class="stat">
+              <span class="stat__label">Models</span>
+              <span class="stat__value" id="metric-model-count">—</span>
+            </article>
+            <article class="stat">
+              <span class="stat__label">Context</span>
+              <span class="stat__value" id="metric-context">—</span>
+            </article>
+            <article class="stat">
+              <span class="stat__label">Digest</span>
+              <span class="stat__value mono" id="metric-digest">—</span>
+            </article>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table" id="models-table">
+              <thead>
+                <tr>
+                  <th scope="col">Model</th>
+                  <th scope="col">Context</th>
+                  <th scope="col">Digest</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="models-table-body">
+                <tr>
+                  <td colspan="4" class="data-table__empty">Probe the runner to list models</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <details class="fold">
+            <summary>Native tags (<code>GET /api/tags</code>)</summary>
+            <pre class="output-block mono" id="models-tags-raw" tabindex="0">—</pre>
+          </details>
+        </section>
+
+        <!-- API Explorer -->
+        <section class="panel" id="panel-explorer" role="tabpanel" aria-labelledby="tab-explorer" hidden>
+          <header class="panel__head">
+            <div>
+              <h2 class="panel__title">API explorer</h2>
+              <p class="panel__desc">Probe common Ollama endpoints through the runner proxy</p>
+            </div>
+          </header>
+
+          <div class="explorer-grid">
+            <article class="explorer-card">
+              <h3 class="explorer-card__title mono">GET /v1/models</h3>
+              <p class="explorer-card__desc">OpenAI-compatible model list</p>
+              <button type="button" class="btn btn--ghost" data-endpoint="models">Run</button>
+              <pre class="explorer-card__result mono" id="explorer-models-result" tabindex="0">—</pre>
+            </article>
+            <article class="explorer-card">
+              <h3 class="explorer-card__title mono">GET /api/tags</h3>
+              <p class="explorer-card__desc">Ollama tag inventory</p>
+              <button type="button" class="btn btn--ghost" data-endpoint="tags">Run</button>
+              <pre class="explorer-card__result mono" id="explorer-tags-result" tabindex="0">—</pre>
+            </article>
+            <article class="explorer-card">
+              <h3 class="explorer-card__title mono">GET /api/version</h3>
+              <p class="explorer-card__desc">Server version string</p>
+              <button type="button" class="btn btn--ghost" data-endpoint="version">Run</button>
+              <pre class="explorer-card__result mono" id="explorer-version-result" tabindex="0">—</pre>
+            </article>
+          </div>
+
+          <div class="custom-call">
+            <h3 class="custom-call__title">Custom request</h3>
+            <div class="toolbar">
+              <label class="field field--narrow">
+                <span class="field__label">Method</span>
+                <select class="field__input" id="custom-method">
+                  <option>GET</option>
+                  <option>POST</option>
+                </select>
+              </label>
+              <label class="field field--grow">
+                <span class="field__label">Path (under runner proxy)</span>
+                <input type="text" class="field__input mono" id="custom-path" value="/api/show"
+                  spellcheck="false">
+              </label>
+              <button type="button" class="btn btn--primary" id="custom-run-btn">Send</button>
+            </div>
+            <label class="field field--block">
+              <span class="field__label">JSON body (POST only)</span>
+              <textarea class="field__textarea mono" id="custom-body" rows="4"
+                placeholder='{"name": "qwen3:4b"}'></textarea>
+            </label>
+            <pre class="output-block mono" id="custom-result" tabindex="0">—</pre>
           </div>
         </section>
-      </div>
 
-      <!-- API explorer -->
-      <section class="panel panel--explorer" id="explorer-panel" aria-labelledby="explorer-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="explorer-heading">API explorer</h2>
-          <p class="panel__desc">Quick calls against the runner (no gateway)</p>
-        </header>
-        <div class="explorer-grid">
-          <article class="explorer-card">
-            <h3 class="explorer-card__title mono">GET /v1/models</h3>
-            <p class="explorer-card__desc">Model discovery &amp; health signal</p>
-            <button type="button" class="btn btn--probe" data-endpoint="models">Run</button>
-            <pre class="explorer-card__result mono" id="explorer-models-result" tabindex="0">—</pre>
-          </article>
-          <article class="explorer-card">
-            <h3 class="explorer-card__title mono">GET /api/tags</h3>
-            <p class="explorer-card__desc">Native Ollama tag list</p>
-            <button type="button" class="btn btn--probe" data-endpoint="tags">Run</button>
-            <pre class="explorer-card__result mono" id="explorer-tags-result" tabindex="0">—</pre>
-          </article>
-          <article class="explorer-card">
-            <h3 class="explorer-card__title mono">GET /api/version</h3>
-            <p class="explorer-card__desc">Ollama server version</p>
-            <button type="button" class="btn btn--probe" data-endpoint="version">Run</button>
-            <pre class="explorer-card__result mono" id="explorer-version-result" tabindex="0">—</pre>
-          </article>
-        </div>
-      </section>
-    </main>
+        <!-- Runtime -->
+        <section class="panel" id="panel-runtime" role="tabpanel" aria-labelledby="tab-runtime" hidden>
+          <header class="panel__head">
+            <div>
+              <h2 class="panel__title">Runtime &amp; compose</h2>
+              <p class="panel__desc">GPU profile, container health, and Ollama logs</p>
+            </div>
+          </header>
 
-    <footer class="site-footer">
-      <p>AI Model Runner · localhost only · pairs with gateway <code>/dashboard</code></p>
+          <div class="runtime-grid">
+            <article class="runtime-card">
+              <h3 class="runtime-card__title">Compute device</h3>
+              <p class="runtime-card__value mono" id="runtime-processor">—</p>
+              <p class="runtime-card__hint" id="runtime-gpu-hint">—</p>
+              <label class="toggle">
+                <input type="checkbox" id="runtime-gpu-toggle">
+                <span class="toggle__track" aria-hidden="true"></span>
+                <span class="toggle__label">Use NVIDIA GPU</span>
+              </label>
+              <button type="button" class="btn btn--primary" id="runtime-gpu-apply" disabled>Apply &amp; restart
+                Ollama</button>
+              <p class="runtime-note" id="runtime-note">Toggling restarts the Ollama container (~10–30 s).</p>
+            </article>
+
+            <article class="runtime-card">
+              <h3 class="runtime-card__title">Compose status</h3>
+              <dl class="kv-list" id="compose-status-dl">
+                <div class="kv-list__row">
+                  <dt>Container</dt>
+                  <dd id="compose-container">—</dd>
+                </div>
+                <div class="kv-list__row">
+                  <dt>Ollama API</dt>
+                  <dd id="compose-reachable">—</dd>
+                </div>
+                <div class="kv-list__row">
+                  <dt>GPU profile</dt>
+                  <dd id="compose-gpu">—</dd>
+                </div>
+                <div class="kv-list__row">
+                  <dt>Host models</dt>
+                  <dd class="mono" id="compose-host-models">—</dd>
+                </div>
+              </dl>
+              <button type="button" class="btn btn--ghost" id="compose-refresh-btn">Refresh compose status</button>
+            </article>
+          </div>
+
+          <details class="fold" id="logs-fold">
+            <summary>Ollama container logs (tail)</summary>
+            <div class="actions-row">
+              <label class="field field--narrow">
+                <span class="field__label">Lines</span>
+                <input type="number" class="field__input" id="logs-lines" min="10" max="500" value="80">
+              </label>
+              <button type="button" class="btn btn--ghost" id="logs-fetch-btn">Fetch logs</button>
+            </div>
+            <pre class="output-block output-block--logs mono" id="runtime-logs" tabindex="0">—</pre>
+          </details>
+        </section>
+
+        <!-- Gateway -->
+        <section class="panel" id="panel-gateway" role="tabpanel" aria-labelledby="tab-gateway" hidden>
+          <header class="panel__head">
+            <div>
+              <h2 class="panel__title">Gateway bridge</h2>
+              <p class="panel__desc">Capabilities mirror, registry observability, dev sign-in</p>
+            </div>
+          </header>
+
+          <div class="gateway-config">
+            <label class="field">
+              <span class="field__label">Runner ID</span>
+              <input type="text" class="field__input mono" id="gateway-runner-id" value="ollama-local"
+                spellcheck="false">
+            </label>
+            <label class="field field--grow">
+              <span class="field__label">Declared capabilities</span>
+              <input type="text" class="field__input mono" id="gateway-declared-caps" value="json_grammar"
+                placeholder="comma-separated">
+            </label>
+            <label class="field field--grow">
+              <span class="field__label">Gateway JWT</span>
+              <input type="password" class="field__input mono" id="gateway-jwt-input" autocomplete="off"
+                placeholder="Bearer token or use auto sign-in">
+            </label>
+            <button type="button" class="btn btn--primary" id="gateway-fetch-btn">Fetch capabilities</button>
+            <button type="button" class="btn btn--ghost" id="gateway-auto-sign-in-btn">Dev auto sign-in</button>
+          </div>
+          <p class="gateway-message mono" id="gateway-fetch-message" role="status" aria-live="polite"></p>
+
+          <div class="stat-row" id="observability-stats">
+            <article class="stat">
+              <span class="stat__label">Registry status</span>
+              <span class="stat__value" id="obs-runner-status">—</span>
+            </article>
+            <article class="stat">
+              <span class="stat__label">Health</span>
+              <span class="stat__value" id="obs-runner-health">—</span>
+            </article>
+            <article class="stat">
+              <span class="stat__label">Poll latency</span>
+              <span class="stat__value" id="obs-runner-latency">—</span>
+            </article>
+            <article class="stat">
+              <span class="stat__label">In-flight</span>
+              <span class="stat__value" id="obs-runner-inflight">—</span>
+            </article>
+          </div>
+
+          <div class="gateway-previews">
+            <article class="preview-card">
+              <h3 class="preview-card__title">Local preview</h3>
+              <p class="preview-card__desc">Built from this node's <code>/v1/models</code> probe</p>
+              <pre class="preview-card__body mono" id="gateway-local-preview" tabindex="0">—</pre>
+            </article>
+            <article class="preview-card">
+              <h3 class="preview-card__title">Live capabilities</h3>
+              <p class="preview-card__desc">Proxied <code>GET /v1/capabilities</code></p>
+              <pre class="preview-card__body mono" id="gateway-live-capabilities" tabindex="0">—</pre>
+            </article>
+          </div>
+
+          <details class="fold">
+            <summary>Prometheus metrics snippet for <span class="mono" id="obs-runner-id-label">ollama-local</span>
+            </summary>
+            <pre class="output-block mono" id="observability-metrics-raw" tabindex="0">—</pre>
+          </details>
+        </section>
+
+        <!-- Settings -->
+        <section class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+          <header class="panel__head">
+            <div>
+              <h2 class="panel__title">Connection</h2>
+              <p class="panel__desc">Proxy paths and poll interval — stored in this browser</p>
+            </div>
+          </header>
+
+          <div class="settings-grid">
+            <label class="field field--block">
+              <span class="field__label">Runner proxy base</span>
+              <input type="text" class="field__input mono" id="runner-base-url" value="/api/runner"
+                spellcheck="false">
+              <span class="field__hint">Proxies to Ollama on the server node</span>
+            </label>
+            <label class="field field--block">
+              <span class="field__label">Gateway URL (reference)</span>
+              <input type="text" class="field__input mono" id="gateway-url-display" value="http://127.0.0.1:8090"
+                spellcheck="false">
+              <span class="field__hint">Server uses <code>GATEWAY_URL</code> env; shown for operator context</span>
+            </label>
+            <label class="field field--narrow">
+              <span class="field__label">Poll interval (s)</span>
+              <input type="number" class="field__input" id="poll-interval" min="3" max="120" value="8">
+            </label>
+          </div>
+
+          <div class="actions-row">
+            <button type="button" class="btn btn--primary" id="save-settings-btn">Save settings</button>
+            <button type="button" class="btn btn--ghost" id="probe-btn">Probe /v1/models</button>
+          </div>
+
+          <dl class="kv-list" id="server-config-dl">
+            <div class="kv-list__row">
+              <dt>Console bind</dt>
+              <dd class="mono" id="cfg-bind">—</dd>
+            </div>
+            <div class="kv-list__row">
+              <dt>Ollama upstream</dt>
+              <dd class="mono" id="cfg-ollama">—</dd>
+            </div>
+            <div class="kv-list__row">
+              <dt>Gateway upstream</dt>
+              <dd class="mono" id="cfg-gateway">—</dd>
+            </div>
+          </dl>
+
+          <p class="settings-note">
+            This console binds to <strong>localhost only</strong>. Open the
+            <a href="http://localhost:8090/dashboard" class="link" target="_blank" rel="noopener">gateway
+              dashboard</a>
+            for JWT-protected clinic routing.
+          </p>
+        </section>
+      </main>
+    </div>
+
+    <footer class="footer">
+      <p>Model Runner · <span class="mono">127.0.0.1:11435</span> · not routable beyond this host</p>
     </footer>
   </div>
 

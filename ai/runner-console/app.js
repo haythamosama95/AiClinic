@@ -1,25 +1,27 @@
 /**
- * AI Model Runner console — local Ollama playground.
- * Served by ai/runners/scripts/console_server.py (static + /api/runtime + /api/runner proxy).
+ * Model Runner console — local Ollama operator UI.
+ * Served by ai/runners/scripts/console_server.py
  */
 
-const STORAGE_BASE_URL = 'runner_console_base_url';
-const STORAGE_POLL_INTERVAL = 'runner_console_poll_interval_s';
-const STORAGE_MODEL = 'runner_console_selected_model';
+const STORAGE = {
+  baseUrl: 'runner_console_base_url',
+  pollInterval: 'runner_console_poll_interval_s',
+  model: 'runner_console_selected_model',
+  runnerId: 'runner_console_gateway_runner_id',
+  declaredCaps: 'runner_console_declared_caps',
+  gatewayJwt: 'runner_console_gateway_jwt',
+  gatewayUrl: 'runner_console_gateway_url',
+  activePanel: 'runner_console_active_panel',
+};
 
-const DEFAULT_BASE_URL = '/api/runner';
+const DEFAULT_BASE = '/api/runner';
 const DEFAULT_POLL_S = 8;
-
-const STORAGE_RUNNER_ID = 'runner_console_gateway_runner_id';
-const STORAGE_DECLARED_CAPS = 'runner_console_declared_caps';
-const STORAGE_GATEWAY_JWT = 'runner_console_gateway_jwt';
-
 const THINK_CLOSE_RE = /<\/redacted_thinking>|<\/think>/i;
 const THINK_OPEN_RE = /<(?:redacted_)?think\b[^>]*>/i;
 const THINK_BLOCK_RE = /<think>([\s\S]*?)<\/redacted_thinking>|`?<think[^>]*>([\s\S]*?)<\/think>`?/gi;
 
 const state = {
-  baseUrl: DEFAULT_BASE_URL,
+  baseUrl: DEFAULT_BASE,
   pollTimer: null,
   pollIntervalS: DEFAULT_POLL_S,
   models: [],
@@ -29,28 +31,23 @@ const state = {
   lastProbe: null,
   runtime: null,
   runtimeGpuPending: null,
+  compose: null,
   telemetry: null,
   telemetryTab: 'parsed',
+  streamChunks: [],
   gatewayRunnerId: 'ollama-local',
   declaredCapabilities: ['json_grammar'],
   gatewayJwt: '',
+  gatewayUrl: 'http://127.0.0.1:8090',
   gatewayCapabilities: null,
   gatewayFetchMessage: '',
   gatewayStatus: null,
   gatewayMetricsRaw: '',
-  gatewayObservabilityMessage: '',
+  activePanel: 'playground',
+  serverConfig: null,
 };
 
-let streamingAssistantIndex = null;
-let streamingEls = null;
-let streamPump = null;
-let typewriterPump = null;
-
-const PARSED_TELEMETRY_THROTTLE_MS = 500;
-const SCROLL_NEAR_BOTTOM_PX = 80;
-const TYPEWRITER_CHARS_PER_FRAME = 2;
-const TYPEWRITER_FINISH_MS = 200;
-let parsedTelemetryLastPaint = 0;
+let generateAbort = null;
 
 function $(id) {
   return document.getElementById(id);
@@ -74,40 +71,31 @@ function formatJson(value) {
   }
 }
 
-function truncate(text, max = 6000) {
+function truncate(text, max = 8000) {
   const s = String(text);
   return s.length > max ? `${s.slice(0, max)}\n… [truncated]` : s;
 }
 
 function splitEmbeddedThinking(text) {
   if (!text) return { thinking: '', content: '' };
-
   const block = THINK_BLOCK_RE.exec(text);
   THINK_BLOCK_RE.lastIndex = 0;
   if (block) {
-    const thinking = (block[1] || block[2] || '').trim();
-    const content = text.replace(block[0], '').trim();
-    return { thinking, content };
+    return {
+      thinking: (block[1] || block[2] || '').trim(),
+      content: text.replace(block[0], '').trim(),
+    };
   }
-
   const closeAt = text.search(THINK_CLOSE_RE);
   if (closeAt >= 0) {
     const thinking = text.slice(0, closeAt).replace(/<think>/i, '').replace(THINK_OPEN_RE, '').trim();
     const content = text.slice(closeAt).replace(THINK_CLOSE_RE, '').trim();
     return { thinking, content };
   }
-
   if (THINK_OPEN_RE.test(text) || /<think>/i.test(text)) {
-    const thinking = text.replace(THINK_OPEN_RE, '').replace(/<think>/i, '').trim();
-    return { thinking, content: '' };
+    return { thinking: text.replace(THINK_OPEN_RE, '').replace(/<think>/i, '').trim(), content: '' };
   }
-
   return { thinking: '', content: text };
-}
-
-function stripThinkingFromContent(text) {
-  if (!text) return '';
-  return splitEmbeddedThinking(text).content;
 }
 
 function formatDurationSeconds(ms) {
@@ -119,8 +107,7 @@ function formatDurationSeconds(ms) {
 function shortDigest(digest) {
   if (!digest) return '—';
   const s = String(digest);
-  if (s.length <= 20) return s;
-  return `${s.slice(0, 14)}…${s.slice(-6)}`;
+  return s.length <= 20 ? s : `${s.slice(0, 14)}…${s.slice(-6)}`;
 }
 
 function formatCount(n) {
@@ -139,8 +126,7 @@ function relativeTime(iso) {
 
 function runnerUrl(path) {
   const base = state.baseUrl.replace(/\/$/, '');
-  if (!base) return `/api/runner${path}`;
-  return `${base}${path}`;
+  return `${base || DEFAULT_BASE}${path}`;
 }
 
 async function runnerFetch(path, options = {}) {
@@ -153,30 +139,788 @@ async function consoleFetch(path, options = {}) {
   return fetch(path, options);
 }
 
-function setConnectionState(ok, label) {
-  const indicator = $('connection-indicator');
-  const connectionLabel = $('connection-label');
-  if (indicator) indicator.dataset.state = ok ? 'ok' : ok === false ? 'error' : 'loading';
-  if (connectionLabel) connectionLabel.textContent = label;
+function gatewayHeaders() {
+  const headers = {};
+  if (state.gatewayJwt) {
+    const token = state.gatewayJwt.startsWith('Bearer ') ? state.gatewayJwt : `Bearer ${state.gatewayJwt}`;
+    headers.Authorization = token;
+  }
+  return headers;
 }
 
-function setLoadedModelBadge(model) {
-  const badge = $('loaded-model-badge');
-  const label = $('loaded-model-label');
-  if (!badge || !label) return;
-  if (model?.id) {
-    badge.dataset.loaded = 'yes';
-    label.textContent = model.id;
-  } else {
-    badge.dataset.loaded = 'no';
-    label.textContent = 'No model loaded';
+/* ── Navigation ──────────────────────────────────────────── */
+
+function switchPanel(panelId) {
+  state.activePanel = panelId;
+  localStorage.setItem(STORAGE.activePanel, panelId);
+
+  document.querySelectorAll('[data-panel]').forEach((btn) => {
+    const active = btn.dataset.panel === panelId;
+    btn.classList.toggle('side-nav__btn--active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+
+  document.querySelectorAll('.panel').forEach((panel) => {
+    const active = panel.id === `panel-${panelId}`;
+    panel.classList.toggle('panel--active', active);
+    panel.hidden = !active;
+  });
+}
+
+/* ── Connection & model rail ─────────────────────────────── */
+
+function setConnectionState(ok, label) {
+  const pill = $('connection-pill');
+  const labelEl = $('connection-label');
+  if (pill) pill.dataset.state = ok ? 'ok' : ok === false ? 'error' : 'loading';
+  if (labelEl) labelEl.textContent = label;
+}
+
+function processorBadgeClass(processor) {
+  const p = String(processor || '').toUpperCase();
+  return p.includes('GPU') ? 'model-slot__badge--gpu' : 'model-slot__badge--cpu';
+}
+
+function processorLabel(processor) {
+  const p = String(processor || '').trim();
+  if (!p) return 'CPU';
+  if (/gpu/i.test(p)) return p.includes('%') ? p : 'GPU';
+  if (/cpu/i.test(p)) return p.includes('%') ? p : 'CPU';
+  return p;
+}
+
+function renderModelRail() {
+  const track = $('model-rail-track');
+  const empty = $('model-rail-empty');
+  if (!track) return;
+
+  const rows = state.runtime?.loaded_models || [];
+  track.querySelectorAll('.model-slot').forEach((el) => el.remove());
+
+  if (!rows.length) {
+    if (empty) empty.hidden = false;
+    return;
+  }
+
+  if (empty) empty.hidden = true;
+
+  for (const row of rows) {
+    const slot = document.createElement('article');
+    slot.className = 'model-slot';
+    slot.innerHTML = `
+      <p class="model-slot__name" title="${escapeHtml(row.name || '')}">${escapeHtml(row.name || 'unknown')}</p>
+      <div class="model-slot__meta">
+        <span class="model-slot__badge ${processorBadgeClass(row.processor)}">${escapeHtml(processorLabel(row.processor))}</span>
+        ${row.context ? `<span class="model-slot__ctx">${escapeHtml(row.context)} ctx</span>` : ''}
+        ${row.size ? `<span class="model-slot__size">${escapeHtml(row.size)}</span>` : ''}
+      </div>`;
+    track.appendChild(slot);
   }
 }
 
-function setWorkspaceStreaming(active) {
-  const workspace = $('inference-workspace');
-  if (workspace) workspace.dataset.streaming = active ? 'true' : 'false';
+/* ── Models inventory ──────────────────────────────────────── */
+
+function syncModelSelects() {
+  const selects = [$('playground-model'), $('generate-model')];
+  for (const sel of selects) {
+    if (!sel) continue;
+    const prev = sel.value || state.selectedModel;
+    sel.innerHTML = state.models.length
+      ? state.models.map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.id)}</option>`).join('')
+      : '<option value="">— no models —</option>';
+    if (prev && state.models.some((m) => m.id === prev)) {
+      sel.value = prev;
+      state.selectedModel = prev;
+    } else if (state.models[0]) {
+      sel.value = state.models[0].id;
+      state.selectedModel = state.models[0].id;
+    }
+  }
 }
+
+function renderModelsOverview() {
+  const probe = state.lastProbe;
+  const primary = state.models.find((m) => m.id === state.selectedModel) || state.models[0];
+
+  if ($('metric-latency')) {
+    $('metric-latency').textContent = probe?.ok ? `${probe.latencyMs.toFixed(0)} ms` : '—';
+  }
+  if ($('metric-model-count')) {
+    $('metric-model-count').textContent = probe?.ok ? String(state.models.length) : '—';
+  }
+  if ($('metric-context')) {
+    $('metric-context').textContent = primary?.context_length != null ? formatCount(primary.context_length) : '—';
+  }
+  if ($('metric-digest')) {
+    $('metric-digest').textContent = shortDigest(primary?.digest);
+  }
+
+  const tbody = $('models-table-body');
+  if (!tbody) return;
+
+  if (!state.models.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="data-table__empty">No models reported — probe the runner or pull a model</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = state.models.map((m) => `
+    <tr>
+      <td class="mono">${escapeHtml(m.id)}</td>
+      <td>${m.context_length != null ? formatCount(m.context_length) : '—'}</td>
+      <td class="mono">${escapeHtml(shortDigest(m.digest))}</td>
+      <td><button type="button" class="btn btn--ghost btn--select-model" data-model="${escapeHtml(m.id)}">Use in playground</button></td>
+    </tr>`).join('');
+
+  tbody.querySelectorAll('.btn--select-model').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.selectedModel = btn.dataset.model;
+      localStorage.setItem(STORAGE.model, state.selectedModel);
+      syncModelSelects();
+      switchPanel('playground');
+    });
+  });
+}
+
+async function fetchTagsRaw() {
+  try {
+    const { res } = await runnerFetch('/api/tags');
+    const body = await res.json();
+    if ($('models-tags-raw')) $('models-tags-raw').textContent = formatJson(body);
+    return body;
+  } catch (err) {
+    if ($('models-tags-raw')) $('models-tags-raw').textContent = String(err.message || err);
+    return null;
+  }
+}
+
+async function probeModels({ manual = false } = {}) {
+  if (manual) setConnectionState(null, 'Probing…');
+
+  try {
+    const { res, latencyMs } = await runnerFetch('/v1/models');
+    const contentType = res.headers.get('content-type') || '';
+    const body = contentType.includes('application/json') ? await res.json() : await res.text();
+
+    state.lastProbe = { ok: res.ok, status: res.status, latencyMs, body, at: new Date().toISOString() };
+
+    if (res.ok && body && Array.isArray(body.data)) {
+      state.models = body.data.filter((m) => m && m.id);
+      setConnectionState(true, `Online · ${latencyMs.toFixed(0)} ms`);
+    } else if (res.ok) {
+      state.models = [];
+      setConnectionState(true, 'Online · empty list');
+    } else {
+      state.models = [];
+      setConnectionState(false, `HTTP ${res.status}`);
+    }
+
+    renderModelsOverview();
+    syncModelSelects();
+    renderGatewayDiscovery();
+    if ($('last-refresh')) $('last-refresh').textContent = relativeTime(state.lastProbe.at);
+    return state.lastProbe;
+  } catch (err) {
+    state.models = [];
+    state.lastProbe = { ok: false, error: String(err), at: new Date().toISOString() };
+    setConnectionState(false, 'Unreachable');
+    renderModelsOverview();
+    syncModelSelects();
+    return state.lastProbe;
+  }
+}
+
+/* ── Runtime & compose ───────────────────────────────────── */
+
+function renderRuntime() {
+  const rt = state.runtime;
+  const processorEl = $('runtime-processor');
+  const hintEl = $('runtime-gpu-hint');
+  const toggle = $('runtime-gpu-toggle');
+  const applyBtn = $('runtime-gpu-apply');
+  const note = $('runtime-note');
+
+  if (!rt) {
+    if (processorEl) processorEl.textContent = '—';
+    if (hintEl) hintEl.textContent = 'Loading…';
+    return;
+  }
+
+  const processor = rt.processor || (rt.ollama_online ? 'idle — no model loaded' : 'Ollama offline');
+  if (processorEl) processorEl.textContent = processor;
+
+  const gpuHint = rt.gpu_available
+    ? (rt.gpu_enabled ? 'GPU compose profile active' : 'CPU-only compose profile')
+    : 'NVIDIA not available to Docker — install nvidia-container-toolkit';
+  if (hintEl) hintEl.textContent = gpuHint;
+
+  const desiredGpu = state.runtimeGpuPending ?? rt.gpu_enabled;
+  if (toggle) {
+    toggle.checked = Boolean(desiredGpu);
+    toggle.disabled = !rt.gpu_available;
+  }
+
+  const dirty = state.runtimeGpuPending != null && state.runtimeGpuPending !== rt.gpu_enabled;
+  if (applyBtn) applyBtn.disabled = !dirty || !rt.gpu_available;
+
+  if (note) {
+    note.className = 'runtime-note';
+    if (!rt.gpu_available) {
+      note.classList.add('runtime-note--warn');
+      note.textContent = 'Install NVIDIA Container Toolkit so Docker can access the GPU.';
+    } else if (dirty) {
+      note.classList.add('runtime-note--warn');
+      note.textContent = 'Applying restarts Ollama. In-flight generation will be cancelled.';
+    } else {
+      note.textContent = 'Toggling restarts the Ollama container (~10–30 s).';
+    }
+  }
+
+  renderModelRail();
+  renderComposeStatus(rt.compose || state.compose);
+}
+
+function renderComposeStatus(compose) {
+  if (!compose) return;
+  const yesNo = (v) => (v ? 'running' : 'stopped');
+  if ($('compose-container')) $('compose-container').textContent = yesNo(compose.container_running);
+  if ($('compose-reachable')) {
+    $('compose-reachable').textContent = compose.ollama_reachable || state.runtime?.ollama_online ? 'responding' : 'down';
+  }
+  if ($('compose-gpu')) {
+    $('compose-gpu').textContent = compose.gpu_enabled ? 'enabled' : 'disabled';
+  }
+  if ($('compose-host-models')) $('compose-host-models').textContent = compose.host_models || '—';
+}
+
+async function refreshRuntime() {
+  try {
+    const res = await consoleFetch('/api/runtime');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    state.runtime = await res.json();
+    state.compose = state.runtime.compose;
+    if (state.runtimeGpuPending == null) state.runtimeGpuPending = state.runtime.gpu_enabled;
+    renderRuntime();
+    return state.runtime;
+  } catch (err) {
+    if ($('runtime-gpu-hint')) $('runtime-gpu-hint').textContent = String(err.message || err);
+    return null;
+  }
+}
+
+async function refreshComposeStatus() {
+  try {
+    const res = await consoleFetch('/api/compose/status');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    state.compose = await res.json();
+    renderComposeStatus(state.compose);
+    return state.compose;
+  } catch (err) {
+    if ($('compose-container')) $('compose-container').textContent = String(err.message || err);
+    return null;
+  }
+}
+
+async function applyGpuRuntime() {
+  const toggle = $('runtime-gpu-toggle');
+  const applyBtn = $('runtime-gpu-apply');
+  const enabled = Boolean(toggle?.checked);
+  state.runtimeGpuPending = enabled;
+  renderRuntime();
+
+  if (applyBtn) {
+    applyBtn.disabled = true;
+    applyBtn.textContent = 'Restarting…';
+  }
+  if ($('runtime-note')) $('runtime-note').textContent = 'Restarting Ollama — up to 30 seconds…';
+
+  try {
+    const res = await consoleFetch('/api/runtime', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    const body = await res.json();
+    state.runtime = body;
+    state.runtimeGpuPending = body.gpu_enabled;
+    state.compose = body.compose;
+    if (!body.ok) throw new Error(body.error || 'GPU toggle failed');
+    await probeModels();
+  } catch (err) {
+    if ($('runtime-note')) {
+      $('runtime-note').className = 'runtime-note runtime-note--error';
+      $('runtime-note').textContent = String(err.message || err);
+    }
+  } finally {
+    renderRuntime();
+    if (applyBtn) applyBtn.textContent = 'Apply & restart Ollama';
+  }
+}
+
+async function fetchRuntimeLogs() {
+  const lines = parseInt($('logs-lines')?.value || '80', 10) || 80;
+  const pre = $('runtime-logs');
+  if (pre) pre.textContent = 'Fetching…';
+  try {
+    const res = await consoleFetch(`/api/runtime/logs?lines=${lines}`);
+    const body = await res.json();
+    if (pre) pre.textContent = body.text || '(empty)';
+  } catch (err) {
+    if (pre) pre.textContent = String(err.message || err);
+  }
+}
+
+/* ── Chat playground ─────────────────────────────────────── */
+
+function getPlaygroundSettings() {
+  return {
+    temperature: parseFloat($('playground-temperature')?.value || '0.7'),
+    maxTokens: parseInt($('playground-max-tokens')?.value || '512', 10),
+    stream: Boolean($('playground-stream')?.checked),
+    think: $('playground-think')?.value || 'default',
+  };
+}
+
+function buildChatRequest(model, messages, settings) {
+  const payload = {
+    model,
+    messages,
+    stream: settings.stream,
+    options: {
+      temperature: settings.temperature,
+      num_predict: settings.maxTokens,
+    },
+  };
+  if (settings.think === 'on') payload.think = true;
+  else if (settings.think === 'off') payload.think = false;
+  return payload;
+}
+
+function setPlaygroundBusy(busy, statusText = '') {
+  const sendBtn = $('playground-send-btn');
+  const stopBtn = $('playground-stop-btn');
+  const status = $('playground-status');
+  if (sendBtn) sendBtn.disabled = busy;
+  if (stopBtn) stopBtn.hidden = !busy;
+  if (status) status.textContent = statusText;
+}
+
+function renderPlaygroundMessages() {
+  const container = $('playground-messages');
+  const empty = $('playground-empty');
+  if (!container) return;
+
+  if (!state.messages.length) {
+    container.innerHTML = '';
+    if (empty) {
+      empty.className = 'chat-log__empty';
+      empty.textContent = 'Send a message to run inference on this node.';
+      container.appendChild(empty);
+    }
+    return;
+  }
+
+  container.innerHTML = state.messages.map((msg, i) => {
+    const roleClass = msg.error ? 'chat-msg--error' : `chat-msg--${msg.role}`;
+    const thinking = msg.thinking
+      ? `<div class="chat-msg__thinking">${escapeHtml(msg.thinking)}</div>`
+      : '';
+    const body = escapeHtml(msg.displayedContent ?? msg.content ?? '');
+    const meta = msg.meta ? `<span class="chat-msg__meta">${escapeHtml(msg.meta)}</span>` : '';
+    return `<article class="chat-msg ${roleClass}" data-idx="${i}">
+      <span class="chat-msg__role">${escapeHtml(msg.role)}</span>
+      ${thinking}
+      <p class="chat-msg__body">${body}</p>
+      ${meta}
+    </article>`;
+  }).join('');
+
+  container.scrollTop = container.scrollHeight;
+}
+
+function beginTelemetry(request, model) {
+  state.streamChunks = [];
+  state.telemetry = {
+    request,
+    model,
+    thinking: '',
+    content: '',
+    usage: null,
+    doneReason: null,
+    finalChunk: null,
+    timing: { startedAt: performance.now() },
+    error: null,
+  };
+  paintTelemetry();
+}
+
+function ingestTelemetryChunk(chunk) {
+  if (!state.telemetry) return;
+  state.streamChunks.push(chunk);
+
+  const msg = chunk.message || {};
+  if (msg.thinking) {
+    state.telemetry.thinking += msg.thinking;
+    const elapsed = performance.now() - state.telemetry.timing.startedAt;
+    if (state.telemetry.timing.firstThinkingMs == null) state.telemetry.timing.firstThinkingMs = elapsed;
+  }
+  if (msg.content) {
+    state.telemetry.content += msg.content;
+    const elapsed = performance.now() - state.telemetry.timing.startedAt;
+    if (state.telemetry.timing.firstContentMs == null) state.telemetry.timing.firstContentMs = elapsed;
+  }
+
+  if (chunk.done) {
+    state.telemetry.finalChunk = chunk;
+    state.telemetry.doneReason = chunk.done_reason || null;
+    state.telemetry.usage = {
+      prompt_eval_count: chunk.prompt_eval_count,
+      eval_count: chunk.eval_count,
+      total_duration: chunk.total_duration,
+      load_duration: chunk.load_duration,
+      prompt_eval_duration: chunk.prompt_eval_duration,
+      eval_duration: chunk.eval_duration,
+    };
+    state.telemetry.timing.totalMs = performance.now() - state.telemetry.timing.startedAt;
+  }
+}
+
+function buildParsedPayload(data) {
+  const inProgress = data.doneReason == null && !data.error;
+  const split = splitEmbeddedThinking(data.content);
+  const thinking = data.thinking || split.thinking;
+  const content = split.content || (thinking ? '' : data.content);
+  return {
+    thinking,
+    content: inProgress && !content ? '' : content,
+    usage: data.usage || null,
+    done_reason: data.doneReason || null,
+    final_chunk: inProgress ? null : data.finalChunk || null,
+    timing: data.timing || null,
+  };
+}
+
+function formatMetricsBar(data) {
+  if (!data) return 'Awaiting inference…';
+  const parts = [
+    data.timing?.totalMs != null ? `${data.timing.totalMs.toFixed(0)} ms total` : null,
+    data.timing?.firstContentMs != null ? `first token ${data.timing.firstContentMs.toFixed(0)} ms` : null,
+    data.usage?.eval_count != null ? `${data.usage.eval_count} completion tokens` : null,
+    data.usage?.prompt_eval_count != null ? `${data.usage.prompt_eval_count} prompt tokens` : null,
+    data.model || null,
+    data.error ? `error: ${data.error}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'Running…';
+}
+
+function paintTelemetry() {
+  const data = state.telemetry;
+  const metrics = $('telemetry-metrics');
+  const parsedPane = $('telemetry-pane-parsed');
+  const requestPane = $('telemetry-pane-request');
+  const streamPane = $('telemetry-pane-stream');
+
+  if (!data) {
+    if (metrics) metrics.textContent = 'Awaiting inference…';
+    if (parsedPane) parsedPane.textContent = '—';
+    if (requestPane) requestPane.textContent = '—';
+    if (streamPane) streamPane.textContent = '—';
+    return;
+  }
+
+  if (metrics) metrics.textContent = formatMetricsBar(data);
+  if (requestPane) requestPane.textContent = formatJson(data.request);
+  if (parsedPane) parsedPane.textContent = formatJson(buildParsedPayload(data));
+  if (streamPane) streamPane.textContent = formatJson(state.streamChunks);
+}
+
+function setTelemetryTab(tab) {
+  state.telemetryTab = tab;
+  document.querySelectorAll('[data-telemetry-tab]').forEach((btn) => {
+    const active = btn.dataset.telemetryTab === tab;
+    btn.classList.toggle('inspector-tab--active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+
+  const panes = {
+    parsed: $('telemetry-pane-parsed'),
+    request: $('telemetry-pane-request'),
+    stream: $('telemetry-pane-stream'),
+  };
+  for (const [name, el] of Object.entries(panes)) {
+    if (!el) continue;
+    const active = name === tab;
+    el.hidden = !active;
+    el.classList.toggle('inspector-pane--active', active);
+  }
+  paintTelemetry();
+}
+
+async function pumpNdjsonStream(reader, assistantIndex) {
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let newlineAt;
+    while ((newlineAt = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, newlineAt).trim();
+      buffer = buffer.slice(newlineAt + 1);
+      if (!line) continue;
+      try {
+        const chunk = JSON.parse(line);
+        ingestTelemetryChunk(chunk);
+        const delta = chunk.message || {};
+        const msg = state.messages[assistantIndex];
+        if (msg) {
+          if (delta.thinking) msg.thinking = (msg.thinking || '') + delta.thinking;
+          if (delta.content) {
+            msg.rawText = (msg.rawText || '') + delta.content;
+            const split = splitEmbeddedThinking(msg.rawText);
+            msg.thinking = msg.thinking || split.thinking;
+            msg.content = split.content || (split.thinking ? '' : msg.rawText);
+            msg.displayedContent = msg.content;
+          }
+        }
+        paintTelemetry();
+        renderPlaygroundMessages();
+      } catch {
+        /* skip malformed line */
+      }
+    }
+  }
+}
+
+async function sendPlaygroundMessage(text) {
+  const model = $('playground-model')?.value || state.selectedModel || state.models[0]?.id;
+  if (!model) {
+    state.messages.push({ role: 'system', content: 'No model available. Pull a model into Ollama first.', error: true });
+    renderPlaygroundMessages();
+    return;
+  }
+
+  state.selectedModel = model;
+  localStorage.setItem(STORAGE.model, model);
+
+  state.messages.push({ role: 'user', content: text });
+  const assistantIndex = state.messages.length;
+  state.messages.push({
+    role: 'assistant',
+    content: '',
+    thinking: '',
+    rawText: '',
+    displayedContent: '',
+    meta: 'Generating…',
+  });
+  renderPlaygroundMessages();
+
+  const settings = getPlaygroundSettings();
+  const history = state.messages
+    .slice(0, assistantIndex)
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => ({ role: m.role, content: m.content }));
+
+  const requestPayload = buildChatRequest(model, history, settings);
+  beginTelemetry(requestPayload, model);
+
+  state.abortController = new AbortController();
+  setPlaygroundBusy(true, settings.stream ? 'Streaming…' : 'Waiting…');
+  const wallStart = performance.now();
+
+  try {
+    const { res } = await runnerFetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestPayload),
+      signal: state.abortController.signal,
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errBody.slice(0, 500)}`);
+    }
+
+    if (settings.stream) {
+      const reader = res.body.getReader();
+      await pumpNdjsonStream(reader, assistantIndex);
+      const elapsed = performance.now() - wallStart;
+      state.messages[assistantIndex].meta = formatDurationSeconds(elapsed);
+    } else {
+      const body = await res.json();
+      ingestTelemetryChunk(body);
+      const delta = body.message || {};
+      state.messages[assistantIndex].thinking = delta.thinking || '';
+      state.messages[assistantIndex].rawText = delta.content || '';
+      const split = splitEmbeddedThinking(state.messages[assistantIndex].rawText);
+      state.messages[assistantIndex].thinking = state.messages[assistantIndex].thinking || split.thinking;
+      state.messages[assistantIndex].content = split.content || state.messages[assistantIndex].rawText;
+      state.messages[assistantIndex].displayedContent = state.messages[assistantIndex].content;
+      const elapsed = performance.now() - wallStart;
+      state.messages[assistantIndex].meta = formatDurationSeconds(elapsed);
+    }
+  } catch (err) {
+    if (state.telemetry) {
+      state.telemetry.error = String(err.message || err);
+      state.telemetry.timing.totalMs = performance.now() - state.telemetry.timing.startedAt;
+    }
+    if (err.name === 'AbortError') {
+      state.messages[assistantIndex].content = state.messages[assistantIndex].content || '[stopped]';
+      state.messages[assistantIndex].meta = 'Cancelled';
+    } else {
+      state.messages[assistantIndex].content = String(err.message || err);
+      state.messages[assistantIndex].error = true;
+      state.messages[assistantIndex].meta = 'Error';
+    }
+  } finally {
+    state.abortController = null;
+    setPlaygroundBusy(false, '');
+    renderPlaygroundMessages();
+    paintTelemetry();
+    refreshRuntime().catch(() => {});
+  }
+}
+
+function stopPlayground() {
+  state.abortController?.abort();
+}
+
+function clearPlayground() {
+  state.messages = [];
+  renderPlaygroundMessages();
+}
+
+/* ── Generate ──────────────────────────────────────────────── */
+
+async function runGenerate() {
+  const model = $('generate-model')?.value || state.selectedModel;
+  const prompt = $('generate-prompt')?.value?.trim();
+  const stream = Boolean($('generate-stream')?.checked);
+  const output = $('generate-output');
+  const status = $('generate-status');
+  const runBtn = $('generate-run-btn');
+  const stopBtn = $('generate-stop-btn');
+
+  if (!model || !prompt) {
+    if (status) status.textContent = 'Select a model and enter a prompt.';
+    return;
+  }
+
+  generateAbort = new AbortController();
+  if (runBtn) runBtn.disabled = true;
+  if (stopBtn) stopBtn.hidden = false;
+  if (status) status.textContent = stream ? 'Streaming…' : 'Waiting…';
+  if (output) output.textContent = '';
+
+  const payload = { model, prompt, stream };
+  let text = '';
+
+  try {
+    const { res } = await runnerFetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: generateAbort.signal,
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 400)}`);
+
+    if (stream) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          try {
+            const chunk = JSON.parse(line);
+            if (chunk.response) {
+              text += chunk.response;
+              if (output) output.textContent = text;
+            }
+            if (chunk.done && output) output.textContent = formatJson({ response: text, ...chunk });
+          } catch { /* skip */ }
+        }
+      }
+      if (status) status.textContent = 'Done';
+    } else {
+      const body = await res.json();
+      if (output) output.textContent = formatJson(body);
+      if (status) status.textContent = 'Done';
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      if (status) status.textContent = 'Cancelled';
+    } else {
+      if (output) output.textContent = String(err.message || err);
+      if (status) status.textContent = 'Error';
+    }
+  } finally {
+    generateAbort = null;
+    if (runBtn) runBtn.disabled = false;
+    if (stopBtn) stopBtn.hidden = true;
+    refreshRuntime().catch(() => {});
+  }
+}
+
+function stopGenerate() {
+  generateAbort?.abort();
+}
+
+/* ── API explorer ────────────────────────────────────────── */
+
+const EXPLORER_ENDPOINTS = {
+  models: { path: '/v1/models', resultId: 'explorer-models-result' },
+  tags: { path: '/api/tags', resultId: 'explorer-tags-result' },
+  version: { path: '/api/version', resultId: 'explorer-version-result' },
+};
+
+async function runExplorerEndpoint(key) {
+  const ep = EXPLORER_ENDPOINTS[key];
+  if (!ep) return;
+  const pre = $(ep.resultId);
+  if (pre) pre.textContent = 'Running…';
+  try {
+    const { res, latencyMs } = await runnerFetch(ep.path);
+    const ct = res.headers.get('content-type') || '';
+    const body = ct.includes('application/json') ? await res.json() : await res.text();
+    if (pre) pre.textContent = `HTTP ${res.status} · ${latencyMs.toFixed(0)} ms\n\n${formatJson(body)}`;
+  } catch (err) {
+    if (pre) pre.textContent = String(err.message || err);
+  }
+}
+
+async function runCustomRequest() {
+  const method = $('custom-method')?.value || 'GET';
+  const path = $('custom-path')?.value || '/';
+  const bodyRaw = $('custom-body')?.value?.trim();
+  const pre = $('custom-result');
+  if (pre) pre.textContent = 'Sending…';
+
+  const options = { method };
+  if (method === 'POST' && bodyRaw) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = bodyRaw;
+  }
+
+  try {
+    const { res, latencyMs } = await runnerFetch(path.startsWith('/') ? path : `/${path}`, options);
+    const ct = res.headers.get('content-type') || '';
+    const body = ct.includes('application/json') ? await res.json() : await res.text();
+    if (pre) pre.textContent = `HTTP ${res.status} · ${latencyMs.toFixed(0)} ms\n\n${truncate(formatJson(body))}`;
+  } catch (err) {
+    if (pre) pre.textContent = String(err.message || err);
+  }
+}
+
+/* ── Gateway ─────────────────────────────────────────────── */
 
 function lifecycleStatusFromProbe() {
   const probe = state.lastProbe;
@@ -198,1398 +942,221 @@ function buildLocalCapabilityEntry() {
 }
 
 function renderGatewayDiscovery() {
-  const localPreview = $('gateway-local-preview');
-  if (localPreview) {
-    localPreview.textContent = formatJson(buildLocalCapabilityEntry());
-  }
+  const local = buildLocalCapabilityEntry();
+  if ($('gateway-local-preview')) $('gateway-local-preview').textContent = formatJson(local);
+  if ($('obs-runner-id-label')) $('obs-runner-id-label').textContent = state.gatewayRunnerId;
 
-  const live = $('gateway-live-capabilities');
-  if (live) {
-    live.textContent = state.gatewayCapabilities
-      ? formatJson(state.gatewayCapabilities)
-      : 'Paste a gateway JWT or use dev auto sign-in, then Fetch capabilities.';
+  const live = state.gatewayCapabilities;
+  if ($('gateway-live-capabilities')) {
+    $('gateway-live-capabilities').textContent = live ? formatJson(live) : '—';
   }
-
-  const fetched = $('gateway-capabilities-fetched');
-  if (fetched) {
-    fetched.textContent = state.gatewayCapabilities?.fetchedAt
-      ? `Live · ${relativeTime(state.gatewayCapabilities.fetchedAt)}`
-      : 'Not fetched';
+  if ($('gateway-fetch-message')) {
+    $('gateway-fetch-message').textContent = state.gatewayFetchMessage;
   }
-
-  const msg = $('gateway-fetch-message');
-  if (msg) msg.textContent = state.gatewayFetchMessage || '';
 }
 
-function gatewayAuthHeaders() {
-  const headers = { Accept: 'application/json' };
-  if (state.gatewayJwt) {
-    headers.Authorization = state.gatewayJwt.startsWith('Bearer ')
-      ? state.gatewayJwt
-      : `Bearer ${state.gatewayJwt}`;
-  }
-  return headers;
-}
-
-function parsePrometheusMetrics(text) {
-  const gauges = {};
-  const counters = {};
-  for (const line of String(text || '').split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const match = trimmed.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{([^}]*)\})?\s+([^\s]+)/);
-    if (!match) continue;
-    const name = match[1];
-    const labelStr = match[3] || '';
-    const value = parseFloat(match[4]);
-    if (Number.isNaN(value)) continue;
-    const labels = {};
-    if (labelStr) {
-      const labelRe = /([a-zA-Z_][a-zA-Z0-9_]*)="((?:\\.|[^"\\])*)"/g;
-      let lm;
-      while ((lm = labelRe.exec(labelStr)) !== null) {
-        labels[lm[1]] = lm[2];
+function parsePrometheusForRunner(metricsText, runnerId) {
+  if (!metricsText) return null;
+  const lines = metricsText.split('\n');
+  const out = {};
+  const prefixes = [
+    `aiclinic_runner_health{runner="${runnerId}"`,
+    `aiclinic_runner_poll_latency_ms{runner="${runnerId}"`,
+    `aiclinic_runner_inflight{runner="${runnerId}"`,
+  ];
+  for (const line of lines) {
+    if (line.startsWith('#')) continue;
+    for (const prefix of prefixes) {
+      if (line.startsWith(prefix.split('{')[0])) {
+        const m = line.match(/}\s+([0-9.eE+-]+)/);
+        if (m) out[prefix] = m[1];
       }
     }
-    const runnerId = labels.runner_id;
-    if (name.endsWith('_total')) {
-      counters[name] = counters[name] || {};
-      if (labels.code) counters[name][labels.code] = value;
-    } else if (runnerId) {
-      gauges[name] = gauges[name] || {};
-      gauges[name][runnerId] = value;
+    if (line.includes(`runner="${runnerId}"`) && line.includes('aiclinic_runner_status')) {
+      const m = line.match(/}\s+([0-9.eE+-]+)/);
+      if (m) out.status = m[1];
     }
   }
-  return { gauges, counters };
+  return out;
 }
 
-function metricsSnippetForRunner(raw, runnerId) {
-  if (!raw || !runnerId) return '—';
-  const lines = raw
-    .split('\n')
-    .filter((line) => line.includes(`runner_id="${runnerId}"`) || line.includes(`runner_id='${runnerId}'`));
-  return lines.length ? lines.join('\n') : `No Prometheus series for runner_id="${runnerId}" yet.`;
-}
-
-function renderObservability() {
+function renderGatewayObservability() {
+  const gs = state.gatewayStatus;
   const runnerId = state.gatewayRunnerId;
-  const idLabel = $('obs-runner-id-label');
-  if (idLabel) idLabel.textContent = runnerId;
 
-  const status = state.gatewayStatus;
-  const runner = status?.runners?.find((r) => r.id === runnerId);
-  const parsed = state.gatewayMetricsRaw ? parsePrometheusMetrics(state.gatewayMetricsRaw) : null;
-
-  const registryStatus = $('obs-runner-status');
-  const healthEl = $('obs-runner-health');
-  const latencyEl = $('obs-runner-latency');
-  const inflightEl = $('obs-runner-inflight');
-  const fetched = $('observability-fetched');
-  const hint = $('observability-hint');
-  const rawPre = $('observability-metrics-raw');
-
-  if (!state.gatewayJwt) {
-    if (registryStatus) registryStatus.textContent = '—';
-    if (healthEl) healthEl.textContent = '—';
-    if (latencyEl) latencyEl.textContent = '—';
-    if (inflightEl) inflightEl.textContent = '—';
-    if (fetched) fetched.textContent = 'JWT required';
-    if (hint) hint.textContent = 'Save a gateway JWT in Gateway discovery to poll live registry metrics.';
-    if (rawPre) rawPre.textContent = '—';
-    renderPushPanel(null);
-    return;
+  if (gs?.runners) {
+    const entry = gs.runners.find((r) => r.id === runnerId) || gs.runners[0];
+    if (entry) {
+      if ($('obs-runner-status')) $('obs-runner-status').textContent = entry.status || '—';
+      if ($('obs-runner-health')) $('obs-runner-health').textContent = entry.health ?? '—';
+      if ($('obs-runner-latency')) {
+        $('obs-runner-latency').textContent = entry.poll_latency_ms != null ? `${entry.poll_latency_ms} ms` : '—';
+      }
+      if ($('obs-runner-inflight')) $('obs-runner-inflight').textContent = entry.inflight ?? '—';
+    }
   }
 
-  if (!status) {
-    if (registryStatus) registryStatus.textContent = '—';
-    if (healthEl) healthEl.textContent = '—';
-    if (latencyEl) latencyEl.textContent = '—';
-    if (inflightEl) inflightEl.textContent = '—';
-    if (fetched) fetched.textContent = state.gatewayObservabilityMessage || 'Not fetched';
-    if (rawPre) rawPre.textContent = '—';
-    renderPushPanel(null);
-    return;
-  }
-
-  const healthGauge = parsed?.gauges?.gateway_runner_health?.[runnerId];
-  const inflightGauge = parsed?.gauges?.gateway_inflight_requests?.[runnerId];
-
-  if (registryStatus) {
-    registryStatus.textContent = runner?.status || 'not in registry';
-    registryStatus.dataset.state =
-      runner?.status === 'READY' || runner?.status === 'BUSY' ? 'ok' : runner ? 'warn' : 'error';
-  }
-  if (healthEl) {
-    const healthy =
-      healthGauge != null
-        ? healthGauge >= 1
-        : runner?.status === 'READY' || runner?.status === 'BUSY';
-    healthEl.textContent = healthy ? 'healthy (1)' : 'unhealthy (0)';
-    healthEl.dataset.state = healthy ? 'ok' : 'error';
-  }
-  if (latencyEl) {
-    latencyEl.textContent =
-      runner?.avg_latency_ms != null ? `${runner.avg_latency_ms.toFixed(1)} ms` : '—';
-  }
-  if (inflightEl) {
-    const inflight = inflightGauge ?? runner?.in_flight ?? 0;
-    inflightEl.textContent = formatCount(inflight);
-    inflightEl.dataset.state = inflight > 0 ? 'warn' : 'ok';
-  }
-  if (fetched) {
-    fetched.textContent = status.fetchedAt ? `Live · ${relativeTime(status.fetchedAt)}` : 'Live';
-  }
-  if (hint) {
-    hint.textContent = runner
-      ? `Gateway registry entry for ${runnerId} — polled via /api/gateway/status and /metrics.`
-      : `Runner ${runnerId} not found in gateway registry — check gateway.yaml id.`;
-  }
-  if (rawPre) {
-    rawPre.textContent = truncate(metricsSnippetForRunner(state.gatewayMetricsRaw, runnerId), 4000);
-  }
-
-  renderPushPanel(status);
-}
-
-function renderPushPanel(status) {
-  const cfg = status?.config_safe;
-  const enabled = Boolean(cfg?.enable_push_registration);
-
-  setText($('push-mode'), enabled ? 'push (enabled)' : 'pull (default)');
-  setText(
-    $('push-endpoints'),
-    enabled
-      ? 'POST /internal/runners/register · POST /internal/runners/heartbeat'
-      : 'not mounted',
-  );
-  setText(
-    $('push-console-role'),
-    enabled
-      ? 'Runners send heartbeats with X-Internal-Secret (out-of-band)'
-      : 'Gateway polls this console via pull health checks',
-  );
-
-  const note = $('push-note');
-  if (note) {
-    note.textContent = enabled
-      ? 'Push registration is AI-internal only. This console does not send heartbeats — configure the runner process separately.'
-      : 'When push mode is disabled (default), the gateway polls this runner via pull-based health checks. Heartbeats require X-Internal-Secret and are configured outside this UI.';
+  if ($('observability-metrics-raw')) {
+    $('observability-metrics-raw').textContent = state.gatewayMetricsRaw
+      ? truncate(state.gatewayMetricsRaw, 12000)
+      : '—';
   }
 }
 
-function setText(el, value) {
-  if (el) el.textContent = value ?? '—';
-}
-
-async function fetchGatewayObservability({ manual = false } = {}) {
-  if (!state.gatewayJwt) {
-    state.gatewayStatus = null;
-    state.gatewayMetricsRaw = '';
-    state.gatewayObservabilityMessage = 'JWT required';
-    renderObservability();
-    return null;
-  }
-
-  const headers = gatewayAuthHeaders();
-
+async function fetchGatewayCapabilities() {
+  state.gatewayFetchMessage = 'Fetching…';
+  renderGatewayDiscovery();
   try {
+    const res = await consoleFetch('/api/gateway/capabilities', { headers: gatewayHeaders() });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || body.detail || `HTTP ${res.status}`);
+    state.gatewayCapabilities = body;
+    state.gatewayFetchMessage = `Fetched ${new Date().toLocaleTimeString()}`;
+  } catch (err) {
+    state.gatewayCapabilities = null;
+    state.gatewayFetchMessage = String(err.message || err);
+  }
+  renderGatewayDiscovery();
+  await fetchGatewayObservability();
+}
+
+async function gatewayAutoSignIn() {
+  state.gatewayFetchMessage = 'Signing in…';
+  renderGatewayDiscovery();
+  try {
+    const res = await consoleFetch('/api/gateway/auto-sign-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || body.detail || `HTTP ${res.status}`);
+    const token = body.token || body.access_token || body.jwt;
+    if (!token) throw new Error('No token in response');
+    state.gatewayJwt = token;
+    localStorage.setItem(STORAGE.gatewayJwt, token);
+    if ($('gateway-jwt-input')) $('gateway-jwt-input').value = token;
+    state.gatewayFetchMessage = 'Signed in — fetch capabilities to verify';
+  } catch (err) {
+    state.gatewayFetchMessage = String(err.message || err);
+  }
+  renderGatewayDiscovery();
+}
+
+async function fetchGatewayObservability() {
+  if (!state.gatewayJwt) {
+    renderGatewayObservability();
+    return;
+  }
+  try {
+    const headers = gatewayHeaders();
     const [statusRes, metricsRes] = await Promise.all([
       consoleFetch('/api/gateway/status', { headers }),
       consoleFetch('/api/gateway/metrics', { headers: { Accept: 'text/plain' } }),
     ]);
-
-    if (!statusRes.ok) {
-      const body = await statusRes.json().catch(() => ({}));
-      state.gatewayObservabilityMessage = body?.error?.message || `Status HTTP ${statusRes.status}`;
-      if (manual) state.gatewayStatus = null;
-      renderObservability();
-      return null;
-    }
-
-    const statusBody = await statusRes.json();
-    state.gatewayStatus = { ...statusBody, fetchedAt: new Date().toISOString() };
-    state.gatewayMetricsRaw = metricsRes.ok ? await metricsRes.text() : '';
-    state.gatewayObservabilityMessage = manual ? 'Observability refreshed.' : '';
-    renderObservability();
-    return state.gatewayStatus;
-  } catch (err) {
-    state.gatewayObservabilityMessage = String(err.message || err);
-    if (manual) state.gatewayStatus = null;
-    renderObservability();
-    return null;
+    if (statusRes.ok) state.gatewayStatus = await statusRes.json();
+    if (metricsRes.ok) state.gatewayMetricsRaw = await metricsRes.text();
+  } catch {
+    /* gateway optional */
   }
+  renderGatewayObservability();
 }
 
-async function fetchGatewayCapabilities({ manual = false } = {}) {
-  const msgEl = $('gateway-fetch-message');
-  const btn = $('gateway-fetch-btn');
-  if (manual && btn) {
-    btn.disabled = true;
-    btn.textContent = 'Fetching…';
-  }
-  state.gatewayFetchMessage = '';
+/* ── Settings & server config ────────────────────────────── */
 
-  const headers = { Accept: 'application/json' };
-  if (state.gatewayJwt) {
-    headers.Authorization = state.gatewayJwt.startsWith('Bearer ')
-      ? state.gatewayJwt
-      : `Bearer ${state.gatewayJwt}`;
-  }
+function loadSettings() {
+  state.baseUrl = localStorage.getItem(STORAGE.baseUrl) || DEFAULT_BASE;
+  state.pollIntervalS = parseInt(localStorage.getItem(STORAGE.pollInterval) || String(DEFAULT_POLL_S), 10);
+  state.selectedModel = localStorage.getItem(STORAGE.model) || '';
+  state.gatewayRunnerId = localStorage.getItem(STORAGE.runnerId) || 'ollama-local';
+  state.gatewayJwt = localStorage.getItem(STORAGE.gatewayJwt) || '';
+  state.gatewayUrl = localStorage.getItem(STORAGE.gatewayUrl) || 'http://127.0.0.1:8090';
+  state.activePanel = localStorage.getItem(STORAGE.activePanel) || 'playground';
 
-  try {
-    const res = await consoleFetch('/api/gateway/capabilities', { headers });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const errMsg = body?.error?.message || `HTTP ${res.status}`;
-      state.gatewayFetchMessage = errMsg;
-      if (manual) state.gatewayCapabilities = null;
-      renderGatewayDiscovery();
-      return null;
-    }
-    state.gatewayCapabilities = { ...body, fetchedAt: new Date().toISOString() };
-    state.gatewayFetchMessage = manual ? 'Capabilities fetched.' : '';
-    renderGatewayDiscovery();
-    await fetchGatewayObservability();
-    return body;
-  } catch (err) {
-    state.gatewayFetchMessage = String(err.message || err);
-    if (manual) state.gatewayCapabilities = null;
-    renderGatewayDiscovery();
-    return null;
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Fetch capabilities';
-    }
-  }
+  const capsRaw = localStorage.getItem(STORAGE.declaredCaps);
+  if (capsRaw) state.declaredCapabilities = capsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+
+  if ($('runner-base-url')) $('runner-base-url').value = state.baseUrl;
+  if ($('poll-interval')) $('poll-interval').value = state.pollIntervalS;
+  if ($('gateway-runner-id')) $('gateway-runner-id').value = state.gatewayRunnerId;
+  if ($('gateway-declared-caps')) $('gateway-declared-caps').value = state.declaredCapabilities.join(', ');
+  if ($('gateway-jwt-input')) $('gateway-jwt-input').value = state.gatewayJwt;
+  if ($('gateway-url-display')) $('gateway-url-display').value = state.gatewayUrl;
 }
 
-async function gatewayAutoSignIn() {
-  const btn = $('gateway-auto-sign-in-btn');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Signing in…';
-  }
-  state.gatewayFetchMessage = '';
-
-  try {
-    const res = await consoleFetch('/api/gateway/auto-sign-in', {
-      method: 'POST',
-      headers: { Accept: 'application/json' },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      state.gatewayFetchMessage = data?.error?.message || `Auto sign-in failed (HTTP ${res.status})`;
-      renderGatewayDiscovery();
-      return false;
-    }
-    state.gatewayJwt = data.access_token || '';
-    localStorage.setItem(STORAGE_GATEWAY_JWT, state.gatewayJwt);
-    const jwtInput = $('gateway-jwt-input');
-    if (jwtInput) jwtInput.value = state.gatewayJwt;
-    state.gatewayFetchMessage = data.staff_role
-      ? `Signed in as ${data.staff_role}. Fetching capabilities…`
-      : 'Signed in. Fetching capabilities…';
-    renderGatewayDiscovery();
-    await fetchGatewayCapabilities({ manual: true });
-    return true;
-  } catch (err) {
-    state.gatewayFetchMessage = String(err.message || err);
-    renderGatewayDiscovery();
-    return false;
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Dev auto sign-in';
-    }
-  }
-}
-
-function saveGatewayConfigFromInputs() {
-  const runnerId = $('gateway-runner-id')?.value?.trim();
-  const capsRaw = $('gateway-declared-caps')?.value || '';
-  const jwt = $('gateway-jwt-input')?.value?.trim() || '';
-
-  if (runnerId) {
-    state.gatewayRunnerId = runnerId;
-    localStorage.setItem(STORAGE_RUNNER_ID, runnerId);
-  }
-
-  state.declaredCapabilities = capsRaw
+function saveSettings() {
+  state.baseUrl = $('runner-base-url')?.value?.trim() || DEFAULT_BASE;
+  state.pollIntervalS = parseInt($('poll-interval')?.value || String(DEFAULT_POLL_S), 10);
+  state.gatewayRunnerId = $('gateway-runner-id')?.value?.trim() || 'ollama-local';
+  state.gatewayUrl = $('gateway-url-display')?.value?.trim() || 'http://127.0.0.1:8090';
+  state.declaredCapabilities = ($('gateway-declared-caps')?.value || 'json_grammar')
     .split(',')
-    .map((c) => c.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
-  localStorage.setItem(STORAGE_DECLARED_CAPS, state.declaredCapabilities.join(','));
+  state.gatewayJwt = $('gateway-jwt-input')?.value || '';
 
-  state.gatewayJwt = jwt;
-  if (jwt) localStorage.setItem(STORAGE_GATEWAY_JWT, jwt);
-  else localStorage.removeItem(STORAGE_GATEWAY_JWT);
+  localStorage.setItem(STORAGE.baseUrl, state.baseUrl);
+  localStorage.setItem(STORAGE.pollInterval, String(state.pollIntervalS));
+  localStorage.setItem(STORAGE.runnerId, state.gatewayRunnerId);
+  localStorage.setItem(STORAGE.declaredCaps, state.declaredCapabilities.join(','));
+  localStorage.setItem(STORAGE.gatewayJwt, state.gatewayJwt);
+  localStorage.setItem(STORAGE.gatewayUrl, state.gatewayUrl);
 
+  restartPolling();
   renderGatewayDiscovery();
-  renderObservability();
-  if (jwt) fetchGatewayObservability().catch(() => {});
 }
 
-/* ── Overview ─────────────────────────────────────────────── */
-
-function renderOverview() {
-  const probe = state.lastProbe;
-  $('metric-latency').textContent = probe?.latencyMs != null ? probe.latencyMs.toFixed(1) : '—';
-  $('metric-latency-hint').textContent = probe?.ok ? 'ms · OK' : probe ? 'ms · failed' : 'ms';
-  $('metric-model-count').textContent = state.models.length ? String(state.models.length) : '0';
-
-  const primary = state.models[0];
-  $('metric-context').textContent = primary?.context_length != null
-    ? formatCount(primary.context_length)
-    : '—';
-  $('metric-digest').textContent = shortDigest(primary?.digest);
-}
-
-/* ── Model dropdown (playground) ──────────────────────────── */
-
-function syncModelSelect() {
-  const select = $('playground-model');
-  if (!select) return;
-
-  if (!state.models.length) {
-    select.innerHTML = '<option value="">— no models —</option>';
-    setLoadedModelBadge(null);
-    return;
-  }
-
-  const prev = state.selectedModel;
-  select.innerHTML = state.models.map((m) => `
-    <option value="${escapeHtml(m.id)}"${m.id === prev ? ' selected' : ''}>${escapeHtml(m.id)}</option>
-  `).join('');
-
-  if (!state.selectedModel && state.models[0]?.id) {
-    state.selectedModel = state.models[0].id;
-    select.value = state.selectedModel;
-    localStorage.setItem(STORAGE_MODEL, state.selectedModel);
-  }
-
-  setLoadedModelBadge(state.models.find((m) => m.id === state.selectedModel) || state.models[0]);
-}
-
-/* ── Playground (chat) ───────────────────────────────────── */
-
-function renderPlaygroundMessages() {
-  const container = $('playground-messages');
-  const empty = $('playground-empty');
-  if (!container) return;
-
-  container.querySelectorAll('.msg').forEach((el) => el.remove());
-
-  if (!state.messages.length) {
-    if (empty) empty.hidden = false;
-    return;
-  }
-
-  if (empty) empty.hidden = true;
-
-  state.messages.forEach((msg, index) => {
-    container.appendChild(buildMessageElement(msg, index));
-  });
-
-  scrollMessagesContainer(container, true);
-}
-
-function streamingDisplayText(msg) {
-  if (!msg) return '';
-  if (msg.streaming) return msg.displayedContent ?? '';
-  return msg.content || '';
-}
-
-function buildMessageElement(msg, index) {
-  const article = document.createElement('article');
-  article.className = `msg msg--${msg.role}${msg.error ? ' msg--error' : ''}${msg.streaming ? ' msg--streaming' : ''}`;
-  article.dataset.msgIndex = String(index);
-
-  const role = document.createElement('span');
-  role.className = 'msg__role';
-  role.textContent = msg.role;
-  article.appendChild(role);
-
-  if (msg.thinking) {
-    const think = document.createElement('div');
-    think.className = 'msg__thinking';
-    const thinkLabel = document.createElement('span');
-    thinkLabel.className = 'msg__thinking-label';
-    thinkLabel.textContent = 'Reasoning';
-    const thinkBody = document.createElement('p');
-    thinkBody.className = 'msg__thinking-body';
-    thinkBody.textContent = msg.thinking;
-    think.append(thinkLabel, thinkBody);
-    article.appendChild(think);
-  }
-
-  const body = document.createElement('p');
-  body.className = 'msg__body';
-  if (msg.streaming) {
-    const bodyText = document.createElement('span');
-    bodyText.className = 'msg__body-text';
-    bodyText.textContent = streamingDisplayText(msg);
-    body.appendChild(bodyText);
-  } else {
-    body.textContent = msg.content || '';
-  }
-  article.appendChild(body);
-
-  if (msg.meta) {
-    const meta = document.createElement('span');
-    meta.className = 'msg__meta';
-    meta.textContent = msg.meta;
-    article.appendChild(meta);
-  }
-
-  return article;
-}
-
-function patchMessage(index, { scroll = true } = {}) {
-  const container = $('playground-messages');
-  const msg = state.messages[index];
-  if (!container || !msg) return;
-
-  const empty = $('playground-empty');
-  if (empty) empty.hidden = true;
-
-  let article = container.querySelector(`[data-msg-index="${index}"]`);
-  if (!article) {
-    article = buildMessageElement(msg, index);
-    container.appendChild(article);
-  } else {
-    article.className = `msg msg--${msg.role}${msg.error ? ' msg--error' : ''}${msg.streaming ? ' msg--streaming' : ''}`;
-
-    let thinkEl = article.querySelector('.msg__thinking');
-    if (msg.thinking) {
-      if (!thinkEl) {
-        thinkEl = document.createElement('div');
-        thinkEl.className = 'msg__thinking';
-        const thinkLabel = document.createElement('span');
-        thinkLabel.className = 'msg__thinking-label';
-        thinkLabel.textContent = 'Reasoning';
-        const thinkBody = document.createElement('p');
-        thinkBody.className = 'msg__thinking-body';
-        thinkEl.append(thinkLabel, thinkBody);
-        article.insertBefore(thinkEl, article.querySelector('.msg__body'));
-      }
-      thinkEl.querySelector('.msg__thinking-body').textContent = msg.thinking;
-    } else if (thinkEl) {
-      thinkEl.remove();
-    }
-
-    const bodyEl = article.querySelector('.msg__body');
-    if (bodyEl) {
-      if (msg.streaming) {
-        const textEl = ensureStreamingBodyText(bodyEl);
-        textEl.textContent = streamingDisplayText(msg);
-      } else {
-        bodyEl.textContent = msg.content || '';
-      }
-    }
-
-    let metaEl = article.querySelector('.msg__meta');
-    if (msg.meta) {
-      if (!metaEl) {
-        metaEl = document.createElement('span');
-        metaEl.className = 'msg__meta';
-        article.appendChild(metaEl);
-      }
-      metaEl.textContent = msg.meta;
-    } else if (metaEl) {
-      metaEl.remove();
-    }
-  }
-
-  if (scroll) scrollMessagesContainer(container);
-}
-
-function scrollMessagesContainer(container, force = false) {
-  if (!container) return;
-  if (!force && !isMessagesNearBottom(container)) return;
-  container.scrollTop = container.scrollHeight;
-}
-
-function isMessagesNearBottom(container, threshold = SCROLL_NEAR_BOTTOM_PX) {
-  if (!container) return true;
-  const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
-  return distance <= threshold;
-}
-
-function ensureStreamingBodyText(body) {
-  if (!body) return null;
-  let textEl = body.querySelector('.msg__body-text');
-  if (!textEl) {
-    const initial = body.textContent;
-    body.textContent = '';
-    textEl = document.createElement('span');
-    textEl.className = 'msg__body-text';
-    textEl.textContent = initial === '▍' ? '' : initial;
-    body.appendChild(textEl);
-  }
-  return textEl;
-}
-
-function scrollStreamingMessageIfFollowed() {
-  const { container } = streamingEls || {};
-  scrollMessagesContainer(container);
-}
-
-function paintTypewriterDisplay() {
-  const msg = streamingAssistantIndex != null ? state.messages[streamingAssistantIndex] : null;
-  const { bodyText } = streamingEls || {};
-  if (!msg || !bodyText) return;
-  bodyText.textContent = msg.displayedContent ?? '';
-  scrollStreamingMessageIfFollowed();
-}
-
-function flushStreamingThinking() {
-  if (streamingAssistantIndex == null || !streamingEls) return;
-  const msg = state.messages[streamingAssistantIndex];
-  if (!msg) return;
-
-  const { article, body } = streamingEls;
-
-  if (msg.thinking) {
-    if (!streamingEls.thinkSection) {
-      const thinkEl = document.createElement('div');
-      thinkEl.className = 'msg__thinking';
-      const thinkLabel = document.createElement('span');
-      thinkLabel.className = 'msg__thinking-label';
-      thinkLabel.textContent = 'Reasoning';
-      const thinkBody = document.createElement('p');
-      thinkBody.className = 'msg__thinking-body';
-      thinkEl.append(thinkLabel, thinkBody);
-      article.insertBefore(thinkEl, body);
-      streamingEls.thinkSection = thinkEl;
-      streamingEls.thinkBody = thinkBody;
-    }
-    if (streamingEls.thinkBody) {
-      streamingEls.thinkBody.textContent = msg.thinking;
-    }
-  }
-}
-
-function attachStreamingElements(assistantIndex) {
-  const container = $('playground-messages');
-  const msg = state.messages[assistantIndex];
-  if (!container || !msg) return;
-
-  const empty = $('playground-empty');
-  if (empty) empty.hidden = true;
-
-  let article = container.querySelector(`[data-msg-index="${assistantIndex}"]`);
-  if (!article) {
-    article = buildMessageElement(msg, assistantIndex);
-    container.appendChild(article);
-  }
-
-  const body = article.querySelector('.msg__body');
-  const bodyText = ensureStreamingBodyText(body);
-
-  streamingAssistantIndex = assistantIndex;
-  const entry = state.messages[assistantIndex];
-  if (entry && entry.displayedContent == null) {
-    entry.displayedContent = '';
-  }
-
-  streamingEls = {
-    container,
-    article,
-    body,
-    bodyText,
-    thinkSection: article.querySelector('.msg__thinking'),
-    thinkBody: article.querySelector('.msg__thinking-body'),
-  };
-}
-
-function flushStreamingMessage() {
-  flushStreamingThinking();
-  paintTypewriterDisplay();
-}
-
-function detachStreamingElements() {
-  streamingAssistantIndex = null;
-  streamingEls = null;
-}
-
-function createTypewriterPump(assistantIndex) {
-  const pump = {
-    assistantIndex,
-    rafId: null,
-    aborted: false,
-    finishMode: false,
-    finishStart: 0,
-    resolveDone: null,
-    donePromise: null,
-  };
-  pump.donePromise = new Promise((resolve) => {
-    pump.resolveDone = resolve;
-  });
-  return pump;
-}
-
-function runTypewriterFrame(pump) {
-  pump.rafId = null;
-  if (pump.aborted) {
-    if (pump.finishMode) pump.resolveDone?.();
-    return;
-  }
-
-  const msg = state.messages[pump.assistantIndex];
-  if (!msg) {
-    if (pump.finishMode) pump.resolveDone?.();
-    return;
-  }
-
-  const target = msg.content || '';
-  const display = msg.displayedContent ?? '';
-  const gap = target.length - display.length;
-
-  if (gap > 0) {
-    let reveal = TYPEWRITER_CHARS_PER_FRAME;
-    if (pump.finishMode) {
-      const elapsed = performance.now() - pump.finishStart;
-      const progress = Math.min(1, elapsed / TYPEWRITER_FINISH_MS);
-      const targetLen = Math.floor(display.length + gap * progress);
-      reveal = Math.max(1, targetLen - display.length);
-    }
-    msg.displayedContent = target.slice(0, display.length + reveal);
-    paintTypewriterDisplay();
-  }
-
-  const remaining = (msg.content || '').length - (msg.displayedContent ?? '').length;
-  if (remaining > 0) {
-    pump.rafId = requestAnimationFrame(() => runTypewriterFrame(pump));
-    return;
-  }
-
-  if (pump.finishMode) {
-    pump.resolveDone?.();
-  }
-}
-
-function ensureTypewriterRunning(pump) {
-  if (!pump || pump.aborted || pump.rafId != null) return;
-  pump.rafId = requestAnimationFrame(() => runTypewriterFrame(pump));
-}
-
-function stopTypewriterPump(pump) {
-  if (!pump) return;
-  pump.aborted = true;
-  if (pump.rafId != null) {
-    cancelAnimationFrame(pump.rafId);
-    pump.rafId = null;
-  }
-  pump.resolveDone?.();
-}
-
-function startTypewriter(assistantIndex) {
-  const pump = createTypewriterPump(assistantIndex);
-  typewriterPump = pump;
-  ensureTypewriterRunning(pump);
-  return pump;
-}
-
-async function finishTypewriter(pump) {
-  if (!pump || pump.aborted) return;
-  const msg = state.messages[pump.assistantIndex];
-  if (!msg) return;
-
-  const gap = (msg.content || '').length - (msg.displayedContent ?? '').length;
-  if (gap <= 0) return;
-
-  pump.finishMode = true;
-  pump.finishStart = performance.now();
-  pump.donePromise = new Promise((resolve) => {
-    pump.resolveDone = resolve;
-  });
-  ensureTypewriterRunning(pump);
-  await pump.donePromise;
-}
-
-function createStreamPump(assistantIndex) {
-  const pump = {
-    assistantIndex,
-    queue: [],
-    rafId: null,
-    producerDone: false,
-    aborted: false,
-    resolveDone: null,
-    donePromise: null,
-  };
-  pump.donePromise = new Promise((resolve) => {
-    pump.resolveDone = resolve;
-  });
-  return pump;
-}
-
-function ingestStreamChunk(assistantIndex, chunk) {
-  ingestTelemetryChunk(chunk);
-  const delta = chunk.message || {};
-  applyStreamDelta(assistantIndex, delta.thinking, delta.content);
-}
-
-function paintStreamTelemetryDuringPump() {
-  paintTelemetryMetrics(state.telemetry);
-  if (state.telemetryTab !== 'parsed') return;
-
-  const now = performance.now();
-  if (now - parsedTelemetryLastPaint < PARSED_TELEMETRY_THROTTLE_MS) return;
-  parsedTelemetryLastPaint = now;
-
-  const parsedPane = $('telemetry-pane-parsed');
-  if (parsedPane) {
-    parsedPane.textContent = formatJson(buildParsedPayload(state.telemetry));
-  }
-}
-
-function runStreamPumpFrame(pump) {
-  pump.rafId = null;
-  if (pump.aborted) {
-    pump.resolveDone?.();
-    return;
-  }
-
-  let drained = false;
-  while (pump.queue.length > 0) {
-    ingestStreamChunk(pump.assistantIndex, pump.queue.shift());
-    drained = true;
-  }
-
-  if (drained) {
-    flushStreamingThinking();
-    paintStreamTelemetryDuringPump();
-    ensureTypewriterRunning(typewriterPump);
-  }
-
-  const keepPumping = !pump.aborted && (!pump.producerDone || pump.queue.length > 0);
-  if (keepPumping) {
-    pump.rafId = requestAnimationFrame(() => runStreamPumpFrame(pump));
-  } else {
-    pump.resolveDone?.();
-  }
-}
-
-function ensureStreamPumpRunning(pump) {
-  if (pump.aborted || pump.rafId != null) return;
-  pump.rafId = requestAnimationFrame(() => runStreamPumpFrame(pump));
-}
-
-function stopStreamPump(pump) {
-  if (!pump) return;
-  pump.aborted = true;
-  if (pump.rafId != null) {
-    cancelAnimationFrame(pump.rafId);
-    pump.rafId = null;
-  }
-  pump.resolveDone?.();
-}
-
-async function pumpNdjsonStream(reader, assistantIndex) {
-  const pump = createStreamPump(assistantIndex);
-  streamPump = pump;
-  ensureStreamPumpRunning(pump);
-
+async function loadServerConfig() {
   try {
-    await readNdjsonStream(reader, (chunk) => {
-      pump.queue.push(chunk);
-      ensureStreamPumpRunning(pump);
-    });
-    pump.producerDone = true;
-    ensureStreamPumpRunning(pump);
-    await pump.donePromise;
-  } finally {
-    if (streamPump === pump) streamPump = null;
-    stopStreamPump(pump);
-  }
-}
-
-function getPlaygroundSettings() {
-  return {
-    temperature: Number($('playground-temperature')?.value) || 0.7,
-    maxTokens: Number($('playground-max-tokens')?.value) || 512,
-    stream: Boolean($('playground-stream')?.checked),
-  };
-}
-
-function buildChatRequest(model, messages, settings) {
-  return {
-    model,
-    messages,
-    stream: settings.stream,
-    options: {
-      temperature: settings.temperature,
-      num_predict: settings.maxTokens,
-    },
-    think: false,
-  };
-}
-
-function hasThinkingMarkers(text) {
-  return THINK_OPEN_RE.test(text) || /<think>/i.test(text);
-}
-
-function applyStreamDelta(assistantIndex, apiThinking, apiContent) {
-  const entry = state.messages[assistantIndex];
-  if (apiThinking) entry.thinking = (entry.thinking || '') + apiThinking;
-  if (apiContent) entry.rawText = (entry.rawText || '') + apiContent;
-
-  const raw = entry.rawText || '';
-  if (entry.thinking) {
-    entry.content = stripThinkingFromContent(raw);
-    return;
-  }
-
-  if (!entry._sawThinkingTag) {
-    if (hasThinkingMarkers(raw)) {
-      entry._sawThinkingTag = true;
-    } else {
-      entry.content = raw;
-      return;
+    const res = await consoleFetch('/api/config');
+    if (!res.ok) return;
+    state.serverConfig = await res.json();
+    if ($('cfg-bind')) $('cfg-bind').textContent = `${state.serverConfig.host}:${state.serverConfig.port}`;
+    if ($('cfg-ollama')) $('cfg-ollama').textContent = state.serverConfig.ollama_url;
+    if ($('cfg-gateway')) $('cfg-gateway').textContent = state.serverConfig.gateway_url;
+    if ($('gateway-url-display') && !localStorage.getItem(STORAGE.gatewayUrl)) {
+      $('gateway-url-display').value = state.serverConfig.gateway_url;
+      state.gatewayUrl = state.serverConfig.gateway_url;
     }
-  }
-
-  const split = splitEmbeddedThinking(raw);
-  if (split.thinking) entry.thinking = split.thinking;
-  entry.content = split.content || (split.thinking ? '' : raw);
+  } catch { /* optional */ }
 }
 
-function setPlaygroundBusy(busy, statusText = '') {
-  const sendBtn = $('playground-send-btn');
-  const stopBtn = $('playground-stop-btn');
-  const input = $('playground-input');
-  const status = $('playground-status');
+/* ── Polling ─────────────────────────────────────────────── */
 
-  if (sendBtn) sendBtn.disabled = busy;
-  if (input) input.disabled = busy;
-  if (stopBtn) stopBtn.hidden = !busy;
-  if (status) status.textContent = statusText;
-  setWorkspaceStreaming(busy);
-}
-
-async function readNdjsonStream(reader, onChunk) {
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        onChunk(JSON.parse(trimmed));
-      } catch {
-        /* skip malformed lines */
-      }
-    }
-  }
-
-  const tail = buffer.trim();
-  if (tail) {
-    try {
-      onChunk(JSON.parse(tail));
-    } catch {
-      /* skip */
-    }
-  }
-}
-
-async function sendPlaygroundMessage(text) {
-  const model = state.selectedModel || state.models[0]?.id;
-  if (!model) {
-    state.messages.push({
-      role: 'system',
-      content: 'No model available. Pull a model into Ollama first.',
-      error: true,
-    });
-    renderPlaygroundMessages();
-    return;
-  }
-
-  state.messages.push({ role: 'user', content: text });
-  const assistantIndex = state.messages.length;
-  state.messages.push({
-    role: 'assistant',
-    content: '',
-    thinking: '',
-    rawText: '',
-    meta: 'Generating…',
-    streaming: false,
-  });
-  renderPlaygroundMessages();
-
-  const settings = getPlaygroundSettings();
-  const history = state.messages
-    .slice(0, assistantIndex)
-    .filter((m) => m.role === 'user' || m.role === 'assistant')
-    .map((m) => ({ role: m.role, content: m.content }));
-
-  const requestPayload = buildChatRequest(model, history, settings);
-  beginTelemetry(requestPayload, model);
-
-  state.abortController = new AbortController();
-  setPlaygroundBusy(true, settings.stream ? 'Streaming…' : 'Waiting…');
-
-  const wallStart = performance.now();
-
-  try {
-    const { res } = await runnerFetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestPayload),
-      signal: state.abortController.signal,
-    });
-
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(`HTTP ${res.status}: ${errBody.slice(0, 500)}`);
-    }
-
-    if (settings.stream) {
-      state.messages[assistantIndex].streaming = true;
-      state.messages[assistantIndex].displayedContent = '';
-      state.messages[assistantIndex].meta = '';
-      attachStreamingElements(assistantIndex);
-      const twPump = startTypewriter(assistantIndex);
-      flushStreamingMessage();
-
-      const reader = res.body.getReader();
-      await pumpNdjsonStream(reader, assistantIndex);
-
-      applyStreamDelta(assistantIndex, '', '');
-      await finishTypewriter(twPump);
-      const elapsed = performance.now() - wallStart;
-      state.messages[assistantIndex].meta = formatDurationSeconds(elapsed);
-    } else {
-      const body = await res.json();
-      ingestTelemetryChunk(body);
-      const delta = body.message || {};
-      state.messages[assistantIndex].thinking = delta.thinking || '';
-      state.messages[assistantIndex].rawText = delta.content || '';
-      applyStreamDelta(assistantIndex, '', '');
-      const elapsed = performance.now() - wallStart;
-      state.messages[assistantIndex].meta = formatDurationSeconds(elapsed);
-    }
-  } catch (err) {
-    if (state.telemetry) {
-      state.telemetry.error = String(err.message || err);
-      state.telemetry.timing.totalMs = performance.now() - state.telemetry.timing.startedAt;
-    }
-    if (err.name === 'AbortError') {
-      state.messages[assistantIndex].content = state.messages[assistantIndex].content || '[stopped]';
-      state.messages[assistantIndex].meta = 'Cancelled';
-    } else {
-      state.messages[assistantIndex].content = String(err.message || err);
-      state.messages[assistantIndex].error = true;
-      state.messages[assistantIndex].meta = 'Error';
-    }
-  } finally {
-    stopTypewriterPump(typewriterPump);
-    typewriterPump = null;
-    detachStreamingElements();
-    if (state.messages[assistantIndex]) {
-      const finalMsg = state.messages[assistantIndex];
-      finalMsg.displayedContent = finalMsg.content;
-      finalMsg.streaming = false;
-    }
-    state.abortController = null;
-    setPlaygroundBusy(false, '');
-    patchMessage(assistantIndex);
-    paintTelemetry();
-    refreshRuntime().catch(() => {});
-  }
-}
-
-function stopPlayground() {
-  stopStreamPump(streamPump);
-  if (typewriterPump && streamingAssistantIndex != null) {
-    const msg = state.messages[streamingAssistantIndex];
-    if (msg) {
-      msg.displayedContent = msg.content || msg.displayedContent || '';
-      paintTypewriterDisplay();
-    }
-  }
-  stopTypewriterPump(typewriterPump);
-  typewriterPump = null;
-  state.abortController?.abort();
-}
-
-function clearPlayground() {
-  state.messages = [];
-  renderPlaygroundMessages();
-}
-
-/* ── Telemetry (raw input) ───────────────────────────────── */
-
-function beginTelemetry(request, model) {
-  parsedTelemetryLastPaint = 0;
-  state.telemetry = {
-    request,
-    model,
-    thinking: '',
-    content: '',
-    usage: null,
-    doneReason: null,
-    finalChunk: null,
-    timing: { startedAt: performance.now() },
-    error: null,
-  };
-  paintTelemetry();
-}
-
-function ingestTelemetryChunk(chunk) {
-  if (!state.telemetry) return;
-
-  const msg = chunk.message || {};
-  if (msg.thinking) {
-    state.telemetry.thinking += msg.thinking;
-    const elapsed = performance.now() - state.telemetry.timing.startedAt;
-    if (state.telemetry.timing.firstThinkingMs == null) {
-      state.telemetry.timing.firstThinkingMs = elapsed;
-    }
-  }
-  if (msg.content) {
-    state.telemetry.content += msg.content;
-    const elapsed = performance.now() - state.telemetry.timing.startedAt;
-    if (state.telemetry.timing.firstContentMs == null) {
-      state.telemetry.timing.firstContentMs = elapsed;
-    }
-  }
-
-  if (chunk.done) {
-    state.telemetry.finalChunk = chunk;
-    state.telemetry.doneReason = chunk.done_reason || null;
-    state.telemetry.usage = {
-      prompt_eval_count: chunk.prompt_eval_count,
-      eval_count: chunk.eval_count,
-      total_duration: chunk.total_duration,
-      load_duration: chunk.load_duration,
-      prompt_eval_duration: chunk.prompt_eval_duration,
-      eval_duration: chunk.eval_duration,
-    };
-    state.telemetry.timing.totalMs = performance.now() - state.telemetry.timing.startedAt;
-  }
-}
-
-function formatMetricsBar(data) {
-  if (!data) return 'Awaiting inference…';
-
-  const parts = [
-    data.timing?.totalMs != null ? `${data.timing.totalMs.toFixed(0)} ms total` : null,
-    data.timing?.firstContentMs != null ? `first content ${data.timing.firstContentMs.toFixed(0)} ms` : null,
-    data.usage?.eval_count != null ? `${data.usage.eval_count} completion tokens` : null,
-    data.usage?.prompt_eval_count != null ? `${data.usage.prompt_eval_count} prompt tokens` : null,
-    data.model || null,
-    data.error ? `error: ${data.error}` : null,
-  ].filter(Boolean);
-
-  return parts.length ? parts.join(' · ') : 'Running…';
-}
-
-function buildParsedPayload(data) {
-  const inProgress = data.doneReason == null && !data.error;
-  const split = splitEmbeddedThinking(data.content);
-  const thinking = data.thinking || split.thinking;
-  const content = split.content || (thinking ? '' : data.content);
-
-  return {
-    thinking,
-    content: inProgress && !content ? '' : content,
-    usage: data.usage || null,
-    done_reason: data.doneReason || null,
-    final_chunk: inProgress ? null : data.finalChunk || null,
-    timing: data.timing || null,
-  };
-}
-
-function paintTelemetryMetrics(data) {
-  const metrics = $('telemetry-metrics');
-  if (metrics) metrics.textContent = formatMetricsBar(data);
-}
-
-function paintTelemetry() {
-  const data = state.telemetry;
-  const metrics = $('telemetry-metrics');
-  const parsedPane = $('telemetry-pane-parsed');
-  const requestPane = $('telemetry-pane-request');
-
-  if (!data) {
-    if (metrics) metrics.textContent = 'Awaiting inference…';
-    if (parsedPane) parsedPane.textContent = '—';
-    if (requestPane) requestPane.textContent = '—';
-    return;
-  }
-
-  if (metrics) metrics.textContent = formatMetricsBar(data);
-  if (requestPane) requestPane.textContent = formatJson(data.request);
-  if (parsedPane) parsedPane.textContent = formatJson(buildParsedPayload(data));
-}
-
-function setTelemetryTab(tab) {
-  state.telemetryTab = tab;
-  document.querySelectorAll('[data-telemetry-tab]').forEach((btn) => {
-    const active = btn.dataset.telemetryTab === tab;
-    btn.classList.toggle('telemetry-tab--active', active);
-    btn.setAttribute('aria-selected', active ? 'true' : 'false');
-  });
-
-  const panes = { parsed: $('telemetry-pane-parsed'), request: $('telemetry-pane-request') };
-  for (const [name, el] of Object.entries(panes)) {
-    if (!el) continue;
-    const active = name === tab;
-    el.hidden = !active;
-    el.classList.toggle('telemetry-pane--active', active);
-  }
-
-  if (tab === 'parsed' && state.telemetry && streamPump && !streamPump.aborted) {
-    const parsedPane = $('telemetry-pane-parsed');
-    if (parsedPane) {
-      parsedPane.textContent = formatJson(buildParsedPayload(state.telemetry));
-      parsedTelemetryLastPaint = performance.now();
-    }
-  }
-}
-
-/* ── Runtime ─────────────────────────────────────────────── */
-
-function renderRuntime() {
-  const rt = state.runtime;
-  const processorEl = $('runtime-processor');
-  const hintEl = $('runtime-gpu-hint');
-  const statusBox = $('runtime-status');
-  const toggle = $('runtime-gpu-toggle');
-  const applyBtn = $('runtime-gpu-apply');
-  const note = $('runtime-note');
-
-  if (!rt) {
-    if (processorEl) processorEl.textContent = '—';
-    if (hintEl) hintEl.textContent = 'Loading runtime…';
-    return;
-  }
-
-  const processor = rt.processor || (rt.ollama_online ? 'idle (no model loaded)' : 'Ollama offline');
-  if (processorEl) processorEl.textContent = processor;
-  if (statusBox) statusBox.dataset.processor = processor;
-
-  const gpuHint = rt.gpu_available
-    ? (rt.gpu_enabled ? 'GPU mode enabled in compose' : 'CPU-only compose profile')
-    : 'NVIDIA not available to Docker — install nvidia-container-toolkit';
-  if (hintEl) hintEl.textContent = gpuHint;
-
-  const desiredGpu = state.runtimeGpuPending ?? rt.gpu_enabled;
-  if (toggle) {
-    toggle.checked = Boolean(desiredGpu);
-    toggle.disabled = !rt.gpu_available;
-  }
-
-  const dirty = state.runtimeGpuPending != null && state.runtimeGpuPending !== rt.gpu_enabled;
-  if (applyBtn) applyBtn.disabled = !dirty || !rt.gpu_available;
-
-  if (note) {
-    note.className = 'runtime-note';
-    if (!rt.gpu_available) {
-      note.classList.add('runtime-note--warn');
-      note.textContent = 'nvidia-smi works on the host but Docker cannot access the GPU yet. Install NVIDIA Container Toolkit, then retry.';
-    } else if (dirty) {
-      note.classList.add('runtime-note--warn');
-      note.textContent = 'Applying will stop and restart the Ollama container. In-flight generation will be cancelled.';
-    } else {
-      note.textContent = 'Requires nvidia-container-toolkit on the host. Toggling stops and restarts the Ollama container (~10–30 s).';
-    }
-  }
-}
-
-async function refreshRuntime() {
-  try {
-    const res = await consoleFetch('/api/runtime');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    state.runtime = await res.json();
-    if (state.runtimeGpuPending == null) {
-      state.runtimeGpuPending = state.runtime.gpu_enabled;
-    }
-    renderRuntime();
-    return state.runtime;
-  } catch (err) {
-    if ($('runtime-gpu-hint')) $('runtime-gpu-hint').textContent = String(err.message || err);
-    return null;
-  }
-}
-
-async function applyGpuRuntime() {
-  const toggle = $('runtime-gpu-toggle');
-  const applyBtn = $('runtime-gpu-apply');
-  const enabled = Boolean(toggle?.checked);
-  state.runtimeGpuPending = enabled;
-  renderRuntime();
-
-  if (applyBtn) {
-    applyBtn.disabled = true;
-    applyBtn.textContent = 'Restarting Ollama…';
-  }
-  if ($('runtime-note')) {
-    $('runtime-note').textContent = 'Restarting Ollama — this may take up to 30 seconds…';
-  }
-
-  try {
-    const res = await consoleFetch('/api/runtime/gpu', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
-    });
-    const body = await res.json();
-    state.runtime = body;
-    state.runtimeGpuPending = body.gpu_enabled;
-    if (!body.ok) throw new Error(body.error || 'GPU toggle failed');
-    await probeModels();
-  } catch (err) {
-    if ($('runtime-note')) {
-      $('runtime-note').className = 'runtime-note runtime-note--error';
-      $('runtime-note').textContent = String(err.message || err);
-    }
-  } finally {
-    renderRuntime();
-    if (applyBtn) applyBtn.textContent = 'Apply & restart Ollama';
-  }
-}
-
-/* ── Model probe ─────────────────────────────────────────── */
-
-async function probeModels({ manual = false } = {}) {
-  if (manual) setConnectionState(null, 'Probing…');
-
-  try {
-    const { res, latencyMs } = await runnerFetch('/v1/models');
-    const contentType = res.headers.get('content-type') || '';
-    const body = contentType.includes('application/json') ? await res.json() : await res.text();
-
-    state.lastProbe = {
-      ok: res.ok,
-      status: res.status,
-      latencyMs,
-      body,
-      at: new Date().toISOString(),
-    };
-
-    if (res.ok && body && Array.isArray(body.data)) {
-      state.models = body.data.filter((m) => m && m.id);
-      setConnectionState(true, `Runner online · ${latencyMs.toFixed(0)} ms`);
-    } else if (res.ok) {
-      state.models = [];
-      setConnectionState(true, 'Runner online · empty model list');
-    } else {
-      state.models = [];
-      setConnectionState(false, `HTTP ${res.status}`);
-    }
-
-    renderOverview();
-    syncModelSelect();
-    renderGatewayDiscovery();
-    $('last-refresh').textContent = `Updated ${relativeTime(state.lastProbe.at)}`;
-    return state.lastProbe;
-  } catch (err) {
-    state.models = [];
-    state.lastProbe = { ok: false, error: String(err), at: new Date().toISOString() };
-    setConnectionState(false, 'Unreachable');
-    renderOverview();
-    syncModelSelect();
-    renderGatewayDiscovery();
-    $('last-refresh').textContent = `Failed ${relativeTime(state.lastProbe.at)}`;
-    if (manual) throw err;
-    return state.lastProbe;
-  }
-}
-
-/* ── API explorer ────────────────────────────────────────── */
-
-async function runExplorerEndpoint(endpoint) {
-  const paths = {
-    models: { path: '/v1/models', resultId: 'explorer-models-result' },
-    tags: { path: '/api/tags', resultId: 'explorer-tags-result' },
-    version: { path: '/api/version', resultId: 'explorer-version-result' },
-  };
-  const spec = paths[endpoint];
-  if (!spec) return;
-
-  const el = $(spec.resultId);
-  if (el) el.textContent = 'Loading…';
-
-  try {
-    const { res, latencyMs } = await runnerFetch(spec.path);
-    const contentType = res.headers.get('content-type') || '';
-    const body = contentType.includes('application/json') ? await res.json() : await res.text();
-    if (el) {
-      el.textContent = truncate(
-        `HTTP ${res.status} · ${latencyMs.toFixed(1)} ms\n\n${formatJson(body)}`,
-        4000,
-      );
-    }
-  } catch (err) {
-    if (el) el.textContent = String(err);
-  }
-}
-
-/* ── Preferences & events ────────────────────────────────── */
-
-function applyBaseUrl() {
-  const input = $('runner-base-url');
-  const url = (input?.value || DEFAULT_BASE_URL).trim().replace(/\/$/, '');
-  state.baseUrl = url;
-  localStorage.setItem(STORAGE_BASE_URL, url);
-  if (input) input.value = url;
-  probeModels({ manual: true }).catch(() => {});
-}
-
-function startPolling() {
+function restartPolling() {
   if (state.pollTimer) clearInterval(state.pollTimer);
+  const interval = Math.max(3, Math.min(120, state.pollIntervalS)) * 1000;
   state.pollTimer = setInterval(() => {
-    if (state.abortController) return;
     probeModels().catch(() => {});
     refreshRuntime().catch(() => {});
-    if (state.gatewayJwt) fetchGatewayObservability().catch(() => {});
-  }, state.pollIntervalS * 1000);
+  }, interval);
 }
 
+async function refreshAll() {
+  await Promise.all([probeModels({ manual: true }), refreshRuntime(), refreshComposeStatus()]);
+}
+
+/* ── Init ────────────────────────────────────────────────── */
+
 function bindEvents() {
-  $('save-base-url-btn')?.addEventListener('click', applyBaseUrl);
-  $('runner-base-url')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') applyBaseUrl();
+  document.querySelectorAll('[data-panel]').forEach((btn) => {
+    btn.addEventListener('click', () => switchPanel(btn.dataset.panel));
   });
 
+  $('refresh-btn')?.addEventListener('click', () => refreshAll());
   $('probe-btn')?.addEventListener('click', () => probeModels({ manual: true }));
-  $('refresh-btn')?.addEventListener('click', () => {
+  $('save-settings-btn')?.addEventListener('click', () => saveSettings());
+  $('models-refresh-btn')?.addEventListener('click', () => {
     probeModels({ manual: true });
-    refreshRuntime();
-    if (state.gatewayJwt) fetchGatewayObservability({ manual: true });
-  });
-
-  $('poll-interval')?.addEventListener('change', (e) => {
-    const s = Math.min(120, Math.max(3, Number(e.target.value) || DEFAULT_POLL_S));
-    state.pollIntervalS = s;
-    e.target.value = String(s);
-    localStorage.setItem(STORAGE_POLL_INTERVAL, String(s));
-    startPolling();
-  });
-
-  $('playground-model')?.addEventListener('change', (e) => {
-    state.selectedModel = e.target.value;
-    localStorage.setItem(STORAGE_MODEL, state.selectedModel);
-    const model = state.models.find((m) => m.id === state.selectedModel);
-    setLoadedModelBadge(model || null);
+    fetchTagsRaw();
   });
 
   $('playground-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
     const input = $('playground-input');
-    const text = (input?.value || '').trim();
+    const text = input?.value?.trim();
     if (!text) return;
-    if (input) input.value = '';
+    input.value = '';
     sendPlaygroundMessage(text);
   });
 
@@ -1603,80 +1170,53 @@ function bindEvents() {
   $('playground-stop-btn')?.addEventListener('click', stopPlayground);
   $('playground-clear-btn')?.addEventListener('click', clearPlayground);
 
-  $('runtime-gpu-toggle')?.addEventListener('change', (e) => {
-    state.runtimeGpuPending = Boolean(e.target.checked);
-    renderRuntime();
+  $('playground-model')?.addEventListener('change', (e) => {
+    state.selectedModel = e.target.value;
+    localStorage.setItem(STORAGE.model, state.selectedModel);
   });
-
-  $('runtime-gpu-apply')?.addEventListener('click', () => applyGpuRuntime());
 
   document.querySelectorAll('[data-telemetry-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => setTelemetryTab(btn.dataset.telemetryTab || 'parsed'));
+    btn.addEventListener('click', () => setTelemetryTab(btn.dataset.telemetryTab));
   });
+
+  $('generate-run-btn')?.addEventListener('click', runGenerate);
+  $('generate-stop-btn')?.addEventListener('click', stopGenerate);
 
   document.querySelectorAll('[data-endpoint]').forEach((btn) => {
     btn.addEventListener('click', () => runExplorerEndpoint(btn.dataset.endpoint));
   });
+  $('custom-run-btn')?.addEventListener('click', runCustomRequest);
 
-  $('gateway-runner-id')?.addEventListener('change', saveGatewayConfigFromInputs);
-  $('gateway-declared-caps')?.addEventListener('change', saveGatewayConfigFromInputs);
-  $('gateway-jwt-input')?.addEventListener('change', saveGatewayConfigFromInputs);
-  $('gateway-fetch-btn')?.addEventListener('click', () => {
-    saveGatewayConfigFromInputs();
-    fetchGatewayCapabilities({ manual: true });
+  $('runtime-gpu-toggle')?.addEventListener('change', () => {
+    state.runtimeGpuPending = $('runtime-gpu-toggle')?.checked;
+    renderRuntime();
   });
-  $('gateway-auto-sign-in-btn')?.addEventListener('click', () => gatewayAutoSignIn());
-}
+  $('runtime-gpu-apply')?.addEventListener('click', applyGpuRuntime);
+  $('compose-refresh-btn')?.addEventListener('click', refreshComposeStatus);
+  $('logs-fetch-btn')?.addEventListener('click', fetchRuntimeLogs);
 
-function loadPreferences() {
-  const savedUrl = localStorage.getItem(STORAGE_BASE_URL);
-  if (savedUrl) {
-    state.baseUrl = savedUrl === 'http://127.0.0.1:11434' ? DEFAULT_BASE_URL : savedUrl;
-    const input = $('runner-base-url');
-    if (input) input.value = state.baseUrl;
-  }
+  $('gateway-fetch-btn')?.addEventListener('click', () => {
+    saveSettings();
+    fetchGatewayCapabilities();
+  });
+  $('gateway-auto-sign-in-btn')?.addEventListener('click', gatewayAutoSignIn);
 
-  const savedPoll = Number(localStorage.getItem(STORAGE_POLL_INTERVAL));
-  if (savedPoll >= 3 && savedPoll <= 120) {
-    state.pollIntervalS = savedPoll;
-    const pollInput = $('poll-interval');
-    if (pollInput) pollInput.value = String(savedPoll);
-  }
-
-  const savedModel = localStorage.getItem(STORAGE_MODEL);
-  if (savedModel) state.selectedModel = savedModel;
-
-  const savedRunnerId = localStorage.getItem(STORAGE_RUNNER_ID);
-  if (savedRunnerId) state.gatewayRunnerId = savedRunnerId;
-
-  const savedCaps = localStorage.getItem(STORAGE_DECLARED_CAPS);
-  if (savedCaps) {
-    state.declaredCapabilities = savedCaps.split(',').map((c) => c.trim()).filter(Boolean);
-  }
-
-  const savedJwt = localStorage.getItem(STORAGE_GATEWAY_JWT);
-  if (savedJwt) state.gatewayJwt = savedJwt;
-
-  const runnerIdInput = $('gateway-runner-id');
-  if (runnerIdInput) runnerIdInput.value = state.gatewayRunnerId;
-  const capsInput = $('gateway-declared-caps');
-  if (capsInput) capsInput.value = state.declaredCapabilities.join(', ');
-  const jwtInput = $('gateway-jwt-input');
-  if (jwtInput) jwtInput.value = state.gatewayJwt;
+  $('gateway-runner-id')?.addEventListener('change', () => {
+    state.gatewayRunnerId = $('gateway-runner-id').value;
+    renderGatewayDiscovery();
+  });
 }
 
 async function init() {
-  loadPreferences();
+  loadSettings();
   bindEvents();
-  setTelemetryTab(state.telemetryTab);
-  renderGatewayDiscovery();
-  renderObservability();
-  await Promise.all([
-    probeModels(),
-    refreshRuntime(),
-    state.gatewayJwt ? fetchGatewayObservability() : Promise.resolve(),
-  ]);
-  startPolling();
+  switchPanel(state.activePanel);
+  setTelemetryTab('parsed');
+
+  await loadServerConfig();
+  await refreshAll();
+  fetchTagsRaw().catch(() => {});
+  restartPolling();
 }
 
 init();

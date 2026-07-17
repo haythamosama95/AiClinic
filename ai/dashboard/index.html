@@ -4,651 +4,385 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="AI Gateway control plane — live health, runners, and metrics">
-  <title>AI Control Plane</title>
+  <meta name="description" content="AI Gateway signal monitor — health, runners, live traces">
+  <title>Signal Monitor · AI Gateway</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Syne:wght@600;700&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
-  <div class="app-shell">
-    <header class="hero" id="dashboard-header">
-      <div class="hero__grid-bg" aria-hidden="true"></div>
+  <a class="skip-link" href="#main">Skip to monitor</a>
 
-      <div class="hero__content">
-        <div class="hero__identity">
-          <p class="hero__eyebrow">AiClinic · Gateway</p>
-          <h1 class="hero__title">Control Plane</h1>
-          <p class="hero__subtitle">Phases 1–6 · health spine, observability, auth &amp; capabilities</p>
+  <header class="system-strip" id="system-strip">
+    <div class="system-strip__brand">
+      <span class="system-strip__eyebrow">AiClinic</span>
+      <h1 class="system-strip__title">Signal monitor</h1>
+    </div>
+
+    <div class="system-strip__vitals" role="status" aria-live="polite">
+      <div class="vital" id="vital-health" data-state="unknown">
+        <span class="vital__label">Liveness</span>
+        <span class="vital__value" id="vital-health-value">—</span>
+        <span class="vital__hint mono">/health</span>
+      </div>
+      <div class="vital" id="vital-ready" data-state="unknown">
+        <span class="vital__label">Readiness</span>
+        <span class="vital__value" id="vital-ready-value">—</span>
+        <span class="vital__hint mono">/ready</span>
+      </div>
+      <div class="vital" id="vital-uptime">
+        <span class="vital__label">Uptime</span>
+        <span class="vital__value mono" id="vital-uptime-value">—</span>
+      </div>
+      <div class="vital" id="vital-auth" data-state="unknown">
+        <span class="vital__label">Dashboard auth</span>
+        <span class="vital__value" id="vital-auth-value">Unsigned</span>
+        <span class="vital__hint" id="vital-auth-role">—</span>
+      </div>
+    </div>
+
+    <div class="system-strip__controls">
+      <label class="poll-control" for="poll-interval">
+        Auto-refresh
+        <input type="number" id="poll-interval" min="0" max="60" value="0"
+          aria-label="Auto-refresh interval seconds, 0 for off">
+        s
+      </label>
+      <button type="button" class="btn btn--ghost" id="refresh-btn">Refresh panels</button>
+      <span class="system-strip__updated mono" id="last-refresh">—</span>
+    </div>
+  </header>
+
+  <main class="layout" id="main">
+    <!-- Signature: live sequence chart — newest messages at top -->
+    <section class="panel panel--trace" id="trace-panel" aria-labelledby="trace-heading">
+      <header class="panel__header panel__header--trace">
+        <div>
+          <h2 class="panel__title" id="trace-heading">Live trace</h2>
+          <p class="panel__desc">Sequence view · newest traffic at top · PHI-redacted summaries</p>
         </div>
-
-        <div class="hero__status-bar">
-          <div class="hero__badges">
-            <span class="badge badge--live" id="connection-indicator" data-state="unknown" role="status"
-              aria-live="polite">
-              <span class="badge__dot" aria-hidden="true"></span>
-              <span class="badge__label" id="connection-label">Connecting…</span>
-            </span>
-
-            <span class="badge badge--readiness" id="readiness-badge" data-ready="unknown" role="status">
-              <span class="badge__icon" aria-hidden="true">◆</span>
-              <span class="badge__label" id="readiness-label">Readiness unknown</span>
-            </span>
-
-            <span class="pill pill--phase" id="phase-pill" title="Active implementation phases">
-              Phases 1–6 active
-            </span>
-          </div>
-
-          <div class="hero__actions">
-            <label class="hero__poll-label" for="poll-interval">
-              Poll
-              <input type="number" class="hero__poll-input" id="poll-interval" min="2" max="60" value="5"
-                aria-label="Poll interval in seconds">
-              s
-            </label>
-            <span class="hero__last-refresh" id="last-refresh" aria-live="polite">—</span>
-            <button type="button" class="btn btn--refresh" id="refresh-btn" aria-label="Refresh dashboard data">
-              <span class="btn__icon" aria-hidden="true">↻</span>
-              Refresh
+        <div class="trace-controls">
+          <div class="trace-filter-wrap">
+            <button type="button" class="btn btn--ghost trace-filter-btn" id="trace-filter-btn" aria-expanded="false"
+              aria-controls="trace-filter-panel" aria-haspopup="dialog">
+              Filter
+              <span class="trace-filter-badge" id="trace-filter-badge" hidden>0</span>
             </button>
+            <div class="trace-filter-panel" id="trace-filter-panel" role="dialog" aria-labelledby="trace-filter-title"
+              hidden>
+              <header class="trace-filter-panel__header">
+                <h3 class="trace-filter-panel__title" id="trace-filter-title">Trace filters</h3>
+                <button type="button" class="trace-filter-panel__close" id="trace-filter-close"
+                  aria-label="Close filters">×</button>
+              </header>
+              <form class="trace-filter-form" id="trace-filter-form">
+                <label class="trace-filter-field" for="filter-direction">
+                  Direction
+                  <select id="filter-direction" class="trace-filter-select">
+                    <option value="">All directions</option>
+                  </select>
+                </label>
+                <label class="trace-filter-field" for="filter-kind">
+                  Kind
+                  <select id="filter-kind" class="trace-filter-select">
+                    <option value="">All kinds</option>
+                  </select>
+                </label>
+                <label class="trace-filter-field" for="filter-runner">
+                  Runner
+                  <select id="filter-runner" class="trace-filter-select">
+                    <option value="">All runners</option>
+                  </select>
+                </label>
+                <label class="trace-filter-field" for="filter-status">
+                  Status class
+                  <select id="filter-status" class="trace-filter-select">
+                    <option value="">All statuses</option>
+                  </select>
+                </label>
+                <label class="trace-filter-field" for="filter-path-prefix">
+                  Path prefix
+                  <input type="text" id="filter-path-prefix" class="trace-filter-input mono" placeholder="/v1/"
+                    spellcheck="false" autocomplete="off">
+                </label>
+                <div class="trace-filter-actions">
+                  <button type="button" class="btn btn--ghost" id="trace-filter-reset">Clear all</button>
+                  <button type="submit" class="btn btn--trace">Apply</button>
+                </div>
+              </form>
+            </div>
           </div>
+          <span class="trace-status" id="trace-connection" data-state="off">Stream off</span>
+          <button type="button" class="btn btn--ghost" id="trace-connect-btn">Connect stream</button>
+          <button type="button" class="btn btn--trace" id="trace-pause-btn" aria-pressed="false" disabled>Pause</button>
+          <button type="button" class="btn btn--ghost" id="trace-clear-btn">Clear view</button>
+        </div>
+      </header>
+
+      <div class="trace-sequence" id="trace-sequence" aria-label="Live message sequence">
+        <header class="trace-seq-header">
+          <div class="trace-seq-gutter trace-seq-gutter--time">
+            <span class="trace-seq-gutter__label">Time</span>
+          </div>
+          <div class="trace-seq-stage trace-seq-stage--header">
+            <div class="trace-seq-entities" role="presentation">
+              <div class="trace-lifeline-col" id="entity-client">
+                <div class="trace-entity-cap trace-entity-cap--client">
+                  <span class="trace-entity-cap__name">Client</span>
+                  <span class="trace-entity-cap__sub">HTTP</span>
+                </div>
+              </div>
+              <div class="trace-lifeline-col trace-lifeline-col--gateway" id="entity-gateway">
+                <div class="trace-entity-cap trace-entity-cap--gateway">
+                  <span class="trace-entity-cap__name">Gateway</span>
+                  <span class="trace-entity-cap__sub">AI layer</span>
+                  <span class="trace-entity-cap__count mono" id="gateway-event-count">0 evt</span>
+                </div>
+              </div>
+              <div class="trace-lifeline-col" id="entity-runner">
+                <div class="trace-entity-cap trace-entity-cap--runner">
+                  <span class="trace-entity-cap__name">Runner</span>
+                  <span class="trace-entity-cap__sub mono" id="runner-node-id">—</span>
+                </div>
+              </div>
+            </div>
+            <div class="trace-seq-live-edge" aria-hidden="true">
+              <span class="trace-seq-live-edge__tag">Live</span>
+            </div>
+          </div>
+          <div class="trace-seq-gutter trace-seq-gutter--meta">
+            <span class="trace-seq-gutter__label">Status</span>
+            <span class="trace-log-count mono" id="trace-log-count">0 events</span>
+          </div>
+        </header>
+
+        <div class="trace-stream" id="trace-stream" role="log" aria-live="off" aria-relevant="additions">
+          <div class="trace-seq-lifeline-overlay" aria-hidden="true">
+            <span class="trace-lifeline"></span>
+            <span class="trace-lifeline"></span>
+            <span class="trace-lifeline"></span>
+          </div>
+          <p class="trace-empty" id="trace-empty">Sign in to watch live gateway traffic.</p>
         </div>
       </div>
-    </header>
 
-    <main class="dashboard-main">
-      <!-- Architecture (Phase 1) -->
-      <section class="panel panel--architecture" id="architecture-panel" aria-labelledby="architecture-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="architecture-heading">Architecture</h2>
-          <p class="panel__desc">Phase 1 — isolated AI layer layout · gateway is the only client-facing URL</p>
+      <aside class="trace-inspector" id="trace-inspector" hidden aria-labelledby="trace-inspector-heading">
+        <header class="trace-inspector__header">
+          <div class="trace-inspector__lead">
+            <span class="trace-inspector__eyebrow">Signal decode</span>
+            <h3 class="trace-inspector__title" id="trace-inspector-heading">
+              <span class="trace-inspector__method mono" id="trace-inspector-method">—</span>
+              <span class="trace-inspector__path mono" id="trace-inspector-path">Select a message above</span>
+            </h3>
+            <div class="trace-inspector__flow" id="trace-inspector-flow" aria-label="Message route"></div>
+          </div>
+          <div class="trace-inspector__badges" id="trace-inspector-badges"></div>
+          <button type="button" class="trace-inspector__close" id="trace-inspector-close"
+            aria-label="Close signal decode">×</button>
         </header>
-        <div class="architecture-grid" id="architecture-grid">
-          <article class="arch-card arch-card--gateway">
-            <h3 class="arch-card__title">AI Gateway</h3>
-            <p class="arch-card__addr mono" id="arch-gateway-url">—</p>
-            <p class="arch-card__reach" id="arch-gateway-reach">—</p>
-          </article>
-          <article class="arch-card arch-card--runner">
-            <h3 class="arch-card__title">Model Runner (Ollama)</h3>
-            <p class="arch-card__addr mono" id="arch-runner-url">—</p>
-            <p class="arch-card__reach" id="arch-runner-reach">—</p>
-          </article>
+
+        <nav class="trace-inspector__tabs" role="tablist" aria-label="Trace detail sections">
+          <button type="button" class="trace-inspector__tab" role="tab" id="trace-tab-overview" aria-selected="true"
+            aria-controls="trace-pane-overview" data-tab="overview">Overview</button>
+          <button type="button" class="trace-inspector__tab" role="tab" id="trace-tab-request" aria-selected="false"
+            aria-controls="trace-pane-request" data-tab="request">Request</button>
+          <button type="button" class="trace-inspector__tab" role="tab" id="trace-tab-response" aria-selected="false"
+            aria-controls="trace-pane-response" data-tab="response">Response</button>
+          <button type="button" class="trace-inspector__tab" role="tab" id="trace-tab-raw" aria-selected="false"
+            aria-controls="trace-pane-raw" data-tab="raw">Raw JSON</button>
+        </nav>
+
+        <div class="trace-inspector__body">
+          <div class="trace-inspector__pane" role="tabpanel" id="trace-pane-overview"
+            aria-labelledby="trace-tab-overview">
+            <dl class="trace-inspector__grid" id="trace-inspector-overview"></dl>
+          </div>
+          <div class="trace-inspector__pane" role="tabpanel" id="trace-pane-request" aria-labelledby="trace-tab-request"
+            hidden>
+            <p class="trace-inspector__empty" id="trace-inspector-request-empty" hidden>No request body for this
+              message.</p>
+            <pre class="trace-inspector__code mono" id="trace-inspector-request" tabindex="0"></pre>
+          </div>
+          <div class="trace-inspector__pane" role="tabpanel" id="trace-pane-response"
+            aria-labelledby="trace-tab-response" hidden>
+            <p class="trace-inspector__empty" id="trace-inspector-response-empty" hidden>No response body for this
+              message.</p>
+            <pre class="trace-inspector__code mono" id="trace-inspector-response" tabindex="0"></pre>
+          </div>
+          <div class="trace-inspector__pane" role="tabpanel" id="trace-pane-raw" aria-labelledby="trace-tab-raw" hidden>
+            <pre class="trace-inspector__code mono" id="trace-inspector-raw" tabindex="0"></pre>
+          </div>
         </div>
-        <p class="architecture-note" id="arch-isolation-note">
-          Runners are polled internally; clinic clients never reach Ollama directly in production.
-        </p>
+      </aside>
+    </section>
+
+    <section class="panel panel--client" id="client-panel" aria-labelledby="client-heading">
+      <header class="panel__header">
+        <div>
+          <h2 class="panel__title" id="client-heading">Client requests</h2>
+          <p class="panel__desc">Act as the clinic client on the live trace — nothing is sent until you click Send</p>
+        </div>
+      </header>
+      <div class="client-request-list" id="client-request-list" role="list"></div>
+      <div class="client-response workbench-response" id="client-response" hidden>
+        <header class="workbench-response__header">
+          <span id="client-response-status" class="workbench-response__status">—</span>
+          <span id="client-response-path" class="mono"></span>
+          <span id="client-response-rid" class="mono workbench-response__rid"></span>
+        </header>
+        <pre id="client-response-body" class="workbench-response__body mono" tabindex="0"></pre>
+      </div>
+    </section>
+
+    <div class="layout__grid layout__grid--2">
+      <section class="panel" id="runners-panel" aria-labelledby="runners-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="runners-heading">Runner registry</h2>
+          <p class="panel__desc" id="registry-mode">Pull-mode health poller</p>
+        </header>
+        <div class="lifecycle-rail" id="lifecycle-rail" aria-label="Lifecycle states"></div>
+        <div class="runner-list" id="runner-list" role="list"></div>
       </section>
 
-      <!-- Overview cards -->
-      <section class="panel panel--overview" id="overview-section" aria-labelledby="overview-heading">
+      <section class="panel" id="capabilities-panel" aria-labelledby="capabilities-heading">
         <header class="panel__header">
-          <h2 class="panel__title" id="overview-heading">Overview</h2>
-          <p class="panel__desc">Gateway vitals at a glance</p>
+          <h2 class="panel__title" id="capabilities-heading">Capabilities</h2>
+          <p class="panel__desc mono" id="capabilities-meta">GET /v1/capabilities</p>
         </header>
-        <div class="overview-grid" id="overview-cards">
-          <article class="stat-card" data-metric="liveness" id="card-liveness">
-            <span class="stat-card__label">Liveness</span>
-            <span class="stat-card__value" id="metric-liveness">—</span>
-            <span class="stat-card__hint" id="metric-liveness-hint">/health</span>
-          </article>
-          <article class="stat-card" data-metric="readiness" id="card-readiness">
-            <span class="stat-card__label">Readiness</span>
-            <span class="stat-card__value" id="metric-readiness">—</span>
-            <span class="stat-card__hint" id="metric-readiness-hint">/ready</span>
-          </article>
-          <article class="stat-card" data-metric="total-runners" id="card-total-runners">
-            <span class="stat-card__label">Total runners</span>
-            <span class="stat-card__value" id="metric-total-runners">—</span>
-            <span class="stat-card__hint" id="metric-total-runners-delta"></span>
-          </article>
-          <article class="stat-card stat-card--accent" data-metric="ready-runners" id="card-ready-runners">
-            <span class="stat-card__label">READY runners</span>
-            <span class="stat-card__value" id="metric-ready-runners">—</span>
-            <span class="stat-card__hint" id="metric-ready-runners-hint">registry</span>
-          </article>
-          <article class="stat-card" data-metric="total-requests" id="card-total-requests">
-            <span class="stat-card__label">API requests</span>
-            <span class="stat-card__value stat-card__value--mono" id="metric-total-requests">—</span>
-            <span class="stat-card__hint" id="metric-total-requests-delta"></span>
-          </article>
-          <article class="stat-card" data-metric="error-rate" id="card-error-rate">
-            <span class="stat-card__label">Error rate</span>
-            <span class="stat-card__value stat-card__value--mono" id="metric-error-rate">—</span>
-            <span class="stat-card__hint" id="metric-error-rate-hint">session delta</span>
-          </article>
+        <div class="capabilities-body" id="capabilities-body">
+          <p class="panel-placeholder">Authenticate to load capabilities mirror.</p>
         </div>
       </section>
+    </div>
 
-      <!-- Runners + lifecycle -->
-      <section class="panel panel--runners" id="runners-panel" aria-labelledby="runners-heading">
-        <header class="panel__header panel__header--split">
+    <section class="panel" id="metrics-panel" aria-labelledby="metrics-heading">
+      <header class="panel__header">
+        <h2 class="panel__title" id="metrics-heading">Metrics</h2>
+        <p class="panel__desc">Parsed from <span class="mono">/metrics</span></p>
+      </header>
+      <div class="metrics-grid" id="metrics-grid"></div>
+    </section>
+
+    <section class="panel" id="workbench-panel" aria-labelledby="workbench-heading">
+      <header class="panel__header">
+        <h2 class="panel__title" id="workbench-heading">Endpoint workbench</h2>
+        <p class="panel__desc">Send authenticated requests to any gateway route</p>
+      </header>
+      <form class="workbench-form" id="workbench-form">
+        <div class="workbench-row">
+          <select id="workbench-method" class="workbench-method" aria-label="HTTP method">
+            <option>GET</option>
+            <option>POST</option>
+            <option>PUT</option>
+            <option>PATCH</option>
+            <option>DELETE</option>
+          </select>
+          <input type="text" id="workbench-path" class="workbench-path mono" value="/v1/status"
+            aria-label="Request path" spellcheck="false">
+          <button type="submit" class="btn btn--primary">Send</button>
+        </div>
+        <label class="workbench-label" for="workbench-body">Request body (JSON)</label>
+        <textarea id="workbench-body" class="workbench-body mono" rows="4" placeholder='{"prompt":"hello"}'
+          spellcheck="false"></textarea>
+      </form>
+      <div class="workbench-catalog">
+        <h3 class="workbench-catalog__title">Catalog</h3>
+        <div class="workbench-catalog__list" id="endpoint-catalog"></div>
+      </div>
+      <div class="workbench-response" id="workbench-response" hidden>
+        <header class="workbench-response__header">
+          <span id="workbench-response-status" class="workbench-response__status">—</span>
+          <span id="workbench-response-path" class="mono"></span>
+          <span id="workbench-response-rid" class="mono workbench-response__rid"></span>
+        </header>
+        <pre id="workbench-response-body" class="workbench-response__body mono" tabindex="0"></pre>
+      </div>
+    </section>
+
+    <div class="layout__grid layout__grid--2">
+      <section class="panel" id="auth-panel" aria-labelledby="auth-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="auth-heading">Dashboard auth</h2>
+          <p class="panel__desc">Bearer JWT for protected routes</p>
+        </header>
+        <div class="auth-sign-in" id="auth-sign-in-section" hidden>
+          <label for="auth-username">Username</label>
+          <input type="text" id="auth-username" autocomplete="username" spellcheck="false">
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" autocomplete="current-password">
+          <button type="button" class="btn btn--primary" id="auth-sign-in-btn">Sign in</button>
+          <p class="auth-message" id="auth-sign-in-message" role="status"></p>
+        </div>
+        <label for="auth-token">Or paste token</label>
+        <textarea id="auth-token" class="mono" rows="3" spellcheck="false"
+          placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…"></textarea>
+        <div class="auth-actions">
+          <button type="button" class="btn btn--primary" id="auth-save-btn">Save token</button>
+          <button type="button" class="btn btn--ghost" id="auth-clear-btn">Clear</button>
+        </div>
+        <dl class="auth-summary" id="auth-summary">
           <div>
-            <h2 class="panel__title" id="runners-heading">Runners</h2>
-            <p class="panel__desc">Registry snapshot, lifecycle state &amp; model discovery via <code>/v1/models</code>
-            </p>
+            <dt>Staff role</dt>
+            <dd id="auth-role" class="mono">—</dd>
           </div>
-          <span class="panel__count" id="runners-count" aria-live="polite">0 registered</span>
-          <p class="panel__poller-meta mono" id="poller-meta" aria-live="polite">—</p>
-          <button type="button" class="btn btn--probe-all" id="poll-all-runners-btn" hidden>
-            Poll all /v1/models
-          </button>
-        </header>
-
-        <div class="lifecycle-rail" id="lifecycle-state-machine" aria-label="Runner lifecycle states">
-          <div class="lifecycle-rail__track" aria-hidden="true"></div>
-          <ol class="lifecycle-rail__states">
-            <li class="lifecycle-node" data-state="UNKNOWN" id="lifecycle-unknown">
-              <span class="lifecycle-node__ring"></span>
-              <span class="lifecycle-node__label">Unknown</span>
-            </li>
-            <li class="lifecycle-node" data-state="STARTING" id="lifecycle-starting">
-              <span class="lifecycle-node__ring"></span>
-              <span class="lifecycle-node__label">Starting</span>
-            </li>
-            <li class="lifecycle-node lifecycle-node--primary" data-state="READY" id="lifecycle-ready">
-              <span class="lifecycle-node__ring"></span>
-              <span class="lifecycle-node__label">Ready</span>
-            </li>
-            <li class="lifecycle-node" data-state="BUSY" id="lifecycle-busy">
-              <span class="lifecycle-node__ring"></span>
-              <span class="lifecycle-node__label">Busy</span>
-            </li>
-            <li class="lifecycle-node" data-state="DEGRADED" id="lifecycle-degraded">
-              <span class="lifecycle-node__ring"></span>
-              <span class="lifecycle-node__label">Degraded</span>
-            </li>
-            <li class="lifecycle-node" data-state="UNREACHABLE" id="lifecycle-unreachable">
-              <span class="lifecycle-node__ring"></span>
-              <span class="lifecycle-node__label">Unreachable</span>
-            </li>
-          </ol>
-          <p class="lifecycle-rail__caption" id="lifecycle-caption">Current aggregate state appears when runners load
-          </p>
-        </div>
-
-        <div class="runner-cards" id="runner-cards" role="list" aria-label="Registered model runners">
-          <div class="empty-state" id="runners-empty">
-            <p class="empty-state__title">No runners configured</p>
-            <p class="empty-state__body">Add runners to <code>gateway.yaml</code>, restart the gateway, then use
-              <code>GET /v1/runners/&lt;id&gt;/models</code> to inspect the same OpenAI-compatible discovery response
-              the health poller uses.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <!-- Metrics charts -->
-      <section class="panel panel--metrics" id="metrics-panel" aria-labelledby="metrics-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="metrics-heading">Metrics</h2>
-          <p class="panel__desc">Parsed from <code>/metrics</code> — request rate excludes health/dashboard polls</p>
-        </header>
-
-        <div class="metrics-grid">
-          <figure class="chart-card" id="chart-request-rate-wrap">
-            <figcaption class="chart-card__title">Request rate</figcaption>
-            <div class="chart-card__body chart-card__body--sparkline">
-              <svg class="chart-svg" id="chart-request-rate" viewBox="0 0 320 80" preserveAspectRatio="none" role="img"
-                aria-labelledby="chart-request-rate-label">
-                <title id="chart-request-rate-label">Request rate sparkline</title>
-                <line class="chart-placeholder-line" x1="0" y1="40" x2="320" y2="40"></line>
-              </svg>
-            </div>
-            <p class="chart-card__stat" id="chart-request-rate-value">— req/s</p>
-          </figure>
-
-          <figure class="chart-card" id="chart-status-codes-wrap">
-            <figcaption class="chart-card__title">Status codes</figcaption>
-            <div class="chart-card__body">
-              <svg class="chart-svg" id="chart-status-codes" viewBox="0 0 320 120" role="img"
-                aria-labelledby="chart-status-codes-label">
-                <title id="chart-status-codes-label">HTTP status code distribution</title>
-              </svg>
-            </div>
-            <ul class="chart-legend" id="chart-status-codes-legend" aria-hidden="true"></ul>
-          </figure>
-
-          <figure class="chart-card" id="chart-runner-latency-wrap">
-            <figcaption class="chart-card__title">Per-runner latency</figcaption>
-            <div class="chart-card__body">
-              <svg class="chart-svg" id="chart-runner-latency" viewBox="0 0 320 120" role="img"
-                aria-labelledby="chart-runner-latency-label">
-                <title id="chart-runner-latency-label">Runner poll latency bars</title>
-              </svg>
-            </div>
-          </figure>
-
-          <figure class="chart-card" id="chart-runner-health-wrap">
-            <figcaption class="chart-card__title">Runner health (Prometheus)</figcaption>
-            <div class="chart-card__body">
-              <svg class="chart-svg" id="chart-runner-health" viewBox="0 0 320 120" role="img"
-                aria-labelledby="chart-runner-health-label">
-                <title id="chart-runner-health-label">gateway_runner_health gauge</title>
-              </svg>
-            </div>
-          </figure>
-
-          <figure class="chart-card" id="chart-error-codes-wrap">
-            <figcaption class="chart-card__title">Error breakdown</figcaption>
-            <div class="chart-card__body">
-              <svg class="chart-svg" id="chart-error-codes" viewBox="0 0 320 120" role="img"
-                aria-labelledby="chart-error-codes-label">
-                <title id="chart-error-codes-label">Gateway error code breakdown</title>
-              </svg>
-            </div>
-            <ul class="chart-legend" id="chart-error-codes-legend" aria-hidden="true"></ul>
-          </figure>
-
-          <figure class="chart-card" id="chart-inflight-wrap">
-            <figcaption class="chart-card__title">In-flight requests</figcaption>
-            <div class="chart-card__body">
-              <svg class="chart-svg" id="chart-inflight" viewBox="0 0 320 120" role="img"
-                aria-labelledby="chart-inflight-label">
-                <title id="chart-inflight-label">Per-runner in-flight request gauges</title>
-              </svg>
-            </div>
-            <p class="chart-card__stat" id="chart-inflight-total">— active</p>
-          </figure>
-        </div>
-      </section>
-
-      <!-- Phase 6 — Observability detail -->
-      <section class="panel panel--observability" id="observability-panel" aria-labelledby="observability-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="observability-heading">Observability <span class="phase-tag">P6</span></h2>
-          <p class="panel__desc">Per-request metrics, structured logs with PHI redaction, runner health/latency/in-flight</p>
-        </header>
-
-        <div class="observability-summary" id="observability-summary">
-          <article class="obs-stat" id="obs-phi-redaction">
-            <span class="obs-stat__label">PHI redaction</span>
-            <span class="obs-stat__value" id="obs-phi-value">—</span>
-            <span class="obs-stat__hint" id="obs-phi-hint">log_verbatim config</span>
-          </article>
-          <article class="obs-stat" id="obs-structured-logs">
-            <span class="obs-stat__label">Structured logs</span>
-            <span class="obs-stat__value mono" id="obs-log-dir">—</span>
-            <span class="obs-stat__hint">JSON with request_id correlation</span>
-          </article>
-          <article class="obs-stat" id="obs-prometheus">
-            <span class="obs-stat__label">Prometheus scrape</span>
-            <span class="obs-stat__value" id="obs-metrics-status">—</span>
-            <span class="obs-stat__hint"><code>GET /metrics</code> (unauthenticated)</span>
-          </article>
-          <article class="obs-stat" id="obs-inflight-total">
-            <span class="obs-stat__label">Total in-flight</span>
-            <span class="obs-stat__value" id="obs-inflight-value">—</span>
-            <span class="obs-stat__hint">across all runners</span>
-          </article>
-        </div>
-
-        <div class="observability-table-wrap">
-          <table class="observability-table" id="observability-runner-table">
-            <thead>
-              <tr>
-                <th scope="col">Runner</th>
-                <th scope="col">Health</th>
-                <th scope="col">Status</th>
-                <th scope="col">Avg latency</th>
-                <th scope="col">In-flight</th>
-                <th scope="col">Failures</th>
-                <th scope="col">Last seen</th>
-              </tr>
-            </thead>
-            <tbody id="observability-runner-body">
-              <tr>
-                <td colspan="7" class="observability-table__empty">Awaiting status poll…</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- Endpoint explorer -->
-      <section class="panel panel--explorer" id="endpoint-explorer" aria-labelledby="explorer-heading">
-        <header class="panel__header panel__header--split">
           <div>
-            <h2 class="panel__title" id="explorer-heading">Endpoint explorer</h2>
-            <p class="panel__desc">Try live routes · future phases shown greyed</p>
+            <dt>ai.access</dt>
+            <dd id="auth-access">—</dd>
           </div>
-        </header>
-
-        <div class="explorer-table-wrap">
-          <table class="explorer-table" id="endpoint-table">
-            <thead>
-              <tr>
-                <th scope="col">Method</th>
-                <th scope="col">Path</th>
-                <th scope="col">Phase</th>
-                <th scope="col">Status</th>
-                <th scope="col"><span class="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody id="endpoint-list">
-              <!-- app.js populates from endpoints[] catalog -->
-            </tbody>
-          </table>
-          <div class="empty-state empty-state--compact" id="endpoint-empty">
-            <p class="empty-state__body">Endpoint rows load from the gateway catalog.</p>
-          </div>
-        </div>
-
-        <div class="response-panel" id="endpoint-response-panel" hidden>
-          <header class="response-panel__header">
-            <span class="response-panel__status" id="endpoint-response-status">—</span>
-            <span class="response-panel__path" id="endpoint-response-path"></span>
-            <span class="response-panel__request-id mono" id="endpoint-response-request-id" hidden></span>
-          </header>
-          <pre class="response-panel__body" id="endpoint-response-body" tabindex="0"></pre>
-        </div>
-      </section>
-
-      <!-- Phase 1–3 capability coverage -->
-      <section class="panel panel--coverage" id="phase-coverage-panel" aria-labelledby="coverage-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="coverage-heading">Phase coverage</h2>
-          <p class="panel__desc">Live checklist mapped to <code>docs/ai/phase-capabilities.md</code> (Phases 1–6)</p>
-        </header>
-        <div class="coverage-grid" id="phase-coverage-grid" role="list" aria-label="Phase capability checklist">
-          <!-- app.js populates -->
-        </div>
-      </section>
-
-      <!-- Security / isolation -->
-      <section class="panel panel--security" id="security-panel" aria-labelledby="security-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="security-heading">Security &amp; isolation</h2>
-          <p class="panel__desc">Non-negotiable invariants · safe config summary</p>
-        </header>
-
-        <div class="security-grid">
-          <div class="invariants" id="security-invariants">
-            <h3 class="invariants__title">Invariants</h3>
-            <ol class="invariant-list">
-              <li class="invariant-card" id="invariant-proposes-only">
-                <span class="invariant-card__index" aria-hidden="true">01</span>
-                <div class="invariant-card__content">
-                  <strong class="invariant-card__name">AI proposes only</strong>
-                  <p class="invariant-card__text">The AI layer never writes to the clinic database. Protected writes go
-                    through Supabase RPC with human approval.</p>
-                </div>
-              </li>
-              <li class="invariant-card" id="invariant-no-db-creds">
-                <span class="invariant-card__index" aria-hidden="true">02</span>
-                <div class="invariant-card__content">
-                  <strong class="invariant-card__name">No clinic-DB credentials</strong>
-                  <p class="invariant-card__text">Nothing under <code>ai/</code> imports Postgres drivers, holds
-                    service-role keys, or references Supabase connection strings.</p>
-                </div>
-              </li>
-              <li class="invariant-card" id="invariant-ui-works">
-                <span class="invariant-card__index" aria-hidden="true">03</span>
-                <div class="invariant-card__content">
-                  <strong class="invariant-card__name">Manual UI works with AI down</strong>
-                  <p class="invariant-card__text">The clinic application remains fully usable when the entire AI layer
-                    is stopped. AI is strictly additive.</p>
-                </div>
-              </li>
-              <li class="invariant-card" id="invariant-runners-internal">
-                <span class="invariant-card__index" aria-hidden="true">04</span>
-                <div class="invariant-card__content">
-                  <strong class="invariant-card__name">Runners are not client-routable</strong>
-                  <p class="invariant-card__text">Model runners bind to localhost / AI-internal addresses. LAN clients
-                    reach the gateway only; direct <code>:11434</code> access must be refused.</p>
-                </div>
-              </li>
-            </ol>
-          </div>
-
-          <div class="auth-panel" id="auth-panel">
-            <h3 class="auth-panel__title">JWT auth <span class="phase-tag">P4</span></h3>
-            <p class="auth-panel__desc">
-              Protected routes (<code>/ready</code>, <code>/v1/status</code>,
-              <code>/v1/runners/…/models</code>) require a Supabase staff JWT with
-              <code>ai.access</code>. Sign in below or paste a token manually.
-            </p>
-
-            <div class="auth-panel__sign-in" id="auth-sign-in-section" hidden>
-              <h4 class="auth-panel__subtitle">Sign in with clinic credentials</h4>
-              <p class="auth-panel__hint" id="auth-sign-in-hint">
-                Gateway proxies sign-in to your local Supabase — password is not stored.
-              </p>
-              <div class="auth-panel__form auth-panel__form--sign-in">
-                <label class="auth-panel__label" for="auth-username-input">Username</label>
-                <input class="auth-panel__input auth-panel__input--single" type="text" id="auth-username-input"
-                  name="username" autocomplete="username" spellcheck="false" placeholder="admin" />
-                <label class="auth-panel__label" for="auth-password-input">Password</label>
-                <input class="auth-panel__input auth-panel__input--single" type="password" id="auth-password-input"
-                  name="password" autocomplete="current-password" placeholder="••••••••" />
-                <div class="auth-panel__actions">
-                  <button type="button" class="btn btn--auth-save" id="auth-sign-in-btn">Sign in</button>
-                </div>
-                <p class="auth-panel__message" id="auth-sign-in-message" role="status" aria-live="polite"></p>
-              </div>
-            </div>
-
-            <div class="auth-panel__divider" id="auth-manual-divider" hidden>
-              <span>or paste token</span>
-            </div>
-
-            <div class="auth-panel__form">
-              <label class="auth-panel__label" for="auth-token-input">Bearer token</label>
-              <textarea class="auth-panel__input mono" id="auth-token-input" rows="3" spellcheck="false"
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…" autocomplete="off"></textarea>
-              <div class="auth-panel__actions">
-                <button type="button" class="btn btn--auth-save" id="auth-token-save">Save token</button>
-                <button type="button" class="btn btn--auth-clear" id="auth-token-clear">Clear</button>
-              </div>
-            </div>
-            <dl class="auth-panel__summary" id="auth-token-summary">
-              <div class="auth-panel__row">
-                <dt>Status</dt>
-                <dd id="auth-status">No token</dd>
-              </div>
-              <div class="auth-panel__row">
-                <dt>Staff role</dt>
-                <dd id="auth-staff-role" class="mono">—</dd>
-              </div>
-              <div class="auth-panel__row">
-                <dt>ai.access</dt>
-                <dd id="auth-ai-access">—</dd>
-              </div>
-            </dl>
-          </div>
-
-          <div class="error-envelope" id="error-envelope-panel">
-            <h3 class="error-envelope__title">Error envelope <span class="phase-tag">P2</span></h3>
-            <p class="error-envelope__desc">Uniform JSON failures · every response includes <code>X-Request-ID</code>
-            </p>
-            <table class="error-table" id="error-code-table">
-              <thead>
-                <tr>
-                  <th scope="col">Code</th>
-                  <th scope="col">HTTP</th>
-                  <th scope="col">Phase 1–4</th>
-                  <th scope="col">Seen</th>
-                </tr>
-              </thead>
-              <tbody id="error-code-list"></tbody>
-            </table>
-            <pre class="error-envelope__sample mono" id="error-envelope-sample" hidden></pre>
-          </div>
-
-          <div class="config-summary" id="config-summary">
-            <h3 class="config-summary__title">Safe config</h3>
-            <dl class="config-dl" id="config-dl">
-              <div class="config-dl__row" data-key="port">
-                <dt>Gateway port</dt>
-                <dd id="config-port">—</dd>
-              </div>
-              <div class="config-dl__row" data-key="log_dir">
-                <dt>Log directory</dt>
-                <dd id="config-log-dir" class="mono">—</dd>
-              </div>
-              <div class="config-dl__row" data-key="health_poll_interval_s">
-                <dt>Health poll interval</dt>
-                <dd id="config-health-poll">—</dd>
-              </div>
-              <div class="config-dl__row" data-key="unreachable_after_failures">
-                <dt>Unreachable after failures</dt>
-                <dd id="config-unreachable-after">—</dd>
-              </div>
-              <div class="config-dl__row" data-key="allowed_origins">
-                <dt>Allowed origins</dt>
-                <dd id="config-allowed-origins">—</dd>
-              </div>
-              <div class="config-dl__row" data-key="streaming_enabled">
-                <dt>Streaming</dt>
-                <dd id="config-streaming">—</dd>
-              </div>
-              <div class="config-dl__row" data-key="enable_multi_command_plans">
-                <dt>Multi-command plans</dt>
-                <dd id="config-multi-command">—</dd>
-              </div>
-              <div class="config-dl__row" data-key="enable_push_registration">
-                <dt>Push registration</dt>
-                <dd id="config-push-reg">—</dd>
-              </div>
-              <div class="config-dl__row" data-key="log_verbatim">
-                <dt>Log verbatim</dt>
-                <dd id="config-log-verbatim">—</dd>
-              </div>
-            </dl>
-            <p class="config-summary__uptime">
-              Gateway uptime: <span class="config-summary__mono" id="gateway-uptime">—</span>
-              <span class="config-summary__version" id="gateway-version"></span>
-            </p>
-          </div>
-
-          <div class="push-registration" id="push-registration-panel">
-            <h3 class="push-registration__title">Push registration <span class="phase-tag">P6</span></h3>
-            <p class="push-registration__desc">
-              Optional push-based runner heartbeats — AI-internal only, guarded by
-              <code>X-Internal-Secret</code>. Default is pull-mode health poller.
-            </p>
-            <dl class="push-registration__dl" id="push-registration-dl">
-              <div class="push-registration__row">
-                <dt>Mode</dt>
-                <dd id="push-reg-mode">—</dd>
-              </div>
-              <div class="push-registration__row">
-                <dt>Active registry</dt>
-                <dd id="push-reg-registry">—</dd>
-              </div>
-              <div class="push-registration__row">
-                <dt>Internal endpoints</dt>
-                <dd class="mono" id="push-reg-endpoints">—</dd>
-              </div>
-            </dl>
-            <p class="push-registration__note" id="push-reg-note">—</p>
-          </div>
-
-          <div class="production-hardening" id="production-hardening-panel">
-            <h3 class="production-hardening__title">Production deploy <span class="phase-tag">P6</span></h3>
-            <p class="production-hardening__desc">
-              Docker paths from <code>specs/015-ai-layer-foundation/quickstart.md</code> — gateway is the only
-              client-facing service.
-            </p>
-            <ul class="production-hardening__paths mono" id="production-paths">
-              <li><code>docker build -t aiclinic-gateway -f ai/gateway/Dockerfile ai</code></li>
-              <li><code>cd ai/gateway &amp;&amp; docker compose up -d</code></li>
-              <li><code>docker compose -f ai/runners/ollama/docker-compose.yaml up -d</code></li>
-            </ul>
-            <p class="production-hardening__note">
-              Set <code>log_verbatim: false</code> in production. Runners bind to localhost — not LAN-routable.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <!-- Phase 5 — Capabilities mirror -->
-      <section class="panel panel--future panel--capabilities" id="capabilities-section"
-        data-phase-section="capabilities-section" aria-labelledby="capabilities-heading" aria-hidden="true" hidden>
-        <header class="panel__header panel__header--split">
           <div>
-            <h2 class="panel__title" id="capabilities-heading">Capabilities</h2>
-            <p class="panel__desc">Live registry mirror from <code>GET /v1/capabilities</code> · Phase 5</p>
+            <dt>Expires</dt>
+            <dd id="auth-expires" class="mono">—</dd>
           </div>
-          <span class="panel__count mono" id="capabilities-fetched-at" aria-live="polite">—</span>
-        </header>
-
-        <div class="capabilities-layout">
-          <div class="capabilities-meta" id="capabilities-meta">
-            <article class="capabilities-meta__card">
-              <span class="capabilities-meta__label">Schema</span>
-              <span class="capabilities-meta__value mono" id="capabilities-schema">—</span>
-            </article>
-            <article class="capabilities-meta__card">
-              <span class="capabilities-meta__label">Streaming</span>
-              <span class="capabilities-meta__value" id="capabilities-streaming">—</span>
-            </article>
-            <article class="capabilities-meta__card">
-              <span class="capabilities-meta__label">Runners</span>
-              <span class="capabilities-meta__value" id="capabilities-runner-count">—</span>
-            </article>
-          </div>
-
-          <div class="capabilities-stub-grid">
-            <article class="capabilities-stub" id="capabilities-tasks-stub">
-              <h3 class="capabilities-stub__title">Tasks <span class="stub-tag">stubbed</span></h3>
-              <p class="capabilities-stub__body" id="capabilities-tasks-body">—</p>
-            </article>
-            <article class="capabilities-stub" id="capabilities-commands-stub">
-              <h3 class="capabilities-stub__title">Commands <span class="stub-tag">stubbed</span></h3>
-              <p class="capabilities-stub__body" id="capabilities-commands-body">—</p>
-            </article>
-          </div>
-
-          <div class="capabilities-runners-wrap">
-            <h3 class="capabilities-runners__title">Runners in registry</h3>
-            <div class="empty-state empty-state--compact" id="capabilities-runners-empty" hidden>
-              <p class="empty-state__body">No runners in capabilities report — check gateway config.</p>
-            </div>
-            <div class="capabilities-runners" id="capabilities-runners" role="list" aria-label="Capability runners">
-            </div>
-          </div>
-
-          <details class="capabilities-raw" id="capabilities-raw-details">
-            <summary class="capabilities-raw__summary">Raw JSON</summary>
-            <pre class="capabilities-raw__body mono" id="capabilities-raw" tabindex="0">—</pre>
-          </details>
-        </div>
+        </dl>
       </section>
 
-      <!-- Phase 5 — Generate stub -->
-      <section class="panel panel--future panel--generate" id="generate-section" data-phase-section="generate-section"
-        aria-labelledby="generate-heading" aria-hidden="true" hidden>
+      <section class="panel" id="security-panel" aria-labelledby="security-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="security-heading">Security snapshot</h2>
+          <p class="panel__desc">Safe config from <span class="mono">GET /v1/status</span></p>
+        </header>
+        <dl class="config-dl" id="config-dl"></dl>
+      </section>
+    </div>
+
+    <div class="layout__grid layout__grid--2">
+      <section class="panel" id="generate-panel" aria-labelledby="generate-heading">
         <header class="panel__header">
           <h2 class="panel__title" id="generate-heading">Generate stub</h2>
-          <p class="panel__desc"><code>POST /v1/ai/generate</code> is feature-detectable only — always
-            <code>501 not_implemented</code> (no inference)</p>
+          <p class="panel__desc"><span class="mono">POST /v1/ai/generate</span> · expect 501</p>
         </header>
-
-        <div class="generate-layout">
-          <p class="generate-note" id="generate-note">
-            Use this probe to confirm the route exists and returns the uniform error envelope. Real generation arrives in
-            feature 016.
-          </p>
-          <div class="generate-actions">
-            <button type="button" class="btn btn--try" id="generate-test-btn">Test generate (expect 501)</button>
-          </div>
-          <div class="response-panel generate-response" id="generate-response-panel" hidden>
-            <header class="response-panel__header">
-              <span class="response-panel__status" id="generate-response-status">—</span>
-              <span class="response-panel__path">POST /v1/ai/generate</span>
-              <span class="response-panel__request-id mono" id="generate-response-request-id" hidden></span>
-            </header>
-            <pre class="response-panel__body" id="generate-response-body" tabindex="0"></pre>
-          </div>
+        <button type="button" class="btn btn--primary" id="generate-btn">Send stub probe</button>
+        <div class="workbench-response" id="generate-response" hidden>
+          <header class="workbench-response__header">
+            <span id="generate-response-status" class="workbench-response__status">—</span>
+          </header>
+          <pre id="generate-response-body" class="workbench-response__body mono" tabindex="0"></pre>
         </div>
       </section>
-    </main>
 
-    <footer class="site-footer">
-      <p>AI Control Plane · served same-origin from gateway <code>/dashboard</code></p>
-    </footer>
-  </div>
+      <section class="panel" id="models-panel" aria-labelledby="models-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="models-heading">Runner models</h2>
+          <p class="panel__desc">Proxy <span class="mono">GET /v1/runners/{id}/models</span></p>
+        </header>
+        <div class="models-actions" id="models-actions"></div>
+        <div class="workbench-response" id="models-response" hidden>
+          <header class="workbench-response__header">
+            <span id="models-response-status" class="workbench-response__status">—</span>
+          </header>
+          <pre id="models-response-body" class="workbench-response__body mono" tabindex="0"></pre>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>AI Gateway control plane · served at <span class="mono">/dashboard</span></p>
+  </footer>
 
   <script src="app.js" defer></script>
 </body>

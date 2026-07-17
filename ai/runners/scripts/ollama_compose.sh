@@ -210,5 +210,30 @@ case "${1:-}" in
   ps-json) ollama_ps_json ;;
   gpu-available) docker_gpu_ready && echo yes || echo no ;;
   compose-dir) echo "${OLLAMA_DIR}" ;;
-  *) echo "usage: $0 {gpu-enabled|set-gpu 0|1|host-models|up|down|ps-json|gpu-available|compose-dir}" >&2; exit 1 ;;
+  container-running) docker_ollama_running && echo yes || echo no ;;
+  status-json)
+    python3 - \
+      "$(docker_ollama_running && echo yes || echo no)" \
+      "$(ollama_reachable && echo yes || echo no)" \
+      "$(gpu_enabled && echo 1 || echo 0)" \
+      "$(docker_gpu_ready && echo yes || echo no)" \
+      "$(if [[ ${#HOST_MODELS_OVERLAY[@]} -gt 0 ]]; then echo "enabled:${OLLAMA_HOST_MODELS}"; else echo disabled; fi)" \
+      <<'PY'
+import json, sys
+container, reachable, gpu_en, gpu_avail, host_models = sys.argv[1:6]
+print(json.dumps({
+    "container_running": container == "yes",
+    "ollama_reachable": reachable == "yes",
+    "gpu_enabled": gpu_en == "1",
+    "gpu_available": gpu_avail == "yes",
+    "host_models": host_models,
+}))
+PY
+    ;;
+  logs-tail)
+    shift
+    lines="${1:-80}"
+    $(compose_cmd) logs --tail "${lines}" ollama 2>/dev/null || true
+    ;;
+  *) echo "usage: $0 {gpu-enabled|set-gpu 0|1|host-models|up|down|ps-json|gpu-available|compose-dir|container-running|status-json|logs-tail [N]}" >&2; exit 1 ;;
 esac

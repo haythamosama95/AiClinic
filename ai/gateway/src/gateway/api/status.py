@@ -140,6 +140,9 @@ def _endpoint_catalog(
         [
             {"path": "/v1/capabilities", "method": "GET", "phase": 5, "available": True},
             {"path": "/v1/ai/generate", "method": "POST", "phase": 5, "available": True},
+            {"path": "/v1/trace/events", "method": "GET", "phase": 6, "available": True},
+            {"path": "/v1/trace/stream", "method": "GET", "phase": 6, "available": True},
+            {"path": "/v1/trace/config", "method": "GET", "phase": 6, "available": True},
         ]
     )
     if push_registration_enabled:

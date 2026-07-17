@@ -1,18 +1,17 @@
 # AI Model Runner Console
 
-A zero-build static UI for interacting with the local Ollama runner. It complements the
-[AI Gateway control plane dashboard](../dashboard/) — use the gateway dashboard for registry,
-health polling, and JWT-protected proxy probes; use this console for direct inference testing on
-the server node.
+Local operator console for the Ollama inference node. Complements the
+[AI Gateway dashboard](../dashboard/) — use the gateway for registry, JWT routing, and clinic
+traffic; use this console for direct inference testing and runtime control on the server.
 
 ## Prerequisites
 
-- Ollama running on `127.0.0.1:11434` (see `ai/runners/ollama/docker-compose.yaml`)
+- Ollama on `127.0.0.1:11434` (`cd ai/runners && ./start.sh`)
 - At least one model pulled (e.g. `qwen3:4b`)
-- Python 3 (for the static file server)
-- Optional: AI Gateway on `8090` for live capabilities fetch (Phase 5)
+- Python 3
+- Optional: AI Gateway on `8090` for capabilities and observability bridge
 
-## Run locally
+## Run
 
 ```bash
 cd ai/runners
@@ -21,25 +20,48 @@ cd ai/runners
 
 Open [http://127.0.0.1:11435](http://127.0.0.1:11435).
 
-The console binds to **localhost only** — same non-routability posture as Ollama itself.
+Binds to **localhost only** (`127.0.0.1`) — do not expose beyond the node.
 
-The server (`scripts/console_server.py`) serves static files and localhost runtime APIs:
+Environment overrides:
 
-| API | Purpose |
+| Variable | Default |
 | --- | --- |
-| `GET /api/runtime` | Ollama processor / GPU status |
-| `POST /api/runtime/gpu` | Toggle NVIDIA GPU (restarts Ollama) |
-| `GET /api/gateway/capabilities` | Proxy to gateway `GET /v1/capabilities` (pass `Authorization: Bearer`) |
-| `POST /api/gateway/auto-sign-in` | Proxy to gateway dev auto sign-in (when enabled) |
-| `/api/runner/*` | Proxy to Ollama on `127.0.0.1:11434` |
+| `RUNNER_CONSOLE_HOST` | `127.0.0.1` |
+| `RUNNER_CONSOLE_PORT` | `11435` |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` |
+| `GATEWAY_URL` | `http://127.0.0.1:8090` |
 
-Set `GATEWAY_URL` (default `http://127.0.0.1:8090`) if the gateway listens elsewhere.
+## Server APIs (`console_server.py`)
 
-## NVIDIA GPU (optional)
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/api/runtime` | GET | Ollama online, GPU, processor, loaded models, compose summary |
+| `/api/runtime` | POST | Toggle GPU (`{"enabled": true\|false}`) — restarts Ollama |
+| `/api/config` | GET | Console bind, upstream Ollama/Gateway URLs |
+| `/api/compose/status` | GET | Docker compose health, GPU profile, host models mount |
+| `/api/runtime/logs?lines=N` | GET | Tail Ollama container logs |
+| `/api/gateway/capabilities` | GET | Proxy → gateway `GET /v1/capabilities` |
+| `/api/gateway/status` | GET | Proxy → gateway `GET /v1/status` |
+| `/api/gateway/metrics` | GET | Proxy → gateway `GET /metrics` |
+| `/api/gateway/auto-sign-in` | POST | Proxy → gateway dev auto sign-in |
+| `/api/runner/*` | * | Proxy → Ollama (chat, generate, models, tags, version, …) |
 
-On the AI server node, install [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html), then use the **Compute runtime** panel in the console to enable GPU and restart Ollama.
+## UI panels
 
-Or from the shell:
+| Panel | What it does |
+| --- | --- |
+| **Model rail** (header) | Live RAM snapshot from `ollama ps` — processor badge, context, size |
+| **Playground** | Streaming `POST /api/chat`, thinking mode, request/response inspector |
+| **Generate** | `POST /api/generate` completion probe |
+| **Models** | Inventory from `/v1/models` + `/api/tags` |
+| **API** | Quick probes + custom path/method explorer |
+| **Runtime** | GPU toggle, compose status, container log tail |
+| **Gateway** | Capabilities mirror, dev sign-in, registry observability |
+| **Settings** | Proxy base, poll interval, gateway reference URL (`localStorage`) |
+
+## NVIDIA GPU
+
+Install [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html), then enable GPU in the **Runtime** panel or:
 
 ```bash
 cd ai/runners
@@ -47,40 +69,17 @@ bash scripts/ollama_compose.sh set-gpu 1
 bash scripts/ollama_compose.sh up
 ```
 
-Disable GPU:
+Preference is stored in `ollama/.gpu-enabled`.
 
-```bash
-bash scripts/ollama_compose.sh set-gpu 0
-bash scripts/ollama_compose.sh up
-```
+## Security
 
-Preference is stored in `ollama/.gpu-enabled`. Verify with `docker compose exec ollama ollama ps` — **PROCESSOR** should show `100% GPU` when a model is loaded.
-
-## Features
-
-| Panel | API | Purpose |
-| --- | --- | --- |
-| Compute runtime | `GET/POST /api/runtime` | Toggle NVIDIA GPU (restarts Ollama) |
-| Runner endpoint | — | Configure base URL (default `/api/runner`) |
-| Status | `GET /v1/models` | Latency, model count, digest, context window |
-| Gateway discovery | `GET /api/gateway/capabilities` | Local preview + live capabilities mirror (Phase 5) |
-| Chat playground | `POST /api/chat` | Send messages; thinking mode maps to Ollama `think` (`false` / `true` / omit) |
-| Model output (raw) | — | Full request, stream chunks, parsed thinking/content |
-| API explorer | `/v1/models`, `/api/tags`, `/api/version` | Quick raw probes |
-
-Preferences (base URL, poll interval, selected model, gateway runner id, declared capabilities,
-gateway JWT) are stored in `localStorage`.
+For operators on the AI server node only. Inference bypasses the gateway JWT gate. Do not bind
+`11435` beyond localhost. Gateway JWTs entered in the UI are stored in `localStorage` on this origin.
 
 ## Layout
 
 | File | Role |
 | --- | --- |
-| `index.html` | Shell and panel scaffolding |
-| `styles.css` | Dark-theme layout (no build step) |
-| `app.js` | Polling, chat (incl. SSE streaming), API explorer, gateway discovery |
-
-## Security note
-
-This UI is for **operators on the AI server node**. It bypasses the gateway for inference and has
-no JWT gate on Ollama traffic. Do not expose port `11435` beyond `127.0.0.1`. Gateway JWTs entered
-in the discovery panel are stored in `localStorage` on this origin only.
+| `index.html` | Shell, model rail, tab panels |
+| `styles.css` | Operator console theme (no build step) |
+| `app.js` | Polling, chat streaming, API explorer, gateway bridge |
