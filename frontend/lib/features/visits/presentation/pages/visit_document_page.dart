@@ -88,8 +88,10 @@ class _VisitDocumentContentView extends ConsumerWidget {
     return docAsync.when(
       skipLoadingOnReload: true,
       loading: () => _VisitDocumentScaffold(
-        patientName: patientName,
-        appointmentLabel: appointmentLabel,
+        title: 'Visit documentation',
+        description: 'Document the clinical encounter for this appointment.',
+        patientName: 'Loading…',
+        appointmentLabel: 'Appointment',
         appointmentId: visit.appointmentId,
         patientAgeLabel: patientAgeLabel,
         currentPhase: activePhase,
@@ -103,37 +105,47 @@ class _VisitDocumentContentView extends ConsumerWidget {
       data: (docState) {
         final canEdit = docState.canEditWorkspace(permissions.canEditVisitSoap());
         final phaseNotifier = ref.read(encounterActivePhaseProvider(visit.id).notifier);
+        final isReview = activePhase == EncounterPhase.review;
+
+        final stepContent = AppStepPanel(
+          stepKey: activePhase.name,
+          child: VisitEncounterStepContent(visitId: visit.id, phase: activePhase, canEdit: canEdit),
+        );
+
+        final stepBody = _VisitEncounterWorkspaceCard(
+          currentPhase: activePhase,
+          canGoBack: activePhase.previous != null,
+          continueLabel: activePhase == EncounterPhase.plan ? 'Review visit' : 'Continue',
+          onBack: () {
+            final previous = activePhase.previous;
+            if (previous != null) {
+              phaseNotifier.setPhase(previous);
+            }
+          },
+          onContinue: () {
+            final next = activePhase.next;
+            if (next != null) {
+              phaseNotifier.setPhase(next);
+              return;
+            }
+            phaseNotifier.setPhase(EncounterPhase.review);
+          },
+          child: stepContent,
+        );
 
         return _VisitDocumentScaffold(
+          title: isReview ? 'Review visit' : 'Visit documentation',
+          description: isReview
+              ? 'Check documentation for $patientName before finalizing.'
+              : 'Document the clinical encounter for this appointment.',
           patientName: patientName,
           appointmentLabel: appointmentLabel,
           appointmentId: visit.appointmentId,
           patientAgeLabel: patientAgeLabel,
           currentPhase: activePhase,
+          showEncounterHeader: !isReview,
           onPhaseSelected: phaseNotifier.setPhase,
-          stepBody: _VisitEncounterWorkspaceCard(
-            currentPhase: activePhase,
-            canGoBack: activePhase.previous != null,
-            continueLabel: activePhase == EncounterPhase.plan ? 'Review visit' : 'Continue',
-            onBack: () {
-              final previous = activePhase.previous;
-              if (previous != null) {
-                phaseNotifier.setPhase(previous);
-              }
-            },
-            onContinue: () {
-              final next = activePhase.next;
-              if (next != null) {
-                phaseNotifier.setPhase(next);
-                return;
-              }
-              phaseNotifier.setPhase(EncounterPhase.review);
-            },
-            child: AppStepPanel(
-              stepKey: activePhase.name,
-              child: VisitEncounterStepContent(visitId: visit.id, phase: activePhase, canEdit: canEdit),
-            ),
-          ),
+          stepBody: stepBody,
         );
       },
     );
@@ -155,6 +167,8 @@ class _VisitDocumentContentView extends ConsumerWidget {
 
 class _VisitDocumentScaffold extends StatelessWidget {
   const _VisitDocumentScaffold({
+    required this.title,
+    required this.description,
     required this.patientName,
     required this.appointmentLabel,
     required this.appointmentId,
@@ -162,8 +176,11 @@ class _VisitDocumentScaffold extends StatelessWidget {
     required this.stepBody,
     this.patientAgeLabel,
     this.onPhaseSelected,
+    this.showEncounterHeader = true,
   });
 
+  final String title;
+  final String description;
   final String patientName;
   final String? patientAgeLabel;
   final String appointmentLabel;
@@ -171,6 +188,7 @@ class _VisitDocumentScaffold extends StatelessWidget {
   final EncounterPhase currentPhase;
   final ValueChanged<EncounterPhase>? onPhaseSelected;
   final Widget stepBody;
+  final bool showEncounterHeader;
 
   @override
   Widget build(BuildContext context) {
@@ -181,8 +199,8 @@ class _VisitDocumentScaffold extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             AppPageHeader(
-              title: 'Visit documentation',
-              description: 'Document the clinical encounter for this appointment.',
+              title: title,
+              description: description,
               breadcrumb: AppBreadcrumb(
                 items: [
                   AppBreadcrumbItem(label: 'Calendar', onTap: () => context.nav.goAppointmentsCalendar()),
@@ -190,18 +208,20 @@ class _VisitDocumentScaffold extends StatelessWidget {
                     label: appointmentLabel,
                     onTap: () => context.nav.pushAppointmentDetail(appointmentId),
                   ),
-                  const AppBreadcrumbItem(label: 'Visit documentation'),
+                  AppBreadcrumbItem(label: title),
                 ],
               ),
             ),
             const SizedBox(height: AppSpacing.space6),
-            VisitEncounterHeader(
-              patientName: patientName,
-              patientAgeLabel: patientAgeLabel,
-              currentPhase: currentPhase,
-              onPhaseSelected: onPhaseSelected,
-            ),
-            const SizedBox(height: AppSpacing.space6),
+            if (showEncounterHeader) ...[
+              VisitEncounterHeader(
+                patientName: patientName,
+                patientAgeLabel: patientAgeLabel,
+                currentPhase: currentPhase,
+                onPhaseSelected: onPhaseSelected,
+              ),
+              const SizedBox(height: AppSpacing.space6),
+            ],
           ],
         );
 
@@ -354,6 +374,8 @@ class _VisitDocumentLoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _VisitDocumentScaffold(
+      title: 'Visit documentation',
+      description: 'Document the clinical encounter for this appointment.',
       patientName: 'Loading…',
       appointmentLabel: 'Appointment',
       appointmentId: visitId,

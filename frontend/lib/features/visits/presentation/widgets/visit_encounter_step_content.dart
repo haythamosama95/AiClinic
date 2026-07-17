@@ -4,6 +4,7 @@ import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_step_placeholder.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_findings_section.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_intake_section.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_summary_section.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_treatment_section.dart';
 
 /// Phase-specific body for the encounter documentation workspace.
@@ -20,7 +21,8 @@ class VisitEncounterStepContent extends StatelessWidget {
       EncounterPhase.subjective => VisitIntakeSection(visitId: visitId, canEdit: canEdit),
       EncounterPhase.objective => VisitFindingsSection(visitId: visitId, canEdit: canEdit),
       EncounterPhase.plan => VisitTreatmentSection(visitId: visitId, canEdit: canEdit),
-      EncounterPhase.context || EncounterPhase.review => VisitEncounterStepPlaceholder(phase: phase),
+      EncounterPhase.review => VisitSummarySection(visitId: visitId),
+      EncounterPhase.context => VisitEncounterStepPlaceholder(phase: phase),
     };
   }
 }
