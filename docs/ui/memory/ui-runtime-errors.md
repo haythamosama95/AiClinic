@@ -1281,3 +1281,31 @@ DefaultTextStyle(style: bodyStyle, child: editorPane),
 ```
 
 **Affected files (fixed):** `app_rich_text_editor.dart`.
+
+---
+
+## 47. `RenderFlex` unbounded height + `Expanded` (`VisitSubmittedPage`)
+
+**Symptom:** Red screen after completing a visit and navigating to `/visits/:visitId/submitted`. `RenderFlex children have non-zero flex but incoming height constraints are unbounded` on `Column` in `visit_submitted_page.dart` `_VisitSubmittedContentView`. Cascading `RenderBox was not laid out` through `ClinicSetupWelcomeScope` and `authenticated_shell.dart`.
+
+**Cause:** All visit-submitted state views used a root `Column` with `Expanded` to vertically center confirmation content. `AppShell` wraps non-`fillViewport` routes in `SingleChildScrollView`, which passes unbounded max height — `Expanded` is invalid in that context (same class as entries #28, #30).
+
+**Fix:** Extract `_VisitSubmittedPageLayout` with `LayoutBuilder`: when `constraints.hasBoundedHeight`, use `Expanded` + `Center` for viewport fill; when unbounded, use `mainAxisSize: MainAxisSize.min` with no `Expanded`. For the content view, add a nested `LayoutBuilder` so `SingleChildScrollView` wraps the confirmation card only in the bounded path (avoid nested primary scroll views when the shell already scrolls).
+
+```dart
+class _VisitSubmittedPageLayout extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!constraints.hasBoundedHeight) {
+          return Column(mainAxisSize: MainAxisSize.min, children: [header, body]);
+        }
+        return Column(children: [header, Expanded(child: Center(child: body))]);
+      },
+    );
+  }
+}
+```
+
+**Affected files (fixed):** `visit_submitted_page.dart`.

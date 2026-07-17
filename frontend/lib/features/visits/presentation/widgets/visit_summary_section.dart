@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_submitted_dialog.dart';
 
 /// Read-only encounter summary ledger (web `VisitSummary`).
 class VisitSummarySection extends ConsumerStatefulWidget {
@@ -42,10 +43,11 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
       if (!mounted) {
         return;
       }
-      appToast(
-        context,
-        const AppToastInput(message: 'Visit finalized successfully.', variant: AppToastVariant.success),
-      );
+      final completedVisit = ref.read(visitDocumentationProvider(widget.visitId)).value?.visit;
+      if (completedVisit == null) {
+        return;
+      }
+      await VisitSubmittedDialog.show(context, ref, visit: completedVisit);
     } on RpcFailure catch (error) {
       if (!mounted) {
         return;
