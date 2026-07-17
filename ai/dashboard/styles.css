@@ -1116,6 +1116,65 @@ code,
   gap: 0.5rem;
 }
 
+.auth-panel__subtitle {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.auth-panel__hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.auth-panel__form--sign-in {
+  margin-bottom: 0.75rem;
+}
+
+.auth-panel__input--single {
+  min-height: auto;
+  padding: 0.5rem 0.65rem;
+  resize: none;
+}
+
+.auth-panel__divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.auth-panel__divider::before,
+.auth-panel__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.auth-panel__message {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.auth-panel__message--error {
+  color: var(--danger, #f87171);
+}
+
+.auth-panel__message--success {
+  color: var(--ok, #4ade80);
+}
+
 .btn--auth-save,
 .btn--auth-clear {
   font-size: 0.75rem;

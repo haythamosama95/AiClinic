@@ -119,6 +119,9 @@ def _endpoint_catalog(
         {"path": "/metrics", "method": "GET", "phase": 2, "available": True},
         {"path": "/ready", "method": "GET", "phase": 3, "available": True},
         {"path": "/v1/status", "method": "GET", "phase": 3, "available": True},
+        {"path": "/v1/dashboard/auth-config", "method": "GET", "phase": 4, "available": True},
+        {"path": "/v1/dashboard/sign-in", "method": "POST", "phase": 4, "available": True},
+        {"path": "/v1/dashboard/auto-sign-in", "method": "POST", "phase": 4, "available": True},
         {"path": "/dashboard", "method": "GET", "phase": 3, "available": dashboard_mounted},
     ]
     for runner_id in runner_ids:

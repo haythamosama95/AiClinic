@@ -71,3 +71,7 @@ venv/
 dist/
 ai/gateway/logs/
 *.egg
+
+# Runner console
+ai/runner-console/node_modules/
+web-reference/node_modules

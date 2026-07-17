@@ -84,6 +84,13 @@ class GatewayConfig(BaseSettings):
     role_ai_access: dict[str, bool] = Field(default_factory=lambda: dict(RoleAiAccessMap.DEFAULTS))
     log_dir: str = "./logs"
     dashboard_dir: str | None = None
+    # Optional — enables dashboard Supabase sign-in proxy (public anon key only).
+    supabase_url: str | None = None
+    supabase_anon_key: str | None = None
+    # Dev dashboard — sign in automatically with bootstrap admin (local only).
+    dashboard_auto_sign_in: bool = False
+    dashboard_dev_username: str = "admin"
+    dashboard_dev_password: str = "admin"
 
     @field_validator("allowed_origins")
     @classmethod

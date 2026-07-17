@@ -26,8 +26,9 @@ timeout_total_s: 45
 timeout_first_token_s: 15
 confidence_threshold: 0.6
 
-jwt_secret: dev-secret
-jwks_url: null
+jwt_secret: your-super-secret-jwt-token-with-at-least-32-characters-long
+# Local `supabase start` issues ES256 tokens — JWKS validation is required.
+jwks_url: http://127.0.0.1:54321/auth/v1/.well-known/jwks.json
 
 allowed_origins:
   - http://localhost:3000
@@ -50,3 +51,13 @@ role_ai_access:
   lab_staff: false
 
 log_dir: ./logs
+
+# Dashboard Supabase sign-in (dev) — use the stack where auth works (`supabase start` → 54321).
+# backend/local/.env may point at 55321 (docker compose kong) which often lacks auth routes.
+supabase_url: http://127.0.0.1:54321
+supabase_anon_key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2BBNWN8Bu4GE
+
+# Dashboard signs in as bootstrap admin on load (dev only — disable in production).
+dashboard_auto_sign_in: true
+dashboard_dev_username: admin
+dashboard_dev_password: admin

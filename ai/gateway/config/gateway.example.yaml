@@ -57,3 +57,10 @@ role_ai_access:
   lab_staff: false
 
 log_dir: ./logs
+
+# Optional — enables one-click staff sign-in on the control-plane dashboard (/dashboard).
+# supabase_url: http://127.0.0.1:54321
+# supabase_anon_key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+# dashboard_auto_sign_in: false
+# dashboard_dev_username: admin
+# dashboard_dev_password: admin

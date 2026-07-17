@@ -15,6 +15,11 @@ from gateway.config.settings import GatewayConfig
 logger = logging.getLogger(__name__)
 
 STAFF_ROLE_CLAIM = "staff_role"
+# GoTrue user access tokens always carry aud=authenticated; test tokens omit aud.
+_DECODE_OPTIONS: dict[str, Any] = {
+    "require": ["exp", "sub", STAFF_ROLE_CLAIM],
+    "verify_aud": False,
+}
 
 
 @dataclass(frozen=True)
@@ -63,7 +68,7 @@ class JwtValidator:
             token,
             self._jwt_secret,
             algorithms=["HS256"],
-            options={"require": ["exp", "sub", STAFF_ROLE_CLAIM]},
+            options=_DECODE_OPTIONS,
         )
         return _identity_from_payload(payload)
 
@@ -74,7 +79,7 @@ class JwtValidator:
             token,
             signing_key.key,
             algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
-            options={"require": ["exp", "sub", STAFF_ROLE_CLAIM]},
+            options=_DECODE_OPTIONS,
         )
         return _identity_from_payload(payload)
 

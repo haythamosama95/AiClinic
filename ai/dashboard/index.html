@@ -339,8 +339,32 @@
             <p class="auth-panel__desc">
               Protected routes (<code>/ready</code>, <code>/v1/status</code>,
               <code>/v1/runners/…/models</code>) require a Supabase staff JWT with
-              <code>ai.access</code>. Paste a token to enable live polls and explorer probes.
+              <code>ai.access</code>. Sign in below or paste a token manually.
             </p>
+
+            <div class="auth-panel__sign-in" id="auth-sign-in-section" hidden>
+              <h4 class="auth-panel__subtitle">Sign in with clinic credentials</h4>
+              <p class="auth-panel__hint" id="auth-sign-in-hint">
+                Gateway proxies sign-in to your local Supabase — password is not stored.
+              </p>
+              <div class="auth-panel__form auth-panel__form--sign-in">
+                <label class="auth-panel__label" for="auth-username-input">Username</label>
+                <input class="auth-panel__input auth-panel__input--single" type="text" id="auth-username-input"
+                  name="username" autocomplete="username" spellcheck="false" placeholder="admin" />
+                <label class="auth-panel__label" for="auth-password-input">Password</label>
+                <input class="auth-panel__input auth-panel__input--single" type="password" id="auth-password-input"
+                  name="password" autocomplete="current-password" placeholder="••••••••" />
+                <div class="auth-panel__actions">
+                  <button type="button" class="btn btn--auth-save" id="auth-sign-in-btn">Sign in</button>
+                </div>
+                <p class="auth-panel__message" id="auth-sign-in-message" role="status" aria-live="polite"></p>
+              </div>
+            </div>
+
+            <div class="auth-panel__divider" id="auth-manual-divider" hidden>
+              <span>or paste token</span>
+            </div>
+
             <div class="auth-panel__form">
               <label class="auth-panel__label" for="auth-token-input">Bearer token</label>
               <textarea class="auth-panel__input mono" id="auth-token-input" rows="3" spellcheck="false"

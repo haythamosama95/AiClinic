@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from gateway.api.dashboard_auth import router as dashboard_auth_router
 from gateway.api.errors import install_exception_handlers
 from gateway.api.health import router as health_router
 from gateway.api.metrics import router as metrics_router
@@ -133,6 +134,7 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
         return response
 
     app.include_router(health_router)
+    app.include_router(dashboard_auth_router)
     app.include_router(metrics_router)
     app.include_router(runners_router)
     app.include_router(status_router)

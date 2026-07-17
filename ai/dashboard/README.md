@@ -7,20 +7,28 @@ by Phases 1–4.
 ## Prerequisites
 
 - AI Gateway dependencies installed (`ai/gateway/.venv`)
-- A Supabase staff JWT with `ai.access` (doctor or administrator) for protected API polls
-- Optional: Ollama runner for live readiness and runner cards (see `ai/README.md`)
+- Local Supabase running when using **Sign in** (see `backend/local/.env` for URL/port)
+- Optional: paste a staff JWT manually if sign-in is not configured
 
 ## Run locally
 
 ```bash
 cd ai/gateway
-GATEWAY_JWT_SECRET=dev-secret .venv/bin/uvicorn gateway.main:create_app --factory --port 8090
+./scripts/start_dev.sh
 ```
+
+`start_dev.sh` loads `SUPABASE_JWT_SECRET` from `backend/local/.env` when present so
+tokens from dashboard sign-in validate against the Gateway.
 
 Open [http://localhost:8090/dashboard](http://localhost:8090/dashboard) in a browser.
 
-Paste a staff JWT under **Security → JWT auth** so the dashboard can poll `/v1/status`, `/ready`,
-and runner probe routes. `/health` and `/metrics` remain unauthenticated.
+### Sign in (automatic)
+
+When `dashboard_auto_sign_in: true` in `gateway.yaml` (enabled in local dev), the dashboard
+**signs in as bootstrap admin on load** — no manual step. Tokens are refreshed automatically when
+they expire.
+
+You can still use the manual form to sign in as a different user, or **Clear** to reset the token.
 
 The dashboard polls the gateway on the same origin (no extra CORS setup):
 

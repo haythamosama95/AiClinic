@@ -10,7 +10,9 @@ credentials.
 | Component | Role |
 | --- | --- |
 | **AI Gateway** (`gateway/`) | FastAPI service on port 8090 — auth, routing, health, capabilities |
+| **Gateway dashboard** (`dashboard/`) | Control plane UI at `GET /dashboard` (served by the gateway) |
 | **Model Runners** (`runners/`) | Ollama (or any OpenAI-compatible runtime) serving digest-pinned models |
+| **Runner console** (`runner-console/`) | Localhost inference playground at port 11435 (operator-only) |
 
 ## Security Invariants
 
@@ -28,18 +30,31 @@ scan that gates CI):
 
 ## Quick Start
 
+Start the full stack (Ollama runner, gateway, and runner console) from one script:
+
+```bash
+cd ai
+./start.sh
+```
+
+- Gateway dashboard: http://localhost:8090/dashboard
+- Runner console: http://127.0.0.1:11435
+- First run bootstraps the gateway Python venv automatically
+
 See `specs/015-ai-layer-foundation/quickstart.md` for the operator runbook.
+
+### Gateway only (development)
 
 ```bash
 cd ai/gateway
 
 # First time only (use the lock file — avoids slow pip backtracking):
-python3 -m venv .venv
+python3.13 -m venv .venv
 .venv/bin/pip install -r requirements-dev.lock.txt
 .venv/bin/pip install -e . --no-deps
 
 # Every time after that — just run (no reinstall needed):
-GATEWAY_JWT_SECRET=dev-secret .venv/bin/uvicorn gateway.main:create_app --factory --port 8090
+./scripts/start_dev.sh
 
 # Run lint + tests (CI gate):
 ./scripts/run_tests.sh

@@ -1,0 +1,8 @@
+# Host model store overlay — bind-mounts an existing Ollama directory instead of
+# the named Docker volume. Auto-enabled by scripts/ollama_compose.sh when
+# ${OLLAMA_HOST_MODELS}/models exists (default: /usr/share/ollama/.ollama).
+
+services:
+  ollama:
+    volumes:
+      - ${OLLAMA_HOST_MODELS:-/usr/share/ollama/.ollama}:/root/.ollama

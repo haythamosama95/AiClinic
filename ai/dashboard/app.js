@@ -11,6 +11,7 @@
   const SPARKLINE_MAX_POINTS = 60;
   const RUNNER_LIFECYCLE = ['UNKNOWN', 'STARTING', 'READY', 'DEGRADED', 'UNREACHABLE'];
   const AUTH_TOKEN_STORAGE_KEY = 'dashboard_jwt_token';
+  const AUTH_USERNAME_STORAGE_KEY = 'dashboard_auth_username';
 
   /** Routes that require Authorization: Bearer (Phase 4+). */
   const PROTECTED_PATH_PREFIXES = ['/ready', '/v1/status', '/v1/runners/', '/v1/capabilities', '/v1/ai/generate'];
@@ -149,12 +150,20 @@
       hasAiAccess: null,
     },
     statusAuthError: null,
+    authConfig: {
+      sign_in_enabled: false,
+      auto_sign_in: false,
+      default_username: null,
+      supabase_url: null,
+    },
+    authSignInBusy: false,
   };
 
   function requiresAuth(path) {
     if (!path) return false;
     if (path === '/health' || path === '/metrics') return false;
     if (path === '/dashboard' || path.startsWith('/dashboard/')) return false;
+    if (path.startsWith('/v1/dashboard/')) return false;
     return PROTECTED_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix));
   }
 
@@ -1201,13 +1210,26 @@
     const roleEl = $('auth-staff-role');
     const accessEl = $('auth-ai-access');
     const input = $('auth-token-input');
+    const signInSection = $('auth-sign-in-section');
+    const manualDivider = $('auth-manual-divider');
+    const signInHint = $('auth-sign-in-hint');
+
+    if (signInSection) {
+      signInSection.hidden = !state.authConfig.sign_in_enabled;
+    }
+    if (manualDivider) {
+      manualDivider.hidden = !state.authConfig.sign_in_enabled;
+    }
+    if (signInHint && state.authConfig.supabase_url) {
+      signInHint.textContent = `Sign-in via ${state.authConfig.supabase_url} — password is not stored.`;
+    }
 
     if (input && document.activeElement !== input) {
       input.value = state.authToken || '';
     }
 
     if (!state.authToken) {
-      setText(statusEl, 'No token — protected polls return 401');
+      setText(statusEl, state.authConfig.auto_sign_in ? 'Signing in…' : 'No token — protected polls return 401');
       setText(roleEl, '—');
       setText(accessEl, '—');
       return;
@@ -1218,6 +1240,169 @@
     if (state.auth.hasAiAccess === true) setText(accessEl, 'granted');
     else if (state.auth.hasAiAccess === false) setText(accessEl, 'denied');
     else setText(accessEl, 'unknown role');
+  }
+
+  function setSignInMessage(text, kind) {
+    const el = $('auth-sign-in-message');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('auth-panel__message--error', kind === 'error');
+    el.classList.toggle('auth-panel__message--success', kind === 'success');
+  }
+
+  async function loadAuthConfig() {
+    try {
+      const res = await fetch(`${GATEWAY_ROOT}/v1/dashboard/auth-config`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      state.authConfig = {
+        sign_in_enabled: !!data.sign_in_enabled,
+        auto_sign_in: !!data.auto_sign_in,
+        default_username: data.default_username || null,
+        supabase_url: data.supabase_url || null,
+      };
+    } catch {
+      /* dashboard works without sign-in helper */
+    }
+  }
+
+  function loadSavedUsername() {
+    try {
+      return localStorage.getItem(AUTH_USERNAME_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function saveUsername(username) {
+    try {
+      const trimmed = (username || '').trim();
+      if (trimmed) localStorage.setItem(AUTH_USERNAME_STORAGE_KEY, trimmed);
+      else localStorage.removeItem(AUTH_USERNAME_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function isAuthTokenValid(token) {
+    if (!token) return false;
+    const payload = decodeJwtPayload(token);
+    if (!payload?.exp) return false;
+    const now = Math.floor(Date.now() / 1000);
+    return Number(payload.exp) > now + 30;
+  }
+
+  function applySignInResult(data, { silent } = {}) {
+    const tokenInput = $('auth-token-input');
+
+    saveAuthToken(data.access_token);
+    if (tokenInput) tokenInput.value = data.access_token;
+
+    if (!silent) {
+      if (data.has_ai_access === false) {
+        setSignInMessage(
+          `Signed in as ${data.staff_role}, but this role lacks ai.access — expect 403 on protected routes.`,
+          'error',
+        );
+      } else {
+        setSignInMessage(`Signed in as ${data.staff_role}. Token saved.`, 'success');
+      }
+    } else if (data.staff_role) {
+      setSignInMessage(`Auto-signed in as ${data.staff_role}.`, 'success');
+    }
+    renderAuthPanel();
+  }
+
+  async function autoSignIn() {
+    if (state.authSignInBusy || !state.authConfig.auto_sign_in) return false;
+
+    state.authSignInBusy = true;
+    setSignInMessage('Signing in as admin…', null);
+
+    try {
+      const res = await fetch(`${GATEWAY_ROOT}/v1/dashboard/auto-sign-in`, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const msg = data?.error?.message || `Auto sign-in failed (HTTP ${res.status})`;
+        setSignInMessage(msg, 'error');
+        return false;
+      }
+
+      if (state.authConfig.default_username) {
+        saveUsername(state.authConfig.default_username);
+      }
+      applySignInResult(data, { silent: true });
+      return true;
+    } catch (err) {
+      setSignInMessage(String(err.message || err), 'error');
+      return false;
+    } finally {
+      state.authSignInBusy = false;
+    }
+  }
+
+  async function ensureAuthenticated() {
+    if (isAuthTokenValid(state.authToken)) return true;
+    if (state.authToken) saveAuthToken('');
+    if (!state.authConfig.auto_sign_in) return false;
+    return autoSignIn();
+  }
+
+  async function signInWithSupabase() {
+    const usernameInput = $('auth-username-input');
+    const passwordInput = $('auth-password-input');
+    const btn = $('auth-sign-in-btn');
+    const tokenInput = $('auth-token-input');
+
+    const username = usernameInput?.value?.trim() || '';
+    const password = passwordInput?.value || '';
+
+    if (!username || !password) {
+      setSignInMessage('Enter username and password.', 'error');
+      return;
+    }
+
+    state.authSignInBusy = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Signing in…';
+    }
+    setSignInMessage('', null);
+
+    try {
+      const res = await fetch(`${GATEWAY_ROOT}/v1/dashboard/sign-in`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const msg = data?.error?.message || `Sign-in failed (HTTP ${res.status})`;
+        setSignInMessage(msg, 'error');
+        return false;
+      }
+
+      saveUsername(username);
+      if (passwordInput) passwordInput.value = '';
+      applySignInResult(data, { silent: false });
+      return true;
+    } catch (err) {
+      setSignInMessage(String(err.message || err), 'error');
+      return false;
+    } finally {
+      state.authSignInBusy = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Sign in';
+      }
+    }
   }
 
   function renderSecurity() {
@@ -1299,6 +1484,10 @@
   }
 
   async function pollOnce() {
+    if (!isAuthTokenValid(state.authToken) && state.authConfig.auto_sign_in) {
+      await autoSignIn();
+    }
+
     if (!state.authToken) {
       try {
         const anon = await fetchEndpoint('/ready', { skipAuth: true, timeoutMs: 4000 });
@@ -1451,7 +1640,22 @@
       authClear.addEventListener('click', () => {
         if (authInput) authInput.value = '';
         saveAuthToken('');
+        setSignInMessage('', null);
         pollOnce();
+      });
+    }
+
+    const signInBtn = $('auth-sign-in-btn');
+    const passwordInput = $('auth-password-input');
+    if (signInBtn) {
+      signInBtn.addEventListener('click', () => signInWithSupabase());
+    }
+    if (passwordInput) {
+      passwordInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' && !state.authSignInBusy) {
+          ev.preventDefault();
+          signInWithSupabase();
+        }
       });
     }
   }
@@ -1466,10 +1670,18 @@
     return DEFAULT_POLL_INTERVAL_S;
   }
 
-  function init() {
+  async function init() {
     state.authToken = loadAuthToken();
     updateAuthStateFromToken();
     bindControls();
+    await loadAuthConfig();
+    const usernameInput = $('auth-username-input');
+    if (usernameInput) {
+      usernameInput.value =
+        loadSavedUsername() || state.authConfig.default_username || 'admin';
+    }
+    await ensureAuthenticated();
+    renderAuthPanel();
     setPollInterval(loadSavedInterval());
   }
 
