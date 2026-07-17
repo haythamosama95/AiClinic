@@ -60,7 +60,9 @@ class _VisitSubmittedCombinedConfirmationState extends State<VisitSubmittedCombi
     final colors = context.appColors;
     final elevation = context.appElevation;
     final reducedMotion = AppMotion.prefersReducedMotion(context);
-    final filedAt = DateFormat('EEEE, MMM d, yyyy · h:mm a').format(widget.data.visitDate.toLocal());
+    final kind = widget.data.kind;
+    final actionLabel = kind == VisitConfirmationKind.edited ? 'Updated' : 'Filed';
+    final filedAt = DateFormat('EEEE, MMM d, yyyy · h:mm a').format(widget.data.displayTimestamp.toLocal());
     final visitDateLabel = DateFormat('MMM d, yyyy').format(widget.data.visitDate.toLocal());
     final slotLabel = _formatSlot(widget.data.appointmentStart, widget.data.appointmentEnd);
 
@@ -89,32 +91,26 @@ class _VisitSubmittedCombinedConfirmationState extends State<VisitSubmittedCombi
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _CelebrationSeal(
+                    _ConfirmationSeal(
                       colors: colors,
+                      kind: kind,
                       reducedMotion: reducedMotion,
                       sealScale: _sealScale,
                       contentOpacity: _contentOpacity,
                     ),
                     const SizedBox(height: AppSpacing.space5),
-                    Text('Visit completed', style: AppTypography.h2(context), textAlign: TextAlign.center),
+                    Text(kind.title, style: AppTypography.h2(context), textAlign: TextAlign.center),
                     const SizedBox(height: AppSpacing.space2),
                     Text.rich(
                       TextSpan(
                         style: AppTypography.body(context).copyWith(color: colors.textSecondary),
-                        children: [
-                          const TextSpan(text: 'The visit for '),
-                          TextSpan(
-                            text: widget.data.patientName,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const TextSpan(text: ' is on file.'),
-                        ],
+                        children: _bodySpans(kind, widget.data.patientName),
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: AppSpacing.space2),
                     Text(
-                      filedAt,
+                      '$actionLabel $filedAt',
                       style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
                       textAlign: TextAlign.center,
                     ),
@@ -122,6 +118,7 @@ class _VisitSubmittedCombinedConfirmationState extends State<VisitSubmittedCombi
                     const _PerforationDivider(),
                     const SizedBox(height: AppSpacing.space5),
                     _FilingStub(
+                      kind: kind,
                       filingReference: widget.data.filingReference,
                       branchName: widget.data.branchName,
                       doctorName: widget.data.doctorName,
@@ -158,20 +155,53 @@ class _VisitSubmittedCombinedConfirmationState extends State<VisitSubmittedCombi
     final localEnd = end.toLocal();
     return '${DateFormat.jm().format(localStart)} – ${DateFormat.jm().format(localEnd)}';
   }
+
+  static List<InlineSpan> _bodySpans(VisitConfirmationKind kind, String patientName) {
+    return switch (kind) {
+      VisitConfirmationKind.completed => [
+        const TextSpan(text: 'The visit for '),
+        TextSpan(
+          text: patientName,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const TextSpan(text: ' is on file.'),
+      ],
+      VisitConfirmationKind.edited => [
+        const TextSpan(text: 'Documentation for '),
+        TextSpan(
+          text: patientName,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const TextSpan(text: ' has been saved to the patient chart.'),
+      ],
+    };
+  }
 }
 
-class _CelebrationSeal extends StatelessWidget {
-  const _CelebrationSeal({
+class _ConfirmationSeal extends StatelessWidget {
+  const _ConfirmationSeal({
     required this.colors,
+    required this.kind,
     required this.reducedMotion,
     required this.sealScale,
     required this.contentOpacity,
   });
 
   final AppSemanticColors colors;
+  final VisitConfirmationKind kind;
   final bool reducedMotion;
   final Animation<double> sealScale;
   final Animation<double> contentOpacity;
+
+  Color get _accentFg => kind == VisitConfirmationKind.edited ? colors.statusInfoFg : colors.statusSuccessFg;
+
+  Color get _accentSurface =>
+      kind == VisitConfirmationKind.edited ? colors.statusInfoSurface : colors.statusSuccessSurface;
+
+  Color get _accentBorder =>
+      kind == VisitConfirmationKind.edited ? colors.statusInfoBorder : colors.statusSuccessBorder;
+
+  IconData get _icon => kind == VisitConfirmationKind.edited ? Icons.edit_note_rounded : Icons.check_rounded;
 
   @override
   Widget build(BuildContext context) {
@@ -181,21 +211,19 @@ class _CelebrationSeal extends StatelessWidget {
         DecoratedBox(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(color: colors.statusSuccessFg.withValues(alpha: 0.18), blurRadius: 24, spreadRadius: 4),
-            ],
+            boxShadow: [BoxShadow(color: _accentFg.withValues(alpha: 0.18), blurRadius: 24, spreadRadius: 4)],
           ),
           child: const SizedBox(width: 88, height: 88),
         ),
         DecoratedBox(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: colors.statusSuccessSurface,
-            border: Border.all(color: colors.statusSuccessBorder, width: 2),
+            color: _accentSurface,
+            border: Border.all(color: _accentBorder, width: 2),
           ),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.space5),
-            child: Icon(Icons.check_rounded, size: 36, color: colors.statusSuccessFg),
+            child: Icon(_icon, size: 36, color: _accentFg),
           ),
         ),
       ],
@@ -250,6 +278,7 @@ class _PerforationDivider extends StatelessWidget {
 /// Filing stub below the tear line — reference banner plus visit details grid.
 class _FilingStub extends StatelessWidget {
   const _FilingStub({
+    required this.kind,
     required this.filingReference,
     required this.branchName,
     required this.doctorName,
@@ -257,6 +286,7 @@ class _FilingStub extends StatelessWidget {
     required this.slotLabel,
   });
 
+  final VisitConfirmationKind kind;
   final String filingReference;
   final String branchName;
   final String doctorName;
@@ -266,6 +296,15 @@ class _FilingStub extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final accentFg = kind == VisitConfirmationKind.edited ? colors.statusInfoFg : colors.statusSuccessFg;
+    final accentSurface = kind == VisitConfirmationKind.edited ? colors.statusInfoSurface : colors.statusSuccessSurface;
+    final accentBorder = kind == VisitConfirmationKind.edited ? colors.statusInfoBorder : colors.statusSuccessBorder;
+    final badgeIcon = kind == VisitConfirmationKind.edited ? Icons.edit_rounded : Icons.check_rounded;
+    final referenceIcon = kind == VisitConfirmationKind.edited
+        ? Icons.history_edu_outlined
+        : Icons.folder_copy_outlined;
+    final referenceLabel = kind == VisitConfirmationKind.edited ? 'Visit reference' : 'Filing reference';
+    final footerIcon = kind == VisitConfirmationKind.edited ? Icons.sync_rounded : Icons.lock_outline_rounded;
 
     final cells = [
       _VisitDetailCell(label: 'Doctor', value: doctorName, icon: Icons.person_outline),
@@ -281,13 +320,13 @@ class _FilingStub extends StatelessWidget {
           children: [
             DecoratedBox(
               decoration: BoxDecoration(
-                color: colors.statusSuccessSurface,
+                color: accentSurface,
                 borderRadius: BorderRadius.circular(AppRadius.sm),
-                border: Border.all(color: colors.statusSuccessBorder),
+                border: Border.all(color: accentBorder),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.space2),
-                child: Icon(Icons.folder_copy_outlined, size: 16, color: colors.statusSuccessFg),
+                child: Icon(referenceIcon, size: 16, color: accentFg),
               ),
             ),
             const SizedBox(width: AppSpacing.space3),
@@ -296,7 +335,7 @@ class _FilingStub extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Filing reference',
+                    referenceLabel,
                     style: AppTypography.caption(
                       context,
                     ).copyWith(color: colors.textTertiary, fontWeight: FontWeight.w600, letterSpacing: 0.3),
@@ -313,22 +352,22 @@ class _FilingStub extends StatelessWidget {
             ),
             DecoratedBox(
               decoration: BoxDecoration(
-                color: colors.statusSuccessSurface,
+                color: accentSurface,
                 borderRadius: BorderRadius.circular(AppRadius.full),
-                border: Border.all(color: colors.statusSuccessBorder),
+                border: Border.all(color: accentBorder),
               ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space1),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.check_rounded, size: 12, color: colors.statusSuccessFg),
+                    Icon(badgeIcon, size: 12, color: accentFg),
                     const SizedBox(width: AppSpacing.space1),
                     Text(
-                      'Filed',
+                      kind.filingBadgeLabel,
                       style: AppTypography.caption(
                         context,
-                      ).copyWith(color: colors.statusSuccessFg, fontWeight: FontWeight.w700, fontSize: 11),
+                      ).copyWith(color: accentFg, fontWeight: FontWeight.w700, fontSize: 11),
                     ),
                   ],
                 ),
@@ -351,11 +390,11 @@ class _FilingStub extends StatelessWidget {
         const SizedBox(height: AppSpacing.space4),
         Row(
           children: [
-            Icon(Icons.lock_outline_rounded, size: 14, color: colors.statusSuccessFg),
+            Icon(footerIcon, size: 14, color: accentFg),
             const SizedBox(width: AppSpacing.space2),
             Expanded(
               child: Text(
-                'Record locked · available in patient chart',
+                kind.footerNote,
                 style: AppTypography.caption(
                   context,
                 ).copyWith(color: colors.textSecondary, fontWeight: FontWeight.w500),

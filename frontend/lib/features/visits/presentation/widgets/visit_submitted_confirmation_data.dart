@@ -2,6 +2,32 @@ import 'package:intl/intl.dart';
 
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 
+/// Whether the confirmation celebrates a first-time finalize or a post-submit edit.
+enum VisitConfirmationKind {
+  completed,
+  edited;
+
+  String get title => switch (this) {
+    VisitConfirmationKind.completed => 'Visit completed',
+    VisitConfirmationKind.edited => 'Changes saved',
+  };
+
+  String bodyLine(String patientName) => switch (this) {
+    VisitConfirmationKind.completed => 'The visit for $patientName is on file.',
+    VisitConfirmationKind.edited => 'The visit for $patientName has been updated.',
+  };
+
+  String get filingBadgeLabel => switch (this) {
+    VisitConfirmationKind.completed => 'Filed',
+    VisitConfirmationKind.edited => 'Updated',
+  };
+
+  String get footerNote => switch (this) {
+    VisitConfirmationKind.completed => 'Record locked · available in patient chart',
+    VisitConfirmationKind.edited => 'Record updated · available in patient chart',
+  };
+}
+
 /// Display data for the post-finalize visit confirmation card.
 class VisitSubmittedConfirmationData {
   const VisitSubmittedConfirmationData({
@@ -12,6 +38,8 @@ class VisitSubmittedConfirmationData {
     required this.appointmentEnd,
     required this.filingReference,
     required this.branchName,
+    this.kind = VisitConfirmationKind.completed,
+    this.actionAt,
   });
 
   final String patientName;
@@ -21,6 +49,10 @@ class VisitSubmittedConfirmationData {
   final DateTime appointmentEnd;
   final String filingReference;
   final String branchName;
+  final VisitConfirmationKind kind;
+  final DateTime? actionAt;
+
+  DateTime get displayTimestamp => actionAt ?? visitDate;
 
   static VisitSubmittedConfirmationData fromVisit({
     required VisitDetail visit,
@@ -28,6 +60,8 @@ class VisitSubmittedConfirmationData {
     required String branchName,
     required DateTime appointmentStart,
     required DateTime appointmentEnd,
+    VisitConfirmationKind kind = VisitConfirmationKind.completed,
+    DateTime? actionAt,
   }) {
     return VisitSubmittedConfirmationData(
       patientName: patientName,
@@ -37,6 +71,8 @@ class VisitSubmittedConfirmationData {
       appointmentEnd: appointmentEnd,
       filingReference: formatVisitFilingReference(visit),
       branchName: branchName,
+      kind: kind,
+      actionAt: actionAt,
     );
   }
 }

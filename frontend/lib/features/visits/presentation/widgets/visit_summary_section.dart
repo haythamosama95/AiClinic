@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/visits/application/visit_rpc_messages.dart';
@@ -10,11 +11,13 @@ import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_options.dart';
 import 'package:ai_clinic/features/visits/domain/visit_attachment_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_investigation.dart';
+import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/domain/visit_submit_readiness.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/patient_safety_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_submitted_confirmation_data.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submitted_dialog.dart';
 
 /// Read-only encounter summary ledger (web `VisitSummary`).
@@ -28,14 +31,65 @@ class VisitSummarySection extends ConsumerStatefulWidget {
 }
 
 class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
-  var _finalizing = false;
+  var _submitting = false;
 
-  Future<void> _finalizeVisit() async {
-    if (_finalizing) {
+  VisitDocumentationState? _syncedDocState() {
+    final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
+    return notifier.prepareEncounterReview() ?? ref.read(visitDocumentationProvider(widget.visitId)).value;
+  }
+
+  Future<void> _handlePrimaryAction() async {
+    if (_submitting) {
       return;
     }
 
-    setState(() => _finalizing = true);
+    final docState = _syncedDocState();
+    if (docState == null) {
+      return;
+    }
+
+    final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
+    final isInProgress = docState.visit.status == VisitStatus.inProgress;
+
+    if (isInProgress) {
+      if (!notifier.canSubmitVisit(docState.visit)) {
+        _showBlockedToast('You do not have permission to finalize this visit.');
+        return;
+      }
+
+      final readiness = evaluateVisitSubmitReadiness(docState);
+      if (!readiness.hasMinimumDocumentation) {
+        _showBlockedToast(
+          visitMessageForRpc(
+            RpcFailure(
+              const RpcResult(success: false, errorCode: 'DOCUMENTATION_REQUIRED_FOR_COMPLETE', errorMessage: ''),
+            ),
+          ),
+        );
+        return;
+      }
+
+      await _finalizeVisit();
+      return;
+    }
+
+    if (!docState.hasUnsavedChanges) {
+      _showBlockedToast('No changes to save.', variant: AppToastVariant.info);
+      return;
+    }
+
+    await _saveEdits();
+  }
+
+  void _showBlockedToast(String message, {AppToastVariant variant = AppToastVariant.danger}) {
+    if (!mounted) {
+      return;
+    }
+    appToast(context, AppToastInput(message: message, variant: variant));
+  }
+
+  Future<void> _finalizeVisit() async {
+    setState(() => _submitting = true);
     final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
 
     try {
@@ -45,6 +99,7 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
       }
       final completedVisit = ref.read(visitDocumentationProvider(widget.visitId)).value?.visit;
       if (completedVisit == null) {
+        _showBlockedToast('Could not finalize the visit. Please try again.');
         return;
       }
       await VisitSubmittedDialog.show(context, ref, visit: completedVisit);
@@ -57,16 +112,55 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
       if (!mounted) {
         return;
       }
-      appToast(
-        context,
-        const AppToastInput(
-          message: 'Could not finalize the visit. Please try again.',
-          variant: AppToastVariant.danger,
-        ),
-      );
+      _showBlockedToast('Could not finalize the visit. Please try again.');
     } finally {
       if (mounted) {
-        setState(() => _finalizing = false);
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  Future<void> _saveEdits() async {
+    setState(() => _submitting = true);
+    final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
+
+    try {
+      final saved = await notifier.saveAll();
+      if (!mounted) {
+        return;
+      }
+      if (!saved) {
+        final errorMessage =
+            ref.read(visitDocumentationProvider(widget.visitId)).value?.errorMessage ??
+            'Could not save visit changes. Please try again.';
+        _showBlockedToast(errorMessage);
+        return;
+      }
+      final savedVisit = ref.read(visitDocumentationProvider(widget.visitId)).value?.visit;
+      if (savedVisit == null) {
+        _showBlockedToast('Could not save visit changes. Please try again.');
+        return;
+      }
+      await VisitSubmittedDialog.show(
+        context,
+        ref,
+        visit: savedVisit,
+        kind: VisitConfirmationKind.edited,
+        actionAt: DateTime.now().toUtc(),
+      );
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      appToast(context, AppToastInput(message: visitMessageForRpc(error), variant: AppToastVariant.danger));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      _showBlockedToast('Could not save visit changes. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
       }
     }
   }
@@ -91,9 +185,12 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
     final baseSafety = safetyAsync.value ?? const PatientSafetyContext();
     final safety = docState.effectivePatientSafety(baseSafety);
     final effectiveVisit = docState.effectiveVisit;
-    final notifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
-    final canSubmit = notifier.canSubmitVisit(docState.visit);
-    final readiness = evaluateVisitSubmitReadiness(docState);
+    final permissions = ref.watch(permissionServiceProvider);
+    final canEdit = docState.canEditWorkspace(permissions.canEditVisitSoap());
+    final isInProgress = docState.visit.status == VisitStatus.inProgress;
+    final showPrimaryAction = isInProgress || (!isInProgress && canEdit && docState.hasUnsavedChanges);
+    final primaryLabel = isInProgress ? 'Finalize visit' : 'Save changes';
+    final primaryIcon = isInProgress ? Icons.check_circle_outline_rounded : Icons.save_outlined;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -213,14 +310,11 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
                         onPressed: _editVisit,
                         child: const Text('Edit visit'),
                       );
-                      final finalizeButton = AppButton(
-                        trailingIcon: _finalizing
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.check_circle_outline_rounded, size: 16),
-                        onPressed: canSubmit && readiness.hasMinimumDocumentation && !_finalizing
-                            ? _finalizeVisit
-                            : null,
-                        child: const Text('Finalize visit'),
+                      final primaryButton = AppButton(
+                        loading: _submitting,
+                        trailingIcon: Icon(primaryIcon, size: 16),
+                        onPressed: _submitting ? null : _handlePrimaryAction,
+                        child: Text(primaryLabel),
                       );
 
                       if (isWide) {
@@ -231,7 +325,7 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
                             horizontalPadding,
                             AppSpacing.space4,
                           ),
-                          child: Row(children: [editButton, const Spacer(), finalizeButton]),
+                          child: Row(children: [editButton, const Spacer(), if (showPrimaryAction) primaryButton]),
                         );
                       }
 
@@ -245,8 +339,8 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            if (canSubmit) finalizeButton,
-                            if (canSubmit) const SizedBox(height: AppSpacing.space3),
+                            if (showPrimaryAction) primaryButton,
+                            if (showPrimaryAction) const SizedBox(height: AppSpacing.space3),
                             editButton,
                           ],
                         ),

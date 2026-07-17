@@ -14,24 +14,32 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_submitted_c
 class VisitSubmittedDialog {
   VisitSubmittedDialog._();
 
-  static Future<void> show(BuildContext context, WidgetRef ref, {required VisitDetail visit}) {
+  static Future<void> show(
+    BuildContext context,
+    WidgetRef ref, {
+    required VisitDetail visit,
+    VisitConfirmationKind kind = VisitConfirmationKind.completed,
+    DateTime? actionAt,
+  }) {
     return AppDialog.show<void>(
       context,
-      title: 'Visit completed',
+      title: kind.title,
       showHeader: false,
       maxWidth: 560,
       size: AppDialogSize.lg,
       barrierDismissible: true,
       footer: _VisitSubmittedDialogFooter(visit: visit),
-      child: _VisitSubmittedDialogBody(visit: visit),
+      child: _VisitSubmittedDialogBody(visit: visit, kind: kind, actionAt: actionAt),
     );
   }
 }
 
 class _VisitSubmittedDialogBody extends ConsumerWidget {
-  const _VisitSubmittedDialogBody({required this.visit});
+  const _VisitSubmittedDialogBody({required this.visit, required this.kind, this.actionAt});
 
   final VisitDetail visit;
+  final VisitConfirmationKind kind;
+  final DateTime? actionAt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -57,6 +65,8 @@ class _VisitSubmittedDialogBody extends ConsumerWidget {
             branchName: branchName,
             appointmentStart: visit.visitDate,
             appointmentEnd: fallbackEnd,
+            kind: kind,
+            actionAt: actionAt,
           ),
         );
       },
@@ -67,6 +77,8 @@ class _VisitSubmittedDialogBody extends ConsumerWidget {
           branchName: branchName,
           appointmentStart: appointment.startTime,
           appointmentEnd: appointment.endTime,
+          kind: kind,
+          actionAt: actionAt,
         ),
       ),
     );

@@ -217,57 +217,69 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       actions: onBookAppointment == null
           ? null
           : AppButton(size: AppButtonSize.md, onPressed: onBookAppointment, child: const Text('Book appointment')),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (!state.loading && state.error != null) ...[
-            AppEmptyState(
-              variant: AppEmptyStateVariant.error,
-              title: 'Could not load calendar',
-              description: state.error,
-              action: EmptyStateAction(label: 'Retry', onPressed: controller.refresh),
-            ),
-            const SizedBox(height: AppSpacing.space4),
-          ],
-          if (!state.loading && state.error == null && isClosedDay)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.space3),
-              child: Text(
-                'This branch is closed on ${_weekdayLabel(state.focusDate)}.',
-                style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
-              ),
-            ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final calendar = _buildCalendar(
-                  context: context,
-                  colors: colors,
-                  state: state,
-                  controller: controller,
-                  branchesAsync: branchesAsync,
-                  doctorsAsync: doctorsAsync,
-                  schedule: schedule,
-                  doctors: doctors,
-                  canCreate: canCreate,
-                  canCancel: canCancel,
-                  visibleItems: visibleItems,
-                  oddResourceRowColor: oddResourceRowColor,
-                  loading: state.loading,
-                  viewportHeight: constraints.maxHeight,
-                  hasActiveFilters: hasActiveFilters,
-                  isFullscreen: false,
-                );
+      child: LayoutBuilder(
+        builder: (context, outerConstraints) {
+          final hasBoundedHeight = outerConstraints.maxHeight.isFinite;
+          final fallbackCalendarHeight = (MediaQuery.sizeOf(context).height * 0.65).clamp(480.0, 900.0);
 
-                if (_isCalendarFullscreen) {
-                  return SizedBox(key: _calendarHostKey, height: _calendarHostHeight, child: const SizedBox.shrink());
-                }
+          final calendarHost = LayoutBuilder(
+            builder: (context, constraints) {
+              final viewportHeight = hasBoundedHeight ? constraints.maxHeight : fallbackCalendarHeight;
+              final calendar = _buildCalendar(
+                context: context,
+                colors: colors,
+                state: state,
+                controller: controller,
+                branchesAsync: branchesAsync,
+                doctorsAsync: doctorsAsync,
+                schedule: schedule,
+                doctors: doctors,
+                canCreate: canCreate,
+                canCancel: canCancel,
+                visibleItems: visibleItems,
+                oddResourceRowColor: oddResourceRowColor,
+                loading: state.loading,
+                viewportHeight: viewportHeight,
+                hasActiveFilters: hasActiveFilters,
+                isFullscreen: false,
+              );
 
-                return KeyedSubtree(key: _calendarHostKey, child: calendar);
-              },
-            ),
-          ),
-        ],
+              if (_isCalendarFullscreen) {
+                return SizedBox(key: _calendarHostKey, height: _calendarHostHeight, child: const SizedBox.shrink());
+              }
+
+              return KeyedSubtree(key: _calendarHostKey, child: calendar);
+            },
+          );
+
+          final calendarArea = hasBoundedHeight
+              ? Expanded(child: calendarHost)
+              : SizedBox(height: fallbackCalendarHeight, child: calendarHost);
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!state.loading && state.error != null) ...[
+                AppEmptyState(
+                  variant: AppEmptyStateVariant.error,
+                  title: 'Could not load calendar',
+                  description: state.error,
+                  action: EmptyStateAction(label: 'Retry', onPressed: controller.refresh),
+                ),
+                const SizedBox(height: AppSpacing.space4),
+              ],
+              if (!state.loading && state.error == null && isClosedDay)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.space3),
+                  child: Text(
+                    'This branch is closed on ${_weekdayLabel(state.focusDate)}.',
+                    style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                  ),
+                ),
+              calendarArea,
+            ],
+          );
+        },
       ),
     );
   }
