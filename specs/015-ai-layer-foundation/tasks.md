@@ -147,13 +147,13 @@ honesty, PHI-redaction). Test tasks are therefore first-class, not optional.
 
 **Purpose**: Observability wiring, security hardening, and end-to-end verification across all stories
 
-- [ ] T044 [P] Emit per-request and per-runner metrics/log records across endpoints and the poller (request rate, error rate by code, per-runner health/latency, in-flight) via the `obs/` modules (FR-035/FR-033)
-- [ ] T045 [P] PHI-redaction verification unit test asserting patient-name fixtures never appear verbatim in logs when `log_verbatim=false`, in `ai/gateway/tests/unit/test_redaction.py` (SC-012, FR-034)
-- [ ] T046 [P] Implement optional push registration (`/internal/runners/register|heartbeat`) behind `enable_push_registration` (default off), guarded by `internal_shared_secret`, AI-internal only, in `ai/gateway/src/gateway/routing/registry.py` (FR-030)
-- [ ] T047 Security hardening pass: confirm least-privilege OS account / filesystem scope (config, log dir, model store only) in Dockerfile/compose and supervised auto-restart (FR-022/FR-005)
-- [ ] T048 Run the developer/CI gate from quickstart §5: `ruff check`, `isolation_scan.py`, and full `pytest` suite all green
-- [ ] T049 [P] Validate `quickstart.md` operator happy path end-to-end (deploy, `/health`, `/ready`, `/v1/capabilities`, 501 stub, `/metrics`, failover) and reconcile any drift
-- [ ] T050 Review constitution compliance for the final architecture (isolation scan gates build, runner non-routable, no DB objects, generate stubbed, PHI-minimized logs, both JWT modes offline)
+- [X] T044 [P] Emit per-request and per-runner metrics/log records across endpoints and the poller (request rate, error rate by code, per-runner health/latency, in-flight) via the `obs/` modules (FR-035/FR-033)
+- [X] T045 [P] PHI-redaction verification unit test asserting patient-name fixtures never appear verbatim in logs when `log_verbatim=false`, in `ai/gateway/tests/unit/test_redaction.py` (SC-012, FR-034)
+- [X] T046 [P] Implement optional push registration (`/internal/runners/register|heartbeat`) behind `enable_push_registration` (default off), guarded by `internal_shared_secret`, AI-internal only, in `ai/gateway/src/gateway/routing/registry.py` (FR-030)
+- [X] T047 Security hardening pass: confirm least-privilege OS account / filesystem scope (config, log dir, model store only) in Dockerfile/compose and supervised auto-restart (FR-022/FR-005)
+- [X] T048 Run the developer/CI gate from quickstart §5: `ruff check`, `isolation_scan.py`, and full `pytest` suite all green
+- [X] T049 [P] Validate `quickstart.md` operator happy path end-to-end (deploy, `/health`, `/ready`, `/v1/capabilities`, 501 stub, `/metrics`, failover) and reconcile any drift
+- [X] T050 Review constitution compliance for the final architecture (isolation scan gates build, runner non-routable, no DB objects, generate stubbed, PHI-minimized logs, both JWT modes offline)
 
 ---
 

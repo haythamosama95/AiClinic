@@ -70,16 +70,24 @@ Invalid config fails fast at startup with a message naming the offending key (FR
 ## 3. Start the Gateway
 
 ```bash
-# Docker:
-docker build -t aiclinic-gateway ai/gateway
+# Docker (build context is ai/, not ai/gateway):
+docker build -t aiclinic-gateway -f ai/gateway/Dockerfile ai
 docker run -d --name gateway --restart always -p 8090:8090 \
-  -e SUPABASE_JWT_SECRET=... \
-  -v "$PWD/ai/gateway/config:/app/config" \
-  -v "$PWD/ai/gateway/logs:/app/logs" \
+  -e GATEWAY_JWT_SECRET=... \
+  -v "$PWD/ai/gateway/config:/app/config:ro" \
+  -v gateway_logs:/var/log/gateway \
   aiclinic-gateway
 
-# Dev (direct):
-cd ai/gateway && uv sync && uv run uvicorn gateway.main:app --port 8090
+# Or supervised compose from ai/gateway:
+cd ai/gateway && docker compose up -d
+
+# Dev (direct — uses local venv; see scripts/start_dev.sh):
+cd ai/gateway
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.lock.txt
+.venv/bin/pip install -e . --no-deps
+./scripts/start_dev.sh
+# equivalent: .venv/bin/uvicorn gateway.main:create_app --factory --host 0.0.0.0 --port 8090
 ```
 
 ## 4. Verify (operator acceptance)
@@ -91,7 +99,7 @@ curl -s http://SERVER_NODE:8090/health           # {"status":"ok"}
 # Readiness (auth required) — positive only once the model is loaded:
 TOKEN="<a valid Supabase JWT for a doctor/admin>"
 curl -s -H "Authorization: Bearer $TOKEN" http://SERVER_NODE:8090/ready
-#   {"ready":true,"ready_runners":1}   once runnerA is READY
+#   {"status":"ready"}                 once runnerA is READY
 #   503 ai_no_capacity                 while the model is still STARTING
 
 # Capabilities mirror the live registry (tasks/commands empty this phase):
@@ -127,11 +135,10 @@ docker compose -f ai/runners/ollama/docker-compose.yaml start ollama
 
 ```bash
 cd ai/gateway
-uv run ruff check .
-uv run python scripts/isolation_scan.py         # MUST pass: no DB creds / service-role / DB drivers
-uv run pytest -q                                 # auth matrix, registry/lifecycle/failover,
-                                                 # capabilities, error contract, runner contract,
-                                                 # config validation, PHI-redaction
+./scripts/run_tests.sh
+# runs: ruff check, isolation_scan.py, pytest -q
+# (auth matrix, registry/lifecycle/failover, capabilities, error contract,
+#  runner contract, config validation, PHI-redaction)
 ```
 
 ## Success signals (maps to spec Success Criteria)

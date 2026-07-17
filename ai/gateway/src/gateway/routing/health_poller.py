@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
 import httpx
 
-from gateway.obs.metrics import observe_runner_latency, set_runner_health
-from gateway.routing.lifecycle import LifecycleCounters, RunnerStatus, transition
+from gateway.obs.logging import log_record
+from gateway.obs.metrics import (
+    observe_runner_latency,
+    set_inflight,
+    set_runner_health,
+)
+from gateway.routing.lifecycle import (
+    LifecycleCounters,
+    PollOutcome,
+    RunnerStatus,
+    transition,
+)
 from gateway.routing.registry import RunnerRegistry, utc_now
 from gateway.runners.openai_client import poll_runner
 
@@ -54,6 +65,7 @@ class HealthPoller:
                 entry = self._registry.get(runner_id)
                 if entry is None:
                     continue
+                old_status = entry.status
                 result = await poll_runner(entry.base_url, client=client)
 
                 avg_latency = entry.avg_latency_ms
@@ -101,6 +113,27 @@ class HealthPoller:
                     updates["loaded_model"] = result.loaded_model
                     updates["last_seen_at"] = utc_now()
                 self._registry.update_entry(runner_id, **updates)
+
+                set_inflight(runner_id, entry.in_flight)
+
+                status_change: str | None = None
+                if old_status != next_state.status:
+                    status_change = f"{old_status.value}→{next_state.status.value}"
+
+                poll_outcome = (
+                    "ok"
+                    if result.outcome in (PollOutcome.OK, PollOutcome.LOADING)
+                    else "error"
+                )
+                log_record(
+                    request_id=str(uuid.uuid4()),
+                    endpoint="/internal/health-poll",
+                    outcome=poll_outcome,
+                    runner_id=runner_id,
+                    runner_status_change=status_change,
+                    latency_ms=result.latency_ms,
+                    poll_outcome=result.outcome.value,
+                )
         finally:
             if owns_client:
                 await client.aclose()

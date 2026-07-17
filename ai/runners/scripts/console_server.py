@@ -269,6 +269,44 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         finally:
             upstream.close()
 
+    def _proxy_to_gateway_raw(self, method: str, upstream_path: str) -> None:
+        """Proxy to gateway preserving upstream content-type (e.g. Prometheus text)."""
+        url = f"{GATEWAY_URL}{upstream_path}"
+
+        body: bytes | None = None
+        if method in {"POST", "PUT", "PATCH"}:
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length) if length > 0 else None
+
+        req = urllib.request.Request(url, data=body, method=method)
+        for header in ("Content-Type", "Accept", "Authorization"):
+            if header in self.headers:
+                req.add_header(header, self.headers[header])
+
+        try:
+            upstream = urllib.request.urlopen(req, timeout=30)
+        except urllib.error.HTTPError as exc:
+            upstream = exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            self._send_json(
+                HTTPStatus.BAD_GATEWAY,
+                {"error": f"Gateway unreachable at {GATEWAY_URL}: {exc}"},
+            )
+            return
+
+        try:
+            payload = upstream.read()
+            content_type = upstream.headers.get("Content-Type", "text/plain; charset=utf-8")
+            self.send_response(upstream.status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except BrokenPipeError:
+            pass
+        finally:
+            upstream.close()
+
     def _serve_static(self) -> None:
         rel = self.path.split("?", 1)[0]
         if rel in ("", "/"):
@@ -295,6 +333,12 @@ class ConsoleHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/gateway/capabilities":
             self._proxy_to_gateway("GET", "/v1/capabilities")
+            return
+        if self.path == "/api/gateway/status":
+            self._proxy_to_gateway("GET", "/v1/status")
+            return
+        if self.path == "/api/gateway/metrics":
+            self._proxy_to_gateway_raw("GET", "/metrics")
             return
         if self.path.startswith(OLLAMA_PROXY_PREFIX):
             self._proxy_to_ollama("GET")
@@ -341,7 +385,7 @@ def main() -> None:
     print(f"==> AI Model Runner console on http://{DEFAULT_HOST}:{DEFAULT_PORT}")
     print(f"    Ollama API: {OLLAMA_URL} ({ollama_state})")
     print(f"    GPU mode: {gpu_line}")
-    print(f"    Gateway API: {GATEWAY_URL} (proxy /api/gateway/capabilities)")
+    print(f"    Gateway API: {GATEWAY_URL} (proxy /api/gateway/*)")
     print("    Gateway dashboard: http://localhost:8090/dashboard")
     print("    Press Ctrl+C to stop")
     print()

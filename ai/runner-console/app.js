@@ -36,6 +36,9 @@ const state = {
   gatewayJwt: '',
   gatewayCapabilities: null,
   gatewayFetchMessage: '',
+  gatewayStatus: null,
+  gatewayMetricsRaw: '',
+  gatewayObservabilityMessage: '',
 };
 
 let streamingAssistantIndex = null;
@@ -218,6 +221,205 @@ function renderGatewayDiscovery() {
   if (msg) msg.textContent = state.gatewayFetchMessage || '';
 }
 
+function gatewayAuthHeaders() {
+  const headers = { Accept: 'application/json' };
+  if (state.gatewayJwt) {
+    headers.Authorization = state.gatewayJwt.startsWith('Bearer ')
+      ? state.gatewayJwt
+      : `Bearer ${state.gatewayJwt}`;
+  }
+  return headers;
+}
+
+function parsePrometheusMetrics(text) {
+  const gauges = {};
+  const counters = {};
+  for (const line of String(text || '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const match = trimmed.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{([^}]*)\})?\s+([^\s]+)/);
+    if (!match) continue;
+    const name = match[1];
+    const labelStr = match[3] || '';
+    const value = parseFloat(match[4]);
+    if (Number.isNaN(value)) continue;
+    const labels = {};
+    if (labelStr) {
+      const labelRe = /([a-zA-Z_][a-zA-Z0-9_]*)="((?:\\.|[^"\\])*)"/g;
+      let lm;
+      while ((lm = labelRe.exec(labelStr)) !== null) {
+        labels[lm[1]] = lm[2];
+      }
+    }
+    const runnerId = labels.runner_id;
+    if (name.endsWith('_total')) {
+      counters[name] = counters[name] || {};
+      if (labels.code) counters[name][labels.code] = value;
+    } else if (runnerId) {
+      gauges[name] = gauges[name] || {};
+      gauges[name][runnerId] = value;
+    }
+  }
+  return { gauges, counters };
+}
+
+function metricsSnippetForRunner(raw, runnerId) {
+  if (!raw || !runnerId) return '—';
+  const lines = raw
+    .split('\n')
+    .filter((line) => line.includes(`runner_id="${runnerId}"`) || line.includes(`runner_id='${runnerId}'`));
+  return lines.length ? lines.join('\n') : `No Prometheus series for runner_id="${runnerId}" yet.`;
+}
+
+function renderObservability() {
+  const runnerId = state.gatewayRunnerId;
+  const idLabel = $('obs-runner-id-label');
+  if (idLabel) idLabel.textContent = runnerId;
+
+  const status = state.gatewayStatus;
+  const runner = status?.runners?.find((r) => r.id === runnerId);
+  const parsed = state.gatewayMetricsRaw ? parsePrometheusMetrics(state.gatewayMetricsRaw) : null;
+
+  const registryStatus = $('obs-runner-status');
+  const healthEl = $('obs-runner-health');
+  const latencyEl = $('obs-runner-latency');
+  const inflightEl = $('obs-runner-inflight');
+  const fetched = $('observability-fetched');
+  const hint = $('observability-hint');
+  const rawPre = $('observability-metrics-raw');
+
+  if (!state.gatewayJwt) {
+    if (registryStatus) registryStatus.textContent = '—';
+    if (healthEl) healthEl.textContent = '—';
+    if (latencyEl) latencyEl.textContent = '—';
+    if (inflightEl) inflightEl.textContent = '—';
+    if (fetched) fetched.textContent = 'JWT required';
+    if (hint) hint.textContent = 'Save a gateway JWT in Gateway discovery to poll live registry metrics.';
+    if (rawPre) rawPre.textContent = '—';
+    renderPushPanel(null);
+    return;
+  }
+
+  if (!status) {
+    if (registryStatus) registryStatus.textContent = '—';
+    if (healthEl) healthEl.textContent = '—';
+    if (latencyEl) latencyEl.textContent = '—';
+    if (inflightEl) inflightEl.textContent = '—';
+    if (fetched) fetched.textContent = state.gatewayObservabilityMessage || 'Not fetched';
+    if (rawPre) rawPre.textContent = '—';
+    renderPushPanel(null);
+    return;
+  }
+
+  const healthGauge = parsed?.gauges?.gateway_runner_health?.[runnerId];
+  const inflightGauge = parsed?.gauges?.gateway_inflight_requests?.[runnerId];
+
+  if (registryStatus) {
+    registryStatus.textContent = runner?.status || 'not in registry';
+    registryStatus.dataset.state =
+      runner?.status === 'READY' || runner?.status === 'BUSY' ? 'ok' : runner ? 'warn' : 'error';
+  }
+  if (healthEl) {
+    const healthy =
+      healthGauge != null
+        ? healthGauge >= 1
+        : runner?.status === 'READY' || runner?.status === 'BUSY';
+    healthEl.textContent = healthy ? 'healthy (1)' : 'unhealthy (0)';
+    healthEl.dataset.state = healthy ? 'ok' : 'error';
+  }
+  if (latencyEl) {
+    latencyEl.textContent =
+      runner?.avg_latency_ms != null ? `${runner.avg_latency_ms.toFixed(1)} ms` : '—';
+  }
+  if (inflightEl) {
+    const inflight = inflightGauge ?? runner?.in_flight ?? 0;
+    inflightEl.textContent = formatCount(inflight);
+    inflightEl.dataset.state = inflight > 0 ? 'warn' : 'ok';
+  }
+  if (fetched) {
+    fetched.textContent = status.fetchedAt ? `Live · ${relativeTime(status.fetchedAt)}` : 'Live';
+  }
+  if (hint) {
+    hint.textContent = runner
+      ? `Gateway registry entry for ${runnerId} — polled via /api/gateway/status and /metrics.`
+      : `Runner ${runnerId} not found in gateway registry — check gateway.yaml id.`;
+  }
+  if (rawPre) {
+    rawPre.textContent = truncate(metricsSnippetForRunner(state.gatewayMetricsRaw, runnerId), 4000);
+  }
+
+  renderPushPanel(status);
+}
+
+function renderPushPanel(status) {
+  const cfg = status?.config_safe;
+  const enabled = Boolean(cfg?.enable_push_registration);
+
+  setText($('push-mode'), enabled ? 'push (enabled)' : 'pull (default)');
+  setText(
+    $('push-endpoints'),
+    enabled
+      ? 'POST /internal/runners/register · POST /internal/runners/heartbeat'
+      : 'not mounted',
+  );
+  setText(
+    $('push-console-role'),
+    enabled
+      ? 'Runners send heartbeats with X-Internal-Secret (out-of-band)'
+      : 'Gateway polls this console via pull health checks',
+  );
+
+  const note = $('push-note');
+  if (note) {
+    note.textContent = enabled
+      ? 'Push registration is AI-internal only. This console does not send heartbeats — configure the runner process separately.'
+      : 'When push mode is disabled (default), the gateway polls this runner via pull-based health checks. Heartbeats require X-Internal-Secret and are configured outside this UI.';
+  }
+}
+
+function setText(el, value) {
+  if (el) el.textContent = value ?? '—';
+}
+
+async function fetchGatewayObservability({ manual = false } = {}) {
+  if (!state.gatewayJwt) {
+    state.gatewayStatus = null;
+    state.gatewayMetricsRaw = '';
+    state.gatewayObservabilityMessage = 'JWT required';
+    renderObservability();
+    return null;
+  }
+
+  const headers = gatewayAuthHeaders();
+
+  try {
+    const [statusRes, metricsRes] = await Promise.all([
+      consoleFetch('/api/gateway/status', { headers }),
+      consoleFetch('/api/gateway/metrics', { headers: { Accept: 'text/plain' } }),
+    ]);
+
+    if (!statusRes.ok) {
+      const body = await statusRes.json().catch(() => ({}));
+      state.gatewayObservabilityMessage = body?.error?.message || `Status HTTP ${statusRes.status}`;
+      if (manual) state.gatewayStatus = null;
+      renderObservability();
+      return null;
+    }
+
+    const statusBody = await statusRes.json();
+    state.gatewayStatus = { ...statusBody, fetchedAt: new Date().toISOString() };
+    state.gatewayMetricsRaw = metricsRes.ok ? await metricsRes.text() : '';
+    state.gatewayObservabilityMessage = manual ? 'Observability refreshed.' : '';
+    renderObservability();
+    return state.gatewayStatus;
+  } catch (err) {
+    state.gatewayObservabilityMessage = String(err.message || err);
+    if (manual) state.gatewayStatus = null;
+    renderObservability();
+    return null;
+  }
+}
+
 async function fetchGatewayCapabilities({ manual = false } = {}) {
   const msgEl = $('gateway-fetch-message');
   const btn = $('gateway-fetch-btn');
@@ -247,6 +449,7 @@ async function fetchGatewayCapabilities({ manual = false } = {}) {
     state.gatewayCapabilities = { ...body, fetchedAt: new Date().toISOString() };
     state.gatewayFetchMessage = manual ? 'Capabilities fetched.' : '';
     renderGatewayDiscovery();
+    await fetchGatewayObservability();
     return body;
   } catch (err) {
     state.gatewayFetchMessage = String(err.message || err);
@@ -323,6 +526,8 @@ function saveGatewayConfigFromInputs() {
   else localStorage.removeItem(STORAGE_GATEWAY_JWT);
 
   renderGatewayDiscovery();
+  renderObservability();
+  if (jwt) fetchGatewayObservability().catch(() => {});
 }
 
 /* ── Overview ─────────────────────────────────────────────── */
@@ -1347,6 +1552,7 @@ function startPolling() {
     if (state.abortController) return;
     probeModels().catch(() => {});
     refreshRuntime().catch(() => {});
+    if (state.gatewayJwt) fetchGatewayObservability().catch(() => {});
   }, state.pollIntervalS * 1000);
 }
 
@@ -1360,6 +1566,7 @@ function bindEvents() {
   $('refresh-btn')?.addEventListener('click', () => {
     probeModels({ manual: true });
     refreshRuntime();
+    if (state.gatewayJwt) fetchGatewayObservability({ manual: true });
   });
 
   $('poll-interval')?.addEventListener('change', (e) => {
@@ -1463,7 +1670,12 @@ async function init() {
   bindEvents();
   setTelemetryTab(state.telemetryTab);
   renderGatewayDiscovery();
-  await Promise.all([probeModels(), refreshRuntime()]);
+  renderObservability();
+  await Promise.all([
+    probeModels(),
+    refreshRuntime(),
+    state.gatewayJwt ? fetchGatewayObservability() : Promise.resolve(),
+  ]);
   startPolling();
 }
 

@@ -122,7 +122,7 @@ async def test_status_response_shape(status_client) -> None:
     assert "poller" in body
     assert body["poller"]["estimated_failover_s"] == 60
 
-    assert body["gateway"]["phase_active"] == 5
+    assert body["gateway"]["phase_active"] == 6
     assert isinstance(body["gateway"]["ready"], bool)
     assert isinstance(body["gateway"]["uptime_s"], int | float)
     assert body["gateway"]["uptime_s"] >= 0

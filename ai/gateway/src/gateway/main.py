@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 import uuid
@@ -18,6 +19,7 @@ from gateway.api.dashboard_auth import router as dashboard_auth_router
 from gateway.api.errors import install_exception_handlers
 from gateway.api.generate_stub import router as generate_stub_router
 from gateway.api.health import router as health_router
+from gateway.api.internal_runners import router as internal_runners_router
 from gateway.api.metrics import router as metrics_router
 from gateway.api.runners import router as runners_router
 from gateway.api.status import router as status_router
@@ -25,6 +27,7 @@ from gateway.auth.jwt_validator import JwtValidator
 from gateway.auth.role_map import RoleMapReloader, RoleMapStore
 from gateway.config.settings import GatewayConfig, load_config
 from gateway.obs import logging as obs_logging
+from gateway.obs.logging import log_record
 from gateway.obs.metrics import record_request
 from gateway.routing.health_poller import HealthPoller
 from gateway.routing.registry import RunnerRegistry
@@ -65,6 +68,24 @@ def _resolve_role_map_path(cfg: GatewayConfig) -> Path | None:
         if candidate.is_file():
             return candidate
     return None
+
+
+def _request_outcome(status: int, error_code: str | None) -> str:
+    if status < 400:
+        return "ok"
+    if error_code == "unauthenticated":
+        return "unauthenticated"
+    if error_code == "forbidden":
+        return "forbidden"
+    if error_code == "not_implemented":
+        return "not_implemented"
+    if status == 401:
+        return "unauthenticated"
+    if status == 403:
+        return "forbidden"
+    if status == 501:
+        return "not_implemented"
+    return "error"
 
 
 def _resolve_config_path(path: str | None) -> Path | None:
@@ -127,12 +148,40 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
     )
 
     @app.middleware("http")
-    async def request_id_middleware(request: Request, call_next):
+    async def observability_middleware(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.state.request_id = request_id
+        started = time.monotonic()
         response = await call_next(request)
+        latency_ms = (time.monotonic() - started) * 1000.0
+        status = response.status_code
+        endpoint = request.url.path
+
         response.headers["X-Request-ID"] = request_id
-        record_request(request.method, request.url.path, response.status_code)
+        record_request(request.method, endpoint, status)
+
+        error_code: str | None = None
+        if status >= 400:
+            body_bytes = getattr(response, "body", None)
+            if body_bytes:
+                try:
+                    payload = json.loads(body_bytes)
+                    if isinstance(payload, dict):
+                        err = payload.get("error")
+                        if isinstance(err, dict):
+                            error_code = err.get("code")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        outcome = _request_outcome(status, error_code)
+        log_record(
+            request_id=request_id,
+            endpoint=endpoint,
+            outcome=outcome,
+            caller_staff_id=getattr(request.state, "caller_staff_id", None),
+            error_code=error_code,
+            latency_ms=latency_ms,
+        )
         return response
 
     app.include_router(health_router)
@@ -142,6 +191,8 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
     app.include_router(status_router)
     app.include_router(capabilities_router)
     app.include_router(generate_stub_router)
+    if cfg.enable_push_registration:
+        app.include_router(internal_runners_router)
 
     dashboard_path = _resolve_dashboard_dir(cfg)
     dashboard_mounted = dashboard_path.is_dir()

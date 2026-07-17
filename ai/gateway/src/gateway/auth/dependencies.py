@@ -59,4 +59,5 @@ async def require_ai_access(
             request,
         )
 
+    request.state.caller_staff_id = identity.staff_id
     return identity

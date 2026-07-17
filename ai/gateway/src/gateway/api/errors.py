@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from gateway.obs.metrics import record_error
+
 
 class ErrorCode(str, Enum):
     BAD_REQUEST = "bad_request"
@@ -59,6 +61,7 @@ def _request_id(request: Request) -> str:
 
 def error_response(code: ErrorCode, message: str, request_id: str) -> JSONResponse:
     status = ERROR_STATUS_MAP[code]
+    record_error(code.value)
     body = ErrorEnvelope(
         error=ErrorBody(code=code.value, message=message, request_id=request_id)
     )

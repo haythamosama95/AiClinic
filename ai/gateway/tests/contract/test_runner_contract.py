@@ -25,5 +25,8 @@ def test_example_runner_base_url_is_ai_internal() -> None:
 
 def test_compose_does_not_publish_runner_on_all_interfaces() -> None:
     content = COMPOSE_FILE.read_text(encoding="utf-8")
+    normalized = content.replace(" ", "")
     assert '"11434:11434"' not in content
-    assert "0.0.0.0:11434" not in content
+    assert "0.0.0.0:11434:11434" not in normalized
+    # In-container OLLAMA_HOST may use 0.0.0.0; host publish must stay localhost-only.
+    assert "127.0.0.1:11434:11434" in normalized

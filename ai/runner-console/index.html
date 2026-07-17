@@ -18,7 +18,7 @@
         <div class="hero__identity">
           <p class="hero__eyebrow">AiClinic · Runner</p>
           <h1 class="hero__title">Model Console</h1>
-          <p class="hero__subtitle">Local Ollama playground · OpenAI-compatible API</p>
+          <p class="hero__subtitle">Local Ollama playground · gateway observability mirror</p>
         </div>
 
         <div class="hero__status-bar">
@@ -194,6 +194,76 @@
               <pre class="gateway-preview-card__body mono" id="gateway-live-capabilities" tabindex="0">—</pre>
             </article>
           </div>
+        </div>
+      </section>
+
+      <!-- Gateway observability (Phase 6) -->
+      <section class="panel panel--observability" id="observability-panel" aria-labelledby="observability-heading">
+        <header class="panel__header panel__header--split">
+          <div>
+            <h2 class="panel__title" id="observability-heading">Gateway observability</h2>
+            <p class="panel__desc">How the gateway sees this runner · <code>GET /v1/status</code> + <code>/metrics</code></p>
+          </div>
+          <span class="panel__count mono" id="observability-fetched" aria-live="polite">—</span>
+        </header>
+
+        <div class="observability-layout">
+          <div class="observability-stats" id="observability-stats">
+            <article class="obs-stat">
+              <span class="obs-stat__label">Registry status</span>
+              <span class="obs-stat__value" id="obs-runner-status">—</span>
+            </article>
+            <article class="obs-stat">
+              <span class="obs-stat__label">Health gauge</span>
+              <span class="obs-stat__value" id="obs-runner-health">—</span>
+            </article>
+            <article class="obs-stat">
+              <span class="obs-stat__label">Avg poll latency</span>
+              <span class="obs-stat__value" id="obs-runner-latency">—</span>
+            </article>
+            <article class="obs-stat">
+              <span class="obs-stat__label">In-flight</span>
+              <span class="obs-stat__value" id="obs-runner-inflight">—</span>
+            </article>
+          </div>
+
+          <p class="observability-hint" id="observability-hint">
+            Save a gateway JWT in Gateway discovery to poll live registry metrics for runner
+            <code id="obs-runner-id-label">ollama-local</code>.
+          </p>
+
+          <details class="observability-raw" id="observability-raw-details">
+            <summary class="observability-raw__summary">Runner metrics snippet (Prometheus)</summary>
+            <pre class="observability-raw__body mono" id="observability-metrics-raw" tabindex="0">—</pre>
+          </details>
+        </div>
+      </section>
+
+      <!-- Push registration info (Phase 6) -->
+      <section class="panel panel--push" id="push-panel" aria-labelledby="push-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="push-heading">Push registration</h2>
+          <p class="panel__desc">Gateway-internal mode · not exposed to clinic clients</p>
+        </header>
+        <div class="push-layout">
+          <dl class="push-dl" id="push-dl">
+            <div class="push-dl__row">
+              <dt>Gateway mode</dt>
+              <dd id="push-mode">—</dd>
+            </div>
+            <div class="push-dl__row">
+              <dt>Endpoints</dt>
+              <dd class="mono" id="push-endpoints">—</dd>
+            </div>
+            <div class="push-dl__row">
+              <dt>Console role</dt>
+              <dd id="push-console-role">—</dd>
+            </div>
+          </dl>
+          <p class="push-note" id="push-note">
+            When push mode is disabled (default), the gateway polls this runner via pull-based health checks.
+            Heartbeats require <code>X-Internal-Secret</code> and are configured outside this UI.
+          </p>
         </div>
       </section>
 

@@ -4,6 +4,9 @@
 #
 # First run bootstraps the gateway Python venv. Ollama starts via Docker Compose.
 # Press Ctrl+C to stop the gateway and console (Ollama keeps running in Docker).
+#
+# Production: use ai/gateway/docker-compose.yaml (restart: always, scoped config/log volumes)
+# and ai/runners/ollama/docker-compose.yaml (127.0.0.1 bind, restart: always).
 
 set -euo pipefail
 

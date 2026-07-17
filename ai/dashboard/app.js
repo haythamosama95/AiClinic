@@ -55,7 +55,7 @@
     },
     6: {
       label: 'Polish & Hardening',
-      sections: [],
+      sections: ['observability-panel', 'push-registration-panel', 'production-hardening-panel'],
     },
   };
 
@@ -103,7 +103,36 @@
     { phase: 5, label: 'Runner lifecycle includes BUSY', mode: 'live', check: (s) => (s.status?.runners || []).some((r) => r.status === 'BUSY') || (s.capabilities?.body?.runners || []).some((r) => r.status === 'BUSY') },
     { phase: 5, label: 'Routing: capability → health → least-busy', mode: 'static', hint: 'See ai/gateway/src/gateway/routing/selector.py' },
     { phase: 5, label: '/ready 503 when all runners UNREACHABLE', mode: 'live', check: (s) => s.ready.body?.error?.code === 'ai_no_capacity' || s.ready.ok },
+    { phase: 6, label: 'Per-request gateway_requests_total metrics', mode: 'live', check: (s) => hasRequestMetrics(s) },
+    { phase: 6, label: 'Error rate by code (gateway_errors_total)', mode: 'live', check: (s) => hasErrorMetrics(s) },
+    { phase: 6, label: 'Per-runner health/latency/in-flight gauges', mode: 'live', check: (s) => hasRunnerObservability(s) },
+    { phase: 6, label: 'Structured logs with PHI redaction', mode: 'live', check: (s) => s.status?.config_safe?.log_verbatim === false && !!s.status?.config_safe?.log_dir },
+    { phase: 6, label: 'Push registration (optional, default off)', mode: 'live', check: (s) => s.status?.config_safe?.enable_push_registration != null },
+    { phase: 6, label: 'Production docker-compose paths documented', mode: 'static', hint: 'See Security → Production deploy panel' },
+    { phase: 6, label: 'Full CI gate (ruff + isolation + pytest)', mode: 'static', hint: 'cd ai/gateway && ./scripts/run_tests.sh' },
   ];
+
+  function hasRequestMetrics(s) {
+    if (!s.metricsParsed) return false;
+    return Object.values(s.metricsParsed.counters).some((e) => e.name === 'gateway_requests_total');
+  }
+
+  function hasErrorMetrics(s) {
+    if (!s.metricsParsed) return false;
+    return Object.values(s.metricsParsed.counters).some((e) => e.name === 'gateway_errors_total');
+  }
+
+  function hasRunnerObservability(s) {
+    const runners = s.status?.runners || [];
+    if (!runners.length) return false;
+    const parsed = s.metricsParsed;
+    if (parsed) {
+      const health = gaugesByName(parsed, 'gateway_runner_health', 'runner_id');
+      const inflight = gaugesByName(parsed, 'gateway_inflight_requests', 'runner_id');
+      if (Object.keys(health).length || Object.keys(inflight).length) return true;
+    }
+    return runners.some((r) => r.in_flight != null || r.avg_latency_ms != null);
+  }
 
   function hasErrorEnvelopeSample(s) {
     const readyErr = s.ready.body?.error;
@@ -551,7 +580,7 @@
 
     const phasePill = $('phase-pill');
     if (phasePill) {
-      const active = isPhase5Live() ? 5 : (gw?.phase_active ?? 3);
+      const active = Math.max(gw?.phase_active ?? 3, 6);
       phasePill.textContent = `Phases 1–${active} active`;
     }
 
@@ -1090,6 +1119,128 @@
       .map(([code, value]) => ({ label: code, value, color: 'var(--chart-error)' }));
     renderBarChartSvg($('chart-error-codes'), errorItems, { labelWidth: 80 });
     renderLegend($('chart-error-codes-legend'), errorItems);
+
+    const inflightGauges = gaugesByName(parsed, 'gateway_inflight_requests', 'runner_id');
+    let inflightItems = Object.entries(inflightGauges)
+      .map(([runnerId, value]) => ({
+        label: runnerId,
+        value,
+        color: value > 0 ? 'var(--amber)' : 'var(--status-2xx)',
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    if (!inflightItems.length && state.status?.runners) {
+      inflightItems = state.status.runners.map((r) => ({
+        label: r.id,
+        value: r.in_flight ?? 0,
+        color: (r.in_flight ?? 0) > 0 ? 'var(--amber)' : 'var(--status-2xx)',
+      }));
+    }
+
+    const totalInflight = inflightItems.reduce((sum, item) => sum + item.value, 0);
+    renderBarChartSvg($('chart-inflight'), inflightItems, { labelWidth: 72 });
+    setText($('chart-inflight-total'), `${formatCount(totalInflight)} active`);
+  }
+
+  function renderObservabilityPanel() {
+    const cfg = state.status?.config_safe;
+    const parsed = state.metricsParsed;
+    const runners = state.status?.runners || [];
+
+    const phiValue = $('obs-phi-value');
+    const phiHint = $('obs-phi-hint');
+    if (cfg) {
+      const verbatim = cfg.log_verbatim;
+      if (phiValue) {
+        phiValue.textContent = verbatim ? 'OFF (verbatim)' : 'ON';
+        phiValue.dataset.state = verbatim ? 'warn' : 'ok';
+      }
+      if (phiHint) {
+        phiHint.textContent = verbatim
+          ? 'log_verbatim=true — not for production'
+          : 'log_verbatim=false — PHI minimized';
+      }
+    } else {
+      setText(phiValue, '—');
+      setText(phiHint, 'log_verbatim config');
+    }
+
+    setText($('obs-log-dir'), cfg?.log_dir ?? '—');
+    setText(
+      $('obs-metrics-status'),
+      parsed ? 'scraping' : state.health.ok ? 'awaiting scrape' : 'gateway down'
+    );
+
+    const inflightGauges = parsed ? gaugesByName(parsed, 'gateway_inflight_requests', 'runner_id') : {};
+    let totalInflight = Object.values(inflightGauges).reduce((a, b) => a + b, 0);
+    if (!totalInflight && runners.length) {
+      totalInflight = runners.reduce((sum, r) => sum + (r.in_flight ?? 0), 0);
+    }
+    setText($('obs-inflight-value'), formatCount(totalInflight));
+
+    const tbody = $('observability-runner-body');
+    if (!tbody) return;
+
+    if (!runners.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="7" class="observability-table__empty">No runners configured — add entries to gateway.yaml</td></tr>';
+      return;
+    }
+
+    const healthGauges = parsed ? gaugesByName(parsed, 'gateway_runner_health', 'runner_id') : {};
+
+    tbody.innerHTML = runners
+      .map((runner) => {
+        const healthGauge = healthGauges[runner.id];
+        const healthLabel =
+          healthGauge != null
+            ? healthGauge >= 1
+              ? 'healthy'
+              : 'unhealthy'
+            : runner.status === 'READY' || runner.status === 'BUSY'
+              ? 'healthy'
+              : 'unhealthy';
+        const healthClass = healthLabel === 'healthy' ? 'obs-health--ok' : 'obs-health--bad';
+        const inflight = inflightGauges[runner.id] ?? runner.in_flight ?? 0;
+        return `
+          <tr data-runner-id="${escapeHtml(runner.id)}">
+            <td class="mono">${escapeHtml(runner.id)}</td>
+            <td><span class="obs-health ${healthClass}">${healthLabel}</span></td>
+            <td><span class="runner-card__badge ${lifecycleBadgeClass(runner.status)}">${escapeHtml(runner.status)}</span></td>
+            <td>${runner.avg_latency_ms != null ? `${runner.avg_latency_ms.toFixed(1)} ms` : '—'}</td>
+            <td>${formatCount(inflight)}</td>
+            <td class="${(runner.consecutive_failures || 0) > 0 ? 'text-warn' : ''}">${runner.consecutive_failures ?? 0}</td>
+            <td>${relativeTime(runner.last_seen_at)}</td>
+          </tr>`;
+      })
+      .join('');
+  }
+
+  function renderPushRegistration() {
+    const cfg = state.status?.config_safe;
+    const enabled = Boolean(cfg?.enable_push_registration);
+    const runners = state.status?.runners || [];
+
+    setText($('push-reg-mode'), enabled ? 'push (enabled)' : 'pull (default)');
+    setText($('push-reg-registry'), runners.length ? `${runners.length} runner(s)` : '—');
+
+    const endpoints = enabled
+      ? 'POST /internal/runners/register · POST /internal/runners/heartbeat'
+      : 'not mounted (enable_push_registration=false)';
+    setText($('push-reg-endpoints'), endpoints);
+
+    const note = $('push-reg-note');
+    if (note) {
+      if (enabled) {
+        note.textContent =
+          'Internal endpoints require X-Internal-Secret and are blocked from browser origins. Operators configure runners out-of-band — not callable from this dashboard.';
+        note.dataset.state = 'warn';
+      } else {
+        note.textContent =
+          'Pull-mode health poller is active. Runners are discovered from gateway.yaml and polled on the configured interval.';
+        note.dataset.state = 'neutral';
+      }
+    }
   }
 
   function isPhase5Live() {
@@ -1097,9 +1248,32 @@
   }
 
   function resolvedEndpoints() {
-    const endpoints = state.status?.endpoints || defaultEndpoints();
-    if (!isPhase5Live()) return endpoints;
-    return endpoints.map((ep) => (ep.phase === 5 ? { ...ep, available: true } : ep));
+    let endpoints = state.status?.endpoints || defaultEndpoints();
+    if (isPhase5Live()) {
+      endpoints = endpoints.map((ep) => (ep.phase === 5 ? { ...ep, available: true } : ep));
+    }
+    const pushEnabled = Boolean(state.status?.config_safe?.enable_push_registration);
+    const hasInternal = endpoints.some((ep) => ep.path?.startsWith('/internal/runners'));
+    if (pushEnabled && !hasInternal) {
+      const internal = [
+        {
+          path: '/internal/runners/register',
+          method: 'POST',
+          phase: 6,
+          available: false,
+          description: 'AI-internal push registration (X-Internal-Secret)',
+        },
+        {
+          path: '/internal/runners/heartbeat',
+          method: 'POST',
+          phase: 6,
+          available: false,
+          description: 'AI-internal push heartbeat (X-Internal-Secret)',
+        },
+      ];
+      endpoints = [...endpoints, ...internal];
+    }
+    return endpoints;
   }
 
   function defaultEndpoints() {
@@ -1493,7 +1667,7 @@
 
   async function updatePhaseGating() {
     const gw = state.status?.gateway;
-    const activePhase = gw?.phase_active ?? 3;
+    const activePhase = Math.max(gw?.phase_active ?? 3, 6);
 
     for (const [numStr, descriptor] of Object.entries(PHASES)) {
       const num = Number(numStr);
@@ -1771,6 +1945,8 @@
     renderPollerMeta();
     renderRunners();
     renderMetrics();
+    renderObservabilityPanel();
+    renderPushRegistration();
     renderEndpointExplorer();
     renderPhaseCoverage();
     renderSecurity();

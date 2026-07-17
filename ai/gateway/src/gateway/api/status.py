@@ -17,7 +17,7 @@ from gateway.routing.registry import LoadedModel, RunnerRegistry, RunnerRegistry
 router = APIRouter(prefix="/v1", tags=["status"])
 
 _GATEWAY_VERSION = "0.1.0"
-_PHASE_ACTIVE = 5
+_PHASE_ACTIVE = 6
 
 
 def _serialize_datetime(value: datetime | None) -> str | None:
@@ -113,6 +113,7 @@ def _endpoint_catalog(
     *,
     dashboard_mounted: bool,
     runner_ids: list[str],
+    push_registration_enabled: bool = False,
 ) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = [
         {"path": "/health", "method": "GET", "phase": 2, "available": True},
@@ -141,6 +142,25 @@ def _endpoint_catalog(
             {"path": "/v1/ai/generate", "method": "POST", "phase": 5, "available": True},
         ]
     )
+    if push_registration_enabled:
+        entries.extend(
+            [
+                {
+                    "path": "/internal/runners/register",
+                    "method": "POST",
+                    "phase": 6,
+                    "available": False,
+                    "description": "AI-internal push registration (X-Internal-Secret)",
+                },
+                {
+                    "path": "/internal/runners/heartbeat",
+                    "method": "POST",
+                    "phase": 6,
+                    "available": False,
+                    "description": "AI-internal push heartbeat (X-Internal-Secret)",
+                },
+            ]
+        )
     return entries
 
 
@@ -170,6 +190,7 @@ async def get_status(
         "endpoints": _endpoint_catalog(
             dashboard_mounted=dashboard_mounted,
             runner_ids=registry.runner_ids(),
+            push_registration_enabled=cfg.enable_push_registration,
         ),
     }
     return JSONResponse(body)

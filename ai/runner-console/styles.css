@@ -1147,3 +1147,116 @@ code,
     width: 100%;
   }
 }
+
+/* ── Phase 6 observability & push ─────────────────────────────────────────── */
+
+.observability-layout,
+.push-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.observability-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.65rem;
+}
+
+.obs-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.85rem 1rem;
+  background: var(--void);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.obs-stat__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.obs-stat__value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #eef4fb;
+}
+
+.obs-stat__value[data-state="ok"] {
+  color: var(--status-2xx);
+}
+
+.obs-stat__value[data-state="warn"] {
+  color: var(--amber);
+}
+
+.obs-stat__value[data-state="error"] {
+  color: var(--coral);
+}
+
+.observability-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.observability-raw {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--void);
+}
+
+.observability-raw__summary {
+  padding: 0.65rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.observability-raw__body {
+  margin: 0;
+  padding: 0.65rem 0.85rem 0.85rem;
+  max-height: 12rem;
+  overflow: auto;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
+.push-dl {
+  margin: 0;
+}
+
+.push-dl__row {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.push-dl__row dt {
+  color: var(--text-dim);
+}
+
+.push-dl__row dd {
+  margin: 0;
+  color: #eef4fb;
+}
+
+.push-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  line-height: 1.55;
+}

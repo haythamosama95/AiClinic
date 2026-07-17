@@ -46,14 +46,12 @@ def _is_elevated_latency(
         return True
     if avg_latency_ms is not None and avg_latency_ms > degraded_latency_ms:
         return True
-    if (
+    return (
         avg_latency_ms is not None
         and baseline_latency_ms is not None
         and baseline_latency_ms > 0
         and avg_latency_ms > baseline_latency_ms * 2
-    ):
-        return True
-    return False
+    )
 
 
 def _healthy_status(

@@ -18,7 +18,7 @@
         <div class="hero__identity">
           <p class="hero__eyebrow">AiClinic · Gateway</p>
           <h1 class="hero__title">Control Plane</h1>
-          <p class="hero__subtitle">Phases 1–5 · health spine, registry, auth &amp; capabilities</p>
+          <p class="hero__subtitle">Phases 1–6 · health spine, observability, auth &amp; capabilities</p>
         </div>
 
         <div class="hero__status-bar">
@@ -35,7 +35,7 @@
             </span>
 
             <span class="pill pill--phase" id="phase-pill" title="Active implementation phases">
-              Phases 1–4 active
+              Phases 1–6 active
             </span>
           </div>
 
@@ -239,6 +239,69 @@
             </div>
             <ul class="chart-legend" id="chart-error-codes-legend" aria-hidden="true"></ul>
           </figure>
+
+          <figure class="chart-card" id="chart-inflight-wrap">
+            <figcaption class="chart-card__title">In-flight requests</figcaption>
+            <div class="chart-card__body">
+              <svg class="chart-svg" id="chart-inflight" viewBox="0 0 320 120" role="img"
+                aria-labelledby="chart-inflight-label">
+                <title id="chart-inflight-label">Per-runner in-flight request gauges</title>
+              </svg>
+            </div>
+            <p class="chart-card__stat" id="chart-inflight-total">— active</p>
+          </figure>
+        </div>
+      </section>
+
+      <!-- Phase 6 — Observability detail -->
+      <section class="panel panel--observability" id="observability-panel" aria-labelledby="observability-heading">
+        <header class="panel__header">
+          <h2 class="panel__title" id="observability-heading">Observability <span class="phase-tag">P6</span></h2>
+          <p class="panel__desc">Per-request metrics, structured logs with PHI redaction, runner health/latency/in-flight</p>
+        </header>
+
+        <div class="observability-summary" id="observability-summary">
+          <article class="obs-stat" id="obs-phi-redaction">
+            <span class="obs-stat__label">PHI redaction</span>
+            <span class="obs-stat__value" id="obs-phi-value">—</span>
+            <span class="obs-stat__hint" id="obs-phi-hint">log_verbatim config</span>
+          </article>
+          <article class="obs-stat" id="obs-structured-logs">
+            <span class="obs-stat__label">Structured logs</span>
+            <span class="obs-stat__value mono" id="obs-log-dir">—</span>
+            <span class="obs-stat__hint">JSON with request_id correlation</span>
+          </article>
+          <article class="obs-stat" id="obs-prometheus">
+            <span class="obs-stat__label">Prometheus scrape</span>
+            <span class="obs-stat__value" id="obs-metrics-status">—</span>
+            <span class="obs-stat__hint"><code>GET /metrics</code> (unauthenticated)</span>
+          </article>
+          <article class="obs-stat" id="obs-inflight-total">
+            <span class="obs-stat__label">Total in-flight</span>
+            <span class="obs-stat__value" id="obs-inflight-value">—</span>
+            <span class="obs-stat__hint">across all runners</span>
+          </article>
+        </div>
+
+        <div class="observability-table-wrap">
+          <table class="observability-table" id="observability-runner-table">
+            <thead>
+              <tr>
+                <th scope="col">Runner</th>
+                <th scope="col">Health</th>
+                <th scope="col">Status</th>
+                <th scope="col">Avg latency</th>
+                <th scope="col">In-flight</th>
+                <th scope="col">Failures</th>
+                <th scope="col">Last seen</th>
+              </tr>
+            </thead>
+            <tbody id="observability-runner-body">
+              <tr>
+                <td colspan="7" class="observability-table__empty">Awaiting status poll…</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -285,7 +348,7 @@
       <section class="panel panel--coverage" id="phase-coverage-panel" aria-labelledby="coverage-heading">
         <header class="panel__header">
           <h2 class="panel__title" id="coverage-heading">Phase coverage</h2>
-          <p class="panel__desc">Live checklist mapped to <code>docs/ai/phase-capabilities.md</code> (Phases 1–5)</p>
+          <p class="panel__desc">Live checklist mapped to <code>docs/ai/phase-capabilities.md</code> (Phases 1–6)</p>
         </header>
         <div class="coverage-grid" id="phase-coverage-grid" role="list" aria-label="Phase capability checklist">
           <!-- app.js populates -->
@@ -455,6 +518,45 @@
             <p class="config-summary__uptime">
               Gateway uptime: <span class="config-summary__mono" id="gateway-uptime">—</span>
               <span class="config-summary__version" id="gateway-version"></span>
+            </p>
+          </div>
+
+          <div class="push-registration" id="push-registration-panel">
+            <h3 class="push-registration__title">Push registration <span class="phase-tag">P6</span></h3>
+            <p class="push-registration__desc">
+              Optional push-based runner heartbeats — AI-internal only, guarded by
+              <code>X-Internal-Secret</code>. Default is pull-mode health poller.
+            </p>
+            <dl class="push-registration__dl" id="push-registration-dl">
+              <div class="push-registration__row">
+                <dt>Mode</dt>
+                <dd id="push-reg-mode">—</dd>
+              </div>
+              <div class="push-registration__row">
+                <dt>Active registry</dt>
+                <dd id="push-reg-registry">—</dd>
+              </div>
+              <div class="push-registration__row">
+                <dt>Internal endpoints</dt>
+                <dd class="mono" id="push-reg-endpoints">—</dd>
+              </div>
+            </dl>
+            <p class="push-registration__note" id="push-reg-note">—</p>
+          </div>
+
+          <div class="production-hardening" id="production-hardening-panel">
+            <h3 class="production-hardening__title">Production deploy <span class="phase-tag">P6</span></h3>
+            <p class="production-hardening__desc">
+              Docker paths from <code>specs/015-ai-layer-foundation/quickstart.md</code> — gateway is the only
+              client-facing service.
+            </p>
+            <ul class="production-hardening__paths mono" id="production-paths">
+              <li><code>docker build -t aiclinic-gateway -f ai/gateway/Dockerfile ai</code></li>
+              <li><code>cd ai/gateway &amp;&amp; docker compose up -d</code></li>
+              <li><code>docker compose -f ai/runners/ollama/docker-compose.yaml up -d</code></li>
+            </ul>
+            <p class="production-hardening__note">
+              Set <code>log_verbatim: false</code> in production. Runners bind to localhost — not LAN-routable.
             </p>
           </div>
         </div>

@@ -1,3 +1,5 @@
+# Ollama model runner — AI-internal only (FR-010/FR-005/FR-022).
+# Host publish: 127.0.0.1 only. Writable scope: model store volume only.
 services:
   ollama:
     image: ollama/ollama:latest
@@ -6,10 +8,12 @@ services:
       - "127.0.0.1:11434:11434"
     volumes:
       - ollama_models:/root/.ollama
-    # Bind inside the container on all interfaces; host ports below restrict
-    # access to 127.0.0.1 only (AI-internal, not LAN-client-routable).
+    # In-container listen on all interfaces so Docker port-forward reaches the process;
+    # clinic clients cannot reach the runner — host bind above is localhost-only.
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   ollama_models:
