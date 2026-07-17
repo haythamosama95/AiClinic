@@ -15,6 +15,7 @@ class InvoiceListItem {
     required this.paidAmount,
     required this.balance,
     required this.createdAt,
+    required this.currency,
     this.invoiceNumber,
     this.patientDisplayName,
     this.branchCode,
@@ -27,6 +28,7 @@ class InvoiceListItem {
   final InvoiceStatus status;
   final String? patientDisplayName;
   final String? branchCode;
+  final String currency;
   final Money subtotal;
   final Money discountAmount;
   final Money insuranceCoveredAmount;
@@ -68,12 +70,14 @@ class InvoiceListItem {
     final issuedAtRaw = row['issued_at']?.toString();
     final issuedAt = issuedAtRaw == null ? null : DateTime.tryParse(issuedAtRaw);
 
+    final currency = row['currency']?.toString().trim();
     return InvoiceListItem(
       id: id,
       invoiceNumber: row['invoice_number']?.toString(),
       status: status,
       patientDisplayName: row['patient_display_name']?.toString(),
       branchCode: row['branch_code']?.toString(),
+      currency: currency != null && currency.isNotEmpty ? currency.toUpperCase() : 'USD',
       subtotal: subtotal,
       discountAmount: discountAmount,
       insuranceCoveredAmount: insuranceCoveredAmount,
@@ -126,6 +130,7 @@ class InvoiceListItem {
       paidAmount: paidAmount,
       balance: balance,
       createdAt: createdAt,
+      currency: currency,
       invoiceNumber: invoiceNumber,
       patientDisplayName: patientDisplayName,
       branchCode: branchCode,

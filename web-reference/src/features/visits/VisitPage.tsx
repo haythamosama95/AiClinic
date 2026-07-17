@@ -11,6 +11,7 @@ import { FindingsSection } from './sections/FindingsSection'
 import { IntakeSection } from './sections/IntakeSection'
 import { TreatmentSection } from './sections/TreatmentSection'
 import { useVisitForm } from './useVisitForm'
+import { VisitBillingFlow } from './billing/VisitBillingFlow'
 import { VisitCompleted } from './VisitCompleted'
 import { VisitPatientBanner } from './VisitPatientBanner'
 import { VisitSummary } from './VisitSummary'
@@ -24,16 +25,16 @@ export type VisitPageProps = {
 
 export function VisitPage({ patientId, summaryView = 'card', onNavigate }: VisitPageProps) {
   const visit = useVisitForm({ patientId })
-  const { ensureSummary, isSummary, isCompleted, resetVisit } = visit
+  const { ensureSummary, isSummary, isBilling, isCompleted, resetVisit } = visit
   const isChronicle = summaryView === 'chronicle'
   const encounterRoute = patientId ? `encounters/${patientId}` : 'encounters'
   const patientRoute = patientId ? `patients/${patientId}` : undefined
 
   useEffect(() => {
-    if (isChronicle && !isSummary && !isCompleted) {
+    if (isChronicle && !isSummary && !isBilling && !isCompleted) {
       ensureSummary()
     }
-  }, [isChronicle, isSummary, isCompleted, ensureSummary])
+  }, [isChronicle, isSummary, isBilling, isCompleted, ensureSummary])
 
   const handleBackToCard = () => {
     onNavigate?.(encounterRoute)
@@ -48,21 +49,33 @@ export function VisitPage({ patientId, summaryView = 'card', onNavigate }: Visit
     visit.finalizeVisit()
   }
 
+  const handleBillingBack = () => {
+    visit.goBack()
+  }
+
+  const handleBillingComplete = (invoice: Parameters<typeof visit.completeVisit>[0]) => {
+    visit.completeVisit(invoice)
+  }
+
   const pageTitle = isCompleted
     ? 'Visit completed'
-    : isSummary
-      ? isChronicle
-        ? 'Encounter chronicle'
-        : 'Review visit'
-      : 'Document visit'
+    : isBilling
+      ? 'Bill this visit'
+      : isSummary
+        ? isChronicle
+          ? 'Encounter chronicle'
+          : 'Review visit'
+        : 'Document visit'
 
   const pageDescription = isCompleted
     ? `Encounter for ${patientFullName(visit.patient)} has been finalized`
-    : isSummary
-      ? isChronicle
-        ? `Continuous record for ${patientFullName(visit.patient)}`
-        : `Check documentation for ${patientFullName(visit.patient)} before finalizing`
-      : `Record clinical information for ${patientFullName(visit.patient)}`
+    : isBilling
+      ? `Select services and review the invoice for ${patientFullName(visit.patient)}`
+      : isSummary
+        ? isChronicle
+          ? `Continuous record for ${patientFullName(visit.patient)}`
+          : `Check documentation for ${patientFullName(visit.patient)} before finalizing`
+        : `Record clinical information for ${patientFullName(visit.patient)}`
 
   return (
     <>
@@ -70,7 +83,7 @@ export function VisitPage({ patientId, summaryView = 'card', onNavigate }: Visit
         title={pageTitle}
         description={pageDescription}
         actions={
-          !isSummary && !isCompleted ? (
+          !isSummary && !isBilling && !isCompleted ? (
             <Button variant="secondary" size="sm" leadingIcon={<Save size={14} />}>
               Save draft
             </Button>
@@ -79,7 +92,7 @@ export function VisitPage({ patientId, summaryView = 'card', onNavigate }: Visit
       />
 
       <div className="mt-6 space-y-6">
-        {!visit.isSummary && !visit.isCompleted ? (
+        {!visit.isSummary && !visit.isBilling && !visit.isCompleted ? (
           <VisitPatientBanner
             patient={visit.patient}
             currentPhase={visit.phase}
@@ -99,10 +112,25 @@ export function VisitPage({ patientId, summaryView = 'card', onNavigate }: Visit
               <VisitCompleted
                 patient={visit.patient}
                 finalizedAt={visit.finalizedAt}
+                invoice={visit.invoice ?? undefined}
                 onStartNewVisit={handleStartNewVisit}
                 onViewPatient={
                   patientRoute && onNavigate ? () => onNavigate(patientRoute) : undefined
                 }
+              />
+            </motion.div>
+          ) : visit.isBilling ? (
+            <motion.div
+              key="billing"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={resolveTransition({ duration: 'base', ease: 'out' })}
+            >
+              <VisitBillingFlow
+                patient={visit.patient}
+                onBack={handleBillingBack}
+                onComplete={handleBillingComplete}
               />
             </motion.div>
           ) : visit.isSummary ? (

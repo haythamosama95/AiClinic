@@ -6,6 +6,8 @@ import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/features/setup/presentation/providers/staff_assignable_branches_provider.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
+import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submitted_combined_confirmation.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submitted_confirmation_data.dart';
@@ -20,6 +22,8 @@ class VisitSubmittedDialog {
     required VisitDetail visit,
     VisitConfirmationKind kind = VisitConfirmationKind.completed,
     DateTime? actionAt,
+    VisitBillingInvoicePreview? invoicePreview,
+    InvoiceDetail? persistedInvoice,
   }) {
     return AppDialog.show<void>(
       context,
@@ -29,17 +33,31 @@ class VisitSubmittedDialog {
       size: AppDialogSize.lg,
       barrierDismissible: true,
       footer: _VisitSubmittedDialogFooter(visit: visit),
-      child: _VisitSubmittedDialogBody(visit: visit, kind: kind, actionAt: actionAt),
+      child: _VisitSubmittedDialogBody(
+        visit: visit,
+        kind: kind,
+        actionAt: actionAt,
+        invoicePreview: invoicePreview,
+        persistedInvoice: persistedInvoice,
+      ),
     );
   }
 }
 
 class _VisitSubmittedDialogBody extends ConsumerWidget {
-  const _VisitSubmittedDialogBody({required this.visit, required this.kind, this.actionAt});
+  const _VisitSubmittedDialogBody({
+    required this.visit,
+    required this.kind,
+    this.actionAt,
+    this.invoicePreview,
+    this.persistedInvoice,
+  });
 
   final VisitDetail visit;
   final VisitConfirmationKind kind;
   final DateTime? actionAt;
+  final VisitBillingInvoicePreview? invoicePreview;
+  final InvoiceDetail? persistedInvoice;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -67,6 +85,8 @@ class _VisitSubmittedDialogBody extends ConsumerWidget {
             appointmentEnd: fallbackEnd,
             kind: kind,
             actionAt: actionAt,
+            invoicePreview: invoicePreview,
+            persistedInvoice: persistedInvoice,
           ),
         );
       },

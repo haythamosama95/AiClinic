@@ -61,7 +61,6 @@ typedef DevClinicPaymentSeed = ({PaymentMethod method, String amount, String? re
 /// Deterministic billing scenarios for dev clinic seeding.
 abstract final class DevClinicSeedBilling {
   static const scenarios = <DevClinicBillingScenario>[
-    DevClinicBillingScenario.none,
     DevClinicBillingScenario.draftEmpty,
     DevClinicBillingScenario.draftWithItems,
     DevClinicBillingScenario.issuedUnpaid,
@@ -87,23 +86,20 @@ abstract final class DevClinicSeedBilling {
     return scenarios[seedKey % scenarios.length];
   }
 
-  static bool shouldSeedInvoice(DevClinicBillingScenario scenario) => scenario != DevClinicBillingScenario.none;
+  static bool shouldSeedInvoice(DevClinicBillingScenario scenario) => true;
 
   static bool shouldIssue(DevClinicBillingScenario scenario) {
     return switch (scenario) {
       DevClinicBillingScenario.draftEmpty ||
       DevClinicBillingScenario.draftWithItems ||
-      DevClinicBillingScenario.withServiceCatalogItem ||
-      DevClinicBillingScenario.none => false,
+      DevClinicBillingScenario.withServiceCatalogItem => false,
       _ => true,
     };
   }
 
   static bool shouldAddManualItems(DevClinicBillingScenario scenario) {
     return switch (scenario) {
-      DevClinicBillingScenario.draftEmpty ||
-      DevClinicBillingScenario.none ||
-      DevClinicBillingScenario.withServiceCatalogItem => false,
+      DevClinicBillingScenario.draftEmpty || DevClinicBillingScenario.withServiceCatalogItem => false,
       _ => true,
     };
   }

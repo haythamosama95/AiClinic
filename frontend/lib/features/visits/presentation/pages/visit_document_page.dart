@@ -154,6 +154,7 @@ class _VisitDocumentContentViewState extends ConsumerState<_VisitDocumentContent
         final canEdit = docState.canEditWorkspace(permissions.canEditVisitSoap());
         final phaseNotifier = ref.read(encounterActivePhaseProvider(visit.id).notifier);
         final isReview = activePhase == EncounterPhase.review;
+        final isBilling = activePhase == EncounterPhase.billing;
 
         final stepContent = AppStepPanel(
           stepKey: activePhase.name,
@@ -181,17 +182,26 @@ class _VisitDocumentContentViewState extends ConsumerState<_VisitDocumentContent
           child: stepContent,
         );
 
+        final pageTitle = isBilling
+            ? 'Bill this visit'
+            : isReview
+            ? 'Review visit'
+            : 'Visit documentation';
+        final pageDescription = isBilling
+            ? 'Select services and review the invoice for $patientName.'
+            : isReview
+            ? 'Check documentation for $patientName before finalizing.'
+            : 'Document the clinical encounter for this appointment.';
+
         return _VisitDocumentScaffold(
-          title: isReview ? 'Review visit' : 'Visit documentation',
-          description: isReview
-              ? 'Check documentation for $patientName before finalizing.'
-              : 'Document the clinical encounter for this appointment.',
+          title: pageTitle,
+          description: pageDescription,
           patientName: patientName,
           appointmentLabel: appointmentLabel,
           appointmentId: visit.appointmentId,
           patientAgeLabel: patientAgeLabel,
           currentPhase: activePhase,
-          showEncounterHeader: !isReview,
+          showEncounterHeader: !isReview && !isBilling,
           onPhaseSelected: phaseNotifier.setPhase,
           stepBody: stepBody,
         );

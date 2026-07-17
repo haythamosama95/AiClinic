@@ -22,6 +22,7 @@ class VisitEncounterStepContent extends StatelessWidget {
       EncounterPhase.objective => VisitFindingsSection(visitId: visitId, canEdit: canEdit),
       EncounterPhase.plan => VisitTreatmentSection(visitId: visitId, canEdit: canEdit),
       EncounterPhase.review => VisitSummarySection(visitId: visitId),
+      EncounterPhase.billing => VisitEncounterStepPlaceholder(phase: phase),
       EncounterPhase.context => VisitEncounterStepPlaceholder(phase: phase),
     };
   }

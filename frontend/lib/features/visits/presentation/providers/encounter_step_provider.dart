@@ -23,7 +23,7 @@ PhaseCompletionBadge _badgeForPhase(EncounterPhase phase, VisitDocumentationStat
     EncounterPhase.subjective => _subjectiveBadge(state, visit),
     EncounterPhase.objective => _findingsAndDiagnosisBadge(state),
     EncounterPhase.plan => _planBadge(state),
-    EncounterPhase.review || EncounterPhase.context => PhaseCompletionBadge.empty,
+    EncounterPhase.review || EncounterPhase.billing || EncounterPhase.context => PhaseCompletionBadge.empty,
   };
 }
 

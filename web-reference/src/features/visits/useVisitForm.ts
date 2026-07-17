@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { Patient } from '@/data/patients'
 import { MOCK_PATIENTS } from '@/data/patients'
+import type { VisitInvoice } from './billing/types'
 import {
   EMPTY_VISIT_FORM,
   type VisitFormData,
@@ -13,7 +14,7 @@ export const VISIT_PHASES: { id: VisitPhase; label: string; description: string 
   { id: 'treatment', label: 'Treatment', description: 'Plan, prescriptions & files' },
 ]
 
-const PHASE_ORDER: VisitPhase[] = ['intake', 'findings', 'treatment', 'summary', 'completed']
+const PHASE_ORDER: VisitPhase[] = ['intake', 'findings', 'treatment', 'summary', 'billing', 'completed']
 
 export type UseVisitFormOptions = {
   patientId?: string
@@ -29,9 +30,11 @@ export function useVisitForm({ patientId }: UseVisitFormOptions = {}) {
   const [direction, setDirection] = useState(1)
   const [form, setForm] = useState<VisitFormData>(() => seedFromPatient(patient))
   const [finalizedAt, setFinalizedAt] = useState<Date | null>(null)
+  const [invoice, setInvoice] = useState<VisitInvoice | null>(null)
 
   const phaseIndex = PHASE_ORDER.indexOf(phase)
   const isSummary = phase === 'summary'
+  const isBilling = phase === 'billing'
   const isCompleted = phase === 'completed'
 
   const updateForm = useCallback((patch: Partial<VisitFormData>) => {
@@ -50,6 +53,11 @@ export function useVisitForm({ patientId }: UseVisitFormOptions = {}) {
   }, [phase])
 
   const goBack = useCallback(() => {
+    if (phase === 'billing') {
+      setDirection(-1)
+      setPhase('summary')
+      return
+    }
     if (phase === 'summary') {
       setDirection(-1)
       setFinalizedAt(null)
@@ -65,7 +73,7 @@ export function useVisitForm({ patientId }: UseVisitFormOptions = {}) {
 
   const goToPhase = useCallback(
     (target: VisitPhase) => {
-      if (target === 'summary' || target === 'completed') return
+      if (target === 'summary' || target === 'billing' || target === 'completed') return
       const currentIdx = PHASE_ORDER.indexOf(phase === 'summary' ? 'treatment' : phase)
       const targetIdx = PHASE_ORDER.indexOf(target)
       setDirection(targetIdx >= currentIdx ? 1 : -1)
@@ -79,20 +87,31 @@ export function useVisitForm({ patientId }: UseVisitFormOptions = {}) {
     setPhase('summary')
   }, [])
 
-  const finalizeVisit = useCallback(() => {
+  const beginBilling = useCallback(() => {
+    setDirection(1)
+    setPhase('billing')
+  }, [])
+
+  const completeVisit = useCallback((visitInvoice: VisitInvoice) => {
+    setInvoice(visitInvoice)
     setFinalizedAt(new Date())
     setDirection(1)
     setPhase('completed')
   }, [])
+
+  const finalizeVisit = useCallback(() => {
+    beginBilling()
+  }, [beginBilling])
 
   const resetVisit = useCallback(() => {
     setForm(seedFromPatient(patient))
     setPhase('intake')
     setDirection(1)
     setFinalizedAt(null)
+    setInvoice(null)
   }, [patient])
 
-  const progress = isSummary || isCompleted
+  const progress = isSummary || isBilling || isCompleted
     ? 100
     : ((phaseIndex + 1) / (PHASE_ORDER.length - 2)) * 100
 
@@ -101,17 +120,21 @@ export function useVisitForm({ patientId }: UseVisitFormOptions = {}) {
     form,
     updateForm,
     phase,
-    phaseIndex: isSummary || isCompleted ? VISIT_PHASES.length : phaseIndex,
+    phaseIndex: isSummary || isBilling || isCompleted ? VISIT_PHASES.length : phaseIndex,
     direction,
     isSummary,
+    isBilling,
     isCompleted,
     finalizedAt,
+    invoice,
     progress,
     goNext,
     goBack,
     goToPhase,
     resetVisit,
     ensureSummary,
+    beginBilling,
+    completeVisit,
     finalizeVisit,
     canGoBack: phase !== 'intake',
     isLastFormPhase: phase === 'treatment',

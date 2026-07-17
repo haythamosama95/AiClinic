@@ -25,7 +25,6 @@ import 'package:ai_clinic/features/billing/data/payment_repository.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_attachment_service.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
-import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_attachments.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_billing.dart';
 import 'package:ai_clinic/app/shell/dev/dev_clinic_seed_schedule.dart';
@@ -399,7 +398,6 @@ class DevClinicSeedService {
         branchContexts.length *
         DevClinicSeedSpec.patientsPerBranch *
         DevClinicSeedSchedule.appointmentDayOffsets.length;
-    final activeVisitByDoctorBranch = <String, String>{};
 
     for (final branch in branchContexts) {
       for (var patientIndex = 1; patientIndex <= branch.patientIds.length; patientIndex++) {
@@ -412,17 +410,20 @@ class DevClinicSeedService {
           }
 
           final seedKey = patientIndex + dayOffset;
-          final doctorId = _doctorForAppointment(
+          final doctorId = DevClinicSeedSchedule.doctorIdForAppointment(
             primaryDoctorId: branch.primaryDoctorId,
             secondaryDoctorId: branch.secondaryDoctorId,
-            dayOffset: dayOffset,
             patientIndex: patientIndex,
-            seedKey: seedKey,
           );
           final startTime = DevClinicSeedSchedule.appointmentStartUtc(
             timezone: DevClinicSeedSpec.timezone,
             dayOffset: dayOffset,
             patientIndex: patientIndex,
+            referenceUtc: referenceUtc,
+          );
+          final dayRelation = DevClinicSeedSchedule.calendarDayRelationFor(
+            startTimeUtc: startTime,
+            timezone: DevClinicSeedSpec.timezone,
             referenceUtc: referenceUtc,
           );
           final targetStatus = DevClinicSeedSchedule.appointmentStatusFor(
@@ -431,14 +432,10 @@ class DevClinicSeedService {
             seedKey: seedKey,
             referenceUtc: referenceUtc,
           );
-          var effectiveTarget = doctorId == null
-              ? DevClinicSeedSchedule.appointmentTargetWithoutDoctor(targetStatus)
-              : targetStatus;
-          final doctorBranchKey = _doctorBranchKey(branch.branchId, doctorId);
-          effectiveTarget = DevClinicSeedSchedule.resolveTargetForDoctorAvailability(
-            target: effectiveTarget,
-            seedKey: seedKey,
-            doctorAlreadyInProgress: activeVisitByDoctorBranch.containsKey(doctorBranchKey),
+          final doctorLabel = DevClinicSeedSchedule.doctorAssignmentLabel(
+            primaryDoctorId: branch.primaryDoctorId,
+            secondaryDoctorId: branch.secondaryDoctorId,
+            patientIndex: patientIndex,
           );
 
           final created = await _appointments.createAppointment(
@@ -452,20 +449,20 @@ class DevClinicSeedService {
               branchCode: branch.branchCode,
               patientIndex: patientIndex,
               dayOffset: dayOffset,
-              status: effectiveTarget,
+              status: targetStatus,
+              doctorAssignmentLabel: doctorLabel,
             ),
           );
 
-          await _applyAppointmentTarget(
+          await _finalizeSeededAppointment(
             appointmentId: created.appointmentId,
             branchId: branch.branchId,
-            doctorId: doctorId,
-            targetStatus: effectiveTarget,
             branchCode: branch.branchCode,
             patientIndex: patientIndex,
             dayOffset: dayOffset,
             seedKey: seedKey,
-            activeVisitByDoctorBranch: activeVisitByDoctorBranch,
+            targetStatus: targetStatus,
+            dayRelation: dayRelation,
             seededVisits: seededVisits,
           );
         }
@@ -475,47 +472,88 @@ class DevClinicSeedService {
     return seededVisits;
   }
 
-  Future<void> _applyAppointmentTarget({
+  /// Sets the terminal appointment status and optionally creates visit + invoice data.
+  Future<void> _finalizeSeededAppointment({
     required String appointmentId,
     required String branchId,
-    required String? doctorId,
-    required AppointmentStatus targetStatus,
     required String branchCode,
     required int patientIndex,
     required int dayOffset,
     required int seedKey,
-    required Map<String, String> activeVisitByDoctorBranch,
+    required AppointmentStatus targetStatus,
+    required DevClinicSeedCalendarDayRelation dayRelation,
     required List<_SeededVisit> seededVisits,
   }) async {
-    final doctorBranchKey = _doctorBranchKey(branchId, doctorId);
-
-    if (targetStatus == AppointmentStatus.cancelled) {
-      await _appointments.cancelAppointment(
+    if (DevClinicSeedSchedule.requiresVisitAndInvoice(status: targetStatus, relation: dayRelation)) {
+      await _seedCompletedPastAppointment(
         appointmentId: appointmentId,
-        reason: 'Dev seed cancellation for $branchCode patient #$patientIndex.',
+        branchId: branchId,
+        branchCode: branchCode,
+        patientIndex: patientIndex,
+        dayOffset: dayOffset,
+        seedKey: seedKey,
+        seededVisits: seededVisits,
       );
       return;
     }
 
-    if (DevClinicSeedSchedule.requiresInProgressTransition(targetStatus) &&
-        activeVisitByDoctorBranch.containsKey(doctorBranchKey)) {
-      await _releaseDoctorIfOccupied(
-        doctorBranchKey: doctorBranchKey,
-        activeVisitByDoctorBranch: activeVisitByDoctorBranch,
-      );
+    switch (targetStatus) {
+      case AppointmentStatus.scheduled:
+        return;
+      case AppointmentStatus.confirmed:
+        await _appointments.updateAppointmentStatus(
+          appointmentId: appointmentId,
+          newStatus: AppointmentStatus.confirmed,
+        );
+        return;
+      case AppointmentStatus.cancelled:
+        await _appointments.cancelAppointment(
+          appointmentId: appointmentId,
+          reason: 'Dev seed cancellation for $branchCode patient #$patientIndex.',
+        );
+        return;
+      case AppointmentStatus.noShow:
+        await _appointments.markAppointmentNoShow(appointmentId: appointmentId);
+        return;
+      case AppointmentStatus.checkedIn:
+      case AppointmentStatus.inProgress:
+      case AppointmentStatus.completed:
+      case AppointmentStatus.unknown:
+        throw StateError(
+          'Dev seed target status ${targetStatus.label} is not allowed for $dayRelation '
+          '(patient #$patientIndex day $dayOffset).',
+        );
     }
+  }
 
-    for (final status in DevClinicSeedSchedule.advancementPathTo(targetStatus)) {
+  /// Past completed only: advance to in_progress, document visit, complete → completed.
+  Future<void> _seedCompletedPastAppointment({
+    required String appointmentId,
+    required String branchId,
+    required String branchCode,
+    required int patientIndex,
+    required int dayOffset,
+    required int seedKey,
+    required List<_SeededVisit> seededVisits,
+  }) async {
+    for (final status in DevClinicSeedSchedule.completedVisitAppointmentTransitions) {
       await _appointments.updateAppointmentStatus(appointmentId: appointmentId, newStatus: status);
     }
 
-    final documentation = DevClinicSeedSchedule.visitDocumentationFor(status: targetStatus, seedKey: seedKey);
-    if (!DevClinicSeedSchedule.shouldSeedVisit(targetStatus) || documentation == DevClinicVisitDocumentationKind.none) {
-      return;
-    }
-
+    final documentation = DevClinicSeedSchedule.visitDocumentationFor(seedKey: seedKey);
     final visit = await _visits.createVisit(appointmentId: appointmentId);
-    final completing = DevClinicSeedSchedule.shouldCompleteVisit(targetStatus);
+
+    if (DevClinicSeedSchedule.shouldIncludeTreatmentPlan(documentation)) {
+      final treatment = DevClinicSeedSchedule.treatmentPlanFor(branchCode: branchCode, patientIndex: patientIndex);
+      await _visits.createTreatmentPlan(
+        visitId: visit.visitId,
+        medicationName: treatment.medicationName,
+        dosage: treatment.dosage,
+        frequency: treatment.frequency,
+        duration: treatment.duration,
+        notes: treatment.notes,
+      );
+    }
 
     final note = DevClinicSeedSchedule.clinicalNoteContentFor(
       kind: documentation,
@@ -530,20 +568,6 @@ class DevClinicSeedService {
       throw StateError('Visit documentation timestamp missing after create for dev seed.');
     }
 
-    if (completing) {
-      // Treatment plans participate in complete_visit concurrency checks, so create
-      // them before saving documentation to keep saved.updatedAt as the latest token.
-      final treatment = DevClinicSeedSchedule.treatmentPlanFor(branchCode: branchCode, patientIndex: patientIndex);
-      await _visits.createTreatmentPlan(
-        visitId: visit.visitId,
-        medicationName: treatment.medicationName,
-        dosage: treatment.dosage,
-        frequency: treatment.frequency,
-        duration: treatment.duration,
-        notes: treatment.notes,
-      );
-    }
-
     final saved = await _visits.saveVisitDocumentation(
       visitId: visit.visitId,
       expectedUpdatedAt: docUpdatedAt,
@@ -554,21 +578,7 @@ class DevClinicSeedService {
       plan: note.plan.isEmpty ? null : note.plan,
     );
 
-    if (completing) {
-      await _visits.completeVisit(visitId: visit.visitId, expectedUpdatedAt: saved.updatedAt);
-      activeVisitByDoctorBranch.remove(doctorBranchKey);
-      seededVisits.add(
-        _SeededVisit(
-          visitId: visit.visitId,
-          branchId: branchId,
-          branchCode: branchCode,
-          patientIndex: patientIndex,
-          seedKey: seedKey,
-          isCompleted: true,
-        ),
-      );
-      return;
-    }
+    await _visits.completeVisit(visitId: visit.visitId, expectedUpdatedAt: saved.updatedAt);
 
     seededVisits.add(
       _SeededVisit(
@@ -577,13 +587,9 @@ class DevClinicSeedService {
         branchCode: branchCode,
         patientIndex: patientIndex,
         seedKey: seedKey,
-        isCompleted: false,
+        isCompleted: true,
       ),
     );
-
-    if (DevClinicSeedSchedule.leavesDoctorInProgress(status: targetStatus, seedKey: seedKey)) {
-      activeVisitByDoctorBranch[doctorBranchKey] = visit.visitId;
-    }
   }
 
   Future<String> _seedServiceCatalog({
@@ -739,16 +745,10 @@ class DevClinicSeedService {
     }
 
     var invoiceCount = 0;
-    final totalInvoices = completedVisits.where((visit) {
-      return DevClinicSeedBilling.shouldSeedInvoice(DevClinicSeedBilling.scenarioFor(visit.seedKey));
-    }).length;
+    final totalInvoices = completedVisits.length;
 
     for (final visit in completedVisits) {
       final scenario = DevClinicSeedBilling.scenarioFor(visit.seedKey);
-      if (!DevClinicSeedBilling.shouldSeedInvoice(scenario)) {
-        continue;
-      }
-
       invoiceCount++;
       if (invoiceCount == 1 || invoiceCount % 5 == 0 || invoiceCount == totalInvoices) {
         onProgress('Creating visit invoices ($invoiceCount/$totalInvoices)…');
@@ -872,32 +872,6 @@ class DevClinicSeedService {
     }
   }
 
-  static String _doctorBranchKey(String branchId, String? doctorId) {
-    return '$branchId:${doctorId ?? '__unassigned__'}';
-  }
-
-  Future<void> _releaseDoctorIfOccupied({
-    required String doctorBranchKey,
-    required Map<String, String> activeVisitByDoctorBranch,
-  }) async {
-    final visitId = activeVisitByDoctorBranch.remove(doctorBranchKey);
-    if (visitId == null) {
-      return;
-    }
-
-    final detail = await _visits.getVisit(visitId: visitId);
-    if (detail.status != VisitStatus.inProgress) {
-      return;
-    }
-
-    final docUpdatedAt = detail.documentation?.updatedAt ?? detail.updatedAt;
-    if (docUpdatedAt == null) {
-      throw StateError('Visit timestamp missing before complete for dev seed release.');
-    }
-
-    await _visits.completeVisit(visitId: visitId, expectedUpdatedAt: docUpdatedAt);
-  }
-
   Future<void> _assignBootstrapAdminToBranches(String staffMemberId, List<String> branchIds) async {
     final detail = await _staffAdmin.fetchStaffMember(staffMemberId);
     if (detail == null) {
@@ -952,26 +926,6 @@ class DevClinicSeedService {
         ),
       );
     }
-  }
-
-  static String? _doctorForAppointment({
-    required String primaryDoctorId,
-    required String? secondaryDoctorId,
-    required int dayOffset,
-    required int patientIndex,
-    required int seedKey,
-  }) {
-    if (!DevClinicSeedSchedule.shouldAssignDoctorForAppointment(
-      dayOffset: dayOffset,
-      patientIndex: patientIndex,
-      seedKey: seedKey,
-    )) {
-      return null;
-    }
-    if (secondaryDoctorId == null || patientIndex.isEven) {
-      return primaryDoctorId;
-    }
-    return secondaryDoctorId;
   }
 
   static StaffRole _staffRole(DevClinicStaffRole role) {

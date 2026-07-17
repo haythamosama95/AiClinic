@@ -24,6 +24,7 @@ import 'package:ai_clinic/features/appointments/presentation/providers/appointme
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_shift_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/providers/appointment_detail_siblings_provider.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_edit_button.dart';
+import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_invoice_summary_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_detail_open_visit_button.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_motion.dart';
 import 'package:ai_clinic/features/appointments/presentation/widgets/appointment_status_timeline_widget.dart';
@@ -133,6 +134,7 @@ class _AppointmentDetailContentView extends ConsumerWidget {
       patientId: detail.patientId,
       headerActions: [
         AppointmentDetailOpenVisitButton(detail: detail),
+        AppointmentDetailInvoiceSummaryButton(detail: detail),
         AppointmentDetailEditButton(detail: detail),
       ],
       onBack: onBack,
@@ -644,23 +646,43 @@ class _AppointmentDetailScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AppPageHeader(
-          title: title,
-          description: subtitle,
-          breadcrumb: AppBreadcrumb(
-            items: [
-              AppBreadcrumbItem(label: 'Calendar', onTap: () => context.nav.goAppointmentsCalendar()),
-              AppBreadcrumbItem(label: title),
+    final header = AppPageHeader(
+      title: title,
+      description: subtitle,
+      breadcrumb: AppBreadcrumb(
+        items: [
+          AppBreadcrumbItem(label: 'Calendar', onTap: () => context.nav.goAppointmentsCalendar()),
+          AppBreadcrumbItem(label: title),
+        ],
+      ),
+      actions: _buildHeaderActions(context),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final hasBoundedHeight = constraints.maxHeight.isFinite;
+
+        if (!hasBoundedHeight) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              header,
+              const SizedBox(height: AppSpacing.space6),
+              body,
             ],
-          ),
-          actions: _buildHeaderActions(context),
-        ),
-        const SizedBox(height: AppSpacing.space6),
-        Expanded(child: SingleChildScrollView(child: body)),
-      ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            const SizedBox(height: AppSpacing.space6),
+            Expanded(child: SingleChildScrollView(child: body)),
+          ],
+        );
+      },
     );
   }
 }

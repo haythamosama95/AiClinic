@@ -24,8 +24,9 @@ abstract final class ShellDevFillDummyClinic {
       'This completely wipes the server first — organization, branches, staff (except your bootstrap login), '
       'patients, appointments, visits, visit documents, billing invoices, and shifts — then creates one organization, three branches open daily '
       '9 AM–9 PM, eight staff members, doctor shifts for today and the next five days, 16 fully populated patients per branch, '
-      'and appointments for the past two days, today, and the next five days (including visits with clinical notes, treatment '
-      'plans, visit documents in every file-type combination, and billing invoices covering draft through voided statuses). '
+      'and appointments for the past two days, today, and the next five days (past days: 70% completed with visits '
+      'and invoices, 10% no-show, 20% cancelled; today and future: 70% scheduled or confirmed, 30% cancelled — '
+      'no visits or invoices on today or future days). '
       'Your current session stays signed in.';
 
   static Future<void> handleNavSelection(BuildContext context, WidgetRef ref) async {

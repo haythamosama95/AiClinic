@@ -5,18 +5,22 @@ import {
   ClipboardList,
   Pill,
   Printer,
+  Receipt,
   UserRound,
 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Button } from '@/components/actions/Button'
 import { Card } from '@/components/card/Card'
+import { MoneyDisplay } from '@/components/money/MoneyDisplay'
 import type { Patient } from '@/data/patients'
 import { patientFullName } from '@/data/patients'
 import { motionPresets, resolveTransition, staggerChildren } from '@/lib/motion'
+import type { VisitInvoice } from './billing/types'
 
 export type VisitCompletedProps = {
   patient: Patient
   finalizedAt: Date
+  invoice?: VisitInvoice
   onStartNewVisit: () => void
   onViewPatient?: () => void
 }
@@ -51,6 +55,7 @@ function RecordedPhase({
 export function VisitCompleted({
   patient,
   finalizedAt,
+  invoice,
   onStartNewVisit,
   onViewPatient,
 }: VisitCompletedProps) {
@@ -143,6 +148,35 @@ export function VisitCompleted({
                 </motion.div>
               ))}
             </motion.div>
+
+            {invoice ? (
+              <motion.div
+                variants={motionPresets['slide-up'].variants}
+                initial="hidden"
+                animate="visible"
+                transition={{ ...resolveTransition(motionPresets['slide-up']), delay: 0.35 }}
+                className="mt-6 w-full rounded-xl border border-border-subtle bg-surface-sunken/40 px-4 py-4 text-start"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Receipt size={16} className="text-icon-muted" aria-hidden />
+                    <span className="font-mono text-caption uppercase tracking-[0.08em] text-text-secondary">
+                      {invoice.number}
+                    </span>
+                  </div>
+                  <span className="rounded-full bg-status-warning-surface px-2.5 py-0.5 text-[11px] font-medium text-status-warning-fg">
+                    Draft
+                  </span>
+                </div>
+                <div className="mt-3 flex items-baseline justify-between">
+                  <span className="text-body-sm text-text-secondary">
+                    {invoice.lines.length} service{invoice.lines.length === 1 ? '' : 's'}
+                    {invoice.discountAmount > 0 ? ' · Discount applied' : ''}
+                  </span>
+                  <MoneyDisplay amount={invoice.total} emphasis />
+                </div>
+              </motion.div>
+            ) : null}
 
             <div className="mt-8 flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-center">
               {onViewPatient ? (

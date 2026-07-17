@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_invoice_summary_panel.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_submitted_confirmation_data.dart';
 
 /// Post-finalize confirmation combining celebration seal and filing receipt.
@@ -125,6 +126,13 @@ class _VisitSubmittedCombinedConfirmationState extends State<VisitSubmittedCombi
                       visitDateLabel: visitDateLabel,
                       slotLabel: slotLabel,
                     ),
+                    if (widget.data.invoicePreview != null) ...[
+                      const SizedBox(height: AppSpacing.space5),
+                      VisitInvoiceSummaryPanel(
+                        preview: widget.data.invoicePreview,
+                        invoice: widget.data.persistedInvoice,
+                      ),
+                    ],
                   ],
                 ),
               ),

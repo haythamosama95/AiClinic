@@ -44,6 +44,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'insurance_covered_amount': '0',
       'paid_amount': '0',
       'balance': '100.00',
+      'currency': 'USD',
       'created_at': '2026-06-02T10:00:00.000Z',
       'issued_at': '2026-06-02T11:00:00.000Z',
       'payments': [],
@@ -61,6 +62,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'insurance_covered_amount': '0',
       'paid_amount': '80.00',
       'balance': '0.00',
+      'currency': 'USD',
       'created_at': '2026-06-01T10:00:00.000Z',
       'issued_at': '2026-06-01T11:00:00.000Z',
       'payments': [
@@ -88,6 +90,7 @@ class BillingRpcTestClient extends RpcCaptureSupabaseClient {
       'insurance_covered_amount': '0',
       'paid_amount': '0',
       'balance': '60.00',
+      'currency': 'USD',
       'created_at': '2026-06-03T10:00:00.000Z',
       'issued_at': '2026-06-03T11:00:00.000Z',
       'payments': [],

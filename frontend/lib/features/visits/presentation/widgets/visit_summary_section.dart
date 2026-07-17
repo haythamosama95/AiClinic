@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:ai_clinic/app/navigation/app_navigator.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
@@ -69,7 +70,7 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
         return;
       }
 
-      await _finalizeVisit();
+      await _beginBilling();
       return;
     }
 
@@ -86,6 +87,19 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
       return;
     }
     appToast(context, AppToastInput(message: message, variant: variant));
+  }
+
+  Future<void> _beginBilling() async {
+    final permissions = ref.read(permissionServiceProvider);
+    if (!permissions.canCreateInvoices()) {
+      await _finalizeVisit();
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+    context.nav.pushVisitBilling(widget.visitId);
   }
 
   Future<void> _finalizeVisit() async {

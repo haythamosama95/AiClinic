@@ -1,7 +1,7 @@
 import type { ComboboxItem } from '@/components/ui/combobox/Combobox'
 import type { FileItem } from '@/components/ui/file-dropzone/FileDropzone'
 
-export type VisitPhase = 'intake' | 'findings' | 'treatment' | 'summary' | 'completed'
+export type VisitPhase = 'intake' | 'findings' | 'treatment' | 'summary' | 'billing' | 'completed'
 
 export type VitalSignDefinition = {
   id: string

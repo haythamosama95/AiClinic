@@ -93,7 +93,9 @@ abstract final class ShellNavConfig {
 
   /// Routes whose content should fill the shell viewport (no outer scroll).
   static bool isFillViewportLocation(String location) {
-    return location == AppRoutes.appointmentsCalendar;
+    return location == AppRoutes.appointmentsCalendar ||
+        location == AppRoutes.billing ||
+        location.startsWith('${AppRoutes.billing}/');
   }
 
   static DevSection devSectionForUri(Uri uri) {

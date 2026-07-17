@@ -33,6 +33,16 @@ void main() {
     });
   });
 
+  group('ShellNavConfig.isFillViewportLocation', () {
+    test('billing routes fill the shell viewport', () {
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billing), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoices), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingInvoiceDetail('inv-1')), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.billingVisit('visit-1')), isTrue);
+      expect(ShellNavConfig.isFillViewportLocation(AppRoutes.patients), isFalse);
+    });
+  });
+
   group('LoginQueryParams', () {
     test('forgot-password intent redirect preserves query contract', () {
       expect(

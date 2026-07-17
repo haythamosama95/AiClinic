@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
+import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 
 /// Whether the confirmation celebrates a first-time finalize or a post-submit edit.
@@ -40,6 +42,8 @@ class VisitSubmittedConfirmationData {
     required this.branchName,
     this.kind = VisitConfirmationKind.completed,
     this.actionAt,
+    this.invoicePreview,
+    this.persistedInvoice,
   });
 
   final String patientName;
@@ -51,6 +55,8 @@ class VisitSubmittedConfirmationData {
   final String branchName;
   final VisitConfirmationKind kind;
   final DateTime? actionAt;
+  final VisitBillingInvoicePreview? invoicePreview;
+  final InvoiceDetail? persistedInvoice;
 
   DateTime get displayTimestamp => actionAt ?? visitDate;
 
@@ -62,6 +68,8 @@ class VisitSubmittedConfirmationData {
     required DateTime appointmentEnd,
     VisitConfirmationKind kind = VisitConfirmationKind.completed,
     DateTime? actionAt,
+    VisitBillingInvoicePreview? invoicePreview,
+    InvoiceDetail? persistedInvoice,
   }) {
     return VisitSubmittedConfirmationData(
       patientName: patientName,
@@ -73,6 +81,8 @@ class VisitSubmittedConfirmationData {
       branchName: branchName,
       kind: kind,
       actionAt: actionAt,
+      invoicePreview: invoicePreview,
+      persistedInvoice: persistedInvoice,
     );
   }
 }

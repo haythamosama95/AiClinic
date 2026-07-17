@@ -74,6 +74,11 @@ class VisitEncounterStepPlaceholder extends StatelessWidget {
         title: 'Summary',
         description: 'Review the completed encounter before finishing the visit.',
       ),
+      EncounterPhase.billing => const _StepCopy(
+        icon: Icons.receipt_long_outlined,
+        title: 'Billing',
+        description: 'Select services, review charges, and finalize the invoice for this visit.',
+      ),
     };
   }
 }

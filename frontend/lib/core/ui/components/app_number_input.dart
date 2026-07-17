@@ -69,8 +69,13 @@ class _AppNumberInputState extends State<AppNumberInput> {
   @override
   void didUpdateWidget(covariant AppNumberInput oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_ownsController && widget.initialValue != oldWidget.initialValue && widget.initialValue != null) {
-      _controller.text = _formatValue(widget.initialValue);
+    // Keep local edits while focused — syncing initialValue on every parent rebuild
+    // resets the controller and selects all text, which breaks typed input.
+    if (_ownsController && !_focusNode.hasFocus && widget.initialValue != oldWidget.initialValue) {
+      final text = _formatValue(widget.initialValue);
+      if (_controller.text != text) {
+        _controller.text = text;
+      }
     }
   }
 

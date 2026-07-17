@@ -277,6 +277,7 @@ DECLARE
   v_second_list_id uuid;
   v_side_visit uuid;
   v_side_invoice uuid;
+  v_currency text;
   v_visit_void uuid;
   v_invoice_void_issued uuid;
   v_invoice_void_partial uuid;
@@ -1447,8 +1448,17 @@ BEGIN
     v_org_id,
     format('%s,%s', v_branch_main, v_branch_no_code)
   );
+  PERFORM set_config('role', 'postgres', true);
+  UPDATE public.organizations SET currency_code = 'EGP' WHERE id = v_org_id;
+  PERFORM set_config('role', 'authenticated', true);
   v_result := public.create_invoice_from_visit(v_side_visit);
   v_side_invoice := (v_result.data ->> 'invoice_id')::uuid;
+  SELECT currency INTO v_currency FROM public.invoices WHERE id = v_side_invoice;
+  PERFORM pg_temp.billing_crud_record(
+    'create_invoice_uses_organization_currency',
+    v_currency = 'EGP',
+    COALESCE(v_currency, 'null')
+  );
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_side_invoice;
   v_result := public.add_invoice_item(v_side_invoice, v_updated_at, 'Side branch visit', 1, 60.00);
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_side_invoice;
@@ -1465,7 +1475,8 @@ BEGIN
       AND jsonb_array_length(v_list.data -> 'items') >= 1
       AND (v_list.data -> 'items' -> 0 ->> 'patient_display_name') IS NOT NULL
       AND (v_list.data -> 'items' -> 0 ->> 'balance') IS NOT NULL
-      AND (v_list.data -> 'items' -> 0 ->> 'paid_amount') IS NOT NULL,
+      AND (v_list.data -> 'items' -> 0 ->> 'paid_amount') IS NOT NULL
+      AND (v_list.data -> 'items' -> 0 ->> 'currency') IS NOT NULL,
     jsonb_array_length(v_list.data -> 'items')::text
   );
 

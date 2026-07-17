@@ -97,6 +97,7 @@ void main() {
         'insurance_covered_amount': '0.00',
         'paid_amount': '40.00',
         'balance': '60.00',
+        'currency': 'EGP',
         'created_at': '2026-06-01T10:00:00.000Z',
         'payments': [
           {
@@ -111,6 +112,7 @@ void main() {
 
       expect(item, isNotNull);
       expect(item!.payments, hasLength(1));
+      expect(item.currency, 'EGP');
       expect(item.payments.first.method, PaymentMethod.cash);
       expect(item.payments.first.amount.wireValue, '40.00');
     });
