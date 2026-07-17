@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_step_placeholder.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_findings_section.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_intake_section.dart';
 
 /// Phase-specific body for the encounter documentation workspace.
@@ -16,7 +17,7 @@ class VisitEncounterStepContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (phase) {
       EncounterPhase.subjective => VisitIntakeSection(visitId: visitId, canEdit: canEdit),
-      EncounterPhase.objective ||
+      EncounterPhase.objective => VisitFindingsSection(visitId: visitId, canEdit: canEdit),
       EncounterPhase.plan ||
       EncounterPhase.context ||
       EncounterPhase.review => VisitEncounterStepPlaceholder(phase: phase),

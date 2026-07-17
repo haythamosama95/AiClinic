@@ -30,7 +30,7 @@ class VisitEncounterHeader extends StatelessWidget {
         border: Border.all(color: colors.borderDefault),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space5, vertical: AppSpacing.space4),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isCompact = constraints.maxWidth < 720;
@@ -40,9 +40,9 @@ class VisitEncounterHeader extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _PatientIdentity(patientName: patientName, patientAgeLabel: patientAgeLabel),
-                  const SizedBox(height: AppSpacing.space4),
+                  const SizedBox(height: AppSpacing.space3),
                   const AppDivider(),
-                  const SizedBox(height: AppSpacing.space4),
+                  const SizedBox(height: AppSpacing.space3),
                   Center(
                     child: VisitEncounterStepRail(currentPhase: currentPhase, onPhaseSelected: onPhaseSelected),
                   ),
@@ -54,9 +54,9 @@ class VisitEncounterHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 _PatientIdentity(patientName: patientName, patientAgeLabel: patientAgeLabel),
-                const SizedBox(width: AppSpacing.space5),
-                const SizedBox(height: 48, child: AppDivider(orientation: DividerOrientation.vertical)),
-                const SizedBox(width: AppSpacing.space5),
+                const SizedBox(width: AppSpacing.space4),
+                const SizedBox(height: 40, child: AppDivider(orientation: DividerOrientation.vertical)),
+                const SizedBox(width: AppSpacing.space4),
                 Expanded(
                   child: Center(
                     child: VisitEncounterStepRail(currentPhase: currentPhase, onPhaseSelected: onPhaseSelected),
@@ -84,8 +84,8 @@ class _PatientIdentity extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AppAvatar(name: patientName, size: AvatarSize.lg),
-        const SizedBox(width: AppSpacing.space3),
+        AppAvatar(name: patientName, size: AvatarSize.md),
+        const SizedBox(width: AppSpacing.space2),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,

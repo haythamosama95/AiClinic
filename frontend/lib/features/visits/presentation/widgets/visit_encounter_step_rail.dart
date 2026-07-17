@@ -15,7 +15,7 @@ class VisitEncounterStepRail extends StatelessWidget {
   final EncounterPhase currentPhase;
   final ValueChanged<EncounterPhase>? onPhaseSelected;
 
-  static const double _indicatorSize = 36;
+  static const double _indicatorSize = 32;
 
   @override
   Widget build(BuildContext context) {
@@ -118,18 +118,18 @@ class _EncounterStepItem extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         stepIcon,
-        const SizedBox(height: AppSpacing.space2),
+        const SizedBox(height: AppSpacing.space1),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space1),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space05),
           child: Text(
             phase.label,
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.bodySm(context).copyWith(
+            style: AppTypography.caption(context).copyWith(
               fontWeight: state == AppStepState.current ? FontWeight.w600 : FontWeight.w500,
               color: labelColor,
-              height: 1.25,
+              height: 1.2,
             ),
           ),
         ),
@@ -199,8 +199,8 @@ class _EncounterStepIndicator extends StatelessWidget {
       decoration: decoration,
       alignment: Alignment.center,
       child: state == AppStepState.complete
-          ? Icon(Icons.check, size: 16, color: foreground)
-          : Icon(icon, size: 18, color: foreground),
+          ? Icon(Icons.check, size: 14, color: foreground)
+          : Icon(icon, size: 16, color: foreground),
     );
   }
 }
