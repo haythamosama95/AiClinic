@@ -55,14 +55,6 @@ class HealthPoller:
                 if entry is None:
                     continue
                 result = await poll_runner(entry.base_url, client=client)
-                counters = LifecycleCounters(consecutive_failures=entry.consecutive_failures)
-                next_state = transition(
-                    entry.status,
-                    result.outcome,
-                    counters,
-                    self._config.unreachable_after_failures,
-                    has_loaded_model=result.loaded_model is not None,
-                )
 
                 avg_latency = entry.avg_latency_ms
                 if result.latency_ms is not None:
@@ -71,6 +63,28 @@ class HealthPoller:
                     else:
                         avg_latency = (avg_latency + result.latency_ms) / 2.0
                     observe_runner_latency(runner_id, result.latency_ms / 1000.0)
+
+                baseline_latency: float | None = None
+                if entry.status in (
+                    RunnerStatus.READY,
+                    RunnerStatus.DEGRADED,
+                    RunnerStatus.BUSY,
+                ):
+                    baseline_latency = entry.avg_latency_ms or entry.last_latency_ms
+
+                counters = LifecycleCounters(consecutive_failures=entry.consecutive_failures)
+                next_state = transition(
+                    entry.status,
+                    result.outcome,
+                    counters,
+                    self._config.unreachable_after_failures,
+                    has_loaded_model=result.loaded_model is not None,
+                    latency_ms=result.latency_ms,
+                    avg_latency_ms=avg_latency,
+                    in_flight=entry.in_flight,
+                    max_inflight=1,
+                    baseline_latency_ms=baseline_latency,
+                )
 
                 set_runner_health(
                     runner_id,

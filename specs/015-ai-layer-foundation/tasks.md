@@ -127,17 +127,17 @@ honesty, PHI-redaction). Test tasks are therefore first-class, not optional.
 
 > Write these tests FIRST and confirm they FAIL before implementation.
 
-- [ ] T036 [P] [US3] Registry/failover integration test using `fake_runner` to walk the full lifecycle (incl. DEGRADED/BUSY/recovery) and assert `/ready` flips 503 when all UNREACHABLE and recovers, in `ai/gateway/tests/contract/test_registry_failover.py` (SC-003, FR-025)
-- [ ] T037 [P] [US3] Selector unit tests: capability match (required), health filter (READY preferred, DEGRADED deprioritized, exclude STARTING/UNREACHABLE), least-busy with round-robin tie-break, in `ai/gateway/tests/unit/test_selector.py` (FR-026/FR-027)
-- [ ] T038 [P] [US3] Capabilities-mirror contract test asserting `/v1/capabilities` matches the live registry (per-runner status/model/digest/features/context) with empty `tasks`/`commands`, in `ai/gateway/tests/contract/test_capabilities.py` (SC-006/SC-011)
-- [ ] T039 [P] [US3] Generate-stub contract test asserting `POST /v1/ai/generate` always returns 501 `not_implemented` and performs zero inference, in `ai/gateway/tests/contract/test_generate_stub.py` (SC-011, FR-031)
+- [X] T036 [P] [US3] Registry/failover integration test using `fake_runner` to walk the full lifecycle (incl. DEGRADED/BUSY/recovery) and assert `/ready` flips 503 when all UNREACHABLE and recovers, in `ai/gateway/tests/contract/test_registry_failover.py` (SC-003, FR-025)
+- [X] T037 [P] [US3] Selector unit tests: capability match (required), health filter (READY preferred, DEGRADED deprioritized, exclude STARTING/UNREACHABLE), least-busy with round-robin tie-break, in `ai/gateway/tests/unit/test_selector.py` (FR-026/FR-027)
+- [X] T038 [P] [US3] Capabilities-mirror contract test asserting `/v1/capabilities` matches the live registry (per-runner status/model/digest/features/context) with empty `tasks`/`commands`, in `ai/gateway/tests/contract/test_capabilities.py` (SC-006/SC-011)
+- [X] T039 [P] [US3] Generate-stub contract test asserting `POST /v1/ai/generate` always returns 501 `not_implemented` and performs zero inference, in `ai/gateway/tests/contract/test_generate_stub.py` (SC-011, FR-031)
 
 ### Implementation for User Story 3
 
-- [ ] T040 [US3] Extend `ai/gateway/src/gateway/routing/lifecycle.py` with the remaining edges (READY↔BUSY, READY↔DEGRADED on elevated latency/sporadic errors, DEGRADED→UNREACHABLE, UNREACHABLE→STARTING recovery) (FR-025, data-model §3)
-- [ ] T041 [US3] Implement runner selection (capability match → health filter → least-busy + round-robin tie-break; clients cannot select runner addresses) in `ai/gateway/src/gateway/routing/selector.py` (FR-026/FR-027/FR-028)
-- [ ] T042 [US3] Implement `GET /v1/capabilities` and the report builder that mirrors the registry with `tasks:[]`/`commands:[]` while generation is stubbed in `ai/gateway/src/gateway/api/capabilities.py` (FR-029/FR-031)
-- [ ] T043 [US3] Implement the `POST /v1/ai/generate` stub returning 501 `not_implemented` (no inference) in `ai/gateway/src/gateway/api/generate_stub.py` (FR-031)
+- [X] T040 [US3] Extend `ai/gateway/src/gateway/routing/lifecycle.py` with the remaining edges (READY↔BUSY, READY↔DEGRADED on elevated latency/sporadic errors, DEGRADED→UNREACHABLE, UNREACHABLE→STARTING recovery) (FR-025, data-model §3)
+- [X] T041 [US3] Implement runner selection (capability match → health filter → least-busy + round-robin tie-break; clients cannot select runner addresses) in `ai/gateway/src/gateway/routing/selector.py` (FR-026/FR-027/FR-028)
+- [X] T042 [US3] Implement `GET /v1/capabilities` and the report builder that mirrors the registry with `tasks:[]`/`commands:[]` while generation is stubbed in `ai/gateway/src/gateway/api/capabilities.py` (FR-029/FR-031)
+- [X] T043 [US3] Implement the `POST /v1/ai/generate` stub returning 501 `not_implemented` (no inference) in `ai/gateway/src/gateway/api/generate_stub.py` (FR-031)
 
 **Checkpoint**: All user stories are independently functional — the control plane discovers, monitors, routes (in test), and advertises capabilities.
 

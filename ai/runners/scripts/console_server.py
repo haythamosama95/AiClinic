@@ -23,7 +23,9 @@ OLLAMA_COMPOSE = SCRIPTS_DIR / "ollama_compose.sh"
 DEFAULT_HOST = os.environ.get("RUNNER_CONSOLE_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("RUNNER_CONSOLE_PORT", "11435"))
 OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://127.0.0.1:8090").rstrip("/")
 OLLAMA_PROXY_PREFIX = "/api/runner"
+GATEWAY_PROXY_PREFIX = "/api/gateway"
 _HOP_BY_HOP_HEADERS = frozenset(
     {
         "connection",
@@ -230,6 +232,43 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         finally:
             upstream.close()
 
+    def _proxy_to_gateway(self, method: str, upstream_path: str) -> None:
+        url = f"{GATEWAY_URL}{upstream_path}"
+
+        body: bytes | None = None
+        if method in {"POST", "PUT", "PATCH"}:
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length) if length > 0 else None
+
+        req = urllib.request.Request(url, data=body, method=method)
+        for header in ("Content-Type", "Accept", "Authorization"):
+            if header in self.headers:
+                req.add_header(header, self.headers[header])
+
+        try:
+            upstream = urllib.request.urlopen(req, timeout=30)
+        except urllib.error.HTTPError as exc:
+            upstream = exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            self._send_json(
+                HTTPStatus.BAD_GATEWAY,
+                {"error": f"Gateway unreachable at {GATEWAY_URL}: {exc}"},
+            )
+            return
+
+        try:
+            payload = upstream.read()
+            content_type = upstream.headers.get("Content-Type", "application/json")
+            self.send_response(upstream.status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except BrokenPipeError:
+            pass
+        finally:
+            upstream.close()
+
     def _serve_static(self) -> None:
         rel = self.path.split("?", 1)[0]
         if rel in ("", "/"):
@@ -254,6 +293,9 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         if self.path == "/api/runtime":
             self._send_json(HTTPStatus.OK, runtime_status())
             return
+        if self.path == "/api/gateway/capabilities":
+            self._proxy_to_gateway("GET", "/v1/capabilities")
+            return
         if self.path.startswith(OLLAMA_PROXY_PREFIX):
             self._proxy_to_ollama("GET")
             return
@@ -262,6 +304,9 @@ class ConsoleHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if self.path.startswith(OLLAMA_PROXY_PREFIX):
             self._proxy_to_ollama("POST")
+            return
+        if self.path == "/api/gateway/auto-sign-in":
+            self._proxy_to_gateway("POST", "/v1/dashboard/auto-sign-in")
             return
         if self.path == "/api/runtime/gpu":
             try:
@@ -296,6 +341,7 @@ def main() -> None:
     print(f"==> AI Model Runner console on http://{DEFAULT_HOST}:{DEFAULT_PORT}")
     print(f"    Ollama API: {OLLAMA_URL} ({ollama_state})")
     print(f"    GPU mode: {gpu_line}")
+    print(f"    Gateway API: {GATEWAY_URL} (proxy /api/gateway/capabilities)")
     print("    Gateway dashboard: http://localhost:8090/dashboard")
     print("    Press Ctrl+C to stop")
     print()

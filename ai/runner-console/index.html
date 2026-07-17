@@ -133,6 +133,70 @@
         </div>
       </section>
 
+      <!-- Gateway discovery (Phase 5) -->
+      <section class="panel panel--gateway" id="gateway-panel" aria-labelledby="gateway-heading">
+        <header class="panel__header panel__header--split">
+          <div>
+            <h2 class="panel__title" id="gateway-heading">Gateway discovery</h2>
+            <p class="panel__desc">How this runner appears in <code>GET /v1/capabilities</code> · Phase 5 routing</p>
+          </div>
+          <span class="panel__count mono" id="gateway-capabilities-fetched" aria-live="polite">—</span>
+        </header>
+
+        <div class="gateway-layout">
+          <div class="gateway-config">
+            <label class="field">
+              <span class="field__label">Runner ID (gateway.yaml)</span>
+              <input type="text" class="field__input mono" id="gateway-runner-id" value="ollama-local"
+                spellcheck="false" autocomplete="off">
+            </label>
+            <label class="field">
+              <span class="field__label">Declared capabilities</span>
+              <input type="text" class="field__input mono" id="gateway-declared-caps" value="json_grammar"
+                spellcheck="false" autocomplete="off" placeholder="comma-separated">
+            </label>
+            <label class="field field--wide">
+              <span class="field__label">Gateway JWT <span class="field__hint">optional — for live fetch</span></span>
+              <input type="password" class="field__input mono" id="gateway-jwt-input" spellcheck="false"
+                autocomplete="off" placeholder="Bearer token or use auto sign-in">
+            </label>
+            <div class="gateway-config__actions">
+              <button type="button" class="btn btn--primary" id="gateway-fetch-btn">Fetch capabilities</button>
+              <button type="button" class="btn btn--ghost" id="gateway-auto-sign-in-btn">Dev auto sign-in</button>
+            </div>
+            <p class="gateway-config__message mono" id="gateway-fetch-message" role="status" aria-live="polite"></p>
+          </div>
+
+          <div class="gateway-routing-note">
+            <h3 class="gateway-routing-note__title">Routing selection</h3>
+            <ol class="gateway-routing-note__steps">
+              <li>Capability match — runner must declare required capabilities</li>
+              <li>Health filter — prefer <code>READY</code>, deprioritize <code>DEGRADED</code>; exclude
+                <code>STARTING</code>/<code>UNREACHABLE</code></li>
+              <li>Least-busy + round-robin tie-break among eligible runners</li>
+            </ol>
+            <p class="gateway-routing-note__body">
+              Lifecycle states: <code>UNKNOWN</code> → <code>STARTING</code> → <code>READY</code> /
+              <code>BUSY</code> → <code>DEGRADED</code> → <code>UNREACHABLE</code>. When every runner is
+              unreachable, gateway <code>GET /ready</code> returns <code>503 ai_no_capacity</code>.
+            </p>
+          </div>
+
+          <div class="gateway-preview-grid">
+            <article class="gateway-preview-card">
+              <h3 class="gateway-preview-card__title">Local preview</h3>
+              <p class="gateway-preview-card__desc">Derived from this console’s <code>/v1/models</code> probe</p>
+              <pre class="gateway-preview-card__body mono" id="gateway-local-preview" tabindex="0">—</pre>
+            </article>
+            <article class="gateway-preview-card">
+              <h3 class="gateway-preview-card__title">Live gateway report</h3>
+              <p class="gateway-preview-card__desc">Proxied <code>GET /v1/capabilities</code> (JWT required)</p>
+              <pre class="gateway-preview-card__body mono" id="gateway-live-capabilities" tabindex="0">—</pre>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <div class="inference-workspace" id="inference-workspace">
         <div class="workspace-trace" aria-hidden="true"></div>
 

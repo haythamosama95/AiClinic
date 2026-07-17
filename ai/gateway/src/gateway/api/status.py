@@ -17,7 +17,7 @@ from gateway.routing.registry import LoadedModel, RunnerRegistry, RunnerRegistry
 router = APIRouter(prefix="/v1", tags=["status"])
 
 _GATEWAY_VERSION = "0.1.0"
-_PHASE_ACTIVE = 4
+_PHASE_ACTIVE = 5
 
 
 def _serialize_datetime(value: datetime | None) -> str | None:
@@ -137,8 +137,8 @@ def _endpoint_catalog(
         )
     entries.extend(
         [
-            {"path": "/v1/capabilities", "method": "GET", "phase": 5, "available": False},
-            {"path": "/v1/ai/generate", "method": "POST", "phase": 5, "available": False},
+            {"path": "/v1/capabilities", "method": "GET", "phase": 5, "available": True},
+            {"path": "/v1/ai/generate", "method": "POST", "phase": 5, "available": True},
         ]
     )
     return entries

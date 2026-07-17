@@ -18,7 +18,7 @@
         <div class="hero__identity">
           <p class="hero__eyebrow">AiClinic · Gateway</p>
           <h1 class="hero__title">Control Plane</h1>
-          <p class="hero__subtitle">Phases 1–4 · health spine, runner registry &amp; JWT auth</p>
+          <p class="hero__subtitle">Phases 1–5 · health spine, registry, auth &amp; capabilities</p>
         </div>
 
         <div class="hero__status-bar">
@@ -149,6 +149,10 @@
             <li class="lifecycle-node lifecycle-node--primary" data-state="READY" id="lifecycle-ready">
               <span class="lifecycle-node__ring"></span>
               <span class="lifecycle-node__label">Ready</span>
+            </li>
+            <li class="lifecycle-node" data-state="BUSY" id="lifecycle-busy">
+              <span class="lifecycle-node__ring"></span>
+              <span class="lifecycle-node__label">Busy</span>
             </li>
             <li class="lifecycle-node" data-state="DEGRADED" id="lifecycle-degraded">
               <span class="lifecycle-node__ring"></span>
@@ -281,7 +285,7 @@
       <section class="panel panel--coverage" id="phase-coverage-panel" aria-labelledby="coverage-heading">
         <header class="panel__header">
           <h2 class="panel__title" id="coverage-heading">Phase coverage</h2>
-          <p class="panel__desc">Live checklist mapped to <code>docs/ai/phase-capabilities.md</code> (Phases 1–4)</p>
+          <p class="panel__desc">Live checklist mapped to <code>docs/ai/phase-capabilities.md</code> (Phases 1–5)</p>
         </header>
         <div class="coverage-grid" id="phase-coverage-grid" role="list" aria-label="Phase capability checklist">
           <!-- app.js populates -->
@@ -456,25 +460,86 @@
         </div>
       </section>
 
-      <!-- Phase-gated future panels -->
-      <section class="panel panel--future" id="capabilities-section" data-phase-section="capabilities-section"
-        aria-labelledby="capabilities-heading" aria-hidden="true">
-        <header class="panel__header">
-          <h2 class="panel__title" id="capabilities-heading">Capabilities</h2>
-          <p class="panel__desc">Live runner model discovery · Phase 5</p>
+      <!-- Phase 5 — Capabilities mirror -->
+      <section class="panel panel--future panel--capabilities" id="capabilities-section"
+        data-phase-section="capabilities-section" aria-labelledby="capabilities-heading" aria-hidden="true" hidden>
+        <header class="panel__header panel__header--split">
+          <div>
+            <h2 class="panel__title" id="capabilities-heading">Capabilities</h2>
+            <p class="panel__desc">Live registry mirror from <code>GET /v1/capabilities</code> · Phase 5</p>
+          </div>
+          <span class="panel__count mono" id="capabilities-fetched-at" aria-live="polite">—</span>
         </header>
-        <p class="empty-state__body" id="capabilities-placeholder">Probes <code>/v1/capabilities</code> when Phase 5
-          ships.</p>
+
+        <div class="capabilities-layout">
+          <div class="capabilities-meta" id="capabilities-meta">
+            <article class="capabilities-meta__card">
+              <span class="capabilities-meta__label">Schema</span>
+              <span class="capabilities-meta__value mono" id="capabilities-schema">—</span>
+            </article>
+            <article class="capabilities-meta__card">
+              <span class="capabilities-meta__label">Streaming</span>
+              <span class="capabilities-meta__value" id="capabilities-streaming">—</span>
+            </article>
+            <article class="capabilities-meta__card">
+              <span class="capabilities-meta__label">Runners</span>
+              <span class="capabilities-meta__value" id="capabilities-runner-count">—</span>
+            </article>
+          </div>
+
+          <div class="capabilities-stub-grid">
+            <article class="capabilities-stub" id="capabilities-tasks-stub">
+              <h3 class="capabilities-stub__title">Tasks <span class="stub-tag">stubbed</span></h3>
+              <p class="capabilities-stub__body" id="capabilities-tasks-body">—</p>
+            </article>
+            <article class="capabilities-stub" id="capabilities-commands-stub">
+              <h3 class="capabilities-stub__title">Commands <span class="stub-tag">stubbed</span></h3>
+              <p class="capabilities-stub__body" id="capabilities-commands-body">—</p>
+            </article>
+          </div>
+
+          <div class="capabilities-runners-wrap">
+            <h3 class="capabilities-runners__title">Runners in registry</h3>
+            <div class="empty-state empty-state--compact" id="capabilities-runners-empty" hidden>
+              <p class="empty-state__body">No runners in capabilities report — check gateway config.</p>
+            </div>
+            <div class="capabilities-runners" id="capabilities-runners" role="list" aria-label="Capability runners">
+            </div>
+          </div>
+
+          <details class="capabilities-raw" id="capabilities-raw-details">
+            <summary class="capabilities-raw__summary">Raw JSON</summary>
+            <pre class="capabilities-raw__body mono" id="capabilities-raw" tabindex="0">—</pre>
+          </details>
+        </div>
       </section>
 
-      <section class="panel panel--future" id="generate-section" data-phase-section="generate-section"
-        aria-labelledby="generate-heading" aria-hidden="true">
+      <!-- Phase 5 — Generate stub -->
+      <section class="panel panel--future panel--generate" id="generate-section" data-phase-section="generate-section"
+        aria-labelledby="generate-heading" aria-hidden="true" hidden>
         <header class="panel__header">
-          <h2 class="panel__title" id="generate-heading">Generate</h2>
-          <p class="panel__desc">Inference stub · Phase 5</p>
+          <h2 class="panel__title" id="generate-heading">Generate stub</h2>
+          <p class="panel__desc"><code>POST /v1/ai/generate</code> is feature-detectable only — always
+            <code>501 not_implemented</code> (no inference)</p>
         </header>
-        <p class="empty-state__body" id="generate-placeholder">Enables when <code>POST /v1/ai/generate</code> stops
-          returning 501.</p>
+
+        <div class="generate-layout">
+          <p class="generate-note" id="generate-note">
+            Use this probe to confirm the route exists and returns the uniform error envelope. Real generation arrives in
+            feature 016.
+          </p>
+          <div class="generate-actions">
+            <button type="button" class="btn btn--try" id="generate-test-btn">Test generate (expect 501)</button>
+          </div>
+          <div class="response-panel generate-response" id="generate-response-panel" hidden>
+            <header class="response-panel__header">
+              <span class="response-panel__status" id="generate-response-status">—</span>
+              <span class="response-panel__path">POST /v1/ai/generate</span>
+              <span class="response-panel__request-id mono" id="generate-response-request-id" hidden></span>
+            </header>
+            <pre class="response-panel__body" id="generate-response-body" tabindex="0"></pre>
+          </div>
+        </div>
       </section>
     </main>
 

@@ -186,9 +186,11 @@ The control plane dashboard (`/dashboard`) stores a staff JWT in `localStorage` 
 
 ---
 
-## Feature 015 — Phase 5: US3 — Discovery, routing & capabilities ⏳ NOT STARTED
+## Feature 015 — Phase 5: US3 — Discovery, routing & capabilities ✅
 
 **Goal:** Full lifecycle edges, capability→health→least-busy selector, `/v1/capabilities`, generate stub (`501`).
+
+**Web UI:** Phase 5 is wired in the control-plane dashboard (`/dashboard` — Capabilities & Generate panels) and runner console (`/runner-console` — gateway discovery).
 
 ### Pending tasks (from `tasks.md`)
 
@@ -538,17 +540,14 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8090/v1/status | jq .
 curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8090/v1/runners/ollama-local/models | jq .
 ```
 
-**Expect for `/v1/status`:** gateway version `0.1.0`, `phase_active: 4`, runner list with status and
+**Expect for `/v1/status`:** gateway version `0.1.0`, `phase_active: 5`, runner list with status and
 loaded model — **no secrets** (`jwt_secret`, etc. are never included).
 
 ### What is NOT available yet (do not expect these to work)
 
 | Action | Result today |
 | --- | --- |
-| `GET /v1/capabilities` | **404** — not implemented (Phase 5) |
-| `POST /v1/ai/generate` | **404** — not implemented (Phase 5 stub) |
 | AI chat in the Flutter app | Not built |
-| Dashboard Capabilities panel (live data) | Placeholder only until Phase 5 |
 | Generate via Gateway with auth/logging | Not until feature 016 |
 
 ### Dev-only: talk to Ollama directly (bypasses Gateway)

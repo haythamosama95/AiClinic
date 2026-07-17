@@ -10,6 +10,10 @@ const STORAGE_MODEL = 'runner_console_selected_model';
 const DEFAULT_BASE_URL = '/api/runner';
 const DEFAULT_POLL_S = 8;
 
+const STORAGE_RUNNER_ID = 'runner_console_gateway_runner_id';
+const STORAGE_DECLARED_CAPS = 'runner_console_declared_caps';
+const STORAGE_GATEWAY_JWT = 'runner_console_gateway_jwt';
+
 const THINK_CLOSE_RE = /<\/redacted_thinking>|<\/think>/i;
 const THINK_OPEN_RE = /<(?:redacted_)?think\b[^>]*>/i;
 const THINK_BLOCK_RE = /<think>([\s\S]*?)<\/redacted_thinking>|`?<think[^>]*>([\s\S]*?)<\/think>`?/gi;
@@ -27,6 +31,11 @@ const state = {
   runtimeGpuPending: null,
   telemetry: null,
   telemetryTab: 'parsed',
+  gatewayRunnerId: 'ollama-local',
+  declaredCapabilities: ['json_grammar'],
+  gatewayJwt: '',
+  gatewayCapabilities: null,
+  gatewayFetchMessage: '',
 };
 
 let streamingAssistantIndex = null;
@@ -164,6 +173,156 @@ function setLoadedModelBadge(model) {
 function setWorkspaceStreaming(active) {
   const workspace = $('inference-workspace');
   if (workspace) workspace.dataset.streaming = active ? 'true' : 'false';
+}
+
+function lifecycleStatusFromProbe() {
+  const probe = state.lastProbe;
+  if (!probe?.ok) return 'UNREACHABLE';
+  if (state.runtime?.loaded_model || state.models.length > 0) return 'READY';
+  return 'STARTING';
+}
+
+function buildLocalCapabilityEntry() {
+  const primary = state.models.find((m) => m.id === state.selectedModel) || state.models[0];
+  return {
+    id: state.gatewayRunnerId,
+    status: lifecycleStatusFromProbe(),
+    model: primary?.id || state.runtime?.loaded_model || null,
+    digest: primary?.digest || null,
+    features: [...state.declaredCapabilities],
+    context_tokens: primary?.context_length ?? null,
+  };
+}
+
+function renderGatewayDiscovery() {
+  const localPreview = $('gateway-local-preview');
+  if (localPreview) {
+    localPreview.textContent = formatJson(buildLocalCapabilityEntry());
+  }
+
+  const live = $('gateway-live-capabilities');
+  if (live) {
+    live.textContent = state.gatewayCapabilities
+      ? formatJson(state.gatewayCapabilities)
+      : 'Paste a gateway JWT or use dev auto sign-in, then Fetch capabilities.';
+  }
+
+  const fetched = $('gateway-capabilities-fetched');
+  if (fetched) {
+    fetched.textContent = state.gatewayCapabilities?.fetchedAt
+      ? `Live · ${relativeTime(state.gatewayCapabilities.fetchedAt)}`
+      : 'Not fetched';
+  }
+
+  const msg = $('gateway-fetch-message');
+  if (msg) msg.textContent = state.gatewayFetchMessage || '';
+}
+
+async function fetchGatewayCapabilities({ manual = false } = {}) {
+  const msgEl = $('gateway-fetch-message');
+  const btn = $('gateway-fetch-btn');
+  if (manual && btn) {
+    btn.disabled = true;
+    btn.textContent = 'Fetching…';
+  }
+  state.gatewayFetchMessage = '';
+
+  const headers = { Accept: 'application/json' };
+  if (state.gatewayJwt) {
+    headers.Authorization = state.gatewayJwt.startsWith('Bearer ')
+      ? state.gatewayJwt
+      : `Bearer ${state.gatewayJwt}`;
+  }
+
+  try {
+    const res = await consoleFetch('/api/gateway/capabilities', { headers });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const errMsg = body?.error?.message || `HTTP ${res.status}`;
+      state.gatewayFetchMessage = errMsg;
+      if (manual) state.gatewayCapabilities = null;
+      renderGatewayDiscovery();
+      return null;
+    }
+    state.gatewayCapabilities = { ...body, fetchedAt: new Date().toISOString() };
+    state.gatewayFetchMessage = manual ? 'Capabilities fetched.' : '';
+    renderGatewayDiscovery();
+    return body;
+  } catch (err) {
+    state.gatewayFetchMessage = String(err.message || err);
+    if (manual) state.gatewayCapabilities = null;
+    renderGatewayDiscovery();
+    return null;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Fetch capabilities';
+    }
+  }
+}
+
+async function gatewayAutoSignIn() {
+  const btn = $('gateway-auto-sign-in-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+  }
+  state.gatewayFetchMessage = '';
+
+  try {
+    const res = await consoleFetch('/api/gateway/auto-sign-in', {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      state.gatewayFetchMessage = data?.error?.message || `Auto sign-in failed (HTTP ${res.status})`;
+      renderGatewayDiscovery();
+      return false;
+    }
+    state.gatewayJwt = data.access_token || '';
+    localStorage.setItem(STORAGE_GATEWAY_JWT, state.gatewayJwt);
+    const jwtInput = $('gateway-jwt-input');
+    if (jwtInput) jwtInput.value = state.gatewayJwt;
+    state.gatewayFetchMessage = data.staff_role
+      ? `Signed in as ${data.staff_role}. Fetching capabilities…`
+      : 'Signed in. Fetching capabilities…';
+    renderGatewayDiscovery();
+    await fetchGatewayCapabilities({ manual: true });
+    return true;
+  } catch (err) {
+    state.gatewayFetchMessage = String(err.message || err);
+    renderGatewayDiscovery();
+    return false;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Dev auto sign-in';
+    }
+  }
+}
+
+function saveGatewayConfigFromInputs() {
+  const runnerId = $('gateway-runner-id')?.value?.trim();
+  const capsRaw = $('gateway-declared-caps')?.value || '';
+  const jwt = $('gateway-jwt-input')?.value?.trim() || '';
+
+  if (runnerId) {
+    state.gatewayRunnerId = runnerId;
+    localStorage.setItem(STORAGE_RUNNER_ID, runnerId);
+  }
+
+  state.declaredCapabilities = capsRaw
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean);
+  localStorage.setItem(STORAGE_DECLARED_CAPS, state.declaredCapabilities.join(','));
+
+  state.gatewayJwt = jwt;
+  if (jwt) localStorage.setItem(STORAGE_GATEWAY_JWT, jwt);
+  else localStorage.removeItem(STORAGE_GATEWAY_JWT);
+
+  renderGatewayDiscovery();
 }
 
 /* ── Overview ─────────────────────────────────────────────── */
@@ -1126,6 +1285,7 @@ async function probeModels({ manual = false } = {}) {
 
     renderOverview();
     syncModelSelect();
+    renderGatewayDiscovery();
     $('last-refresh').textContent = `Updated ${relativeTime(state.lastProbe.at)}`;
     return state.lastProbe;
   } catch (err) {
@@ -1134,6 +1294,7 @@ async function probeModels({ manual = false } = {}) {
     setConnectionState(false, 'Unreachable');
     renderOverview();
     syncModelSelect();
+    renderGatewayDiscovery();
     $('last-refresh').textContent = `Failed ${relativeTime(state.lastProbe.at)}`;
     if (manual) throw err;
     return state.lastProbe;
@@ -1249,6 +1410,15 @@ function bindEvents() {
   document.querySelectorAll('[data-endpoint]').forEach((btn) => {
     btn.addEventListener('click', () => runExplorerEndpoint(btn.dataset.endpoint));
   });
+
+  $('gateway-runner-id')?.addEventListener('change', saveGatewayConfigFromInputs);
+  $('gateway-declared-caps')?.addEventListener('change', saveGatewayConfigFromInputs);
+  $('gateway-jwt-input')?.addEventListener('change', saveGatewayConfigFromInputs);
+  $('gateway-fetch-btn')?.addEventListener('click', () => {
+    saveGatewayConfigFromInputs();
+    fetchGatewayCapabilities({ manual: true });
+  });
+  $('gateway-auto-sign-in-btn')?.addEventListener('click', () => gatewayAutoSignIn());
 }
 
 function loadPreferences() {
@@ -1268,12 +1438,31 @@ function loadPreferences() {
 
   const savedModel = localStorage.getItem(STORAGE_MODEL);
   if (savedModel) state.selectedModel = savedModel;
+
+  const savedRunnerId = localStorage.getItem(STORAGE_RUNNER_ID);
+  if (savedRunnerId) state.gatewayRunnerId = savedRunnerId;
+
+  const savedCaps = localStorage.getItem(STORAGE_DECLARED_CAPS);
+  if (savedCaps) {
+    state.declaredCapabilities = savedCaps.split(',').map((c) => c.trim()).filter(Boolean);
+  }
+
+  const savedJwt = localStorage.getItem(STORAGE_GATEWAY_JWT);
+  if (savedJwt) state.gatewayJwt = savedJwt;
+
+  const runnerIdInput = $('gateway-runner-id');
+  if (runnerIdInput) runnerIdInput.value = state.gatewayRunnerId;
+  const capsInput = $('gateway-declared-caps');
+  if (capsInput) capsInput.value = state.declaredCapabilities.join(', ');
+  const jwtInput = $('gateway-jwt-input');
+  if (jwtInput) jwtInput.value = state.gatewayJwt;
 }
 
 async function init() {
   loadPreferences();
   bindEvents();
   setTelemetryTab(state.telemetryTab);
+  renderGatewayDiscovery();
   await Promise.all([probeModels(), refreshRuntime()]);
   startPolling();
 }

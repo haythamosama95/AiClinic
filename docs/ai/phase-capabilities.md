@@ -301,7 +301,7 @@ cd ai/gateway
 
 ---
 
-## Phase 4 — US2: Authenticate and authorize every AI caller ✅ **You are here**
+## Phase 4 — US2: Authenticate and authorize every AI caller ✅
 
 **Delivered:** Offline Supabase JWT validation (HS256 or JWKS) + coarse `ai.access` role gate on all
 protected endpoints. Zero network calls to Supabase per request. Typed `401`/`403` error envelope.
@@ -403,7 +403,9 @@ This confirms the **model runs**; it does not mean the Gateway AI product path i
 
 ---
 
-## Phase 5 — US3: Discover, monitor, and route among Model Runners ⏳
+## Phase 5 — US3: Discover, monitor, and route among Model Runners ✅
+
+**Web UI:** Phase 5 panels are wired in the control-plane dashboard (`/dashboard` — Capabilities & Generate) and runner console (`/runner-console` — gateway discovery / live capabilities mirror). **You are here**
 
 **Goal:** Full lifecycle tracking, capability→health→least-busy routing selection, live capabilities
 mirror, and a **feature-detectable generate stub**.
@@ -502,9 +504,9 @@ Real model inference via the Gateway requires **feature 016** (AI generation lay
 
 ---
 
-## Dashboard coverage (Phases 1–4)
+## Dashboard coverage (Phases 1–5)
 
-The control plane at `/dashboard` maps to this document:
+The control plane at `/dashboard` maps to this document (runner console at `/runner-console` mirrors gateway capabilities for local operator preview):
 
 | Phase | Capability | Dashboard panel |
 | --- | --- | --- |
@@ -525,6 +527,9 @@ The control plane at `/dashboard` maps to this document:
 | 4 | `401 unauthenticated` / `403 forbidden` | **Security → Error envelope** (`unauthenticated`, `forbidden` rows) |
 | 4 | Auth-gated API polls | Overview / Runners / Explorer send `Authorization: Bearer` when token saved |
 | 4 | Offline HS256 / JWKS validation | Documented in phase coverage checklist (no Supabase network per request) |
+| 5 | `GET /v1/capabilities` | **Capabilities** panel + **Endpoint explorer** |
+| 5 | `POST /v1/ai/generate` (501 stub) | **Generate** probe + `not_implemented` in error envelope |
+| 5 | Live gateway capabilities mirror | **Runner console → Gateway discovery** |
 
 ---
 

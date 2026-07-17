@@ -9,7 +9,7 @@
   const STALE_MULTIPLIER = 2;
   const DOWN_MULTIPLIER = 3;
   const SPARKLINE_MAX_POINTS = 60;
-  const RUNNER_LIFECYCLE = ['UNKNOWN', 'STARTING', 'READY', 'DEGRADED', 'UNREACHABLE'];
+  const RUNNER_LIFECYCLE = ['UNKNOWN', 'STARTING', 'READY', 'BUSY', 'DEGRADED', 'UNREACHABLE'];
   const AUTH_TOKEN_STORAGE_KEY = 'dashboard_jwt_token';
   const AUTH_USERNAME_STORAGE_KEY = 'dashboard_auth_username';
 
@@ -96,6 +96,13 @@
     { phase: 4, label: 'Offline HS256 / JWKS validation', mode: 'static', hint: 'No Supabase network per request' },
     { phase: 4, label: 'Reloadable role → ai.access map', mode: 'static', hint: 'role_ai_access in gateway.yaml or role_ai_access.yaml' },
     { phase: 4, label: 'Dashboard Bearer token for API polls', mode: 'live', check: (s) => !!s.auth?.tokenPresent },
+    { phase: 5, label: 'GET /v1/capabilities mirrors registry', mode: 'live', check: (s) => s.capabilities?.ok === true },
+    { phase: 5, label: 'Per-runner status/model/digest/features/context', mode: 'live', check: (s) => (s.capabilities?.body?.runners?.length || 0) > 0 },
+    { phase: 5, label: 'Empty tasks[] and commands[] (stubbed)', mode: 'live', check: (s) => s.capabilities?.ok && Array.isArray(s.capabilities?.body?.tasks) && Array.isArray(s.capabilities?.body?.commands) },
+    { phase: 5, label: 'POST /v1/ai/generate returns 501 stub', mode: 'live', check: (s) => s.generateProbe?.status === 501 || seenErrorCodes().has('not_implemented') },
+    { phase: 5, label: 'Runner lifecycle includes BUSY', mode: 'live', check: (s) => (s.status?.runners || []).some((r) => r.status === 'BUSY') || (s.capabilities?.body?.runners || []).some((r) => r.status === 'BUSY') },
+    { phase: 5, label: 'Routing: capability → health → least-busy', mode: 'static', hint: 'See ai/gateway/src/gateway/routing/selector.py' },
+    { phase: 5, label: '/ready 503 when all runners UNREACHABLE', mode: 'live', check: (s) => s.ready.body?.error?.code === 'ai_no_capacity' || s.ready.ok },
   ];
 
   function hasErrorEnvelopeSample(s) {
@@ -157,6 +164,8 @@
       supabase_url: null,
     },
     authSignInBusy: false,
+    capabilities: { ok: false, status: null, body: null, fetchedAt: null, error: null },
+    generateProbe: { status: null, body: null, requestId: null },
   };
 
   function requiresAuth(path) {
@@ -542,7 +551,7 @@
 
     const phasePill = $('phase-pill');
     if (phasePill) {
-      const active = gw?.phase_active ?? 3;
+      const active = isPhase5Live() ? 5 : (gw?.phase_active ?? 3);
       phasePill.textContent = `Phases 1–${active} active`;
     }
 
@@ -741,6 +750,8 @@
     if (readyCode) seen.add(readyCode);
     const statusCode = state.statusAuthError?.error?.code;
     if (statusCode) seen.add(statusCode);
+    const generateCode = state.generateProbe?.body?.error?.code;
+    if (generateCode) seen.add(generateCode);
     if (state.metricsParsed) {
       for (const entry of Object.values(state.metricsParsed.counters)) {
         if (entry.name === 'gateway_errors_total' && entry.labels.code) {
@@ -757,13 +768,15 @@
     if (!tbody) return;
 
     const seen = seenErrorCodes();
+    const phase5Live = isPhase5Live();
     tbody.innerHTML = ERROR_CODES.map((row) => {
       const isSeen = seen.has(row.code);
+      const phaseActive = row.code === 'not_implemented' ? phase5Live || row.phaseActive : row.phaseActive;
       return `
-        <tr data-seen="${isSeen ? 'true' : 'false'}" data-phase-active="${row.phaseActive ? 'true' : 'false'}">
+        <tr data-seen="${isSeen ? 'true' : 'false'}" data-phase-active="${phaseActive ? 'true' : 'false'}">
           <td class="mono">${escapeHtml(row.code)}</td>
           <td>${row.http}</td>
-          <td>${row.phaseActive ? 'yes' : 'Phase 5+'}</td>
+          <td>${phaseActive ? 'yes' : 'Phase 5+'}</td>
           <td>${isSeen ? 'yes' : '—'}</td>
         </tr>`;
     }).join('');
@@ -783,12 +796,19 @@
   }
 
   function normalizeLifecycleStatus(status) {
-    return status === 'BUSY' ? 'READY' : status;
+    return status;
   }
 
   function worstLifecycleStatus(runners) {
     if (!runners.length) return null;
-    const priority = { UNREACHABLE: 5, DEGRADED: 4, STARTING: 3, UNKNOWN: 2, READY: 1 };
+    const priority = {
+      UNREACHABLE: 6,
+      DEGRADED: 5,
+      STARTING: 4,
+      UNKNOWN: 3,
+      BUSY: 2,
+      READY: 1,
+    };
     return runners.reduce((worst, r) => {
       const norm = normalizeLifecycleStatus(r.status);
       const p = priority[norm] || 0;
@@ -802,7 +822,7 @@
       UNKNOWN: 'lifecycle-unknown',
       STARTING: 'lifecycle-starting',
       READY: 'lifecycle-ready',
-      BUSY: 'lifecycle-ready',
+      BUSY: 'lifecycle-busy',
       DEGRADED: 'lifecycle-degraded',
       UNREACHABLE: 'lifecycle-unreachable',
     };
@@ -1072,6 +1092,16 @@
     renderLegend($('chart-error-codes-legend'), errorItems);
   }
 
+  function isPhase5Live() {
+    return state.phaseProbes[5] === true || state.capabilities?.ok === true;
+  }
+
+  function resolvedEndpoints() {
+    const endpoints = state.status?.endpoints || defaultEndpoints();
+    if (!isPhase5Live()) return endpoints;
+    return endpoints.map((ep) => (ep.phase === 5 ? { ...ep, available: true } : ep));
+  }
+
   function defaultEndpoints() {
     return [
       { path: '/health', method: 'GET', phase: 2, available: true },
@@ -1148,7 +1178,7 @@
     const empty = $('endpoint-empty');
     if (!tbody) return;
 
-    const endpoints = state.status?.endpoints || defaultEndpoints();
+    const endpoints = resolvedEndpoints();
 
     if (!endpoints.length) {
       tbody.innerHTML = '';
@@ -1191,8 +1221,21 @@
       btn.textContent = '…';
     }
     try {
-      const result = await fetchEndpoint(path, { method: method || 'GET' });
+      const opts = { method: method || 'GET' };
+      if ((method || 'GET').toUpperCase() === 'POST' && path === '/v1/ai/generate') {
+        opts.body = JSON.stringify({ prompt: 'dashboard probe' });
+      }
+      const result = await fetchEndpoint(path, opts);
       if (result.requestId) state.lastRequestId = result.requestId;
+      if (path === '/v1/ai/generate') {
+        state.generateProbe = {
+          status: result.status,
+          body: result.body,
+          requestId: result.requestId || null,
+        };
+        renderGeneratePanel();
+        renderErrorEnvelope();
+      }
       showResponsePanel(path, method, result.status, result.body, result.requestId);
     } catch (err) {
       showResponsePanel(path, method, 0, String(err.message || err));
@@ -1478,8 +1521,170 @@
     }
 
     if (state.phaseProbes[5]) {
-      const capPlaceholder = $('capabilities-placeholder');
-      if (capPlaceholder) capPlaceholder.textContent = 'Capabilities endpoint is live — wire UI to response JSON.';
+      renderCapabilities();
+    }
+  }
+
+  function renderCapabilitiesRunnerCard(runner) {
+    const features = runner.features || [];
+    const featChips = features.length
+      ? features.map((f) => `<span class="chip chip--feature">${escapeHtml(f)}</span>`).join('')
+      : '<span class="capabilities-runner__empty">—</span>';
+
+    return `
+      <article class="capabilities-runner" role="listitem" data-status="${escapeHtml(runner.status || '')}">
+        <header class="capabilities-runner__header">
+          <h4 class="capabilities-runner__id mono">${escapeHtml(runner.id || '—')}</h4>
+          <span class="runner-card__badge ${lifecycleBadgeClass(runner.status)}">${escapeHtml(runner.status || '—')}</span>
+        </header>
+        <dl class="capabilities-runner__details">
+          <div class="capabilities-runner__row"><dt>Model</dt><dd class="mono">${escapeHtml(runner.model || '—')}</dd></div>
+          <div class="capabilities-runner__row"><dt>Digest</dt><dd class="mono">${escapeHtml(shortDigest(runner.digest))}</dd></div>
+          <div class="capabilities-runner__row"><dt>Context</dt><dd>${runner.context_tokens != null ? `${formatCount(runner.context_tokens)} tokens` : '—'}</dd></div>
+          <div class="capabilities-runner__row capabilities-runner__row--features"><dt>Features</dt><dd>${featChips}</dd></div>
+        </dl>
+      </article>`;
+  }
+
+  function renderStubListMessage(items, label) {
+    if (!Array.isArray(items) || items.length === 0) {
+      return `Empty ${label}[] — stubbed until feature 016 adds task/command routing.`;
+    }
+    return `${items.length} ${label} advertised`;
+  }
+
+  function renderCapabilities() {
+    const cap = state.capabilities;
+    const body = cap?.body;
+    const fetchedAt = $('capabilities-fetched-at');
+
+    if (!cap?.ok || !body) {
+      setText($('capabilities-schema'), '—');
+      setText($('capabilities-streaming'), '—');
+      setText($('capabilities-runner-count'), '—');
+      setText($('capabilities-tasks-body'), cap?.error || 'Sign in and wait for poll…');
+      setText($('capabilities-commands-body'), cap?.error || 'Sign in and wait for poll…');
+      const container = $('capabilities-runners');
+      if (container) container.innerHTML = '';
+      const empty = $('capabilities-runners-empty');
+      if (empty) empty.hidden = false;
+      setText($('capabilities-raw'), '—');
+      if (fetchedAt) setText(fetchedAt, cap?.status ? `HTTP ${cap.status}` : '—');
+      return;
+    }
+
+    setText($('capabilities-schema'), body.schema_version || '—');
+    setText($('capabilities-streaming'), body.streaming ? 'enabled' : 'disabled');
+    const runners = body.runners || [];
+    setText($('capabilities-runner-count'), String(runners.length));
+    setText($('capabilities-tasks-body'), renderStubListMessage(body.tasks, 'tasks'));
+    setText($('capabilities-commands-body'), renderStubListMessage(body.commands, 'commands'));
+
+    const container = $('capabilities-runners');
+    const empty = $('capabilities-runners-empty');
+    if (container) {
+      container.innerHTML = runners.map(renderCapabilitiesRunnerCard).join('');
+    }
+    if (empty) empty.hidden = runners.length > 0;
+
+    const raw = $('capabilities-raw');
+    if (raw) raw.textContent = JSON.stringify(body, null, 2);
+    if (fetchedAt) {
+      setText(
+        fetchedAt,
+        cap.fetchedAt ? `Fetched ${relativeTime(cap.fetchedAt)}` : 'Live'
+      );
+    }
+  }
+
+  function renderGeneratePanel() {
+    const panel = $('generate-response-panel');
+    const probe = state.generateProbe;
+    if (!panel) return;
+
+    if (!probe?.status) {
+      panel.hidden = true;
+      return;
+    }
+
+    panel.hidden = false;
+    const statusEl = $('generate-response-status');
+    if (statusEl) {
+      statusEl.textContent = `HTTP ${probe.status}`;
+      statusEl.dataset.status = String(probe.status);
+    }
+    const reqIdEl = $('generate-response-request-id');
+    if (reqIdEl) {
+      if (probe.requestId) {
+        reqIdEl.hidden = false;
+        reqIdEl.textContent = probe.requestId;
+      } else {
+        reqIdEl.hidden = true;
+        reqIdEl.textContent = '';
+      }
+    }
+    setText($('generate-response-body'), truncate(formatBody(probe.body), 8000));
+  }
+
+  async function fetchCapabilities() {
+    if (!state.authToken) {
+      state.capabilities = {
+        ok: false,
+        status: 401,
+        body: null,
+        fetchedAt: null,
+        error: 'JWT required',
+      };
+      return;
+    }
+    try {
+      const result = await fetchEndpoint('/v1/capabilities');
+      state.capabilities = {
+        ok: result.ok,
+        status: result.status,
+        body: typeof result.body === 'object' ? result.body : null,
+        fetchedAt: Date.now(),
+        error: result.ok ? null : formatBody(result.body),
+      };
+      if (result.requestId) state.lastRequestId = result.requestId;
+    } catch (err) {
+      state.capabilities = {
+        ok: false,
+        status: 0,
+        body: null,
+        fetchedAt: Date.now(),
+        error: String(err.message || err),
+      };
+    }
+  }
+
+  async function testGenerateStub(btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Posting…';
+    }
+    try {
+      const result = await fetchEndpoint('/v1/ai/generate', {
+        method: 'POST',
+        body: JSON.stringify({ prompt: 'dashboard probe' }),
+      });
+      state.generateProbe = {
+        status: result.status,
+        body: result.body,
+        requestId: result.requestId || null,
+      };
+      if (result.requestId) state.lastRequestId = result.requestId;
+      renderGeneratePanel();
+      renderErrorEnvelope();
+      renderPhaseCoverage();
+    } catch (err) {
+      state.generateProbe = { status: 0, body: String(err.message || err), requestId: null };
+      renderGeneratePanel();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Test generate (expect 501)';
+      }
     }
   }
 
@@ -1508,6 +1713,9 @@
       fetchEndpoint('/health').then((r) => ({ kind: 'health', ...r })),
       fetchEndpoint('/ready').then((r) => ({ kind: 'ready', ...r })),
       fetchEndpoint('/metrics').then((r) => ({ kind: 'metrics', ...r })),
+      state.authToken
+        ? fetchEndpoint('/v1/capabilities').then((r) => ({ kind: 'capabilities', ...r }))
+        : Promise.resolve({ kind: 'capabilities', ok: false, status: 401, body: null }),
     ]);
 
     let anySuccess = false;
@@ -1542,6 +1750,16 @@
           state.metricsParsed = parsePrometheus(state.metricsRaw);
           updateRequestHistory(state.metricsParsed);
           break;
+        case 'capabilities':
+          state.capabilities = {
+            ok: data.ok,
+            status: data.status,
+            body: typeof data.body === 'object' ? data.body : null,
+            fetchedAt: Date.now(),
+            error: data.ok ? null : formatBody(data.body),
+          };
+          if (data.requestId) state.lastRequestId = data.requestId;
+          break;
       }
     }
 
@@ -1557,6 +1775,8 @@
     renderPhaseCoverage();
     renderSecurity();
     renderErrorEnvelope();
+    renderCapabilities();
+    renderGeneratePanel();
     await updatePhaseGating();
   }
 
@@ -1657,6 +1877,11 @@
           signInWithSupabase();
         }
       });
+    }
+
+    const generateBtn = $('generate-test-btn');
+    if (generateBtn) {
+      generateBtn.addEventListener('click', () => testGenerateStub(generateBtn));
     }
   }
 
