@@ -17,8 +17,9 @@ import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_header.dart';
-import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_step_placeholder.dart';
+import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_step_content.dart';
 
 /// Doctor visit documentation workspace (`/visits/:visitId/document`).
 class VisitDocumentPage extends ConsumerWidget {
@@ -74,6 +75,8 @@ class _VisitDocumentContentView extends ConsumerWidget {
     final patientAsync = ref.watch(patientDetailProvider(visit.patientId));
     final appointmentAsync = ref.watch(appointmentDetailProvider(visit.appointmentId));
     final activePhase = ref.watch(encounterActivePhaseProvider(visit.id));
+    final docAsync = ref.watch(visitDocumentationProvider(visit.id));
+    final permissions = ref.watch(permissionServiceProvider);
 
     final patientName = patientAsync.maybeWhen(data: (patient) => patient.fullName, orElse: () => 'Patient');
     final patientAgeLabel = patientAsync.maybeWhen(data: _patientAgeLabel, orElse: () => null);
@@ -82,17 +85,57 @@ class _VisitDocumentContentView extends ConsumerWidget {
       orElse: () => 'Appointment',
     );
 
-    return _VisitDocumentScaffold(
-      patientName: patientName,
-      appointmentLabel: appointmentLabel,
-      appointmentId: visit.appointmentId,
-      patientAgeLabel: patientAgeLabel,
-      currentPhase: activePhase,
-      onPhaseSelected: (phase) => ref.read(encounterActivePhaseProvider(visit.id).notifier).setPhase(phase),
-      stepBody: AppStepPanel(
-        stepKey: activePhase.name,
-        child: VisitEncounterStepPlaceholder(phase: activePhase),
+    return docAsync.when(
+      skipLoadingOnReload: true,
+      loading: () => _VisitDocumentScaffold(
+        patientName: patientName,
+        appointmentLabel: appointmentLabel,
+        appointmentId: visit.appointmentId,
+        patientAgeLabel: patientAgeLabel,
+        currentPhase: activePhase,
+        stepBody: const AppSkeleton(variant: SkeletonVariant.rectangular, height: 320),
       ),
+      error: (error, _) => _VisitDocumentErrorView(
+        message: error.toString(),
+        onBack: onBack,
+        onRetry: () => ref.invalidate(visitDocumentationProvider(visit.id)),
+      ),
+      data: (docState) {
+        final canEdit = docState.canEditWorkspace(permissions.canEditVisitSoap());
+        final phaseNotifier = ref.read(encounterActivePhaseProvider(visit.id).notifier);
+
+        return _VisitDocumentScaffold(
+          patientName: patientName,
+          appointmentLabel: appointmentLabel,
+          appointmentId: visit.appointmentId,
+          patientAgeLabel: patientAgeLabel,
+          currentPhase: activePhase,
+          onPhaseSelected: phaseNotifier.setPhase,
+          stepBody: _VisitEncounterWorkspaceCard(
+            currentPhase: activePhase,
+            canGoBack: activePhase.previous != null,
+            continueLabel: activePhase == EncounterPhase.plan ? 'Review visit' : 'Continue',
+            onBack: () {
+              final previous = activePhase.previous;
+              if (previous != null) {
+                phaseNotifier.setPhase(previous);
+              }
+            },
+            onContinue: () {
+              final next = activePhase.next;
+              if (next != null) {
+                phaseNotifier.setPhase(next);
+                return;
+              }
+              phaseNotifier.setPhase(EncounterPhase.review);
+            },
+            child: AppStepPanel(
+              stepKey: activePhase.name,
+              child: VisitEncounterStepContent(visitId: visit.id, phase: activePhase, canEdit: canEdit),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -183,6 +226,124 @@ class _VisitDocumentScaffold extends StatelessWidget {
       },
     );
   }
+}
+
+class _VisitEncounterWorkspaceCard extends StatelessWidget {
+  const _VisitEncounterWorkspaceCard({
+    required this.child,
+    required this.currentPhase,
+    required this.canGoBack,
+    required this.continueLabel,
+    required this.onBack,
+    required this.onContinue,
+  });
+
+  final Widget child;
+  final EncounterPhase currentPhase;
+  final bool canGoBack;
+  final String continueLabel;
+  final VoidCallback onBack;
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final elevation = context.appElevation;
+    final showFooter = currentPhase.isDocumentation;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surfaceRaised,
+        border: Border.all(color: colors.borderSubtle),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: elevation.shadows1,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: _WorkspaceGridBackground()),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.space6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  child,
+                  if (showFooter) ...[
+                    const SizedBox(height: AppSpacing.space8),
+                    const AppDivider(),
+                    const SizedBox(height: AppSpacing.space6),
+                    Row(
+                      children: [
+                        AppButton(
+                          variant: AppButtonVariant.secondary,
+                          leadingIcon: const Icon(Icons.arrow_back_rounded, size: 16),
+                          onPressed: canGoBack ? onBack : null,
+                          child: const Text('Back'),
+                        ),
+                        const Spacer(),
+                        AppButton(
+                          trailingIcon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                          onPressed: onContinue,
+                          child: Text(continueLabel),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkspaceGridBackground extends StatelessWidget {
+  const _WorkspaceGridBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    final gridColor = context.appColors.borderSubtle.withValues(alpha: 0.25);
+
+    return IgnorePointer(
+      child: ShaderMask(
+        shaderCallback: (bounds) => const RadialGradient(
+          center: Alignment(-0.4, -1),
+          radius: 0.9,
+          colors: [Colors.black, Colors.transparent],
+          stops: [0.15, 0.65],
+        ).createShader(bounds),
+        blendMode: BlendMode.dstIn,
+        child: CustomPaint(painter: _WorkspaceGridPainter(color: gridColor)),
+      ),
+    );
+  }
+}
+
+class _WorkspaceGridPainter extends CustomPainter {
+  const _WorkspaceGridPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const spacing = 20.0;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+
+    for (var x = 0.0; x <= size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (var y = 0.0; y <= size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WorkspaceGridPainter oldDelegate) => oldDelegate.color != color;
 }
 
 class _VisitDocumentLoadingView extends StatelessWidget {

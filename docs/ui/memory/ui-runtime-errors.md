@@ -676,6 +676,7 @@ void appToast(BuildContext context, AppToastInput input) {
 8. Row/Column inside `SingleChildScrollView`? → Do not use `CrossAxisAlignment.stretch` on a `Row` when the parent gives unbounded height; use `start` and derive sticky/viewport height from `MediaQuery` when `constraints.maxHeight` is infinite.
 9. Material `Slider` inside a scroll view? → **Do not use Material `Slider`**; its `OverlayPortal` cannot be disabled. Build a custom track/thumb slider instead (see `app_slider.dart`).
 10. Token/multi-select with chips + inline query `TextField` in `Wrap`? → Hide the query field when every option is selected and the user is not searching; use a fixed ~72px width when visible so `Wrap` does not leave a blank second row (see entry #38).
+11. `AppRichTextEditor` / Quill with list toolbar buttons? → Override `lists`, `leading`, and `indent` in `customStyles` with the same `appBareInputTextStyle` as `paragraph`; wrap the editor in `DefaultTextStyle` (see entry #46).
 
 ## Checklist for new display components
 
@@ -1230,3 +1231,53 @@ if (_showStatusInMediumStrip) _StatusChip(..., compact: true),
 
 **Affected files (fixed):** `appointment_calendar_tile.dart`.
 
+
+---
+
+## 45. `StateError` — `ref` in `dispose` (`VisitIntakeSection`)
+
+**Symptom:** Console throws `Bad state: Using "ref" when a widget is about to or has been unmounted is unsafe` when navigating away from a visit intake screen. Stack points to `_VisitIntakeSectionState._unregisterFlushCallbacks` called from `dispose`.
+
+**Cause:** `dispose()` called `ref.read(visitDocumentationProvider(...).notifier)` to unregister clinical-note flush callbacks. Riverpod forbids `ref` after the widget is deactivated because it relies on `BuildContext`.
+
+**Fix:** Cache the notifier when registering flush callbacks; use that field in `dispose` instead of `ref.read`:
+
+```dart
+VisitDocumentationNotifier? _documentationNotifier;
+
+void _registerFlushCallbacks(VisitDocumentationNotifier notifier) {
+  _documentationNotifier = notifier;
+  notifier.registerClinicalNoteFlush(_complaintFlush);
+  // ...
+}
+
+void _unregisterFlushCallbacks() {
+  _documentationNotifier
+    ?..unregisterClinicalNoteFlush(_complaintFlush)
+    ..unregisterClinicalNoteFlush(_historyFlush);
+  _documentationNotifier = null;
+}
+```
+
+**Affected files (fixed):** `visit_intake_section.dart`.
+
+---
+
+## 46. List text red with yellow underlines (`AppRichTextEditor` bullets / numbered lists)
+
+**Symptom:** Toggling bullet or numbered list in `AppRichTextEditor` changes line text to red with yellow debug underlines; normal paragraph text looks correct.
+
+**Cause:** `_editorStyles` only overrode `paragraph` and `placeHolder`. Quill switches list lines to `DefaultStyles.lists` and bullet/number markers to `DefaultStyles.leading`, which still came from `DefaultStyles.getInstance(context)` (`DefaultTextStyle` + hard-coded 16px metrics). That inherited the wrong font/color for list blocks and list markers — missing-glyph debug underlines on the bullet/number `Text` widgets.
+
+**Fix:** Merge app input typography into all list-related block styles and wrap the editor in `DefaultTextStyle`:
+
+```dart
+lists: DefaultListBlockStyle(bodyStyle, ...),
+leading: DefaultTextBlockStyle(bodyStyle, ...),
+indent: DefaultTextBlockStyle(bodyStyle, ...),
+link: bodyStyle.copyWith(color: colors.textLink, decoration: TextDecoration.underline),
+// ...
+DefaultTextStyle(style: bodyStyle, child: editorPane),
+```
+
+**Affected files (fixed):** `app_rich_text_editor.dart`.

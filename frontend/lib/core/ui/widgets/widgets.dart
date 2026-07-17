@@ -28,6 +28,7 @@ export 'package:ai_clinic/core/ui/components/app_search_input.dart';
 export 'package:ai_clinic/core/ui/components/app_select.dart';
 export 'package:ai_clinic/core/ui/components/app_text_input.dart';
 export 'package:ai_clinic/core/ui/components/app_textarea.dart';
+export 'package:ai_clinic/core/ui/components/app_rich_text_editor.dart';
 export 'package:ai_clinic/core/ui/components/app_checkbox.dart';
 export 'package:ai_clinic/core/ui/components/app_radio_group.dart';
 export 'package:ai_clinic/core/ui/components/app_switch.dart';
