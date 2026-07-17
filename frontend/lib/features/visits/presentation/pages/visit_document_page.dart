@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_detai
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
 import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/visit_detail.dart';
+import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
@@ -23,9 +24,10 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_encounter_s
 
 /// Doctor visit documentation workspace (`/visits/:visitId/document`).
 class VisitDocumentPage extends ConsumerWidget {
-  const VisitDocumentPage({required this.visitId, super.key});
+  const VisitDocumentPage({required this.visitId, this.startInEditMode = false, super.key});
 
   final String visitId;
+  final bool startInEditMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -49,7 +51,11 @@ class VisitDocumentPage extends ConsumerWidget {
           onRetry: () => ref.invalidate(visitDetailViewProvider(visitId)),
         );
       },
-      data: (view) => _VisitDocumentContentView(visit: view.visit, onBack: () => _goBack(context)),
+      data: (view) => _VisitDocumentContentView(
+        visit: view.visit,
+        startInEditMode: startInEditMode,
+        onBack: () => _goBack(context),
+      ),
     );
   }
 
@@ -62,21 +68,60 @@ class VisitDocumentPage extends ConsumerWidget {
   }
 }
 
-class _VisitDocumentContentView extends ConsumerWidget {
-  const _VisitDocumentContentView({required this.visit, required this.onBack});
+class _VisitDocumentContentView extends ConsumerStatefulWidget {
+  const _VisitDocumentContentView({required this.visit, required this.onBack, this.startInEditMode = false});
 
   final VisitDetail visit;
   final VoidCallback onBack;
-
-  static final _appointmentDateFormat = DateFormat('MMM d, yyyy');
+  final bool startInEditMode;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_VisitDocumentContentView> createState() => _VisitDocumentContentViewState();
+}
+
+class _VisitDocumentContentViewState extends ConsumerState<_VisitDocumentContentView> {
+  static final _appointmentDateFormat = DateFormat('MMM d, yyyy');
+  var _openedCompletedVisitSummary = false;
+  var _appliedStartInEditMode = false;
+
+  VisitDetail get visit => widget.visit;
+
+  void _ensureStartInEditMode() {
+    if (!widget.startInEditMode || _appliedStartInEditMode) {
+      return;
+    }
+    if (ref.read(visitDocumentationProvider(visit.id)).value == null) {
+      return;
+    }
+    _appliedStartInEditMode = true;
+    ref.read(visitDocumentationProvider(visit.id).notifier).enterWorkspaceEditMode();
+  }
+
+  void _ensureCompletedVisitOpensOnSummary() {
+    if (_openedCompletedVisitSummary || visit.status != VisitStatus.completed) {
+      return;
+    }
+    _openedCompletedVisitSummary = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      ref.read(encounterActivePhaseProvider(visit.id).notifier).setPhase(EncounterPhase.review);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _ensureCompletedVisitOpensOnSummary();
+    _ensureStartInEditMode();
+
     final patientAsync = ref.watch(patientDetailProvider(visit.patientId));
     final appointmentAsync = ref.watch(appointmentDetailProvider(visit.appointmentId));
     final activePhase = ref.watch(encounterActivePhaseProvider(visit.id));
     final docAsync = ref.watch(visitDocumentationProvider(visit.id));
     final permissions = ref.watch(permissionServiceProvider);
+    final isCompletedVisit = visit.status == VisitStatus.completed;
+    final loadingPhase = isCompletedVisit ? EncounterPhase.review : activePhase;
 
     final patientName = patientAsync.maybeWhen(data: (patient) => patient.fullName, orElse: () => 'Patient');
     final patientAgeLabel = patientAsync.maybeWhen(data: _patientAgeLabel, orElse: () => null);
@@ -88,18 +133,21 @@ class _VisitDocumentContentView extends ConsumerWidget {
     return docAsync.when(
       skipLoadingOnReload: true,
       loading: () => _VisitDocumentScaffold(
-        title: 'Visit documentation',
-        description: 'Document the clinical encounter for this appointment.',
+        title: isCompletedVisit ? 'Review visit' : 'Visit documentation',
+        description: isCompletedVisit
+            ? 'Check documentation for $patientName before finalizing.'
+            : 'Document the clinical encounter for this appointment.',
         patientName: 'Loading…',
         appointmentLabel: 'Appointment',
         appointmentId: visit.appointmentId,
         patientAgeLabel: patientAgeLabel,
-        currentPhase: activePhase,
+        currentPhase: loadingPhase,
+        showEncounterHeader: !isCompletedVisit,
         stepBody: const AppSkeleton(variant: SkeletonVariant.rectangular, height: 320),
       ),
       error: (error, _) => _VisitDocumentErrorView(
         message: error.toString(),
-        onBack: onBack,
+        onBack: widget.onBack,
         onRetry: () => ref.invalidate(visitDocumentationProvider(visit.id)),
       ),
       data: (docState) {
@@ -190,40 +238,69 @@ class _VisitDocumentScaffold extends StatelessWidget {
   final Widget stepBody;
   final bool showEncounterHeader;
 
+  static const _headerSideBySideBreakpoint = 960.0;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final header = Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppPageHeader(
-              title: title,
-              description: description,
-              breadcrumb: AppBreadcrumb(
-                items: [
-                  AppBreadcrumbItem(label: 'Calendar', onTap: () => context.nav.goAppointmentsCalendar()),
-                  AppBreadcrumbItem(
-                    label: appointmentLabel,
-                    onTap: () => context.nav.pushAppointmentDetail(appointmentId),
-                  ),
-                  AppBreadcrumbItem(label: title),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.space6),
-            if (showEncounterHeader) ...[
-              VisitEncounterHeader(
+        final breadcrumb = AppBreadcrumb(
+          items: [
+            AppBreadcrumbItem(label: 'Calendar', onTap: () => context.nav.goAppointmentsCalendar()),
+            AppBreadcrumbItem(label: appointmentLabel, onTap: () => context.nav.pushAppointmentDetail(appointmentId)),
+            AppBreadcrumbItem(label: title),
+          ],
+        );
+
+        final pageHeader = AppPageHeader(title: title, description: description, breadcrumb: breadcrumb);
+
+        final encounterSlotWidth = (constraints.maxWidth - AppSpacing.space6) * 2 / 3;
+
+        final encounterHeader = showEncounterHeader
+            ? VisitEncounterHeader(
                 patientName: patientName,
                 patientAgeLabel: patientAgeLabel,
                 currentPhase: currentPhase,
                 onPhaseSelected: onPhaseSelected,
-              ),
-              const SizedBox(height: AppSpacing.space6),
-            ],
-          ],
-        );
+                isCompact: encounterSlotWidth < VisitEncounterHeader.compactBreakpoint,
+              )
+            : null;
+
+        final header = encounterHeader == null
+            ? pageHeader
+            : constraints.maxWidth >= _headerSideBySideBreakpoint
+            ? Semantics(
+                header: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    breadcrumb,
+                    const SizedBox(height: AppSpacing.space4),
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _VisitDocumentTitleBlock(title: title, description: description),
+                          ),
+                          const SizedBox(width: AppSpacing.space6),
+                          Expanded(flex: 2, child: encounterHeader),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  pageHeader,
+                  const SizedBox(height: AppSpacing.space6),
+                  encounterHeader,
+                ],
+              );
 
         final body = stepBody;
         final hasBoundedHeight = constraints.maxHeight.isFinite;
@@ -232,7 +309,11 @@ class _VisitDocumentScaffold extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
-            children: [header, body],
+            children: [
+              header,
+              const SizedBox(height: AppSpacing.space6),
+              body,
+            ],
           );
         }
 
@@ -240,10 +321,37 @@ class _VisitDocumentScaffold extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             header,
+            const SizedBox(height: AppSpacing.space6),
             Expanded(child: SingleChildScrollView(child: body)),
           ],
         );
       },
+    );
+  }
+}
+
+class _VisitDocumentTitleBlock extends StatelessWidget {
+  const _VisitDocumentTitleBlock({required this.title, required this.description});
+
+  final String title;
+  final String description;
+
+  static const _maxDescriptionWidth = 672.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title, style: AppTypography.h1(context).copyWith(color: colors.textPrimary)),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _maxDescriptionWidth),
+          child: Text(description, style: AppTypography.body(context).copyWith(color: colors.textSecondary)),
+        ),
+      ],
     );
   }
 }

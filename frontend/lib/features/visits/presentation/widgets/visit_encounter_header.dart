@@ -11,6 +11,7 @@ class VisitEncounterHeader extends StatelessWidget {
     required this.currentPhase,
     this.patientAgeLabel,
     this.onPhaseSelected,
+    this.isCompact,
     super.key,
   });
 
@@ -18,6 +19,9 @@ class VisitEncounterHeader extends StatelessWidget {
   final String? patientAgeLabel;
   final EncounterPhase currentPhase;
   final ValueChanged<EncounterPhase>? onPhaseSelected;
+  final bool? isCompact;
+
+  static const double compactBreakpoint = 720;
 
   @override
   Widget build(BuildContext context) {
@@ -31,42 +35,75 @@ class VisitEncounterHeader extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isCompact = constraints.maxWidth < 720;
-
-            if (isCompact) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _PatientIdentity(patientName: patientName, patientAgeLabel: patientAgeLabel),
-                  const SizedBox(height: AppSpacing.space3),
-                  const AppDivider(),
-                  const SizedBox(height: AppSpacing.space3),
-                  Center(
-                    child: VisitEncounterStepRail(currentPhase: currentPhase, onPhaseSelected: onPhaseSelected),
-                  ),
-                ],
-              );
-            }
-
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _PatientIdentity(patientName: patientName, patientAgeLabel: patientAgeLabel),
-                const SizedBox(width: AppSpacing.space4),
-                const SizedBox(height: 40, child: AppDivider(orientation: DividerOrientation.vertical)),
-                const SizedBox(width: AppSpacing.space4),
-                Expanded(
-                  child: Center(
-                    child: VisitEncounterStepRail(currentPhase: currentPhase, onPhaseSelected: onPhaseSelected),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+        child: isCompact == null
+            ? LayoutBuilder(
+                builder: (context, constraints) {
+                  return _VisitEncounterHeaderContent(
+                    patientName: patientName,
+                    patientAgeLabel: patientAgeLabel,
+                    currentPhase: currentPhase,
+                    onPhaseSelected: onPhaseSelected,
+                    isCompact: constraints.maxWidth < compactBreakpoint,
+                  );
+                },
+              )
+            : _VisitEncounterHeaderContent(
+                patientName: patientName,
+                patientAgeLabel: patientAgeLabel,
+                currentPhase: currentPhase,
+                onPhaseSelected: onPhaseSelected,
+                isCompact: isCompact!,
+              ),
       ),
+    );
+  }
+}
+
+class _VisitEncounterHeaderContent extends StatelessWidget {
+  const _VisitEncounterHeaderContent({
+    required this.patientName,
+    required this.currentPhase,
+    required this.isCompact,
+    this.patientAgeLabel,
+    this.onPhaseSelected,
+  });
+
+  final String patientName;
+  final String? patientAgeLabel;
+  final EncounterPhase currentPhase;
+  final ValueChanged<EncounterPhase>? onPhaseSelected;
+  final bool isCompact;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isCompact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PatientIdentity(patientName: patientName, patientAgeLabel: patientAgeLabel),
+          const SizedBox(height: AppSpacing.space3),
+          const AppDivider(),
+          const SizedBox(height: AppSpacing.space3),
+          Center(
+            child: VisitEncounterStepRail(currentPhase: currentPhase, onPhaseSelected: onPhaseSelected),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _PatientIdentity(patientName: patientName, patientAgeLabel: patientAgeLabel),
+        const SizedBox(width: AppSpacing.space4),
+        const SizedBox(height: 40, child: AppDivider(orientation: DividerOrientation.vertical)),
+        const SizedBox(width: AppSpacing.space4),
+        Expanded(
+          child: Center(
+            child: VisitEncounterStepRail(currentPhase: currentPhase, onPhaseSelected: onPhaseSelected),
+          ),
+        ),
+      ],
     );
   }
 }

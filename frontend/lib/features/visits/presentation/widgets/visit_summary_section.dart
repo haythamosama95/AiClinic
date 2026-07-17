@@ -72,6 +72,7 @@ class _VisitSummarySectionState extends ConsumerState<VisitSummarySection> {
   }
 
   void _editVisit() {
+    ref.read(visitDocumentationProvider(widget.visitId).notifier).enterWorkspaceEditMode();
     ref.read(encounterActivePhaseProvider(widget.visitId).notifier).setPhase(EncounterPhase.plan);
   }
 

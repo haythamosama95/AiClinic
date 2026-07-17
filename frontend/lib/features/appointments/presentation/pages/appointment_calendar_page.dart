@@ -290,13 +290,17 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required bool hasActiveFilters,
     required bool isFullscreen,
   }) {
+    final calendarBodyHeight = (viewportHeight - appointmentCalendarToolbarHeight).clamp(240.0, viewportHeight);
     final slotLayout = AppointmentCalendarDisplay.timeSlotLayout(
       schedule: schedule,
       mode: state.mode,
       focusDate: state.focusDate,
-      viewportHeight: (viewportHeight - appointmentCalendarToolbarHeight).clamp(240.0, viewportHeight),
+      viewportHeight: calendarBodyHeight,
       timeIntervalMinutes: state.timeIntervalMinutes,
     );
+    final timelineVisibleResourceCount = state.mode == AppointmentCalendarMode.doctors
+        ? (calendarBodyHeight / _timelineResourceRowHeight).floor().clamp(1, 20)
+        : -1;
     final calendarSurface = colors.surfaceDefault;
     final allowDragAndDrop = canCreate && _supportsDragAndDrop(state.mode);
     final usesCustomViewHeader = AppointmentCalendarViewHeader.showsFor(state.mode);
@@ -378,7 +382,7 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                               resourceViewSettings: ResourceViewSettings(
                                 showAvatar: false,
                                 size: _timelineResourceRowHeight,
-                                visibleResourceCount: -1,
+                                visibleResourceCount: timelineVisibleResourceCount,
                                 displayNameTextStyle: AppTypography.bodySm(
                                   context,
                                 ).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w600),

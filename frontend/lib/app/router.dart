@@ -118,7 +118,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // Visits (V1-5)
           GoRoute(
             path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDocumentSegment}',
-            builder: (context, state) => VisitDocumentPage(visitId: state.pathParameters['visitId']!),
+            builder: (context, state) => VisitDocumentPage(
+              visitId: state.pathParameters['visitId']!,
+              startInEditMode: state.uri.queryParameters['edit'] == '1',
+            ),
           ),
           GoRoute(path: '${AppRoutes.visits}/:visitId/${AppRoutes.visitDetailSegment}', builder: shellPlaceholderPage),
 

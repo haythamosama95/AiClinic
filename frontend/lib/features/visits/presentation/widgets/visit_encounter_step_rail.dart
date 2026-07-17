@@ -15,7 +15,7 @@ class VisitEncounterStepRail extends StatelessWidget {
   final EncounterPhase currentPhase;
   final ValueChanged<EncounterPhase>? onPhaseSelected;
 
-  static const double _indicatorSize = 32;
+  static const double indicatorSize = 32;
 
   @override
   Widget build(BuildContext context) {
@@ -23,53 +23,24 @@ class VisitEncounterStepRail extends StatelessWidget {
     final phases = EncounterPhase.stepperPhases;
     final currentStep = currentPhase.stepperIndex.clamp(0, phases.length - 1);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columnWidth = constraints.maxWidth / phases.length;
-        final connectorInset = columnWidth / 2;
-
-        return Semantics(
-          label: 'Visit progress',
-          child: SizedBox(
-            width: constraints.maxWidth,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                if (phases.length > 1)
-                  Positioned(
-                    left: connectorInset,
-                    right: connectorInset,
-                    top: _indicatorSize / 2,
-                    height: 1,
-                    child: Row(
-                      children: [
-                        for (int index = 0; index < phases.length - 1; index++)
-                          Expanded(
-                            child: _EncounterStepConnector(completed: index < currentStep, colors: colors),
-                          ),
-                      ],
-                    ),
-                  ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (int index = 0; index < phases.length; index++)
-                      Expanded(
-                        child: _EncounterStepItem(
-                          phase: phases[index],
-                          index: index,
-                          currentStep: currentStep,
-                          colors: colors,
-                          onTap: onPhaseSelected,
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+    return Semantics(
+      label: 'Visit progress',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (int index = 0; index < phases.length; index++)
+            Expanded(
+              child: _EncounterStepItem(
+                phase: phases[index],
+                index: index,
+                stepCount: phases.length,
+                currentStep: currentStep,
+                colors: colors,
+                onTap: onPhaseSelected,
+              ),
             ),
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -78,6 +49,7 @@ class _EncounterStepItem extends StatelessWidget {
   const _EncounterStepItem({
     required this.phase,
     required this.index,
+    required this.stepCount,
     required this.currentStep,
     required this.colors,
     this.onTap,
@@ -85,6 +57,7 @@ class _EncounterStepItem extends StatelessWidget {
 
   final EncounterPhase phase;
   final int index;
+  final int stepCount;
   final int currentStep;
   final AppSemanticColors colors;
   final ValueChanged<EncounterPhase>? onTap;
@@ -117,7 +90,27 @@ class _EncounterStepItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
-        stepIcon,
+        Row(
+          children: [
+            Expanded(
+              child: index > 0
+                  ? Align(
+                      alignment: Alignment.centerRight,
+                      child: _EncounterStepConnector(completed: index - 1 < currentStep, colors: colors),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            stepIcon,
+            Expanded(
+              child: index < stepCount - 1
+                  ? Align(
+                      alignment: Alignment.centerLeft,
+                      child: _EncounterStepConnector(completed: index < currentStep, colors: colors),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
         const SizedBox(height: AppSpacing.space1),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space05),
@@ -150,6 +143,7 @@ class _EncounterStepConnector extends StatelessWidget {
       duration: AppMotion.resolveDuration(AppMotionPreset.fade),
       curve: AppMotion.resolveCurve(AppMotionPreset.fade),
       height: 1,
+      width: double.infinity,
       color: completed ? colors.actionPrimary : colors.borderDefault,
     );
   }
@@ -194,8 +188,8 @@ class _EncounterStepIndicator extends StatelessWidget {
     return AnimatedContainer(
       duration: AppMotion.resolveDuration(AppMotionPreset.fade),
       curve: AppMotion.resolveCurve(AppMotionPreset.fade),
-      width: VisitEncounterStepRail._indicatorSize,
-      height: VisitEncounterStepRail._indicatorSize,
+      width: VisitEncounterStepRail.indicatorSize,
+      height: VisitEncounterStepRail.indicatorSize,
       decoration: decoration,
       alignment: Alignment.center,
       child: state == AppStepState.complete

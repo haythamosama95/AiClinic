@@ -2,8 +2,11 @@ import 'package:ai_clinic/features/visits/domain/encounter_phase.dart';
 import 'package:ai_clinic/features/visits/domain/treatment_plan_item.dart';
 import 'package:ai_clinic/features/visits/domain/visit_clinical_note.dart';
 import 'package:ai_clinic/features/visits/domain/visit_encounter_draft.dart';
+import 'package:ai_clinic/features/visits/domain/visit_status.dart';
 import 'package:ai_clinic/features/visits/domain/visit_vital_sign.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/encounter_step_provider.dart';
+import 'package:ai_clinic/features/visits/presentation/providers/visit_detail_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/visit_encounter_test_support.dart';
@@ -74,6 +77,74 @@ void main() {
       );
 
       expect(badges[EncounterPhase.plan], PhaseCompletionBadge.hasContent);
+    });
+  });
+
+  group('encounterActivePhaseProvider', () {
+    Future<VisitDetailViewState> completedVisitView() async {
+      return VisitDetailViewState(
+        visit: sampleEncounterVisit().copyWith(status: VisitStatus.completed),
+        canEditDocumentation: true,
+        hasBranchAccess: true,
+        canUploadAttachments: true,
+      );
+    }
+
+    Future<VisitDetailViewState> inProgressVisitView() async {
+      return VisitDetailViewState(
+        visit: sampleEncounterVisit(),
+        canEditDocumentation: true,
+        hasBranchAccess: true,
+        canUploadAttachments: true,
+      );
+    }
+
+    test('opens completed visits on Summary when visit detail is already cached', () async {
+      final container = ProviderContainer(
+        overrides: [visitDetailViewProvider(encounterTestVisitId).overrideWith((ref) => completedVisitView())],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(visitDetailViewProvider(encounterTestVisitId).future);
+
+      expect(container.read(encounterActivePhaseProvider(encounterTestVisitId)), EncounterPhase.review);
+    });
+
+    test('opens completed visits on Summary after visit detail resolves', () async {
+      final container = ProviderContainer(
+        overrides: [visitDetailViewProvider(encounterTestVisitId).overrideWith((ref) => completedVisitView())],
+      );
+      addTearDown(container.dispose);
+
+      container.read(encounterActivePhaseProvider(encounterTestVisitId));
+      await container.read(visitDetailViewProvider(encounterTestVisitId).future);
+
+      expect(container.read(encounterActivePhaseProvider(encounterTestVisitId)), EncounterPhase.review);
+    });
+
+    test('opens in-progress visits on Intake', () async {
+      final container = ProviderContainer(
+        overrides: [visitDetailViewProvider(encounterTestVisitId).overrideWith((ref) => inProgressVisitView())],
+      );
+      addTearDown(container.dispose);
+
+      container.read(encounterActivePhaseProvider(encounterTestVisitId));
+      await container.read(visitDetailViewProvider(encounterTestVisitId).future);
+
+      expect(container.read(encounterActivePhaseProvider(encounterTestVisitId)), EncounterPhase.subjective);
+    });
+
+    test('preserves manual phase changes after initial load', () async {
+      final container = ProviderContainer(
+        overrides: [visitDetailViewProvider(encounterTestVisitId).overrideWith((ref) => completedVisitView())],
+      );
+      addTearDown(container.dispose);
+
+      container.read(encounterActivePhaseProvider(encounterTestVisitId));
+      await container.read(visitDetailViewProvider(encounterTestVisitId).future);
+      container.read(encounterActivePhaseProvider(encounterTestVisitId).notifier).setPhase(EncounterPhase.plan);
+
+      expect(container.read(encounterActivePhaseProvider(encounterTestVisitId)), EncounterPhase.plan);
     });
   });
 }

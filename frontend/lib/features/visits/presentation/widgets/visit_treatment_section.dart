@@ -175,7 +175,7 @@ class _VisitTreatmentSectionState extends ConsumerState<VisitTreatmentSection> {
             controller: _planController,
             focusNode: _planFocusNode,
             placeholder: 'Rest, hydration, return if symptoms worsen…',
-            minLines: 3,
+            minLines: 6,
             autoGrow: true,
             disabled: !canEdit,
             readOnly: !canEdit,
@@ -187,26 +187,6 @@ class _VisitTreatmentSectionState extends ConsumerState<VisitTreatmentSection> {
                     notifier.updatePlan(plainText, richDelta: richDelta);
                   }
                 : null,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.space6),
-        AppFormField(
-          id: 'investigations',
-          label: 'Investigations needed',
-          helperText: 'Add each test via the dialog with any relevant clinical notes.',
-          child: VisitInvestigationsEditor(
-            entries: investigations,
-            canEdit: canEdit,
-            onCreate: ({required name, note, investigationId}) =>
-                notifier.stageCreateInvestigation(name: name, note: note, investigationId: investigationId),
-            onUpdate: (id, {required name, note, investigationId}) => notifier.stageUpdateInvestigation(
-              investigationLineId: id,
-              name: name,
-              note: note,
-              investigationId: investigationId,
-              updateInvestigationId: true,
-            ),
-            onArchive: notifier.stageArchiveInvestigation,
           ),
         ),
         const SizedBox(height: AppSpacing.space6),
@@ -237,6 +217,26 @@ class _VisitTreatmentSectionState extends ConsumerState<VisitTreatmentSection> {
                   notes: notes,
                 ),
             onArchive: notifier.stageArchiveTreatmentPlan,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.space6),
+        AppFormField(
+          id: 'investigations',
+          label: 'Investigations needed',
+          helperText: 'Add each test via the dialog with any relevant clinical notes.',
+          child: VisitInvestigationsEditor(
+            entries: investigations,
+            canEdit: canEdit,
+            onCreate: ({required name, note, investigationId}) =>
+                notifier.stageCreateInvestigation(name: name, note: note, investigationId: investigationId),
+            onUpdate: (id, {required name, note, investigationId}) => notifier.stageUpdateInvestigation(
+              investigationLineId: id,
+              name: name,
+              note: note,
+              investigationId: investigationId,
+              updateInvestigationId: true,
+            ),
+            onArchive: notifier.stageArchiveInvestigation,
           ),
         ),
         const SizedBox(height: AppSpacing.space6),

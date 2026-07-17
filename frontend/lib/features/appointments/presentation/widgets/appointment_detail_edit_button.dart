@@ -105,6 +105,7 @@ class _AppointmentDetailEditButtonState extends ConsumerState<AppointmentDetailE
       variant: AppButtonVariant.primary,
       size: AppButtonSize.md,
       loading: _isLoading,
+      disabled: !isInteractive,
       leadingIcon: const Icon(Icons.edit_outlined),
       onPressed: isInteractive ? _handleEdit : null,
       child: const Text('Edit appointment'),

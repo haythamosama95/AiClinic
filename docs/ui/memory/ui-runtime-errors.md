@@ -1309,3 +1309,43 @@ class _VisitSubmittedPageLayout extends StatelessWidget {
 ```
 
 **Affected files (fixed):** `visit_submitted_page.dart`.
+
+---
+
+## 48. `_ResourceViewRenderObject` infinite / NaN size (`SfCalendar` doctor timeline)
+
+**Symptom:** Red screen when opening or switching to the appointments calendar **Doctors** view (`CalendarView.timelineDay`). Rendering assertion: `_ResourceViewRenderObject object was given an infinite size during layout` with `Size(120.0, NaN)` at `SfCalendar` in `appointment_calendar_page.dart`. Cascading `RenderBox was not laid out`, null-check, and semantics assertions follow.
+
+**Cause:** Two issues combined:
+
+1. **Stale resource collection:** `AppointmentCalendarDataSource.updateItems` called `notifyListeners(CalendarDataSourceAction.reset, …)` after updating both `appointments` and `resources`. Syncfusion's `reset` handler refreshes appointments only — it does **not** update the calendar state's internal `_resourceCollection`. After switching from week/day to doctors view, `dataSource.resources` was populated (so `isResourceEnabled` was true) while `_resourceCollection` stayed `[]`. `panelHeight = resourceItemHeight * 0` became `NaN` via Syncfusion's `visibleResourceCount: -1` math (`timelineViewHeight / 0` then `Infinity * 0`).
+
+2. **Defensive layout:** `visibleResourceCount: -1` lets Syncfusion divide viewport height by resource count; when count is stale-zero this produces `NaN` panel height inside the resource `ListView` (unbounded height → uses `panelHeight`).
+
+**Fix:**
+
+1. After `reset`, also notify resource changes so `_resourceCollection` syncs:
+
+```dart
+notifyListeners(CalendarDataSourceAction.reset, appointments ?? const []);
+final resourceList = resources;
+if (resourceList != null && resourceList.isNotEmpty) {
+  notifyListeners(CalendarDataSourceAction.resetResource, resourceList);
+}
+```
+
+2. In doctors mode, set a positive `visibleResourceCount` from viewport height instead of `-1`:
+
+```dart
+final timelineVisibleResourceCount = state.mode == AppointmentCalendarMode.doctors
+    ? (calendarBodyHeight / _timelineResourceRowHeight).floor().clamp(1, 20)
+    : -1;
+```
+
+**Affected files (fixed):** `appointment_calendar_data_source.dart`, `appointment_calendar_page.dart`.
+
+## Checklist for Syncfusion `SfCalendar` / timeline resources
+
+1. Updating `CalendarDataSource.resources`? → Notify with `CalendarDataSourceAction.resetResource` (or `addResource` / `removeResource`) — `reset` alone does **not** refresh the calendar's internal `_resourceCollection` (see entry #48).
+2. Doctor timeline (`CalendarView.timelineDay`)? → Prefer a positive `visibleResourceCount` derived from viewport height; avoid `-1` when resource rows use a fixed height (`timelineAppointmentHeight`).
+

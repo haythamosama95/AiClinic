@@ -45,6 +45,13 @@ class AppointmentCalendarDataSource extends CalendarDataSource {
       oddResourceRowColor: oddResourceRowColor,
     );
     notifyListeners(CalendarDataSourceAction.reset, appointments ?? const []);
+    // `reset` does not refresh SfCalendar's internal `_resourceCollection`.
+    // Without `resetResource`, doctor timeline view can lay out with a stale
+    // empty collection while `dataSource.resources` is populated (NaN height).
+    final resourceList = resources;
+    if (resourceList != null && resourceList.isNotEmpty) {
+      notifyListeners(CalendarDataSourceAction.resetResource, resourceList);
+    }
   }
 
   void _apply(
