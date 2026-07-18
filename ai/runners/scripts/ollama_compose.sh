@@ -39,15 +39,38 @@ compose_cmd() {
 }
 
 port_11434_in_use() {
-  ss -tln 2>/dev/null | grep -q '127.0.0.1:11434'
+  ss -tlnH 2>/dev/null | awk '{print $4}' | grep -qE '(:|\])11434$'
 }
 
 docker_ollama_running() {
   $(compose_cmd) ps --status running -q ollama 2>/dev/null | grep -q .
 }
 
+docker_ollama_ports_published() {
+  local cid
+  cid="$($(compose_cmd) ps -q ollama 2>/dev/null | head -1 || true)"
+  [[ -n "${cid}" ]] || return 1
+  docker port "${cid}" 11434/tcp 2>/dev/null | grep -q '127.0.0.1:11434'
+}
+
 ollama_reachable() {
   curl -sf http://127.0.0.1:11434/api/version >/dev/null 2>&1
+}
+
+ollama_healthy() {
+  docker_ollama_running && ollama_reachable && docker_ollama_ports_published
+}
+
+wait_for_ollama() {
+  local attempts="${1:-30}"
+  local _
+  for _ in $(seq 1 "${attempts}"); do
+    if ollama_reachable; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  return 1
 }
 
 stop_conflicting_ollama() {
@@ -92,22 +115,23 @@ stop_conflicting_ollama() {
 }
 
 ensure_port_available() {
+  if ollama_healthy; then
+    return 0
+  fi
+
   if docker_ollama_running; then
-    if ollama_reachable; then
-      return 0
-    fi
-    echo "warning: Ollama container is running but 127.0.0.1:11434 is not responding — recreating" >&2
+    echo "warning: Ollama container is running but 127.0.0.1:11434 is not healthy — recreating" >&2
     $(compose_cmd) down
   fi
+
+  # Stop host-native Ollama before Docker binds 11434 (systemd often holds the port).
+  stop_conflicting_ollama || {
+    echo "error: could not stop host Ollama services." >&2
+    exit 1
+  }
+
   if port_11434_in_use; then
-    stop_conflicting_ollama || {
-      echo "error: 127.0.0.1:11434 is still in use after stopping known Ollama services." >&2
-      echo "Find the process with: ss -tlnp | grep 11434" >&2
-      exit 1
-    }
-  fi
-  if port_11434_in_use; then
-    echo "error: 127.0.0.1:11434 is already in use by an unknown process." >&2
+    echo "error: port 11434 is still in use after stopping known Ollama services." >&2
     echo "Find the process with: ss -tlnp | grep 11434" >&2
     exit 1
   fi
@@ -119,14 +143,21 @@ ollama_up() {
     echo "==> Using host model store: ${OLLAMA_HOST_MODELS}"
   fi
   $(compose_cmd) up -d "$@"
-  for _ in $(seq 1 30); do
-    if ollama_reachable; then
-      return 0
-    fi
-    sleep 0.5
-  done
+  if wait_for_ollama; then
+    return 0
+  fi
+
+  echo "warning: Ollama did not become reachable — force-recreating container" >&2
+  $(compose_cmd) down
+  ensure_port_available
+  $(compose_cmd) up -d --force-recreate "$@"
+  if wait_for_ollama; then
+    return 0
+  fi
+
   echo "error: Ollama did not become reachable at http://127.0.0.1:11434" >&2
   echo "Try: bash scripts/ollama_compose.sh down && bash scripts/ollama_compose.sh up" >&2
+  echo "Logs: bash scripts/ollama_compose.sh logs-tail" >&2
   exit 1
 }
 

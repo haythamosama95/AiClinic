@@ -75,6 +75,122 @@ wait_for_url() {
   return 1
 }
 
+port_in_use() {
+  local port="$1"
+  command -v ss >/dev/null 2>&1 && ss -tlnH "sport = :${port}" 2>/dev/null | grep -q .
+}
+
+pids_on_port() {
+  local port="$1"
+  ss -tlnpH "sport = :${port}" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u
+}
+
+process_cmdline() {
+  ps -p "$1" -o args= 2>/dev/null || true
+}
+
+is_ai_gateway_process() {
+  local cmdline="$1"
+  [[ "${cmdline}" == *"uvicorn"* && "${cmdline}" == *"gateway.main"* ]]
+}
+
+is_runner_console_process() {
+  local cmdline="$1"
+  [[ "${cmdline}" == *"console_server.py"* ]]
+}
+
+is_known_ai_process() {
+  local kind="$1"
+  local cmdline="$2"
+  case "${kind}" in
+    gateway) is_ai_gateway_process "${cmdline}" ;;
+    console) is_runner_console_process "${cmdline}" ;;
+    *) return 1 ;;
+  esac
+}
+
+port_held_by_kind() {
+  local port="$1"
+  local kind="$2"
+  local pid cmdline
+  for pid in $(pids_on_port "${port}"); do
+    cmdline="$(process_cmdline "${pid}")"
+    if is_known_ai_process "${kind}" "${cmdline}"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+wait_for_port_free() {
+  local port="$1"
+  local label="$2"
+  local i
+  for ((i = 1; i <= 20; i++)); do
+    if ! port_in_use "${port}"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "error: port ${port} is still in use after stopping ${label}" >&2
+  ss -tlnpH "sport = :${port}" 2>/dev/null || true
+  return 1
+}
+
+reclaim_port() {
+  local port="$1"
+  local kind="$2"
+  local label="$3"
+
+  if ! port_in_use "${port}"; then
+    return 0
+  fi
+
+  local pid cmdline stopped=0 foreign=0
+  for pid in $(pids_on_port "${port}"); do
+    cmdline="$(process_cmdline "${pid}")"
+    if is_known_ai_process "${kind}" "${cmdline}"; then
+      log "Stopping stale ${label} (pid ${pid})"
+      kill "${pid}" 2>/dev/null || true
+      stopped=1
+    else
+      foreign=1
+      echo "error: port ${port} is in use by another process (pid ${pid})" >&2
+      echo "       ${cmdline}" >&2
+    fi
+  done
+
+  if [[ "${foreign}" -eq 1 ]]; then
+    echo "Free the port or choose another:" >&2
+    case "${kind}" in
+      gateway) echo "  GATEWAY_PORT=8091 ./ai/start.sh" >&2 ;;
+      console) echo "  RUNNER_CONSOLE_PORT=11436 ./ai/start.sh" >&2 ;;
+    esac
+    exit 1
+  fi
+
+  if [[ "${stopped}" -eq 1 ]]; then
+    wait_for_port_free "${port}" "${label}"
+  fi
+}
+
+ensure_service() {
+  local kind="$1"
+  local port="$2"
+  local health_url="$3"
+  local label="$4"
+  shift 4
+
+  if curl -sf "${health_url}" >/dev/null 2>&1 && port_held_by_kind "${port}" "${kind}"; then
+    echo "    ${label} already running (${health_url})"
+    return 0
+  fi
+
+  reclaim_port "${port}" "${kind}" "${label}"
+  start_background "${label}" "$@"
+  wait_for_url "${health_url}" "${label^}"
+}
+
 find_python() {
   local candidate
   for candidate in python3.13 python3.12 python3; do
@@ -190,12 +306,12 @@ maybe_pull_model
 warn_if_no_models
 
 log "Starting AI Gateway on http://localhost:${GATEWAY_PORT}"
-start_background "gateway" bash "${GATEWAY_DIR}/scripts/start_dev.sh"
-wait_for_url "http://127.0.0.1:${GATEWAY_PORT}/health" "Gateway"
+ensure_service gateway "${GATEWAY_PORT}" "http://127.0.0.1:${GATEWAY_PORT}/health" "gateway" \
+  bash "${GATEWAY_DIR}/scripts/start_dev.sh"
 
 log "Starting runner console on http://127.0.0.1:${CONSOLE_PORT}"
-start_background "runner console" bash "${RUNNERS_DIR}/scripts/serve_console.sh"
-wait_for_url "http://127.0.0.1:${CONSOLE_PORT}/" "Runner console"
+ensure_service console "${CONSOLE_PORT}" "http://127.0.0.1:${CONSOLE_PORT}/" "runner console" \
+  bash "${RUNNERS_DIR}/scripts/serve_console.sh"
 
 echo
 echo "All services are up:"
