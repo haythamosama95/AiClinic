@@ -21,13 +21,16 @@ runners: []
 health_poll_interval_s: 10
 unreachable_after_failures: 3
 
-# Reserved for Phase 2 (generation)
+# Generation pipeline (§14)
 queue_max_depth: 16
 queue_max_wait_s: 20
 max_inflight_per_caller: 2
 timeout_total_s: 45
 timeout_first_token_s: 15
+model_swap_first_token_timeout_s: 60
 confidence_threshold: 0.6
+shutdown_grace_s: 10
+log_verbatim_retention_hours: 24
 
 # Offline JWT validation — at least one MUST be set
 jwt_secret: null
@@ -43,10 +46,8 @@ log_verbatim: false
 enable_push_registration: false
 internal_shared_secret: null
 
-# Reserved for Phase 2
 streaming_enabled: true
 enable_multi_command_plans: false
-model_swap_first_token_timeout_s: 60
 
 models_dir: null
 

@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from gateway.api.capabilities import router as capabilities_router
 from gateway.api.dashboard_auth import router as dashboard_auth_router
 from gateway.api.errors import install_exception_handlers
-from gateway.api.generate_stub import router as generate_stub_router
+from gateway.api.generate import router as generate_router
 from gateway.api.health import router as health_router
 from gateway.api.internal_runners import router as internal_runners_router
 from gateway.api.metrics import router as metrics_router
@@ -248,7 +248,7 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
     app.include_router(runners_router)
     app.include_router(status_router)
     app.include_router(capabilities_router)
-    app.include_router(generate_stub_router)
+    app.include_router(generate_router)
     app.include_router(trace_router)
     if cfg.enable_push_registration:
         app.include_router(internal_runners_router)

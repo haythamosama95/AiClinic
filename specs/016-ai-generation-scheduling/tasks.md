@@ -40,10 +40,10 @@ changes. All paths are under `ai/gateway/` (extending the Phase 1 service in pla
 **Purpose**: Extend the Phase 1 Python project with new dependencies and configuration keys.
 All tasks are independent and may run in parallel.
 
-- [ ] T001 [P] Add `jsonschema` (defense-in-depth schema validation) to runtime deps in `ai/gateway/pyproject.toml`
-- [ ] T002 [P] Add `pytest-timeout` to dev deps in `ai/gateway/pyproject.toml`
-- [ ] T003 [P] Add new §14 config keys with documented defaults to `ai/gateway/config/gateway.example.yaml`: `queue_max_depth` (16), `queue_max_wait_s` (20), `max_inflight_per_caller` (2), `timeout_total_s` (45), `timeout_first_token_s` (15), `model_swap_first_token_timeout_s` (60), `confidence_threshold` (0.6), `shutdown_grace_s` (10), `log_verbatim_retention_hours` (24)
-- [ ] T004 Extend `ai/gateway/src/gateway/config/settings.py` with the new keys as typed fields with documented defaults and fail-fast validation (depends on T003)
+- [X] T001 [P] Add `jsonschema` (defense-in-depth schema validation) to runtime deps in `ai/gateway/pyproject.toml`
+- [X] T002 [P] Add `pytest-timeout` to dev deps in `ai/gateway/pyproject.toml`
+- [X] T003 [P] Add new §14 config keys with documented defaults to `ai/gateway/config/gateway.example.yaml`: `queue_max_depth` (16), `queue_max_wait_s` (20), `max_inflight_per_caller` (2), `timeout_total_s` (45), `timeout_first_token_s` (15), `model_swap_first_token_timeout_s` (60), `confidence_threshold` (0.6), `shutdown_grace_s` (10), `log_verbatim_retention_hours` (24)
+- [X] T004 Extend `ai/gateway/src/gateway/config/settings.py` with the new keys as typed fields with documented defaults and fail-fast validation (depends on T003)
 
 **Checkpoint**: Project deps and config ready.
 
@@ -58,15 +58,15 @@ must stay green from here on (isolation reaffirmation + Phase 1 regression).
 
 **⚠️ CRITICAL**: No user-story work can begin until this phase is complete.
 
-- [ ] T005 [P] Extend `ai/gateway/src/gateway/api/errors.py` with new typed codes: `ai_unusable` (422), `ai_busy` (503), `ai_no_capacity` (503), `ai_timeout` (504), and extend `rate_limited` (429) for per-caller cap
-- [ ] T006 [P] Create `ai/gateway/src/gateway/agents/__init__.py` and `ai/gateway/src/gateway/agents/base.py` defining the `Agent` interface (system_prompt property, grammar mapping, command schemas, semantic validators) — no concrete agent yet
-- [ ] T007 [P] Create `ai/gateway/src/gateway/validation/__init__.py`, `schema_check.py` (jsonschema wrapper — skeleton), `semantic.py` (agent-agnostic gate + dispatch to agent validators — skeleton), and `envelope.py` (Command Protocol envelope assembly — skeleton with all fields but no threshold logic yet)
-- [ ] T008 [P] Create `ai/gateway/src/gateway/pipeline/__init__.py` as the resilience-envelope module marker (no logic yet — implemented in US3)
-- [ ] T009 [P] Extend `ai/gateway/src/gateway/obs/logging.py` to carry generation fields: `agent`, `model`, `digest`, `queue_wait_seconds`, `first_token_seconds`, `total_seconds`, `prompt_tokens`, `completion_tokens`, `outcome`, `error_class`, `retried`, `verbatim` (no PHI yet — redaction lands in US4)
-- [ ] T010 [P] Extend `ai/gateway/src/gateway/obs/metrics.py` with new Prometheus collectors: `ai_requests_total{task,outcome}`, `ai_errors_total{code}`, `ai_queue_depth{capability}`, `ai_first_token_seconds{runner}`, `ai_total_seconds{runner,task}`, `ai_inflight{capability}`, `ai_tokens_per_sec{runner,task}`, `ai_model_swaps_total{runner,outcome}`
-- [ ] T011 [P] Replace `ai/gateway/src/gateway/api/generate_stub.py` with `ai/gateway/src/gateway/api/generate.py` skeleton: reuse Phase 1 auth dependency, validate request body (task enum, prompt non-empty and ≤ 8 KB, options shape), branch on `options.stream` returning `501 not_implemented` for now; delete `generate_stub.py`
-- [ ] T012 [P] Write `ai/gateway/tests/contract/phase1_regression.py` asserting Phase 1 endpoints still pass: `/health`, `/ready`, `/v1/capabilities` (current Phase 1 shape), auth matrix, error contract for Phase 1 codes
-- [ ] T013 [P] Write `ai/gateway/tests/contract/isolation_reaffirm.py` asserting zero outbound calls to Supabase / zero off-LAN calls across representative requests to `/v1/ai/generate` (use `httpx` transport hooks / mock interception) — reaffirms FR-028/SC-010 across the feature
+- [X] T005 [P] Extend `ai/gateway/src/gateway/api/errors.py` with new typed codes: `ai_unusable` (422), `ai_busy` (503), `ai_no_capacity` (503), `ai_timeout` (504), and extend `rate_limited` (429) for per-caller cap
+- [X] T006 [P] Create `ai/gateway/src/gateway/agents/__init__.py` and `ai/gateway/src/gateway/agents/base.py` defining the `Agent` interface (system_prompt property, grammar mapping, command schemas, semantic validators) — no concrete agent yet
+- [X] T007 [P] Create `ai/gateway/src/gateway/validation/__init__.py`, `schema_check.py` (jsonschema wrapper — skeleton), `semantic.py` (agent-agnostic gate + dispatch to agent validators — skeleton), and `envelope.py` (Command Protocol envelope assembly — skeleton with all fields but no threshold logic yet)
+- [X] T008 [P] Create `ai/gateway/src/gateway/pipeline/__init__.py` as the resilience-envelope module marker (no logic yet — implemented in US3)
+- [X] T009 [P] Extend `ai/gateway/src/gateway/obs/logging.py` to carry generation fields: `agent`, `model`, `digest`, `queue_wait_seconds`, `first_token_seconds`, `total_seconds`, `prompt_tokens`, `completion_tokens`, `outcome`, `error_class`, `retried`, `verbatim` (no PHI yet — redaction lands in US4)
+- [X] T010 [P] Extend `ai/gateway/src/gateway/obs/metrics.py` with new Prometheus collectors: `ai_requests_total{task,outcome}`, `ai_errors_total{code}`, `ai_queue_depth{capability}`, `ai_first_token_seconds{runner}`, `ai_total_seconds{runner,task}`, `ai_inflight{capability}`, `ai_tokens_per_sec{runner,task}`, `ai_model_swaps_total{runner,outcome}`
+- [X] T011 [P] Replace `ai/gateway/src/gateway/api/generate_stub.py` with `ai/gateway/src/gateway/api/generate.py` skeleton: reuse Phase 1 auth dependency, validate request body (task enum, prompt non-empty and ≤ 8 KB, options shape), branch on `options.stream` returning `501 not_implemented` for now; delete `generate_stub.py`
+- [X] T012 [P] Write `ai/gateway/tests/contract/phase1_regression.py` asserting Phase 1 endpoints still pass: `/health`, `/ready`, `/v1/capabilities` (current Phase 1 shape), auth matrix, error contract for Phase 1 codes
+- [X] T013 [P] Write `ai/gateway/tests/contract/isolation_reaffirm.py` asserting zero outbound calls to Supabase / zero off-LAN calls across representative requests to `/v1/ai/generate` (use `httpx` transport hooks / mock interception) — reaffirms FR-028/SC-010 across the feature
 
 **Checkpoint**: Foundation ready — generate route accepts requests and returns typed errors; scaffolding for agents, validation, pipeline, and obs is in place; Phase 1 regression and isolation suites green.
 

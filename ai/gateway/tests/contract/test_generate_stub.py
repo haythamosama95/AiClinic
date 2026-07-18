@@ -1,4 +1,4 @@
-"""Generate-stub contract tests — POST /v1/ai/generate returns 501 with zero inference."""
+"""Generate contract tests — POST /v1/ai/generate validates body and returns 501 skeleton."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from tests.fixtures.jwt_tokens import make_hs256_token
 
 TEST_SECRET = "generate-stub-test-secret"
 GENERATE_PATH = "/v1/ai/generate"
+VALID_PAYLOAD = {"task": "command", "prompt": "book Ahmed with Dr Ali tomorrow 5pm"}
 
 RUNNER_A_URL = "http://runner-a.test:11434"
 RUNNER_B_URL = "http://runner-b.test:11434"
@@ -26,6 +27,14 @@ def _assert_not_implemented_envelope(body: dict[str, Any]) -> None:
     assert "error" in body
     err = body["error"]
     assert err["code"] == "not_implemented"
+    assert isinstance(err["message"], str) and err["message"]
+    assert isinstance(err["request_id"], str) and err["request_id"]
+
+
+def _assert_bad_request_envelope(body: dict[str, Any]) -> None:
+    assert "error" in body
+    err = body["error"]
+    assert err["code"] == "bad_request"
     assert isinstance(err["message"], str) and err["message"]
     assert isinstance(err["request_id"], str) and err["request_id"]
 
@@ -56,7 +65,7 @@ async def generate_client():
 @pytest.mark.asyncio
 async def test_generate_returns_501_not_implemented(generate_client) -> None:
     client, _app = generate_client
-    response = await client.post(GENERATE_PATH, json={})
+    response = await client.post(GENERATE_PATH, json=VALID_PAYLOAD)
     assert response.status_code == 501
     _assert_not_implemented_envelope(response.json())
     assert response.headers.get("X-Request-ID")
@@ -66,12 +75,16 @@ async def test_generate_returns_501_not_implemented(generate_client) -> None:
 @pytest.mark.parametrize(
     "payload",
     [
-        {},
-        {"task": "draft_note"},
-        {"task": "draft_note", "prompt": "Summarize visit", "stream": True},
+        {"task": "command", "prompt": "Summarize visit"},
+        {"task": "command", "prompt": "test", "options": {"stream": True}},
+        {
+            "task": "command",
+            "prompt": "with context",
+            "context": {"branch_id": "550e8400-e29b-41d4-a716-446655440000"},
+        },
     ],
 )
-async def test_generate_always_501_regardless_of_body(generate_client, payload) -> None:
+async def test_generate_valid_body_returns_501(generate_client, payload) -> None:
     client, _app = generate_client
     response = await client.post(GENERATE_PATH, json=payload)
     assert response.status_code == 501
@@ -79,9 +92,28 @@ async def test_generate_always_501_regardless_of_body(generate_client, payload) 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"task": "draft_note"},
+        {"task": "command"},
+        {"prompt": "missing task"},
+        {"task": "command", "prompt": ""},
+        {"task": "command", "prompt": "x", "turn": -1},
+    ],
+)
+async def test_generate_invalid_body_returns_400(generate_client, payload) -> None:
+    client, _app = generate_client
+    response = await client.post(GENERATE_PATH, json=payload)
+    assert response.status_code == 400
+    _assert_bad_request_envelope(response.json())
+
+
+@pytest.mark.asyncio
 @respx.mock
 async def test_generate_performs_zero_inference(generate_client) -> None:
-    """Stub must not call runners — no /v1/models, /v1/chat/completions, or /health."""
+    """Skeleton must not call runners — no /v1/models, /v1/chat/completions, or /health."""
     client, app = generate_client
     app.state.registry.update_entry(
         "runner-a",
@@ -109,7 +141,7 @@ async def test_generate_performs_zero_inference(generate_client) -> None:
 
     response = await client.post(
         GENERATE_PATH,
-        json={"task": "draft_note", "prompt": "must not reach runner"},
+        json={"task": "command", "prompt": "must not reach runner"},
     )
 
     assert response.status_code == 501
@@ -125,6 +157,6 @@ async def test_generate_requires_auth(generate_client) -> None:
     client, _app = generate_client
     transport = client._transport
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as unauthed:
-        response = await unauthed.post(GENERATE_PATH, json={})
+        response = await unauthed.post(GENERATE_PATH, json=VALID_PAYLOAD)
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthenticated"

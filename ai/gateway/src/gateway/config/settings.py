@@ -80,6 +80,8 @@ class GatewayConfig(BaseSettings):
     streaming_enabled: bool = True
     enable_multi_command_plans: bool = False
     model_swap_first_token_timeout_s: int = Field(default=60, gt=0)
+    shutdown_grace_s: int = Field(default=10, gt=0)
+    log_verbatim_retention_hours: int = Field(default=24, gt=0)
     models_dir: str | None = None
     role_ai_access: dict[str, bool] = Field(default_factory=lambda: dict(RoleAiAccessMap.DEFAULTS))
     log_dir: str = "./logs"
