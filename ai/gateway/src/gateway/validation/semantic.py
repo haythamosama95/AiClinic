@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from gateway.agents.base import Agent
+from gateway.agents.scheduling.schemas import SCHEDULING_COMMANDS
 from gateway.api.errors import ErrorCode, GatewayError
+
+_SCHEDULING_COMMAND_ALLOWLIST: frozenset[str] = frozenset(SCHEDULING_COMMANDS)
 
 
 def validate_semantics(
@@ -20,6 +23,13 @@ def validate_semantics(
 
     Raises ``GatewayError`` with ``ai_unusable`` on catalog or semantic failure.
     """
+    if command_type not in _SCHEDULING_COMMAND_ALLOWLIST:
+        raise GatewayError(
+            ErrorCode.AI_UNUSABLE,
+            f"command_type {command_type!r} is not an allowed scheduling command",
+            request_id,
+        )
+
     if command_type not in agent.command_catalog:
         raise GatewayError(
             ErrorCode.AI_UNUSABLE,

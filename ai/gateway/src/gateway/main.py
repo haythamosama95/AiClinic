@@ -177,7 +177,12 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
     _config = cfg
     _registry = RunnerRegistry(cfg)
 
-    obs_logging.configure_logging(cfg.log_dir, cfg.log_verbatim)
+    obs_logging.configure_logging(
+        cfg.log_dir,
+        cfg.log_verbatim,
+        log_verbatim_retention_hours=cfg.log_verbatim_retention_hours,
+        development_profile=cfg.dashboard_auto_sign_in,
+    )
 
     app = FastAPI(title="AI Gateway", version="0.1.0", lifespan=lifespan)
     app.state.config = cfg

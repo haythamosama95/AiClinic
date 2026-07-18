@@ -2,62 +2,41 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
-import re
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
 import structlog
 
-_PHI_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bpatient[_\s]?name\b", re.IGNORECASE),
-    re.compile(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"),
-]
+from gateway.obs.redaction import (
+    build_log_file_handler,
+    redact_phi_patterns,
+    redact_sensitive_fields,
+    warn_verbatim_outside_development,
+)
 
 
-def _hash_value(value: str) -> str:
-    return f"sha256:{hashlib.sha256(value.encode()).hexdigest()[:16]}"
-
-
-def redact_phi(
-    _logger: Any,
-    _method: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
-    """Structlog processor that redacts potential PHI from log fields."""
-    log_verbatim = event_dict.pop("_log_verbatim", False)
-    if log_verbatim:
-        return event_dict
-
-    redacted = False
-    for key, value in list(event_dict.items()):
-        if not isinstance(value, str):
-            continue
-        for pattern in _PHI_PATTERNS:
-            if pattern.search(value):
-                event_dict[key] = _hash_value(value)
-                redacted = True
-                break
-    if redacted:
-        event_dict["redacted"] = True
-    return event_dict
-
-
-def configure_logging(log_dir: str, log_verbatim: bool = False) -> None:
+def configure_logging(
+    log_dir: str,
+    log_verbatim: bool = False,
+    *,
+    retention_hours: int = 24,
+    log_verbatim_retention_hours: int | None = None,
+    development_profile: bool = False,
+) -> None:
     """Configure structlog JSON logging to rotating local files."""
+    hours = (
+        log_verbatim_retention_hours
+        if log_verbatim_retention_hours is not None
+        else retention_hours
+    )
     path = Path(log_dir)
     path.mkdir(parents=True, exist_ok=True)
-    log_file = path / "gateway.jsonl"
-
-    file_handler = RotatingFileHandler(
-        log_file,
-        maxBytes=10 * 1024 * 1024,
-        backupCount=5,
-        encoding="utf-8",
+    file_handler = build_log_file_handler(
+        str(path / "gateway.jsonl"),
+        log_verbatim=log_verbatim,
+        log_verbatim_retention_hours=hours,
     )
-    file_handler.setLevel(logging.INFO)
 
     root = logging.getLogger()
     root.handlers.clear()
@@ -71,13 +50,20 @@ def configure_logging(log_dir: str, log_verbatim: bool = False) -> None:
             structlog.stdlib.PositionalArgumentsFormatter(),
             structlog.processors.TimeStamper(fmt="iso"),
             lambda _l, _m, ed: {**ed, "_log_verbatim": log_verbatim},
-            redact_phi,
+            redact_sensitive_fields,
+            redact_phi_patterns,
             structlog.processors.JSONRenderer(),
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
+    )
+
+    warn_verbatim_outside_development(
+        log_verbatim=log_verbatim,
+        development_profile=development_profile,
+        log_verbatim_retention_hours=hours,
     )
 
 

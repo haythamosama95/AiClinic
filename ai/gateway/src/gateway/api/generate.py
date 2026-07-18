@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from collections.abc import AsyncIterator
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from gateway.agents.base import Agent
 from gateway.agents.scheduling import get_scheduling_agent
@@ -45,7 +46,37 @@ from gateway.validation.semantic import validate_semantics
 router = APIRouter(prefix="/v1", tags=["generate"])
 
 MAX_PROMPT_BYTES = 8192
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 UNSUPPORTED_TASK_MESSAGE = "Only task='command' is supported in this deployment phase."
+
+
+def strip_control_characters(value: str) -> str:
+    """Remove C0 control characters except tab, LF, and CR."""
+    return _CONTROL_CHAR_RE.sub("", value)
+
+
+def sanitize_context_strings(context: dict[str, Any]) -> dict[str, Any]:
+    """Strip control characters from every string value in context."""
+    sanitized: dict[str, Any] = {}
+    for key, value in context.items():
+        if isinstance(value, str):
+            sanitized[key] = strip_control_characters(value)
+        elif isinstance(value, dict):
+            sanitized[key] = sanitize_context_strings(value)
+        elif isinstance(value, list):
+            sanitized[key] = [
+                strip_control_characters(item)
+                if isinstance(item, str)
+                else sanitize_context_strings(item)
+                if isinstance(item, dict)
+                else item
+                for item in value
+            ]
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
 CAPABILITY_CLASS = "command"
 REQUIRED_CAPABILITIES: list[str] = []
 
@@ -91,7 +122,13 @@ class GenerateRequest(BaseModel):
             raise ValueError("prompt must not be empty")
         if len(encoded) > MAX_PROMPT_BYTES:
             raise ValueError(f"prompt must be at most {MAX_PROMPT_BYTES} bytes")
-        return value
+        return strip_control_characters(value)
+
+    @model_validator(mode="after")
+    def sanitize_context(self) -> Self:
+        if self.context is not None:
+            self.context = sanitize_context_strings(self.context)
+        return self
 
 
 def _adjust_in_flight(registry: RunnerRegistry, runner_id: str, delta: int) -> None:
@@ -222,6 +259,8 @@ def _log_success(
     runner_id: str,
     log_verbatim: bool,
     retried: bool,
+    prompt: str,
+    context: dict[str, Any],
 ) -> None:
     log_generation_record(
         request_id=request_id,
@@ -239,6 +278,8 @@ def _log_success(
         caller_staff_id=caller.staff_id,
         runner_id=runner_id,
         first_token_seconds=first_token_seconds,
+        prompt=prompt,
+        context=context,
     )
     record_ai_request("command", "ok")
 
@@ -339,10 +380,7 @@ async def _generate_command_non_streaming(
         runner_entry: RunnerRegistryEntry | None = None
 
         try:
-            messages = [
-                {"role": "system", "content": agent.system_prompt},
-                {"role": "user", "content": agent.build_user_message(body.prompt, context)},
-            ]
+            messages = agent.compose_chat_messages(body.prompt, context)
             format_schema = agent.grammar.to_ollama_format(agent.envelope_schema())
 
             async with httpx.AsyncClient() as http:
@@ -406,6 +444,8 @@ async def _generate_command_non_streaming(
                 runner_id=runner_entry.id,
                 log_verbatim=config.log_verbatim,
                 retried=retried,
+                prompt=body.prompt,
+                context=context,
             )
 
             return JSONResponse(status_code=200, content=envelope)
@@ -461,10 +501,7 @@ async def _generate_command_streaming(
                 request_id=request_id,
                 caller_staff_id=caller.staff_id,
             ) as slot:
-                messages = [
-                    {"role": "system", "content": agent.system_prompt},
-                    {"role": "user", "content": agent.build_user_message(body.prompt, context)},
-                ]
+                messages = agent.compose_chat_messages(body.prompt, context)
                 format_schema = agent.grammar.to_ollama_format(agent.envelope_schema())
 
                 async with httpx.AsyncClient() as http:
@@ -607,6 +644,8 @@ async def _generate_command_streaming(
                         runner_id=runner_entry.id,
                         log_verbatim=config.log_verbatim,
                         retried=retried,
+                        prompt=body.prompt,
+                        context=context,
                     )
 
                     yield format_event("final", envelope)

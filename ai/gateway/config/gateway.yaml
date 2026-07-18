@@ -35,6 +35,7 @@ allowed_origins:
   - http://localhost:8090
 
 log_verbatim: false
+log_verbatim_retention_hours: 24
 enable_push_registration: false
 internal_shared_secret: null
 
