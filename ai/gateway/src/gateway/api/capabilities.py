@@ -9,12 +9,14 @@ from fastapi.responses import JSONResponse
 
 from gateway.auth.dependencies import require_ai_access
 from gateway.auth.jwt_validator import CallerIdentity
+from gateway.agents.scheduling import SCHEDULING_COMMANDS
 from gateway.config.settings import GatewayConfig
 from gateway.routing.registry import RunnerRegistry, RunnerRegistryEntry
 
 router = APIRouter(prefix="/v1", tags=["capabilities"])
 
 SCHEMA_VERSION = "1.0"
+SCHEDULING_TASKS: list[str] = ["command"]
 
 
 def _runner_capability(entry: RunnerRegistryEntry) -> dict[str, Any]:
@@ -37,8 +39,8 @@ def build_capabilities_report(
     return {
         "schema_version": SCHEMA_VERSION,
         "streaming": config.streaming_enabled,
-        "tasks": [],
-        "commands": [],
+        "tasks": list(SCHEDULING_TASKS),
+        "commands": list(SCHEDULING_COMMANDS),
         "runners": [_runner_capability(entry) for entry in registry.snapshot()],
     }
 

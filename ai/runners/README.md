@@ -89,6 +89,13 @@ Every production deployment MUST pin the loaded model digest (`sha256:…`) in:
 The Gateway health poller reads the live digest from `GET /v1/models` and compares it against the
 declared pin during capabilities reporting (Phase 3+).
 
+## Grammar-constrained decoding (feature 016)
+
+The Gateway sends scheduling JSON schemas as Ollama's `format` field on
+`POST /v1/chat/completions` (OpenAI-compatible API). No runner code changes are required — Ollama
+enforces the schema per request. For `llama-server`, the Gateway can translate the same schema to
+GBNF (`agents/scheduling/grammar.py` → `to_gbnf()`); see `specs/016-ai-generation-scheduling/contracts/scheduling-schema.md`.
+
 ## Non-routability check
 
 From a client workstation on the LAN, this MUST fail:

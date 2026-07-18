@@ -8,6 +8,7 @@ import httpx
 import pytest
 from httpx import ASGITransport
 
+from gateway.api.capabilities import SCHEDULING_COMMANDS, SCHEDULING_TASKS
 from gateway.config.settings import GatewayConfig, RunnerConfig
 from gateway.main import create_app, get_poller
 from gateway.routing.lifecycle import RunnerStatus
@@ -42,8 +43,8 @@ def _expected_capabilities(registry: RunnerRegistry, config: GatewayConfig) -> d
     return {
         "schema_version": "1.0",
         "streaming": config.streaming_enabled,
-        "tasks": [],
-        "commands": [],
+        "tasks": list(SCHEDULING_TASKS),
+        "commands": list(SCHEDULING_COMMANDS),
         "runners": [_expected_runner_capability(entry) for entry in registry.snapshot()],
     }
 
@@ -99,8 +100,8 @@ async def test_capabilities_top_level_shape(capabilities_client) -> None:
     assert set(body.keys()) == CAPABILITIES_TOP_KEYS
     assert body["schema_version"] == "1.0"
     assert body["streaming"] is True
-    assert body["tasks"] == []
-    assert body["commands"] == []
+    assert body["tasks"] == list(SCHEDULING_TASKS)
+    assert body["commands"] == list(SCHEDULING_COMMANDS)
     assert isinstance(body["runners"], list)
 
 
@@ -134,8 +135,8 @@ async def test_capabilities_mirrors_registry_with_loaded_models(capabilities_cli
     assert response.status_code == 200
     body = response.json()
 
-    assert body["tasks"] == []
-    assert body["commands"] == []
+    assert body["tasks"] == list(SCHEDULING_TASKS)
+    assert body["commands"] == list(SCHEDULING_COMMANDS)
     assert body == _expected_capabilities(registry, app.state.config)
 
 

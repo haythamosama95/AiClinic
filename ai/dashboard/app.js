@@ -62,8 +62,8 @@
       method: 'POST',
       path: '/v1/ai/generate',
       auth: true,
-      desc: 'Generation stub — expect 501 in this phase',
-      defaultBody: '{"prompt":"hello from dashboard client"}',
+      desc: 'Scheduling command proposals (non-streaming); SSE streaming in a later phase',
+      defaultBody: '{"task":"command","prompt":"book Ahmed with Dr Ali tomorrow 5pm","options":{"stream":false}}',
     },
     {
       id: 'runner-models',
@@ -1088,13 +1088,13 @@
       return;
     }
     const body = cap.body;
-    $('capabilities-meta').textContent = `schema ${body.schema_version || '—'} · streaming ${body.streaming_enabled ? 'on' : 'off'}`;
+    $('capabilities-meta').textContent = `schema ${body.schema_version || '—'} · streaming ${body.streaming ? 'on' : 'off'}`;
     const runners = body.runners || [];
-    const tasks = (body.tasks || []).length;
-    const commands = (body.commands || []).length;
+    const tasks = (body.tasks || []).join(', ') || '—';
+    const commands = (body.commands || []).join(', ') || '—';
 
     el.innerHTML = `
-      <p class="panel__desc">Tasks stub: ${tasks} · Commands stub: ${commands}</p>
+      <p class="panel__desc">Tasks: ${escapeHtml(tasks)} · Commands: ${escapeHtml(commands)}</p>
       ${runners.map((r) => `
         <div class="cap-runner">
           <p class="cap-runner__name">${escapeHtml(r.id)} <span class="mono">(${r.status})</span></p>

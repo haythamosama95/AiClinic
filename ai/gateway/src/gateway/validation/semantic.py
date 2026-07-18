@@ -19,7 +19,6 @@ def validate_semantics(
     """Ensure ``command_type`` is in the agent catalog, then run semantic validators.
 
     Raises ``GatewayError`` with ``ai_unusable`` on catalog or semantic failure.
-    Full implementation lands in US1 (T022).
     """
     if command_type not in agent.command_catalog:
         raise GatewayError(
@@ -36,4 +35,15 @@ def validate_semantics(
             request_id,
         )
 
-    validator.validate(parsed, context=context)
+    try:
+        validator.validate(parsed, context=context)
+    except GatewayError as exc:
+        if exc.request_id is None:
+            exc.request_id = request_id
+        raise
+    except Exception as exc:
+        raise GatewayError(
+            ErrorCode.AI_UNUSABLE,
+            f"semantic validation failed for {command_type!r}: {exc}",
+            request_id,
+        ) from exc

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 from typing import Any
 from urllib.parse import urlparse
 
@@ -15,6 +16,7 @@ from gateway.config.settings import GatewayConfig, RunnerConfig
 from gateway.main import create_app, get_poller
 from gateway.routing.lifecycle import RunnerStatus
 from gateway.routing.registry import LoadedModel
+from tests.fixtures.fake_runner import ChatScriptMode, envelope_for_mode
 from tests.fixtures.jwt_tokens import make_hs256_token
 
 TEST_SECRET = "isolation-reaffirm-secret"
@@ -22,28 +24,47 @@ GENERATE_PATH = "/v1/ai/generate"
 
 RUNNER_A_URL = "http://runner-a.test:11434"
 RUNNER_B_URL = "http://runner-b.test:11434"
+CHAT_URL = f"{RUNNER_A_URL}/v1/chat/completions"
 SUPABASE_PROBE_URL = "https://project-ref.supabase.co/rest/v1/"
 OFF_LAN_PROBE_URL = "https://api.example.com/v1/chat/completions"
 
-REPRESENTATIVE_PAYLOADS: list[dict[str, Any]] = [
-    {"task": "command", "prompt": "book Ahmed with Dr Ali tomorrow 5pm"},
-    {
-        "task": "command",
-        "prompt": "reschedule to next week",
-        "options": {"stream": False, "confidence_hint": True, "plan_mode": "single"},
-    },
-    {
-        "task": "command",
-        "prompt": "cancel appointment",
-        "options": {"stream": True},
-        "context": {"branch_id": "550e8400-e29b-41d4-a716-446655440000"},
-    },
-    {
-        "task": "plan",
-        "prompt": "plan the week",
-        "conversation_id": "550e8400-e29b-41d4-a716-446655440001",
-        "turn": 0,
-    },
+MVP_CONTEXT = {
+    "now": "2026-07-18T12:00:00+03:00",
+    "branch_name": "Main",
+}
+
+REPRESENTATIVE_PAYLOADS: list[tuple[dict[str, Any], int]] = [
+    (
+        {"task": "command", "prompt": "book Ahmed with Dr Ali tomorrow 5pm", "context": MVP_CONTEXT},
+        200,
+    ),
+    (
+        {
+            "task": "command",
+            "prompt": "reschedule to next week",
+            "context": MVP_CONTEXT,
+            "options": {"stream": False, "confidence_hint": True, "plan_mode": "single"},
+        },
+        200,
+    ),
+    (
+        {
+            "task": "command",
+            "prompt": "cancel appointment",
+            "options": {"stream": True},
+            "context": {"branch_id": "550e8400-e29b-41d4-a716-446655440000"},
+        },
+        501,
+    ),
+    (
+        {
+            "task": "plan",
+            "prompt": "plan the week",
+            "conversation_id": "550e8400-e29b-41d4-a716-446655440001",
+            "turn": 0,
+        },
+        501,
+    ),
 ]
 
 _outbound_requests: list[httpx.Request] = []
@@ -93,6 +114,27 @@ def _tracking_async_client_init(self, *args: Any, **kwargs: Any) -> None:
     _original_async_client_init(self, *args, **kwargs)
 
 
+def _chat_response(envelope: dict[str, Any] | str) -> dict[str, Any]:
+    content = envelope if isinstance(envelope, str) else json.dumps(envelope)
+    return {
+        "choices": [{"message": {"role": "assistant", "content": content}}],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 60},
+    }
+
+
+def _prime_runner(app) -> None:
+    app.state.registry.update_entry(
+        "runner-a",
+        status=RunnerStatus.READY,
+        loaded_model=LoadedModel(
+            name="qwen3:4b",
+            digest="sha256:isolation",
+            context_tokens=8192,
+            features=["json_grammar"],
+        ),
+    )
+
+
 @pytest.fixture
 def track_outbound_http(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
     _outbound_requests.clear()
@@ -138,22 +180,18 @@ def _assert_no_supabase_or_off_lan(requests: list[httpx.Request]) -> None:
 @respx.mock
 async def test_generate_zero_supabase_calls(isolation_client) -> None:
     client, app, outbound = isolation_client
-    app.state.registry.update_entry(
-        "runner-a",
-        status=RunnerStatus.READY,
-        loaded_model=LoadedModel(
-            name="qwen3:4b",
-            digest="sha256:isolation",
-            context_tokens=8192,
-            features=["json_grammar"],
-        ),
-    )
+    _prime_runner(app)
 
     respx.get(f"{RUNNER_A_URL}/v1/models").mock(
         return_value=httpx.Response(200, json={"object": "list", "data": []})
     )
-    respx.post(f"{RUNNER_A_URL}/v1/chat/completions").mock(
-        return_value=httpx.Response(200, json={"choices": []})
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json=_chat_response(
+                envelope_for_mode(ChatScriptMode.VALID_CREATE, context=MVP_CONTEXT)
+            ),
+        )
     )
     respx.get(f"{RUNNER_B_URL}/v1/models").mock(
         return_value=httpx.Response(200, json={"object": "list", "data": []})
@@ -161,10 +199,10 @@ async def test_generate_zero_supabase_calls(isolation_client) -> None:
     respx.get(SUPABASE_PROBE_URL).mock(return_value=httpx.Response(200, json={}))
     respx.post(OFF_LAN_PROBE_URL).mock(return_value=httpx.Response(200, json={}))
 
-    for payload in REPRESENTATIVE_PAYLOADS:
+    for payload, expected_status in REPRESENTATIVE_PAYLOADS:
         outbound.clear()
         response = await client.post(GENERATE_PATH, json=payload)
-        assert response.status_code == 501
+        assert response.status_code == expected_status
         _assert_no_supabase_or_off_lan(outbound)
         assert all(not _is_supabase_url(str(r.url)) for r in outbound)
 
@@ -172,48 +210,66 @@ async def test_generate_zero_supabase_calls(isolation_client) -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_generate_zero_off_lan_calls(isolation_client) -> None:
-    client, _app, outbound = isolation_client
+    client, app, outbound = isolation_client
+    _prime_runner(app)
 
     respx.get(f"{RUNNER_A_URL}/v1/models").mock(
         return_value=httpx.Response(200, json={"object": "list", "data": []})
     )
-    respx.post(f"{RUNNER_A_URL}/v1/chat/completions").mock(
-        return_value=httpx.Response(200, json={"choices": []})
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json=_chat_response(
+                envelope_for_mode(ChatScriptMode.VALID_CREATE, context=MVP_CONTEXT)
+            ),
+        )
     )
     respx.get(OFF_LAN_PROBE_URL).mock(return_value=httpx.Response(200, json={}))
 
     outbound.clear()
     response = await client.post(
         GENERATE_PATH,
-        json={"task": "command", "prompt": "must stay on-LAN"},
+        json={
+            "task": "command",
+            "prompt": "must stay on-LAN",
+            "context": MVP_CONTEXT,
+            "options": {"stream": False},
+        },
     )
-    assert response.status_code == 501
+    assert response.status_code == 200
     _assert_no_supabase_or_off_lan(outbound)
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_generate_makes_no_outbound_http(isolation_client) -> None:
-    """Skeleton generate path must not contact runners or any external host."""
-    client, _app, outbound = isolation_client
+async def test_generate_only_contacts_on_lan_runners(isolation_client) -> None:
+    """Command generation may call configured on-LAN runners but never external hosts."""
+    client, app, outbound = isolation_client
+    _prime_runner(app)
 
     runner_models = respx.get(f"{RUNNER_A_URL}/v1/models").mock(
         return_value=httpx.Response(200, json={"object": "list", "data": []})
     )
-    runner_chat = respx.post(f"{RUNNER_A_URL}/v1/chat/completions").mock(
-        return_value=httpx.Response(200, json={"choices": []})
+    runner_chat = respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json=_chat_response(
+                envelope_for_mode(ChatScriptMode.VALID_CREATE, context=MVP_CONTEXT)
+            ),
+        )
     )
-    runner_b_models = respx.get(f"{RUNNER_B_URL}/v1/models").mock(
+    respx.get(f"{RUNNER_B_URL}/v1/models").mock(
         return_value=httpx.Response(200, json={"object": "list", "data": []})
     )
 
-    for payload in REPRESENTATIVE_PAYLOADS:
+    for payload, expected_status in REPRESENTATIVE_PAYLOADS:
         outbound.clear()
         response = await client.post(GENERATE_PATH, json=payload)
-        assert response.status_code == 501
+        assert response.status_code == expected_status
         _assert_no_supabase_or_off_lan(outbound)
-        assert len(outbound) == 0
 
+    assert runner_chat.call_count >= 2
+    for req in outbound:
+        host = (req.url.host or "").lower()
+        assert host.endswith(".test"), f"unexpected outbound host: {host}"
     assert runner_models.call_count == 0
-    assert runner_chat.call_count == 0
-    assert runner_b_models.call_count == 0

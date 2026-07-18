@@ -12,6 +12,7 @@ import respx
 from httpx import ASGITransport
 from jwt import PyJWKClient
 
+from gateway.api.capabilities import SCHEDULING_COMMANDS, SCHEDULING_TASKS
 from gateway.config.settings import GatewayConfig, RunnerConfig
 from gateway.main import create_app, get_poller
 from gateway.routing.lifecycle import RunnerStatus
@@ -139,8 +140,8 @@ def _expected_capabilities(registry: RunnerRegistry, config: GatewayConfig) -> d
     return {
         "schema_version": "1.0",
         "streaming": config.streaming_enabled,
-        "tasks": [],
-        "commands": [],
+        "tasks": list(SCHEDULING_TASKS),
+        "commands": list(SCHEDULING_COMMANDS),
         "runners": runners,
     }
 
@@ -166,8 +167,8 @@ async def test_capabilities_phase1_shape(regression_client) -> None:
 
     assert set(body.keys()) == CAPABILITIES_TOP_KEYS
     assert body["schema_version"] == "1.0"
-    assert body["tasks"] == []
-    assert body["commands"] == []
+    assert body["tasks"] == list(SCHEDULING_TASKS)
+    assert body["commands"] == list(SCHEDULING_COMMANDS)
     assert body == _expected_capabilities(registry, app.state.config)
 
 
