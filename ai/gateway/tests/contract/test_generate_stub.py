@@ -14,7 +14,7 @@ from gateway.config.settings import GatewayConfig, RunnerConfig
 from gateway.main import create_app, get_poller
 from gateway.routing.lifecycle import RunnerStatus
 from gateway.routing.registry import LoadedModel
-from tests.fixtures.fake_runner import ChatScriptMode, envelope_for_mode
+from tests.fixtures.fake_runner import ChatScriptMode, FakeRunner, envelope_for_mode
 from tests.fixtures.jwt_tokens import make_hs256_token
 
 TEST_SECRET = "generate-stub-test-secret"
@@ -109,14 +109,26 @@ async def test_generate_returns_200_for_command_non_streaming(generate_client) -
 
 
 @pytest.mark.asyncio
-async def test_generate_streaming_returns_501(generate_client) -> None:
-    client, _app = generate_client
+@respx.mock
+async def test_generate_streaming_returns_sse(generate_client) -> None:
+    client, app = generate_client
+    _prime_runner(app)
+    fake = FakeRunner(base_url=RUNNER_A_URL)
+    fake.script_chat(ChatScriptMode.VALID_CREATE, context=MVP_CONTEXT)
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            content=fake.chat_completion_stream_body().encode(),
+            headers={"Content-Type": "text/event-stream"},
+        )
+    )
     response = await client.post(
         GENERATE_PATH,
-        json={**VALID_PAYLOAD, "options": {"stream": True}},
+        json={**VALID_PAYLOAD, "context": MVP_CONTEXT, "options": {"stream": True}},
     )
-    assert response.status_code == 501
-    _assert_not_implemented_envelope(response.json())
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: final" in response.text
 
 
 @pytest.mark.asyncio

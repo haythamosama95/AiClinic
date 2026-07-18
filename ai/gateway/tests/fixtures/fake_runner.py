@@ -198,6 +198,10 @@ class FakeRunner:
         default_factory=list
     )
     _chat_index: int = 0
+    _chat_stream_modes: list[
+        tuple[ChatScriptMode, dict[str, Any] | None, int, str | None]
+    ] = field(default_factory=list)
+    _chat_stream_index: int = 0
     _chat_context: dict[str, Any] = field(default_factory=dict)
 
     def script(self, *outcomes: tuple[PollOutcome, float | None, LoadedModelInfo | None]) -> None:
@@ -216,6 +220,20 @@ class FakeRunner:
         if context is not None:
             self._chat_context = context
         self._chat_modes.append((mode, custom))
+
+    def script_chat_stream(
+        self,
+        mode: ChatScriptMode,
+        *,
+        custom: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
+        chunk_size: int = 8,
+        summary_prefix: str | None = None,
+    ) -> None:
+        """Queue streaming chat completion outcomes (OpenAI SSE chunks)."""
+        if context is not None:
+            self._chat_context = context
+        self._chat_stream_modes.append((mode, custom, chunk_size, summary_prefix))
 
     def ok(self, latency_ms: float = 50.0, model: LoadedModelInfo | None = None) -> None:
         model = model or LoadedModelInfo(name="qwen3:4b", digest="sha256:abc123")
@@ -296,9 +314,79 @@ class FakeRunner:
             "usage": {"prompt_tokens": 120, "completion_tokens": 80, "total_tokens": 200},
         }
 
+    def chat_completion_stream_chunks(
+        self,
+        *,
+        summary_prefix: str = "",
+        chunk_size: int = 8,
+    ) -> list[bytes]:
+        """OpenAI-compatible SSE byte chunks for the next scripted streaming chat mode."""
+        if self._chat_stream_index < len(self._chat_stream_modes):
+            mode, custom, scripted_chunk_size, scripted_prefix = self._chat_stream_modes[
+                self._chat_stream_index
+            ]
+            self._chat_stream_index += 1
+            chunk_size = scripted_chunk_size
+            summary_prefix = scripted_prefix or summary_prefix
+        elif self._chat_index < len(self._chat_modes):
+            mode, custom = self._chat_modes[self._chat_index]
+            self._chat_index += 1
+        else:
+            raise RuntimeError("no scripted streaming chat completion remaining")
+
+        body = envelope_for_mode(
+            mode,
+            context=self._chat_context,
+            custom=custom,
+        )
+        content = body if isinstance(body, str) else json.dumps(body)
+        lines = self.stream_lines_for_content(
+            content,
+            chunk_size=chunk_size,
+            summary_prefix=summary_prefix or None,
+        )
+        return [line.encode() for line in lines]
+
+    @staticmethod
+    def openai_stream_chunk(content: str, *, finish: bool = False) -> str:
+        payload = {
+            "id": "chatcmpl-fake",
+            "object": "chat.completion.chunk",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {} if finish else {"content": content},
+                    "finish_reason": "stop" if finish else None,
+                }
+            ],
+        }
+        return f"data: {json.dumps(payload)}\n\n"
+
+    @staticmethod
+    def stream_lines_for_content(
+        content: str,
+        *,
+        chunk_size: int = 8,
+        summary_prefix: str | None = None,
+    ) -> list[str]:
+        """Build OpenAI-compatible SSE lines that assemble to ``content``."""
+        full_text = f"{summary_prefix or ''}{content}"
+        lines: list[str] = []
+        for offset in range(0, len(full_text), chunk_size):
+            lines.append(FakeRunner.openai_stream_chunk(full_text[offset : offset + chunk_size]))
+        lines.append(FakeRunner.openai_stream_chunk("", finish=True))
+        lines.append("data: [DONE]\n\n")
+        return lines
+
+    def chat_completion_stream_body(self) -> str:
+        """OpenAI-compatible SSE body for the next scripted streaming mode."""
+        return b"".join(self.chat_completion_stream_chunks()).decode()
+
     def reset(self) -> None:
         self._outcomes.clear()
         self._call_index = 0
         self._chat_modes.clear()
         self._chat_index = 0
+        self._chat_stream_modes.clear()
+        self._chat_stream_index = 0
         self._chat_context.clear()

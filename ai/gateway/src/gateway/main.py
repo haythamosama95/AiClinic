@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import os
 import time
-import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -28,15 +26,8 @@ from gateway.auth.jwt_validator import JwtValidator
 from gateway.auth.role_map import RoleMapReloader, RoleMapStore
 from gateway.config.settings import GatewayConfig, load_config
 from gateway.obs import logging as obs_logging
-from gateway.obs.logging import log_record
-from gateway.obs.metrics import record_request
+from gateway.middleware.observability import ObservabilityMiddleware
 from gateway.obs.trace_bus import TraceBus
-from gateway.obs.trace_helpers import (
-    body_text_for_trace,
-    emit_client_trace,
-    should_emit_client_trace,
-    summarize_body,
-)
 from gateway.routing.health_poller import HealthPoller
 from gateway.routing.registry import RunnerRegistry
 
@@ -76,24 +67,6 @@ def _resolve_role_map_path(cfg: GatewayConfig) -> Path | None:
         if candidate.is_file():
             return candidate
     return None
-
-
-def _request_outcome(status: int, error_code: str | None) -> str:
-    if status < 400:
-        return "ok"
-    if error_code == "unauthenticated":
-        return "unauthenticated"
-    if error_code == "forbidden":
-        return "forbidden"
-    if error_code == "not_implemented":
-        return "not_implemented"
-    if status == 401:
-        return "unauthenticated"
-    if status == 403:
-        return "forbidden"
-    if status == 501:
-        return "not_implemented"
-    return "error"
 
 
 def _resolve_config_path(path: str | None) -> Path | None:
@@ -159,88 +132,7 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    @app.middleware("http")
-    async def observability_middleware(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-        request.state.request_id = request_id
-        started = time.monotonic()
-
-        request_body_text: str | None = None
-        if request.method in ("POST", "PUT", "PATCH"):
-            raw_body = await request.body()
-
-            async def receive():
-                return {"type": "http.request", "body": raw_body, "more_body": False}
-
-            request._receive = receive  # noqa: SLF001
-            if raw_body:
-                try:
-                    request_body_text = body_text_for_trace(json.loads(raw_body))
-                except (json.JSONDecodeError, TypeError):
-                    request_body_text = body_text_for_trace(raw_body)
-
-        response = await call_next(request)
-        latency_ms = (time.monotonic() - started) * 1000.0
-        status = response.status_code
-        endpoint = request.url.path
-
-        response.headers["X-Request-ID"] = request_id
-        record_request(request.method, endpoint, status)
-
-        error_code: str | None = None
-        response_body_text: str | None = None
-        body_bytes = getattr(response, "body", None)
-        if body_bytes:
-            try:
-                parsed_body = json.loads(body_bytes)
-                response_body_text = body_text_for_trace(parsed_body)
-                if status >= 400 and isinstance(parsed_body, dict):
-                    err = parsed_body.get("error")
-                    if isinstance(err, dict):
-                        error_code = err.get("code")
-            except (json.JSONDecodeError, TypeError):
-                response_body_text = body_text_for_trace(body_bytes)
-
-        outcome = _request_outcome(status, error_code)
-        log_record(
-            request_id=request_id,
-            endpoint=endpoint,
-            outcome=outcome,
-            caller_staff_id=getattr(request.state, "caller_staff_id", None),
-            error_code=error_code,
-            latency_ms=latency_ms,
-        )
-
-        trace_bus: TraceBus | None = getattr(request.app.state, "trace_bus", None)
-        if trace_bus is not None and should_emit_client_trace(endpoint):
-            response_summary = summarize_body(response_body_text) if response_body_text else None
-            request_summary = summarize_body(request_body_text) if request_body_text else None
-            await emit_client_trace(
-                trace_bus,
-                direction="client_to_gateway",
-                method=request.method,
-                path=endpoint,
-                status_code=status,
-                latency_ms=latency_ms,
-                request_id=request_id,
-                kind="api",
-                request_summary=request_summary,
-                request_body=request_body_text,
-            )
-            await emit_client_trace(
-                trace_bus,
-                direction="gateway_to_client",
-                method=request.method,
-                path=endpoint,
-                status_code=status,
-                latency_ms=latency_ms,
-                request_id=request_id,
-                kind="api",
-                response_summary=response_summary,
-                response_body=response_body_text,
-            )
-        return response
+    app.add_middleware(ObservabilityMiddleware)
 
     app.include_router(health_router)
     app.include_router(dashboard_auth_router)
