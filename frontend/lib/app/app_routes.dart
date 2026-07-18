@@ -129,9 +129,13 @@ abstract final class AppRoutes {
   static String billingInvoiceDetail(String invoiceId) => '$billingInvoices/$invoiceId';
 
   static const billingInvoiceEditSegment = 'edit';
+  static const billingInvoiceReviewSegment = 'review';
 
   /// Draft invoice editor: `/billing/invoices/:id/edit`
   static String billingInvoiceEdit(String invoiceId) => '$billingInvoices/$invoiceId/$billingInvoiceEditSegment';
+
+  /// Read-only invoice document view: `/billing/invoices/:id/review`
+  static String billingInvoiceReview(String invoiceId) => '$billingInvoices/$invoiceId/$billingInvoiceReviewSegment';
 
   /// Static billing hub paths.
   static const billingStaticPaths = <String>[billing, billingInvoices, billingInsuranceProviders, settingsBilling];

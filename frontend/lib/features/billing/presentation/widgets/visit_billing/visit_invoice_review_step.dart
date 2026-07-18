@@ -17,9 +17,14 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 import 'package:ai_clinic/core/ui/components/app_avatar.dart';
+import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/organization_currency_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_flow_notifier.dart';
+import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_status_badge.dart';
 import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 /// Step 2 — invoice review with optional discount (web `InvoiceReviewStep`).
@@ -96,7 +101,6 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
     final patientAsync = docState == null ? null : ref.watch(patientDetailProvider(docState.visit.patientId));
 
     final invoiceCard = _InvoiceDocumentCard(
-      visitId: widget.visitId,
       previewNumber: previewNumber,
       lines: billing.selectedLines,
       totals: totals,
@@ -165,9 +169,178 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
   }
 }
 
+/// Read-only invoice document view matching step 2/2 layout (issued invoices).
+class VisitInvoiceReadOnlyReview extends ConsumerStatefulWidget {
+  const VisitInvoiceReadOnlyReview({required this.invoice, required this.onBack, super.key});
+
+  final InvoiceDetail invoice;
+  final VoidCallback onBack;
+
+  @override
+  ConsumerState<VisitInvoiceReadOnlyReview> createState() => _VisitInvoiceReadOnlyReviewState();
+}
+
+class _VisitInvoiceReadOnlyReviewState extends ConsumerState<VisitInvoiceReadOnlyReview> with TickerProviderStateMixin {
+  late final AnimationController _mainController;
+  late final AnimationController _sidebarController;
+  late final Animation<double> _mainAnimation;
+  late final Animation<double> _sidebarAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    final reducedMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    _mainController = AnimationController(
+      vsync: this,
+      duration: reducedMotion ? Duration.zero : AppMotionDuration.base,
+    );
+    _sidebarController = AnimationController(
+      vsync: this,
+      duration: reducedMotion ? Duration.zero : AppMotionDuration.base,
+    );
+    _mainAnimation = CurvedAnimation(parent: _mainController, curve: AppMotion.outCurve);
+    _sidebarAnimation = CurvedAnimation(parent: _sidebarController, curve: AppMotion.outCurve);
+
+    _mainController.forward();
+    if (reducedMotion) {
+      _sidebarController.forward();
+    } else {
+      Future<void>.delayed(const Duration(milliseconds: 50), () {
+        if (mounted) {
+          _sidebarController.forward();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _mainController.dispose();
+    _sidebarController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final invoice = widget.invoice;
+    final currency = invoice.currency;
+    final lines = _linesFromInvoiceItems(invoice.items);
+    final discount = _discountFromInvoice(invoice);
+    final totals = _totalsFromInvoice(invoice);
+    final reducedMotion = AppMotion.prefersReducedMotion(context);
+    final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
+
+    final invoiceCard = _InvoiceDocumentCard(
+      previewNumber: displayNumber,
+      lines: lines,
+      totals: totals,
+      discountType: discount.type,
+      discountValue: discount.value,
+      currency: currency,
+      patientName: invoice.patientDisplayName?.trim().isNotEmpty == true
+          ? invoice.patientDisplayName!.trim()
+          : 'Patient',
+      issuedAt: invoice.issuedAt ?? invoice.updatedAt,
+      headerTitle: 'Invoice',
+      showStepLabel: false,
+      statusBadge: InvoiceStatusBadge(status: invoice.status, size: BadgeSize.md),
+    );
+
+    final discountSidebar = _ReadOnlyDiscountSidebar(
+      discountType: discount.type,
+      discountValue: discount.value,
+      discountAmount: totals.discountAmount,
+      currency: currency,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth >= 1024;
+
+            if (isWide) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: _wrapMotion(invoiceCard, _mainAnimation, reducedMotion, AppMotionPreset.slideUp)),
+                  const SizedBox(width: AppSpacing.space6),
+                  SizedBox(
+                    width: 320,
+                    child: _wrapMotion(discountSidebar, _sidebarAnimation, reducedMotion, AppMotionPreset.slideInline),
+                  ),
+                ],
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _wrapMotion(invoiceCard, _mainAnimation, reducedMotion, AppMotionPreset.slideUp),
+                const SizedBox(height: AppSpacing.space6),
+                _wrapMotion(discountSidebar, _sidebarAnimation, reducedMotion, AppMotionPreset.slideInline),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: AppSpacing.space6),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: AppButton(
+            variant: AppButtonVariant.secondary,
+            leadingIcon: const Icon(Icons.arrow_back_rounded, size: 16),
+            onPressed: widget.onBack,
+            child: const Text('Back'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _wrapMotion(Widget child, Animation<double> animation, bool reducedMotion, AppMotionPreset preset) {
+    if (reducedMotion) {
+      return child;
+    }
+    return AppMotion.animatedPreset(context: context, preset: preset, animation: animation, child: child);
+  }
+}
+
+List<VisitSelectedServiceLine> _linesFromInvoiceItems(List<InvoiceItem> items) {
+  return items
+      .map(
+        (item) => VisitSelectedServiceLine(
+          id: item.id,
+          serviceId: item.id,
+          name: item.description,
+          unitPrice: item.unitPrice.asDouble,
+          quantity: int.tryParse(item.quantity) ?? 1,
+        ),
+      )
+      .toList(growable: false);
+}
+
+({VisitBillingDiscountType type, double value}) _discountFromInvoice(InvoiceDetail invoice) {
+  if (invoice.discountAmount.isZero) {
+    return (type: VisitBillingDiscountType.none, value: 0);
+  }
+
+  final parsedValue = double.tryParse(invoice.discountValue ?? '') ?? 0;
+  return switch (invoice.discountKind) {
+    DiscountKind.percentage => (type: VisitBillingDiscountType.percentage, value: parsedValue),
+    DiscountKind.fixed => (type: VisitBillingDiscountType.fixed, value: parsedValue),
+    null => (type: VisitBillingDiscountType.fixed, value: invoice.discountAmount.asDouble),
+  };
+}
+
+VisitBillingTotals _totalsFromInvoice(InvoiceDetail invoice) {
+  final subtotal = invoice.subtotal.asDouble;
+  final discountAmount = invoice.discountAmount.asDouble;
+  return VisitBillingTotals(subtotal: subtotal, discountAmount: discountAmount, total: subtotal - discountAmount);
+}
+
 class _InvoiceDocumentCard extends StatelessWidget {
   const _InvoiceDocumentCard({
-    required this.visitId,
     required this.previewNumber,
     required this.lines,
     required this.totals,
@@ -176,9 +349,12 @@ class _InvoiceDocumentCard extends StatelessWidget {
     required this.currency,
     required this.patientName,
     this.patientPhone,
+    this.headerTitle = 'Review invoice',
+    this.showStepLabel = true,
+    this.statusBadge,
+    this.issuedAt,
   });
 
-  final String visitId;
   final String previewNumber;
   final List<VisitSelectedServiceLine> lines;
   final VisitBillingTotals totals;
@@ -187,12 +363,16 @@ class _InvoiceDocumentCard extends StatelessWidget {
   final String currency;
   final String patientName;
   final String? patientPhone;
+  final String headerTitle;
+  final bool showStepLabel;
+  final Widget? statusBadge;
+  final DateTime? issuedAt;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final elevation = context.appElevation;
-    final issuedDate = DateFormat('d MMM yyyy').format(DateTime.now());
+    final issuedDate = DateFormat('d MMM yyyy').format((issuedAt ?? DateTime.now()).toLocal());
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -224,20 +404,21 @@ class _InvoiceDocumentCard extends StatelessWidget {
                           TextSpan(
                             children: [
                               TextSpan(
-                                text: 'Review invoice',
+                                text: headerTitle,
                                 style: AppTypography.bodySm(
                                   context,
                                 ).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w500),
                               ),
-                              TextSpan(
-                                text: ' · Step 2 of 2',
-                                style: AppTypography.bodySm(context).copyWith(color: colors.textTertiary),
-                              ),
+                              if (showStepLabel)
+                                TextSpan(
+                                  text: ' · Step 2 of 2',
+                                  style: AppTypography.bodySm(context).copyWith(color: colors.textTertiary),
+                                ),
                             ],
                           ),
                         ),
                       ),
-                      const AppBadge(label: 'Draft', color: BadgeColor.warning),
+                      statusBadge ?? const AppBadge(label: 'Draft', color: BadgeColor.warning),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.space5),
@@ -649,7 +830,9 @@ class _DiscountSidebar extends StatelessWidget {
 }
 
 class _DiscountInfoCard extends StatelessWidget {
-  const _DiscountInfoCard();
+  const _DiscountInfoCard({this.message});
+
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -665,12 +848,109 @@ class _DiscountInfoCard extends StatelessWidget {
           const SizedBox(width: AppSpacing.space3),
           Expanded(
             child: Text(
-              'Finalizing creates a draft invoice linked to this visit. Payment can be recorded from the patient billing tab.',
+              message ??
+                  'Finalizing issues the invoice linked to this visit. Payment can be recorded from the patient billing tab.',
               style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ReadOnlyDiscountSidebar extends StatelessWidget {
+  const _ReadOnlyDiscountSidebar({
+    required this.discountType,
+    required this.discountValue,
+    required this.discountAmount,
+    required this.currency,
+  });
+
+  final VisitBillingDiscountType discountType;
+  final double discountValue;
+  final double discountAmount;
+  final String currency;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    if (discountAmount <= 0) {
+      return const _DiscountInfoCard(message: 'No discount was applied to this invoice.');
+    }
+
+    final discountLabel = switch (discountType) {
+      VisitBillingDiscountType.percentage => 'Percentage off (${discountValue.round()}%)',
+      VisitBillingDiscountType.fixed => 'Fixed amount off',
+      VisitBillingDiscountType.none => 'Discount',
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppCard(
+          variant: CardVariant.raised,
+          padding: CardPadding.lg,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColorPrimitives.amber50,
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.space2 + 2),
+                      child: Icon(Icons.percent_rounded, size: 18, color: AppColorPrimitives.amber700),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.space3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Discount', style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+                        Text(
+                          'Applied adjustment',
+                          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.space5),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: colors.borderSubtle)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.space5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text('Discount type', style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
+                      const SizedBox(height: AppSpacing.space1),
+                      Text(discountLabel, style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary)),
+                      const SizedBox(height: AppSpacing.space4),
+                      Text('Amount', style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
+                      const SizedBox(height: AppSpacing.space1),
+                      AppMoneyDisplay(amount: discountAmount, currency: currency, negative: true),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.space4),
+        const _DiscountInfoCard(
+          message: 'This invoice has been finalized. Payment can be recorded from the patient billing tab.',
+        ),
+      ],
     );
   }
 }

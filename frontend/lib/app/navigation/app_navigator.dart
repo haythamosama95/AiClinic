@@ -60,6 +60,7 @@ class AppNavigator {
   void goBilling() => _context.go(AppRoutes.billing);
   void goBillingInvoices() => _context.go(AppRoutes.billingInvoices);
   void pushBillingInvoiceDetail(String invoiceId) => _context.push(AppRoutes.billingInvoiceDetail(invoiceId));
+  void pushBillingInvoiceReview(String invoiceId) => _context.push(AppRoutes.billingInvoiceReview(invoiceId));
   void pushBillingInvoiceEdit(String invoiceId) => _context.push(AppRoutes.billingInvoiceEdit(invoiceId));
   void pushVisitBilling(String visitId) => _context.push(AppRoutes.billingVisit(visitId));
 

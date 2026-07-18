@@ -71,108 +71,115 @@ class _VisitServiceSelectionStepState extends ConsumerState<VisitServiceSelectio
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final isWide = constraints.maxWidth >= 1024;
+        Expanded(
+          child: SingleChildScrollView(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 1024;
 
-            final catalogCard = DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.surfaceRaised,
-                border: Border.all(color: colors.borderSubtle),
-                borderRadius: BorderRadius.circular(AppRadius.x2l),
-                boxShadow: elevation.shadows1,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.x2l),
-                child: Column(
+                final catalogCard = DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.surfaceRaised,
+                    border: Border.all(color: colors.borderSubtle),
+                    borderRadius: BorderRadius.circular(AppRadius.x2l),
+                    boxShadow: elevation.shadows1,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadius.x2l),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _ServiceSelectionHeader(
+                          searchController: _searchController,
+                          onSearchChanged: _loadCatalog,
+                          viewToggle: AppSegmentedControl<String>(
+                            ariaLabel: 'Catalog layout',
+                            size: AppSegmentedControlSize.sm,
+                            value: _view.name,
+                            onChanged: (value) => setState(() {
+                              _view = value == 'list' ? _ServiceSelectionView.list : _ServiceSelectionView.grid;
+                            }),
+                            options: const [
+                              SegmentedOption(value: 'grid', label: Icon(Icons.grid_view_rounded, size: 15)),
+                              SegmentedOption(value: 'list', label: Icon(Icons.view_list_rounded, size: 15)),
+                            ],
+                          ),
+                        ),
+                        catalogAsync.when(
+                          loading: () => const Padding(
+                            padding: EdgeInsets.all(AppSpacing.space6),
+                            child: AppSkeleton(variant: SkeletonVariant.rectangular, height: 220),
+                          ),
+                          error: (_, _) =>
+                              _ServiceSelectionEmpty(message: 'Could not load services. Try searching again.'),
+                          data: (services) {
+                            if (services.isEmpty) {
+                              return _ServiceSelectionEmpty(
+                                message: _searchController.text.trim().isEmpty
+                                    ? 'No services in the catalog yet.'
+                                    : 'No services match your search.',
+                              );
+                            }
+
+                            if (_view == _ServiceSelectionView.grid) {
+                              return VisitServiceSelectionGridView(
+                                services: services,
+                                selectedIds: selectedIds,
+                                selectedLines: billing.selectedLines,
+                                currency: currency,
+                                onToggle: (service, selected) =>
+                                    billingNotifier.toggleService(service, selected: selected),
+                                onQuantityChange: billingNotifier.updateQuantity,
+                              );
+                            }
+
+                            return ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 448),
+                              child: VisitServiceSelectionListView(
+                                services: services,
+                                selectedIds: selectedIds,
+                                selectedLines: billing.selectedLines,
+                                currency: currency,
+                                onToggle: (service, selected) =>
+                                    billingNotifier.toggleService(service, selected: selected),
+                                onQuantityChange: billingNotifier.updateQuantity,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+
+                final sidebar = VisitServiceSelectionSidebar(
+                  selectedLines: billing.selectedLines,
+                  subtotal: subtotal,
+                  currency: currency,
+                );
+
+                if (isWide) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: catalogCard),
+                      const SizedBox(width: AppSpacing.space6),
+                      SizedBox(width: 288, child: sidebar),
+                    ],
+                  );
+                }
+
+                return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _ServiceSelectionHeader(
-                      searchController: _searchController,
-                      onSearchChanged: _loadCatalog,
-                      viewToggle: AppSegmentedControl<String>(
-                        ariaLabel: 'Catalog layout',
-                        size: AppSegmentedControlSize.sm,
-                        value: _view.name,
-                        onChanged: (value) => setState(() {
-                          _view = value == 'list' ? _ServiceSelectionView.list : _ServiceSelectionView.grid;
-                        }),
-                        options: const [
-                          SegmentedOption(value: 'grid', label: Icon(Icons.grid_view_rounded, size: 15)),
-                          SegmentedOption(value: 'list', label: Icon(Icons.view_list_rounded, size: 15)),
-                        ],
-                      ),
-                    ),
-                    catalogAsync.when(
-                      loading: () => const Padding(
-                        padding: EdgeInsets.all(AppSpacing.space6),
-                        child: AppSkeleton(variant: SkeletonVariant.rectangular, height: 220),
-                      ),
-                      error: (_, _) => _ServiceSelectionEmpty(message: 'Could not load services. Try searching again.'),
-                      data: (services) {
-                        if (services.isEmpty) {
-                          return _ServiceSelectionEmpty(
-                            message: _searchController.text.trim().isEmpty
-                                ? 'No services in the catalog yet.'
-                                : 'No services match your search.',
-                          );
-                        }
-
-                        if (_view == _ServiceSelectionView.grid) {
-                          return VisitServiceSelectionGridView(
-                            services: services,
-                            selectedIds: selectedIds,
-                            selectedLines: billing.selectedLines,
-                            currency: currency,
-                            onToggle: (service, selected) => billingNotifier.toggleService(service, selected: selected),
-                            onQuantityChange: billingNotifier.updateQuantity,
-                          );
-                        }
-
-                        return ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 448),
-                          child: VisitServiceSelectionListView(
-                            services: services,
-                            selectedIds: selectedIds,
-                            selectedLines: billing.selectedLines,
-                            currency: currency,
-                            onToggle: (service, selected) => billingNotifier.toggleService(service, selected: selected),
-                            onQuantityChange: billingNotifier.updateQuantity,
-                          ),
-                        );
-                      },
-                    ),
+                    catalogCard,
+                    const SizedBox(height: AppSpacing.space6),
+                    sidebar,
                   ],
-                ),
-              ),
-            );
-
-            final sidebar = VisitServiceSelectionSidebar(
-              selectedLines: billing.selectedLines,
-              subtotal: subtotal,
-              currency: currency,
-            );
-
-            if (isWide) {
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: catalogCard),
-                  const SizedBox(width: AppSpacing.space6),
-                  SizedBox(width: 288, child: sidebar),
-                ],
-              );
-            }
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                catalogCard,
-                const SizedBox(height: AppSpacing.space6),
-                sidebar,
-              ],
-            );
-          },
+                );
+              },
+            ),
+          ),
         ),
         const SizedBox(height: AppSpacing.space6),
         _ServiceSelectionFooter(onBack: widget.onBack, onContinue: widget.onContinue),

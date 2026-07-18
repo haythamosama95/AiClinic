@@ -56,7 +56,7 @@ class _VisitBillingPageState extends ConsumerState<VisitBillingPage> {
           children: [
             AppPageHeader(
               title: 'Bill this visit',
-              description: 'Select services performed, review the draft invoice, then finalize the visit.',
+              description: 'Select services performed, review the invoice, then finalize the visit.',
             ),
             const SizedBox(height: AppSpacing.space5),
             Expanded(

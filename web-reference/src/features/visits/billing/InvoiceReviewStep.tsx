@@ -276,7 +276,7 @@ export function InvoiceReviewStep({
             <div className="flex items-start gap-3">
               <Receipt size={16} className="mt-0.5 shrink-0 text-icon-muted" aria-hidden />
               <p className="text-caption text-text-secondary">
-                Finalizing creates a draft invoice linked to this visit. Payment can be recorded
+                Finalizing issues the invoice linked to this visit. Payment can be recorded
                 from the patient billing tab.
               </p>
             </div>

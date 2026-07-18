@@ -35,7 +35,7 @@ class VisitInvoiceSummaryDialog {
                   leadingIcon: const Icon(Icons.open_in_new_rounded, size: 16),
                   onPressed: () {
                     Navigator.of(dialogContext).pop();
-                    hostContext.nav.pushBillingInvoiceDetail(invoice.id);
+                    hostContext.nav.pushBillingInvoiceReview(invoice.id);
                   },
                   child: const Text('Open invoice'),
                 ),

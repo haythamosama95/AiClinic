@@ -5,6 +5,7 @@ import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
@@ -72,13 +73,21 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
 
       InvoiceDetail? invoice;
       if (permissions.canCreateInvoices()) {
-        invoice = await _createDraftInvoice(
-          visitId: widget.visitId,
-          lines: billing.selectedLines,
-          discountType: billing.discountType,
-          discountValue: billing.discountValue,
-          canApplyDiscount: permissions.canApplyDiscount(),
-        );
+        try {
+          invoice = await _createAndIssueInvoice(
+            visitId: widget.visitId,
+            lines: billing.selectedLines,
+            discountType: billing.discountType,
+            discountValue: billing.discountValue,
+            canApplyDiscount: permissions.canApplyDiscount(),
+          );
+        } on RpcFailure catch (error) {
+          if (!mounted) {
+            return;
+          }
+          _showError(billingMessageForRpc(error));
+          return;
+        }
       }
 
       if (!mounted) {
@@ -119,7 +128,7 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
     }
   }
 
-  Future<InvoiceDetail?> _createDraftInvoice({
+  Future<InvoiceDetail?> _createAndIssueInvoice({
     required String visitId,
     required List<VisitSelectedServiceLine> lines,
     required VisitBillingDiscountType discountType,
@@ -173,7 +182,8 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
       }
     }
 
-    return invoice;
+    await invoiceRepo.issue(invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt);
+    return invoiceRepo.getDetail(invoiceId: invoiceId);
   }
 
   void _showError(String message) {
