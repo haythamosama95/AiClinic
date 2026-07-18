@@ -215,13 +215,13 @@ isolated, PHI-safe, and injection-resistant.
 
 **Purpose**: Documentation, runbook validation, and final constitution compliance review.
 
-- [ ] T054 [P] Update `ai/gateway/README.md` with Phase 2 capabilities: real `POST /v1/ai/generate` (streaming + non-streaming), scheduling agent, the resilience envelope, PHI-redacted observability, and the new config keys
-- [ ] T055 [P] Update `ai/runners/README.md` with the model-swap procedure (Ollama `/api/load`), `models_dir` usage, and the GBNF alternative for `llama-server`
-- [ ] T056 [P] Update `ai/gateway/config/openapi.yaml` (or equivalent) with the Phase 2 additions to `POST /v1/ai/generate` and the extended `GET /v1/capabilities` shape per `contracts/gateway-openapi.yaml`
-- [ ] T057 [P] Add `ai/gateway/scripts/isolation_scan.py` extensions if any new module introduced DB-client patterns (no change expected; assert still green) — keep it the build gate
-- [ ] T058 [P] Run `specs/016-ai-generation-scheduling/quickstart.md` Steps 1–8 end-to-end against a live Ollama runner; file issues / fix discrepancies; capture sample request/response pairs as smoke-test fixtures under `ai/gateway/tests/smoke/`
-- [ ] T059 Run the full test suite + isolation scan as the CI gate: `cd ai/gateway && pytest tests/ -v && python scripts/isolation_scan.py`
-- [ ] T060 Final constitution compliance review against `.specify/memory/constitution.md`: (a) AI isolation (no DB creds — isolation scan green), (b) AI proposal-only (zero Supabase calls — `isolation_reaffirm.py` green), (c) manual clinic UI unaffected with the AI layer down (Phase 1 regression asserts `/health`-down path), (d) PHI logs default off (US4 suite), (e) no new long-running service (extended Phase 1 Gateway in place), (f) simplicity budget respected (in-process queue, no broker)
+- [X] T054 [P] Update `ai/gateway/README.md` with Phase 2 capabilities: real `POST /v1/ai/generate` (streaming + non-streaming), scheduling agent, the resilience envelope, PHI-redacted observability, and the new config keys
+- [X] T055 [P] Update `ai/runners/README.md` with the model-swap procedure (Ollama `/api/load`), `models_dir` usage, and the GBNF alternative for `llama-server`
+- [X] T056 [P] Update `ai/gateway/config/openapi.yaml` (or equivalent) with the Phase 2 additions to `POST /v1/ai/generate` and the extended `GET /v1/capabilities` shape per `contracts/gateway-openapi.yaml`
+- [X] T057 [P] Add `ai/gateway/scripts/isolation_scan.py` extensions if any new module introduced DB-client patterns (no change expected; assert still green) — keep it the build gate
+- [X] T058 [P] Run `specs/016-ai-generation-scheduling/quickstart.md` Steps 1–8 end-to-end against a live Ollama runner; file issues / fix discrepancies; capture sample request/response pairs as smoke-test fixtures under `ai/gateway/tests/smoke/`
+- [X] T059 Run the full test suite + isolation scan as the CI gate: `cd ai/gateway && pytest tests/ -v && python scripts/isolation_scan.py`
+- [X] T060 Final constitution compliance review against `.specify/memory/constitution.md`: (a) AI isolation (no DB creds — isolation scan green), (b) AI proposal-only (zero Supabase calls — `isolation_reaffirm.py` green), (c) manual clinic UI unaffected with the AI layer down (Phase 1 regression asserts `/health`-down path), (d) PHI logs default off (US4 suite), (e) no new long-running service (extended Phase 1 Gateway in place), (f) simplicity budget respected (in-process queue, no broker)
 
 **Checkpoint**: Feature 016 exit-ready. Phase 2 milestone (per spec §15) — "single-node
 Gateway + one runner + scheduling agent, streaming + non-streaming, health/routing/resilience/

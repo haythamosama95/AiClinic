@@ -53,3 +53,12 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["src"]
+python_files = [
+    "test_*.py",
+    "generate_*.py",
+    "*_regression.py",
+    "isolation_reaffirm.py",
+    "resilience.py",
+    "phi_redaction.py",
+    "prompt_injection.py",
+]

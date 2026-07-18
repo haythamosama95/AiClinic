@@ -114,7 +114,7 @@ async def test_generate_streaming_returns_sse(generate_client) -> None:
     client, app = generate_client
     _prime_runner(app)
     fake = FakeRunner(base_url=RUNNER_A_URL)
-    fake.script_chat(ChatScriptMode.VALID_CREATE, context=MVP_CONTEXT)
+    fake.script_chat_stream(ChatScriptMode.VALID_CREATE, context=MVP_CONTEXT)
     respx.post(CHAT_URL).mock(
         return_value=httpx.Response(
             200,

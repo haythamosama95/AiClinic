@@ -1,0 +1,11 @@
+{
+  "task": "command",
+  "prompt": "book Ahmed Hassan with Dr Ali yesterday 9am",
+  "context": {
+    "branch_name": "Main",
+    "now": "2026-07-18T09:00:00+03:00",
+    "active_patient": { "name": "Ahmed Hassan" },
+    "doctors": [{ "name": "Dr. Ali" }]
+  },
+  "options": { "stream": false }
+}

@@ -47,37 +47,129 @@ chmod +x scripts/import_host_models.sh
 After pull, record the model digest in `ollama/digests.md` and pin it in Gateway config
 (`gateway/config/gateway.yaml` → `runners[].models[].digest`).
 
-## Install via local GGUF path
+## `models_dir` (Gateway config)
 
-1. Download or copy a GGUF file to the clinic server (e.g. `/opt/aiclinic/models/`).
-2. Set `models_dir` in Gateway config to that directory.
-3. Create a custom model from the GGUF:
+`models_dir` is an optional Gateway config key (`gateway.yaml` / `gateway.example.yaml`) that
+records the **canonical on-disk path** for model artifacts on the clinic server. The Gateway does
+not read or serve files from this directory — it is an operator/installer reference that keeps
+runner model entries, Modelfiles, and volume mounts aligned.
+
+| Use case | Typical `models_dir` value | Runner wiring |
+| --- | --- | --- |
+| Local GGUF files (offline install) | `/opt/aiclinic/models` | Bind-mount into the Ollama container; reference in a Modelfile `FROM` line |
+| Shared Ollama blob store (host install) | `/usr/share/ollama/.ollama` | Use `OLLAMA_HOST_MODELS` + `docker-compose.host-models.yaml` overlay |
+| Dev / native Ollama | `~/.ollama` | `scripts/native_ollama.sh` (no Docker volume) |
+
+Set in Gateway config:
+
+```yaml
+models_dir: /opt/aiclinic/models
+```
+
+Declare each model under `runners[].models[]` with `source` pointing at the Ollama tag or GGUF
+path relative to that store, for example:
+
+```yaml
+runners:
+  - id: ollama-local
+    base_url: http://127.0.0.1:11434
+    models:
+      - name: qwen3-local
+        source: /opt/aiclinic/models/qwen3-4b-q4_k_m.gguf
+        digest: sha256:REPLACE_WITH_PINNED_DIGEST
+        capabilities: [json_grammar]
+```
+
+### Install via local GGUF path
+
+1. Download or copy a GGUF file into `models_dir` (e.g. `/opt/aiclinic/models/qwen3-4b-q4_k_m.gguf`).
+2. Set `models_dir` in Gateway config to that directory (see above).
+3. Bind-mount the directory into the Ollama container (add to `ollama/docker-compose.yaml` or an
+   operator overlay):
+
+```yaml
+volumes:
+  - /opt/aiclinic/models:/models:ro
+```
+
+4. Create a custom model from the GGUF:
 
 ```bash
 docker compose exec ollama ollama create qwen3-local -f /path/to/Modelfile
 ```
 
-Example Modelfile pointing at a local file:
+Example Modelfile pointing at the mounted GGUF:
 
 ```dockerfile
 FROM /models/qwen3-4b-q4_k_m.gguf
 PARAMETER num_ctx 8192
 ```
 
-4. Verify with `curl http://127.0.0.1:11434/v1/models` and pin the digest.
+5. Verify with `curl http://127.0.0.1:11434/v1/models` and pin the digest in Gateway config and
+   `ollama/digests.md`.
 
 ## Model store location
 
 - **Docker Compose (default):** named volume `ollama_models` → `/root/.ollama` in the container.
+- **Host bind-mount overlay:** `docker-compose.host-models.yaml` (auto-enabled by `ollama_compose.sh`
+  when `${OLLAMA_HOST_MODELS}/models` exists).
 - **Bare-metal Ollama:** `~/.ollama/models` (Linux) or `%USERPROFILE%\.ollama\models` (Windows).
 
-To use a host directory instead of a named volume, replace the volume mapping in
+To use a fixed host directory instead of a named volume, replace the volume mapping in
 `ollama/docker-compose.yaml`:
 
 ```yaml
 volumes:
   - /opt/aiclinic/ollama:/root/.ollama
 ```
+
+## Model swap (Gateway auto-trigger)
+
+Feature 016 adds **automatic model swap** when no `READY` runner advertises the required
+capability but a configured runner has the capable model **unloaded**. The Gateway (not the
+runner) orchestrates the swap — no runner-side code or compose changes are required; Ollama's
+native load API is used.
+
+### How the Gateway swaps
+
+1. A generation request arrives for a capability (e.g. `json_grammar`) with no `READY` match.
+2. The selector picks the **least-busy** candidate runner whose `models[]` entry provides the
+   capability but is not currently loaded.
+3. The runner enters `STARTING`; the Gateway calls Ollama's load endpoint:
+
+   `POST http://127.0.0.1:11434/api/load` with body `{"name": "<model_tag>"}`
+
+   (`swap.py` strips an OpenAI-compatible `/v1` suffix from `base_url` before calling `/api/load`.)
+4. The Gateway polls until the runner reports `READY` with the expected model+digest, within
+   `model_swap_first_token_timeout_s` (default **60 s** in `gateway.yaml`).
+5. On success, routing proceeds normally. On timeout or load failure → `503 ai_no_capacity`.
+
+**Invariant:** at most **one model resident in RAM** per runner during a swap (Ollama unloads the
+previous model before the new one is ready). Concurrent requests while the runner is `STARTING`
+queue or receive `503 ai_busy` per the resilience envelope.
+
+Configure multiple swappable models on one runner by listing each under `runners[].models[]`
+with distinct `name`, `digest`, and `capabilities` pins.
+
+### Manual swap (operator / debug)
+
+Use the same API the Gateway calls — useful when validating a new model tag before pinning:
+
+```bash
+# Unload current model (optional — /api/load replaces in place)
+curl -s -X POST http://127.0.0.1:11434/api/unload -d '{"name": "qwen3:4b"}'
+
+# Load target model (Gateway sends this during auto-swap)
+curl -s -X POST http://127.0.0.1:11434/api/load \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "qwen3:4b"}'
+
+# Confirm resident model + digest
+curl -s http://127.0.0.1:11434/v1/models | jq .
+docker compose -f ollama/docker-compose.yaml exec ollama ollama ps
+```
+
+Watch Gateway metrics during a swap: `ai_model_swaps_total{runner,outcome}` on `:8090/metrics`.
 
 ## Digest pinning
 
@@ -87,14 +179,60 @@ Every production deployment MUST pin the loaded model digest (`sha256:…`) in:
 2. `ai/gateway/config/gateway.yaml` under each runner's `models[]` entry
 
 The Gateway health poller reads the live digest from `GET /v1/models` and compares it against the
-declared pin during capabilities reporting (Phase 3+).
+declared pin during capabilities reporting.
 
 ## Grammar-constrained decoding (feature 016)
 
+### Ollama (default runtime)
+
 The Gateway sends scheduling JSON schemas as Ollama's `format` field on
 `POST /v1/chat/completions` (OpenAI-compatible API). No runner code changes are required — Ollama
-enforces the schema per request. For `llama-server`, the Gateway can translate the same schema to
-GBNF (`agents/scheduling/grammar.py` → `to_gbnf()`); see `specs/016-ai-generation-scheduling/contracts/scheduling-schema.md`.
+enforces the schema per request via `to_ollama_format()` in
+`ai/gateway/src/gateway/agents/scheduling/grammar.py`.
+
+### `llama-server` (alternative runtime — GBNF)
+
+If you replace Ollama with **`llama-server`** (llama.cpp), Ollama's `format` parameter is not
+available. The Gateway provides the same scheduling JSON schema translated to **GBNF** via
+`to_gbnf()` in `grammar.py` (mapping rules in
+`specs/016-ai-generation-scheduling/contracts/scheduling-schema.md` §4.2).
+
+| JSON Schema construct | GBNF equivalent |
+| --- | --- |
+| `"type":"object"` | `object ::= ws "{" ... "}" ws` |
+| `"required"` | named field rules in fixed order |
+| `"enum"` | `"(" value "|" value ")"` alternation |
+| `"format":"date"` | ISO-date character pattern |
+| `"pattern"` | corresponding GBNF character class |
+
+**Operator steps for `llama-server`:**
+
+1. Generate the grammar (from the gateway venv):
+
+```bash
+cd ai/gateway
+python -c "
+from gateway.agents.scheduling.schemas import envelope_schema
+from gateway.agents.scheduling.grammar import to_gbnf
+print(to_gbnf(envelope_schema()))
+" > /opt/aiclinic/models/scheduling.gbnf
+```
+
+2. Start `llama-server` with the grammar file (example):
+
+```bash
+llama-server \
+  --model /opt/aiclinic/models/qwen3-4b-q4_k_m.gguf \
+  --grammar-file /opt/aiclinic/models/scheduling.gbnf \
+  --host 127.0.0.1 --port 8080
+```
+
+3. Point Gateway `runners[].base_url` at the `llama-server` OpenAI-compatible endpoint
+   (e.g. `http://127.0.0.1:8080/v1`). Constrained decoding is enforced by the grammar file on
+   the runner; the Gateway still runs `jsonschema` validation as defense-in-depth.
+
+Production deployments use **Ollama + `format`** by default; GBNF is documented for the
+documented alternative runtime only.
 
 ## Non-routability check
 
