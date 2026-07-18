@@ -62,7 +62,7 @@
       method: 'POST',
       path: '/v1/ai/generate',
       auth: true,
-      desc: 'Scheduling command proposals (non-streaming); SSE streaming in a later phase',
+      desc: 'Scheduling command proposals (non-streaming + SSE streaming)',
       defaultBody: '{"task":"command","prompt":"book Ahmed with Dr Ali tomorrow 5pm","options":{"stream":false}}',
     },
     {
@@ -1116,12 +1116,18 @@
     const errors = sumByName(p, 'gateway_errors_total');
     const health = gaugesByLabel(p, 'gateway_runner_health', 'runner_id');
     const inflight = gaugesByLabel(p, 'gateway_inflight_requests', 'runner_id');
+    const aiQueue = gaugesByLabel(p, 'ai_queue_depth', 'capability');
+    const aiInflight = gaugesByLabel(p, 'ai_inflight', 'capability');
+    const modelSwaps = sumByName(p, 'ai_model_swaps_total');
 
     const cards = [
       { label: 'Total requests', value: requests, sub: 'gateway_requests_total' },
       { label: 'Total errors', value: errors, sub: 'gateway_errors_total' },
       { label: 'Healthy runners', value: Object.values(health).filter((v) => v === 1).length, sub: `of ${Object.keys(health).length}` },
       { label: 'In-flight total', value: Object.values(inflight).reduce((a, b) => a + b, 0), sub: 'across runners' },
+      { label: 'AI queue depth', value: Object.values(aiQueue).reduce((a, b) => a + b, 0), sub: 'per capability class' },
+      { label: 'AI in-flight', value: Object.values(aiInflight).reduce((a, b) => a + b, 0), sub: 'generation pipeline' },
+      { label: 'Model swaps', value: modelSwaps, sub: 'auto-triggered' },
     ];
 
     grid.innerHTML = cards.map((c) => `
@@ -1402,17 +1408,26 @@
     }
   }
 
-  async function sendGenerateStub() {
+  async function sendGenerateProbe() {
     const panel = $('generate-response');
     panel.hidden = false;
     try {
       const { res, body, requestId } = await apiFetch('/v1/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: 'dashboard probe' }),
+        body: JSON.stringify({
+          task: 'command',
+          prompt: 'book Ahmed with Dr Ali tomorrow 5pm',
+          options: { stream: false },
+        }),
       });
-      $('generate-response-status').textContent = `${res.status} — expected 501 stub`;
-      $('generate-response-status').dataset.class = res.status === 501 ? 'ok' : 'error';
+      const code = body?.error?.code;
+      const retryAfter = res.headers.get('Retry-After');
+      const resilienceHint = code === 'ai_busy' && retryAfter
+        ? ` · Retry-After: ${retryAfter}s`
+        : '';
+      $('generate-response-status').textContent = `${res.status}${code ? ` (${code})` : ''}${resilienceHint}`;
+      $('generate-response-status').dataset.class = res.ok ? 'ok' : (code === 'ai_busy' ? 'warn' : 'error');
       $('generate-response-body').textContent = JSON.stringify(body, null, 2) +
         (requestId ? `\n\nX-Request-ID: ${requestId}` : '');
     } catch (e) {
@@ -1507,7 +1522,7 @@
     });
 
     $('workbench-form').addEventListener('submit', sendWorkbench);
-    $('generate-btn').addEventListener('click', sendGenerateStub);
+    $('generate-btn').addEventListener('click', sendGenerateProbe);
   }
 
   async function init() {

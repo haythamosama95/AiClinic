@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
+import signal
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -28,6 +30,8 @@ from gateway.config.settings import GatewayConfig, load_config
 from gateway.obs import logging as obs_logging
 from gateway.middleware.observability import ObservabilityMiddleware
 from gateway.obs.trace_bus import TraceBus
+from gateway.pipeline.cancel import log_cancelled
+from gateway.pipeline.queue import GenerationQueue, create_generation_queue
 from gateway.routing.health_poller import HealthPoller
 from gateway.routing.registry import RunnerRegistry
 
@@ -35,6 +39,7 @@ _config: GatewayConfig | None = None
 _poller: HealthPoller | None = None
 _registry: RunnerRegistry | None = None
 _role_map_reloader: RoleMapReloader | None = None
+_generation_queue: GenerationQueue | None = None
 
 
 def get_config() -> GatewayConfig:
@@ -51,6 +56,46 @@ def get_registry() -> RunnerRegistry:
 
 def get_poller() -> HealthPoller | None:
     return _poller
+
+
+def get_generation_queue() -> GenerationQueue:
+    if _generation_queue is None:
+        raise RuntimeError("Gateway not initialized")
+    return _generation_queue
+
+
+async def _graceful_shutdown(generation_queue: GenerationQueue, grace_s: float) -> None:
+    """Drain in-flight requests; reject queued; cancel stragglers after grace."""
+    coordinator = generation_queue.shutdown
+    coordinator.begin_shutdown()
+
+    rejected = await generation_queue.reject_queued_not_started()
+    for entry in rejected:
+        log_cancelled(
+            request_id=entry.request_id,
+            caller_staff_id=entry.caller_staff_id,
+        )
+
+    await generation_queue.drain_in_flight(grace_s)
+
+    cancelled_ids = await generation_queue.cancel_stragglers_after_grace()
+    for request_id in cancelled_ids:
+        log_cancelled(request_id=request_id)
+
+
+def _install_shutdown_signals(
+    loop: asyncio.AbstractEventLoop,
+    generation_queue: GenerationQueue,
+    grace_s: float,
+) -> None:
+    """Register SIGTERM/SIGINT to begin graceful drain."""
+
+    def _on_signal() -> None:
+        asyncio.create_task(_graceful_shutdown(generation_queue, grace_s))
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with suppress(AttributeError, NotImplementedError, ValueError):
+            loop.add_signal_handler(sig, _on_signal)
 
 
 def _resolve_dashboard_dir(cfg: GatewayConfig) -> Path:
@@ -83,7 +128,7 @@ def _resolve_config_path(path: str | None) -> Path | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    global _poller, _role_map_reloader
+    global _poller, _role_map_reloader, _generation_queue
     app.state.jwt_validator = JwtValidator(app.state.config)
     app.state.role_map_store = RoleMapStore(dict(app.state.config.role_ai_access))
     role_map_path = _resolve_role_map_path(app.state.config)
@@ -93,6 +138,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         interval_s=60,
     )
     _role_map_reloader.start()
+
+    _generation_queue = create_generation_queue(app.state.config)
+    app.state.generation_queue = _generation_queue
+    app.state.shutdown_coordinator = _generation_queue.shutdown
+
+    loop = asyncio.get_running_loop()
+    _install_shutdown_signals(
+        loop,
+        _generation_queue,
+        float(app.state.config.shutdown_grace_s),
+    )
+
     _poller = HealthPoller(
         app.state.config,
         app.state.registry,
@@ -100,12 +157,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     await _poller.start()
     yield
+    await _graceful_shutdown(
+        _generation_queue,
+        float(app.state.config.shutdown_grace_s),
+    )
     if _poller is not None:
         await _poller.stop()
         _poller = None
     if _role_map_reloader is not None:
         _role_map_reloader.stop()
         _role_map_reloader = None
+    _generation_queue = None
 
 
 def create_app(config: GatewayConfig | None = None) -> FastAPI:

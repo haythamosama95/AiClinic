@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+import httpx
+
+from gateway.config.settings import GatewayConfig
 from gateway.routing.lifecycle import RunnerStatus
 from gateway.routing.registry import RunnerRegistry, RunnerRegistryEntry
+
+if TYPE_CHECKING:
+    pass
 
 _HEALTH_PRIORITY: dict[RunnerStatus, int] = {
     RunnerStatus.READY: 0,
@@ -84,3 +92,46 @@ def select_runner(
         registry.snapshot(),
         required_capabilities=required_capabilities,
     )
+
+
+async def select_runner_with_swap(
+    registry: RunnerRegistry,
+    *,
+    required_capabilities: list[str],
+    round_robin_state: SelectorState,
+    config: GatewayConfig,
+    request_id: str,
+    client: httpx.AsyncClient | None = None,
+) -> RunnerRegistryEntry:
+    """Select a runner, auto-triggering model swap when no READY match exists."""
+    from gateway.pipeline.swap import ensure_capable_runner
+
+    entry = select_runner(
+        registry,
+        required_capabilities=required_capabilities,
+        round_robin_state=round_robin_state,
+    )
+    if entry is not None:
+        return entry
+
+    await ensure_capable_runner(
+        registry,
+        required_capabilities=required_capabilities,
+        config=config,
+        client=client,
+        request_id=request_id,
+    )
+
+    entry = select_runner(
+        registry,
+        required_capabilities=required_capabilities,
+        round_robin_state=round_robin_state,
+    )
+    if entry is not None:
+        return entry
+
+    ready = registry.snapshot()
+    for candidate in ready:
+        if candidate.status == RunnerStatus.READY:
+            return candidate
+    raise RuntimeError("ensure_capable_runner succeeded but no READY runner found")
