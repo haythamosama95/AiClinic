@@ -8,8 +8,11 @@ import { ClinicManagementPage } from '@/features/clinic-management/ClinicManagem
 import { VisitPage } from '@/features/visits/VisitPage'
 import { PatientDetailPage } from '@/pages/app/patients/PatientDetailPage'
 import { PatientsPage } from '@/pages/app/patients/PatientsPage'
+import { InvoiceDetailPage } from '@/pages/app/invoices/InvoiceDetailPage'
+import { InvoicesPage } from '@/pages/app/invoices/InvoicesPage'
 import { SettingsPage } from '@/pages/app/settings/SettingsPage'
 import { SETTINGS_SCREENS } from '@/data/settings'
+import { getInvoiceById } from '@/data/invoices'
 
 export type RouteMeta = {
   title: string
@@ -73,6 +76,20 @@ function patientsRoute(): RouteDefinition {
   }
 }
 
+function invoicesRoute(): RouteDefinition {
+  const meta = metaForNavId('invoices')
+  return {
+    ...meta,
+    render: ({ segments, navigate }) => {
+      const invoiceId = segments[1]
+      if (invoiceId) {
+        return <InvoiceDetailPage invoiceId={invoiceId} onNavigate={navigate} />
+      }
+      return <InvoicesPage onNavigate={navigate} />
+    },
+  }
+}
+
 const CLINIC_ROUTE_IDS = [
   'home',
   'dashboard',
@@ -105,6 +122,7 @@ export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
     CLINIC_ROUTE_IDS.filter(
       (id) =>
         id !== 'patients' &&
+        id !== 'invoices' &&
         id !== 'settings' &&
         id !== 'clinic-management' &&
         id !== 'appointments' &&
@@ -112,6 +130,7 @@ export const ROUTE_REGISTRY: Record<string, RouteDefinition> = {
     ).map((id) => [id, placeholderRoute(id)]),
   ),
   patients: patientsRoute(),
+  invoices: invoicesRoute(),
   appointments: {
     ...metaForNavId('appointments'),
     render: () => <AppointmentsPage />,
@@ -190,6 +209,14 @@ export function resolveRoute(
     }
   }
 
+  if (root === 'invoices' && segments[1]) {
+    const invoice = getInvoiceById(segments[1])
+    meta = {
+      title: invoice?.invoiceNumber ?? 'Invoice',
+      description: meta.description,
+    }
+  }
+
   if (root === 'settings' && segments[1]) {
     const screen = SETTINGS_SCREENS.find((s) => s.id === segments[1])
     if (screen) {
@@ -219,6 +246,10 @@ export function breadcrumbLabel(segments: string[]): string {
   if (root === 'patients' && segments[1]) {
     const patient = getPatientById(segments[1])
     return patient ? patientFullName(patient) : 'Patient'
+  }
+  if (root === 'invoices' && segments[1]) {
+    const invoice = getInvoiceById(segments[1])
+    return invoice?.invoiceNumber ?? 'Invoice'
   }
   if (root === 'settings' && segments[1]) {
     const screen = SETTINGS_SCREENS.find((s) => s.id === segments[1])

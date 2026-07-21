@@ -86,6 +86,17 @@ export function App() {
             )
         }
 
+        if (activeId === 'invoices' && segments[1]) {
+            return (
+                <Breadcrumb
+                    items={[
+                        { label: 'Invoices', onClick: () => navigate('invoices') },
+                        { label: breadcrumbLabel(segments) },
+                    ]}
+                />
+            )
+        }
+
         if (activeId === 'settings' && segments[1]) {
             return (
                 <Breadcrumb
