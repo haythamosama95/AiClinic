@@ -62,6 +62,8 @@ export 'package:ai_clinic/core/ui/components/app_resizable_panels.dart';
 export 'package:ai_clinic/core/ui/components/app_page_header.dart';
 export 'package:ai_clinic/core/ui/components/app_section_header.dart';
 export 'package:ai_clinic/core/ui/components/app_toolbar.dart';
+export 'package:ai_clinic/core/ui/components/app_filter_menu_panel.dart';
+export 'package:ai_clinic/core/ui/components/app_list_control_bar.dart';
 export 'package:ai_clinic/core/ui/components/app_app_shell.dart';
 
 // AI

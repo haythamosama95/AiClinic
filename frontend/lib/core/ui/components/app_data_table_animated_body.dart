@@ -286,16 +286,24 @@ class _AppDataTableAnimatedBodyState<T> extends State<AppDataTableAnimatedBody<T
     final exit = _exitControllers[slot.id];
     final direction = Directionality.of(context);
     final inlineEnter = direction == TextDirection.rtl ? 6.0 : -6.0;
-    final background = _rowBackground(index, slot.item);
+    final dataIndex = (slot.visualTop / rowHeight).round();
+    final background = _rowBackground(dataIndex, slot.item);
 
-    Widget row = widget.buildRow(context, slot.item, index, backgroundColor: background);
+    Widget row = widget.buildRow(context, slot.item, dataIndex, backgroundColor: background);
 
     if (table.onRowClick != null) {
       row = MouseRegion(
         cursor: SystemMouseCursors.click,
         child: Material(
           color: background ?? Colors.transparent,
-          child: InkWell(onTap: () => table.onRowClick!(slot.item), hoverColor: colors.surfaceHover, child: row),
+          child: InkWell(
+            onTap: () => table.onRowClick!(slot.item),
+            hoverColor: colors.surfaceHover,
+            focusColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            splashColor: Colors.transparent,
+            child: row,
+          ),
         ),
       );
     } else if (background != null) {
@@ -360,32 +368,32 @@ Widget buildAppDataTableRowContent<T>({
   final cells = <Widget>[];
 
   if (table.selectable) {
-    cells.add(_buildSelectionCell(context, table, item, backgroundColor));
+    cells.add(Expanded(child: _buildSelectionCell(context, table, item, backgroundColor)));
   }
 
   for (final column in table.columns) {
     cells.add(
-      _buildDataCell(
-        context: context,
-        align: column.align,
-        backgroundColor: backgroundColor,
-        child: DefaultTextStyle(
-          style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary),
-          textAlign: _textAlign(column.align),
-          child: column.accessor(item),
+      layoutAppDataTableColumn(
+        width: column.width,
+        child: _buildDataCell(
+          context: context,
+          align: column.align,
+          backgroundColor: backgroundColor,
+          child: DefaultTextStyle(
+            style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary),
+            textAlign: _textAlign(column.align),
+            child: column.accessor(item),
+          ),
         ),
       ),
     );
   }
 
   if (table.rowActions != null) {
-    cells.add(_buildActionsCell(context, table, item, backgroundColor));
+    cells.add(SizedBox(width: 48, child: _buildActionsCell(context, table, item, backgroundColor)));
   }
 
-  return Row(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [for (final cell in cells) Expanded(child: cell)],
-  );
+  return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: cells);
 }
 
 TextAlign _textAlign(TableAlign align) => switch (align) {

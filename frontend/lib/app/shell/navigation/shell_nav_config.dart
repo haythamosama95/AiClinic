@@ -87,6 +87,8 @@ abstract final class ShellNavConfig {
   static bool isFullWidthLocation(String location) {
     return location == AppRoutes.patients ||
         location.startsWith('${AppRoutes.patients}/') ||
+        location == AppRoutes.billingInvoices ||
+        location.startsWith('${AppRoutes.billingInvoices}/') ||
         location == AppRoutes.clinicManagement ||
         location == AppRoutes.appointmentsCalendar;
   }

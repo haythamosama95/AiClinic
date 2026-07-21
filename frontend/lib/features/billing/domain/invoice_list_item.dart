@@ -18,6 +18,9 @@ class InvoiceListItem {
     required this.currency,
     this.invoiceNumber,
     this.patientDisplayName,
+    this.patientId,
+    this.patientMrn,
+    this.branchId,
     this.branchCode,
     this.issuedAt,
     this.payments = const [],
@@ -27,6 +30,9 @@ class InvoiceListItem {
   final String? invoiceNumber;
   final InvoiceStatus status;
   final String? patientDisplayName;
+  final String? patientId;
+  final String? patientMrn;
+  final String? branchId;
   final String? branchCode;
   final String currency;
   final Money subtotal;
@@ -76,6 +82,9 @@ class InvoiceListItem {
       invoiceNumber: row['invoice_number']?.toString(),
       status: status,
       patientDisplayName: row['patient_display_name']?.toString(),
+      patientId: row['patient_id']?.toString(),
+      patientMrn: row['patient_mrn']?.toString() ?? row['mrn']?.toString(),
+      branchId: row['branch_id']?.toString(),
       branchCode: row['branch_code']?.toString(),
       currency: currency != null && currency.isNotEmpty ? currency.toUpperCase() : 'USD',
       subtotal: subtotal,
@@ -133,6 +142,9 @@ class InvoiceListItem {
       currency: currency,
       invoiceNumber: invoiceNumber,
       patientDisplayName: patientDisplayName,
+      patientId: patientId,
+      patientMrn: patientMrn,
+      branchId: branchId,
       branchCode: branchCode,
       issuedAt: issuedAt,
       payments: payments ?? this.payments,
