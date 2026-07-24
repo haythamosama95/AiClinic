@@ -60,16 +60,16 @@ description: "Task list for Patient MRN (Medical Record Number) feature implemen
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Extend `backend/tests/patient_mrn_generation.sql` (or add `backend/tests/patient_mrn_create_payload.sql`) to assert `create_patient` returned payload includes a non-null `mrn` matching `^MRN-\d{6,}$` AND that the audit row for `patient.create` contains that `mrn` in `new_data_json`
-- [ ] T009 [P] [US1] Create Flutter unit test `frontend/test/unit/patients/patient_repository_create_mrn_test.dart` asserting `PatientRepository.createPatient` returns a `CreatePatientResult` whose `mrn` equals the mocked RPC payload's `mrn`/`patient_id`; follow the `patient_rpc_test_client.dart` mock pattern
+- [X] T008 [P] [US1] Extend `backend/tests/patient_mrn_generation.sql` (or add `backend/tests/patient_mrn_create_payload.sql`) to assert `create_patient` returned payload includes a non-null `mrn` matching `^MRN-\d{6,}$` AND that the audit row for `patient.create` contains that `mrn` in `new_data_json`
+- [X] T009 [P] [US1] Create Flutter unit test `frontend/test/unit/patients/patient_repository_create_mrn_test.dart` asserting `PatientRepository.createPatient` returns a `CreatePatientResult` whose `mrn` equals the mocked RPC payload's `mrn`/`patient_id`; follow the `patient_rpc_test_client.dart` mock pattern
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Add `CreatePatientResult` DTO in `frontend/lib/features/patients/domain/create_patient_result.dart` with fields `patientId: String`, `mrn: String`, `fromJson`/`copyWith`/`==`/`hashCode` conventions matching other domain DTOs (depends on T005 backend payload)
-- [ ] T011 [US1] Extend `PatientRepository.createPatient` in `frontend/lib/features/patients/data/patient_repository.dart` to return `CreatePatientResult` instead of bare `String` patient id; read `result.data?['patient_id']` and `result.data?['mrn']`; preserve existing `migrationHint` and `rpcLogDomain`
-- [ ] T012 [US1] Extend `CreatePatient` usecase and `patientRegistrationProvider.submit()` in `frontend/lib/features/patients/presentation/providers/patient_registration_notifier.dart` to return `CreatePatientResult` (carrying `mrn`) up to the dialog
-- [ ] T013 [US1] Surface the generated MRN on success in `frontend/lib/features/patients/presentation/add_patient/add_patient_dialog.dart`: on successful submit display an `appToast` with the generated MRN (e.g., `Patient created — MRN MRN-000042`) BEFORE navigating to the patient detail page; on `RpcFailure`/connectivity, surface the existing error message and DO NOT fabricate an MRN (FR-012)
-- [ ] T014 [US1] Verify degraded behavior: with backend unreachable, confirm the Add Patient form surfaces a clear connectivity/uniqueness error and does not save a patient with an unverified MRN (manual verification + assert in `patient_repository_create_mrn_test.dart` that a failure result throws/not returns an MRN)
+- [X] T010 [US1] Add `CreatePatientResult` DTO in `frontend/lib/features/patients/domain/create_patient_result.dart` with fields `patientId: String`, `mrn: String`, `fromJson`/`copyWith`/`==`/`hashCode` conventions matching other domain DTOs (depends on T005 backend payload)
+- [X] T011 [US1] Extend `PatientRepository.createPatient` in `frontend/lib/features/patients/data/patient_repository.dart` to return `CreatePatientResult` instead of bare `String` patient id; read `result.data?['patient_id']` and `result.data?['mrn']`; preserve existing `migrationHint` and `rpcLogDomain`
+- [X] T012 [US1] Extend `CreatePatient` usecase and `patientRegistrationProvider.submit()` in `frontend/lib/features/patients/presentation/providers/patient_registration_notifier.dart` to return `CreatePatientResult` (carrying `mrn`) up to the dialog
+- [X] T013 [US1] Surface the generated MRN on success in `frontend/lib/features/patients/presentation/add_patient/add_patient_dialog.dart`: on successful submit display an `appToast` with the generated MRN (e.g., `Patient created — MRN MRN-000042`) BEFORE navigating to the patient detail page; on `RpcFailure`/connectivity, surface the existing error message and DO NOT fabricate an MRN (FR-012)
+- [X] T014 [US1] Verify degraded behavior: with backend unreachable, confirm the Add Patient form surfaces a clear connectivity/uniqueness error and does not save a patient with an unverified MRN (manual verification + assert in `patient_repository_create_mrn_test.dart` that a failure result throws/not returns an MRN)
 
 **Checkpoint**: User Story 1 fully functional — staff create a patient and receive a unique MRN immediately. The MRN column exists on the table (T003), but the patients list does NOT yet display it (that's US3). The patient detail chip is US4. Independent test passes.
 

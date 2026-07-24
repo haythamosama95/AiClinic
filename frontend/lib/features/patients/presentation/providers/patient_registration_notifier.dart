@@ -4,16 +4,14 @@ import 'package:flutter_riverpod/legacy.dart';
 
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
-import 'package:ai_clinic/core/ui/components/app_toast.dart';
-import 'package:ai_clinic/core/ui/theme/theme_transition_controller.dart';
 import 'package:ai_clinic/features/patients/application/patient_rpc_messages.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_result.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/patient_use_case_providers.dart';
 import 'package:ai_clinic/features/patients/presentation/models/patient_registration_form.dart';
-import 'package:ai_clinic/features/patients/presentation/providers/active_branch_name_provider.dart';
 
 @immutable
 class PatientRegistrationState {
@@ -59,14 +57,12 @@ class PatientRegistrationState {
       duplicateCandidates: duplicateCandidates ?? this.duplicateCandidates,
       duplicateOpen: duplicateOpen ?? this.duplicateOpen,
       acknowledgedDuplicate: acknowledgedDuplicate ?? this.acknowledgedDuplicate,
-      pendingOpenPatientId:
-          clearPendingOpenPatientId ? null : (pendingOpenPatientId ?? this.pendingOpenPatientId),
+      pendingOpenPatientId: clearPendingOpenPatientId ? null : (pendingOpenPatientId ?? this.pendingOpenPatientId),
     );
   }
 }
 
-final patientRegistrationProvider =
-    StateNotifierProvider<PatientRegistrationNotifier, PatientRegistrationState>((ref) {
+final patientRegistrationProvider = StateNotifierProvider<PatientRegistrationNotifier, PatientRegistrationState>((ref) {
   return PatientRegistrationNotifier(ref);
 });
 
@@ -121,25 +117,19 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
   }
 
   /// Acknowledges the duplicate warning and creates the patient anyway.
-  Future<String?> registerAnyway() async {
-    state = state.copyWith(
-      acknowledgedDuplicate: true,
-      duplicateOpen: false,
-    );
+  Future<CreatePatientResult?> registerAnyway() async {
+    state = state.copyWith(acknowledgedDuplicate: true, duplicateOpen: false);
     return submit();
   }
 
   /// Closes the duplicate dialog and signals navigation to an existing patient.
   void openExistingPatient(String patientId) {
-    state = state.copyWith(
-      duplicateOpen: false,
-      pendingOpenPatientId: patientId,
-    );
+    state = state.copyWith(duplicateOpen: false, pendingOpenPatientId: patientId);
   }
 
   /// Validates, checks for duplicates, then creates the patient when clear.
-  /// Returns the new patient id on success.
-  Future<String?> submit() async {
+  /// Returns the creation result (patient id + MRN) on success.
+  Future<CreatePatientResult?> submit() async {
     final validationErrors = validateRegistration(state.values);
     if (validationErrors.hasErrors) {
       state = state.copyWith(errors: validationErrors);
@@ -165,16 +155,12 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
         );
 
         if (candidates.isNotEmpty) {
-          state = state.copyWith(
-            submitting: false,
-            duplicateCandidates: candidates,
-            duplicateOpen: true,
-          );
+          state = state.copyWith(submitting: false, duplicateCandidates: candidates, duplicateOpen: true);
           return null;
         }
       }
 
-      final patientId = await _ref.read(createPatientUseCaseProvider)(
+      final result = await _ref.read(createPatientUseCaseProvider)(
         CreatePatientInput(
           activeBranchId: activeBranchId,
           fullName: state.values.fullName.trim(),
@@ -187,25 +173,10 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
         ),
       );
 
-      final branchName = await _ref.read(activeBranchNameProvider.future);
-      final toastContext = _ref.read(rootNavigatorKeyProvider).currentContext;
-      if (toastContext != null && toastContext.mounted) {
-        appToast(
-          toastContext,
-          AppToastInput(
-            message: '${state.values.fullName.trim()} registered at $branchName.',
-            variant: AppToastVariant.success,
-          ),
-        );
-      }
-
       state = state.copyWith(submitting: false);
-      return patientId;
+      return result;
     } on RpcFailure catch (failure) {
-      state = state.copyWith(
-        submitting: false,
-        errors: PatientFormErrors(form: patientMessageForRpc(failure)),
-      );
+      state = state.copyWith(submitting: false, errors: PatientFormErrors(form: patientMessageForRpc(failure)));
       return null;
     } catch (_) {
       state = state.copyWith(

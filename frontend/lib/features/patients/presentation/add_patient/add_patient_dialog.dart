@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_dialog.dart';
+import 'package:ai_clinic/core/ui/components/app_toast.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/features/patients/presentation/add_patient/add_patient_form_fields.dart';
@@ -11,12 +12,7 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_regis
 
 /// Add-patient registration dialog (web `AddPatientDialog`).
 class AddPatientDialog extends ConsumerStatefulWidget {
-  const AddPatientDialog({
-    required this.open,
-    required this.onOpenChange,
-    required this.onSuccess,
-    super.key,
-  });
+  const AddPatientDialog({required this.open, required this.onOpenChange, required this.onSuccess, super.key});
 
   final bool open;
   final ValueChanged<bool> onOpenChange;
@@ -35,21 +31,23 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
   }
 
   Future<void> _handleSubmit() async {
-    final patientId = await ref.read(patientRegistrationProvider.notifier).submit();
-    if (!mounted || patientId == null) {
+    final result = await ref.read(patientRegistrationProvider.notifier).submit();
+    if (!mounted || result == null) {
       return;
     }
+    appToast(context, AppToastInput(message: 'Patient created — MRN ${result.mrn}', variant: AppToastVariant.success));
     _handleOpenChange(false);
-    widget.onSuccess(patientId);
+    widget.onSuccess(result.patientId);
   }
 
   Future<void> _handleRegisterAnyway() async {
-    final patientId = await ref.read(patientRegistrationProvider.notifier).registerAnyway();
-    if (!mounted || patientId == null) {
+    final result = await ref.read(patientRegistrationProvider.notifier).registerAnyway();
+    if (!mounted || result == null) {
       return;
     }
+    appToast(context, AppToastInput(message: 'Patient created — MRN ${result.mrn}', variant: AppToastVariant.success));
     _handleOpenChange(false);
-    widget.onSuccess(patientId);
+    widget.onSuccess(result.patientId);
   }
 
   @override
@@ -58,17 +56,14 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
     final notifier = ref.read(patientRegistrationProvider.notifier);
     final reducedMotion = AppMotion.prefersReducedMotion(context);
 
-    ref.listen<String?>(
-      patientRegistrationProvider.select((s) => s.pendingOpenPatientId),
-      (previous, next) {
-        if (next == null) {
-          return;
-        }
-        _handleOpenChange(false);
-        widget.onSuccess(next);
-        notifier.clearPendingOpenPatient();
-      },
-    );
+    ref.listen<String?>(patientRegistrationProvider.select((s) => s.pendingOpenPatientId), (previous, next) {
+      if (next == null) {
+        return;
+      }
+      _handleOpenChange(false);
+      widget.onSuccess(next);
+      notifier.clearPendingOpenPatient();
+    });
 
     return Column(
       mainAxisSize: MainAxisSize.min,

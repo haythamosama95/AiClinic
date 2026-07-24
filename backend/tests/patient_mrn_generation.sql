@@ -26,6 +26,8 @@ DECLARE
   v_mrn_3 text;
   v_archived_mrn text;
   v_dup_failed boolean;
+  v_audit_mrn text;
+  v_mrn_format_ok boolean;
 BEGIN
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('app.environment', 'development', true);
@@ -79,6 +81,41 @@ BEGIN
   v_result := public.create_patient(v_branch_main, 'Patient One', '201000000101', NULL, NULL, NULL, NULL, false);
   v_patient_1 := (v_result.data ->> 'patient_id')::uuid;
   v_mrn_1 := v_result.data ->> 'mrn';
+
+  v_mrn_format_ok := v_mrn_1 IS NOT NULL AND v_mrn_1 ~ '^MRN-\d{6,}$';
+
+  PERFORM set_config('role', 'postgres', true);
+  SELECT new_data_json ->> 'mrn'
+  INTO v_audit_mrn
+  FROM public.audit_log
+  WHERE action = 'patient.create'
+    AND record_id = v_patient_1
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  INSERT INTO mrn_generation_results VALUES (
+    'create_patient_payload_includes_mrn',
+    v_result.success
+      AND v_mrn_format_ok
+      AND v_audit_mrn = v_mrn_1,
+    'payload_mrn=' || COALESCE(v_mrn_1, '<null>')
+      || ' audit_mrn=' || COALESCE(v_audit_mrn, '<null>')
+  );
+
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
 
   v_result := public.create_patient(v_branch_main, 'Patient Two', '201000000102', NULL, NULL, NULL, NULL, false);
   v_patient_2 := (v_result.data ->> 'patient_id')::uuid;

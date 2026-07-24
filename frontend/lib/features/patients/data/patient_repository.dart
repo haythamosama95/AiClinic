@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/config/supabase_config.dart';
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_result.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_scope.dart';
@@ -24,7 +25,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260523140000_patient_management.sql';
+  String get migrationHint => '20260724120000_patient_mrn_field.sql';
 
   @override
   String get rpcLogDomain => 'patients';
@@ -105,7 +106,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   }
 
   @override
-  Future<String> createPatient(CreatePatientInput input) async {
+  Future<CreatePatientResult> createPatient(CreatePatientInput input) async {
     final name = input.fullName.trim();
     if (name.isEmpty) {
       throw RpcFailure(
@@ -132,10 +133,14 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     });
 
     final patientId = result.data?['patient_id']?.toString();
+    final mrn = result.data?['mrn']?.toString();
     if (patientId == null || patientId.isEmpty) {
       throw StateError('Patient was created but no patient_id was returned.');
     }
-    return patientId;
+    if (mrn == null || mrn.isEmpty) {
+      throw StateError('Patient was created but no mrn was returned.');
+    }
+    return CreatePatientResult(patientId: patientId, mrn: mrn);
   }
 
   @override

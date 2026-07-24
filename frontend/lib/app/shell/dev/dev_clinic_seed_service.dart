@@ -908,12 +908,13 @@ class DevClinicSeedService {
     );
 
     try {
-      return await _patients.createPatient(input);
+      final result = await _patients.createPatient(input);
+      return result.patientId;
     } on RpcFailure catch (error) {
       if (!error.isDuplicateWarning) {
         rethrow;
       }
-      return _patients.createPatient(
+      final result = await _patients.createPatient(
         CreatePatientInput(
           activeBranchId: branchId,
           fullName: input.fullName,
@@ -925,6 +926,7 @@ class DevClinicSeedService {
           acknowledgeDuplicate: true,
         ),
       );
+      return result.patientId;
     }
   }
 

@@ -1,5 +1,6 @@
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/features/patients/domain/create_patient_input.dart';
+import 'package:ai_clinic/features/patients/domain/create_patient_result.dart';
 import 'package:ai_clinic/features/patients/domain/duplicate_candidate.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
@@ -304,7 +305,7 @@ class _TrackingPatientRepository implements PatientRepository {
   }) => throw UnimplementedError();
 
   @override
-  Future<String> createPatient(CreatePatientInput input) => throw UnimplementedError();
+  Future<CreatePatientResult> createPatient(CreatePatientInput input) => throw UnimplementedError();
 
   @override
   Future<PatientDetail> getPatient(String patientId) => throw UnimplementedError();

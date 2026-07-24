@@ -48,8 +48,8 @@ void main() {
       expect(candidates.first.fullName, 'Duplicate');
     });
 
-    test('createPatient returns patient id', () async {
-      final id = await repository.createPatient(
+    test('createPatient returns patient id and mrn', () async {
+      final result = await repository.createPatient(
         const CreatePatientInput(
           activeBranchId: '44444444-4444-4444-8444-444444444444',
           fullName: 'New Patient',
@@ -57,7 +57,8 @@ void main() {
         ),
       );
 
-      expect(id, '33333333-3333-4333-8333-333333333333');
+      expect(result.patientId, '33333333-3333-4333-8333-333333333333');
+      expect(result.mrn, 'MRN-000042');
       expect(client.lastParams?['p_full_name'], 'New Patient');
     });
 
