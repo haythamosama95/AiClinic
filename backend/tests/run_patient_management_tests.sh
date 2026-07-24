@@ -20,6 +20,7 @@ psql_run() {
 }
 
 sql_tests=(
+  patient_mrn_generation.sql
   patient_management_crud.sql
   patient_management_rls.sql
   patient_management_extended.sql
