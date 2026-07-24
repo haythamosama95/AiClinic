@@ -302,7 +302,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required bool hasActiveFilters,
     required bool isFullscreen,
   }) {
-    final calendarBodyHeight = (viewportHeight - appointmentCalendarToolbarHeight).clamp(240.0, viewportHeight);
+    final availableHeight = (viewportHeight - appointmentCalendarToolbarHeight).clamp(0.0, viewportHeight);
+    final calendarBodyHeight = availableHeight < 240.0 ? availableHeight : availableHeight.clamp(240.0, viewportHeight);
     final slotLayout = AppointmentCalendarDisplay.timeSlotLayout(
       schedule: schedule,
       mode: state.mode,

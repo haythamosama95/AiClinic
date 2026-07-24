@@ -1349,3 +1349,22 @@ final timelineVisibleResourceCount = state.mode == AppointmentCalendarMode.docto
 1. Updating `CalendarDataSource.resources`? → Notify with `CalendarDataSourceAction.resetResource` (or `addResource` / `removeResource`) — `reset` alone does **not** refresh the calendar's internal `_resourceCollection` (see entry #48).
 2. Doctor timeline (`CalendarView.timelineDay`)? → Prefer a positive `visibleResourceCount` derived from viewport height; avoid `-1` when resource rows use a fixed height (`timelineAppointmentHeight`).
 
+---
+
+## 49. `ArgumentError` invalid `clamp` min > max (`AppointmentCalendarPage`)
+
+**Symptom:** Red screen when opening the appointments calendar from a patient profile (nested inside `SingleChildScrollView`). `Invalid argument(s): 240.0` at `appointment_calendar_page.dart` in `_buildCalendar` during `double.clamp`.
+
+**Cause:** `calendarBodyHeight` used `(viewportHeight - toolbarHeight).clamp(240.0, viewportHeight)`. Dart's `clamp` throws when `min > max`. In a scrollable/unbounded layout the calendar viewport can be smaller than 240px, so `clamp(240.0, viewportHeight)` fails.
+
+**Fix:** Compute available height first, then apply the 240px minimum only when there is enough space:
+
+```dart
+final availableHeight = (viewportHeight - appointmentCalendarToolbarHeight).clamp(0.0, viewportHeight);
+final calendarBodyHeight = availableHeight < 240.0
+    ? availableHeight
+    : availableHeight.clamp(240.0, viewportHeight);
+```
+
+**Affected files (fixed):** `appointment_calendar_page.dart`.
+
