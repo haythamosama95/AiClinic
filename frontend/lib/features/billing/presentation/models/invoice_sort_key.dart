@@ -43,12 +43,19 @@ enum InvoiceSortKey {
     InvoiceSortKey.amountAsc => 'Subtotal (lowest)',
   };
 
-  (InvoiceSortField field, SortDirection direction) get backendSort => switch (this) {
+  (InvoiceSortField field, SortDirection direction)
+  get backendSort => switch (this) {
     InvoiceSortKey.dateDesc => (InvoiceSortField.createdAt, SortDirection.desc),
     InvoiceSortKey.dateAsc => (InvoiceSortField.createdAt, SortDirection.asc),
-    InvoiceSortKey.balanceDesc => (InvoiceSortField.balance, SortDirection.desc),
+    InvoiceSortKey.balanceDesc => (
+      InvoiceSortField.balance,
+      SortDirection.desc,
+    ),
     InvoiceSortKey.balanceAsc => (InvoiceSortField.balance, SortDirection.asc),
-    InvoiceSortKey.amountDesc => (InvoiceSortField.subtotal, SortDirection.desc),
+    InvoiceSortKey.amountDesc => (
+      InvoiceSortField.subtotal,
+      SortDirection.desc,
+    ),
     InvoiceSortKey.amountAsc => (InvoiceSortField.subtotal, SortDirection.asc),
   };
 
@@ -71,10 +78,14 @@ enum InvoiceSortKey {
 
     return switch ((field, direction)) {
       (InvoiceSortField.createdAt, SortDirection.asc) => InvoiceSortKey.dateAsc,
-      (InvoiceSortField.balance, SortDirection.desc) => InvoiceSortKey.balanceDesc,
-      (InvoiceSortField.balance, SortDirection.asc) => InvoiceSortKey.balanceAsc,
-      (InvoiceSortField.subtotal, SortDirection.desc) => InvoiceSortKey.amountDesc,
-      (InvoiceSortField.subtotal, SortDirection.asc) => InvoiceSortKey.amountAsc,
+      (InvoiceSortField.balance, SortDirection.desc) =>
+        InvoiceSortKey.balanceDesc,
+      (InvoiceSortField.balance, SortDirection.asc) =>
+        InvoiceSortKey.balanceAsc,
+      (InvoiceSortField.subtotal, SortDirection.desc) =>
+        InvoiceSortKey.amountDesc,
+      (InvoiceSortField.subtotal, SortDirection.asc) =>
+        InvoiceSortKey.amountAsc,
       _ => InvoiceSortKey.dateDesc,
     };
   }
@@ -112,7 +123,8 @@ List<InvoiceListItem> sortInvoiceListItemsClientSide(
   final sorted = List<InvoiceListItem>.from(items);
   final ascending = filters.sortDirection == SortDirection.asc;
 
-  int compare<T extends Comparable<T>>(T a, T b) => ascending ? a.compareTo(b) : b.compareTo(a);
+  int compare<T extends Comparable<T>>(T a, T b) =>
+      ascending ? a.compareTo(b) : b.compareTo(a);
 
   sorted.sort((a, b) {
     return switch (field) {

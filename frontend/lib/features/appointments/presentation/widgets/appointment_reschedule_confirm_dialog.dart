@@ -9,7 +9,10 @@ import 'package:ai_clinic/features/clinic-management/domain/branch_working_sched
 
 /// Confirmed move times returned from [AppointmentRescheduleConfirmDialog].
 class AppointmentRescheduleConfirmResult {
-  const AppointmentRescheduleConfirmResult({required this.start, required this.end});
+  const AppointmentRescheduleConfirmResult({
+    required this.start,
+    required this.end,
+  });
 
   final DateTime start;
   final DateTime end;
@@ -56,10 +59,12 @@ class AppointmentRescheduleConfirmDialog extends StatefulWidget {
   }
 
   @override
-  State<AppointmentRescheduleConfirmDialog> createState() => _AppointmentRescheduleConfirmDialogState();
+  State<AppointmentRescheduleConfirmDialog> createState() =>
+      _AppointmentRescheduleConfirmDialogState();
 }
 
-class _AppointmentRescheduleConfirmDialogState extends State<AppointmentRescheduleConfirmDialog> {
+class _AppointmentRescheduleConfirmDialogState
+    extends State<AppointmentRescheduleConfirmDialog> {
   late DateTime _startTime;
   late DateTime _endTime;
   String? _validationError;
@@ -82,8 +87,12 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
     setState(() {
       _startTime = value;
       if (!_endTime.isAfter(_startTime)) {
-        final originalDuration = widget.appointment.endTime.difference(widget.appointment.startTime).inMinutes;
-        _endTime = _startTime.add(Duration(minutes: originalDuration.clamp(5, 9999)));
+        final originalDuration = widget.appointment.endTime
+            .difference(widget.appointment.startTime)
+            .inMinutes;
+        _endTime = _startTime.add(
+          Duration(minutes: originalDuration.clamp(5, 9999)),
+        );
       }
       _validationError = _validateTimes();
     });
@@ -117,7 +126,9 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
       return;
     }
 
-    Navigator.of(context).pop(AppointmentRescheduleConfirmResult(start: _startTime, end: _endTime));
+    Navigator.of(
+      context,
+    ).pop(AppointmentRescheduleConfirmResult(start: _startTime, end: _endTime));
   }
 
   int? _parseTime(String? value) {
@@ -132,29 +143,50 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
     return int.parse(match.group(1)!) * 60 + int.parse(match.group(2)!);
   }
 
-  TimeOfDay _minutesToTime(int minutes) => TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
+  TimeOfDay _minutesToTime(int minutes) =>
+      TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
 
   String _pad(int value) => value.toString().padLeft(2, '0');
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final today = DateTime(clock.now().year, clock.now().month, clock.now().day);
+    final today = DateTime(
+      clock.now().year,
+      clock.now().month,
+      clock.now().day,
+    );
     final canMove = _validationError == null;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(widget.appointment.patientName, style: AppTypography.bodyStrong(context)),
-        const SizedBox(height: AppSpacing.space3),
-        Text('From', style: AppTypography.caption(context).copyWith(color: colors.textSecondary)),
         Text(
-          _formatRange(widget.appointment.startTime, widget.appointment.endTime),
+          widget.appointment.patientName,
+          style: AppTypography.bodyStrong(context),
+        ),
+        const SizedBox(height: AppSpacing.space3),
+        Text(
+          'From',
+          style: AppTypography.caption(
+            context,
+          ).copyWith(color: colors.textSecondary),
+        ),
+        Text(
+          _formatRange(
+            widget.appointment.startTime,
+            widget.appointment.endTime,
+          ),
           style: AppTypography.bodySm(context),
         ),
         const SizedBox(height: AppSpacing.space4),
-        Text('To', style: AppTypography.caption(context).copyWith(color: colors.textSecondary)),
+        Text(
+          'To',
+          style: AppTypography.caption(
+            context,
+          ).copyWith(color: colors.textSecondary),
+        ),
         const SizedBox(height: AppSpacing.space1),
         AppFormField(
           id: 'appointment_reschedule_pick_date',
@@ -168,8 +200,12 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
               if (date == null) {
                 return;
               }
-              _setStartTime(_combineDateAndTime(date, TimeOfDay.fromDateTime(_startTime)));
-              _setEndTime(_combineDateAndTime(date, TimeOfDay.fromDateTime(_endTime)));
+              _setStartTime(
+                _combineDateAndTime(date, TimeOfDay.fromDateTime(_startTime)),
+              );
+              _setEndTime(
+                _combineDateAndTime(date, TimeOfDay.fromDateTime(_endTime)),
+              );
             },
           ),
         ),
@@ -189,7 +225,9 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
                     if (minutes == null) {
                       return;
                     }
-                    _setStartTime(_combineDateAndTime(_startTime, _minutesToTime(minutes)));
+                    _setStartTime(
+                      _combineDateAndTime(_startTime, _minutesToTime(minutes)),
+                    );
                   },
                 ),
               ),
@@ -207,7 +245,9 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
                     if (minutes == null) {
                       return;
                     }
-                    _setEndTime(_combineDateAndTime(_endTime, _minutesToTime(minutes)));
+                    _setEndTime(
+                      _combineDateAndTime(_endTime, _minutesToTime(minutes)),
+                    );
                   },
                 ),
               ),
@@ -217,11 +257,18 @@ class _AppointmentRescheduleConfirmDialogState extends State<AppointmentReschedu
         const SizedBox(height: AppSpacing.space1),
         Text(
           'Duration: $_durationMinutes min',
-          style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+          style: AppTypography.caption(
+            context,
+          ).copyWith(color: colors.textSecondary),
         ),
         if (_validationError != null) ...[
           const SizedBox(height: AppSpacing.space2),
-          Text(_validationError!, style: AppTypography.bodySm(context).copyWith(color: colors.statusDangerFg)),
+          Text(
+            _validationError!,
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: colors.statusDangerFg),
+          ),
         ],
         const SizedBox(height: AppSpacing.space6),
         Row(

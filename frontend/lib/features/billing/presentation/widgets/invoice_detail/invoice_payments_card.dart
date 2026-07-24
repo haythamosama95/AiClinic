@@ -37,7 +37,10 @@ class InvoicePaymentsCard extends StatelessWidget {
     return AppCard(
       variant: CardVariant.raised,
       padding: CardPadding.md,
-      header: const InvoiceSectionTitle(icon: Icons.account_balance_wallet_outlined, title: 'Payments'),
+      header: const InvoiceSectionTitle(
+        icon: Icons.account_balance_wallet_outlined,
+        title: 'Payments',
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppRadius.x2l),
         child: Column(
@@ -52,11 +55,17 @@ class InvoicePaymentsCard extends StatelessWidget {
                   AppSpacing.space5,
                   0,
                 ),
-                child: _PaymentLedgerTable(payments: payments, currency: currency),
+                child: _PaymentLedgerTable(
+                  payments: payments,
+                  currency: currency,
+                ),
               )
             else
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space5, vertical: AppSpacing.space8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.space5,
+                  vertical: AppSpacing.space8,
+                ),
                 child: AppEmptyState(
                   variant: AppEmptyStateVariant.firstRun,
                   title: 'No payments yet',
@@ -85,8 +94,10 @@ class _PaymentLedgerTable extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final showRecorded = constraints.maxWidth >= InvoicePaymentsCard._smBreakpoint;
-        final showBy = constraints.maxWidth >= InvoicePaymentsCard._mdBreakpoint;
+        final showRecorded =
+            constraints.maxWidth >= InvoicePaymentsCard._smBreakpoint;
+        final showBy =
+            constraints.maxWidth >= InvoicePaymentsCard._mdBreakpoint;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -97,14 +108,25 @@ class _PaymentLedgerTable extends StatelessWidget {
               child: Row(
                 children: [
                   const Expanded(child: _HeaderCell('Payment')),
-                  if (showRecorded) const Expanded(child: _HeaderCell('Recorded', align: TextAlign.end)),
-                  if (showBy) const Expanded(child: _HeaderCell('By', align: TextAlign.end)),
-                  const Expanded(child: _HeaderCell('Amount', align: TextAlign.end)),
+                  if (showRecorded)
+                    const Expanded(
+                      child: _HeaderCell('Recorded', align: TextAlign.end),
+                    ),
+                  if (showBy)
+                    const Expanded(
+                      child: _HeaderCell('By', align: TextAlign.end),
+                    ),
+                  const Expanded(
+                    child: _HeaderCell('Amount', align: TextAlign.end),
+                  ),
                 ],
               ),
             ),
             for (final payment in payments) ...[
-              Divider(height: 1, color: colors.borderSubtle.withValues(alpha: 0.7)),
+              Divider(
+                height: 1,
+                color: colors.borderSubtle.withValues(alpha: 0.7),
+              ),
               _PaymentLedgerRow(
                 payment: payment,
                 currency: currency,
@@ -136,7 +158,9 @@ class _PaymentLedgerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final amountColor = payment.isRefund ? colors.statusDangerFg : colors.statusSuccessFg;
+    final amountColor = payment.isRefund
+        ? colors.statusDangerFg
+        : colors.statusSuccessFg;
     final methodLabel = payment.method.labelFor(context);
 
     return Padding(
@@ -170,13 +194,17 @@ class _PaymentLedgerRow extends StatelessWidget {
                     children: [
                       Text.rich(
                         TextSpan(
-                          style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary),
+                          style: AppTypography.bodySm(
+                            context,
+                          ).copyWith(color: colors.textPrimary),
                           children: [
                             TextSpan(text: methodLabel),
                             if (payment.isRefund)
                               TextSpan(
                                 text: ' · Refund',
-                                style: AppTypography.caption(context).copyWith(color: colors.statusDangerFg),
+                                style: AppTypography.caption(
+                                  context,
+                                ).copyWith(color: colors.statusDangerFg),
                               ),
                           ],
                         ),
@@ -195,7 +223,9 @@ class _PaymentLedgerRow extends StatelessWidget {
                         const SizedBox(height: AppSpacing.space05),
                         Text(
                           payment.note!.trim(),
-                          style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+                          style: AppTypography.caption(
+                            context,
+                          ).copyWith(color: colors.textSecondary),
                         ),
                       ],
                     ],
@@ -220,14 +250,18 @@ class _PaymentLedgerRow extends StatelessWidget {
               child: Text(
                 payment.recordedByDisplayName ?? '—',
                 textAlign: TextAlign.end,
-                style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                style: AppTypography.bodySm(
+                  context,
+                ).copyWith(color: colors.textSecondary),
               ),
             ),
           Expanded(
             child: Align(
               alignment: Alignment.centerRight,
               child: DefaultTextStyle(
-                style: AppTypography.bodySm(context).copyWith(color: amountColor),
+                style: AppTypography.bodySm(
+                  context,
+                ).copyWith(color: amountColor),
                 child: AppMoneyDisplay(
                   amount: payment.amount.asDouble,
                   currency: currency,

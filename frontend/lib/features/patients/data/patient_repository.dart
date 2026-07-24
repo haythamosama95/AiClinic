@@ -25,7 +25,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260724120100_reassign_patient_mrn_rpc.sql';
+  String get migrationHint => '20260523140000_patient_management.sql';
 
   @override
   String get rpcLogDomain => 'patients';
@@ -40,7 +40,8 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     PatientLastVisitFilter lastVisitFilter = PatientLastVisitFilter.any,
     PatientSortField sortField = PatientSortField.nameAsc,
   }) async {
-    if (scope == PatientListScope.thisBranch && (branchId == null || branchId.trim().isEmpty)) {
+    if (scope == PatientListScope.thisBranch &&
+        (branchId == null || branchId.trim().isEmpty)) {
       throw ArgumentError('branchId is required when scope is thisBranch');
     }
 
@@ -51,7 +52,8 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
       'p_last_visit_filter': lastVisitFilter.wireValue,
       'p_sort_field': sortField.wireValue,
       if (query != null && query.trim().isNotEmpty) 'p_query': query.trim(),
-      if (branchId != null && branchId.trim().isNotEmpty) 'p_branch_id': branchId,
+      if (branchId != null && branchId.trim().isNotEmpty)
+        'p_branch_id': branchId,
     };
 
     final result = await invokeRpc('search_patients', params);
@@ -63,7 +65,11 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     final id = patientId.trim();
     if (id.isEmpty) {
       throw RpcFailure(
-        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Patient id is required.'),
+        const RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Patient id is required.',
+        ),
       );
     }
 
@@ -98,7 +104,8 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     final result = await invokeRpc('check_patient_duplicates', {
       if (fullName != null) 'p_full_name': fullName.trim(),
       if (phone != null) 'p_phone': phone.trim(),
-      if (dateOfBirth != null) 'p_date_of_birth': formatPatientDateWire(dateOfBirth),
+      if (dateOfBirth != null)
+        'p_date_of_birth': formatPatientDateWire(dateOfBirth),
       'p_exclude_patient_id': ?excludePatientId,
     });
 
@@ -110,14 +117,22 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     final name = input.fullName.trim();
     if (name.isEmpty) {
       throw RpcFailure(
-        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Full name is required.'),
+        const RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Full name is required.',
+        ),
       );
     }
 
     final phone = input.phone.trim();
     if (phone.isEmpty) {
       throw RpcFailure(
-        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Mobile number is required.'),
+        const RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Mobile number is required.',
+        ),
       );
     }
 
@@ -126,9 +141,11 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
       'p_full_name': name,
       'p_phone': phone,
       'p_acknowledge_duplicate': input.acknowledgeDuplicate,
-      if (input.dateOfBirth != null) 'p_date_of_birth': formatPatientDateWire(input.dateOfBirth!),
+      if (input.dateOfBirth != null)
+        'p_date_of_birth': formatPatientDateWire(input.dateOfBirth!),
       if (input.gender != null) 'p_gender': input.gender!.wireValue,
-      if (input.maritalStatus != null) 'p_marital_status': input.maritalStatus!.wireValue,
+      if (input.maritalStatus != null)
+        'p_marital_status': input.maritalStatus!.wireValue,
       if (input.notes != null) 'p_notes': input.notes!.trim(),
     });
 
@@ -148,19 +165,27 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     final name = input.fullName.trim();
     if (name.isEmpty) {
       throw RpcFailure(
-        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Full name is required.'),
+        const RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Full name is required.',
+        ),
       );
     }
 
     final result = await invokeRpc('update_patient', {
       'p_patient_id': input.patientId,
       'p_full_name': name,
-      'p_expected_updated_at': input.expectedUpdatedAt.toUtc().toIso8601String(),
+      'p_expected_updated_at': input.expectedUpdatedAt
+          .toUtc()
+          .toIso8601String(),
       'p_acknowledge_duplicate': input.acknowledgeDuplicate,
       if (input.phone != null) 'p_phone': input.phone!.trim(),
-      if (input.dateOfBirth != null) 'p_date_of_birth': formatPatientDateWire(input.dateOfBirth!),
+      if (input.dateOfBirth != null)
+        'p_date_of_birth': formatPatientDateWire(input.dateOfBirth!),
       if (input.gender != null) 'p_gender': input.gender!.wireValue,
-      if (input.maritalStatus != null) 'p_marital_status': input.maritalStatus!.wireValue,
+      if (input.maritalStatus != null)
+        'p_marital_status': input.maritalStatus!.wireValue,
       if (input.notes != null) 'p_notes': input.notes!.trim(),
     });
 
@@ -181,21 +206,35 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   }
 
   @override
-  Future<String> reassignPatientMrn({required String patientId, required String newMrn}) async {
+  Future<String> reassignPatientMrn({
+    required String patientId,
+    required String newMrn,
+  }) async {
     final id = patientId.trim();
     final mrn = newMrn.trim();
     if (id.isEmpty) {
       throw RpcFailure(
-        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Patient id is required.'),
+        const RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Patient id is required.',
+        ),
       );
     }
     if (mrn.isEmpty) {
       throw RpcFailure(
-        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'MRN is required.'),
+        const RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'MRN is required.',
+        ),
       );
     }
 
-    final result = await invokeRpc('reassign_patient_mrn', {'p_patient_id': id, 'p_new_mrn': mrn});
+    final result = await invokeRpc('reassign_patient_mrn', {
+      'p_patient_id': id,
+      'p_new_mrn': mrn,
+    });
     final assignedMrn = result.data?['mrn']?.toString();
     if (assignedMrn == null || assignedMrn.isEmpty) {
       throw StateError('MRN was reassigned but no mrn was returned.');
@@ -212,7 +251,9 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
     final candidates = <DuplicateCandidate>[];
     for (final entry in raw) {
       if (entry is Map) {
-        final candidate = DuplicateCandidate.fromRow(Map<String, dynamic>.from(entry));
+        final candidate = DuplicateCandidate.fromRow(
+          Map<String, dynamic>.from(entry),
+        );
         if (candidate != null) {
           candidates.add(candidate);
         }

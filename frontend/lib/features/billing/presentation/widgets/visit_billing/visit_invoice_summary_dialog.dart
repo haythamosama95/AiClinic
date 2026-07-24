@@ -12,7 +12,10 @@ import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/vi
 class VisitInvoiceSummaryDialog {
   VisitInvoiceSummaryDialog._();
 
-  static Future<void> show(BuildContext context, {required InvoiceDetail invoice}) {
+  static Future<void> show(
+    BuildContext context, {
+    required InvoiceDetail invoice,
+  }) {
     final hostContext = context;
     final canOpenDetail = AuthRouteGuard.canAccessInvoiceDetail(
       ProviderScope.containerOf(context).read(authSessionProvider),
@@ -40,7 +43,10 @@ class VisitInvoiceSummaryDialog {
                   child: const Text('Open invoice'),
                 ),
               const Spacer(),
-              AppButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Close')),
+              AppButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Close'),
+              ),
             ],
           );
         },

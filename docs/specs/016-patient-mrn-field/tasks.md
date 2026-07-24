@@ -176,14 +176,14 @@ description: "Task list for Patient MRN (Medical Record Number) feature implemen
 
 ### Tests for User Story 6
 
-- [ ] T044 [P] [US6] Add pgTAP assertions (extend relevant appointments test or new `backend/tests/appointments_patient_mrn_payload_test.sql`) that `list_appointments` row objects include `patient_mrn` for each appointment tied to a patient with a known MRN
-- [ ] T045 [P] [US6] Create Flutter unit test `frontend/test/unit/appointments/appointment_list_item_mrn_test.dart` asserting `AppointmentListItem.fromJson` parses `patientMrn` from `row['patient_mrn']` (fallback `row['mrn']`) and the field is exposed
+- [X] T044 [P] [US6] Add pgTAP assertions (extend relevant appointments test or new `backend/tests/appointments_patient_mrn_payload_test.sql`) that `list_appointments` row objects include `patient_mrn` for each appointment tied to a patient with a known MRN
+- [X] T045 [P] [US6] Create Flutter unit test `frontend/test/unit/appointments/appointment_list_item_mrn_test.dart` asserting `AppointmentListItem.fromJson` parses `patientMrn` from `row['patient_mrn']` (fallback `row['mrn']`) and the field is exposed
 
 ### Implementation for User Story 6
 
-- [ ] T046 [P] [US6] Extend `list_appointments` RPC SELECT in `backend/supabase/migrations/20260724124000_list_appointments_include_mrn.sql` to include `p.mrn AS patient_mrn` from the JOIN to `public.patients` and add `'patient_mrn', p.patient_mrn` to the row `jsonb_build_object(...)`
-- [ ] T047 [P] [US6] Add `patientMrn: String?` field to `AppointmentListItem` in `frontend/lib/features/appointments/domain/appointment_list_item.dart`, parsing `row['patient_mrn']` with fallback `row['mrn']`
-- [ ] T048 [US6] Surface `patientMrn` next to the patient name in `frontend/lib/features/appointments/presentation/widgets/appointment_calendar_tile.dart` (and the appointment list row widget if separate): render `"$patientMrn · $patientName"` when MRN present, fall back to `patientName` only when null (avoid clutter); use `AppTypography.mono` for the MRN portion
+- [X] T046 [P] [US6] Extend `list_appointments` RPC SELECT in `backend/supabase/migrations/20260724124000_list_appointments_include_mrn.sql` to include `p.mrn AS patient_mrn` from the JOIN to `public.patients` and add `'patient_mrn', p.patient_mrn` to the row `jsonb_build_object(...)`
+- [X] T047 [P] [US6] Add `patientMrn: String?` field to `AppointmentListItem` in `frontend/lib/features/appointments/domain/appointment_list_item.dart`, parsing `row['patient_mrn']` with fallback `row['mrn']`
+- [X] T048 [US6] Surface `patientMrn` next to the patient name in `frontend/lib/features/appointments/presentation/widgets/appointment_calendar_tile.dart` (and the appointment list row widget if separate): render `"$patientMrn · $patientName"` when MRN present, fall back to `patientName` only when null (avoid clutter); use `AppTypography.mono` for the MRN portion
 
 **Checkpoint**: All user stories complete. Appointments now show MRNs; visits/encounters inherit the patient-detail chip (US4).
 
@@ -193,14 +193,14 @@ description: "Task list for Patient MRN (Medical Record Number) feature implemen
 
 **Purpose**: Verification, docs, regression, and constitution compliance across all stories.
 
-- [ ] T049 [P] Run full backend test suite `./backend/tests/run_patient_management_tests.sh` (and any broader `run_all_backend_tests.sh`) — all green; explicitly re-verify cross-org denial still holds (MRN visibility follows existing `patients` RLS, no new read permission)
-- [ ] T050 [P] Run Flutter tests `cd frontend && flutter test test/unit/patients/ test/boundary/patients/ test/integration/patients/ test/unit/billing/ test/unit/appointments/` — all green
-- [ ] T051 [P] Run `flutter analyze` and `dart format` across touched files in `frontend/lib/features/patients/`, `frontend/lib/features/billing/`, `frontend/lib/features/appointments/`, `frontend/lib/core/auth/` — clean
-- [ ] T052 [P] Create/update desktop integration test `frontend/test/integration/patients/patient_mrn_acceptance_test.dart` covering the end-to-end journey: create patient → toast shows MRN → list shows MRN column → detail shows chip → invoice list shows MRN (boundary-gated)
-- [ ] T053 [P] Update operator/quickstart docs: confirm `docs/specs/016-patient-mrn-field/quickstart.md` steps still pass; add desk-staff notes to the established desk quick-reference (e.g., `docs/architecture/12-roadmap-phases.md`) per the quickstart "Operator documentation" section
-- [ ] T054 [P] Run `quickstart.md` validation end-to-end on local stack (migrate → backend tests → Flutter run → manual scenarios 1–11)
-- [ ] T055 Constitution compliance review for final architecture and operations: verify (a) global uniqueness still DB-owned (sequence + unique index, no retry loops), (b) RLS unchanged on `patients`, (c) reassignment admin-only + audited, (d) `update_patient` still has no `p_mrn` parameter (immutability), (e) no AI dependency introduced, (f) soft-deleted MRNs not reused (manual archive+create regression), (g) safe degradation — backend unreachable blocks MRN writes (no local fabrication)
-- [ ] T056 Re-confirm `AGENTS.md` SPECKIT markers still point at `docs/specs/016-patient-mrn-field/plan.md`; ensure no stray JSDoc/docstring mentions of "MRN" contradict the spec invariants
+- [X] T049 [P] Run full backend test suite `./backend/tests/run_patient_management_tests.sh` (and any broader `run_all_backend_tests.sh`) — all green; explicitly re-verify cross-org denial still holds (MRN visibility follows existing `patients` RLS, no new read permission)
+- [X] T050 [P] Run Flutter tests `cd frontend && flutter test test/unit/patients/ test/boundary/patients/ test/integration/patients/ test/unit/billing/ test/unit/appointments/` — all green
+- [X] T051 [P] Run `flutter analyze` and `dart format` across touched files in `frontend/lib/features/patients/`, `frontend/lib/features/billing/`, `frontend/lib/features/appointments/`, `frontend/lib/core/auth/` — clean
+- [X] T052 [P] Create/update desktop integration test `frontend/test/integration/patients/patient_mrn_acceptance_test.dart` covering the end-to-end journey: create patient → toast shows MRN → list shows MRN column → detail shows chip → invoice list shows MRN (boundary-gated)
+- [X] T053 [P] Update operator/quickstart docs: confirm `docs/specs/016-patient-mrn-field/quickstart.md` steps still pass; add desk-staff notes to the established desk quick-reference (e.g., `docs/architecture/12-roadmap-phases.md`) per the quickstart "Operator documentation" section
+- [X] T054 [P] Run `quickstart.md` validation end-to-end on local stack (migrate → backend tests → Flutter run → manual scenarios 1–11)
+- [X] T055 Constitution compliance review for final architecture and operations: verify (a) global uniqueness still DB-owned (sequence + unique index, no retry loops), (b) RLS unchanged on `patients`, (c) reassignment admin-only + audited, (d) `update_patient` still has no `p_mrn` parameter (immutability), (e) no AI dependency introduced, (f) soft-deleted MRNs not reused (manual archive+create regression), (g) safe degradation — backend unreachable blocks MRN writes (no local fabrication)
+- [X] T056 Re-confirm `AGENTS.md` SPECKIT markers still point at `docs/specs/016-patient-mrn-field/plan.md`; ensure no stray JSDoc/docstring mentions of "MRN" contradict the spec invariants
 
 ---
 

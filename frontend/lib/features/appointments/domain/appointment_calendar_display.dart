@@ -13,7 +13,10 @@ import 'package:ai_clinic/features/clinic-management/domain/branch_working_sched
 
 /// Muted time blocks (before open / after close) for week-style views.
 class AppointmentCalendarShadeRegion {
-  const AppointmentCalendarShadeRegion({required this.start, required this.end});
+  const AppointmentCalendarShadeRegion({
+    required this.start,
+    required this.end,
+  });
 
   final DateTime start;
   final DateTime end;
@@ -65,7 +68,8 @@ class AppointmentCalendarDisplay {
   static const double viewHeaderVerticalPadding = 6;
 
   /// Height of the day/week column header row in the Syncfusion calendar.
-  static const double viewHeaderHeight = viewHeaderVerticalPadding * 2 + viewHeaderBadgeSize;
+  static const double viewHeaderHeight =
+      viewHeaderVerticalPadding * 2 + viewHeaderBadgeSize;
 
   /// Width of the time-label gutter to the left of day columns (Syncfusion default).
   static const double timeLabelWidth = 50;
@@ -73,11 +77,17 @@ class AppointmentCalendarDisplay {
   /// Chrome above the scrollable time-slot grid (view header + borders).
   static const double timeSlotChromeHeight = viewHeaderHeight;
 
-  static List<DateTime> visibleHeaderDays(AppointmentCalendarMode mode, DateTime focusDate) {
+  static List<DateTime> visibleHeaderDays(
+    AppointmentCalendarMode mode,
+    DateTime focusDate,
+  ) {
     final anchor = DateTime(focusDate.year, focusDate.month, focusDate.day);
     return switch (mode) {
       AppointmentCalendarMode.day => [anchor],
-      AppointmentCalendarMode.week => List.generate(7, (index) => _weekStart(anchor).add(Duration(days: index))),
+      AppointmentCalendarMode.week => List.generate(
+        7,
+        (index) => _weekStart(anchor).add(Duration(days: index)),
+      ),
       _ => const [],
     };
   }
@@ -93,7 +103,9 @@ class AppointmentCalendarDisplay {
 
   static DateTime _weekStart(DateTime date) {
     final dayStart = DateTime(date.year, date.month, date.day);
-    return dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
+    return dayStart.subtract(
+      Duration(days: dayStart.weekday - DateTime.monday),
+    );
   }
 
   static AppointmentCalendarTimeSlotLayout timeSlotLayout({
@@ -103,7 +115,8 @@ class AppointmentCalendarDisplay {
     double viewportHeight = defaultViewportHeight,
     int timeIntervalMinutes = defaultTimeIntervalMinutes,
   }) {
-    final intervalMinutes = supportedTimeIntervalMinutes.contains(timeIntervalMinutes)
+    final intervalMinutes =
+        supportedTimeIntervalMinutes.contains(timeIntervalMinutes)
         ? timeIntervalMinutes
         : defaultTimeIntervalMinutes;
     final (startHour, endHour) = switch (mode) {
@@ -114,11 +127,21 @@ class AppointmentCalendarDisplay {
       AppointmentCalendarMode.month => (8.0, 18.0),
     };
 
-    final slotCount = ((endHour - startHour) * 60 / intervalMinutes).ceil().clamp(1, 48);
-    final slotAreaHeight = (viewportHeight - timeSlotChromeHeight).clamp(minTimeIntervalHeight, double.infinity);
-    final intervalHeight = (slotAreaHeight / slotCount).clamp(minTimeIntervalHeight, double.infinity);
+    final slotCount = ((endHour - startHour) * 60 / intervalMinutes)
+        .ceil()
+        .clamp(1, 48);
+    final slotAreaHeight = (viewportHeight - timeSlotChromeHeight).clamp(
+      minTimeIntervalHeight,
+      double.infinity,
+    );
+    final intervalHeight = (slotAreaHeight / slotCount).clamp(
+      minTimeIntervalHeight,
+      double.infinity,
+    );
 
-    final timeIntervalWidth = mode == AppointmentCalendarMode.doctors ? doctorsTimelineTimeIntervalWidth : -2.0;
+    final timeIntervalWidth = mode == AppointmentCalendarMode.doctors
+        ? doctorsTimelineTimeIntervalWidth
+        : -2.0;
 
     return AppointmentCalendarTimeSlotLayout(
       startHour: startHour,
@@ -127,7 +150,9 @@ class AppointmentCalendarDisplay {
       timeIntervalWidth: timeIntervalWidth,
       timeIntervalMinutes: intervalMinutes,
       nonWorkingDays: nonWorkingDays(schedule),
-      shadeRegions: mode == AppointmentCalendarMode.week ? shadeRegionsForWeek(schedule, focusDate) : const [],
+      shadeRegions: mode == AppointmentCalendarMode.week
+          ? shadeRegionsForWeek(schedule, focusDate)
+          : const [],
     );
   }
 
@@ -135,7 +160,9 @@ class AppointmentCalendarDisplay {
   ///
   /// Falls back to [BranchWorkingSchedule.defaultSchedule] when the branch has no
   /// configured hours so appointments from the API are not hidden before setup.
-  static BranchWorkingSchedule resolveBranchSchedule(BranchWorkingSchedule? schedule) {
+  static BranchWorkingSchedule resolveBranchSchedule(
+    BranchWorkingSchedule? schedule,
+  ) {
     if (schedule == null || !schedule.hasConfiguredWorkingHours) {
       return BranchWorkingSchedule.defaultSchedule();
     }
@@ -147,7 +174,8 @@ class AppointmentCalendarDisplay {
   }
 
   static bool showWeekends(BranchWorkingSchedule schedule) {
-    return _isWorkingWeekday(schedule, BranchWeekday.saturday) || _isWorkingWeekday(schedule, BranchWeekday.sunday);
+    return _isWorkingWeekday(schedule, BranchWeekday.saturday) ||
+        _isWorkingWeekday(schedule, BranchWeekday.sunday);
   }
 
   static List<int> nonWorkingDays(BranchWorkingSchedule schedule) {
@@ -160,11 +188,18 @@ class AppointmentCalendarDisplay {
     return closed;
   }
 
-  static List<DateTime> closedDatesInMonth(BranchWorkingSchedule schedule, DateTime focusDate) {
+  static List<DateTime> closedDatesInMonth(
+    BranchWorkingSchedule schedule,
+    DateTime focusDate,
+  ) {
     final monthStart = DateTime(focusDate.year, focusDate.month, 1);
     final monthEnd = DateTime(focusDate.year, focusDate.month + 1, 1);
     final closed = <DateTime>[];
-    for (var date = monthStart; date.isBefore(monthEnd); date = date.add(const Duration(days: 1))) {
+    for (
+      var date = monthStart;
+      date.isBefore(monthEnd);
+      date = date.add(const Duration(days: 1))
+    ) {
       if (isClosedOnDate(schedule, date)) {
         closed.add(DateTime(date.year, date.month, date.day));
       }
@@ -186,7 +221,9 @@ class AppointmentCalendarDisplay {
 
     final local = focusDate.toLocal();
     final dayStart = DateTime(local.year, local.month, local.day);
-    final rangeStart = dayStart.add(Duration(minutes: (startHour * 60).round()));
+    final rangeStart = dayStart.add(
+      Duration(minutes: (startHour * 60).round()),
+    );
     final rangeEnd = dayStart.add(Duration(minutes: (endHour * 60).round()));
 
     return [
@@ -202,21 +239,35 @@ class AppointmentCalendarDisplay {
     ];
   }
 
-  static List<AppointmentCalendarShadeRegion> shadeRegionsForWeek(BranchWorkingSchedule schedule, DateTime focusDate) {
+  static List<AppointmentCalendarShadeRegion> shadeRegionsForWeek(
+    BranchWorkingSchedule schedule,
+    DateTime focusDate,
+  ) {
     final dayStart = DateTime(focusDate.year, focusDate.month, focusDate.day);
-    final weekStart = dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
+    final weekStart = dayStart.subtract(
+      Duration(days: dayStart.weekday - DateTime.monday),
+    );
     final regions = <AppointmentCalendarShadeRegion>[];
 
     for (var offset = 0; offset < 7; offset++) {
       final date = weekStart.add(Duration(days: offset));
-      final dayHours = AppointmentBranchWorkingHours.hoursForDate(schedule, date);
+      final dayHours = AppointmentBranchWorkingHours.hoursForDate(
+        schedule,
+        date,
+      );
       if (dayHours == null || !dayHours.isWorkingDay) {
         continue;
       }
 
-      final openMinutes = AppointmentBranchWorkingHours.parseHm(dayHours.openTime);
-      final closeMinutes = AppointmentBranchWorkingHours.parseHm(dayHours.closeTime);
-      if (openMinutes == null || closeMinutes == null || openMinutes >= closeMinutes) {
+      final openMinutes = AppointmentBranchWorkingHours.parseHm(
+        dayHours.openTime,
+      );
+      final closeMinutes = AppointmentBranchWorkingHours.parseHm(
+        dayHours.closeTime,
+      );
+      if (openMinutes == null ||
+          closeMinutes == null ||
+          openMinutes >= closeMinutes) {
         continue;
       }
 
@@ -255,20 +306,38 @@ class AppointmentCalendarDisplay {
     final DateTime start;
 
     if (mode == AppointmentCalendarMode.month || !hasExplicitTime) {
-      final dayHours = AppointmentBranchWorkingHours.hoursForDate(schedule, local);
+      final dayHours = AppointmentBranchWorkingHours.hoursForDate(
+        schedule,
+        local,
+      );
       final openMinutes = dayHours != null && dayHours.isWorkingDay
           ? AppointmentBranchWorkingHours.parseHm(dayHours.openTime) ?? 9 * 60
           : 9 * 60;
-      start = DateTime(local.year, local.month, local.day, openMinutes ~/ 60, openMinutes % 60);
+      start = DateTime(
+        local.year,
+        local.month,
+        local.day,
+        openMinutes ~/ 60,
+        openMinutes % 60,
+      );
     } else {
-      start = DateTime(local.year, local.month, local.day, local.hour, local.minute);
+      start = DateTime(
+        local.year,
+        local.month,
+        local.day,
+        local.hour,
+        local.minute,
+      );
     }
 
     return (start: start, end: start.add(Duration(minutes: slotMinutes)));
   }
 
   /// Snaps [time] to the nearest calendar slot start (e.g. 30-minute grid).
-  static DateTime snapTimeToSlot(DateTime time, {int slotMinutes = defaultTimeIntervalMinutes}) {
+  static DateTime snapTimeToSlot(
+    DateTime time, {
+    int slotMinutes = defaultTimeIntervalMinutes,
+  }) {
     if (slotMinutes <= 0) {
       return time.toLocal();
     }
@@ -282,25 +351,35 @@ class AppointmentCalendarDisplay {
   }
 
   /// Whether [bounds] align to the calendar slot grid (as opposed to a free drag ghost).
-  static bool isAlignedToSlotGrid(Rect bounds, double slotSize, {required bool timelineAxisIsHorizontal}) {
+  static bool isAlignedToSlotGrid(
+    Rect bounds,
+    double slotSize, {
+    required bool timelineAxisIsHorizontal,
+  }) {
     if (slotSize <= 0) {
       return true;
     }
 
-    final offset = timelineAxisIsHorizontal ? bounds.left % slotSize : bounds.top % slotSize;
+    final offset = timelineAxisIsHorizontal
+        ? bounds.left % slotSize
+        : bounds.top % slotSize;
     return offset <= 1 || offset >= slotSize - 1;
   }
 
   /// Cancelled and no-show appointments free their slot unless explicitly filtered in.
   static bool isHiddenOnCalendar(AppointmentStatus status) {
-    return status == AppointmentStatus.cancelled || status == AppointmentStatus.noShow;
+    return status == AppointmentStatus.cancelled ||
+        status == AppointmentStatus.noShow;
   }
 
   /// Whether [status] should render on the calendar for the current status filter.
   ///
   /// Inactive statuses stay hidden by default and only appear when selected in the
   /// status filter. Active workflow statuses are always eligible to render.
-  static bool isVisibleOnCalendar(AppointmentStatus status, Set<AppointmentStatus> selectedStatuses) {
+  static bool isVisibleOnCalendar(
+    AppointmentStatus status,
+    Set<AppointmentStatus> selectedStatuses,
+  ) {
     if (!isHiddenOnCalendar(status)) {
       return true;
     }
@@ -308,7 +387,8 @@ class AppointmentCalendarDisplay {
   }
 
   /// Whether the calendar is using the default status filter (active workflow only).
-  static bool isDefaultStatusFilter(Set<AppointmentStatus> selectedStatuses) => selectedStatuses.isEmpty;
+  static bool isDefaultStatusFilter(Set<AppointmentStatus> selectedStatuses) =>
+      selectedStatuses.isEmpty;
 
   static Set<AppointmentStatus> get _calendarWorkflowStatuses => {
     for (final status in calendarStatusLegend)
@@ -321,12 +401,17 @@ class AppointmentCalendarDisplay {
   };
 
   /// Whether a status chip should appear selected in the calendar filter panel.
-  static bool isStatusChipSelected(AppointmentStatus status, Set<AppointmentStatus> selectedStatuses) {
+  static bool isStatusChipSelected(
+    AppointmentStatus status,
+    Set<AppointmentStatus> selectedStatuses,
+  ) {
     if (isHiddenOnCalendar(status)) {
       return selectedStatuses.contains(status);
     }
 
-    final workflowInFilter = selectedStatuses.intersection(_calendarWorkflowStatuses);
+    final workflowInFilter = selectedStatuses.intersection(
+      _calendarWorkflowStatuses,
+    );
     if (workflowInFilter.isEmpty) {
       return true;
     }
@@ -334,7 +419,10 @@ class AppointmentCalendarDisplay {
   }
 
   /// Updates [selectedStatuses] after toggling a status chip in the filter panel.
-  static Set<AppointmentStatus> toggleStatusChip(AppointmentStatus status, Set<AppointmentStatus> selectedStatuses) {
+  static Set<AppointmentStatus> toggleStatusChip(
+    AppointmentStatus status,
+    Set<AppointmentStatus> selectedStatuses,
+  ) {
     final workflow = _calendarWorkflowStatuses;
     final hidden = _calendarHiddenStatuses;
     final hiddenIncluded = selectedStatuses.intersection(hidden);
@@ -356,19 +444,22 @@ class AppointmentCalendarDisplay {
     final chipSelected = isStatusChipSelected(status, selectedStatuses);
     if (chipSelected) {
       if (workflowInFilter.isEmpty) {
-        final nextWorkflow = Set<AppointmentStatus>.from(workflow)..remove(status);
+        final nextWorkflow = Set<AppointmentStatus>.from(workflow)
+          ..remove(status);
         return {...nextWorkflow, ...hiddenIncluded};
       }
 
-      final nextWorkflow = Set<AppointmentStatus>.from(workflowInFilter)..remove(status);
+      final nextWorkflow = Set<AppointmentStatus>.from(workflowInFilter)
+        ..remove(status);
       if (nextWorkflow.isEmpty || nextWorkflow.containsAll(workflow)) {
         return hiddenIncluded;
       }
       return {...nextWorkflow, ...hiddenIncluded};
     }
 
-    final nextWorkflow = Set<AppointmentStatus>.from(workflowInFilter.isEmpty ? workflow : workflowInFilter)
-      ..add(status);
+    final nextWorkflow = Set<AppointmentStatus>.from(
+      workflowInFilter.isEmpty ? workflow : workflowInFilter,
+    )..add(status);
     if (nextWorkflow.containsAll(workflow)) {
       return hiddenIncluded;
     }
@@ -384,7 +475,11 @@ class AppointmentCalendarDisplay {
         .where(
           (item) =>
               isVisibleOnCalendar(item.status, selectedStatuses) &&
-              AppointmentWorkingHours.isWithinSchedule(schedule: schedule, start: item.startTime, end: item.endTime),
+              AppointmentWorkingHours.isWithinSchedule(
+                schedule: schedule,
+                start: item.startTime,
+                end: item.endTime,
+              ),
         )
         .toList(growable: false);
   }
@@ -400,11 +495,16 @@ class AppointmentCalendarDisplay {
     AppointmentStatus.noShow,
   ];
 
-  static AppointmentCalendarStatusStyle statusStyle(AppointmentStatus status, Brightness brightness) {
+  static AppointmentCalendarStatusStyle statusStyle(
+    AppointmentStatus status,
+    Brightness brightness,
+  ) {
     return AppointmentCalendarStatusPalette.styleFor(status, brightness);
   }
 
-  static AppointmentCalendarStatusStyle filteredOutStyle(Brightness brightness) {
+  static AppointmentCalendarStatusStyle filteredOutStyle(
+    Brightness brightness,
+  ) {
     return AppointmentCalendarStatusPalette.filteredOutStyle(brightness);
   }
 
@@ -424,7 +524,10 @@ class AppointmentCalendarDisplay {
   /// Whether [status] stays at full color for the current status filter.
   ///
   /// An empty [highlightedStatuses] means no status filter is active.
-  static bool isStatusHighlighted(AppointmentStatus status, Set<AppointmentStatus> highlightedStatuses) {
+  static bool isStatusHighlighted(
+    AppointmentStatus status,
+    Set<AppointmentStatus> highlightedStatuses,
+  ) {
     return highlightedStatuses.isEmpty || highlightedStatuses.contains(status);
   }
 
@@ -440,7 +543,10 @@ class AppointmentCalendarDisplay {
     return filteredOutStatusColor(brightness);
   }
 
-  static (double, double) _hourRangeForDay(BranchWorkingSchedule schedule, DateTime date) {
+  static (double, double) _hourRangeForDay(
+    BranchWorkingSchedule schedule,
+    DateTime date,
+  ) {
     final dayHours = AppointmentBranchWorkingHours.hoursForDate(schedule, date);
     if (dayHours == null || !dayHours.isWorkingDay) {
       return (8, 18);
@@ -488,7 +594,8 @@ class AppointmentCalendarDisplay {
     return (startHour, endHour);
   }
 
-  static double _minutesToHour(int minutes) => (minutes ~/ 60) + (minutes % 60) / 60;
+  static double _minutesToHour(int minutes) =>
+      (minutes ~/ 60) + (minutes % 60) / 60;
 
   static double _minutesToEndHour(int minutes) {
     if (minutes % 60 == 0) {
@@ -497,7 +604,10 @@ class AppointmentCalendarDisplay {
     return ((minutes + 59) ~/ 60).toDouble().clamp(1, 24);
   }
 
-  static bool _isWorkingWeekday(BranchWorkingSchedule schedule, BranchWeekday weekday) {
+  static bool _isWorkingWeekday(
+    BranchWorkingSchedule schedule,
+    BranchWeekday weekday,
+  ) {
     for (final day in schedule.days) {
       if (day.day == weekday) {
         return day.isWorkingDay;

@@ -68,9 +68,11 @@ class _PatientListControlsState extends State<PatientListControls> {
     super.dispose();
   }
 
-  bool get _lastVisitActive => widget.filters.lastVisitFilter != PatientLastVisitFilter.any;
+  bool get _lastVisitActive =>
+      widget.filters.lastVisitFilter != PatientLastVisitFilter.any;
 
-  bool get _sortIsCustom => widget.filters.sortField != PatientSortField.nameAsc;
+  bool get _sortIsCustom =>
+      widget.filters.sortField != PatientSortField.nameAsc;
 
   void _closeFilterPopover() => setState(() => _filterOpen = false);
 
@@ -97,9 +99,14 @@ class _PatientListControlsState extends State<PatientListControls> {
           children: [
             Padding(
               padding: EdgeInsets.all(shellPadding),
-              child: isWide ? _buildWideControls(context) : _buildNarrowControls(context),
+              child: isWide
+                  ? _buildWideControls(context)
+                  : _buildNarrowControls(context),
             ),
-            PatientActiveFiltersBar(active: widget.activeFilters, onClearAll: widget.onClearAll),
+            PatientActiveFiltersBar(
+              active: widget.activeFilters,
+              onClearAll: widget.onClearAll,
+            ),
           ],
         ),
       ),
@@ -153,7 +160,10 @@ class _PatientListControlsState extends State<PatientListControls> {
   }
 
   Widget _buildFilterButton(BuildContext context) {
-    final filterPopoverWidth = math.min(288.0, MediaQuery.sizeOf(context).width - 32);
+    final filterPopoverWidth = math.min(
+      288.0,
+      MediaQuery.sizeOf(context).width - 32,
+    );
 
     return AppPopover(
       open: _filterOpen,
@@ -176,7 +186,12 @@ class _PatientListControlsState extends State<PatientListControls> {
                 const Text('Filter'),
                 if (_lastVisitActive) ...[
                   const SizedBox(width: AppSpacing.space1),
-                  AppBadge(label: '1', color: BadgeColor.teal, variant: BadgeVariant.solid, size: BadgeSize.sm),
+                  AppBadge(
+                    label: '1',
+                    color: BadgeColor.teal,
+                    variant: BadgeVariant.solid,
+                    size: BadgeSize.sm,
+                  ),
                 ],
               ],
             ),
@@ -225,7 +240,10 @@ class _PatientListControlsState extends State<PatientListControls> {
                   child: Container(
                     width: 6,
                     height: 6,
-                    decoration: BoxDecoration(color: colors.actionPrimary, shape: BoxShape.circle),
+                    decoration: BoxDecoration(
+                      color: colors.actionPrimary,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
               ),
@@ -288,10 +306,15 @@ class _PatientFilterMenu extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.space2,
+                    vertical: 6,
+                  ),
                   child: Text(
                     'Last visit',
-                    style: AppTypography.overline(context).copyWith(color: colors.textTertiary),
+                    style: AppTypography.overline(
+                      context,
+                    ).copyWith(color: colors.textTertiary),
                   ),
                 ),
                 for (final option in _patientLastVisitOptions)
@@ -328,7 +351,11 @@ class _PatientFilterMenu extends StatelessWidget {
 }
 
 class _FilterMenuOptionRow extends StatefulWidget {
-  const _FilterMenuOptionRow({required this.label, required this.selected, required this.onPressed});
+  const _FilterMenuOptionRow({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
 
   final String label;
   final bool selected;
@@ -344,10 +371,16 @@ class _FilterMenuOptionRowState extends State<_FilterMenuOptionRow> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final background = widget.selected ? colors.surfaceSelected : (_hovered ? colors.surfaceHover : Colors.transparent);
-    final foreground = widget.selected ? colors.textPrimary : colors.textSecondary;
+    final background = widget.selected
+        ? colors.surfaceSelected
+        : (_hovered ? colors.surfaceHover : Colors.transparent);
+    final foreground = widget.selected
+        ? colors.textPrimary
+        : colors.textSecondary;
     final labelStyle = widget.selected
-        ? AppTypography.bodySm(context).copyWith(fontWeight: FontWeight.w500, color: foreground)
+        ? AppTypography.bodySm(
+            context,
+          ).copyWith(fontWeight: FontWeight.w500, color: foreground)
         : AppTypography.bodySm(context).copyWith(color: foreground);
 
     return Semantics(
@@ -363,13 +396,22 @@ class _FilterMenuOptionRowState extends State<_FilterMenuOptionRow> {
           child: AppPressable(
             onPressed: widget.onPressed,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space2),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.space2,
+                vertical: AppSpacing.space2,
+              ),
               child: Row(
                 children: [
                   SizedBox(
                     width: 16,
                     height: 16,
-                    child: widget.selected ? Icon(Icons.check, size: 14, color: colors.actionPrimary) : null,
+                    child: widget.selected
+                        ? Icon(
+                            Icons.check,
+                            size: 14,
+                            color: colors.actionPrimary,
+                          )
+                        : null,
                   ),
                   const SizedBox(width: AppSpacing.space2),
                   Expanded(child: Text(widget.label, style: labelStyle)),

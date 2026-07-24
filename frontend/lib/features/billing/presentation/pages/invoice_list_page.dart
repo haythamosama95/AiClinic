@@ -25,7 +25,8 @@ class InvoiceListPage extends ConsumerStatefulWidget {
   ConsumerState<InvoiceListPage> createState() => _InvoiceListPageState();
 }
 
-class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTickerProviderStateMixin {
+class _InvoiceListPageState extends ConsumerState<InvoiceListPage>
+    with SingleTickerProviderStateMixin {
   static const _defaultControls = InvoiceListControls.defaultControls;
 
   late final AnimationController _enterController;
@@ -36,7 +37,10 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTi
   @override
   void initState() {
     super.initState();
-    _enterController = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+    _enterController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ref.read(invoiceListProvider.notifier).reload();
@@ -50,10 +54,15 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTi
     if (!_enterStarted) {
       _enterStarted = true;
       final reducedMotion = AppMotion.prefersReducedMotion(context);
-      _enterController.duration = reducedMotion ? Duration.zero : const Duration(milliseconds: 220);
+      _enterController.duration = reducedMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 220);
       _enterAnimation = CurvedAnimation(
         parent: _enterController,
-        curve: AppMotion.resolveCurve(AppMotionPreset.fade, reducedMotion: reducedMotion),
+        curve: AppMotion.resolveCurve(
+          AppMotionPreset.fade,
+          reducedMotion: reducedMotion,
+        ),
       );
       if (reducedMotion) {
         _enterController.value = 1;
@@ -81,22 +90,28 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTi
     _defaultControlsApplied = true;
 
     final filters = ref.read(invoiceListProvider.notifier).filters;
-    if (_isPristineNotifierDefault(filters) && filters.pageSize != _defaultControls.pageSize) {
+    if (_isPristineNotifierDefault(filters) &&
+        filters.pageSize != _defaultControls.pageSize) {
       _applyControls(_defaultControls);
     }
   }
 
   bool get _multiBranch {
-    final branchIds = ref.read(authSessionProvider).context?.branchIds ?? const <String>[];
+    final branchIds =
+        ref.read(authSessionProvider).context?.branchIds ?? const <String>[];
     return branchIds.length > 1;
   }
 
   void _applyControls(InvoiceListControls controls) {
-    ref.read(invoiceListProvider.notifier).applyControls(controls, multiBranch: _multiBranch);
+    ref
+        .read(invoiceListProvider.notifier)
+        .applyControls(controls, multiBranch: _multiBranch);
   }
 
   void _clearAll(InvoiceListControls current) {
-    _applyControls(InvoiceListControls.defaultControls.copyWith(pageSize: current.pageSize));
+    _applyControls(
+      InvoiceListControls.defaultControls.copyWith(pageSize: current.pageSize),
+    );
   }
 
   Widget _buildNoMatchCard(BuildContext context, InvoiceListControls controls) {
@@ -111,13 +126,19 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTi
         boxShadow: elevation?.shadows1 ?? AppElevation.level1,
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6, vertical: 56),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space6,
+          vertical: 56,
+        ),
         child: Center(
           child: AppEmptyState(
             variant: AppEmptyStateVariant.noResults,
             title: 'No invoices match',
             description: 'Try a different search term or clear your filters.',
-            action: EmptyStateAction(label: 'Clear filters', onPressed: () => _clearAll(controls)),
+            action: EmptyStateAction(
+              label: 'Clear filters',
+              onPressed: () => _clearAll(controls),
+            ),
           ),
         ),
       ),
@@ -130,14 +151,23 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTi
     required InvoiceListControls controls,
     required bool isLoading,
   }) {
-    final filters = state?.filters ?? ref.read(invoiceListProvider.notifier).filters;
+    final filters =
+        state?.filters ?? ref.read(invoiceListProvider.notifier).filters;
 
     if (isLoading && state == null) {
-      return InvoiceLedgerTable(items: const [], loading: true, loadingRows: filters.pageSize);
+      return InvoiceLedgerTable(
+        items: const [],
+        loading: true,
+        loadingRows: filters.pageSize,
+      );
     }
 
     if (state == null) {
-      return InvoiceLedgerTable(items: const [], loading: true, loadingRows: filters.pageSize);
+      return InvoiceLedgerTable(
+        items: const [],
+        loading: true,
+        loadingRows: filters.pageSize,
+      );
     }
 
     if (state.isNoInvoicesYet) {
@@ -169,8 +199,10 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTi
             pageSize: filters.pageSize,
             total: state.estimatedTotal,
             pageSizeOptions: const [10, 25, 50],
-            onPageChange: (page) => _applyControls(controls.copyWith(page: page)),
-            onPageSizeChange: (pageSize) => _applyControls(controls.copyWith(page: 1, pageSize: pageSize)),
+            onPageChange: (page) =>
+                _applyControls(controls.copyWith(page: page)),
+            onPageSizeChange: (pageSize) =>
+                _applyControls(controls.copyWith(page: 1, pageSize: pageSize)),
           ),
       ],
     );
@@ -182,7 +214,8 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTi
 
     final listAsync = ref.watch(invoiceListProvider);
     final state = listAsync.value;
-    final filters = state?.filters ?? ref.read(invoiceListProvider.notifier).filters;
+    final filters =
+        state?.filters ?? ref.read(invoiceListProvider.notifier).filters;
     final controls = InvoiceListControls.fromBackendFilters(filters);
     final isLoading = listAsync.isLoading;
     final hasInvoices = state?.hasInvoices ?? false;
@@ -241,13 +274,17 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTi
         children: [
           const AppPageHeader(
             title: 'Invoices',
-            description: "Every invoice for this branch — status, payments collected, and what's still owed.",
+            description:
+                "Every invoice for this branch — status, payments collected, and what's still owed.",
           ),
           AppEmptyState(
             variant: AppEmptyStateVariant.error,
             title: 'Could not load invoices',
             description: error.toString(),
-            action: EmptyStateAction(label: 'Retry', onPressed: () => ref.invalidate(invoiceListProvider)),
+            action: EmptyStateAction(
+              label: 'Retry',
+              onPressed: () => ref.invalidate(invoiceListProvider),
+            ),
           ),
         ],
       );
@@ -260,10 +297,17 @@ class _InvoiceListPageState extends ConsumerState<InvoiceListPage> with SingleTi
       children: [
         const AppPageHeader(
           title: 'Invoices',
-          description: "Every invoice for this branch — status, payments collected, and what's still owed.",
+          description:
+              "Every invoice for this branch — status, payments collected, and what's still owed.",
         ),
-        if (hasInvoices) InvoiceListControlsBar(controls: controls, onApply: _applyControls),
-        _buildBody(context: context, state: state, controls: controls, isLoading: isLoading),
+        if (hasInvoices)
+          InvoiceListControlsBar(controls: controls, onApply: _applyControls),
+        _buildBody(
+          context: context,
+          state: state,
+          controls: controls,
+          isLoading: isLoading,
+        ),
       ],
     );
   }

@@ -51,7 +51,9 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
   String? _searchError;
   final _patientsById = <String, PatientListItem>{};
 
-  String? get _validationHint => PatientSearchQuery.validationHint(_draftQuery.isEmpty ? null : _draftQuery);
+  String? get _validationHint => PatientSearchQuery.validationHint(
+    _draftQuery.isEmpty ? null : _draftQuery,
+  );
 
   @override
   void didUpdateWidget(covariant PatientPicker oldWidget) {
@@ -71,7 +73,9 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
       });
     }
 
-    if (!PatientSearchQuery.canInvokeRpc(normalized.isEmpty ? null : normalized)) {
+    if (!PatientSearchQuery.canInvokeRpc(
+      normalized.isEmpty ? null : normalized,
+    )) {
       return [];
     }
 
@@ -134,7 +138,9 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
       parts.add(patient.phone!.trim());
     }
     if (patient.dateOfBirth != null) {
-      parts.add(PatientPresentationFormatting.dateOfBirthLabel(patient.dateOfBirth));
+      parts.add(
+        PatientPresentationFormatting.dateOfBirthLabel(patient.dateOfBirth),
+      );
     }
     if (widget.scope == PatientListScope.allBranches) {
       parts.add(patient.registeringBranchName);
@@ -152,7 +158,8 @@ class _PatientPickerState extends ConsumerState<PatientPicker> {
     if (parts.length == 1) {
       return parts.first.substring(0, 1).toUpperCase();
     }
-    return '${parts.first.substring(0, 1)}${parts[1].substring(0, 1)}'.toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts[1].substring(0, 1)}'
+        .toUpperCase();
   }
 
   @override
@@ -227,11 +234,17 @@ class _SelectedPatientCard extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [colors.surfaceMuted.withValues(alpha: 0.75), colors.surfaceDefault],
+            colors: [
+              colors.surfaceMuted.withValues(alpha: 0.75),
+              colors.surfaceDefault,
+            ],
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.space4,
+            vertical: AppSpacing.space3,
+          ),
           child: Row(
             children: [
               AppAvatar(name: patient.fullName, size: AvatarSize.md),
@@ -244,14 +257,18 @@ class _SelectedPatientCard extends StatelessWidget {
                       patient.fullName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                      style: AppTypography.bodyStrong(
+                        context,
+                      ).copyWith(color: colors.textPrimary),
                     ),
                     const SizedBox(height: AppSpacing.space05),
                     Text(
                       _subtitle(patient),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
+                      style: AppTypography.caption(
+                        context,
+                      ).copyWith(color: colors.textTertiary),
                     ),
                   ],
                 ),
@@ -280,7 +297,9 @@ class _SelectedPatientCard extends StatelessWidget {
       parts.add(patient.phone!.trim());
     }
     if (patient.dateOfBirth != null) {
-      parts.add(PatientPresentationFormatting.dateOfBirthLabel(patient.dateOfBirth));
+      parts.add(
+        PatientPresentationFormatting.dateOfBirthLabel(patient.dateOfBirth),
+      );
     }
     if (parts.isEmpty) {
       return patient.registeringBranchName;

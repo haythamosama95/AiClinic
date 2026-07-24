@@ -18,7 +18,8 @@ class PatientDocumentCard extends ConsumerStatefulWidget {
   final PatientVisitDocument document;
 
   @override
-  ConsumerState<PatientDocumentCard> createState() => _PatientDocumentCardState();
+  ConsumerState<PatientDocumentCard> createState() =>
+      _PatientDocumentCardState();
 }
 
 class _PatientDocumentCardState extends ConsumerState<PatientDocumentCard> {
@@ -35,10 +36,20 @@ class _PatientDocumentCardState extends ConsumerState<PatientDocumentCard> {
     try {
       await ref
           .read(visitAttachmentServiceProvider)
-          .downloadAndOpen(attachmentId: attachment.id, fileType: attachment.fileType, preferredName: attachment.label);
+          .downloadAndOpen(
+            attachmentId: attachment.id,
+            fileType: attachment.fileType,
+            preferredName: attachment.label,
+          );
     } catch (error) {
       if (mounted) {
-        appToast(context, AppToastInput(message: visitMessageForOpenError(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: visitMessageForOpenError(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -56,7 +67,10 @@ class _PatientDocumentCardState extends ConsumerState<PatientDocumentCard> {
 
     return PatientRecordCard(
       useNeutralGradient: true,
-      leading: _FileTypeColumn(fileType: attachment.fileType, sizeBytes: attachment.sizeBytes),
+      leading: _FileTypeColumn(
+        fileType: attachment.fileType,
+        sizeBytes: attachment.sizeBytes,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -66,13 +80,20 @@ class _PatientDocumentCardState extends ConsumerState<PatientDocumentCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(l10n.patientFile, style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+                Text(
+                  l10n.patientFile,
+                  style: AppTypography.overline(
+                    context,
+                  ).copyWith(color: colors.textTertiary),
+                ),
                 const SizedBox(height: AppSpacing.space1),
                 Text(
                   fileName,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                  style: AppTypography.bodyStrong(
+                    context,
+                  ).copyWith(color: colors.textPrimary),
                 ),
                 const SizedBox(height: AppSpacing.space4),
                 _LinkedVisitCitation(visitDate: widget.document.visitDate),
@@ -82,10 +103,17 @@ class _PatientDocumentCardState extends ConsumerState<PatientDocumentCard> {
           if (attachment.canDownload)
             DecoratedBox(
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: colors.borderSubtle.withValues(alpha: 0.8))),
+                border: Border(
+                  top: BorderSide(
+                    color: colors.borderSubtle.withValues(alpha: 0.8),
+                  ),
+                ),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space5, vertical: AppSpacing.space3),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.space5,
+                  vertical: AppSpacing.space3,
+                ),
                 child: SizedBox(
                   width: double.infinity,
                   child: AppButton(
@@ -131,9 +159,10 @@ class _FileTypeColumn extends StatelessWidget {
         const SizedBox(height: AppSpacing.space1),
         Text(
           PatientPresentationFormatting.formatFileSize(sizeBytes),
-          style: AppTypography.caption(
-            context,
-          ).copyWith(color: colors.textTertiary, fontFeatures: const [FontFeature.tabularFigures()]),
+          style: AppTypography.caption(context).copyWith(
+            color: colors.textTertiary,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
         ),
       ],
     );
@@ -160,7 +189,12 @@ class _LinkedVisitCitation extends StatelessWidget {
         border: Border.all(color: colors.borderSubtle.withValues(alpha: 0.75)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.space3, AppSpacing.space3, AppSpacing.space4, AppSpacing.space3),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.space3,
+          AppSpacing.space3,
+          AppSpacing.space4,
+          AppSpacing.space3,
+        ),
         child: IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -178,13 +212,20 @@ class _LinkedVisitCitation extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(l10n.linkedVisit, style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+                    Text(
+                      l10n.linkedVisit,
+                      style: AppTypography.overline(
+                        context,
+                      ).copyWith(color: colors.textTertiary),
+                    ),
                     const SizedBox(height: AppSpacing.space1),
                     Text(
                       dateLine,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary),
+                      style: AppTypography.bodySm(
+                        context,
+                      ).copyWith(color: colors.textPrimary),
                     ),
                   ],
                 ),

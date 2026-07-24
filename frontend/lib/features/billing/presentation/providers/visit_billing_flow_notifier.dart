@@ -22,7 +22,8 @@ class VisitBillingFlowState {
   final String? invoicePreviewNumber;
   final bool isSubmitting;
 
-  VisitBillingTotals get totals => computeVisitBillingTotals(selectedLines, discountType, discountValue);
+  VisitBillingTotals get totals =>
+      computeVisitBillingTotals(selectedLines, discountType, discountValue);
 
   VisitBillingInvoicePreview? get invoicePreview {
     final number = invoicePreviewNumber;
@@ -55,7 +56,9 @@ class VisitBillingFlowState {
       selectedLines: selectedLines ?? this.selectedLines,
       discountType: discountType ?? this.discountType,
       discountValue: discountValue ?? this.discountValue,
-      invoicePreviewNumber: clearInvoicePreviewNumber ? null : (invoicePreviewNumber ?? this.invoicePreviewNumber),
+      invoicePreviewNumber: clearInvoicePreviewNumber
+          ? null
+          : (invoicePreviewNumber ?? this.invoicePreviewNumber),
       isSubmitting: isSubmitting ?? this.isSubmitting,
     );
   }
@@ -63,7 +66,9 @@ class VisitBillingFlowState {
 
 /// Local billing workflow state for the post-review visit flow.
 final visitBillingFlowProvider = NotifierProvider.autoDispose
-    .family<VisitBillingFlowNotifier, VisitBillingFlowState, String>(VisitBillingFlowNotifier.new);
+    .family<VisitBillingFlowNotifier, VisitBillingFlowState, String>(
+      VisitBillingFlowNotifier.new,
+    );
 
 class VisitBillingFlowNotifier extends Notifier<VisitBillingFlowState> {
   VisitBillingFlowNotifier(this._visitId);
@@ -79,7 +84,9 @@ class VisitBillingFlowNotifier extends Notifier<VisitBillingFlowState> {
   }
 
   void beginBilling() {
-    state = VisitBillingFlowState(invoicePreviewNumber: generateVisitBillingInvoicePreviewNumber());
+    state = VisitBillingFlowState(
+      invoicePreviewNumber: generateVisitBillingInvoicePreviewNumber(),
+    );
   }
 
   void setStep(VisitBillingStep step) {
@@ -88,17 +95,24 @@ class VisitBillingFlowNotifier extends Notifier<VisitBillingFlowState> {
 
   void toggleService(EligibleService service, {required bool selected}) {
     if (selected) {
-      if (state.selectedLines.any((line) => line.serviceId == service.serviceId)) {
+      if (state.selectedLines.any(
+        (line) => line.serviceId == service.serviceId,
+      )) {
         return;
       }
       state = state.copyWith(
-        selectedLines: [...state.selectedLines, VisitSelectedServiceLine.fromEligibleService(service)],
+        selectedLines: [
+          ...state.selectedLines,
+          VisitSelectedServiceLine.fromEligibleService(service),
+        ],
       );
       return;
     }
 
     state = state.copyWith(
-      selectedLines: state.selectedLines.where((line) => line.serviceId != service.serviceId).toList(),
+      selectedLines: state.selectedLines
+          .where((line) => line.serviceId != service.serviceId)
+          .toList(),
     );
   }
 
@@ -107,7 +121,10 @@ class VisitBillingFlowNotifier extends Notifier<VisitBillingFlowState> {
     state = state.copyWith(
       selectedLines: [
         for (final line in state.selectedLines)
-          if (line.serviceId == serviceId) line.copyWith(quantity: nextQuantity) else line,
+          if (line.serviceId == serviceId)
+            line.copyWith(quantity: nextQuantity)
+          else
+            line,
       ],
     );
   }

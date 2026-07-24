@@ -36,9 +36,14 @@ class InvoiceItem {
 
     final unitPrice = Money.tryParse(row['unit_price']?.toString());
     final lineSubtotal = Money.tryParse(row['line_subtotal']?.toString());
-    final lineDiscountAmount = Money.tryParse(row['line_discount_amount']?.toString());
+    final lineDiscountAmount = Money.tryParse(
+      row['line_discount_amount']?.toString(),
+    );
     final lineTotal = Money.tryParse(row['line_total']?.toString());
-    if (unitPrice == null || lineSubtotal == null || lineDiscountAmount == null || lineTotal == null) {
+    if (unitPrice == null ||
+        lineSubtotal == null ||
+        lineDiscountAmount == null ||
+        lineTotal == null) {
       return null;
     }
 
@@ -48,7 +53,9 @@ class InvoiceItem {
       quantity: row['quantity']?.toString() ?? '0',
       unitPrice: unitPrice,
       lineSubtotal: lineSubtotal,
-      lineDiscountKind: DiscountKind.tryParse(row['line_discount_kind']?.toString()),
+      lineDiscountKind: DiscountKind.tryParse(
+        row['line_discount_kind']?.toString(),
+      ),
       lineDiscountValue: row['line_discount_value']?.toString(),
       lineDiscountAmount: lineDiscountAmount,
       lineTotal: lineTotal,

@@ -40,10 +40,15 @@ class InvoiceHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
+    final displayNumber = BillingFormatting.invoiceDisplayNumber(
+      invoice.invoiceNumber,
+      invoice.id,
+    );
     final isVoided = invoice.status.isVoided;
     final balanceLabel = isVoided ? 'Balance at void' : 'Balance due';
-    final balanceColor = !isVoided && balance.asDouble <= 0 ? colors.statusSuccessFg : colors.textPrimary;
+    final balanceColor = !isVoided && balance.asDouble <= 0
+        ? colors.statusSuccessFg
+        : colors.textPrimary;
     final mrnDisplay = mrn?.trim().isNotEmpty == true ? mrn!.trim() : '—';
 
     return AppCard(
@@ -53,7 +58,12 @@ class InvoiceHeroCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.x2l),
         child: Stack(
           children: [
-            const Positioned(top: 0, left: 0, right: 0, child: _PerforatedEdge()),
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _PerforatedEdge(),
+            ),
             Padding(
               padding: const EdgeInsets.all(AppSpacing.space6),
               child: Column(
@@ -80,47 +90,64 @@ class InvoiceHeroCard extends StatelessWidget {
                                   children: [
                                     Text(
                                       displayNumber,
-                                      style: AppTypography.mono(context).copyWith(
-                                        fontSize: AppTypography.h1(context).fontSize,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0.02,
-                                        color: colors.textPrimary,
-                                        fontFeatures: const [FontFeature.tabularFigures()],
-                                      ),
+                                      style: AppTypography.mono(context)
+                                          .copyWith(
+                                            fontSize: AppTypography.h1(
+                                              context,
+                                            ).fontSize,
+                                            fontWeight: FontWeight.w600,
+                                            letterSpacing: 0.02,
+                                            color: colors.textPrimary,
+                                            fontFeatures: const [
+                                              FontFeature.tabularFigures(),
+                                            ],
+                                          ),
                                     ),
-                                    InvoiceStatusBadge(status: invoice.status, size: BadgeSize.md),
+                                    InvoiceStatusBadge(
+                                      status: invoice.status,
+                                      size: BadgeSize.md,
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: AppSpacing.space2),
                                 Text.rich(
                                   TextSpan(
-                                    style: AppTypography.body(context).copyWith(color: colors.textSecondary),
+                                    style: AppTypography.body(
+                                      context,
+                                    ).copyWith(color: colors.textSecondary),
                                     children: [
                                       const TextSpan(text: 'Billed to '),
                                       WidgetSpan(
-                                        alignment: PlaceholderAlignment.baseline,
+                                        alignment:
+                                            PlaceholderAlignment.baseline,
                                         baseline: TextBaseline.alphabetic,
                                         child: Material(
                                           color: Colors.transparent,
                                           child: InkWell(
                                             onTap: onPatientTap,
-                                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                                            borderRadius: BorderRadius.circular(
+                                              AppRadius.sm,
+                                            ),
                                             child: Text(
                                               patientName,
-                                              style: AppTypography.body(context).copyWith(
-                                                color: colors.textLink,
-                                                fontWeight: FontWeight.w500,
-                                              ),
+                                              style: AppTypography.body(context)
+                                                  .copyWith(
+                                                    color: colors.textLink,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
                                             ),
                                           ),
                                         ),
                                       ),
                                       TextSpan(
                                         text: ' · $mrnDisplay',
-                                        style: AppTypography.caption(context).copyWith(
-                                          color: colors.textTertiary,
-                                          fontFeatures: const [FontFeature.tabularFigures()],
-                                        ),
+                                        style: AppTypography.caption(context)
+                                            .copyWith(
+                                              color: colors.textTertiary,
+                                              fontFeatures: const [
+                                                FontFeature.tabularFigures(),
+                                              ],
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -137,12 +164,16 @@ class InvoiceHeroCard extends StatelessWidget {
                         children: [
                           Text(
                             balanceLabel,
-                            style: AppTypography.overline(context).copyWith(color: colors.textTertiary),
+                            style: AppTypography.overline(
+                              context,
+                            ).copyWith(color: colors.textTertiary),
                           ),
                           DefaultTextStyle(
                             style: AppTypography.display(context).copyWith(
                               color: balanceColor,
-                              fontFeatures: const [FontFeature.tabularFigures()],
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
                             ),
                             child: AppMoneyDisplay(
                               amount: balance.asDouble,
@@ -186,7 +217,9 @@ class InvoiceHeroCard extends StatelessWidget {
                   const SizedBox(height: AppSpacing.space5),
                   DecoratedBox(
                     decoration: BoxDecoration(
-                      border: Border(top: BorderSide(color: colors.borderSubtle)),
+                      border: Border(
+                        top: BorderSide(color: colors.borderSubtle),
+                      ),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.only(top: AppSpacing.space4),
@@ -195,22 +228,29 @@ class InvoiceHeroCard extends StatelessWidget {
                           InvoiceMetaItem(
                             label: 'Branch',
                             icon: Icons.apartment_outlined,
-                            value: branchName?.trim().isNotEmpty == true ? branchName!.trim() : '—',
+                            value: branchName?.trim().isNotEmpty == true
+                                ? branchName!.trim()
+                                : '—',
                           ),
                           InvoiceMetaItem(
                             label: 'Created',
-                            value: BillingFormatting.formatDate(invoice.createdAt),
+                            value: BillingFormatting.formatDate(
+                              invoice.createdAt,
+                            ),
                           ),
                           InvoiceMetaItem(
                             label: 'Issued',
                             value: invoice.issuedAt == null
                                 ? 'Not yet issued'
-                                : BillingFormatting.formatDate(invoice.issuedAt!),
+                                : BillingFormatting.formatDate(
+                                    invoice.issuedAt!,
+                                  ),
                           ),
                           InvoiceMetaItem(
                             label: 'Insurance',
                             icon: Icons.shield_outlined,
-                            value: insuranceProviderName?.trim().isNotEmpty == true
+                            value:
+                                insuranceProviderName?.trim().isNotEmpty == true
                                 ? insuranceProviderName!.trim()
                                 : 'None on file',
                           ),
@@ -237,7 +277,9 @@ class _PerforatedEdge extends StatelessWidget {
       height: 1.5,
       width: double.infinity,
       child: CustomPaint(
-        painter: _PerforatedEdgePainter(color: context.appColors.borderDefault.withValues(alpha: 0.4)),
+        painter: _PerforatedEdgePainter(
+          color: context.appColors.borderDefault.withValues(alpha: 0.4),
+        ),
       ),
     );
   }
@@ -267,5 +309,6 @@ class _PerforatedEdgePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _PerforatedEdgePainter oldDelegate) => color != oldDelegate.color;
+  bool shouldRepaint(covariant _PerforatedEdgePainter oldDelegate) =>
+      color != oldDelegate.color;
 }

@@ -10,18 +10,23 @@ class AppointmentCancelDialog extends StatefulWidget {
   final AppointmentListItem appointment;
 
   /// Returns the optional cancel reason when confirmed, or `null` when dismissed.
-  static Future<String?> show(BuildContext context, {required AppointmentListItem appointment}) {
+  static Future<String?> show(
+    BuildContext context, {
+    required AppointmentListItem appointment,
+  }) {
     return AppDialog.show<String?>(
       context,
       title: 'Cancel appointment?',
-      description: 'Cancel ${appointment.patientName}\'s visit? The time slot will become available again.',
+      description:
+          'Cancel ${appointment.patientName}\'s visit? The time slot will become available again.',
       size: AppDialogSize.sm,
       child: AppointmentCancelDialog(appointment: appointment),
     );
   }
 
   @override
-  State<AppointmentCancelDialog> createState() => _AppointmentCancelDialogState();
+  State<AppointmentCancelDialog> createState() =>
+      _AppointmentCancelDialogState();
 }
 
 class _AppointmentCancelDialogState extends State<AppointmentCancelDialog> {
@@ -64,7 +69,11 @@ class _AppointmentCancelDialogState extends State<AppointmentCancelDialog> {
               child: const Text('Keep appointment'),
             ),
             const SizedBox(width: AppSpacing.space2),
-            AppButton(variant: AppButtonVariant.danger, onPressed: _confirm, child: const Text('Cancel appointment')),
+            AppButton(
+              variant: AppButtonVariant.danger,
+              onPressed: _confirm,
+              child: const Text('Cancel appointment'),
+            ),
           ],
         ),
       ],

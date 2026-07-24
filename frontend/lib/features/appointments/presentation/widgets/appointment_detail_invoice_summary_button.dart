@@ -14,20 +14,27 @@ import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/vi
 
 /// Header action that opens the visit invoice summary for completed appointments.
 class AppointmentDetailInvoiceSummaryButton extends ConsumerStatefulWidget {
-  const AppointmentDetailInvoiceSummaryButton({required this.detail, super.key});
+  const AppointmentDetailInvoiceSummaryButton({
+    required this.detail,
+    super.key,
+  });
 
   final AppointmentDetail detail;
 
   @override
-  ConsumerState<AppointmentDetailInvoiceSummaryButton> createState() => _AppointmentDetailInvoiceSummaryButtonState();
+  ConsumerState<AppointmentDetailInvoiceSummaryButton> createState() =>
+      _AppointmentDetailInvoiceSummaryButtonState();
 }
 
-class _AppointmentDetailInvoiceSummaryButtonState extends ConsumerState<AppointmentDetailInvoiceSummaryButton> {
+class _AppointmentDetailInvoiceSummaryButtonState
+    extends ConsumerState<AppointmentDetailInvoiceSummaryButton> {
   var _isLoading = false;
 
   AppointmentDetail get detail => widget.detail;
 
-  bool get _canViewInvoices => ref.watch(authSessionProvider.select(AuthRouteGuard.canAccessInvoiceList));
+  bool get _canViewInvoices => ref.watch(
+    authSessionProvider.select(AuthRouteGuard.canAccessInvoiceList),
+  );
 
   bool get _isCompleted => detail.status == AppointmentStatus.completed;
 
@@ -41,13 +48,18 @@ class _AppointmentDetailInvoiceSummaryButtonState extends ConsumerState<Appointm
       final visitRepo = ref.read(visitRepositoryProvider);
       final invoiceRepo = ref.read(invoiceRepositoryProvider);
 
-      final link = await visitRepo.getVisitByAppointment(appointmentId: detail.id);
+      final link = await visitRepo.getVisitByAppointment(
+        appointmentId: detail.id,
+      );
       final visitId = link.visitId?.trim();
       if (visitId == null || visitId.isEmpty) {
         if (mounted) {
           appToast(
             context,
-            const AppToastInput(message: 'No visit found for this appointment.', variant: AppToastVariant.info),
+            const AppToastInput(
+              message: 'No visit found for this appointment.',
+              variant: AppToastVariant.info,
+            ),
           );
         }
         return;
@@ -58,7 +70,10 @@ class _AppointmentDetailInvoiceSummaryButtonState extends ConsumerState<Appointm
         if (mounted) {
           appToast(
             context,
-            const AppToastInput(message: 'No invoice linked to this visit.', variant: AppToastVariant.info),
+            const AppToastInput(
+              message: 'No invoice linked to this visit.',
+              variant: AppToastVariant.info,
+            ),
           );
         }
         return;
@@ -72,7 +87,13 @@ class _AppointmentDetailInvoiceSummaryButtonState extends ConsumerState<Appointm
       await VisitInvoiceSummaryDialog.show(context, invoice: invoice);
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(context, AppToastInput(message: billingMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: billingMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {

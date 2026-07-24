@@ -25,7 +25,8 @@ abstract final class AppointmentDoctorSelectItems {
 
     return [
       AppSelectOption(value: emptyValue, label: emptyLabel),
-      for (final doctor in available) AppSelectOption(value: doctor.id, label: doctor.fullName),
+      for (final doctor in available)
+        AppSelectOption(value: doctor.id, label: doctor.fullName),
       for (final doctor in unavailable)
         AppSelectOption(
           value: doctor.id,
@@ -37,6 +38,8 @@ abstract final class AppointmentDoctorSelectItems {
   }
 
   static bool _isUnavailableAtBranch(StaffListItem doctor, String? branchId) {
-    return branchId != null && branchId.isNotEmpty && !doctor.isAssignedToBranch(branchId);
+    return branchId != null &&
+        branchId.isNotEmpty &&
+        !doctor.isAssignedToBranch(branchId);
   }
 }

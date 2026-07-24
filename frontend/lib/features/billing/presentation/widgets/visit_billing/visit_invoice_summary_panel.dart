@@ -16,8 +16,12 @@ import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 
 /// Read-only invoice summary for visit billing contexts.
 class VisitInvoiceSummaryPanel extends ConsumerWidget {
-  const VisitInvoiceSummaryPanel({this.invoice, this.preview, this.expanded = false, super.key})
-    : assert(invoice != null || preview != null);
+  const VisitInvoiceSummaryPanel({
+    this.invoice,
+    this.preview,
+    this.expanded = false,
+    super.key,
+  }) : assert(invoice != null || preview != null);
 
   final InvoiceDetail? invoice;
   final VisitBillingInvoicePreview? preview;
@@ -29,15 +33,27 @@ class VisitInvoiceSummaryPanel extends ConsumerWidget {
     final currency = ref.watch(organizationCurrencyProvider);
 
     if (invoice != null) {
-      return _InvoiceDetailSummary(invoice: invoice!, expanded: expanded, colors: colors);
+      return _InvoiceDetailSummary(
+        invoice: invoice!,
+        expanded: expanded,
+        colors: colors,
+      );
     }
 
-    return _PreviewSummary(preview: preview!, colors: colors, currency: currency);
+    return _PreviewSummary(
+      preview: preview!,
+      colors: colors,
+      currency: currency,
+    );
   }
 }
 
 class _InvoiceDetailSummary extends StatelessWidget {
-  const _InvoiceDetailSummary({required this.invoice, required this.expanded, required this.colors});
+  const _InvoiceDetailSummary({
+    required this.invoice,
+    required this.expanded,
+    required this.colors,
+  });
 
   final InvoiceDetail invoice;
   final bool expanded;
@@ -46,7 +62,10 @@ class _InvoiceDetailSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final badgeStyle = statusBadgeStyle(invoice.status);
-    final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
+    final displayNumber = BillingFormatting.invoiceDisplayNumber(
+      invoice.invoiceNumber,
+      invoice.id,
+    );
     final netTotal = invoice.subtotal - invoice.discountAmount;
     final hasDiscount = !invoice.discountAmount.isZero;
     final showBalance = !invoice.status.isDraft && invoice.balance.isPositive;
@@ -64,14 +83,20 @@ class _InvoiceDetailSummary extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.receipt_long_outlined, size: 16, color: colors.iconMuted),
+                Icon(
+                  Icons.receipt_long_outlined,
+                  size: 16,
+                  color: colors.iconMuted,
+                ),
                 const SizedBox(width: AppSpacing.space2),
                 Expanded(
                   child: Text(
                     displayNumber,
-                    style: AppTypography.caption(
-                      context,
-                    ).copyWith(color: colors.textSecondary, fontFamily: 'monospace', letterSpacing: 0.8),
+                    style: AppTypography.caption(context).copyWith(
+                      color: colors.textSecondary,
+                      fontFamily: 'monospace',
+                      letterSpacing: 0.8,
+                    ),
                   ),
                 ),
                 AppBadge(
@@ -95,12 +120,17 @@ class _InvoiceDetailSummary extends StatelessWidget {
               const SizedBox(height: AppSpacing.space3),
               for (final item in invoice.items) ...[
                 _LineItemRow(item: item, currency: invoice.currency),
-                if (item != invoice.items.last) const SizedBox(height: AppSpacing.space3),
+                if (item != invoice.items.last)
+                  const SizedBox(height: AppSpacing.space3),
               ],
               const SizedBox(height: AppSpacing.space4),
               const Divider(height: 1),
               const SizedBox(height: AppSpacing.space3),
-              _AmountRow(label: 'Subtotal', amount: invoice.subtotal, currency: invoice.currency),
+              _AmountRow(
+                label: 'Subtotal',
+                amount: invoice.subtotal,
+                currency: invoice.currency,
+              ),
               if (hasDiscount) ...[
                 const SizedBox(height: AppSpacing.space2),
                 _AmountRow(
@@ -111,10 +141,19 @@ class _InvoiceDetailSummary extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: AppSpacing.space2),
-              _AmountRow(label: 'Total', amount: netTotal, currency: invoice.currency, emphasis: true),
+              _AmountRow(
+                label: 'Total',
+                amount: netTotal,
+                currency: invoice.currency,
+                emphasis: true,
+              ),
               if (showBalance) ...[
                 const SizedBox(height: AppSpacing.space2),
-                _AmountRow(label: 'Balance due', amount: invoice.balance, currency: invoice.currency),
+                _AmountRow(
+                  label: 'Balance due',
+                  amount: invoice.balance,
+                  currency: invoice.currency,
+                ),
               ],
             ] else ...[
               const SizedBox(height: AppSpacing.space3),
@@ -123,10 +162,16 @@ class _InvoiceDetailSummary extends StatelessWidget {
                   Expanded(
                     child: Text(
                       '${invoice.items.length} service${invoice.items.length == 1 ? '' : 's'}${hasDiscount ? ' · Discount applied' : ''}',
-                      style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                      style: AppTypography.bodySm(
+                        context,
+                      ).copyWith(color: colors.textSecondary),
                     ),
                   ),
-                  AppMoneyDisplay(amount: netTotal.asDouble, currency: invoice.currency, emphasis: true),
+                  AppMoneyDisplay(
+                    amount: netTotal.asDouble,
+                    currency: invoice.currency,
+                    emphasis: true,
+                  ),
                 ],
               ),
             ],
@@ -138,7 +183,11 @@ class _InvoiceDetailSummary extends StatelessWidget {
 }
 
 class _PreviewSummary extends StatelessWidget {
-  const _PreviewSummary({required this.preview, required this.colors, required this.currency});
+  const _PreviewSummary({
+    required this.preview,
+    required this.colors,
+    required this.currency,
+  });
 
   final VisitBillingInvoicePreview preview;
   final AppSemanticColors colors;
@@ -161,14 +210,20 @@ class _PreviewSummary extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.receipt_long_outlined, size: 16, color: colors.iconMuted),
+                Icon(
+                  Icons.receipt_long_outlined,
+                  size: 16,
+                  color: colors.iconMuted,
+                ),
                 const SizedBox(width: AppSpacing.space2),
                 Expanded(
                   child: Text(
                     preview.number,
-                    style: AppTypography.caption(
-                      context,
-                    ).copyWith(color: colors.textSecondary, fontFamily: 'monospace', letterSpacing: 0.8),
+                    style: AppTypography.caption(context).copyWith(
+                      color: colors.textSecondary,
+                      fontFamily: 'monospace',
+                      letterSpacing: 0.8,
+                    ),
                   ),
                 ),
                 DecoratedBox(
@@ -177,12 +232,16 @@ class _PreviewSummary extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppRadius.full),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2 + 2, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.space2 + 2,
+                      vertical: 2,
+                    ),
                     child: Text(
                       'Draft',
-                      style: AppTypography.caption(
-                        context,
-                      ).copyWith(color: colors.statusWarningFg, fontWeight: FontWeight.w500),
+                      style: AppTypography.caption(context).copyWith(
+                        color: colors.statusWarningFg,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ),
@@ -194,10 +253,16 @@ class _PreviewSummary extends StatelessWidget {
                 Expanded(
                   child: Text(
                     '${preview.lines.length} service${preview.lines.length == 1 ? '' : 's'}${hasDiscount ? ' · Discount applied' : ''}',
-                    style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                    style: AppTypography.bodySm(
+                      context,
+                    ).copyWith(color: colors.textSecondary),
                   ),
                 ),
-                AppMoneyDisplay(amount: preview.total, currency: currency, emphasis: true),
+                AppMoneyDisplay(
+                  amount: preview.total,
+                  currency: currency,
+                  emphasis: true,
+                ),
               ],
             ),
           ],
@@ -224,9 +289,19 @@ class _LineItemRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(item.description, style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary)),
+              Text(
+                item.description,
+                style: AppTypography.bodySm(
+                  context,
+                ).copyWith(color: colors.textPrimary),
+              ),
               const SizedBox(height: 2),
-              Text('Qty ${item.quantity}', style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
+              Text(
+                'Qty ${item.quantity}',
+                style: AppTypography.caption(
+                  context,
+                ).copyWith(color: colors.textTertiary),
+              ),
             ],
           ),
         ),
@@ -261,9 +336,15 @@ class _AmountRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: (emphasis ? AppTypography.bodyStrong(context) : AppTypography.bodySm(context)).copyWith(
-              color: emphasis ? colors.textPrimary : colors.textSecondary,
-            ),
+            style:
+                (emphasis
+                        ? AppTypography.bodyStrong(context)
+                        : AppTypography.bodySm(context))
+                    .copyWith(
+                      color: emphasis
+                          ? colors.textPrimary
+                          : colors.textSecondary,
+                    ),
           ),
         ),
         AppMoneyDisplay(

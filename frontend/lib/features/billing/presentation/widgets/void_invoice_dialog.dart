@@ -13,7 +13,10 @@ import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 class VoidInvoiceDialog {
   VoidInvoiceDialog._();
 
-  static Future<bool> show(BuildContext context, {required InvoiceDetail invoice}) async {
+  static Future<bool> show(
+    BuildContext context, {
+    required InvoiceDetail invoice,
+  }) async {
     final result = await AppDialog.show<bool>(
       context,
       title: 'Void invoice',
@@ -31,10 +34,12 @@ class _VoidInvoiceDialogContent extends ConsumerStatefulWidget {
   final InvoiceDetail invoice;
 
   @override
-  ConsumerState<_VoidInvoiceDialogContent> createState() => _VoidInvoiceDialogContentState();
+  ConsumerState<_VoidInvoiceDialogContent> createState() =>
+      _VoidInvoiceDialogContentState();
 }
 
-class _VoidInvoiceDialogContentState extends ConsumerState<_VoidInvoiceDialogContent> {
+class _VoidInvoiceDialogContentState
+    extends ConsumerState<_VoidInvoiceDialogContent> {
   final _reasonController = TextEditingController();
   var _submitting = false;
 
@@ -63,7 +68,13 @@ class _VoidInvoiceDialogContentState extends ConsumerState<_VoidInvoiceDialogCon
       }
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(context, AppToastInput(message: billingMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: billingMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -89,7 +100,9 @@ class _VoidInvoiceDialogContentState extends ConsumerState<_VoidInvoiceDialogCon
       children: [
         Text(
           'This cannot be undone. Payments must be refunded before voiding a paid invoice.',
-          style: AppTypography.bodySm(context).copyWith(color: context.appColors.textSecondary),
+          style: AppTypography.bodySm(
+            context,
+          ).copyWith(color: context.appColors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.space4),
         AppFormField(
@@ -108,14 +121,18 @@ class _VoidInvoiceDialogContentState extends ConsumerState<_VoidInvoiceDialogCon
           children: [
             AppButton(
               variant: AppButtonVariant.secondary,
-              onPressed: _submitting ? null : () => Navigator.of(context).pop(false),
+              onPressed: _submitting
+                  ? null
+                  : () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
             const Spacer(),
             AppButton(
               variant: AppButtonVariant.danger,
               loading: _submitting,
-              onPressed: _submitting || _reasonController.text.trim().isEmpty ? null : () => _submit(context),
+              onPressed: _submitting || _reasonController.text.trim().isEmpty
+                  ? null
+                  : () => _submit(context),
               child: const Text('Void invoice'),
             ),
           ],

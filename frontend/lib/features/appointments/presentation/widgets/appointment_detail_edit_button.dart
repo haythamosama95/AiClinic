@@ -18,15 +18,18 @@ class AppointmentDetailEditButton extends ConsumerStatefulWidget {
   final AppointmentDetail detail;
 
   @override
-  ConsumerState<AppointmentDetailEditButton> createState() => _AppointmentDetailEditButtonState();
+  ConsumerState<AppointmentDetailEditButton> createState() =>
+      _AppointmentDetailEditButtonState();
 }
 
-class _AppointmentDetailEditButtonState extends ConsumerState<AppointmentDetailEditButton> {
+class _AppointmentDetailEditButtonState
+    extends ConsumerState<AppointmentDetailEditButton> {
   var _isLoading = false;
 
   AppointmentDetail get detail => widget.detail;
 
-  PermissionService get _permissions => PermissionService(ref.read(authSessionProvider).context);
+  PermissionService get _permissions =>
+      PermissionService(ref.read(authSessionProvider).context);
 
   bool get _canCreateAppointments => _permissions.canCreateAppointments();
 
@@ -58,7 +61,9 @@ class _AppointmentDetailEditButtonState extends ConsumerState<AppointmentDetailE
 
     setState(() => _isLoading = true);
     try {
-      final branches = await ref.read(appointmentCalendarBranchesProvider.future);
+      final branches = await ref.read(
+        appointmentCalendarBranchesProvider.future,
+      );
       final doctors = await ref.read(appointmentCalendarDoctorsProvider.future);
       BranchListItem? selectedBranch;
       for (final branch in branches) {
@@ -67,7 +72,9 @@ class _AppointmentDetailEditButtonState extends ConsumerState<AppointmentDetailE
           break;
         }
       }
-      final schedule = selectedBranch?.workingSchedule ?? BranchWorkingSchedule.defaultSchedule();
+      final schedule =
+          selectedBranch?.workingSchedule ??
+          BranchWorkingSchedule.defaultSchedule();
 
       if (!mounted) {
         return;

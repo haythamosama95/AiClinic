@@ -19,17 +19,24 @@ enum _ServiceSelectionView { grid, list }
 
 /// Step 1 — catalog selection with sticky sidebar (web `ServiceSelectionStep`).
 class VisitServiceSelectionStep extends ConsumerStatefulWidget {
-  const VisitServiceSelectionStep({required this.visitId, required this.onBack, required this.onContinue, super.key});
+  const VisitServiceSelectionStep({
+    required this.visitId,
+    required this.onBack,
+    required this.onContinue,
+    super.key,
+  });
 
   final String visitId;
   final VoidCallback onBack;
   final VoidCallback? onContinue;
 
   @override
-  ConsumerState<VisitServiceSelectionStep> createState() => _VisitServiceSelectionStepState();
+  ConsumerState<VisitServiceSelectionStep> createState() =>
+      _VisitServiceSelectionStepState();
 }
 
-class _VisitServiceSelectionStepState extends ConsumerState<VisitServiceSelectionStep> {
+class _VisitServiceSelectionStepState
+    extends ConsumerState<VisitServiceSelectionStep> {
   final _searchController = TextEditingController();
   _ServiceSelectionView _view = _ServiceSelectionView.grid;
 
@@ -46,7 +53,11 @@ class _VisitServiceSelectionStepState extends ConsumerState<VisitServiceSelectio
   }
 
   void _loadCatalog(String query) {
-    final branchId = ref.read(visitDocumentationProvider(widget.visitId)).value?.visit.branchId;
+    final branchId = ref
+        .read(visitDocumentationProvider(widget.visitId))
+        .value
+        ?.visit
+        .branchId;
     if (branchId == null || branchId.isEmpty) {
       return;
     }
@@ -58,14 +69,22 @@ class _VisitServiceSelectionStepState extends ConsumerState<VisitServiceSelectio
     final colors = context.appColors;
     final elevation = context.appElevation;
     final billing = ref.watch(visitBillingFlowProvider(widget.visitId));
-    final billingNotifier = ref.read(visitBillingFlowProvider(widget.visitId).notifier);
-    final branchId = ref.watch(visitDocumentationProvider(widget.visitId)).value?.visit.branchId;
+    final billingNotifier = ref.read(
+      visitBillingFlowProvider(widget.visitId).notifier,
+    );
+    final branchId = ref
+        .watch(visitDocumentationProvider(widget.visitId))
+        .value
+        ?.visit
+        .branchId;
     final catalogAsync = branchId == null
         ? const AsyncValue<List<EligibleService>>.loading()
         : ref.watch(serviceSelectorProvider(branchId));
 
     final currency = ref.watch(organizationCurrencyProvider);
-    final selectedIds = billing.selectedLines.map((line) => line.serviceId).toSet();
+    final selectedIds = billing.selectedLines
+        .map((line) => line.serviceId)
+        .toSet();
     final subtotal = billing.totals.subtotal;
 
     return Column(
@@ -97,21 +116,34 @@ class _VisitServiceSelectionStepState extends ConsumerState<VisitServiceSelectio
                             size: AppSegmentedControlSize.sm,
                             value: _view.name,
                             onChanged: (value) => setState(() {
-                              _view = value == 'list' ? _ServiceSelectionView.list : _ServiceSelectionView.grid;
+                              _view = value == 'list'
+                                  ? _ServiceSelectionView.list
+                                  : _ServiceSelectionView.grid;
                             }),
                             options: const [
-                              SegmentedOption(value: 'grid', label: Icon(Icons.grid_view_rounded, size: 15)),
-                              SegmentedOption(value: 'list', label: Icon(Icons.view_list_rounded, size: 15)),
+                              SegmentedOption(
+                                value: 'grid',
+                                label: Icon(Icons.grid_view_rounded, size: 15),
+                              ),
+                              SegmentedOption(
+                                value: 'list',
+                                label: Icon(Icons.view_list_rounded, size: 15),
+                              ),
                             ],
                           ),
                         ),
                         catalogAsync.when(
                           loading: () => const Padding(
                             padding: EdgeInsets.all(AppSpacing.space6),
-                            child: AppSkeleton(variant: SkeletonVariant.rectangular, height: 220),
+                            child: AppSkeleton(
+                              variant: SkeletonVariant.rectangular,
+                              height: 220,
+                            ),
                           ),
-                          error: (_, _) =>
-                              _ServiceSelectionEmpty(message: 'Could not load services. Try searching again.'),
+                          error: (_, _) => _ServiceSelectionEmpty(
+                            message:
+                                'Could not load services. Try searching again.',
+                          ),
                           data: (services) {
                             if (services.isEmpty) {
                               return _ServiceSelectionEmpty(
@@ -127,9 +159,10 @@ class _VisitServiceSelectionStepState extends ConsumerState<VisitServiceSelectio
                                 selectedIds: selectedIds,
                                 selectedLines: billing.selectedLines,
                                 currency: currency,
-                                onToggle: (service, selected) =>
-                                    billingNotifier.toggleService(service, selected: selected),
-                                onQuantityChange: billingNotifier.updateQuantity,
+                                onToggle: (service, selected) => billingNotifier
+                                    .toggleService(service, selected: selected),
+                                onQuantityChange:
+                                    billingNotifier.updateQuantity,
                               );
                             }
 
@@ -140,9 +173,10 @@ class _VisitServiceSelectionStepState extends ConsumerState<VisitServiceSelectio
                                 selectedIds: selectedIds,
                                 selectedLines: billing.selectedLines,
                                 currency: currency,
-                                onToggle: (service, selected) =>
-                                    billingNotifier.toggleService(service, selected: selected),
-                                onQuantityChange: billingNotifier.updateQuantity,
+                                onToggle: (service, selected) => billingNotifier
+                                    .toggleService(service, selected: selected),
+                                onQuantityChange:
+                                    billingNotifier.updateQuantity,
                               ),
                             );
                           },
@@ -182,7 +216,10 @@ class _VisitServiceSelectionStepState extends ConsumerState<VisitServiceSelectio
           ),
         ),
         const SizedBox(height: AppSpacing.space6),
-        _ServiceSelectionFooter(onBack: widget.onBack, onContinue: widget.onContinue),
+        _ServiceSelectionFooter(
+          onBack: widget.onBack,
+          onContinue: widget.onContinue,
+        ),
       ],
     );
   }
@@ -209,17 +246,34 @@ class _ServiceSelectionHeader extends StatelessWidget {
         border: Border(bottom: BorderSide(color: colors.borderSubtle)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.space5, AppSpacing.space4, AppSpacing.space5, AppSpacing.space4),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.space5,
+          AppSpacing.space4,
+          AppSpacing.space5,
+          AppSpacing.space4,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Step 1 of 2', style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+            Text(
+              'Step 1 of 2',
+              style: AppTypography.overline(
+                context,
+              ).copyWith(color: colors.textTertiary),
+            ),
             const SizedBox(height: AppSpacing.space1),
-            Text('Services performed', style: AppTypography.h2(context).copyWith(color: colors.textPrimary)),
+            Text(
+              'Services performed',
+              style: AppTypography.h2(
+                context,
+              ).copyWith(color: colors.textPrimary),
+            ),
             const SizedBox(height: AppSpacing.space1),
             Text(
               'Select every procedure delivered during this visit.',
-              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+              style: AppTypography.bodySm(
+                context,
+              ).copyWith(color: colors.textSecondary),
             ),
             const SizedBox(height: AppSpacing.space4),
             LayoutBuilder(
@@ -269,21 +323,33 @@ class _ServiceSelectionEmpty extends StatelessWidget {
     final colors = context.appColors;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6, vertical: AppSpacing.space16),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.space6,
+        vertical: AppSpacing.space16,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           DecoratedBox(
-            decoration: BoxDecoration(color: colors.surfaceSunken, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: colors.surfaceSunken,
+              shape: BoxShape.circle,
+            ),
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.space3),
-              child: Icon(Icons.search_rounded, size: 20, color: colors.iconMuted),
+              child: Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: colors.iconMuted,
+              ),
             ),
           ),
           const SizedBox(height: AppSpacing.space3),
           Text(
             message,
-            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: colors.textSecondary),
             textAlign: TextAlign.center,
           ),
         ],
@@ -293,7 +359,10 @@ class _ServiceSelectionEmpty extends StatelessWidget {
 }
 
 class _ServiceSelectionFooter extends StatelessWidget {
-  const _ServiceSelectionFooter({required this.onBack, required this.onContinue});
+  const _ServiceSelectionFooter({
+    required this.onBack,
+    required this.onContinue,
+  });
 
   final VoidCallback onBack;
   final VoidCallback? onContinue;

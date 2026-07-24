@@ -17,7 +17,9 @@ class Money implements Comparable<Money> {
       return zero;
     }
     if (trimmed.contains(',')) {
-      throw FormatException('Money values must use a dot decimal separator: $raw');
+      throw FormatException(
+        'Money values must use a dot decimal separator: $raw',
+      );
     }
     final parsed = Decimal.tryParse(trimmed);
     if (parsed == null) {
@@ -63,7 +65,8 @@ class Money implements Comparable<Money> {
   String toString() => wireValue;
 
   @override
-  bool operator ==(Object other) => identical(this, other) || other is Money && _value == other._value;
+  bool operator ==(Object other) =>
+      identical(this, other) || other is Money && _value == other._value;
 
   @override
   int get hashCode => _value.hashCode;

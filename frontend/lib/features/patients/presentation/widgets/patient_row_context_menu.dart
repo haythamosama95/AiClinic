@@ -34,7 +34,8 @@ class PatientRowContextMenu extends ConsumerWidget {
         id: 'open',
         label: 'Open patient details',
         icon: const Icon(Icons.open_in_new, size: 16),
-        onSelect: () => context.nav.pushPatientDetail(patientId, preview: patient),
+        onSelect: () =>
+            context.nav.pushPatientDetail(patientId, preview: patient),
       ),
       AppMenuItem(
         id: 'book',
@@ -64,7 +65,9 @@ class PatientRowContextMenu extends ConsumerWidget {
         elevation: const WidgetStatePropertyAll(0),
         backgroundColor: WidgetStatePropertyAll(colors.surfaceRaised),
         surfaceTintColor: WidgetStatePropertyAll(colors.surfaceRaised),
-        padding: const WidgetStatePropertyAll(EdgeInsets.all(AppSpacing.space1)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.all(AppSpacing.space1),
+        ),
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -109,15 +112,29 @@ class PatientRowContextMenu extends ConsumerWidget {
           items.add(
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.space1),
-              child: Divider(height: 1, thickness: 1, color: colors.borderSubtle),
+              child: Divider(
+                height: 1,
+                thickness: 1,
+                color: colors.borderSubtle,
+              ),
             ),
           );
         case AppMenuSection(:final label, items: final sectionItems):
           if (label != null) {
             items.add(
               Padding(
-                padding: const EdgeInsets.fromLTRB(AppSpacing.space2, AppSpacing.space1, AppSpacing.space2, 0),
-                child: Text(label, style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.space2,
+                  AppSpacing.space1,
+                  AppSpacing.space2,
+                  0,
+                ),
+                child: Text(
+                  label,
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(color: colors.textTertiary),
+                ),
               ),
             );
           }
@@ -138,7 +155,9 @@ class PatientRowContextMenu extends ConsumerWidget {
     bool isDark,
     AppMenuItem item,
   ) {
-    final dangerSurface = isDark ? AppColorPrimitives.statusDangerSurfaceDark : AppColorPrimitives.red50;
+    final dangerSurface = isDark
+        ? AppColorPrimitives.statusDangerSurfaceDark
+        : AppColorPrimitives.red50;
 
     return MenuItemButton(
       onPressed: item.disabled
@@ -162,7 +181,8 @@ class PatientRowContextMenu extends ConsumerWidget {
           if (item.disabled) {
             return Colors.transparent;
           }
-          if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
+          if (states.contains(WidgetState.hovered) ||
+              states.contains(WidgetState.focused)) {
             return item.destructive ? dangerSurface : colors.surfaceHover;
           }
           return Colors.transparent;
@@ -171,7 +191,11 @@ class PatientRowContextMenu extends ConsumerWidget {
         padding: const WidgetStatePropertyAll(
           EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: 6),
         ),
-        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md))),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+        ),
         textStyle: WidgetStatePropertyAll(AppTypography.body(context)),
       ),
       leadingIcon: item.icon == null
@@ -181,7 +205,9 @@ class PatientRowContextMenu extends ConsumerWidget {
                 size: 16,
                 color: item.disabled
                     ? colors.textDisabled
-                    : (item.destructive ? colors.statusDangerFg : colors.iconDefault),
+                    : (item.destructive
+                          ? colors.statusDangerFg
+                          : colors.iconDefault),
               ),
               child: item.icon!,
             ),
@@ -189,7 +215,11 @@ class PatientRowContextMenu extends ConsumerWidget {
     );
   }
 
-  Future<void> _deactivatePatient(WidgetRef ref, String patientId, String fullName) async {
+  Future<void> _deactivatePatient(
+    WidgetRef ref,
+    String patientId,
+    String fullName,
+  ) async {
     await ref.read(archivePatientUseCaseProvider).call(patientId);
     await ref.read(patientListProvider.notifier).reload();
 

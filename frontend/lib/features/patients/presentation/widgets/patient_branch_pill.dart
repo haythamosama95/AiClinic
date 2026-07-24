@@ -31,7 +31,9 @@ class PatientBranchPill extends StatelessWidget {
             Flexible(
               child: Text(
                 branchName,
-                style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                style: AppTypography.bodySm(
+                  context,
+                ).copyWith(color: colors.textSecondary),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),

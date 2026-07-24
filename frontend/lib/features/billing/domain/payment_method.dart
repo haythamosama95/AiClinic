@@ -36,7 +36,9 @@ enum PaymentMethod {
 
   /// Patient-tender methods subject to partial-payment policy (D4).
   bool get isPatientTender => switch (this) {
-    PaymentMethod.cash || PaymentMethod.card || PaymentMethod.bankTransfer => true,
+    PaymentMethod.cash ||
+    PaymentMethod.card ||
+    PaymentMethod.bankTransfer => true,
     PaymentMethod.insuranceSettlement => false,
   };
 }

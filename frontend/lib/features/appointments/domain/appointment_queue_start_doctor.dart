@@ -6,7 +6,12 @@ import 'package:flutter/foundation.dart';
 /// Doctor option when starting a checked-in appointment from the queue.
 @immutable
 class QueueStartDoctorOption {
-  const QueueStartDoctorOption({required this.id, required this.name, required this.isBusy, this.isPreferred = false});
+  const QueueStartDoctorOption({
+    required this.id,
+    required this.name,
+    required this.isBusy,
+    this.isPreferred = false,
+  });
 
   final String id;
   final String name;
@@ -53,8 +58,15 @@ abstract final class AppointmentQueueStartDoctor {
         QueueStartDoctorOption(
           id: doctor.id,
           name: doctor.name,
-          isBusy: isDoctorBusy(doctorId: doctor.id, excludeAppointmentId: item.id, items: siblingAppointments),
-          isPreferred: preferredDoctorId != null && preferredDoctorId.isNotEmpty && doctor.id == preferredDoctorId,
+          isBusy: isDoctorBusy(
+            doctorId: doctor.id,
+            excludeAppointmentId: item.id,
+            items: siblingAppointments,
+          ),
+          isPreferred:
+              preferredDoctorId != null &&
+              preferredDoctorId.isNotEmpty &&
+              doctor.id == preferredDoctorId,
         ),
     ];
   }
@@ -65,7 +77,11 @@ abstract final class AppointmentQueueStartDoctor {
     required Iterable<AppointmentListItem> siblingAppointments,
     required AppointmentQueueShiftDoctorLookup shiftLookup,
   }) {
-    final options = shiftOptionsFor(item: item, siblingAppointments: siblingAppointments, shiftLookup: shiftLookup);
+    final options = shiftOptionsFor(
+      item: item,
+      siblingAppointments: siblingAppointments,
+      shiftLookup: shiftLookup,
+    );
     final preferredDoctorId = item.doctorId?.trim();
     if (preferredDoctorId == null || preferredDoctorId.isEmpty) {
       return options;
@@ -81,7 +97,11 @@ abstract final class AppointmentQueueStartDoctor {
       QueueStartDoctorOption(
         id: preferredDoctorId,
         name: preferredDoctorName,
-        isBusy: isDoctorBusy(doctorId: preferredDoctorId, excludeAppointmentId: item.id, items: siblingAppointments),
+        isBusy: isDoctorBusy(
+          doctorId: preferredDoctorId,
+          excludeAppointmentId: item.id,
+          items: siblingAppointments,
+        ),
         isPreferred: true,
       ),
       ...options,
@@ -97,7 +117,11 @@ abstract final class AppointmentQueueStartDoctor {
     if (assignedDoctorId == null || assignedDoctorId.isEmpty) {
       return false;
     }
-    return isDoctorBusy(doctorId: assignedDoctorId, excludeAppointmentId: item.id, items: siblingAppointments);
+    return isDoctorBusy(
+      doctorId: assignedDoctorId,
+      excludeAppointmentId: item.id,
+      items: siblingAppointments,
+    );
   }
 
   /// Free doctors on shift when starting [item].
@@ -117,7 +141,8 @@ abstract final class AppointmentQueueStartDoctor {
   static String? blockReasonForStart({
     required AppointmentListItem item,
     required Iterable<AppointmentListItem> siblingAppointments,
-    AppointmentQueueShiftDoctorLookup shiftLookup = AppointmentQueueShiftDoctorLookup.empty,
+    AppointmentQueueShiftDoctorLookup shiftLookup =
+        AppointmentQueueShiftDoctorLookup.empty,
   }) {
     if (item.status != AppointmentStatus.checkedIn) {
       return null;
@@ -125,7 +150,10 @@ abstract final class AppointmentQueueStartDoctor {
 
     final assignedDoctorId = item.doctorId?.trim();
     if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
-      if (isPreferredDoctorBusy(item: item, siblingAppointments: siblingAppointments)) {
+      if (isPreferredDoctorBusy(
+        item: item,
+        siblingAppointments: siblingAppointments,
+      )) {
         final freeAlternatives = availableShiftOptionsFor(
           item: item,
           siblingAppointments: siblingAppointments,
@@ -134,7 +162,9 @@ abstract final class AppointmentQueueStartDoctor {
         if (freeAlternatives.isNotEmpty) {
           return null;
         }
-        final doctorLabel = item.doctorName?.trim().isNotEmpty == true ? item.doctorName!.trim() : 'This doctor';
+        final doctorLabel = item.doctorName?.trim().isNotEmpty == true
+            ? item.doctorName!.trim()
+            : 'This doctor';
         return '$doctorLabel already has a patient in progress. Complete that visit before starting another.';
       }
       return null;
@@ -150,7 +180,11 @@ abstract final class AppointmentQueueStartDoctor {
       return 'Another visit without an assigned doctor is already in progress. Complete that visit or assign a doctor before starting another.';
     }
 
-    final options = shiftOptionsFor(item: item, siblingAppointments: siblingAppointments, shiftLookup: shiftLookup);
+    final options = shiftOptionsFor(
+      item: item,
+      siblingAppointments: siblingAppointments,
+      shiftLookup: shiftLookup,
+    );
     if (options.isEmpty) {
       return 'No doctor is on shift for this appointment time.';
     }
@@ -177,12 +211,20 @@ abstract final class AppointmentQueueStartDoctor {
     if (item.status != AppointmentStatus.checkedIn) {
       return false;
     }
-    if (blockReasonForStart(item: item, siblingAppointments: siblingAppointments, shiftLookup: shiftLookup) != null) {
+    if (blockReasonForStart(
+          item: item,
+          siblingAppointments: siblingAppointments,
+          shiftLookup: shiftLookup,
+        ) !=
+        null) {
       return false;
     }
     final assignedDoctorId = item.doctorId?.trim();
     if (assignedDoctorId != null && assignedDoctorId.isNotEmpty) {
-      return isPreferredDoctorBusy(item: item, siblingAppointments: siblingAppointments) &&
+      return isPreferredDoctorBusy(
+            item: item,
+            siblingAppointments: siblingAppointments,
+          ) &&
           availableShiftOptionsFor(
             item: item,
             siblingAppointments: siblingAppointments,

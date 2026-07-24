@@ -62,7 +62,9 @@ class InvoiceLinkCard extends StatelessWidget {
                   children: [
                     Text(
                       eyebrow,
-                      style: AppTypography.overline(context).copyWith(color: colors.textTertiary),
+                      style: AppTypography.overline(
+                        context,
+                      ).copyWith(color: colors.textTertiary),
                     ),
                     ?badge,
                   ],
@@ -72,13 +74,17 @@ class InvoiceLinkCard extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                  style: AppTypography.bodyStrong(
+                    context,
+                  ).copyWith(color: colors.textPrimary),
                 ),
                 Text(
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                  style: AppTypography.bodySm(
+                    context,
+                  ).copyWith(color: colors.textSecondary),
                 ),
               ],
             ),

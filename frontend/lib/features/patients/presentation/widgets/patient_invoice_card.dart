@@ -38,13 +38,19 @@ class PatientInvoiceCard extends ConsumerWidget {
 
     final locale = Localizations.localeOf(context).toString();
     final l10n = context.l10n;
-    final currency = invoice.currency.trim().isNotEmpty ? invoice.currency : ref.watch(organizationCurrencyProvider);
+    final currency = invoice.currency.trim().isNotEmpty
+        ? invoice.currency
+        : ref.watch(organizationCurrencyProvider);
 
     final showInsuranceCoverage =
         !invoice.insuranceCoveredAmount.isZero &&
-        !invoice.payments.any((payment) => payment.method == PaymentMethod.insuranceSettlement);
-    final showPaidSummary = invoice.payments.isEmpty && !invoice.paidAmount.isZero;
-    final showEmptyPayments = invoice.payments.isEmpty && !showPaidSummary && !showInsuranceCoverage;
+        !invoice.payments.any(
+          (payment) => payment.method == PaymentMethod.insuranceSettlement,
+        );
+    final showPaidSummary =
+        invoice.payments.isEmpty && !invoice.paidAmount.isZero;
+    final showEmptyPayments =
+        invoice.payments.isEmpty && !showPaidSummary && !showInsuranceCoverage;
     final showLedger = invoice.status != InvoiceStatus.draft;
 
     return Material(
@@ -64,7 +70,10 @@ class PatientInvoiceCard extends ConsumerWidget {
                   border: Border(bottom: BorderSide(color: bandColors.border)),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space5, vertical: AppSpacing.space3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.space5,
+                    vertical: AppSpacing.space3,
+                  ),
                   child: Row(
                     children: [
                       Expanded(
@@ -72,9 +81,10 @@ class PatientInvoiceCard extends ConsumerWidget {
                           displayNumber,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTypography.mono(
-                            context,
-                          ).copyWith(color: colors.textSecondary, letterSpacing: 0.08 * 12),
+                          style: AppTypography.mono(context).copyWith(
+                            color: colors.textSecondary,
+                            letterSpacing: 0.08 * 12,
+                          ),
                         ),
                       ),
                       const SizedBox(width: AppSpacing.space3),
@@ -116,14 +126,22 @@ class PatientInvoiceCard extends ConsumerWidget {
                             children: [
                               Text(
                                 l10n.invoiceBalance,
-                                style: AppTypography.overline(context).copyWith(color: colors.textTertiary),
+                                style: AppTypography.overline(
+                                  context,
+                                ).copyWith(color: colors.textTertiary),
                               ),
                               const SizedBox(height: AppSpacing.space1),
                               Text(
-                                BillingFormatting.formatMoney(invoice.balance, currency: currency, locale: locale),
+                                BillingFormatting.formatMoney(
+                                  invoice.balance,
+                                  currency: currency,
+                                  locale: locale,
+                                ),
                                 style: AppTypography.h2(context).copyWith(
                                   color: colors.textPrimary,
-                                  fontFeatures: const [FontFeature.tabularFigures()],
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
                                 ),
                               ),
                             ],
@@ -136,14 +154,19 @@ class PatientInvoiceCard extends ConsumerWidget {
                           children: [
                             Text(
                               l10n.invoiceIssued,
-                              style: AppTypography.overline(context).copyWith(color: colors.textTertiary),
+                              style: AppTypography.overline(
+                                context,
+                              ).copyWith(color: colors.textTertiary),
                             ),
                             const SizedBox(height: AppSpacing.space1),
                             Text(
                               BillingFormatting.formatDate(issuedAt),
-                              style: AppTypography.bodySm(
-                                context,
-                              ).copyWith(color: colors.textPrimary, fontFeatures: const [FontFeature.tabularFigures()]),
+                              style: AppTypography.bodySm(context).copyWith(
+                                color: colors.textPrimary,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -151,21 +174,38 @@ class PatientInvoiceCard extends ConsumerWidget {
                     ),
                     if (showLedger) ...[
                       const SizedBox(height: AppSpacing.space3),
-                      Divider(height: 1, thickness: 1, color: colors.borderSubtle.withValues(alpha: 0.8)),
+                      Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: colors.borderSubtle.withValues(alpha: 0.8),
+                      ),
                       const SizedBox(height: AppSpacing.space3),
                       Text(
                         l10n.invoicePayments,
-                        style: AppTypography.overline(context).copyWith(color: colors.textTertiary),
+                        style: AppTypography.overline(
+                          context,
+                        ).copyWith(color: colors.textTertiary),
                       ),
                       const SizedBox(height: AppSpacing.space2),
                       for (final payment in invoice.payments) ...[
-                        _InvoicePaymentRow(payment: payment, currency: currency, locale: locale),
-                        if (payment != invoice.payments.last || showPaidSummary || showInsuranceCoverage)
+                        _InvoicePaymentRow(
+                          payment: payment,
+                          currency: currency,
+                          locale: locale,
+                        ),
+                        if (payment != invoice.payments.last ||
+                            showPaidSummary ||
+                            showInsuranceCoverage)
                           const SizedBox(height: AppSpacing.space1),
                       ],
                       if (showPaidSummary)
-                        _InvoicePaidSummaryRow(amount: invoice.paidAmount, currency: currency, locale: locale),
-                      if (showPaidSummary && (showInsuranceCoverage || showEmptyPayments))
+                        _InvoicePaidSummaryRow(
+                          amount: invoice.paidAmount,
+                          currency: currency,
+                          locale: locale,
+                        ),
+                      if (showPaidSummary &&
+                          (showInsuranceCoverage || showEmptyPayments))
                         const SizedBox(height: AppSpacing.space1),
                       if (showInsuranceCoverage)
                         _InvoiceInsuranceRow(
@@ -187,7 +227,11 @@ class PatientInvoiceCard extends ConsumerWidget {
 }
 
 class _InvoicePaymentRow extends StatelessWidget {
-  const _InvoicePaymentRow({required this.payment, required this.currency, required this.locale});
+  const _InvoicePaymentRow({
+    required this.payment,
+    required this.currency,
+    required this.locale,
+  });
 
   final Payment payment;
   final String currency;
@@ -198,14 +242,20 @@ class _InvoicePaymentRow extends StatelessWidget {
     final colors = context.appColors;
     final l10n = context.l10n;
     final isRefund = payment.isRefund;
-    final amountColor = isRefund ? colors.statusDangerFg : colors.statusSuccessFg;
-    final label = isRefund ? l10n.invoicePaymentRefund : payment.method.labelFor(context);
+    final amountColor = isRefund
+        ? colors.statusDangerFg
+        : colors.statusSuccessFg;
+    final label = isRefund
+        ? l10n.invoicePaymentRefund
+        : payment.method.labelFor(context);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Icon(
-          isRefund ? Icons.undo_outlined : BillingFormatting.paymentMethodIcon(payment.method),
+          isRefund
+              ? Icons.undo_outlined
+              : BillingFormatting.paymentMethodIcon(payment.method),
           size: 14,
           color: colors.textTertiary,
         ),
@@ -215,12 +265,18 @@ class _InvoicePaymentRow extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+            style: AppTypography.caption(
+              context,
+            ).copyWith(color: colors.textSecondary),
           ),
         ),
         const SizedBox(width: AppSpacing.space2),
         Text(
-          BillingFormatting.formatMoney(payment.amount, currency: currency, locale: locale),
+          BillingFormatting.formatMoney(
+            payment.amount,
+            currency: currency,
+            locale: locale,
+          ),
           style: AppTypography.caption(context).copyWith(
             color: amountColor,
             fontWeight: FontWeight.w600,
@@ -246,7 +302,9 @@ class _InvoiceEmptyPaymentsRow extends StatelessWidget {
         Expanded(
           child: Text(
             context.l10n.invoiceNoPayments,
-            style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
+            style: AppTypography.caption(
+              context,
+            ).copyWith(color: colors.textTertiary),
           ),
         ),
       ],
@@ -255,7 +313,11 @@ class _InvoiceEmptyPaymentsRow extends StatelessWidget {
 }
 
 class _InvoicePaidSummaryRow extends StatelessWidget {
-  const _InvoicePaidSummaryRow({required this.amount, required this.currency, required this.locale});
+  const _InvoicePaidSummaryRow({
+    required this.amount,
+    required this.currency,
+    required this.locale,
+  });
 
   final Money amount;
   final String currency;
@@ -276,12 +338,18 @@ class _InvoicePaidSummaryRow extends StatelessWidget {
             l10n.invoicePaid,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+            style: AppTypography.caption(
+              context,
+            ).copyWith(color: colors.textSecondary),
           ),
         ),
         const SizedBox(width: AppSpacing.space2),
         Text(
-          BillingFormatting.formatMoney(amount, currency: currency, locale: locale),
+          BillingFormatting.formatMoney(
+            amount,
+            currency: currency,
+            locale: locale,
+          ),
           style: AppTypography.caption(context).copyWith(
             color: colors.statusSuccessFg,
             fontWeight: FontWeight.w600,
@@ -294,7 +362,11 @@ class _InvoicePaidSummaryRow extends StatelessWidget {
 }
 
 class _InvoiceInsuranceRow extends StatelessWidget {
-  const _InvoiceInsuranceRow({required this.amount, required this.currency, required this.locale});
+  const _InvoiceInsuranceRow({
+    required this.amount,
+    required this.currency,
+    required this.locale,
+  });
 
   final Money amount;
   final String currency;
@@ -308,19 +380,29 @@ class _InvoiceInsuranceRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(Icons.health_and_safety_outlined, size: 14, color: colors.textTertiary),
+        Icon(
+          Icons.health_and_safety_outlined,
+          size: 14,
+          color: colors.textTertiary,
+        ),
         const SizedBox(width: AppSpacing.space2),
         Expanded(
           child: Text(
             l10n.invoiceInsuranceCovered,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+            style: AppTypography.caption(
+              context,
+            ).copyWith(color: colors.textSecondary),
           ),
         ),
         const SizedBox(width: AppSpacing.space2),
         Text(
-          BillingFormatting.formatMoney(amount, currency: currency, locale: locale),
+          BillingFormatting.formatMoney(
+            amount,
+            currency: currency,
+            locale: locale,
+          ),
           style: AppTypography.caption(context).copyWith(
             color: colors.textPrimary,
             fontWeight: FontWeight.w600,
@@ -351,7 +433,10 @@ class _StatusBandColors {
   }
 
   if (status == InvoiceStatus.paid || status == InvoiceStatus.voided) {
-    return (label: 'Due ${PatientPresentationFormatting.date.format(dueDate)}', urgent: false);
+    return (
+      label: 'Due ${PatientPresentationFormatting.date.format(dueDate)}',
+      urgent: false,
+    );
   }
 
   final now = clock.now();
@@ -361,20 +446,35 @@ class _StatusBandColors {
 
   if (overdue || diffDays < 0) {
     final overdueDays = diffDays.abs();
-    return (label: overdueDays == 1 ? '1 day overdue' : '$overdueDays days overdue', urgent: true);
+    return (
+      label: overdueDays == 1 ? '1 day overdue' : '$overdueDays days overdue',
+      urgent: true,
+    );
   }
   if (diffDays == 0) {
     return (label: 'Due today', urgent: true);
   }
   if (diffDays <= 7) {
-    return (label: diffDays == 1 ? 'Due tomorrow' : 'Due in $diffDays days', urgent: true);
+    return (
+      label: diffDays == 1 ? 'Due tomorrow' : 'Due in $diffDays days',
+      urgent: true,
+    );
   }
-  return (label: 'Due ${PatientPresentationFormatting.date.format(dueDate)}', urgent: false);
+  return (
+    label: 'Due ${PatientPresentationFormatting.date.format(dueDate)}',
+    urgent: false,
+  );
 }
 
-_StatusBandColors _statusBandColors(InvoiceStatusBadgeVariant variant, AppSemanticColors colors) {
+_StatusBandColors _statusBandColors(
+  InvoiceStatusBadgeVariant variant,
+  AppSemanticColors colors,
+) {
   return switch (variant) {
-    InvoiceStatusBadgeVariant.muted => _StatusBandColors(background: colors.surfaceMuted, border: colors.borderSubtle),
+    InvoiceStatusBadgeVariant.muted => _StatusBandColors(
+      background: colors.surfaceMuted,
+      border: colors.borderSubtle,
+    ),
     InvoiceStatusBadgeVariant.primary => _StatusBandColors(
       background: colors.surfaceSelected,
       border: colors.borderSubtle,

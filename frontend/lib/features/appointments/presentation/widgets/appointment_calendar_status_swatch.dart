@@ -5,8 +5,13 @@ import 'package:ai_clinic/features/appointments/domain/appointment_calendar_stat
 
 /// Shared status fill styling for calendar tiles and the color legend.
 abstract final class AppointmentCalendarStatusSwatch {
-  static BoxDecoration decoration(AppointmentCalendarStatusStyle style, {double radius = AppRadius.md}) {
-    final isDark = ThemeData.estimateBrightnessForColor(style.gradientEnd) == Brightness.dark;
+  static BoxDecoration decoration(
+    AppointmentCalendarStatusStyle style, {
+    double radius = AppRadius.md,
+  }) {
+    final isDark =
+        ThemeData.estimateBrightnessForColor(style.gradientEnd) ==
+        Brightness.dark;
 
     return BoxDecoration(
       gradient: LinearGradient(
@@ -15,7 +20,9 @@ abstract final class AppointmentCalendarStatusSwatch {
         colors: [style.gradientStart, style.gradientEnd],
       ),
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: style.border.withValues(alpha: isDark ? 0.45 : 0.5)),
+      border: Border.all(
+        color: style.border.withValues(alpha: isDark ? 0.45 : 0.5),
+      ),
       boxShadow: [
         BoxShadow(
           color: style.accent.withValues(alpha: isDark ? 0.18 : 0.1),
@@ -27,6 +34,8 @@ abstract final class AppointmentCalendarStatusSwatch {
   }
 
   static Color highlightSheen(Brightness brightness) {
-    return brightness == Brightness.dark ? Colors.white.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.28);
+    return brightness == Brightness.dark
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.white.withValues(alpha: 0.28);
   }
 }

@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:ai_clinic/core/config/supabase_config.dart' show supabaseClientProvider;
+import 'package:ai_clinic/core/config/supabase_config.dart'
+    show supabaseClientProvider;
 import 'package:ai_clinic/core/rpc/app_rpc_invoker.dart';
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
@@ -39,7 +40,8 @@ class PaymentRepository with AppRpcInvoker {
       'p_note': note,
     });
 
-    final paymentId = result.data?['payment_id']?.toString() ?? result.data?.toString();
+    final paymentId =
+        result.data?['payment_id']?.toString() ?? result.data?.toString();
     if (paymentId == null || paymentId.isEmpty) {
       throw StateError('Record payment returned an unexpected shape.');
     }
@@ -63,7 +65,8 @@ class PaymentRepository with AppRpcInvoker {
       'p_note': note.trim(),
     });
 
-    final paymentId = result.data?['payment_id']?.toString() ?? result.data?.toString();
+    final paymentId =
+        result.data?['payment_id']?.toString() ?? result.data?.toString();
     if (paymentId == null || paymentId.isEmpty) {
       throw StateError('Record refund returned an unexpected shape.');
     }
@@ -72,19 +75,35 @@ class PaymentRepository with AppRpcInvoker {
 
   void _assertNonEmpty(String field, String value) {
     if (value.trim().isEmpty) {
-      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
+      throw RpcFailure(
+        RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: '$field is required.',
+        ),
+      );
     }
   }
 
   String _assertPositiveDecimal(String field, String value) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) {
-      throw RpcFailure(RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: '$field is required.'));
+      throw RpcFailure(
+        RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: '$field is required.',
+        ),
+      );
     }
     final parsed = double.tryParse(trimmed);
     if (parsed == null || parsed <= 0) {
       throw RpcFailure(
-        RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Amount must be greater than zero.'),
+        RpcResult(
+          success: false,
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Amount must be greater than zero.',
+        ),
       );
     }
     return trimmed;

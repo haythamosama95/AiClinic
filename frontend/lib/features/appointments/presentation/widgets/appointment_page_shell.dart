@@ -25,7 +25,11 @@ class AppointmentPageShell extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            AppPageHeader(title: title, description: description, actions: actions),
+            AppPageHeader(
+              title: title,
+              description: description,
+              actions: actions,
+            ),
             const SizedBox(height: AppSpacing.space6),
           ],
         );

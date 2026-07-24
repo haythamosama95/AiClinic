@@ -38,7 +38,9 @@ class InvoiceLedgerTable extends StatelessWidget {
 
   /// Badge sm horizontal padding (6×2) + icon (12) + gap + longest label + cell padding + margin.
   static double _statusColumnWidth(BuildContext context) {
-    final textStyle = AppTypography.caption(context).copyWith(fontWeight: FontWeight.w500);
+    final textStyle = AppTypography.caption(
+      context,
+    ).copyWith(fontWeight: FontWeight.w500);
     var maxLabelWidth = 0.0;
     for (final status in InvoiceStatus.values) {
       final painter = TextPainter(
@@ -71,7 +73,9 @@ class InvoiceLedgerTable extends StatelessWidget {
       ariaLabel: 'Invoices',
       animateRows: true,
       density: TableDensity.comfortable,
-      headerTextStyle: AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600, color: colors.textTertiary),
+      headerTextStyle: AppTypography.caption(
+        context,
+      ).copyWith(fontWeight: FontWeight.w600, color: colors.textTertiary),
       columns: [
         TableColumn(
           id: 'number',
@@ -87,15 +91,21 @@ class InvoiceLedgerTable extends StatelessWidget {
           id: 'status',
           header: 'Status',
           width: _statusColumnWidth(context),
-          accessor: (item) => InvoiceStatusBadge(status: item.status, size: BadgeSize.sm),
+          accessor: (item) =>
+              InvoiceStatusBadge(status: item.status, size: BadgeSize.sm),
         ),
         TableColumn(
           id: 'subtotal',
           header: 'Subtotal',
           align: TableAlign.end,
           accessor: (item) => DefaultTextStyle.merge(
-            style: AppTypography.bodySm(context).copyWith(fontFeatures: _tabularFigures),
-            child: AppMoneyDisplay(amount: item.subtotal.asDouble, currency: item.currency),
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(fontFeatures: _tabularFigures),
+            child: AppMoneyDisplay(
+              amount: item.subtotal.asDouble,
+              currency: item.currency,
+            ),
           ),
         ),
         TableColumn(
@@ -104,10 +114,16 @@ class InvoiceLedgerTable extends StatelessWidget {
           align: TableAlign.end,
           accessor: (item) => DefaultTextStyle.merge(
             style: AppTypography.bodySm(context).copyWith(
-              color: item.paidAmount.asDouble <= 0 ? colors.textTertiary : colors.textSecondary,
+              color: item.paidAmount.asDouble <= 0
+                  ? colors.textTertiary
+                  : colors.textSecondary,
               fontFeatures: _tabularFigures,
             ),
-            child: AppMoneyDisplay(amount: item.paidAmount.asDouble, currency: item.currency, negative: false),
+            child: AppMoneyDisplay(
+              amount: item.paidAmount.asDouble,
+              currency: item.currency,
+              negative: false,
+            ),
           ),
         ),
         TableColumn(
@@ -123,7 +139,8 @@ class InvoiceLedgerTable extends StatelessWidget {
       loadingRows: loadingRows,
       emptyState: emptyState,
       errorState: errorState,
-      onRowClick: onRowClick ?? (item) => context.nav.pushBillingInvoiceDetail(item.id),
+      onRowClick:
+          onRowClick ?? (item) => context.nav.pushBillingInvoiceDetail(item.id),
     );
   }
 }
@@ -138,7 +155,10 @@ class _InvoiceNumberCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final displayNumber = BillingFormatting.invoiceDisplayNumber(item.invoiceNumber, item.id);
+    final displayNumber = BillingFormatting.invoiceDisplayNumber(
+      item.invoiceNumber,
+      item.id,
+    );
     final issuedAt = item.issuedAt ?? item.createdAt;
 
     return Column(
@@ -147,14 +167,18 @@ class _InvoiceNumberCell extends StatelessWidget {
       children: [
         Text(
           displayNumber,
-          style: AppTypography.mono(
-            context,
-          ).copyWith(color: colors.textPrimary, letterSpacing: 0.04 * 13, fontFeatures: _tabularFigures),
+          style: AppTypography.mono(context).copyWith(
+            color: colors.textPrimary,
+            letterSpacing: 0.04 * 13,
+            fontFeatures: _tabularFigures,
+          ),
           overflow: TextOverflow.ellipsis,
         ),
         Text(
           BillingFormatting.formatDate(issuedAt),
-          style: AppTypography.caption(context).copyWith(color: colors.textTertiary, fontFeatures: _tabularFigures),
+          style: AppTypography.caption(
+            context,
+          ).copyWith(color: colors.textTertiary, fontFeatures: _tabularFigures),
         ),
       ],
     );
@@ -186,14 +210,17 @@ class _PatientCell extends StatelessWidget {
             children: [
               Text(
                 patientName,
-                style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                style: AppTypography.bodyStrong(
+                  context,
+                ).copyWith(color: colors.textPrimary),
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
                 item.patientMrn ?? '—',
-                style: AppTypography.caption(
-                  context,
-                ).copyWith(color: colors.textTertiary, fontFeatures: _tabularFigures),
+                style: AppTypography.caption(context).copyWith(
+                  color: colors.textTertiary,
+                  fontFeatures: _tabularFigures,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ],

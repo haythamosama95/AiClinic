@@ -15,7 +15,11 @@ import 'package:ai_clinic/features/billing/presentation/utils/payment_method_l10
 
 /// Records a refund against an invoice with collected payments.
 class RefundForm extends ConsumerStatefulWidget {
-  const RefundForm({required this.invoice, required this.onRecorded, super.key});
+  const RefundForm({
+    required this.invoice,
+    required this.onRecorded,
+    super.key,
+  });
 
   final InvoiceDetail invoice;
   final VoidCallback onRecorded;
@@ -38,13 +42,22 @@ class _RefundFormState extends ConsumerState<RefundForm> {
     final amount = (_amount ?? '').trim();
     final note = _noteController.text.trim();
     if (amount.isEmpty) {
-      appToast(context, const AppToastInput(message: 'Enter a refund amount.', variant: AppToastVariant.danger));
+      appToast(
+        context,
+        const AppToastInput(
+          message: 'Enter a refund amount.',
+          variant: AppToastVariant.danger,
+        ),
+      );
       return;
     }
     if (note.isEmpty) {
       appToast(
         context,
-        const AppToastInput(message: 'A reason is required for refunds.', variant: AppToastVariant.danger),
+        const AppToastInput(
+          message: 'A reason is required for refunds.',
+          variant: AppToastVariant.danger,
+        ),
       );
       return;
     }
@@ -53,24 +66,44 @@ class _RefundFormState extends ConsumerState<RefundForm> {
     try {
       await ref
           .read(paymentNotifierProvider)
-          .recordRefund(invoiceId: widget.invoice.id, method: _method, amount: amount, note: note);
+          .recordRefund(
+            invoiceId: widget.invoice.id,
+            method: _method,
+            amount: amount,
+            note: note,
+          );
       if (!mounted) {
         return;
       }
-      appToast(context, const AppToastInput(message: 'Refund recorded.', variant: AppToastVariant.success));
+      appToast(
+        context,
+        const AppToastInput(
+          message: 'Refund recorded.',
+          variant: AppToastVariant.success,
+        ),
+      );
       widget.onRecorded();
     } on RpcFailure catch (error) {
       if (!mounted) {
         return;
       }
-      appToast(context, AppToastInput(message: billingMessageForRpc(error), variant: AppToastVariant.danger));
+      appToast(
+        context,
+        AppToastInput(
+          message: billingMessageForRpc(error),
+          variant: AppToastVariant.danger,
+        ),
+      );
     } catch (_) {
       if (!mounted) {
         return;
       }
       appToast(
         context,
-        const AppToastInput(message: 'Could not record the refund. Please try again.', variant: AppToastVariant.danger),
+        const AppToastInput(
+          message: 'Could not record the refund. Please try again.',
+          variant: AppToastVariant.danger,
+        ),
       );
     } finally {
       if (mounted) {
@@ -92,7 +125,12 @@ class _RefundFormState extends ConsumerState<RefundForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Record refund', style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary)),
+        Text(
+          'Record refund',
+          style: AppTypography.bodyStrong(
+            context,
+          ).copyWith(color: colors.textPrimary),
+        ),
         const SizedBox(height: AppSpacing.space4),
         AppFormField(
           id: 'refund-method',
@@ -101,7 +139,12 @@ class _RefundFormState extends ConsumerState<RefundForm> {
             value: _method.wireValue,
             disabled: _submitting,
             options: PaymentMethod.values
-                .map((method) => AppSelectOption(value: method.wireValue, label: method.labelFor(context)))
+                .map(
+                  (method) => AppSelectOption(
+                    value: method.wireValue,
+                    label: method.labelFor(context),
+                  ),
+                )
                 .toList(),
             onChanged: (value) {
               final method = PaymentMethod.tryParse(value);

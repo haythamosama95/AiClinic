@@ -38,7 +38,8 @@ class PatientDetailPage extends ConsumerStatefulWidget {
   ConsumerState<PatientDetailPage> createState() => _PatientDetailPageState();
 }
 
-class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with SingleTickerProviderStateMixin {
+class _PatientDetailPageState extends ConsumerState<PatientDetailPage>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _enterController;
   CurvedAnimation? _enterAnimation;
   var _enterStarted = false;
@@ -49,7 +50,10 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
   @override
   void initState() {
     super.initState();
-    _enterController = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+    _enterController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
   }
 
   @override
@@ -58,10 +62,15 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     if (!_enterStarted) {
       _enterStarted = true;
       final reducedMotion = AppMotion.prefersReducedMotion(context);
-      _enterController.duration = reducedMotion ? Duration.zero : const Duration(milliseconds: 220);
+      _enterController.duration = reducedMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 220);
       _enterAnimation = CurvedAnimation(
         parent: _enterController,
-        curve: AppMotion.resolveCurve(AppMotionPreset.rowEnter, reducedMotion: reducedMotion),
+        curve: AppMotion.resolveCurve(
+          AppMotionPreset.rowEnter,
+          reducedMotion: reducedMotion,
+        ),
       );
       if (reducedMotion) {
         _enterController.value = 1;
@@ -119,7 +128,10 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     return error.toString();
   }
 
-  _PatientIdentityView _identityView({PatientDetail? detail, PatientListItem? preview}) {
+  _PatientIdentityView _identityView({
+    PatientDetail? detail,
+    PatientListItem? preview,
+  }) {
     if (detail != null) {
       return _PatientIdentityView(
         fullName: detail.fullName,
@@ -146,7 +158,12 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
 
   List<AppTabItem> _tabItems(BuildContext context) {
     return PatientDetailSection.values
-        .map((section) => AppTabItem(id: section.name, label: patientDetailSectionLabel(context, section)))
+        .map(
+          (section) => AppTabItem(
+            id: section.name,
+            label: patientDetailSectionLabel(context, section),
+          ),
+        )
         .toList(growable: false);
   }
 
@@ -154,7 +171,10 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     final l10n = context.l10n;
     return AppBreadcrumb(
       items: [
-        AppBreadcrumbItem(label: l10n.patients, onTap: () => context.nav.goPatients()),
+        AppBreadcrumbItem(
+          label: l10n.patients,
+          onTap: () => context.nav.goPatients(),
+        ),
         AppBreadcrumbItem(label: patientName),
       ],
     );
@@ -179,7 +199,10 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
           title: l10n.patientNotFound,
           breadcrumb: AppBreadcrumb(
             items: [
-              AppBreadcrumbItem(label: l10n.patients, onTap: () => context.nav.goPatients()),
+              AppBreadcrumbItem(
+                label: l10n.patients,
+                onTap: () => context.nav.goPatients(),
+              ),
               AppBreadcrumbItem(label: l10n.patientDetailBreadcrumb),
             ],
           ),
@@ -188,7 +211,10 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
           variant: AppEmptyStateVariant.error,
           title: l10n.patientNotFound,
           description: l10n.patientNotFoundDescription,
-          action: EmptyStateAction(label: l10n.backToPatients, onPressed: () => context.nav.goPatients()),
+          action: EmptyStateAction(
+            label: l10n.backToPatients,
+            onPressed: () => context.nav.goPatients(),
+          ),
         ),
       ],
     );
@@ -217,7 +243,10 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     };
   }
 
-  Widget _buildRecordCardSkeletonGrid({required int count, PatientDetailSection? section}) {
+  Widget _buildRecordCardSkeletonGrid({
+    required int count,
+    PatientDetailSection? section,
+  }) {
     final resolvedSection = section ?? _section;
     final height = _recordSkeletonHeight(resolvedSection);
     return AppSkeletonizerZone(
@@ -225,7 +254,8 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         mainAxisExtent: _recordGridExtent(resolvedSection),
         maxCrossAxisCount: _maxCrossAxisCount(resolvedSection),
         children: [
-          for (var index = 0; index < count; index++) AppSkeleton(variant: SkeletonVariant.rectangular, height: height),
+          for (var index = 0; index < count; index++)
+            AppSkeleton(variant: SkeletonVariant.rectangular, height: height),
         ],
       ),
     );
@@ -240,7 +270,11 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     if (fromPreview != null && fromPreview.isNotEmpty) {
       return fromPreview;
     }
-    final fromSession = ref.read(authSessionProvider).context?.activeBranchId?.trim();
+    final fromSession = ref
+        .read(authSessionProvider)
+        .context
+        ?.activeBranchId
+        ?.trim();
     if (fromSession != null && fromSession.isNotEmpty) {
       return fromSession;
     }
@@ -269,25 +303,34 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         ? const AsyncValue<List<AppointmentListItem>>.data([])
         : ref.watch(
             patientUpcomingAppointmentsProvider(
-              PatientDetailHistoryQuery(patientId: widget.patientId, branchId: branchId),
+              PatientDetailHistoryQuery(
+                patientId: widget.patientId,
+                branchId: branchId,
+              ),
             ),
           );
 
     if (visitsAsync.isLoading || appointmentsAsync.isLoading) {
-      return _buildRecordCardSkeletonGrid(count: 3, section: PatientDetailSection.visits);
+      return _buildRecordCardSkeletonGrid(
+        count: 3,
+        section: PatientDetailSection.visits,
+      );
     }
 
     if (visitsAsync.hasError) {
       return _buildCenteredTabPlaceholder(
         AppErrorState(
           message: _errorMessage(visitsAsync.error!),
-          onRetry: () => ref.invalidate(patientPastVisitsProvider(widget.patientId)),
+          onRetry: () =>
+              ref.invalidate(patientPastVisitsProvider(widget.patientId)),
         ),
       );
     }
 
     final visits = visitsAsync.value ?? [];
-    final appointments = appointmentsAsync.hasError ? <AppointmentListItem>[] : (appointmentsAsync.value ?? []);
+    final appointments = appointmentsAsync.hasError
+        ? <AppointmentListItem>[]
+        : (appointmentsAsync.value ?? []);
 
     if (visits.isEmpty && appointments.isEmpty) {
       return _buildCenteredTabPlaceholder(
@@ -310,7 +353,13 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
           ),
         ),
       for (final visit in visits)
-        (sortDate: visit.visitDate, card: PatientVisitRecordCard.fromVisit(visit, key: ValueKey('visit-${visit.id}'))),
+        (
+          sortDate: visit.visitDate,
+          card: PatientVisitRecordCard.fromVisit(
+            visit,
+            key: ValueKey('visit-${visit.id}'),
+          ),
+        ),
     ]..sort((a, b) => b.sortDate.compareTo(a.sortDate));
 
     return PatientRecordGrid(
@@ -321,22 +370,31 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
   }
 
   Widget _buildBillingTabBody() {
-    final canAccessBilling = ref.watch(authSessionProvider.select(AuthRouteGuard.canAccessInvoiceList));
+    final canAccessBilling = ref.watch(
+      authSessionProvider.select(AuthRouteGuard.canAccessInvoiceList),
+    );
     final invoicesAsync = ref.watch(patientInvoicesProvider(widget.patientId));
     final l10n = context.l10n;
 
     return invoicesAsync.when(
-      loading: () => _buildRecordCardSkeletonGrid(count: 3, section: PatientDetailSection.billing),
+      loading: () => _buildRecordCardSkeletonGrid(
+        count: 3,
+        section: PatientDetailSection.billing,
+      ),
       error: (error, _) => _buildCenteredTabPlaceholder(
         AppErrorState(
           message: _errorMessage(error),
-          onRetry: () => ref.invalidate(patientInvoicesProvider(widget.patientId)),
+          onRetry: () =>
+              ref.invalidate(patientInvoicesProvider(widget.patientId)),
         ),
       ),
       data: (pageResult) {
         if (!canAccessBilling) {
           return _buildCenteredTabPlaceholder(
-            AppEmptyState(variant: AppEmptyStateVariant.noAccess, title: l10n.billingNoAccess),
+            AppEmptyState(
+              variant: AppEmptyStateVariant.noAccess,
+              title: l10n.billingNoAccess,
+            ),
           );
         }
 
@@ -360,22 +418,31 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         return PatientRecordGrid(
           mainAxisExtent: _recordGridExtent(PatientDetailSection.billing),
           maxCrossAxisCount: _maxCrossAxisCount(PatientDetailSection.billing),
-          children: [for (final invoice in invoices) PatientInvoiceCard(invoice: invoice)],
+          children: [
+            for (final invoice in invoices)
+              PatientInvoiceCard(invoice: invoice),
+          ],
         );
       },
     );
   }
 
   Widget _buildDocumentsTabBody() {
-    final documentsAsync = ref.watch(patientVisitDocumentsProvider(widget.patientId));
+    final documentsAsync = ref.watch(
+      patientVisitDocumentsProvider(widget.patientId),
+    );
     final l10n = context.l10n;
 
     return documentsAsync.when(
-      loading: () => _buildRecordCardSkeletonGrid(count: 3, section: PatientDetailSection.documents),
+      loading: () => _buildRecordCardSkeletonGrid(
+        count: 3,
+        section: PatientDetailSection.documents,
+      ),
       error: (error, _) => _buildCenteredTabPlaceholder(
         AppErrorState(
           message: _errorMessage(error),
-          onRetry: () => ref.invalidate(patientVisitDocumentsProvider(widget.patientId)),
+          onRetry: () =>
+              ref.invalidate(patientVisitDocumentsProvider(widget.patientId)),
         ),
       ),
       data: (documents) {
@@ -390,7 +457,10 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         }
         return PatientRecordGrid(
           mainAxisExtent: _recordGridExtent(PatientDetailSection.documents),
-          children: [for (final document in documents) PatientDocumentCard(document: document)],
+          children: [
+            for (final document in documents)
+              PatientDocumentCard(document: document),
+          ],
         );
       },
     );
@@ -430,11 +500,13 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
               tabItems: _tabItems(context),
               skeletonize: skeletonizeHeader,
               onSectionChanged: (section) => setState(() => _section = section),
-              onViewNotes: detail?.notes != null && detail!.notes!.trim().isNotEmpty
+              onViewNotes:
+                  detail?.notes != null && detail!.notes!.trim().isNotEmpty
                   ? () => _openPatientNotes(detail.notes!)
                   : null,
               onEdit: detail != null ? _openEditPatient : null,
-              onReassignMrn: detail != null && canReassignMrn && detail.mrn != null
+              onReassignMrn:
+                  detail != null && canReassignMrn && detail.mrn != null
                   ? () => _openReassignMrn(detail.mrn!)
                   : null,
             ),
@@ -453,7 +525,9 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(patientDetailProvider(widget.patientId));
-    final canReassignMrn = ref.watch(permissionServiceProvider).canReassignPatientMrn();
+    final canReassignMrn = ref
+        .watch(permissionServiceProvider)
+        .canReassignPatientMrn();
     final preview = _preview;
 
     Widget content;
@@ -462,7 +536,10 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     } else if (detailAsync.hasError) {
       final identity = _identityView(preview: preview);
       content = preview == null
-          ? AppErrorState(message: _errorMessage(detailAsync.error!), onRetry: _invalidateDetail)
+          ? AppErrorState(
+              message: _errorMessage(detailAsync.error!),
+              onRetry: _invalidateDetail,
+            )
           : _buildMainContent(
               context: context,
               identity: identity,
@@ -470,11 +547,17 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
               showTabSkeleton: false,
               canReassignMrn: canReassignMrn,
               tabBodyOverride: _buildCenteredTabPlaceholder(
-                AppErrorState(message: _errorMessage(detailAsync.error!), onRetry: _invalidateDetail),
+                AppErrorState(
+                  message: _errorMessage(detailAsync.error!),
+                  onRetry: _invalidateDetail,
+                ),
               ),
             );
     } else if (detailAsync.isLoading) {
-      final identity = _identityView(detail: detailAsync.value, preview: preview);
+      final identity = _identityView(
+        detail: detailAsync.value,
+        preview: preview,
+      );
       content = _buildMainContent(
         context: context,
         identity: identity,
@@ -565,26 +648,49 @@ class _PatientIdentityCard extends StatelessWidget {
           padding: CardPadding.lg,
           footer: const Padding(
             padding: EdgeInsets.symmetric(horizontal: AppSpacing.space6),
-            child: AppSkeleton(variant: SkeletonVariant.rectangular, height: 40),
+            child: AppSkeleton(
+              variant: SkeletonVariant.rectangular,
+              height: 40,
+            ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: const [
-              AppSkeleton(variant: SkeletonVariant.circular, width: 40, height: 40),
+              AppSkeleton(
+                variant: SkeletonVariant.circular,
+                width: 40,
+                height: 40,
+              ),
               SizedBox(width: AppSpacing.space4),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   spacing: AppSpacing.space3,
                   children: [
-                    AppSkeleton(variant: SkeletonVariant.rectangular, width: 220, height: 32),
+                    AppSkeleton(
+                      variant: SkeletonVariant.rectangular,
+                      width: 220,
+                      height: 32,
+                    ),
                     Wrap(
                       spacing: AppSpacing.space2,
                       runSpacing: AppSpacing.space2,
                       children: [
-                        AppSkeleton(variant: SkeletonVariant.rectangular, width: 72, height: 24),
-                        AppSkeleton(variant: SkeletonVariant.rectangular, width: 120, height: 24),
-                        AppSkeleton(variant: SkeletonVariant.rectangular, width: 96, height: 24),
+                        AppSkeleton(
+                          variant: SkeletonVariant.rectangular,
+                          width: 72,
+                          height: 24,
+                        ),
+                        AppSkeleton(
+                          variant: SkeletonVariant.rectangular,
+                          width: 120,
+                          height: 24,
+                        ),
+                        AppSkeleton(
+                          variant: SkeletonVariant.rectangular,
+                          width: 96,
+                          height: 24,
+                        ),
                       ],
                     ),
                   ],
@@ -611,7 +717,8 @@ class _PatientIdentityCard extends StatelessWidget {
       footer: AppTabs(
         items: tabItems,
         value: section.name,
-        onChanged: (id) => onSectionChanged(PatientDetailSection.values.byName(id)),
+        onChanged: (id) =>
+            onSectionChanged(PatientDetailSection.values.byName(id)),
         ariaLabel: 'Patient sections',
       ),
       child: Row(
@@ -625,7 +732,12 @@ class _PatientIdentityCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               spacing: AppSpacing.space3,
               children: [
-                Text(identity.fullName, style: AppTypography.h1(context).copyWith(color: colors.textPrimary)),
+                Text(
+                  identity.fullName,
+                  style: AppTypography.h1(
+                    context,
+                  ).copyWith(color: colors.textPrimary),
+                ),
                 Wrap(
                   spacing: AppSpacing.space3,
                   runSpacing: AppSpacing.space3,
@@ -639,9 +751,16 @@ class _PatientIdentityCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.badge_outlined, size: 14, color: colors.iconMuted),
+                            Icon(
+                              Icons.badge_outlined,
+                              size: 14,
+                              color: colors.iconMuted,
+                            ),
                             const SizedBox(width: AppSpacing.space1),
-                            Text(identity.mrn!, style: AppTypography.mono(context)),
+                            Text(
+                              identity.mrn!,
+                              style: AppTypography.mono(context),
+                            ),
                           ],
                         ),
                       ),
@@ -649,7 +768,10 @@ class _PatientIdentityCard extends StatelessWidget {
                       size: BadgeSize.md,
                       variant: BadgeVariant.soft,
                       color: BadgeColor.neutral,
-                      label: PatientPresentationFormatting.ageGenderLabel(age: age, gender: identity.gender),
+                      label: PatientPresentationFormatting.ageGenderLabel(
+                        age: age,
+                        gender: identity.gender,
+                      ),
                     ),
                     AppBadge(
                       size: BadgeSize.md,
@@ -671,9 +793,17 @@ class _PatientIdentityCard extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.phone_outlined, size: 14, color: colors.iconMuted),
+                          Icon(
+                            Icons.phone_outlined,
+                            size: 14,
+                            color: colors.iconMuted,
+                          ),
                           const SizedBox(width: AppSpacing.space1 + 2),
-                          Text(PatientPresentationFormatting.orDash(identity.phone)),
+                          Text(
+                            PatientPresentationFormatting.orDash(
+                              identity.phone,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -685,7 +815,11 @@ class _PatientIdentityCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.apartment, size: 14, color: colors.iconMuted),
+                            Icon(
+                              Icons.apartment,
+                              size: 14,
+                              color: colors.iconMuted,
+                            ),
                             const SizedBox(width: AppSpacing.space2),
                             Text(branchName),
                           ],
@@ -708,7 +842,8 @@ class _PatientIdentityCard extends StatelessWidget {
                     onPressed: onViewNotes,
                     child: Text(l10n.notesLabel),
                   ),
-                  if (onEdit != null || onReassignMrn != null) const SizedBox(width: AppSpacing.space2),
+                  if (onEdit != null || onReassignMrn != null)
+                    const SizedBox(width: AppSpacing.space2),
                 ],
                 if (onReassignMrn != null) ...[
                   AppButton(

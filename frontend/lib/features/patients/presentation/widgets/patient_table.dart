@@ -37,13 +37,16 @@ class PatientTable extends StatelessWidget {
       ariaLabel: 'Patients',
       density: TableDensity.comfortable,
       animateRows: true,
-      headerTextStyle: AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600, color: colors.textTertiary),
+      headerTextStyle: AppTypography.caption(
+        context,
+      ).copyWith(fontWeight: FontWeight.w600, color: colors.textTertiary),
       columns: [
         TableColumn(
           id: 'mrn',
           header: 'MRN',
           width: 140,
-          accessor: (row) => Text(row.item.mrn ?? '—', style: AppTypography.mono(context)),
+          accessor: (row) =>
+              Text(row.item.mrn ?? '—', style: AppTypography.mono(context)),
         ),
         TableColumn(
           id: 'patient',
@@ -55,15 +58,22 @@ class PatientTable extends StatelessWidget {
           header: 'Phone',
           accessor: (row) => Text(
             PatientPresentationFormatting.orDash(row.item.phone),
-            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary, fontFeatures: _tabularFigures),
+            style: AppTypography.bodySm(context).copyWith(
+              color: colors.textSecondary,
+              fontFeatures: _tabularFigures,
+            ),
           ),
         ),
         TableColumn(
           id: 'dob',
           header: 'DOB',
           accessor: (row) => Text(
-            PatientPresentationFormatting.dateOfBirthLabel(row.item.dateOfBirth),
-            style: AppTypography.bodySm(context).copyWith(fontFeatures: _tabularFigures),
+            PatientPresentationFormatting.dateOfBirthLabel(
+              row.item.dateOfBirth,
+            ),
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(fontFeatures: _tabularFigures),
           ),
         ),
         TableColumn(
@@ -71,8 +81,15 @@ class PatientTable extends StatelessWidget {
           header: 'Last visit',
           align: TableAlign.end,
           accessor: (row) => Text(
-            row.item.lastVisitAt != null ? PatientPresentationFormatting.date.format(row.item.lastVisitAt!) : '—',
-            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary, fontFeatures: _tabularFigures),
+            row.item.lastVisitAt != null
+                ? PatientPresentationFormatting.date.format(
+                    row.item.lastVisitAt!,
+                  )
+                : '—',
+            style: AppTypography.bodySm(context).copyWith(
+              color: colors.textSecondary,
+              fontFeatures: _tabularFigures,
+            ),
           ),
         ),
         TableColumn(
@@ -81,9 +98,14 @@ class PatientTable extends StatelessWidget {
           align: TableAlign.end,
           accessor: (row) => Text(
             row.item.nextAppointmentAt != null
-                ? PatientPresentationFormatting.dateTime.format(row.item.nextAppointmentAt!)
+                ? PatientPresentationFormatting.dateTime.format(
+                    row.item.nextAppointmentAt!,
+                  )
                 : '—',
-            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary, fontFeatures: _tabularFigures),
+            style: AppTypography.bodySm(context).copyWith(
+              color: colors.textSecondary,
+              fontFeatures: _tabularFigures,
+            ),
           ),
         ),
       ],
@@ -114,7 +136,9 @@ class _PatientCell extends StatelessWidget {
         Expanded(
           child: Text(
             name,
-            style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+            style: AppTypography.bodyStrong(
+              context,
+            ).copyWith(color: colors.textPrimary),
             overflow: TextOverflow.ellipsis,
           ),
         ),

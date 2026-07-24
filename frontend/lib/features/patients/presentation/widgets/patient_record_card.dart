@@ -47,14 +47,20 @@ class _PatientRecordCardState extends State<PatientRecordCard> {
     final reducedMotion = AppMotion.prefersReducedMotion(context);
     final translateY = _hovered && !reducedMotion ? -2.0 : 0.0;
     final borderColor = _hovered ? colors.borderDefault : colors.borderSubtle;
-    final shadows = _hovered ? elevation.shadowsFor(2) : elevation.shadowsFor(1);
+    final shadows = _hovered
+        ? elevation.shadowsFor(2)
+        : elevation.shadowsFor(1);
 
     final gradientEnd = widget.useNeutralGradient
         ? Color.lerp(colors.surfaceDefault, colors.surfaceMuted, 0.55)!
         : _accentMix(colors, 0.28);
 
-    final leadingGradientTop = widget.useNeutralGradient ? colors.surfaceMuted : _accentMix(colors, 0.55);
-    final leadingGradientBottom = widget.useNeutralGradient ? colors.surfaceSunken : _accentMix(colors, 0.80);
+    final leadingGradientTop = widget.useNeutralGradient
+        ? colors.surfaceMuted
+        : _accentMix(colors, 0.55);
+    final leadingGradientBottom = widget.useNeutralGradient
+        ? colors.surfaceSunken
+        : _accentMix(colors, 0.80);
 
     return Material(
       type: MaterialType.transparency,
@@ -80,13 +86,20 @@ class _PatientRecordCardState extends State<PatientRecordCard> {
             child: ConstrainedBox(
               constraints: widget.compact
                   ? const BoxConstraints()
-                  : const BoxConstraints(minHeight: PatientRecordCard._minHeight),
+                  : const BoxConstraints(
+                      minHeight: PatientRecordCard._minHeight,
+                    ),
               child: IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (widget.leading != null)
-                      _buildLeadingColumn(colors, leadingGradientTop, leadingGradientBottom, widget.leading!),
+                      _buildLeadingColumn(
+                        colors,
+                        leadingGradientTop,
+                        leadingGradientBottom,
+                        widget.leading!,
+                      ),
                     Expanded(child: widget.child),
                   ],
                 ),
@@ -98,7 +111,12 @@ class _PatientRecordCardState extends State<PatientRecordCard> {
     );
   }
 
-  Widget _buildLeadingColumn(AppSemanticColors colors, Color gradientTop, Color gradientBottom, Widget leading) {
+  Widget _buildLeadingColumn(
+    AppSemanticColors colors,
+    Color gradientTop,
+    Color gradientBottom,
+    Widget leading,
+  ) {
     return DecoratedBox(
       decoration: BoxDecoration(
         border: BorderDirectional(end: BorderSide(color: colors.borderSubtle)),
@@ -111,7 +129,10 @@ class _PatientRecordCardState extends State<PatientRecordCard> {
       child: SizedBox(
         width: PatientRecordCard._leadingWidth,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: AppSpacing.space5),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.space2,
+            vertical: AppSpacing.space5,
+          ),
           child: Center(child: ExcludeSemantics(child: leading)),
         ),
       ),

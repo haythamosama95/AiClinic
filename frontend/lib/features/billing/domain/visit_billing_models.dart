@@ -69,12 +69,17 @@ VisitBillingTotals computeVisitBillingTotals(
   VisitBillingDiscountType discountType,
   double discountValue,
 ) {
-  final subtotal = lines.fold<double>(0, (sum, line) => sum + visitBillingLineTotal(line));
+  final subtotal = lines.fold<double>(
+    0,
+    (sum, line) => sum + visitBillingLineTotal(line),
+  );
   var discountAmount = 0.0;
 
-  if (discountType == VisitBillingDiscountType.percentage && discountValue > 0) {
+  if (discountType == VisitBillingDiscountType.percentage &&
+      discountValue > 0) {
     discountAmount = (subtotal * discountValue / 100).clamp(0, subtotal);
-  } else if (discountType == VisitBillingDiscountType.fixed && discountValue > 0) {
+  } else if (discountType == VisitBillingDiscountType.fixed &&
+      discountValue > 0) {
     discountAmount = discountValue.clamp(0, subtotal);
   }
 
@@ -109,7 +114,11 @@ class VisitBillingInvoicePreview {
 
 String generateVisitBillingInvoicePreviewNumber() {
   final now = DateTime.now();
-  final stamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-  final suffix = (now.millisecondsSinceEpoch % 10000).toString().padLeft(4, '0');
+  final stamp =
+      '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+  final suffix = (now.millisecondsSinceEpoch % 10000).toString().padLeft(
+    4,
+    '0',
+  );
   return 'INV-$stamp-$suffix';
 }

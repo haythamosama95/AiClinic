@@ -50,19 +50,34 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
       if (!mounted) {
         return;
       }
-      appToast(context, const AppToastInput(message: 'Invoice issued.', variant: AppToastVariant.success));
+      appToast(
+        context,
+        const AppToastInput(
+          message: 'Invoice issued.',
+          variant: AppToastVariant.success,
+        ),
+      );
       context.nav.pushBillingInvoiceDetail(widget.invoiceId);
     } on InvoiceStaleException {
       if (mounted) {
         appToast(
           context,
-          AppToastInput(message: 'This invoice was updated elsewhere. Reloading…', variant: AppToastVariant.info),
+          AppToastInput(
+            message: 'This invoice was updated elsewhere. Reloading…',
+            variant: AppToastVariant.info,
+          ),
         );
         ref.invalidate(invoiceEditorProvider(widget.invoiceId));
       }
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(context, AppToastInput(message: billingMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: billingMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -83,24 +98,40 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
 
   Future<void> _addService(EligibleService service) async {
     try {
-      await ref.read(invoiceEditorProvider(widget.invoiceId).notifier).addItemFromService(service);
+      await ref
+          .read(invoiceEditorProvider(widget.invoiceId).notifier)
+          .addItemFromService(service);
     } on InvoiceStaleException {
       if (mounted) {
         ref.invalidate(invoiceEditorProvider(widget.invoiceId));
       }
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(context, AppToastInput(message: billingMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: billingMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     }
   }
 
   Future<void> _removeItem(String itemId) async {
     try {
-      await ref.read(invoiceEditorProvider(widget.invoiceId).notifier).removeItem(itemId);
+      await ref
+          .read(invoiceEditorProvider(widget.invoiceId).notifier)
+          .removeItem(itemId);
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(context, AppToastInput(message: billingMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: billingMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     }
   }
@@ -115,7 +146,8 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
     final colors = context.appColors;
 
     return editorAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      loading: () =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       error: (error, _) => Center(
         child: AppEmptyState(
           variant: AppEmptyStateVariant.error,
@@ -123,13 +155,17 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
           description: error.toString(),
           action: EmptyStateAction(
             label: 'Retry',
-            onPressed: () => ref.invalidate(invoiceEditorProvider(widget.invoiceId)),
+            onPressed: () =>
+                ref.invalidate(invoiceEditorProvider(widget.invoiceId)),
           ),
         ),
       ),
       data: (state) {
         final invoice = state.invoice;
-        final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
+        final displayNumber = BillingFormatting.invoiceDisplayNumber(
+          invoice.invoiceNumber,
+          invoice.id,
+        );
         final netTotal = invoice.subtotal - invoice.discountAmount;
 
         return Column(
@@ -137,7 +173,8 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
           children: [
             AppPageHeader(
               title: 'Edit $displayNumber',
-              description: 'Add services from the catalog, then issue when ready.',
+              description:
+                  'Add services from the catalog, then issue when ready.',
               actions: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -149,7 +186,9 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
                   const SizedBox(width: AppSpacing.space2),
                   AppButton(
                     loading: _issuing || state.isMutating,
-                    onPressed: invoice.items.isEmpty || _issuing ? null : _issue,
+                    onPressed: invoice.items.isEmpty || _issuing
+                        ? null
+                        : _issue,
                     child: const Text('Issue invoice'),
                   ),
                 ],
@@ -175,32 +214,51 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text('Line items', style: AppTypography.bodyStrong(context)),
+                            Text(
+                              'Line items',
+                              style: AppTypography.bodyStrong(context),
+                            ),
                             const SizedBox(height: AppSpacing.space3),
                             if (invoice.items.isEmpty)
                               Text(
                                 'No services added yet. Search the catalog on the right.',
-                                style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                                style: AppTypography.bodySm(
+                                  context,
+                                ).copyWith(color: colors.textSecondary),
                               )
                             else
                               Expanded(
                                 child: ListView.separated(
                                   itemCount: invoice.items.length,
-                                  separatorBuilder: (_, _) => Divider(height: 1, color: colors.borderSubtle),
-                                  itemBuilder: (context, index) => _EditorLineRow(
-                                    item: invoice.items[index],
-                                    currency: invoice.currency,
-                                    onRemove: state.isMutating ? null : () => _removeItem(invoice.items[index].id),
+                                  separatorBuilder: (_, _) => Divider(
+                                    height: 1,
+                                    color: colors.borderSubtle,
                                   ),
+                                  itemBuilder: (context, index) =>
+                                      _EditorLineRow(
+                                        item: invoice.items[index],
+                                        currency: invoice.currency,
+                                        onRemove: state.isMutating
+                                            ? null
+                                            : () => _removeItem(
+                                                invoice.items[index].id,
+                                              ),
+                                      ),
                                 ),
                               ),
                             const InvoicePerforationDivider(),
                             Row(
                               children: [
-                                Text('Total', style: AppTypography.bodyStrong(context)),
+                                Text(
+                                  'Total',
+                                  style: AppTypography.bodyStrong(context),
+                                ),
                                 const Spacer(),
                                 Text(
-                                  BillingFormatting.formatMoney(netTotal, currency: invoice.currency),
+                                  BillingFormatting.formatMoney(
+                                    netTotal,
+                                    currency: invoice.currency,
+                                  ),
                                   style: AppTypography.bodyStrong(context),
                                 ),
                               ],
@@ -224,12 +282,16 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text('Add from catalog', style: AppTypography.bodyStrong(context)),
+                            Text(
+                              'Add from catalog',
+                              style: AppTypography.bodyStrong(context),
+                            ),
                             const SizedBox(height: AppSpacing.space3),
                             AppSearchInput(
                               controller: _searchController,
                               placeholder: 'Search services',
-                              onValueChange: (query) => _searchCatalog(invoice.branchId, query),
+                              onValueChange: (query) =>
+                                  _searchCatalog(invoice.branchId, query),
                             ),
                             const SizedBox(height: AppSpacing.space4),
                             Expanded(
@@ -255,7 +317,11 @@ class _InvoiceEditorPageState extends ConsumerState<InvoiceEditorPage> {
 }
 
 class _EditorLineRow extends StatelessWidget {
-  const _EditorLineRow({required this.item, required this.currency, this.onRemove});
+  const _EditorLineRow({
+    required this.item,
+    required this.currency,
+    this.onRemove,
+  });
 
   final InvoiceItem item;
   final String currency;
@@ -274,7 +340,9 @@ class _EditorLineRow extends StatelessWidget {
                 Text(item.description, style: AppTypography.body(context)),
                 Text(
                   'Qty ${item.quantity} · ${BillingFormatting.formatMoney(item.unitPrice, currency: currency)} each',
-                  style: AppTypography.caption(context).copyWith(color: context.appColors.textSecondary),
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(color: context.appColors.textSecondary),
                 ),
               ],
             ),
@@ -285,7 +353,11 @@ class _EditorLineRow extends StatelessWidget {
           ),
           if (onRemove != null) ...[
             const SizedBox(width: AppSpacing.space2),
-            AppIconButton(icon: const Icon(Icons.close_rounded, size: 16), label: 'Remove line', onPressed: onRemove),
+            AppIconButton(
+              icon: const Icon(Icons.close_rounded, size: 16),
+              label: 'Remove line',
+              onPressed: onRemove,
+            ),
           ],
         ],
       ),
@@ -294,7 +366,11 @@ class _EditorLineRow extends StatelessWidget {
 }
 
 class _CatalogResults extends ConsumerWidget {
-  const _CatalogResults({required this.branchId, required this.currency, this.onAdd});
+  const _CatalogResults({
+    required this.branchId,
+    required this.currency,
+    this.onAdd,
+  });
 
   final String branchId;
   final String currency;
@@ -306,20 +382,28 @@ class _CatalogResults extends ConsumerWidget {
     final colors = context.appColors;
 
     return catalog.when(
-      loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      error: (error, _) =>
-          Text(error.toString(), style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary)),
+      loading: () =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      error: (error, _) => Text(
+        error.toString(),
+        style: AppTypography.bodySm(
+          context,
+        ).copyWith(color: colors.textSecondary),
+      ),
       data: (services) {
         if (services.isEmpty) {
           return Text(
             'No eligible services',
-            style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+            style: AppTypography.bodySm(
+              context,
+            ).copyWith(color: colors.textSecondary),
           );
         }
 
         return ListView.separated(
           itemCount: services.length,
-          separatorBuilder: (_, _) => Divider(height: 1, color: colors.borderSubtle),
+          separatorBuilder: (_, _) =>
+              Divider(height: 1, color: colors.borderSubtle),
           itemBuilder: (context, index) {
             final service = services[index];
             return Material(
@@ -327,7 +411,12 @@ class _CatalogResults extends ConsumerWidget {
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(service.name),
-                subtitle: Text(BillingFormatting.formatMoney(service.unitPrice, currency: currency)),
+                subtitle: Text(
+                  BillingFormatting.formatMoney(
+                    service.unitPrice,
+                    currency: currency,
+                  ),
+                ),
                 trailing: AppButton(
                   size: AppButtonSize.sm,
                   onPressed: onAdd == null ? null : () => onAdd!(service),

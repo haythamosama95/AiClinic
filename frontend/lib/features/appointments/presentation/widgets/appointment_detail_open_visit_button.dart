@@ -18,18 +18,24 @@ class AppointmentDetailOpenVisitButton extends ConsumerStatefulWidget {
   final AppointmentDetail detail;
 
   @override
-  ConsumerState<AppointmentDetailOpenVisitButton> createState() => _AppointmentDetailOpenVisitButtonState();
+  ConsumerState<AppointmentDetailOpenVisitButton> createState() =>
+      _AppointmentDetailOpenVisitButtonState();
 }
 
-class _AppointmentDetailOpenVisitButtonState extends ConsumerState<AppointmentDetailOpenVisitButton> {
+class _AppointmentDetailOpenVisitButtonState
+    extends ConsumerState<AppointmentDetailOpenVisitButton> {
   var _isLoading = false;
 
   AppointmentDetail get detail => widget.detail;
 
-  bool get _canAccessVisit => ref.watch(authSessionProvider.select(AuthRouteGuard.canAccessVisitDocumentation));
+  bool get _canAccessVisit => ref.watch(
+    authSessionProvider.select(AuthRouteGuard.canAccessVisitDocumentation),
+  );
 
   bool get _canStartVisit => switch (detail.status) {
-    AppointmentStatus.checkedIn || AppointmentStatus.inProgress || AppointmentStatus.completed => true,
+    AppointmentStatus.checkedIn ||
+    AppointmentStatus.inProgress ||
+    AppointmentStatus.completed => true,
     _ => false,
   };
 
@@ -42,7 +48,8 @@ class _AppointmentDetailOpenVisitButtonState extends ConsumerState<AppointmentDe
     }
     if (!_canStartVisit) {
       return switch (detail.status) {
-        AppointmentStatus.scheduled || AppointmentStatus.confirmed => 'Check in the patient before opening the visit.',
+        AppointmentStatus.scheduled || AppointmentStatus.confirmed =>
+          'Check in the patient before opening the visit.',
         AppointmentStatus.cancelled => 'This appointment was cancelled.',
         AppointmentStatus.noShow => 'This appointment was marked as a no-show.',
         _ => 'This appointment is not ready for visit documentation.',
@@ -71,7 +78,10 @@ class _AppointmentDetailOpenVisitButtonState extends ConsumerState<AppointmentDe
       var visitId = link.visitId?.trim();
 
       if (visitId == null || visitId.isEmpty) {
-        final created = await repo.createVisit(appointmentId: detail.id, doctorId: detail.doctorId);
+        final created = await repo.createVisit(
+          appointmentId: detail.id,
+          doctorId: detail.doctorId,
+        );
         visitId = created.visitId;
       }
 
@@ -90,12 +100,21 @@ class _AppointmentDetailOpenVisitButtonState extends ConsumerState<AppointmentDe
         return;
       }
 
-      appToast(context, AppToastInput(message: visitMessageForRpc(error), variant: AppToastVariant.danger));
+      appToast(
+        context,
+        AppToastInput(
+          message: visitMessageForRpc(error),
+          variant: AppToastVariant.danger,
+        ),
+      );
     } catch (_) {
       if (mounted) {
         appToast(
           context,
-          const AppToastInput(message: 'Could not open the visit. Please try again.', variant: AppToastVariant.danger),
+          const AppToastInput(
+            message: 'Could not open the visit. Please try again.',
+            variant: AppToastVariant.danger,
+          ),
         );
       }
     } finally {
@@ -107,7 +126,9 @@ class _AppointmentDetailOpenVisitButtonState extends ConsumerState<AppointmentDe
 
   Future<void> _openExistingVisit() async {
     try {
-      final link = await ref.read(visitRepositoryProvider).getVisitByAppointment(appointmentId: detail.id);
+      final link = await ref
+          .read(visitRepositoryProvider)
+          .getVisitByAppointment(appointmentId: detail.id);
       final visitId = link.visitId?.trim();
       if (!mounted || visitId == null || visitId.isEmpty) {
         return;
@@ -115,7 +136,13 @@ class _AppointmentDetailOpenVisitButtonState extends ConsumerState<AppointmentDe
       context.nav.pushVisitDocument(visitId);
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(context, AppToastInput(message: visitMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: visitMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     }
   }

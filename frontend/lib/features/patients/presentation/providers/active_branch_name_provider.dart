@@ -5,14 +5,23 @@ import 'package:ai_clinic/features/clinic-management/domain/usecases/clinic_mana
 
 /// Resolves the display name of the user's active branch for registration copy.
 final activeBranchNameProvider = FutureProvider<String>((ref) async {
-  final organizationId = ref.watch(authSessionProvider.select((session) => session.context?.organizationId));
-  final activeBranchId = ref.watch(authSessionProvider.select((session) => session.context?.activeBranchId));
+  final organizationId = ref.watch(
+    authSessionProvider.select((session) => session.context?.organizationId),
+  );
+  final activeBranchId = ref.watch(
+    authSessionProvider.select((session) => session.context?.activeBranchId),
+  );
 
   if (organizationId == null || organizationId.isEmpty) {
     return 'your active branch';
   }
 
-  final branches = await ref.read(listBranchesUseCaseProvider)(organizationId: organizationId);
-  return branches.where((branch) => branch.id == activeBranchId).map((branch) => branch.name).firstOrNull ??
+  final branches = await ref.read(listBranchesUseCaseProvider)(
+    organizationId: organizationId,
+  );
+  return branches
+          .where((branch) => branch.id == activeBranchId)
+          .map((branch) => branch.name)
+          .firstOrNull ??
       'your active branch';
 });

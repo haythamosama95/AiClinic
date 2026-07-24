@@ -74,7 +74,9 @@ class InvoiceListItem {
     }
 
     final issuedAtRaw = row['issued_at']?.toString();
-    final issuedAt = issuedAtRaw == null ? null : DateTime.tryParse(issuedAtRaw);
+    final issuedAt = issuedAtRaw == null
+        ? null
+        : DateTime.tryParse(issuedAtRaw);
 
     final currency = row['currency']?.toString().trim();
     return InvoiceListItem(
@@ -86,7 +88,9 @@ class InvoiceListItem {
       patientMrn: row['patient_mrn']?.toString() ?? row['mrn']?.toString(),
       branchId: row['branch_id']?.toString(),
       branchCode: row['branch_code']?.toString(),
-      currency: currency != null && currency.isNotEmpty ? currency.toUpperCase() : 'USD',
+      currency: currency != null && currency.isNotEmpty
+          ? currency.toUpperCase()
+          : 'USD',
       subtotal: subtotal,
       discountAmount: discountAmount,
       insuranceCoveredAmount: insuranceCoveredAmount,

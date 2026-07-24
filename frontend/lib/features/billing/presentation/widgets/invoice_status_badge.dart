@@ -6,7 +6,11 @@ import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting
 
 /// Status badge for invoice surfaces (V1-6).
 class InvoiceStatusBadge extends StatelessWidget {
-  const InvoiceStatusBadge({required this.status, this.size = BadgeSize.sm, super.key});
+  const InvoiceStatusBadge({
+    required this.status,
+    this.size = BadgeSize.sm,
+    super.key,
+  });
 
   final InvoiceStatus status;
   final BadgeSize size;

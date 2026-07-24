@@ -33,7 +33,10 @@ class AppointmentBookingSlots {
 
   static const int defaultDayCount = 14;
 
-  static List<DateTime> dayOptions({required DateTime anchor, int count = defaultDayCount}) {
+  static List<DateTime> dayOptions({
+    required DateTime anchor,
+    int count = defaultDayCount,
+  }) {
     final today = DateTime(anchor.year, anchor.month, anchor.day);
     return List.generate(count, (index) => today.add(Duration(days: index)));
   }
@@ -61,23 +64,46 @@ class AppointmentBookingSlots {
       return const [];
     }
 
-    final openMinutes = AppointmentBranchWorkingHours.parseHm(dayHours.openTime);
-    final closeMinutes = AppointmentBranchWorkingHours.parseHm(dayHours.closeTime);
-    if (openMinutes == null || closeMinutes == null || openMinutes >= closeMinutes) {
+    final openMinutes = AppointmentBranchWorkingHours.parseHm(
+      dayHours.openTime,
+    );
+    final closeMinutes = AppointmentBranchWorkingHours.parseHm(
+      dayHours.closeTime,
+    );
+    if (openMinutes == null ||
+        closeMinutes == null ||
+        openMinutes >= closeMinutes) {
       return const [];
     }
 
-    final doctors = branchDoctors.where((doctor) => doctor.isActive).toList(growable: false);
+    final doctors = branchDoctors
+        .where((doctor) => doctor.isActive)
+        .toList(growable: false);
     final slots = <AppointmentBookingTimeSlot>[];
     final timeLabel = DateFormat.jm();
 
-    for (var startMinutes = openMinutes; startMinutes + durationMinutes <= closeMinutes; startMinutes += slotMinutes) {
-      final start = DateTime(day.year, day.month, day.day, startMinutes ~/ 60, startMinutes % 60);
+    for (
+      var startMinutes = openMinutes;
+      startMinutes + durationMinutes <= closeMinutes;
+      startMinutes += slotMinutes
+    ) {
+      final start = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        startMinutes ~/ 60,
+        startMinutes % 60,
+      );
       final end = start.add(Duration(minutes: durationMinutes));
       final availableDoctorIds = <String>[];
 
       for (final doctor in doctors) {
-        if (_isDoctorFree(doctorId: doctor.id, start: start, end: end, appointments: existingAppointments)) {
+        if (_isDoctorFree(
+          doctorId: doctor.id,
+          start: start,
+          end: end,
+          appointments: existingAppointments,
+        )) {
           availableDoctorIds.add(doctor.id);
         }
       }
@@ -96,22 +122,33 @@ class AppointmentBookingSlots {
     return slots;
   }
 
-  static String? resolveAssignedDoctorId({required AppointmentBookingTimeSlot slot, String? preferredDoctorId}) {
-    if (slot.status == AppointmentBookingSlotStatus.locked || slot.availableDoctorIds.isEmpty) {
+  static String? resolveAssignedDoctorId({
+    required AppointmentBookingTimeSlot slot,
+    String? preferredDoctorId,
+  }) {
+    if (slot.status == AppointmentBookingSlotStatus.locked ||
+        slot.availableDoctorIds.isEmpty) {
       return null;
     }
     final preferred = preferredDoctorId?.trim();
-    if (preferred != null && preferred.isNotEmpty && slot.availableDoctorIds.contains(preferred)) {
+    if (preferred != null &&
+        preferred.isNotEmpty &&
+        slot.availableDoctorIds.contains(preferred)) {
       return preferred;
     }
     return slot.availableDoctorIds.first;
   }
 
   static int openSlotCount(List<AppointmentBookingTimeSlot> slots) {
-    return slots.where((slot) => slot.status != AppointmentBookingSlotStatus.locked).length;
+    return slots
+        .where((slot) => slot.status != AppointmentBookingSlotStatus.locked)
+        .length;
   }
 
-  static AppointmentBookingSlotStatus _resolveStatus(List<String> availableDoctorIds, String? preferredDoctorId) {
+  static AppointmentBookingSlotStatus _resolveStatus(
+    List<String> availableDoctorIds,
+    String? preferredDoctorId,
+  ) {
     if (availableDoctorIds.isEmpty) {
       return AppointmentBookingSlotStatus.locked;
     }
@@ -136,10 +173,17 @@ class AppointmentBookingSlots {
         continue;
       }
       final appointmentDoctorId = appointment.doctorId?.trim();
-      if (appointmentDoctorId == null || appointmentDoctorId.isEmpty || appointmentDoctorId != doctorId) {
+      if (appointmentDoctorId == null ||
+          appointmentDoctorId.isEmpty ||
+          appointmentDoctorId != doctorId) {
         continue;
       }
-      if (_timesOverlap(start, end, appointment.startTime.toLocal(), appointment.endTime.toLocal())) {
+      if (_timesOverlap(
+        start,
+        end,
+        appointment.startTime.toLocal(),
+        appointment.endTime.toLocal(),
+      )) {
         return false;
       }
     }
@@ -147,10 +191,16 @@ class AppointmentBookingSlots {
   }
 
   static bool _blocksScheduling(AppointmentListItem item) {
-    return item.status == AppointmentStatus.cancelled || item.status == AppointmentStatus.noShow;
+    return item.status == AppointmentStatus.cancelled ||
+        item.status == AppointmentStatus.noShow;
   }
 
-  static bool _timesOverlap(DateTime aStart, DateTime aEnd, DateTime bStart, DateTime bEnd) {
+  static bool _timesOverlap(
+    DateTime aStart,
+    DateTime aEnd,
+    DateTime bStart,
+    DateTime bEnd,
+  ) {
     return aStart.isBefore(bEnd) && aEnd.isAfter(bStart);
   }
 
@@ -159,21 +209,31 @@ class AppointmentBookingSlots {
     return (from: start, to: start.add(const Duration(days: 1)));
   }
 
-  static ({DateTime from, DateTime to}) multiDayFetchRange(List<DateTime> days) {
+  static ({DateTime from, DateTime to}) multiDayFetchRange(
+    List<DateTime> days,
+  ) {
     if (days.isEmpty) {
       final now = DateTime.now();
       final start = DateTime(now.year, now.month, now.day);
       return (from: start, to: start.add(const Duration(days: 1)));
     }
     final sorted = [...days]..sort((a, b) => a.compareTo(b));
-    final first = DateTime(sorted.first.year, sorted.first.month, sorted.first.day);
+    final first = DateTime(
+      sorted.first.year,
+      sorted.first.month,
+      sorted.first.day,
+    );
     final last = DateTime(sorted.last.year, sorted.last.month, sorted.last.day);
     return (from: first, to: last.add(const Duration(days: 1)));
   }
 
   static int defaultSlotMinutes(int? settingsDefault) {
-    final candidate = settingsDefault ?? AppointmentCalendarDisplay.defaultTimeIntervalMinutes;
-    return AppointmentCalendarDisplay.supportedTimeIntervalMinutes.contains(candidate)
+    final candidate =
+        settingsDefault ??
+        AppointmentCalendarDisplay.defaultTimeIntervalMinutes;
+    return AppointmentCalendarDisplay.supportedTimeIntervalMinutes.contains(
+          candidate,
+        )
         ? candidate
         : AppointmentCalendarDisplay.defaultTimeIntervalMinutes;
   }

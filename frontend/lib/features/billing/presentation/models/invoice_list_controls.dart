@@ -29,7 +29,11 @@ class InvoiceListControls {
 
   bool get sortIsCustom => sort != InvoiceSortKey.dateDesc;
 
-  bool get isFiltered => search.trim().isNotEmpty || status != null || branch != null || sortIsCustom;
+  bool get isFiltered =>
+      search.trim().isNotEmpty ||
+      status != null ||
+      branch != null ||
+      sortIsCustom;
 
   /// Reconstructs page controls from backbone [InvoiceListFilters] (notifier source of truth).
   factory InvoiceListControls.fromBackendFilters(InvoiceListFilters filters) {
@@ -44,7 +48,8 @@ class InvoiceListControls {
     );
   }
 
-  int get filterActiveCount => (status != null ? 1 : 0) + (branch != null ? 1 : 0);
+  int get filterActiveCount =>
+      (status != null ? 1 : 0) + (branch != null ? 1 : 0);
 
   InvoiceListControls copyWith({
     String? search,
@@ -91,17 +96,35 @@ class InvoiceListControls {
 
     final currentStatus = status;
     if (currentStatus != null) {
-      chips.add(AppActiveFilter(id: 'status', label: currentStatus.label, onRemove: onRemoveStatus));
+      chips.add(
+        AppActiveFilter(
+          id: 'status',
+          label: currentStatus.label,
+          onRemove: onRemoveStatus,
+        ),
+      );
     }
 
     final currentBranch = branch;
     if (multiBranch && currentBranch != null) {
-      chips.add(AppActiveFilter(id: 'branch', label: branchName(currentBranch), onRemove: onRemoveBranch));
+      chips.add(
+        AppActiveFilter(
+          id: 'branch',
+          label: branchName(currentBranch),
+          onRemove: onRemoveBranch,
+        ),
+      );
     }
 
     final query = search.trim();
     if (query.isNotEmpty) {
-      chips.add(AppActiveFilter(id: 'search', label: 'Search: $query', onRemove: onRemoveSearch));
+      chips.add(
+        AppActiveFilter(
+          id: 'search',
+          label: 'Search: $query',
+          onRemove: onRemoveSearch,
+        ),
+      );
     }
 
     return chips;

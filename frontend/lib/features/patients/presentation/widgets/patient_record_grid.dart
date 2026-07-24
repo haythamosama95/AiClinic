@@ -5,7 +5,12 @@ import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 
 /// Responsive record-card grid with staggered enter motion (web `RecordCardGrid`).
 class PatientRecordGrid extends StatelessWidget {
-  const PatientRecordGrid({required this.children, this.mainAxisExtent = 196, this.maxCrossAxisCount = 3, super.key});
+  const PatientRecordGrid({
+    required this.children,
+    this.mainAxisExtent = 196,
+    this.maxCrossAxisCount = 3,
+    super.key,
+  });
 
   final List<Widget> children;
 
@@ -30,7 +35,9 @@ class PatientRecordGrid extends StatelessWidget {
 
         if (mainAxisExtent == null) {
           final gap = AppSpacing.space4;
-          final itemWidth = (constraints.maxWidth - gap * (crossAxisCount - 1)) / crossAxisCount;
+          final itemWidth =
+              (constraints.maxWidth - gap * (crossAxisCount - 1)) /
+              crossAxisCount;
 
           return Wrap(
             spacing: gap,
@@ -39,7 +46,10 @@ class PatientRecordGrid extends StatelessWidget {
               for (var index = 0; index < children.length; index++)
                 SizedBox(
                   width: itemWidth,
-                  child: _StaggeredGridChild(index: index, child: children[index]),
+                  child: _StaggeredGridChild(
+                    index: index,
+                    child: children[index],
+                  ),
                 ),
             ],
           );
@@ -72,7 +82,8 @@ class _StaggeredGridChild extends StatefulWidget {
   State<_StaggeredGridChild> createState() => _StaggeredGridChildState();
 }
 
-class _StaggeredGridChildState extends State<_StaggeredGridChild> with SingleTickerProviderStateMixin {
+class _StaggeredGridChildState extends State<_StaggeredGridChild>
+    with SingleTickerProviderStateMixin {
   static const _staggerStepMs = 45;
   static const _maxStaggerMs = 270;
 
@@ -95,15 +106,26 @@ class _StaggeredGridChildState extends State<_StaggeredGridChild> with SingleTic
     _configured = true;
 
     final reducedMotion = AppMotion.prefersReducedMotion(context);
-    _controller.duration = AppMotion.resolveDuration(AppMotionPreset.rowEnter, reducedMotion: reducedMotion);
+    _controller.duration = AppMotion.resolveDuration(
+      AppMotionPreset.rowEnter,
+      reducedMotion: reducedMotion,
+    );
     _animation = CurvedAnimation(
       parent: _controller,
-      curve: AppMotion.resolveCurve(AppMotionPreset.rowEnter, reducedMotion: reducedMotion),
+      curve: AppMotion.resolveCurve(
+        AppMotionPreset.rowEnter,
+        reducedMotion: reducedMotion,
+      ),
     );
 
     final delay = reducedMotion
         ? Duration.zero
-        : Duration(milliseconds: (widget.index * _staggerStepMs).clamp(0, _maxStaggerMs));
+        : Duration(
+            milliseconds: (widget.index * _staggerStepMs).clamp(
+              0,
+              _maxStaggerMs,
+            ),
+          );
 
     if (delay == Duration.zero) {
       _controller.forward();

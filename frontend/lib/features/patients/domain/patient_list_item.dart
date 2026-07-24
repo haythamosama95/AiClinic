@@ -77,14 +77,21 @@ class PatientListItem {
       mrn: identical(mrn, copyWithSentinel) ? this.mrn : mrn as String?,
       fullName: fullName ?? this.fullName,
       phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
-      dateOfBirth: identical(dateOfBirth, copyWithSentinel) ? this.dateOfBirth : dateOfBirth as DateTime?,
-      gender: identical(gender, copyWithSentinel) ? this.gender : gender as PatientGender?,
-      lastVisitAt: identical(lastVisitAt, copyWithSentinel) ? this.lastVisitAt : lastVisitAt as DateTime?,
+      dateOfBirth: identical(dateOfBirth, copyWithSentinel)
+          ? this.dateOfBirth
+          : dateOfBirth as DateTime?,
+      gender: identical(gender, copyWithSentinel)
+          ? this.gender
+          : gender as PatientGender?,
+      lastVisitAt: identical(lastVisitAt, copyWithSentinel)
+          ? this.lastVisitAt
+          : lastVisitAt as DateTime?,
       nextAppointmentAt: identical(nextAppointmentAt, copyWithSentinel)
           ? this.nextAppointmentAt
           : nextAppointmentAt as DateTime?,
       registeringBranchId: registeringBranchId ?? this.registeringBranchId,
-      registeringBranchName: registeringBranchName ?? this.registeringBranchName,
+      registeringBranchName:
+          registeringBranchName ?? this.registeringBranchName,
     );
   }
 

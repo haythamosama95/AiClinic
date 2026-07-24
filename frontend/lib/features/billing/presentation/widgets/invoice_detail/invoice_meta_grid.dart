@@ -61,7 +61,9 @@ class _MetaItem extends StatelessWidget {
       children: [
         Text(
           item.label,
-          style: AppTypography.overline(context).copyWith(color: colors.textTertiary),
+          style: AppTypography.overline(
+            context,
+          ).copyWith(color: colors.textTertiary),
         ),
         const SizedBox(height: AppSpacing.space1),
         DefaultTextStyle(

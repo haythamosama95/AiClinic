@@ -10,6 +10,7 @@ class AppointmentListItem {
     required this.id,
     required this.patientId,
     required this.patientName,
+    this.patientMrn,
     this.doctorId,
     this.doctorName,
     required this.startTime,
@@ -24,11 +25,13 @@ class AppointmentListItem {
   final String id;
   final String patientId;
   final String patientName;
+  final String? patientMrn;
   final String? doctorId;
   final String? doctorName;
 
   /// Display label when [doctorName] is absent.
-  String get doctorDisplayName => doctorName?.trim().isNotEmpty == true ? doctorName!.trim() : 'Unassigned';
+  String get doctorDisplayName =>
+      doctorName?.trim().isNotEmpty == true ? doctorName!.trim() : 'Unassigned';
   final DateTime startTime;
   final DateTime endTime;
   final AppointmentType type;
@@ -41,25 +44,39 @@ class AppointmentListItem {
     final id = row['id']?.toString();
     final patientId = row['patient_id']?.toString();
     final patientName = row['patient_name']?.toString().trim();
+    final patientMrnRaw =
+        row['patient_mrn']?.toString() ?? row['mrn']?.toString();
+    final patientMrn = patientMrnRaw?.trim().isNotEmpty == true
+        ? patientMrnRaw!.trim()
+        : null;
     final doctorIdRaw = row['doctor_id']?.toString().trim();
-    final doctorId = doctorIdRaw == null || doctorIdRaw.isEmpty ? null : doctorIdRaw;
+    final doctorId = doctorIdRaw == null || doctorIdRaw.isEmpty
+        ? null
+        : doctorIdRaw;
     final doctorNameRaw = row['doctor_name']?.toString().trim();
-    final doctorName = doctorNameRaw == null || doctorNameRaw.isEmpty ? null : doctorNameRaw;
+    final doctorName = doctorNameRaw == null || doctorNameRaw.isEmpty
+        ? null
+        : doctorNameRaw;
     final startTime = parseAppointmentDateTime(row['start_time']);
     final endTime = parseAppointmentDateTime(row['end_time']);
     final typeRaw = row['type']?.toString();
     final statusRaw = row['status']?.toString();
     final type = AppointmentType.tryParse(typeRaw) ?? AppointmentType.unknown;
-    final status = AppointmentStatus.tryParse(statusRaw) ?? AppointmentStatus.unknown;
+    final status =
+        AppointmentStatus.tryParse(statusRaw) ?? AppointmentStatus.unknown;
     final updatedAt = parseAppointmentDateTime(row['updated_at']);
     final checkedInAt = parseAppointmentDateTime(row['checked_in_at']);
     final inProgressAt = parseAppointmentDateTime(row['in_progress_at']);
 
     if (type == AppointmentType.unknown) {
-      debugPrint('AppointmentListItem: unrecognized type "$typeRaw" for appointment $id');
+      debugPrint(
+        'AppointmentListItem: unrecognized type "$typeRaw" for appointment $id',
+      );
     }
     if (status == AppointmentStatus.unknown) {
-      debugPrint('AppointmentListItem: unrecognized status "$statusRaw" for appointment $id');
+      debugPrint(
+        'AppointmentListItem: unrecognized status "$statusRaw" for appointment $id',
+      );
     }
 
     if (id == null ||
@@ -77,6 +94,7 @@ class AppointmentListItem {
       id: id,
       patientId: patientId,
       patientName: patientName,
+      patientMrn: patientMrn,
       doctorId: doctorId,
       doctorName: doctorName,
       startTime: startTime,
@@ -93,6 +111,7 @@ class AppointmentListItem {
     String? id,
     String? patientId,
     String? patientName,
+    String? patientMrn,
     String? doctorId,
     String? doctorName,
     DateTime? startTime,
@@ -107,6 +126,7 @@ class AppointmentListItem {
       id: id ?? this.id,
       patientId: patientId ?? this.patientId,
       patientName: patientName ?? this.patientName,
+      patientMrn: patientMrn ?? this.patientMrn,
       doctorId: doctorId ?? this.doctorId,
       doctorName: doctorName ?? this.doctorName,
       startTime: startTime ?? this.startTime,
@@ -127,6 +147,7 @@ class AppointmentListItem {
             id == other.id &&
             patientId == other.patientId &&
             patientName == other.patientName &&
+            patientMrn == other.patientMrn &&
             doctorId == other.doctorId &&
             doctorName == other.doctorName &&
             startTime == other.startTime &&
@@ -143,6 +164,7 @@ class AppointmentListItem {
     id,
     patientId,
     patientName,
+    patientMrn,
     doctorId,
     doctorName,
     startTime,

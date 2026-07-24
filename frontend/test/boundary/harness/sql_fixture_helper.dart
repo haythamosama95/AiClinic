@@ -151,7 +151,7 @@ ON CONFLICT (id) DO NOTHING;
     final patientId = _deterministicUuid('a2', '${clinic.suffix}_patient');
     await execute('''
 INSERT INTO public.patients (
-  id, branch_id, organization_id, full_name, phone, created_by, updated_by
+  id, branch_id, organization_id, full_name, phone, mrn, created_by, updated_by
 )
 VALUES (
   '$patientId'::uuid,
@@ -159,6 +159,7 @@ VALUES (
   '${clinic.organizationId}'::uuid,
   '$fullName',
   '$phoneDigits',
+  auth_internal.assign_patient_mrn(),
   '$_bootstrapUserId'::uuid,
   '$_bootstrapUserId'::uuid
 )

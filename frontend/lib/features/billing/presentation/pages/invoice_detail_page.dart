@@ -41,7 +41,8 @@ class InvoiceDetailPage extends ConsumerStatefulWidget {
   ConsumerState<InvoiceDetailPage> createState() => _InvoiceDetailPageState();
 }
 
-class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage> with SingleTickerProviderStateMixin {
+class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _enterController;
   CurvedAnimation? _enterAnimation;
   var _enterStarted = false;
@@ -49,7 +50,10 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage> with Sing
   @override
   void initState() {
     super.initState();
-    _enterController = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+    _enterController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
   }
 
   @override
@@ -58,10 +62,15 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage> with Sing
     if (!_enterStarted) {
       _enterStarted = true;
       final reducedMotion = AppMotion.prefersReducedMotion(context);
-      _enterController.duration = reducedMotion ? Duration.zero : const Duration(milliseconds: 220);
+      _enterController.duration = reducedMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 220);
       _enterAnimation = CurvedAnimation(
         parent: _enterController,
-        curve: AppMotion.resolveCurve(AppMotionPreset.slideUp, reducedMotion: reducedMotion),
+        curve: AppMotion.resolveCurve(
+          AppMotionPreset.slideUp,
+          reducedMotion: reducedMotion,
+        ),
       );
       if (reducedMotion) {
         _enterController.value = 1;
@@ -95,7 +104,8 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage> with Sing
     final detailAsync = ref.watch(invoiceDetailViewProvider(widget.invoiceId));
 
     final content = detailAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      loading: () =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       error: (error, _) {
         if (_isInvoiceNotFound(error)) {
           return _InvoiceNotFoundView(onBack: _popToInvoicesList);
@@ -108,12 +118,16 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage> with Sing
             description: error.toString(),
             action: EmptyStateAction(
               label: 'Retry',
-              onPressed: () => ref.invalidate(invoiceDetailViewProvider(widget.invoiceId)),
+              onPressed: () =>
+                  ref.invalidate(invoiceDetailViewProvider(widget.invoiceId)),
             ),
           ),
         );
       },
-      data: (view) => _InvoiceDetailBody(view: view, onPopToInvoicesList: _popToInvoicesList),
+      data: (view) => _InvoiceDetailBody(
+        view: view,
+        onPopToInvoicesList: _popToInvoicesList,
+      ),
     );
 
     return FadeTransition(
@@ -150,8 +164,12 @@ class _InvoiceNotFoundView extends StatelessWidget {
         AppEmptyState(
           variant: AppEmptyStateVariant.error,
           title: 'Invoice not found',
-          description: 'The invoice you requested does not exist or has been removed.',
-          action: EmptyStateAction(label: 'Back to invoices', onPressed: onBack),
+          description:
+              'The invoice you requested does not exist or has been removed.',
+          action: EmptyStateAction(
+            label: 'Back to invoices',
+            onPressed: onBack,
+          ),
         ),
       ],
     );
@@ -159,7 +177,10 @@ class _InvoiceNotFoundView extends StatelessWidget {
 }
 
 class _InvoiceDetailBody extends ConsumerStatefulWidget {
-  const _InvoiceDetailBody({required this.view, required this.onPopToInvoicesList});
+  const _InvoiceDetailBody({
+    required this.view,
+    required this.onPopToInvoicesList,
+  });
 
   final InvoiceDetailViewState view;
   final VoidCallback onPopToInvoicesList;
@@ -171,10 +192,16 @@ class _InvoiceDetailBody extends ConsumerStatefulWidget {
 class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
   InvoiceDetail get invoice => widget.view.invoice;
 
-  Money _amountDue() => invoice.subtotal - invoice.discountAmount - invoice.insuranceCoveredAmount;
+  Money _amountDue() =>
+      invoice.subtotal -
+      invoice.discountAmount -
+      invoice.insuranceCoveredAmount;
 
   Money _netPaid() {
-    return invoice.payments.fold(Money.zero, (sum, payment) => sum + payment.amount);
+    return invoice.payments.fold(
+      Money.zero,
+      (sum, payment) => sum + payment.amount,
+    );
   }
 
   String _displayOrDash(String? value) {
@@ -257,7 +284,10 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
+    final displayNumber = BillingFormatting.invoiceDisplayNumber(
+      invoice.invoiceNumber,
+      invoice.id,
+    );
     final patientName = invoice.patientDisplayName?.trim().isNotEmpty == true
         ? invoice.patientDisplayName!.trim()
         : 'Unknown patient';
@@ -285,7 +315,10 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
       children: [
         AppBreadcrumb(
           items: [
-            AppBreadcrumbItem(label: 'Invoices', onTap: widget.onPopToInvoicesList),
+            AppBreadcrumbItem(
+              label: 'Invoices',
+              onTap: widget.onPopToInvoicesList,
+            ),
             AppBreadcrumbItem(label: displayNumber),
           ],
         ),
@@ -304,7 +337,8 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
             onVoid: _voidInvoice,
             onRecordPayment: _showRecordPaymentDialog,
             onRecordRefund: _showRecordRefundDialog,
-            onViewPatient: () => context.nav.pushPatientDetail(invoice.patientId),
+            onViewPatient: () =>
+                context.nav.pushPatientDetail(invoice.patientId),
             onViewVisit: () => context.nav.pushVisitDocument(invoice.visitId),
           ),
         ),
@@ -318,7 +352,10 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
                   for (var index = 0; index < linkCards.length; index++) ...[
                     if (index > 0) const SizedBox(width: AppSpacing.space4),
                     Expanded(
-                      child: _StaggeredLinkCard(index: index, child: linkCards[index]),
+                      child: _StaggeredLinkCard(
+                        index: index,
+                        child: linkCards[index],
+                      ),
                     ),
                   ],
                 ],
@@ -379,7 +416,8 @@ class _StaggeredLinkCard extends StatefulWidget {
   State<_StaggeredLinkCard> createState() => _StaggeredLinkCardState();
 }
 
-class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTickerProviderStateMixin {
+class _StaggeredLinkCardState extends State<_StaggeredLinkCard>
+    with SingleTickerProviderStateMixin {
   static const _staggerStepMs = 60;
 
   late final AnimationController _controller;
@@ -401,10 +439,16 @@ class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTicke
     _configured = true;
 
     final reducedMotion = AppMotion.prefersReducedMotion(context);
-    _controller.duration = AppMotion.resolveDuration(AppMotionPreset.rowEnter, reducedMotion: reducedMotion);
+    _controller.duration = AppMotion.resolveDuration(
+      AppMotionPreset.rowEnter,
+      reducedMotion: reducedMotion,
+    );
     _animation = CurvedAnimation(
       parent: _controller,
-      curve: AppMotion.resolveCurve(AppMotionPreset.rowEnter, reducedMotion: reducedMotion),
+      curve: AppMotion.resolveCurve(
+        AppMotionPreset.rowEnter,
+        reducedMotion: reducedMotion,
+      ),
     );
 
     final delay = reducedMotion
@@ -461,14 +505,20 @@ class _VisitUnavailableCard extends StatelessWidget {
             child: SizedBox(
               width: 40,
               height: 40,
-              child: Icon(Icons.event_busy_outlined, size: 18, color: colors.iconMuted),
+              child: Icon(
+                Icons.event_busy_outlined,
+                size: 18,
+                color: colors.iconMuted,
+              ),
             ),
           ),
           const SizedBox(width: AppSpacing.space3),
           Expanded(
             child: Text(
               'The source visit for this invoice is no longer available.',
-              style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+              style: AppTypography.bodySm(
+                context,
+              ).copyWith(color: colors.textSecondary),
             ),
           ),
         ],

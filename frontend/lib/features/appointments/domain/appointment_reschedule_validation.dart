@@ -9,7 +9,10 @@ import 'package:ai_clinic/features/clinic-management/domain/branch_working_sched
 class AppointmentRescheduleValidation {
   AppointmentRescheduleValidation._();
 
-  static bool isNoOpMove({required AppointmentListItem appointment, required DateTime newStart}) {
+  static bool isNoOpMove({
+    required AppointmentListItem appointment,
+    required DateTime newStart,
+  }) {
     return _isSameInstant(newStart.toLocal(), appointment.startTime);
   }
 
@@ -33,13 +36,18 @@ class AppointmentRescheduleValidation {
       return 'Only scheduled appointments can be moved. Confirmed appointments must be cancelled and re-booked.';
     }
 
-    final originalDurationMinutes = appointment.endTime.difference(appointment.startTime).inMinutes;
+    final originalDurationMinutes = appointment.endTime
+        .difference(appointment.startTime)
+        .inMinutes;
     if (originalDurationMinutes < 5) {
       return 'Appointment duration is too short to reschedule.';
     }
 
     final localNewStart = newStart.toLocal();
-    final localNewEnd = (newEnd ?? localNewStart.add(Duration(minutes: originalDurationMinutes))).toLocal();
+    final localNewEnd =
+        (newEnd ??
+                localNewStart.add(Duration(minutes: originalDurationMinutes)))
+            .toLocal();
     final durationMinutes = localNewEnd.difference(localNewStart).inMinutes;
 
     if (!localNewEnd.isAfter(localNewStart)) {
@@ -59,7 +67,11 @@ class AppointmentRescheduleValidation {
       return hoursMessage;
     }
 
-    if (!AppointmentWorkingHours.isWithinSchedule(schedule: schedule, start: localNewStart, end: localNewEnd)) {
+    if (!AppointmentWorkingHours.isWithinSchedule(
+      schedule: schedule,
+      start: localNewStart,
+      end: localNewEnd,
+    )) {
       return 'Appointment must be within branch working hours.';
     }
 
@@ -110,10 +122,16 @@ class AppointmentRescheduleValidation {
   }
 
   static bool _blocksScheduling(AppointmentListItem item) {
-    return item.status == AppointmentStatus.cancelled || item.status == AppointmentStatus.noShow;
+    return item.status == AppointmentStatus.cancelled ||
+        item.status == AppointmentStatus.noShow;
   }
 
-  static bool _timesOverlap(DateTime aStart, DateTime aEnd, DateTime bStart, DateTime bEnd) {
+  static bool _timesOverlap(
+    DateTime aStart,
+    DateTime aEnd,
+    DateTime bStart,
+    DateTime bEnd,
+  ) {
     return aStart.isBefore(bEnd) && aEnd.isAfter(bStart);
   }
 

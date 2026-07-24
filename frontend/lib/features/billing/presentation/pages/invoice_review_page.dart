@@ -20,7 +20,8 @@ class InvoiceReviewPage extends ConsumerWidget {
     final detailAsync = ref.watch(invoiceDetailViewProvider(invoiceId));
 
     return detailAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      loading: () =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       error: (error, _) => Center(
         child: AppEmptyState(
           variant: AppEmptyStateVariant.error,
@@ -28,13 +29,17 @@ class InvoiceReviewPage extends ConsumerWidget {
           description: error.toString(),
           action: EmptyStateAction(
             label: 'Retry',
-            onPressed: () => ref.invalidate(invoiceDetailViewProvider(invoiceId)),
+            onPressed: () =>
+                ref.invalidate(invoiceDetailViewProvider(invoiceId)),
           ),
         ),
       ),
       data: (view) {
         final invoice = view.invoice;
-        final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
+        final displayNumber = BillingFormatting.invoiceDisplayNumber(
+          invoice.invoiceNumber,
+          invoice.id,
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -42,15 +47,20 @@ class InvoiceReviewPage extends ConsumerWidget {
             AppPageHeader(
               title: displayNumber,
               description: [
-                if (invoice.patientDisplayName?.isNotEmpty == true) invoice.patientDisplayName,
+                if (invoice.patientDisplayName?.isNotEmpty == true)
+                  invoice.patientDisplayName,
                 if (invoice.branchName?.isNotEmpty == true) invoice.branchName,
-                if (invoice.issuedAt != null) 'Issued ${BillingFormatting.formatDate(invoice.issuedAt!)}',
+                if (invoice.issuedAt != null)
+                  'Issued ${BillingFormatting.formatDate(invoice.issuedAt!)}',
               ].whereType<String>().join(' · '),
             ),
             const SizedBox(height: AppSpacing.space5),
             Expanded(
               child: SingleChildScrollView(
-                child: VisitInvoiceReadOnlyReview(invoice: invoice, onBack: () => context.nav.pop()),
+                child: VisitInvoiceReadOnlyReview(
+                  invoice: invoice,
+                  onBack: () => context.nav.pop(),
+                ),
               ),
             ),
           ],

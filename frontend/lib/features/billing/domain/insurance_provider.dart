@@ -3,7 +3,12 @@ import 'package:flutter/foundation.dart';
 /// Organization-scoped insurance provider catalog entry (V1-6).
 @immutable
 class InsuranceProvider {
-  const InsuranceProvider({required this.id, required this.name, required this.isActive, this.contactInfo});
+  const InsuranceProvider({
+    required this.id,
+    required this.name,
+    required this.isActive,
+    this.contactInfo,
+  });
 
   final String id;
   final String name;
@@ -21,7 +26,8 @@ class InsuranceProvider {
       id: id,
       name: name,
       contactInfo: row['contact_info']?.toString(),
-      isActive: row['is_active'] == true || row['is_active']?.toString() == 'true',
+      isActive:
+          row['is_active'] == true || row['is_active']?.toString() == 'true',
     );
   }
 }

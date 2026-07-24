@@ -56,18 +56,27 @@ class PatientRegistrationState {
       submitting: submitting ?? this.submitting,
       duplicateCandidates: duplicateCandidates ?? this.duplicateCandidates,
       duplicateOpen: duplicateOpen ?? this.duplicateOpen,
-      acknowledgedDuplicate: acknowledgedDuplicate ?? this.acknowledgedDuplicate,
-      pendingOpenPatientId: clearPendingOpenPatientId ? null : (pendingOpenPatientId ?? this.pendingOpenPatientId),
+      acknowledgedDuplicate:
+          acknowledgedDuplicate ?? this.acknowledgedDuplicate,
+      pendingOpenPatientId: clearPendingOpenPatientId
+          ? null
+          : (pendingOpenPatientId ?? this.pendingOpenPatientId),
     );
   }
 }
 
-final patientRegistrationProvider = StateNotifierProvider<PatientRegistrationNotifier, PatientRegistrationState>((ref) {
-  return PatientRegistrationNotifier(ref);
-});
+final patientRegistrationProvider =
+    StateNotifierProvider<
+      PatientRegistrationNotifier,
+      PatientRegistrationState
+    >((ref) {
+      return PatientRegistrationNotifier(ref);
+    });
 
-class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState> {
-  PatientRegistrationNotifier(this._ref) : super(const PatientRegistrationState());
+class PatientRegistrationNotifier
+    extends StateNotifier<PatientRegistrationState> {
+  PatientRegistrationNotifier(this._ref)
+    : super(const PatientRegistrationState());
 
   final Ref _ref;
 
@@ -78,7 +87,9 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
       'phone' => values.copyWith(phone: value as String),
       'dateOfBirth' => values.copyWith(dateOfBirth: value as DateTime?),
       'gender' => values.copyWith(gender: value as PatientGender?),
-      'maritalStatus' => values.copyWith(maritalStatus: value as PatientMaritalStatus?),
+      'maritalStatus' => values.copyWith(
+        maritalStatus: value as PatientMaritalStatus?,
+      ),
       'notes' => values.copyWith(notes: value as String),
       _ => values,
     };
@@ -86,7 +97,9 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
     state = state.copyWith(
       values: nextValues,
       errors: _clearFieldError(state.errors, key),
-      acknowledgedDuplicate: state.acknowledgedDuplicate ? false : state.acknowledgedDuplicate,
+      acknowledgedDuplicate: state.acknowledgedDuplicate
+          ? false
+          : state.acknowledgedDuplicate,
     );
   }
 
@@ -124,7 +137,10 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
 
   /// Closes the duplicate dialog and signals navigation to an existing patient.
   void openExistingPatient(String patientId) {
-    state = state.copyWith(duplicateOpen: false, pendingOpenPatientId: patientId);
+    state = state.copyWith(
+      duplicateOpen: false,
+      pendingOpenPatientId: patientId,
+    );
   }
 
   /// Validates, checks for duplicates, then creates the patient when clear.
@@ -136,10 +152,15 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
       return null;
     }
 
-    final activeBranchId = _ref.read(authSessionProvider).context?.activeBranchId;
+    final activeBranchId = _ref
+        .read(authSessionProvider)
+        .context
+        ?.activeBranchId;
     if (activeBranchId == null || activeBranchId.isEmpty) {
       state = state.copyWith(
-        errors: const PatientFormErrors(form: 'Select an active branch before registering a patient.'),
+        errors: const PatientFormErrors(
+          form: 'Select an active branch before registering a patient.',
+        ),
       );
       return null;
     }
@@ -155,7 +176,11 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
         );
 
         if (candidates.isNotEmpty) {
-          state = state.copyWith(submitting: false, duplicateCandidates: candidates, duplicateOpen: true);
+          state = state.copyWith(
+            submitting: false,
+            duplicateCandidates: candidates,
+            duplicateOpen: true,
+          );
           return null;
         }
       }
@@ -168,7 +193,9 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
           dateOfBirth: state.values.dateOfBirth,
           gender: state.values.gender,
           maritalStatus: state.values.maritalStatus,
-          notes: state.values.notes.trim().isEmpty ? null : state.values.notes.trim(),
+          notes: state.values.notes.trim().isEmpty
+              ? null
+              : state.values.notes.trim(),
           acknowledgeDuplicate: state.acknowledgedDuplicate,
         ),
       );
@@ -176,12 +203,17 @@ class PatientRegistrationNotifier extends StateNotifier<PatientRegistrationState
       state = state.copyWith(submitting: false);
       return result;
     } on RpcFailure catch (failure) {
-      state = state.copyWith(submitting: false, errors: PatientFormErrors(form: patientMessageForRpc(failure)));
+      state = state.copyWith(
+        submitting: false,
+        errors: PatientFormErrors(form: patientMessageForRpc(failure)),
+      );
       return null;
     } catch (_) {
       state = state.copyWith(
         submitting: false,
-        errors: const PatientFormErrors(form: 'Could not register the patient. Try again.'),
+        errors: const PatientFormErrors(
+          form: 'Could not register the patient. Try again.',
+        ),
       );
       return null;
     }

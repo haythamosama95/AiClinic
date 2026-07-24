@@ -7,7 +7,11 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 
 /// Rounded icon-chip + title header for invoice detail raised cards.
 class InvoiceSectionTitle extends StatelessWidget {
-  const InvoiceSectionTitle({required this.icon, required this.title, super.key});
+  const InvoiceSectionTitle({
+    required this.icon,
+    required this.title,
+    super.key,
+  });
 
   final IconData icon;
   final String title;

@@ -9,9 +9,11 @@ import 'package:ai_clinic/features/appointments/data/appointment_queue_realtime_
 /// Realtime connection state for today's queue (FR-016).
 enum AppointmentQueueRealtimeConnection { connecting, live, degraded }
 
-typedef AppointmentQueueRealtimeStatusCallback = void Function(AppointmentQueueRealtimeConnection connection);
+typedef AppointmentQueueRealtimeStatusCallback =
+    void Function(AppointmentQueueRealtimeConnection connection);
 
-typedef AppointmentQueueRealtimeChangeCallback = void Function(AppointmentQueueRealtimeChange change);
+typedef AppointmentQueueRealtimeChangeCallback =
+    void Function(AppointmentQueueRealtimeChange change);
 
 /// Subscribes to appointment postgres changes for queue refresh (V1-4 US4).
 abstract class AppointmentQueueRealtimeClient {
@@ -24,7 +26,8 @@ abstract class AppointmentQueueRealtimeClient {
   void unsubscribe();
 }
 
-class SupabaseAppointmentQueueRealtimeClient implements AppointmentQueueRealtimeClient {
+class SupabaseAppointmentQueueRealtimeClient
+    implements AppointmentQueueRealtimeClient {
   SupabaseAppointmentQueueRealtimeClient(this._client);
 
   final SupabaseClient _client;
@@ -45,13 +48,21 @@ class SupabaseAppointmentQueueRealtimeClient implements AppointmentQueueRealtime
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'appointments',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'branch_id', value: branchId),
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'branch_id',
+            value: branchId,
+          ),
           callback: (payload) {
             onAppointmentChange(
               AppointmentQueueRealtimeChange(
                 eventType: payload.eventType,
-                oldRecord: payload.oldRecord.isEmpty ? null : Map<String, dynamic>.from(payload.oldRecord),
-                newRecord: payload.newRecord.isEmpty ? null : Map<String, dynamic>.from(payload.newRecord),
+                oldRecord: payload.oldRecord.isEmpty
+                    ? null
+                    : Map<String, dynamic>.from(payload.oldRecord),
+                newRecord: payload.newRecord.isEmpty
+                    ? null
+                    : Map<String, dynamic>.from(payload.newRecord),
               ),
             );
           },
@@ -78,6 +89,9 @@ class SupabaseAppointmentQueueRealtimeClient implements AppointmentQueueRealtime
   }
 }
 
-final appointmentQueueRealtimeClientProvider = Provider<AppointmentQueueRealtimeClient>((ref) {
-  return SupabaseAppointmentQueueRealtimeClient(ref.watch(supabaseClientProvider));
-});
+final appointmentQueueRealtimeClientProvider =
+    Provider<AppointmentQueueRealtimeClient>((ref) {
+      return SupabaseAppointmentQueueRealtimeClient(
+        ref.watch(supabaseClientProvider),
+      );
+    });

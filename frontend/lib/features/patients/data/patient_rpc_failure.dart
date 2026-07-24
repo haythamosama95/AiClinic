@@ -9,5 +9,7 @@ extension PatientRpcFailure on RpcFailure {
   bool get isStalePatient => code == 'STALE_PATIENT';
 
   List<DuplicateCandidate> get duplicateCandidates =>
-      PatientRepositoryImpl.parseDuplicateCandidates(result.data?['candidates']);
+      PatientRepositoryImpl.parseDuplicateCandidates(
+        result.data?['candidates'],
+      );
 }

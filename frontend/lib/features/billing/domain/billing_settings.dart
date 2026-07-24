@@ -13,6 +13,9 @@ class BillingSettings {
       return null;
     }
 
-    return BillingSettings(allowPartialPayments: allowPartial == true || allowPartial.toString() == 'true');
+    return BillingSettings(
+      allowPartialPayments:
+          allowPartial == true || allowPartial.toString() == 'true',
+    );
   }
 }

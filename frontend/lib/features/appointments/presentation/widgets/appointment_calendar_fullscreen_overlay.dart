@@ -22,10 +22,12 @@ class AppointmentCalendarFullscreenOverlay extends StatefulWidget {
   final ValueChanged<Future<void> Function()>? onReady;
 
   @override
-  State<AppointmentCalendarFullscreenOverlay> createState() => AppointmentCalendarFullscreenOverlayState();
+  State<AppointmentCalendarFullscreenOverlay> createState() =>
+      AppointmentCalendarFullscreenOverlayState();
 }
 
-class AppointmentCalendarFullscreenOverlayState extends State<AppointmentCalendarFullscreenOverlay>
+class AppointmentCalendarFullscreenOverlayState
+    extends State<AppointmentCalendarFullscreenOverlay>
     with SingleTickerProviderStateMixin {
   AnimationController? _controller;
   var _isClosing = false;
@@ -91,7 +93,10 @@ class AppointmentCalendarFullscreenOverlayState extends State<AppointmentCalenda
         return Stack(
           fit: StackFit.expand,
           children: [
-            ModalBarrier(dismissible: false, color: colors.surfaceCanvas.withValues(alpha: scrimOpacity)),
+            ModalBarrier(
+              dismissible: false,
+              color: colors.surfaceCanvas.withValues(alpha: scrimOpacity),
+            ),
             Positioned.fromRect(
               rect: rect,
               child: ClipRRect(

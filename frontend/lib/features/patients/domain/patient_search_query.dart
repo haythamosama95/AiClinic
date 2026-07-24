@@ -2,7 +2,8 @@
 abstract final class PatientSearchQuery {
   static final _digitsOnly = RegExp(r'^\d+$');
 
-  static bool isPhonePrefixQuery(String query) => _digitsOnly.hasMatch(query.trim());
+  static bool isPhonePrefixQuery(String query) =>
+      _digitsOnly.hasMatch(query.trim());
 
   /// Returns a user hint when [query] is too short to search; `null` when valid or browse mode.
   static String? validationHint(String? query) {

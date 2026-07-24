@@ -20,7 +20,12 @@ import 'package:ai_clinic/features/visits/presentation/widgets/visit_submitted_d
 
 /// Post-review billing workflow (web `VisitBillingFlow`).
 class VisitBillingFlow extends ConsumerStatefulWidget {
-  const VisitBillingFlow({required this.visitId, this.onBackToReview, this.onCompleted, super.key});
+  const VisitBillingFlow({
+    required this.visitId,
+    this.onBackToReview,
+    this.onCompleted,
+    super.key,
+  });
 
   final String visitId;
   final VoidCallback? onBackToReview;
@@ -30,19 +35,27 @@ class VisitBillingFlow extends ConsumerStatefulWidget {
   ConsumerState<VisitBillingFlow> createState() => _VisitBillingFlowState();
 }
 
-class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with SingleTickerProviderStateMixin {
+class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _enterController;
   late final Animation<double> _enterAnimation;
 
   @override
   void initState() {
     super.initState();
-    final reducedMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    final reducedMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
     _enterController = AnimationController(
       vsync: this,
       duration: reducedMotion ? Duration.zero : AppMotionDuration.base,
     );
-    _enterAnimation = CurvedAnimation(parent: _enterController, curve: AppMotion.outCurve);
+    _enterAnimation = CurvedAnimation(
+      parent: _enterController,
+      curve: AppMotion.outCurve,
+    );
     _enterController.forward();
   }
 
@@ -64,11 +77,15 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
     }
 
     final permissions = ref.read(permissionServiceProvider);
-    final billingNotifier = ref.read(visitBillingFlowProvider(widget.visitId).notifier);
+    final billingNotifier = ref.read(
+      visitBillingFlowProvider(widget.visitId).notifier,
+    );
     billingNotifier.setSubmitting(true);
 
     try {
-      final docNotifier = ref.read(visitDocumentationProvider(widget.visitId).notifier);
+      final docNotifier = ref.read(
+        visitDocumentationProvider(widget.visitId).notifier,
+      );
       await docNotifier.completeVisit();
 
       InvoiceDetail? invoice;
@@ -94,7 +111,10 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
         return;
       }
 
-      final completedVisit = ref.read(visitDocumentationProvider(widget.visitId)).value?.visit;
+      final completedVisit = ref
+          .read(visitDocumentationProvider(widget.visitId))
+          .value
+          ?.visit;
       if (completedVisit == null) {
         _showError('Could not finalize the visit. Please try again.');
         return;
@@ -151,7 +171,9 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
       invoice = await invoiceRepo.getDetail(invoiceId: invoiceId);
 
       if (line.quantity > 1) {
-        final item = invoice.items.firstWhere((entry) => entry.id == result.itemId);
+        final item = invoice.items.firstWhere(
+          (entry) => entry.id == result.itemId,
+        );
         await invoiceRepo.updateItem(
           itemId: result.itemId,
           expectedUpdatedAt: invoice.updatedAt,
@@ -163,7 +185,9 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
       }
     }
 
-    if (canApplyDiscount && discountType != VisitBillingDiscountType.none && discountValue > 0) {
+    if (canApplyDiscount &&
+        discountType != VisitBillingDiscountType.none &&
+        discountValue > 0) {
       final kind = switch (discountType) {
         VisitBillingDiscountType.percentage => DiscountKind.percentage,
         VisitBillingDiscountType.fixed => DiscountKind.fixed,
@@ -182,12 +206,18 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
       }
     }
 
-    await invoiceRepo.issue(invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt);
+    await invoiceRepo.issue(
+      invoiceId: invoice.id,
+      expectedUpdatedAt: invoice.updatedAt,
+    );
     return invoiceRepo.getDetail(invoiceId: invoiceId);
   }
 
   void _showError(String message) {
-    appToast(context, AppToastInput(message: message, variant: AppToastVariant.danger));
+    appToast(
+      context,
+      AppToastInput(message: message, variant: AppToastVariant.danger),
+    );
   }
 
   @override
@@ -198,7 +228,9 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
     final child = switch (billing.step) {
       VisitBillingStep.invoice => VisitInvoiceReviewStep(
         visitId: widget.visitId,
-        onBack: () => ref.read(visitBillingFlowProvider(widget.visitId).notifier).setStep(VisitBillingStep.services),
+        onBack: () => ref
+            .read(visitBillingFlowProvider(widget.visitId).notifier)
+            .setStep(VisitBillingStep.services),
         onFinalize: billing.isSubmitting ? null : _handleFinalize,
         isSubmitting: billing.isSubmitting,
       ),
@@ -207,7 +239,9 @@ class _VisitBillingFlowState extends ConsumerState<VisitBillingFlow> with Single
         onBack: _handleBackToReview,
         onContinue: billing.selectedLines.isEmpty
             ? null
-            : () => ref.read(visitBillingFlowProvider(widget.visitId).notifier).setStep(VisitBillingStep.invoice),
+            : () => ref
+                  .read(visitBillingFlowProvider(widget.visitId).notifier)
+                  .setStep(VisitBillingStep.invoice),
       ),
     };
 

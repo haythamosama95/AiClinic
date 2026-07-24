@@ -141,6 +141,23 @@ Frontend deliverables:
 - Patient archival (soft delete with confirmation)
 - Cross-branch patient search
 
+Operator notes (Patient MRN — `docs/specs/016-patient-mrn-field/quickstart.md`):
+
+**Desk staff notes (verified 2026-07-24)**
+
+- Every patient now has a **Medical Record Number (MRN)** in the form `MRN-NNNNNN`, generated automatically when the patient is registered. You cannot edit it on the patient record.
+- The **MRN** appears as the **first column** in the patients list so you can scan and locate a patient quickly. On a patient's detail page, it appears as a prominent chip near the name.
+- When you register a patient, a toast confirms the new MRN immediately; the detail page also shows it.
+- The MRN appears on **invoices** (list and detail) and **appointments** so billing and clinical staff can match records to the patient without opening the patient record.
+- **Reassigning an MRN** is a restricted action available only to **administrators**. From a patient's detail page, an administrator can open the reassignment dialog, enter a new value, and the system rejects duplicates. Every reassignment is recorded in the audit log with the old and new values, who did it, and when.
+- MRNs are **never reused**, even when a patient is archived.
+- If the system cannot reach the database, **you cannot register a patient** — the form shows an error rather than save a patient with a locally generated MRN. Retry once connectivity returns.
+
+**Automated verification**
+
+- Backend: `./backend/tests/run_patient_management_tests.sh` from the repo root (requires local Supabase on port 54322).
+- Flutter: `cd frontend && flutter test test/unit/patients/ test/boundary/patients/ test/integration/patients/`.
+
 ### V1-4: Appointments
 
 Required architecture docs:

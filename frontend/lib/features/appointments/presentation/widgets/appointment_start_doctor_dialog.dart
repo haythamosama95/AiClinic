@@ -9,7 +9,10 @@ class AppointmentStartDoctorDialog extends StatefulWidget {
 
   final List<QueueStartDoctorOption> options;
 
-  static Future<String?> show(BuildContext context, {required List<QueueStartDoctorOption> options}) {
+  static Future<String?> show(
+    BuildContext context, {
+    required List<QueueStartDoctorOption> options,
+  }) {
     return AppDialog.show<String?>(
       context,
       title: 'Who will see this patient?',
@@ -21,17 +24,23 @@ class AppointmentStartDoctorDialog extends StatefulWidget {
   }
 
   @override
-  State<AppointmentStartDoctorDialog> createState() => _AppointmentStartDoctorDialogState();
+  State<AppointmentStartDoctorDialog> createState() =>
+      _AppointmentStartDoctorDialogState();
 }
 
-class _AppointmentStartDoctorDialogState extends State<AppointmentStartDoctorDialog> {
+class _AppointmentStartDoctorDialogState
+    extends State<AppointmentStartDoctorDialog> {
   String? _selectedDoctorId;
 
   @override
   void initState() {
     super.initState();
-    final available = widget.options.where((option) => !option.isBusy).toList(growable: false);
-    final preferred = available.where((option) => option.isPreferred).firstOrNull;
+    final available = widget.options
+        .where((option) => !option.isBusy)
+        .toList(growable: false);
+    final preferred = available
+        .where((option) => option.isPreferred)
+        .firstOrNull;
     _selectedDoctorId = preferred?.id ?? available.firstOrNull?.id;
   }
 
@@ -41,7 +50,9 @@ class _AppointmentStartDoctorDialogState extends State<AppointmentStartDoctorDia
 
   @override
   Widget build(BuildContext context) {
-    final availableOptions = widget.options.where((option) => !option.isBusy).toList(growable: false);
+    final availableOptions = widget.options
+        .where((option) => !option.isBusy)
+        .toList(growable: false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -51,17 +62,21 @@ class _AppointmentStartDoctorDialogState extends State<AppointmentStartDoctorDia
           const AppEmptyState(
             variant: AppEmptyStateVariant.error,
             title: 'No doctors available',
-            description: 'Every doctor on shift already has a patient in progress.',
+            description:
+                'Every doctor on shift already has a patient in progress.',
           )
         else
           AppRadioGroup(
             value: _selectedDoctorId ?? '',
-            onChanged: (doctorId) => setState(() => _selectedDoctorId = doctorId),
+            onChanged: (doctorId) =>
+                setState(() => _selectedDoctorId = doctorId),
             options: [
               for (final option in availableOptions)
                 AppRadioOption(
                   value: option.id,
-                  label: option.isPreferred ? '${option.name} (preferred)' : option.name,
+                  label: option.isPreferred
+                      ? '${option.name} (preferred)'
+                      : option.name,
                 ),
             ],
           ),

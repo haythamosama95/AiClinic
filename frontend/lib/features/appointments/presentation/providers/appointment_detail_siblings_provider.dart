@@ -8,7 +8,10 @@ import 'package:ai_clinic/features/appointments/domain/appointment_org_calendar.
 
 @immutable
 class AppointmentDetailSiblingsQuery {
-  const AppointmentDetailSiblingsQuery({required this.branchId, required this.startTime});
+  const AppointmentDetailSiblingsQuery({
+    required this.branchId,
+    required this.startTime,
+  });
 
   final String branchId;
   final DateTime startTime;
@@ -28,13 +31,18 @@ class AppointmentDetailSiblingsQuery {
 
 /// Same-day appointments at the appointment branch — used for doctor-busy rules on the detail page.
 final appointmentDetailSiblingsProvider = FutureProvider.autoDispose
-    .family<List<AppointmentListItem>, AppointmentDetailSiblingsQuery>((ref, query) async {
+    .family<List<AppointmentListItem>, AppointmentDetailSiblingsQuery>((
+      ref,
+      query,
+    ) async {
       final branchId = query.branchId.trim();
       if (branchId.isEmpty) {
         return const [];
       }
 
-      final timezone = effectiveOrganizationTimezone(ref.read(authSessionProvider).context?.organizationTimezone);
+      final timezone = effectiveOrganizationTimezone(
+        ref.read(authSessionProvider).context?.organizationTimezone,
+      );
       final day = calendarDayInOrganizationTimezone(timezone, query.startTime);
       final range = appointmentTodayRangeInTimezone(timezone, day.toUtc());
 

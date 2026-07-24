@@ -25,7 +25,11 @@ class InvoiceDetailFooter extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.space05),
-            child: Icon(Icons.event_available_outlined, size: 16, color: colors.iconMuted),
+            child: Icon(
+              Icons.event_available_outlined,
+              size: 16,
+              color: colors.iconMuted,
+            ),
           ),
           const SizedBox(width: AppSpacing.space3),
           Expanded(
@@ -33,7 +37,9 @@ class InvoiceDetailFooter extends StatelessWidget {
               'Last updated $timestamp. Every invoice is tied to exactly one completed visit — '
               'the balance above is recomputed from the line items, discounts, insurance coverage, '
               'and payment ledger shown here.',
-              style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+              style: AppTypography.caption(
+                context,
+              ).copyWith(color: colors.textSecondary),
             ),
           ),
         ],

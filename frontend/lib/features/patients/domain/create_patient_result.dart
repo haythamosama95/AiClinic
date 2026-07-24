@@ -21,7 +21,10 @@ class CreatePatientResult {
   }
 
   CreatePatientResult copyWith({String? patientId, String? mrn}) {
-    return CreatePatientResult(patientId: patientId ?? this.patientId, mrn: mrn ?? this.mrn);
+    return CreatePatientResult(
+      patientId: patientId ?? this.patientId,
+      mrn: mrn ?? this.mrn,
+    );
   }
 
   @override

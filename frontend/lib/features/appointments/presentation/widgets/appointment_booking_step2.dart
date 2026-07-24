@@ -84,13 +84,20 @@ class AppointmentBookingStep2 extends StatelessWidget {
               children: [
                 Text(
                   '${_formatFullDate(selectedDate!)} · $slotMinutes-minute slots',
-                  style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                  style: AppTypography.bodySm(
+                    context,
+                  ).copyWith(color: colors.textSecondary),
                 ),
                 const SizedBox(height: AppSpacing.space3),
                 if (loadingSlots)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: AppSpacing.space8),
-                    child: Center(child: AppProgress(variant: ProgressVariant.circular, indeterminate: true)),
+                    child: Center(
+                      child: AppProgress(
+                        variant: ProgressVariant.circular,
+                        indeterminate: true,
+                      ),
+                    ),
                   )
                 else
                   AppBookingSlotGrid(
@@ -121,10 +128,12 @@ class _BookingDaySlotsTransition extends StatefulWidget {
   final Widget child;
 
   @override
-  State<_BookingDaySlotsTransition> createState() => _BookingDaySlotsTransitionState();
+  State<_BookingDaySlotsTransition> createState() =>
+      _BookingDaySlotsTransitionState();
 }
 
-class _BookingDaySlotsTransitionState extends State<_BookingDaySlotsTransition> {
+class _BookingDaySlotsTransitionState
+    extends State<_BookingDaySlotsTransition> {
   int _direction = 1;
 
   @override
@@ -138,10 +147,21 @@ class _BookingDaySlotsTransitionState extends State<_BookingDaySlotsTransition> 
   @override
   Widget build(BuildContext context) {
     final reducedMotion = AppMotion.prefersReducedMotion(context);
-    final duration = AppMotion.resolveDuration(AppMotionPreset.slideInline, reducedMotion: reducedMotion);
-    final curve = AppMotion.resolveCurve(AppMotionPreset.slideInline, reducedMotion: reducedMotion);
-    final inlineSign = Directionality.of(context) == TextDirection.rtl ? -1.0 : 1.0;
-    final enterOffset = AppMotion.hidden(AppMotionPreset.slideInline).offset.dx * _direction * inlineSign;
+    final duration = AppMotion.resolveDuration(
+      AppMotionPreset.slideInline,
+      reducedMotion: reducedMotion,
+    );
+    final curve = AppMotion.resolveCurve(
+      AppMotionPreset.slideInline,
+      reducedMotion: reducedMotion,
+    );
+    final inlineSign = Directionality.of(context) == TextDirection.rtl
+        ? -1.0
+        : 1.0;
+    final enterOffset =
+        AppMotion.hidden(AppMotionPreset.slideInline).offset.dx *
+        _direction *
+        inlineSign;
 
     return ClipRect(
       child: AnimatedSize(
@@ -153,11 +173,19 @@ class _BookingDaySlotsTransitionState extends State<_BookingDaySlotsTransition> 
           duration: duration,
           switchInCurve: curve,
           switchOutCurve: AppMotion.inCurve,
-          layoutBuilder: (currentChild, previousChildren) => currentChild ?? const SizedBox.shrink(),
+          layoutBuilder: (currentChild, previousChildren) =>
+              currentChild ?? const SizedBox.shrink(),
           transitionBuilder: (child, animation) {
-            return _InlineDayTransition(animation: animation, enterOffset: enterOffset, child: child);
+            return _InlineDayTransition(
+              animation: animation,
+              enterOffset: enterOffset,
+              child: child,
+            );
           },
-          child: KeyedSubtree(key: ValueKey<String>(_dateKey(widget.date)), child: widget.child),
+          child: KeyedSubtree(
+            key: ValueKey<String>(_dateKey(widget.date)),
+            child: widget.child,
+          ),
         ),
       ),
     );
@@ -167,11 +195,16 @@ class _BookingDaySlotsTransitionState extends State<_BookingDaySlotsTransition> 
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  static String _dateKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
+  static String _dateKey(DateTime date) =>
+      '${date.year}-${date.month}-${date.day}';
 }
 
 class _InlineDayTransition extends StatelessWidget {
-  const _InlineDayTransition({required this.animation, required this.enterOffset, required this.child});
+  const _InlineDayTransition({
+    required this.animation,
+    required this.enterOffset,
+    required this.child,
+  });
 
   final Animation<double> animation;
   final double enterOffset;
@@ -239,7 +272,10 @@ class _BookingContextBanner extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.space4,
+          vertical: AppSpacing.space3,
+        ),
         child: IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -252,12 +288,22 @@ class _BookingContextBanner extends StatelessWidget {
                   children: [
                     Text(
                       'BOOKING FOR',
-                      style: AppTypography.caption(context).copyWith(color: colors.textTertiary, letterSpacing: 0.4),
+                      style: AppTypography.caption(context).copyWith(
+                        color: colors.textTertiary,
+                        letterSpacing: 0.4,
+                      ),
                     ),
-                    Text(patientName, style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary)),
+                    Text(
+                      patientName,
+                      style: AppTypography.bodyStrong(
+                        context,
+                      ).copyWith(color: colors.textPrimary),
+                    ),
                     Text(
                       '$branchName · ${preferredDoctorName != null ? 'Prefers $preferredDoctorName' : 'Any doctor'}',
-                      style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+                      style: AppTypography.caption(
+                        context,
+                      ).copyWith(color: colors.textSecondary),
                     ),
                   ],
                 ),
@@ -271,14 +317,22 @@ class _BookingContextBanner extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Text('Date', style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary)),
+                        Text(
+                          'Date',
+                          style: AppTypography.bodyStrong(
+                            context,
+                          ).copyWith(color: colors.textPrimary),
+                        ),
                         const Spacer(),
                         if (openCount != null)
                           Text(
                             '$openCount open slot${openCount == 1 ? '' : 's'}',
-                            style: AppTypography.caption(
-                              context,
-                            ).copyWith(color: colors.textSecondary, fontFeatures: const [FontFeature.tabularFigures()]),
+                            style: AppTypography.caption(context).copyWith(
+                              color: colors.textSecondary,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
                           ),
                       ],
                     ),
@@ -297,7 +351,12 @@ class _BookingContextBanner extends StatelessWidget {
                     ),
                     if (dateError != null) ...[
                       const SizedBox(height: AppSpacing.space2),
-                      Text(dateError!, style: AppTypography.caption(context).copyWith(color: colors.statusDangerFg)),
+                      Text(
+                        dateError!,
+                        style: AppTypography.caption(
+                          context,
+                        ).copyWith(color: colors.statusDangerFg),
+                      ),
                     ],
                   ],
                 ),

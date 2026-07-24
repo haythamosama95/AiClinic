@@ -43,10 +43,12 @@ class VisitInvoiceReviewStep extends ConsumerStatefulWidget {
   final bool isSubmitting;
 
   @override
-  ConsumerState<VisitInvoiceReviewStep> createState() => _VisitInvoiceReviewStepState();
+  ConsumerState<VisitInvoiceReviewStep> createState() =>
+      _VisitInvoiceReviewStepState();
 }
 
-class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep> with TickerProviderStateMixin {
+class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
+    with TickerProviderStateMixin {
   late final AnimationController _mainController;
   late final AnimationController _sidebarController;
   late final Animation<double> _mainAnimation;
@@ -55,7 +57,11 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
   @override
   void initState() {
     super.initState();
-    final reducedMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    final reducedMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
     _mainController = AnimationController(
       vsync: this,
       duration: reducedMotion ? Duration.zero : AppMotionDuration.base,
@@ -64,8 +70,14 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
       vsync: this,
       duration: reducedMotion ? Duration.zero : AppMotionDuration.base,
     );
-    _mainAnimation = CurvedAnimation(parent: _mainController, curve: AppMotion.outCurve);
-    _sidebarAnimation = CurvedAnimation(parent: _sidebarController, curve: AppMotion.outCurve);
+    _mainAnimation = CurvedAnimation(
+      parent: _mainController,
+      curve: AppMotion.outCurve,
+    );
+    _sidebarAnimation = CurvedAnimation(
+      parent: _sidebarController,
+      curve: AppMotion.outCurve,
+    );
 
     _mainController.forward();
     if (reducedMotion) {
@@ -89,7 +101,9 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
   @override
   Widget build(BuildContext context) {
     final billing = ref.watch(visitBillingFlowProvider(widget.visitId));
-    final billingNotifier = ref.read(visitBillingFlowProvider(widget.visitId).notifier);
+    final billingNotifier = ref.read(
+      visitBillingFlowProvider(widget.visitId).notifier,
+    );
     final permissions = ref.watch(permissionServiceProvider);
     final canApplyDiscount = permissions.canApplyDiscount();
     final totals = billing.totals;
@@ -97,8 +111,12 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
     final reducedMotion = AppMotion.prefersReducedMotion(context);
 
     final currency = ref.watch(organizationCurrencyProvider);
-    final docState = ref.watch(visitDocumentationProvider(widget.visitId)).value;
-    final patientAsync = docState == null ? null : ref.watch(patientDetailProvider(docState.visit.patientId));
+    final docState = ref
+        .watch(visitDocumentationProvider(widget.visitId))
+        .value;
+    final patientAsync = docState == null
+        ? null
+        : ref.watch(patientDetailProvider(docState.visit.patientId));
 
     final invoiceCard = _InvoiceDocumentCard(
       previewNumber: previewNumber,
@@ -107,8 +125,16 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
       discountType: billing.discountType,
       discountValue: billing.discountValue,
       currency: currency,
-      patientName: patientAsync?.maybeWhen(data: (patient) => patient.fullName, orElse: () => 'Patient') ?? 'Patient',
-      patientPhone: patientAsync?.maybeWhen(data: (patient) => patient.phone, orElse: () => null),
+      patientName:
+          patientAsync?.maybeWhen(
+            data: (patient) => patient.fullName,
+            orElse: () => 'Patient',
+          ) ??
+          'Patient',
+      patientPhone: patientAsync?.maybeWhen(
+        data: (patient) => patient.phone,
+        orElse: () => null,
+      ),
     );
 
     final discountSidebar = canApplyDiscount
@@ -133,11 +159,23 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: _wrapMotion(invoiceCard, _mainAnimation, reducedMotion, AppMotionPreset.slideUp)),
+                  Expanded(
+                    child: _wrapMotion(
+                      invoiceCard,
+                      _mainAnimation,
+                      reducedMotion,
+                      AppMotionPreset.slideUp,
+                    ),
+                  ),
                   const SizedBox(width: AppSpacing.space6),
                   SizedBox(
                     width: 320,
-                    child: _wrapMotion(discountSidebar, _sidebarAnimation, reducedMotion, AppMotionPreset.slideInline),
+                    child: _wrapMotion(
+                      discountSidebar,
+                      _sidebarAnimation,
+                      reducedMotion,
+                      AppMotionPreset.slideInline,
+                    ),
                   ),
                 ],
               );
@@ -146,41 +184,72 @@ class _VisitInvoiceReviewStepState extends ConsumerState<VisitInvoiceReviewStep>
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _wrapMotion(invoiceCard, _mainAnimation, reducedMotion, AppMotionPreset.slideUp),
+                _wrapMotion(
+                  invoiceCard,
+                  _mainAnimation,
+                  reducedMotion,
+                  AppMotionPreset.slideUp,
+                ),
                 const SizedBox(height: AppSpacing.space6),
-                _wrapMotion(discountSidebar, _sidebarAnimation, reducedMotion, AppMotionPreset.slideInline),
+                _wrapMotion(
+                  discountSidebar,
+                  _sidebarAnimation,
+                  reducedMotion,
+                  AppMotionPreset.slideInline,
+                ),
               ],
             );
           },
         ),
         const SizedBox(height: AppSpacing.space6),
-        _InvoiceReviewFooter(onBack: widget.onBack, onFinalize: widget.onFinalize, isSubmitting: widget.isSubmitting),
+        _InvoiceReviewFooter(
+          onBack: widget.onBack,
+          onFinalize: widget.onFinalize,
+          isSubmitting: widget.isSubmitting,
+        ),
       ],
     );
 
     return content;
   }
 
-  Widget _wrapMotion(Widget child, Animation<double> animation, bool reducedMotion, AppMotionPreset preset) {
+  Widget _wrapMotion(
+    Widget child,
+    Animation<double> animation,
+    bool reducedMotion,
+    AppMotionPreset preset,
+  ) {
     if (reducedMotion) {
       return child;
     }
-    return AppMotion.animatedPreset(context: context, preset: preset, animation: animation, child: child);
+    return AppMotion.animatedPreset(
+      context: context,
+      preset: preset,
+      animation: animation,
+      child: child,
+    );
   }
 }
 
 /// Read-only invoice document view matching step 2/2 layout (issued invoices).
 class VisitInvoiceReadOnlyReview extends ConsumerStatefulWidget {
-  const VisitInvoiceReadOnlyReview({required this.invoice, required this.onBack, super.key});
+  const VisitInvoiceReadOnlyReview({
+    required this.invoice,
+    required this.onBack,
+    super.key,
+  });
 
   final InvoiceDetail invoice;
   final VoidCallback onBack;
 
   @override
-  ConsumerState<VisitInvoiceReadOnlyReview> createState() => _VisitInvoiceReadOnlyReviewState();
+  ConsumerState<VisitInvoiceReadOnlyReview> createState() =>
+      _VisitInvoiceReadOnlyReviewState();
 }
 
-class _VisitInvoiceReadOnlyReviewState extends ConsumerState<VisitInvoiceReadOnlyReview> with TickerProviderStateMixin {
+class _VisitInvoiceReadOnlyReviewState
+    extends ConsumerState<VisitInvoiceReadOnlyReview>
+    with TickerProviderStateMixin {
   late final AnimationController _mainController;
   late final AnimationController _sidebarController;
   late final Animation<double> _mainAnimation;
@@ -189,7 +258,11 @@ class _VisitInvoiceReadOnlyReviewState extends ConsumerState<VisitInvoiceReadOnl
   @override
   void initState() {
     super.initState();
-    final reducedMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    final reducedMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
     _mainController = AnimationController(
       vsync: this,
       duration: reducedMotion ? Duration.zero : AppMotionDuration.base,
@@ -198,8 +271,14 @@ class _VisitInvoiceReadOnlyReviewState extends ConsumerState<VisitInvoiceReadOnl
       vsync: this,
       duration: reducedMotion ? Duration.zero : AppMotionDuration.base,
     );
-    _mainAnimation = CurvedAnimation(parent: _mainController, curve: AppMotion.outCurve);
-    _sidebarAnimation = CurvedAnimation(parent: _sidebarController, curve: AppMotion.outCurve);
+    _mainAnimation = CurvedAnimation(
+      parent: _mainController,
+      curve: AppMotion.outCurve,
+    );
+    _sidebarAnimation = CurvedAnimation(
+      parent: _sidebarController,
+      curve: AppMotion.outCurve,
+    );
 
     _mainController.forward();
     if (reducedMotion) {
@@ -228,7 +307,10 @@ class _VisitInvoiceReadOnlyReviewState extends ConsumerState<VisitInvoiceReadOnl
     final discount = _discountFromInvoice(invoice);
     final totals = _totalsFromInvoice(invoice);
     final reducedMotion = AppMotion.prefersReducedMotion(context);
-    final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
+    final displayNumber = BillingFormatting.invoiceDisplayNumber(
+      invoice.invoiceNumber,
+      invoice.id,
+    );
 
     final invoiceCard = _InvoiceDocumentCard(
       previewNumber: displayNumber,
@@ -243,7 +325,10 @@ class _VisitInvoiceReadOnlyReviewState extends ConsumerState<VisitInvoiceReadOnl
       issuedAt: invoice.issuedAt ?? invoice.updatedAt,
       headerTitle: 'Invoice',
       showStepLabel: false,
-      statusBadge: InvoiceStatusBadge(status: invoice.status, size: BadgeSize.md),
+      statusBadge: InvoiceStatusBadge(
+        status: invoice.status,
+        size: BadgeSize.md,
+      ),
     );
 
     final discountSidebar = _ReadOnlyDiscountSidebar(
@@ -264,11 +349,23 @@ class _VisitInvoiceReadOnlyReviewState extends ConsumerState<VisitInvoiceReadOnl
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: _wrapMotion(invoiceCard, _mainAnimation, reducedMotion, AppMotionPreset.slideUp)),
+                  Expanded(
+                    child: _wrapMotion(
+                      invoiceCard,
+                      _mainAnimation,
+                      reducedMotion,
+                      AppMotionPreset.slideUp,
+                    ),
+                  ),
                   const SizedBox(width: AppSpacing.space6),
                   SizedBox(
                     width: 320,
-                    child: _wrapMotion(discountSidebar, _sidebarAnimation, reducedMotion, AppMotionPreset.slideInline),
+                    child: _wrapMotion(
+                      discountSidebar,
+                      _sidebarAnimation,
+                      reducedMotion,
+                      AppMotionPreset.slideInline,
+                    ),
                   ),
                 ],
               );
@@ -277,9 +374,19 @@ class _VisitInvoiceReadOnlyReviewState extends ConsumerState<VisitInvoiceReadOnl
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _wrapMotion(invoiceCard, _mainAnimation, reducedMotion, AppMotionPreset.slideUp),
+                _wrapMotion(
+                  invoiceCard,
+                  _mainAnimation,
+                  reducedMotion,
+                  AppMotionPreset.slideUp,
+                ),
                 const SizedBox(height: AppSpacing.space6),
-                _wrapMotion(discountSidebar, _sidebarAnimation, reducedMotion, AppMotionPreset.slideInline),
+                _wrapMotion(
+                  discountSidebar,
+                  _sidebarAnimation,
+                  reducedMotion,
+                  AppMotionPreset.slideInline,
+                ),
               ],
             );
           },
@@ -298,11 +405,21 @@ class _VisitInvoiceReadOnlyReviewState extends ConsumerState<VisitInvoiceReadOnl
     );
   }
 
-  Widget _wrapMotion(Widget child, Animation<double> animation, bool reducedMotion, AppMotionPreset preset) {
+  Widget _wrapMotion(
+    Widget child,
+    Animation<double> animation,
+    bool reducedMotion,
+    AppMotionPreset preset,
+  ) {
     if (reducedMotion) {
       return child;
     }
-    return AppMotion.animatedPreset(context: context, preset: preset, animation: animation, child: child);
+    return AppMotion.animatedPreset(
+      context: context,
+      preset: preset,
+      animation: animation,
+      child: child,
+    );
   }
 }
 
@@ -320,23 +437,38 @@ List<VisitSelectedServiceLine> _linesFromInvoiceItems(List<InvoiceItem> items) {
       .toList(growable: false);
 }
 
-({VisitBillingDiscountType type, double value}) _discountFromInvoice(InvoiceDetail invoice) {
+({VisitBillingDiscountType type, double value}) _discountFromInvoice(
+  InvoiceDetail invoice,
+) {
   if (invoice.discountAmount.isZero) {
     return (type: VisitBillingDiscountType.none, value: 0);
   }
 
   final parsedValue = double.tryParse(invoice.discountValue ?? '') ?? 0;
   return switch (invoice.discountKind) {
-    DiscountKind.percentage => (type: VisitBillingDiscountType.percentage, value: parsedValue),
-    DiscountKind.fixed => (type: VisitBillingDiscountType.fixed, value: parsedValue),
-    null => (type: VisitBillingDiscountType.fixed, value: invoice.discountAmount.asDouble),
+    DiscountKind.percentage => (
+      type: VisitBillingDiscountType.percentage,
+      value: parsedValue,
+    ),
+    DiscountKind.fixed => (
+      type: VisitBillingDiscountType.fixed,
+      value: parsedValue,
+    ),
+    null => (
+      type: VisitBillingDiscountType.fixed,
+      value: invoice.discountAmount.asDouble,
+    ),
   };
 }
 
 VisitBillingTotals _totalsFromInvoice(InvoiceDetail invoice) {
   final subtotal = invoice.subtotal.asDouble;
   final discountAmount = invoice.discountAmount.asDouble;
-  return VisitBillingTotals(subtotal: subtotal, discountAmount: discountAmount, total: subtotal - discountAmount);
+  return VisitBillingTotals(
+    subtotal: subtotal,
+    discountAmount: discountAmount,
+    total: subtotal - discountAmount,
+  );
 }
 
 class _InvoiceDocumentCard extends StatelessWidget {
@@ -372,7 +504,9 @@ class _InvoiceDocumentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final elevation = context.appElevation;
-    final issuedDate = DateFormat('d MMM yyyy').format((issuedAt ?? DateTime.now()).toLocal());
+    final issuedDate = DateFormat(
+      'd MMM yyyy',
+    ).format((issuedAt ?? DateTime.now()).toLocal());
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -405,20 +539,27 @@ class _InvoiceDocumentCard extends StatelessWidget {
                             children: [
                               TextSpan(
                                 text: headerTitle,
-                                style: AppTypography.bodySm(
-                                  context,
-                                ).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w500),
+                                style: AppTypography.bodySm(context).copyWith(
+                                  color: colors.textPrimary,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                               if (showStepLabel)
                                 TextSpan(
                                   text: ' · Step 2 of 2',
-                                  style: AppTypography.bodySm(context).copyWith(color: colors.textTertiary),
+                                  style: AppTypography.bodySm(
+                                    context,
+                                  ).copyWith(color: colors.textTertiary),
                                 ),
                             ],
                           ),
                         ),
                       ),
-                      statusBadge ?? const AppBadge(label: 'Draft', color: BadgeColor.warning),
+                      statusBadge ??
+                          const AppBadge(
+                            label: 'Draft',
+                            color: BadgeColor.warning,
+                          ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.space5),
@@ -436,14 +577,18 @@ class _InvoiceDocumentCard extends StatelessWidget {
                                 Expanded(
                                   child: Text(
                                     patientName,
-                                    style: AppTypography.h2(context).copyWith(color: colors.textPrimary),
+                                    style: AppTypography.h2(
+                                      context,
+                                    ).copyWith(color: colors.textPrimary),
                                   ),
                                 ),
                                 Text(
                                   previewNumber,
-                                  style: AppTypography.bodySm(
-                                    context,
-                                  ).copyWith(color: colors.textPrimary, fontFamily: 'monospace', letterSpacing: 0.8),
+                                  style: AppTypography.bodySm(context).copyWith(
+                                    color: colors.textPrimary,
+                                    fontFamily: 'monospace',
+                                    letterSpacing: 0.8,
+                                  ),
                                 ),
                               ],
                             ),
@@ -451,10 +596,13 @@ class _InvoiceDocumentCard extends StatelessWidget {
                             Text.rich(
                               TextSpan(
                                 children: [
-                                  if (patientPhone != null && patientPhone!.trim().isNotEmpty)
+                                  if (patientPhone != null &&
+                                      patientPhone!.trim().isNotEmpty)
                                     TextSpan(
                                       text: patientPhone!.trim(),
-                                      style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                                      style: AppTypography.bodySm(
+                                        context,
+                                      ).copyWith(color: colors.textSecondary),
                                     ),
                                 ],
                               ),
@@ -464,7 +612,9 @@ class _InvoiceDocumentCard extends StatelessWidget {
                               issuedDate,
                               style: AppTypography.bodySm(context).copyWith(
                                 color: colors.textSecondary,
-                                fontFeatures: const [FontFeature.tabularFigures()],
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
                               ),
                             ),
                           ],
@@ -476,14 +626,22 @@ class _InvoiceDocumentCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(AppSpacing.space6, 0, AppSpacing.space6, AppSpacing.space5),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.space6,
+                0,
+                AppSpacing.space6,
+                AppSpacing.space5,
+              ),
               child: _InvoiceLineTable(lines: lines, currency: currency),
             ),
             DecoratedBox(
               decoration: BoxDecoration(
                 color: colors.surfaceSunken.withValues(alpha: 0.2),
                 border: Border(
-                  top: BorderSide(color: colors.borderDefault, style: BorderStyle.solid),
+                  top: BorderSide(
+                    color: colors.borderDefault,
+                    style: BorderStyle.solid,
+                  ),
                 ),
               ),
               child: Padding(
@@ -497,31 +655,49 @@ class _InvoiceDocumentCard extends StatelessWidget {
                   children: [
                     _TotalRow(
                       label: 'Subtotal',
-                      child: AppMoneyDisplay(amount: totals.subtotal, currency: currency),
+                      child: AppMoneyDisplay(
+                        amount: totals.subtotal,
+                        currency: currency,
+                      ),
                     ),
                     if (totals.discountAmount > 0) ...[
                       const SizedBox(height: AppSpacing.space2),
                       _TotalRow(
-                        label: discountType == VisitBillingDiscountType.percentage
+                        label:
+                            discountType == VisitBillingDiscountType.percentage
                             ? 'Discount (${discountValue.round()}%)'
                             : 'Discount',
-                        child: AppMoneyDisplay(amount: totals.discountAmount, currency: currency, negative: true),
+                        child: AppMoneyDisplay(
+                          amount: totals.discountAmount,
+                          currency: currency,
+                          negative: true,
+                        ),
                         labelColor: colors.statusSuccessFg,
                       ),
                     ],
                     const SizedBox(height: AppSpacing.space3),
                     DecoratedBox(
                       decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: colors.borderSubtle)),
+                        border: Border(
+                          top: BorderSide(color: colors.borderSubtle),
+                        ),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.only(top: AppSpacing.space3),
                         child: _TotalRow(
                           label: 'Total due',
-                          labelStyle: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                          labelStyle: AppTypography.bodyStrong(
+                            context,
+                          ).copyWith(color: colors.textPrimary),
                           child: DefaultTextStyle(
-                            style: AppTypography.h2(context).copyWith(color: colors.textPrimary),
-                            child: AppMoneyDisplay(amount: totals.total, currency: currency, emphasis: true),
+                            style: AppTypography.h2(
+                              context,
+                            ).copyWith(color: colors.textPrimary),
+                            child: AppMoneyDisplay(
+                              amount: totals.total,
+                              currency: currency,
+                              emphasis: true,
+                            ),
                           ),
                         ),
                       ),
@@ -546,7 +722,11 @@ class _PerforatedEdge extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 6,
-      child: CustomPaint(painter: _PerforatedEdgePainter(color: colors.borderDefault.withValues(alpha: 0.4))),
+      child: CustomPaint(
+        painter: _PerforatedEdgePainter(
+          color: colors.borderDefault.withValues(alpha: 0.4),
+        ),
+      ),
     );
   }
 }
@@ -569,7 +749,8 @@ class _PerforatedEdgePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _PerforatedEdgePainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _PerforatedEdgePainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _InvoiceLineTable extends StatelessWidget {
@@ -609,36 +790,60 @@ class _InvoiceLineTable extends StatelessWidget {
             for (final line in lines)
               TableRow(
                 decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: colors.borderSubtle.withValues(alpha: 0.7))),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: colors.borderSubtle.withValues(alpha: 0.7),
+                    ),
+                  ),
                 ),
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.space3 + 2),
-                    child: Text(line.name, style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary)),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.space3 + 2,
+                    ),
+                    child: Text(
+                      line.name,
+                      style: AppTypography.bodySm(
+                        context,
+                      ).copyWith(color: colors.textPrimary),
+                    ),
                   ),
                   if (showUnit)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.space3 + 2),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.space3 + 2,
+                      ),
                       child: Align(
                         alignment: Alignment.centerRight,
-                        child: AppMoneyDisplay(amount: line.unitPrice, currency: currency),
+                        child: AppMoneyDisplay(
+                          amount: line.unitPrice,
+                          currency: currency,
+                        ),
                       ),
                     ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.space3 + 2),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.space3 + 2,
+                    ),
                     child: Text(
                       '${line.quantity}',
                       textAlign: TextAlign.center,
-                      style: AppTypography.bodySm(
-                        context,
-                      ).copyWith(color: colors.textSecondary, fontFeatures: const [FontFeature.tabularFigures()]),
+                      style: AppTypography.bodySm(context).copyWith(
+                        color: colors.textSecondary,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.space3 + 2),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.space3 + 2,
+                    ),
                     child: Align(
                       alignment: Alignment.centerRight,
-                      child: AppMoneyDisplay(amount: line.lineTotal, currency: currency),
+                      child: AppMoneyDisplay(
+                        amount: line.lineTotal,
+                        currency: currency,
+                      ),
                     ),
                   ),
                 ],
@@ -663,14 +868,21 @@ class _TableHeaderCell extends StatelessWidget {
       child: Text(
         label.toUpperCase(),
         textAlign: align,
-        style: AppTypography.overline(context).copyWith(color: context.appColors.textTertiary),
+        style: AppTypography.overline(
+          context,
+        ).copyWith(color: context.appColors.textTertiary),
       ),
     );
   }
 }
 
 class _TotalRow extends StatelessWidget {
-  const _TotalRow({required this.label, required this.child, this.labelStyle, this.labelColor});
+  const _TotalRow({
+    required this.label,
+    required this.child,
+    this.labelStyle,
+    this.labelColor,
+  });
 
   final String label;
   final Widget child;
@@ -685,7 +897,11 @@ class _TotalRow extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: labelStyle ?? AppTypography.bodySm(context).copyWith(color: labelColor ?? colors.textSecondary),
+            style:
+                labelStyle ??
+                AppTypography.bodySm(
+                  context,
+                ).copyWith(color: labelColor ?? colors.textSecondary),
           ),
         ),
         child,
@@ -712,7 +928,9 @@ class _DiscountSidebar extends StatelessWidget {
   final ValueChanged<double> onDiscountValueChanged;
 
   bool get _fixedDiscountExceedsSubtotal =>
-      discountType == VisitBillingDiscountType.fixed && discountValue > 0 && discountValue > subtotal;
+      discountType == VisitBillingDiscountType.fixed &&
+      discountValue > 0 &&
+      discountValue > subtotal;
 
   @override
   Widget build(BuildContext context) {
@@ -736,7 +954,11 @@ class _DiscountSidebar extends StatelessWidget {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(AppSpacing.space2 + 2),
-                      child: Icon(Icons.percent_rounded, size: 18, color: AppColorPrimitives.amber700),
+                      child: Icon(
+                        Icons.percent_rounded,
+                        size: 18,
+                        color: AppColorPrimitives.amber700,
+                      ),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.space3),
@@ -744,10 +966,17 @@ class _DiscountSidebar extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Discount', style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+                        Text(
+                          'Discount',
+                          style: AppTypography.overline(
+                            context,
+                          ).copyWith(color: colors.textTertiary),
+                        ),
                         Text(
                           'Optional adjustment',
-                          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                          style: AppTypography.bodySm(
+                            context,
+                          ).copyWith(color: colors.textSecondary),
                         ),
                       ],
                     ),
@@ -769,15 +998,24 @@ class _DiscountSidebar extends StatelessWidget {
                         label: 'Discount type',
                         child: AppRadioGroup(
                           value: discountType.name,
-                          onChanged: (value) => onDiscountTypeChanged(VisitBillingDiscountType.values.byName(value)),
+                          onChanged: (value) => onDiscountTypeChanged(
+                            VisitBillingDiscountType.values.byName(value),
+                          ),
                           options: const [
                             AppRadioOption(value: 'none', label: 'No discount'),
-                            AppRadioOption(value: 'percentage', label: 'Percentage off'),
-                            AppRadioOption(value: 'fixed', label: 'Fixed amount off'),
+                            AppRadioOption(
+                              value: 'percentage',
+                              label: 'Percentage off',
+                            ),
+                            AppRadioOption(
+                              value: 'fixed',
+                              label: 'Fixed amount off',
+                            ),
                           ],
                         ),
                       ),
-                      if (discountType == VisitBillingDiscountType.percentage) ...[
+                      if (discountType ==
+                          VisitBillingDiscountType.percentage) ...[
                         const SizedBox(height: AppSpacing.space4),
                         AppFormField(
                           id: 'discount-percent',
@@ -788,8 +1026,11 @@ class _DiscountSidebar extends StatelessWidget {
                             max: 100,
                             step: 1,
                             placeholder: '0',
-                            initialValue: discountValue > 0 ? discountValue.round() : null,
-                            onValueChange: (value) => onDiscountValueChanged(value?.toDouble() ?? 0),
+                            initialValue: discountValue > 0
+                                ? discountValue.round()
+                                : null,
+                            onValueChange: (value) =>
+                                onDiscountValueChanged(value?.toDouble() ?? 0),
                           ),
                         ),
                       ],
@@ -802,8 +1043,11 @@ class _DiscountSidebar extends StatelessWidget {
                             currency: currency,
                             placeholder: '0.00',
                             invalid: _fixedDiscountExceedsSubtotal,
-                            initialValue: discountValue > 0 ? discountValue : null,
-                            onValueChange: (value) => onDiscountValueChanged(value ?? 0),
+                            initialValue: discountValue > 0
+                                ? discountValue
+                                : null,
+                            onValueChange: (value) =>
+                                onDiscountValueChanged(value ?? 0),
                           ),
                         ),
                         if (_fixedDiscountExceedsSubtotal) ...[
@@ -811,7 +1055,9 @@ class _DiscountSidebar extends StatelessWidget {
                           const AppAlert(
                             variant: AppAlertVariant.warning,
                             title: 'Amount exceeds invoice subtotal',
-                            child: Text('The discount will be capped at the subtotal.'),
+                            child: Text(
+                              'The discount will be capped at the subtotal.',
+                            ),
                           ),
                         ],
                       ],
@@ -850,7 +1096,9 @@ class _DiscountInfoCard extends StatelessWidget {
             child: Text(
               message ??
                   'Finalizing issues the invoice linked to this visit. Payment can be recorded from the patient billing tab.',
-              style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+              style: AppTypography.caption(
+                context,
+              ).copyWith(color: colors.textSecondary),
             ),
           ),
         ],
@@ -877,11 +1125,14 @@ class _ReadOnlyDiscountSidebar extends StatelessWidget {
     final colors = context.appColors;
 
     if (discountAmount <= 0) {
-      return const _DiscountInfoCard(message: 'No discount was applied to this invoice.');
+      return const _DiscountInfoCard(
+        message: 'No discount was applied to this invoice.',
+      );
     }
 
     final discountLabel = switch (discountType) {
-      VisitBillingDiscountType.percentage => 'Percentage off (${discountValue.round()}%)',
+      VisitBillingDiscountType.percentage =>
+        'Percentage off (${discountValue.round()}%)',
       VisitBillingDiscountType.fixed => 'Fixed amount off',
       VisitBillingDiscountType.none => 'Discount',
     };
@@ -904,7 +1155,11 @@ class _ReadOnlyDiscountSidebar extends StatelessWidget {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(AppSpacing.space2 + 2),
-                      child: Icon(Icons.percent_rounded, size: 18, color: AppColorPrimitives.amber700),
+                      child: Icon(
+                        Icons.percent_rounded,
+                        size: 18,
+                        color: AppColorPrimitives.amber700,
+                      ),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.space3),
@@ -912,10 +1167,17 @@ class _ReadOnlyDiscountSidebar extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Discount', style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+                        Text(
+                          'Discount',
+                          style: AppTypography.overline(
+                            context,
+                          ).copyWith(color: colors.textTertiary),
+                        ),
                         Text(
                           'Applied adjustment',
-                          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                          style: AppTypography.bodySm(
+                            context,
+                          ).copyWith(color: colors.textSecondary),
                         ),
                       ],
                     ),
@@ -932,13 +1194,32 @@ class _ReadOnlyDiscountSidebar extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('Discount type', style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
+                      Text(
+                        'Discount type',
+                        style: AppTypography.caption(
+                          context,
+                        ).copyWith(color: colors.textTertiary),
+                      ),
                       const SizedBox(height: AppSpacing.space1),
-                      Text(discountLabel, style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary)),
+                      Text(
+                        discountLabel,
+                        style: AppTypography.bodySm(
+                          context,
+                        ).copyWith(color: colors.textPrimary),
+                      ),
                       const SizedBox(height: AppSpacing.space4),
-                      Text('Amount', style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
+                      Text(
+                        'Amount',
+                        style: AppTypography.caption(
+                          context,
+                        ).copyWith(color: colors.textTertiary),
+                      ),
                       const SizedBox(height: AppSpacing.space1),
-                      AppMoneyDisplay(amount: discountAmount, currency: currency, negative: true),
+                      AppMoneyDisplay(
+                        amount: discountAmount,
+                        currency: currency,
+                        negative: true,
+                      ),
                     ],
                   ),
                 ),
@@ -948,7 +1229,8 @@ class _ReadOnlyDiscountSidebar extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.space4),
         const _DiscountInfoCard(
-          message: 'This invoice has been finalized. Payment can be recorded from the patient billing tab.',
+          message:
+              'This invoice has been finalized. Payment can be recorded from the patient billing tab.',
         ),
       ],
     );
@@ -956,7 +1238,11 @@ class _ReadOnlyDiscountSidebar extends StatelessWidget {
 }
 
 class _InvoiceReviewFooter extends StatelessWidget {
-  const _InvoiceReviewFooter({required this.onBack, required this.onFinalize, required this.isSubmitting});
+  const _InvoiceReviewFooter({
+    required this.onBack,
+    required this.onFinalize,
+    required this.isSubmitting,
+  });
 
   final VoidCallback onBack;
   final VoidCallback? onFinalize;
@@ -975,7 +1261,10 @@ class _InvoiceReviewFooter extends StatelessWidget {
         );
         final finalizeButton = AppButton(
           loading: isSubmitting,
-          trailingIcon: const Icon(Icons.check_circle_outline_rounded, size: 16),
+          trailingIcon: const Icon(
+            Icons.check_circle_outline_rounded,
+            size: 16,
+          ),
           onPressed: onFinalize,
           child: const Text('Finalize visit & invoice'),
         );

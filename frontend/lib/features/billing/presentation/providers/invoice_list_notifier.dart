@@ -37,7 +37,10 @@ class InvoiceListUiState {
 }
 
 /// Paginated invoice list with debounced filters (V1-6 US5).
-final invoiceListProvider = AsyncNotifierProvider<InvoiceListNotifier, InvoiceListUiState>(InvoiceListNotifier.new);
+final invoiceListProvider =
+    AsyncNotifierProvider<InvoiceListNotifier, InvoiceListUiState>(
+      InvoiceListNotifier.new,
+    );
 
 class InvoiceListNotifier extends AsyncNotifier<InvoiceListUiState> {
   InvoiceListFilters _filters = const InvoiceListFilters();
@@ -47,7 +50,9 @@ class InvoiceListNotifier extends AsyncNotifier<InvoiceListUiState> {
 
   @override
   Future<InvoiceListUiState> build() async {
-    ref.watch(authSessionProvider.select((state) => state.context?.activeBranchId));
+    ref.watch(
+      authSessionProvider.select((state) => state.context?.activeBranchId),
+    );
     return _load(_filters);
   }
 
@@ -56,7 +61,10 @@ class InvoiceListNotifier extends AsyncNotifier<InvoiceListUiState> {
     state = await AsyncValue.guard(() => _load(filters));
   }
 
-  Future<void> applyControls(InvoiceListControls controls, {required bool multiBranch}) async {
+  Future<void> applyControls(
+    InvoiceListControls controls, {
+    required bool multiBranch,
+  }) async {
     await applyFilters(controls.toBackendFilters(multiBranch: multiBranch));
   }
 
@@ -102,7 +110,8 @@ class InvoiceListNotifier extends AsyncNotifier<InvoiceListUiState> {
     // Backend currently ignores sort_field/sort_direction; sort the loaded page client-side.
     final items = sortInvoiceListItemsClientSide(page.items, filters);
 
-    final estimatedTotal = filters.offset + items.length + (page.hasMore ? 1 : 0);
+    final estimatedTotal =
+        filters.offset + items.length + (page.hasMore ? 1 : 0);
 
     return InvoiceListUiState(
       items: items,

@@ -8,14 +8,24 @@ import 'package:ai_clinic/features/billing/domain/payment_method.dart';
 
 /// Presentation helpers for billing amounts and dates (V1-6).
 abstract final class BillingFormatting {
-  static String formatMoney(Money amount, {String currency = 'USD', String? locale}) {
+  static String formatMoney(
+    Money amount, {
+    String currency = 'USD',
+    String? locale,
+  }) {
     final formatLocale = locale ?? 'en_US';
     final symbol = _currencySymbol(currency);
     try {
       if (symbol != null) {
-        return NumberFormat.currency(locale: formatLocale, symbol: symbol).format(amount.asDouble);
+        return NumberFormat.currency(
+          locale: formatLocale,
+          symbol: symbol,
+        ).format(amount.asDouble);
       }
-      return NumberFormat.currency(locale: formatLocale, name: currency.toUpperCase()).format(amount.asDouble);
+      return NumberFormat.currency(
+        locale: formatLocale,
+        name: currency.toUpperCase(),
+      ).format(amount.asDouble);
     } on Object {
       final value = amount.wireValue;
       if (symbol != null) {
@@ -40,7 +50,8 @@ abstract final class BillingFormatting {
 
   static String formatDate(DateTime date) => _dateFormat.format(date.toLocal());
 
-  static String formatDateTime(DateTime date) => _dateTimeFormat.format(date.toLocal());
+  static String formatDateTime(DateTime date) =>
+      _dateTimeFormat.format(date.toLocal());
 
   static String invoiceDisplayNumber(String? invoiceNumber, String invoiceId) {
     final number = invoiceNumber?.trim();

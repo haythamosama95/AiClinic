@@ -24,10 +24,12 @@ class VisitServiceSelectionSidebar extends StatefulWidget {
   final String currency;
 
   @override
-  State<VisitServiceSelectionSidebar> createState() => _VisitServiceSelectionSidebarState();
+  State<VisitServiceSelectionSidebar> createState() =>
+      _VisitServiceSelectionSidebarState();
 }
 
-class _VisitServiceSelectionSidebarState extends State<VisitServiceSelectionSidebar>
+class _VisitServiceSelectionSidebarState
+    extends State<VisitServiceSelectionSidebar>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _animation;
@@ -35,9 +37,19 @@ class _VisitServiceSelectionSidebarState extends State<VisitServiceSelectionSide
   @override
   void initState() {
     super.initState();
-    final reducedMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
-    _controller = AnimationController(vsync: this, duration: reducedMotion ? Duration.zero : AppMotionDuration.base);
-    _animation = CurvedAnimation(parent: _controller, curve: AppMotion.outCurve);
+    final reducedMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
+    _controller = AnimationController(
+      vsync: this,
+      duration: reducedMotion ? Duration.zero : AppMotionDuration.base,
+    );
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: AppMotion.outCurve,
+    );
     _controller.forward();
   }
 
@@ -68,7 +80,11 @@ class _VisitServiceSelectionSidebarState extends State<VisitServiceSelectionSide
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(AppSpacing.space2 + 2),
-                  child: Icon(Icons.receipt_long_outlined, size: 18, color: AppColorPrimitives.violet600),
+                  child: Icon(
+                    Icons.receipt_long_outlined,
+                    size: 18,
+                    color: AppColorPrimitives.violet600,
+                  ),
                 ),
               ),
               const SizedBox(width: AppSpacing.space3),
@@ -76,19 +92,31 @@ class _VisitServiceSelectionSidebarState extends State<VisitServiceSelectionSide
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Selected', style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
+                    Text(
+                      'Selected',
+                      style: AppTypography.overline(
+                        context,
+                      ).copyWith(color: colors.textTertiary),
+                    ),
                     Text.rich(
                       TextSpan(
                         children: [
                           TextSpan(
                             text: '${widget.selectedLines.length} ',
-                            style: AppTypography.h3(
-                              context,
-                            ).copyWith(color: colors.textPrimary, fontFeatures: const [FontFeature.tabularFigures()]),
+                            style: AppTypography.h3(context).copyWith(
+                              color: colors.textPrimary,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
                           ),
                           TextSpan(
-                            text: widget.selectedLines.length == 1 ? 'service' : 'services',
-                            style: AppTypography.body(context).copyWith(color: colors.textSecondary),
+                            text: widget.selectedLines.length == 1
+                                ? 'service'
+                                : 'services',
+                            style: AppTypography.body(
+                              context,
+                            ).copyWith(color: colors.textSecondary),
                           ),
                         ],
                       ),
@@ -108,7 +136,9 @@ class _VisitServiceSelectionSidebarState extends State<VisitServiceSelectionSide
               child: widget.selectedLines.isEmpty
                   ? Text(
                       'No services selected yet. Pick from the catalog.',
-                      style: AppTypography.bodySm(context).copyWith(color: colors.textTertiary),
+                      style: AppTypography.bodySm(
+                        context,
+                      ).copyWith(color: colors.textTertiary),
                     )
                   : Column(
                       children: [
@@ -122,22 +152,31 @@ class _VisitServiceSelectionSidebarState extends State<VisitServiceSelectionSide
                                     children: [
                                       TextSpan(
                                         text: line.name,
-                                        style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary),
+                                        style: AppTypography.bodySm(
+                                          context,
+                                        ).copyWith(color: colors.textPrimary),
                                       ),
                                       if (line.quantity > 1)
                                         TextSpan(
                                           text: ' × ${line.quantity}',
-                                          style: AppTypography.bodySm(context).copyWith(color: colors.textTertiary),
+                                          style: AppTypography.bodySm(context)
+                                              .copyWith(
+                                                color: colors.textTertiary,
+                                              ),
                                         ),
                                     ],
                                   ),
                                 ),
                               ),
                               const SizedBox(width: AppSpacing.space2),
-                              AppMoneyDisplay(amount: line.lineTotal, currency: widget.currency),
+                              AppMoneyDisplay(
+                                amount: line.lineTotal,
+                                currency: widget.currency,
+                              ),
                             ],
                           ),
-                          if (line != widget.selectedLines.last) const SizedBox(height: AppSpacing.space2 + 2),
+                          if (line != widget.selectedLines.last)
+                            const SizedBox(height: AppSpacing.space2 + 2),
                         ],
                       ],
                     ),
@@ -152,9 +191,18 @@ class _VisitServiceSelectionSidebarState extends State<VisitServiceSelectionSide
               padding: const EdgeInsets.only(top: AppSpacing.space4),
               child: Row(
                 children: [
-                  Text('Subtotal', style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary)),
+                  Text(
+                    'Subtotal',
+                    style: AppTypography.bodySm(
+                      context,
+                    ).copyWith(color: colors.textSecondary),
+                  ),
                   const Spacer(),
-                  AppMoneyDisplay(amount: widget.subtotal, currency: widget.currency, emphasis: true),
+                  AppMoneyDisplay(
+                    amount: widget.subtotal,
+                    currency: widget.currency,
+                    emphasis: true,
+                  ),
                 ],
               ),
             ),
@@ -164,7 +212,10 @@ class _VisitServiceSelectionSidebarState extends State<VisitServiceSelectionSide
     );
 
     Widget content = DecoratedBox(
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(AppRadius.x2l), boxShadow: elevation.shadows1),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.x2l),
+        boxShadow: elevation.shadows1,
+      ),
       child: card,
     );
 

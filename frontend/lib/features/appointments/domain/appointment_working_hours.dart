@@ -28,19 +28,32 @@ class AppointmentWorkingHours {
     }
 
     // Treat 23:59 close as end-of-day so slots ending at midnight are not rejected.
-    final effectiveCloseMinutes = closeMinutes >= (23 * 60 + 59) ? 24 * 60 : closeMinutes;
-    final midnightSentinelEnd = _isMidnightSentinelEnd(localStart, localEnd, closeMinutes);
+    final effectiveCloseMinutes = closeMinutes >= (23 * 60 + 59)
+        ? 24 * 60
+        : closeMinutes;
+    final midnightSentinelEnd = _isMidnightSentinelEnd(
+      localStart,
+      localEnd,
+      closeMinutes,
+    );
     if (!midnightSentinelEnd &&
-        (localStart.year != localEnd.year || localStart.month != localEnd.month || localStart.day != localEnd.day)) {
+        (localStart.year != localEnd.year ||
+            localStart.month != localEnd.month ||
+            localStart.day != localEnd.day)) {
       return false;
     }
 
     final startMinutes = localStart.hour * 60 + localStart.minute;
-    final endMinutes = midnightSentinelEnd ? 24 * 60 : localEnd.hour * 60 + localEnd.minute;
+    final endMinutes = midnightSentinelEnd
+        ? 24 * 60
+        : localEnd.hour * 60 + localEnd.minute;
     return startMinutes >= openMinutes && endMinutes <= effectiveCloseMinutes;
   }
 
-  static BranchWorkingDayHours? _hoursForDay(BranchWorkingSchedule schedule, BranchWeekday weekday) {
+  static BranchWorkingDayHours? _hoursForDay(
+    BranchWorkingSchedule schedule,
+    BranchWeekday weekday,
+  ) {
     for (final day in schedule.days) {
       if (day.day == weekday) {
         return day;
@@ -61,15 +74,25 @@ class AppointmentWorkingHours {
     };
   }
 
-  static bool _isMidnightSentinelEnd(DateTime localStart, DateTime localEnd, int closeMinutes) {
+  static bool _isMidnightSentinelEnd(
+    DateTime localStart,
+    DateTime localEnd,
+    int closeMinutes,
+  ) {
     if (closeMinutes < 23 * 60 + 59) {
       return false;
     }
     if (localEnd.hour != 0 || localEnd.minute != 0) {
       return false;
     }
-    final nextDay = DateTime(localStart.year, localStart.month, localStart.day + 1);
-    return localEnd.year == nextDay.year && localEnd.month == nextDay.month && localEnd.day == nextDay.day;
+    final nextDay = DateTime(
+      localStart.year,
+      localStart.month,
+      localStart.day + 1,
+    );
+    return localEnd.year == nextDay.year &&
+        localEnd.month == nextDay.month &&
+        localEnd.day == nextDay.day;
   }
 
   static int? _parseHm(String? value) {

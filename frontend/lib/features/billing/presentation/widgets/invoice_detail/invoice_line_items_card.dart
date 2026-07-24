@@ -29,12 +29,17 @@ class InvoiceLineItemsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasLineDiscounts = items.any((item) => item.lineDiscountAmount.asDouble > 0);
+    final hasLineDiscounts = items.any(
+      (item) => item.lineDiscountAmount.asDouble > 0,
+    );
 
     return AppCard(
       variant: CardVariant.raised,
       padding: CardPadding.md,
-      header: const InvoiceSectionTitle(icon: Icons.receipt_long_outlined, title: 'Line items'),
+      header: const InvoiceSectionTitle(
+        icon: Icons.receipt_long_outlined,
+        title: 'Line items',
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppRadius.x2l),
         child: Column(
@@ -86,22 +91,31 @@ class _LineItemsTable extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: AppSpacing.space4),
         child: Text(
           'No line items',
-          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+          style: AppTypography.bodySm(
+            context,
+          ).copyWith(color: colors.textSecondary),
         ),
       );
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final showWideColumns = constraints.maxWidth >= InvoiceLineItemsCard._smBreakpoint;
+        final showWideColumns =
+            constraints.maxWidth >= InvoiceLineItemsCard._smBreakpoint;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _HeaderRow(showWideColumns: showWideColumns, hasLineDiscounts: hasLineDiscounts),
+            _HeaderRow(
+              showWideColumns: showWideColumns,
+              hasLineDiscounts: hasLineDiscounts,
+            ),
             for (final item in items) ...[
-              Divider(height: 1, color: colors.borderSubtle.withValues(alpha: 0.7)),
+              Divider(
+                height: 1,
+                color: colors.borderSubtle.withValues(alpha: 0.7),
+              ),
               _LineItemRow(
                 item: item,
                 currency: currency,
@@ -118,7 +132,10 @@ class _LineItemsTable extends StatelessWidget {
 }
 
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({required this.showWideColumns, required this.hasLineDiscounts});
+  const _HeaderRow({
+    required this.showWideColumns,
+    required this.hasLineDiscounts,
+  });
 
   final bool showWideColumns;
   final bool hasLineDiscounts;
@@ -130,8 +147,12 @@ class _HeaderRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: _HeaderCell('Service')),
-          if (showWideColumns) Expanded(child: _HeaderCell('Unit', align: TextAlign.end)),
-          const SizedBox(width: 64, child: _HeaderCell('Qty', align: TextAlign.center)),
+          if (showWideColumns)
+            Expanded(child: _HeaderCell('Unit', align: TextAlign.end)),
+          const SizedBox(
+            width: 64,
+            child: _HeaderCell('Qty', align: TextAlign.center),
+          ),
           if (showWideColumns && hasLineDiscounts)
             Expanded(child: _HeaderCell('Discount', align: TextAlign.end)),
           Expanded(child: _HeaderCell('Amount', align: TextAlign.end)),
@@ -167,13 +188,21 @@ class _LineItemRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Text(item.description, style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary)),
+            child: Text(
+              item.description,
+              style: AppTypography.bodySm(
+                context,
+              ).copyWith(color: colors.textPrimary),
+            ),
           ),
           if (showWideColumns)
             Expanded(
               child: Align(
                 alignment: Alignment.centerRight,
-                child: AppMoneyDisplay(amount: item.unitPrice.asDouble, currency: currency),
+                child: AppMoneyDisplay(
+                  amount: item.unitPrice.asDouble,
+                  currency: currency,
+                ),
               ),
             ),
           SizedBox(
@@ -201,7 +230,10 @@ class _LineItemRow extends StatelessWidget {
           Expanded(
             child: Align(
               alignment: Alignment.centerRight,
-              child: AppMoneyDisplay(amount: item.lineTotal.asDouble, currency: currency),
+              child: AppMoneyDisplay(
+                amount: item.lineTotal.asDouble,
+                currency: currency,
+              ),
             ),
           ),
         ],

@@ -12,10 +12,12 @@ class AppointmentCalendarColorLegendButton extends StatefulWidget {
   const AppointmentCalendarColorLegendButton({super.key});
 
   @override
-  State<AppointmentCalendarColorLegendButton> createState() => _AppointmentCalendarColorLegendButtonState();
+  State<AppointmentCalendarColorLegendButton> createState() =>
+      _AppointmentCalendarColorLegendButtonState();
 }
 
-class _AppointmentCalendarColorLegendButtonState extends State<AppointmentCalendarColorLegendButton> {
+class _AppointmentCalendarColorLegendButtonState
+    extends State<AppointmentCalendarColorLegendButton> {
   var _open = false;
   Timer? _hideTimer;
   var _isTriggerHovered = false;
@@ -68,7 +70,9 @@ class _AppointmentCalendarColorLegendButtonState extends State<AppointmentCalend
             icon: const Icon(Icons.legend_toggle_outlined),
             label: 'Appointment colors',
             tooltip: 'Appointment colors',
-            variant: isOpen || _isTriggerHovered ? AppIconButtonVariant.secondary : AppIconButtonVariant.ghost,
+            variant: isOpen || _isTriggerHovered
+                ? AppIconButtonVariant.secondary
+                : AppIconButtonVariant.ghost,
             onPressed: onToggle,
           ),
         );
@@ -108,9 +112,13 @@ class _AppointmentCalendarColorLegendPanel extends StatelessWidget {
               AppSpacing.space2,
               AppSpacing.space2,
             ),
-            child: Text('Appointment colors', style: AppTypography.bodyStrong(context)),
+            child: Text(
+              'Appointment colors',
+              style: AppTypography.bodyStrong(context),
+            ),
           ),
-          for (final status in AppointmentCalendarDisplay.calendarStatusLegend) ...[
+          for (final status
+              in AppointmentCalendarDisplay.calendarStatusLegend) ...[
             _LegendRow(status: status),
             if (status != AppointmentCalendarDisplay.calendarStatusLegend.last)
               const SizedBox(height: AppSpacing.space1),
@@ -120,7 +128,9 @@ class _AppointmentCalendarColorLegendPanel extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
             child: Text(
               'Colors reflect appointment status.',
-              style: AppTypography.caption(context).copyWith(color: colors.textTertiary),
+              style: AppTypography.caption(
+                context,
+              ).copyWith(color: colors.textTertiary),
             ),
           ),
         ],
@@ -146,10 +156,15 @@ class _LegendRow extends StatelessWidget {
           Container(
             width: 14,
             height: 14,
-            decoration: AppointmentCalendarStatusSwatch.decoration(style, radius: AppRadius.sm),
+            decoration: AppointmentCalendarStatusSwatch.decoration(
+              style,
+              radius: AppRadius.sm,
+            ),
           ),
           const SizedBox(width: AppSpacing.space2),
-          Expanded(child: Text(status.label, style: AppTypography.bodySm(context))),
+          Expanded(
+            child: Text(status.label, style: AppTypography.bodySm(context)),
+          ),
         ],
       ),
     );

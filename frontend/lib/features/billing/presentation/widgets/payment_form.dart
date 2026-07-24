@@ -17,7 +17,11 @@ import 'package:ai_clinic/features/billing/presentation/utils/payment_method_l10
 
 /// Records a payment against an issued invoice.
 class PaymentForm extends ConsumerStatefulWidget {
-  const PaymentForm({required this.invoice, required this.onRecorded, super.key});
+  const PaymentForm({
+    required this.invoice,
+    required this.onRecorded,
+    super.key,
+  });
 
   final InvoiceDetail invoice;
   final VoidCallback onRecorded;
@@ -36,10 +40,13 @@ class _PaymentFormState extends ConsumerState<PaymentForm> {
   bool get _amountLocked {
     final settings = ref.watch(billingSettingsProvider).value;
     final isPatientTender = _method != PaymentMethod.insuranceSettlement;
-    return settings != null && !settings.allowPartialPayments && isPatientTender;
+    return settings != null &&
+        !settings.allowPartialPayments &&
+        isPatientTender;
   }
 
-  String get _resolvedAmount => _amountLocked ? widget.invoice.balance.wireValue : (_amount ?? '');
+  String get _resolvedAmount =>
+      _amountLocked ? widget.invoice.balance.wireValue : (_amount ?? '');
 
   Future<void> _submit() async {
     if (_submitting) {
@@ -48,7 +55,13 @@ class _PaymentFormState extends ConsumerState<PaymentForm> {
 
     final amount = _resolvedAmount.trim();
     if (amount.isEmpty) {
-      appToast(context, const AppToastInput(message: 'Enter a payment amount.', variant: AppToastVariant.danger));
+      appToast(
+        context,
+        const AppToastInput(
+          message: 'Enter a payment amount.',
+          variant: AppToastVariant.danger,
+        ),
+      );
       return;
     }
 
@@ -60,19 +73,35 @@ class _PaymentFormState extends ConsumerState<PaymentForm> {
             invoiceId: widget.invoice.id,
             method: _method,
             amount: amount,
-            reference: _referenceController.text.trim().isEmpty ? null : _referenceController.text.trim(),
-            note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+            reference: _referenceController.text.trim().isEmpty
+                ? null
+                : _referenceController.text.trim(),
+            note: _noteController.text.trim().isEmpty
+                ? null
+                : _noteController.text.trim(),
           );
       if (!mounted) {
         return;
       }
-      appToast(context, const AppToastInput(message: 'Payment recorded.', variant: AppToastVariant.success));
+      appToast(
+        context,
+        const AppToastInput(
+          message: 'Payment recorded.',
+          variant: AppToastVariant.success,
+        ),
+      );
       widget.onRecorded();
     } on RpcFailure catch (error) {
       if (!mounted) {
         return;
       }
-      appToast(context, AppToastInput(message: billingMessageForRpc(error), variant: AppToastVariant.danger));
+      appToast(
+        context,
+        AppToastInput(
+          message: billingMessageForRpc(error),
+          variant: AppToastVariant.danger,
+        ),
+      );
     } catch (_) {
       if (!mounted) {
         return;
@@ -105,11 +134,18 @@ class _PaymentFormState extends ConsumerState<PaymentForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Record payment', style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary)),
+        Text(
+          'Record payment',
+          style: AppTypography.bodyStrong(
+            context,
+          ).copyWith(color: colors.textPrimary),
+        ),
         const SizedBox(height: AppSpacing.space1),
         Text(
           'Balance due: ${BillingFormatting.formatMoney(widget.invoice.balance, currency: widget.invoice.currency)}',
-          style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+          style: AppTypography.bodySm(
+            context,
+          ).copyWith(color: colors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.space4),
         AppFormField(
@@ -119,7 +155,12 @@ class _PaymentFormState extends ConsumerState<PaymentForm> {
             value: _method.wireValue,
             disabled: _submitting,
             options: PaymentMethod.values
-                .map((method) => AppSelectOption(value: method.wireValue, label: method.labelFor(context)))
+                .map(
+                  (method) => AppSelectOption(
+                    value: method.wireValue,
+                    label: method.labelFor(context),
+                  ),
+                )
                 .toList(),
             onChanged: (value) {
               final method = PaymentMethod.tryParse(value);
@@ -133,12 +174,18 @@ class _PaymentFormState extends ConsumerState<PaymentForm> {
         AppFormField(
           id: 'payment-amount',
           label: 'Amount',
-          helperText: _amountLocked ? 'Full balance required for this payment method.' : null,
+          helperText: _amountLocked
+              ? 'Full balance required for this payment method.'
+              : null,
           child: AppMoneyField(
-            key: ValueKey('${_method.name}-${widget.invoice.balance.wireValue}'),
+            key: ValueKey(
+              '${_method.name}-${widget.invoice.balance.wireValue}',
+            ),
             currency: widget.invoice.currency,
             disabled: _submitting || _amountLocked,
-            initialValue: _amountLocked ? widget.invoice.balance.asDouble : null,
+            initialValue: _amountLocked
+                ? widget.invoice.balance.asDouble
+                : null,
             onChanged: _amountLocked ? null : (value) => _amount = value,
           ),
         ),

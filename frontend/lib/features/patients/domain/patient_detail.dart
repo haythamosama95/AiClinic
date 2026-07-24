@@ -64,13 +64,17 @@ class PatientDetail {
       phone: optionalPatientString(row['phone']),
       dateOfBirth: parsePatientDate(row['date_of_birth']),
       gender: PatientGender.tryParse(row['gender']?.toString()),
-      maritalStatus: PatientMaritalStatus.tryParse(row['marital_status']?.toString()),
+      maritalStatus: PatientMaritalStatus.tryParse(
+        row['marital_status']?.toString(),
+      ),
       notes: optionalPatientString(row['notes']),
       branchId: branchId,
       branchName: branchName,
       createdAt: createdAt,
       updatedAt: updatedAt,
-      createdByDisplay: optionalPatientString(row['created_by_display'] ?? row['created_by_name']),
+      createdByDisplay: optionalPatientString(
+        row['created_by_display'] ?? row['created_by_name'],
+      ),
     );
   }
 
@@ -94,8 +98,12 @@ class PatientDetail {
       mrn: identical(mrn, copyWithSentinel) ? this.mrn : mrn as String?,
       fullName: fullName ?? this.fullName,
       phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
-      dateOfBirth: identical(dateOfBirth, copyWithSentinel) ? this.dateOfBirth : dateOfBirth as DateTime?,
-      gender: identical(gender, copyWithSentinel) ? this.gender : gender as PatientGender?,
+      dateOfBirth: identical(dateOfBirth, copyWithSentinel)
+          ? this.dateOfBirth
+          : dateOfBirth as DateTime?,
+      gender: identical(gender, copyWithSentinel)
+          ? this.gender
+          : gender as PatientGender?,
       maritalStatus: identical(maritalStatus, copyWithSentinel)
           ? this.maritalStatus
           : maritalStatus as PatientMaritalStatus?,

@@ -12,7 +12,12 @@ import 'package:ai_clinic/features/patients/presentation/providers/patient_regis
 
 /// Add-patient registration dialog (web `AddPatientDialog`).
 class AddPatientDialog extends ConsumerStatefulWidget {
-  const AddPatientDialog({required this.open, required this.onOpenChange, required this.onSuccess, super.key});
+  const AddPatientDialog({
+    required this.open,
+    required this.onOpenChange,
+    required this.onSuccess,
+    super.key,
+  });
 
   final bool open;
   final ValueChanged<bool> onOpenChange;
@@ -31,21 +36,37 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
   }
 
   Future<void> _handleSubmit() async {
-    final result = await ref.read(patientRegistrationProvider.notifier).submit();
+    final result = await ref
+        .read(patientRegistrationProvider.notifier)
+        .submit();
     if (!mounted || result == null) {
       return;
     }
-    appToast(context, AppToastInput(message: 'Patient created — MRN ${result.mrn}', variant: AppToastVariant.success));
+    appToast(
+      context,
+      AppToastInput(
+        message: 'Patient created — MRN ${result.mrn}',
+        variant: AppToastVariant.success,
+      ),
+    );
     _handleOpenChange(false);
     widget.onSuccess(result.patientId);
   }
 
   Future<void> _handleRegisterAnyway() async {
-    final result = await ref.read(patientRegistrationProvider.notifier).registerAnyway();
+    final result = await ref
+        .read(patientRegistrationProvider.notifier)
+        .registerAnyway();
     if (!mounted || result == null) {
       return;
     }
-    appToast(context, AppToastInput(message: 'Patient created — MRN ${result.mrn}', variant: AppToastVariant.success));
+    appToast(
+      context,
+      AppToastInput(
+        message: 'Patient created — MRN ${result.mrn}',
+        variant: AppToastVariant.success,
+      ),
+    );
     _handleOpenChange(false);
     widget.onSuccess(result.patientId);
   }
@@ -56,14 +77,17 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
     final notifier = ref.read(patientRegistrationProvider.notifier);
     final reducedMotion = AppMotion.prefersReducedMotion(context);
 
-    ref.listen<String?>(patientRegistrationProvider.select((s) => s.pendingOpenPatientId), (previous, next) {
-      if (next == null) {
-        return;
-      }
-      _handleOpenChange(false);
-      widget.onSuccess(next);
-      notifier.clearPendingOpenPatient();
-    });
+    ref.listen<String?>(
+      patientRegistrationProvider.select((s) => s.pendingOpenPatientId),
+      (previous, next) {
+        if (next == null) {
+          return;
+        }
+        _handleOpenChange(false);
+        widget.onSuccess(next);
+        notifier.clearPendingOpenPatient();
+      },
+    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -80,7 +104,9 @@ class _AddPatientDialogState extends ConsumerState<AddPatientDialog> {
               AppButton(
                 variant: AppButtonVariant.secondary,
                 disabled: state.submitting,
-                onPressed: state.submitting ? null : () => _handleOpenChange(false),
+                onPressed: state.submitting
+                    ? null
+                    : () => _handleOpenChange(false),
                 child: const Text('Cancel'),
               ),
               const SizedBox(width: AppSpacing.space2),

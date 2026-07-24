@@ -1,7 +1,8 @@
 // Shared JSON parsing helpers for patient domain models (V1-3).
 
 /// Normalizes a calendar date to UTC midnight (year/month/day only).
-DateTime normalizePatientDate(DateTime date) => DateTime.utc(date.year, date.month, date.day);
+DateTime normalizePatientDate(DateTime date) =>
+    DateTime.utc(date.year, date.month, date.day);
 
 /// Serializes a patient calendar date as `YYYY-MM-DD` without timezone shift.
 String formatPatientDateWire(DateTime date) {

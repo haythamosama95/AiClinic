@@ -15,7 +15,10 @@ void invalidateAppointmentSurfaceProviders(Ref ref) {
 }
 
 /// Refreshes appointment surfaces after [complete_visit] updates the linked appointment.
-void invalidateAppointmentAfterVisitCompleted(Ref ref, {required String appointmentId}) {
+void invalidateAppointmentAfterVisitCompleted(
+  Ref ref, {
+  required String appointmentId,
+}) {
   ref.invalidate(appointmentDetailProvider(appointmentId));
   ref.invalidate(appointmentCalendarProvider);
   ref.invalidate(appointmentQueueProvider);

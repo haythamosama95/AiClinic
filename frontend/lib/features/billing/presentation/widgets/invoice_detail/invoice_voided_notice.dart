@@ -41,7 +41,11 @@ class InvoiceVoidedNotice extends StatelessWidget {
               child: SizedBox(
                 width: 36,
                 height: 36,
-                child: Icon(Icons.warning_amber_outlined, size: 16, color: colors.statusDangerFg),
+                child: Icon(
+                  Icons.warning_amber_outlined,
+                  size: 16,
+                  color: colors.statusDangerFg,
+                ),
               ),
             ),
             const SizedBox(width: AppSpacing.space3),
@@ -52,19 +56,25 @@ class InvoiceVoidedNotice extends StatelessWidget {
                 children: [
                   Text(
                     'This invoice was voided',
-                    style: AppTypography.bodyStrong(context).copyWith(color: colors.statusDangerFg),
+                    style: AppTypography.bodyStrong(
+                      context,
+                    ).copyWith(color: colors.statusDangerFg),
                   ),
                   if (invoice.voidReason?.trim().isNotEmpty == true) ...[
                     const SizedBox(height: AppSpacing.space1),
                     Text(
                       invoice.voidReason!.trim(),
-                      style: AppTypography.bodySm(context).copyWith(color: colors.textPrimary),
+                      style: AppTypography.bodySm(
+                        context,
+                      ).copyWith(color: colors.textPrimary),
                     ),
                   ],
                   const SizedBox(height: AppSpacing.space1),
                   Text(
                     auditLine,
-                    style: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+                    style: AppTypography.caption(
+                      context,
+                    ).copyWith(color: colors.textSecondary),
                   ),
                 ],
               ),

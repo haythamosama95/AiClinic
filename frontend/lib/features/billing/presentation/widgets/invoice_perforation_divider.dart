@@ -21,13 +21,17 @@ class InvoicePerforationDivider extends StatelessWidget {
               builder: (context, constraints) {
                 const dotWidth = 6.0;
                 const gap = 5.0;
-                final count = (constraints.maxWidth / (dotWidth + gap)).floor().clamp(1, 120);
+                final count = (constraints.maxWidth / (dotWidth + gap))
+                    .floor()
+                    .clamp(1, 120);
 
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(count, (index) {
                     return Padding(
-                      padding: EdgeInsets.only(right: index == count - 1 ? 0 : gap),
+                      padding: EdgeInsets.only(
+                        right: index == count - 1 ? 0 : gap,
+                      ),
                       child: Container(
                         width: dotWidth,
                         height: 1.5,

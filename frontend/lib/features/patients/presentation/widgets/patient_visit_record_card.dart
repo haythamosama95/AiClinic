@@ -26,14 +26,21 @@ class PatientVisitRecordCard extends StatelessWidget {
       date: visit.visitDate,
       doctorName: visit.doctorName,
       badges: [
-        (label: AppointmentType.planned.label, color: _appointmentTypeColor(AppointmentType.planned)),
+        (
+          label: AppointmentType.planned.label,
+          color: _appointmentTypeColor(AppointmentType.planned),
+        ),
         (label: visit.status.label, color: _visitStatusColor(visit.status)),
       ],
       branchName: visit.branchName,
     );
   }
 
-  factory PatientVisitRecordCard.fromAppointment(AppointmentListItem appointment, {String? branchName, Key? key}) {
+  factory PatientVisitRecordCard.fromAppointment(
+    AppointmentListItem appointment, {
+    String? branchName,
+    Key? key,
+  }) {
     final resolvedBranchName = branchName?.trim();
 
     return PatientVisitRecordCard._(
@@ -41,10 +48,18 @@ class PatientVisitRecordCard extends StatelessWidget {
       date: appointment.startTime,
       doctorName: appointment.doctorDisplayName,
       badges: [
-        (label: appointment.type.label, color: _appointmentTypeColor(appointment.type)),
-        (label: appointment.status.label, color: _appointmentStatusColor(appointment.status)),
+        (
+          label: appointment.type.label,
+          color: _appointmentTypeColor(appointment.type),
+        ),
+        (
+          label: appointment.status.label,
+          color: _appointmentStatusColor(appointment.status),
+        ),
       ],
-      branchName: resolvedBranchName?.isNotEmpty == true ? resolvedBranchName : null,
+      branchName: resolvedBranchName?.isNotEmpty == true
+          ? resolvedBranchName
+          : null,
     );
   }
 
@@ -68,7 +83,9 @@ class PatientVisitRecordCard extends StatelessWidget {
           children: [
             Text(
               doctorName,
-              style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+              style: AppTypography.bodyStrong(
+                context,
+              ).copyWith(color: colors.textPrimary),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -78,10 +95,16 @@ class PatientVisitRecordCard extends StatelessWidget {
               runSpacing: AppSpacing.space2,
               children: [
                 for (final badge in badges)
-                  AppBadge(size: BadgeSize.sm, variant: BadgeVariant.soft, color: badge.color, label: badge.label),
+                  AppBadge(
+                    size: BadgeSize.sm,
+                    variant: BadgeVariant.soft,
+                    color: badge.color,
+                    label: badge.label,
+                  ),
               ],
             ),
-            if (resolvedBranchName != null && resolvedBranchName.isNotEmpty) ...[
+            if (resolvedBranchName != null &&
+                resolvedBranchName.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.space5),
               PatientBranchPill(branchName: resolvedBranchName),
             ],

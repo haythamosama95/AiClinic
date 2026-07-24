@@ -21,26 +21,35 @@ abstract final class MrnReassignmentDialog {
     final result = await AppDialog.show<bool>(
       context,
       title: 'Reassign MRN',
-      description: 'Change this patient\'s medical record number. The new value must be unique.',
+      description:
+          'Change this patient\'s medical record number. The new value must be unique.',
       maxWidth: 440,
       size: AppDialogSize.md,
-      child: _MrnReassignmentDialogContent(patientId: patientId, currentMrn: currentMrn),
+      child: _MrnReassignmentDialogContent(
+        patientId: patientId,
+        currentMrn: currentMrn,
+      ),
     );
     return result ?? false;
   }
 }
 
 class _MrnReassignmentDialogContent extends ConsumerStatefulWidget {
-  const _MrnReassignmentDialogContent({required this.patientId, required this.currentMrn});
+  const _MrnReassignmentDialogContent({
+    required this.patientId,
+    required this.currentMrn,
+  });
 
   final String patientId;
   final String currentMrn;
 
   @override
-  ConsumerState<_MrnReassignmentDialogContent> createState() => _MrnReassignmentDialogContentState();
+  ConsumerState<_MrnReassignmentDialogContent> createState() =>
+      _MrnReassignmentDialogContentState();
 }
 
-class _MrnReassignmentDialogContentState extends ConsumerState<_MrnReassignmentDialogContent> {
+class _MrnReassignmentDialogContentState
+    extends ConsumerState<_MrnReassignmentDialogContent> {
   late final TextEditingController _controller;
   var _submitting = false;
   String? _inlineError;
@@ -53,7 +62,10 @@ class _MrnReassignmentDialogContentState extends ConsumerState<_MrnReassignmentD
       if (!mounted) {
         return;
       }
-      _controller.selection = TextSelection(baseOffset: 0, extentOffset: _controller.text.length);
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
     });
   }
 
@@ -99,7 +111,10 @@ class _MrnReassignmentDialogContentState extends ConsumerState<_MrnReassignmentD
 
       appToast(
         context,
-        AppToastInput(message: 'MRN updated to $newMrn', variant: AppToastVariant.success),
+        AppToastInput(
+          message: 'MRN updated to $newMrn',
+          variant: AppToastVariant.success,
+        ),
       );
 
       if (dialogContext.mounted) {
@@ -120,9 +135,21 @@ class _MrnReassignmentDialogContentState extends ConsumerState<_MrnReassignmentD
           if (dialogContext.mounted) {
             Navigator.of(dialogContext).pop(false);
           }
-          appToast(context, AppToastInput(message: patientMessageForRpc(error), variant: AppToastVariant.danger));
+          appToast(
+            context,
+            AppToastInput(
+              message: patientMessageForRpc(error),
+              variant: AppToastVariant.danger,
+            ),
+          );
         default:
-          appToast(context, AppToastInput(message: patientMessageForRpc(error), variant: AppToastVariant.danger));
+          appToast(
+            context,
+            AppToastInput(
+              message: patientMessageForRpc(error),
+              variant: AppToastVariant.danger,
+            ),
+          );
       }
     } catch (_) {
       if (mounted) {
@@ -170,7 +197,9 @@ class _MrnReassignmentDialogContentState extends ConsumerState<_MrnReassignmentD
           children: [
             AppButton(
               variant: AppButtonVariant.secondary,
-              onPressed: _submitting ? null : () => Navigator.of(context).pop(false),
+              onPressed: _submitting
+                  ? null
+                  : () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
             const Spacer(),

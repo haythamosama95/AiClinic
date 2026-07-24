@@ -43,10 +43,12 @@ class AppointmentCalendarPage extends ConsumerStatefulWidget {
   const AppointmentCalendarPage({super.key});
 
   @override
-  ConsumerState<AppointmentCalendarPage> createState() => _AppointmentCalendarPageState();
+  ConsumerState<AppointmentCalendarPage> createState() =>
+      _AppointmentCalendarPageState();
 }
 
-class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPage> {
+class _AppointmentCalendarPageState
+    extends ConsumerState<AppointmentCalendarPage> {
   final CalendarController _calendarController = CalendarController();
   late AppointmentCalendarDataSource _dataSource;
   AppointmentCalendarMode? _lastMode;
@@ -97,7 +99,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     }
 
     final hostContext = _calendarHostKey.currentContext;
-    final sourceRect = hostContext == null ? null : globalRectOnScreen(hostContext);
+    final sourceRect = hostContext == null
+        ? null
+        : globalRectOnScreen(hostContext);
     if (sourceRect == null) {
       return;
     }
@@ -137,7 +141,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final canAccess = ref.watch(permissionServiceProvider).canAccessAppointments();
+    final canAccess = ref
+        .watch(permissionServiceProvider)
+        .canAccessAppointments();
     if (!canAccess) {
       return const _CalendarPermissionDenied();
     }
@@ -147,19 +153,39 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final authState = ref.watch(authSessionProvider);
     final branchesAsync = ref.watch(appointmentCalendarBranchesProvider);
     final doctorsAsync = ref.watch(appointmentCalendarDoctorsProvider);
-    final branches = branchesAsync.maybeWhen(data: (items) => items, orElse: () => const <BranchListItem>[]);
-    final selectedBranch = branches.where((item) => item.id == state.selectedBranchId).firstOrNull;
-    final schedule = AppointmentCalendarDisplay.resolveBranchSchedule(selectedBranch?.workingSchedule);
+    final branches = branchesAsync.maybeWhen(
+      data: (items) => items,
+      orElse: () => const <BranchListItem>[],
+    );
+    final selectedBranch = branches
+        .where((item) => item.id == state.selectedBranchId)
+        .firstOrNull;
+    final schedule = AppointmentCalendarDisplay.resolveBranchSchedule(
+      selectedBranch?.workingSchedule,
+    );
     final visibleItems = AppointmentCalendarDisplay.filterVisibleAppointments(
       state.items,
       schedule,
       selectedStatuses: state.selectedStatuses,
     );
-    final allDoctors = doctorsAsync.maybeWhen(data: (items) => items, orElse: () => const <StaffListItem>[]);
-    final doctors = _filteredDoctors(allDoctors, selectedDoctorId: state.selectedDoctorId, mode: state.mode);
-    final hasActiveFilters = state.hasActiveFilters(initialBranchId: authState.context?.activeBranchId);
-    final canCreate = ref.watch(permissionServiceProvider).canCreateAppointments();
-    final canCancel = ref.watch(permissionServiceProvider).canCancelAppointments();
+    final allDoctors = doctorsAsync.maybeWhen(
+      data: (items) => items,
+      orElse: () => const <StaffListItem>[],
+    );
+    final doctors = _filteredDoctors(
+      allDoctors,
+      selectedDoctorId: state.selectedDoctorId,
+      mode: state.mode,
+    );
+    final hasActiveFilters = state.hasActiveFilters(
+      initialBranchId: authState.context?.activeBranchId,
+    );
+    final canCreate = ref
+        .watch(permissionServiceProvider)
+        .canCreateAppointments();
+    final canCancel = ref
+        .watch(permissionServiceProvider)
+        .canCancelAppointments();
     final oddResourceRowColor = colors.surfaceMuted.withValues(alpha: 0.3);
     _scheduleRevealIfNeeded(visibleItems, loading: state.loading);
     if (!state.loading) {
@@ -178,11 +204,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     }
 
     final isClosedDay =
-        (state.mode == AppointmentCalendarMode.day || state.mode == AppointmentCalendarMode.doctors) &&
+        (state.mode == AppointmentCalendarMode.day ||
+            state.mode == AppointmentCalendarMode.doctors) &&
         AppointmentCalendarDisplay.isClosedOnDate(schedule, state.focusDate);
 
     _fullscreenCalendarBuilder = (overlayContext) {
-      final overlayHeight = MediaQuery.sizeOf(overlayContext).height - (AppSpacing.space4 * 2);
+      final overlayHeight =
+          MediaQuery.sizeOf(overlayContext).height - (AppSpacing.space4 * 2);
       return _buildCalendar(
         context: overlayContext,
         colors: overlayContext.appColors,
@@ -203,7 +231,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       );
     };
     if (_isCalendarFullscreen) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _fullscreenOverlay?.markNeedsBuild());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _fullscreenOverlay?.markNeedsBuild(),
+      );
     }
 
     final onBookAppointment = _bookAppointmentAction(
@@ -216,15 +246,22 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     return AppointmentPageShell(
       actions: onBookAppointment == null
           ? null
-          : AppButton(size: AppButtonSize.md, onPressed: onBookAppointment, child: const Text('Book appointment')),
+          : AppButton(
+              size: AppButtonSize.md,
+              onPressed: onBookAppointment,
+              child: const Text('Book appointment'),
+            ),
       child: LayoutBuilder(
         builder: (context, outerConstraints) {
           final hasBoundedHeight = outerConstraints.maxHeight.isFinite;
-          final fallbackCalendarHeight = (MediaQuery.sizeOf(context).height * 0.65).clamp(480.0, 900.0);
+          final fallbackCalendarHeight =
+              (MediaQuery.sizeOf(context).height * 0.65).clamp(480.0, 900.0);
 
           final calendarHost = LayoutBuilder(
             builder: (context, constraints) {
-              final viewportHeight = hasBoundedHeight ? constraints.maxHeight : fallbackCalendarHeight;
+              final viewportHeight = hasBoundedHeight
+                  ? constraints.maxHeight
+                  : fallbackCalendarHeight;
               final calendar = _buildCalendar(
                 context: context,
                 colors: colors,
@@ -245,7 +282,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
               );
 
               if (_isCalendarFullscreen) {
-                return SizedBox(key: _calendarHostKey, height: _calendarHostHeight, child: const SizedBox.shrink());
+                return SizedBox(
+                  key: _calendarHostKey,
+                  height: _calendarHostHeight,
+                  child: const SizedBox.shrink(),
+                );
               }
 
               return KeyedSubtree(key: _calendarHostKey, child: calendar);
@@ -264,7 +305,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                   variant: AppEmptyStateVariant.error,
                   title: 'Could not load calendar',
                   description: state.error,
-                  action: EmptyStateAction(label: 'Retry', onPressed: controller.refresh),
+                  action: EmptyStateAction(
+                    label: 'Retry',
+                    onPressed: controller.refresh,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.space4),
               ],
@@ -273,7 +317,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                   padding: const EdgeInsets.only(bottom: AppSpacing.space3),
                   child: Text(
                     'This branch is closed on ${_weekdayLabel(state.focusDate)}.',
-                    style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
+                    style: AppTypography.bodySm(
+                      context,
+                    ).copyWith(color: colors.textSecondary),
                   ),
                 ),
               calendarArea,
@@ -302,8 +348,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required bool hasActiveFilters,
     required bool isFullscreen,
   }) {
-    final availableHeight = (viewportHeight - appointmentCalendarToolbarHeight).clamp(0.0, viewportHeight);
-    final calendarBodyHeight = availableHeight < 240.0 ? availableHeight : availableHeight.clamp(240.0, viewportHeight);
+    final availableHeight = (viewportHeight - appointmentCalendarToolbarHeight)
+        .clamp(0.0, viewportHeight);
+    final calendarBodyHeight = availableHeight < 240.0
+        ? availableHeight
+        : availableHeight.clamp(240.0, viewportHeight);
     final slotLayout = AppointmentCalendarDisplay.timeSlotLayout(
       schedule: schedule,
       mode: state.mode,
@@ -311,13 +360,19 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       viewportHeight: calendarBodyHeight,
       timeIntervalMinutes: state.timeIntervalMinutes,
     );
-    final timelineVisibleResourceCount = state.mode == AppointmentCalendarMode.doctors
+    final timelineVisibleResourceCount =
+        state.mode == AppointmentCalendarMode.doctors
         ? (calendarBodyHeight / _timelineResourceRowHeight).floor().clamp(1, 20)
         : -1;
     final calendarSurface = colors.surfaceDefault;
     final allowDragAndDrop = canCreate && _supportsDragAndDrop(state.mode);
-    final usesCustomViewHeader = AppointmentCalendarViewHeader.showsFor(state.mode);
-    final syncfusionViewHeaderHeight = _syncfusionViewHeaderHeight(state.mode, usesCustomViewHeader);
+    final usesCustomViewHeader = AppointmentCalendarViewHeader.showsFor(
+      state.mode,
+    );
+    final syncfusionViewHeaderHeight = _syncfusionViewHeaderHeight(
+      state.mode,
+      usesCustomViewHeader,
+    );
     final viewHeaderTextStyle = AppTypography.bodyStrong(context).copyWith(
       color: colors.textPrimary,
       fontSize: 14,
@@ -331,10 +386,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       agendaBackgroundColor: calendarSurface,
       allDayPanelColor: calendarSurface,
       cellBorderColor: colors.borderSubtle,
-      headerTextStyle: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+      headerTextStyle: AppTypography.bodyStrong(
+        context,
+      ).copyWith(color: colors.textPrimary),
       viewHeaderDayTextStyle: viewHeaderTextStyle,
       viewHeaderDateTextStyle: viewHeaderTextStyle,
-      timeTextStyle: AppTypography.caption(context).copyWith(color: colors.textSecondary),
+      timeTextStyle: AppTypography.caption(
+        context,
+      ).copyWith(color: colors.textSecondary),
       todayHighlightColor: Colors.transparent,
     );
 
@@ -355,7 +414,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           ),
           onClearFilters: controller.clearFilters,
           isFullscreen: isFullscreen,
-          onToggleFullscreen: () => _toggleCalendarFullscreen(isFullscreen: isFullscreen),
+          onToggleFullscreen: () =>
+              _toggleCalendarFullscreen(isFullscreen: isFullscreen),
         ),
         const SizedBox(height: AppSpacing.space4),
         Expanded(
@@ -369,7 +429,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         if (usesCustomViewHeader)
-                          AppointmentCalendarViewHeader(mode: state.mode, focusDate: state.focusDate, colors: colors),
+                          AppointmentCalendarViewHeader(
+                            mode: state.mode,
+                            focusDate: state.focusDate,
+                            colors: colors,
+                          ),
                         Expanded(
                           child: SfCalendarTheme(
                             data: calendarTheme,
@@ -391,14 +455,19 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                               firstDayOfWeek: DateTime.monday,
                               viewHeaderHeight: syncfusionViewHeaderHeight,
                               todayHighlightColor: Colors.transparent,
-                              todayTextStyle: viewHeaderTextStyle.copyWith(color: colors.actionPrimary),
+                              todayTextStyle: viewHeaderTextStyle.copyWith(
+                                color: colors.actionPrimary,
+                              ),
                               resourceViewSettings: ResourceViewSettings(
                                 showAvatar: false,
                                 size: _timelineResourceRowHeight,
-                                visibleResourceCount: timelineVisibleResourceCount,
-                                displayNameTextStyle: AppTypography.bodySm(
-                                  context,
-                                ).copyWith(color: colors.textPrimary, fontWeight: FontWeight.w600),
+                                visibleResourceCount:
+                                    timelineVisibleResourceCount,
+                                displayNameTextStyle:
+                                    AppTypography.bodySm(context).copyWith(
+                                      color: colors.textPrimary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                               ),
                               showNavigationArrow: false,
                               showTodayButton: false,
@@ -406,23 +475,40 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                               allowViewNavigation: false,
                               headerStyle: CalendarHeaderStyle(
                                 backgroundColor: calendarSurface,
-                                textStyle: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
+                                textStyle: AppTypography.bodyStrong(
+                                  context,
+                                ).copyWith(color: colors.textPrimary),
                               ),
-                              viewHeaderStyle: ViewHeaderStyle(backgroundColor: calendarSurface),
+                              viewHeaderStyle: ViewHeaderStyle(
+                                backgroundColor: calendarSurface,
+                              ),
                               selectionDecoration: const BoxDecoration(
                                 color: Colors.transparent,
-                                border: Border.fromBorderSide(BorderSide(color: Colors.transparent, width: 0)),
+                                border: Border.fromBorderSide(
+                                  BorderSide(
+                                    color: Colors.transparent,
+                                    width: 0,
+                                  ),
+                                ),
                               ),
-                              blackoutDates: state.mode == AppointmentCalendarMode.month
-                                  ? AppointmentCalendarDisplay.closedDatesInMonth(schedule, state.focusDate)
+                              blackoutDates:
+                                  state.mode == AppointmentCalendarMode.month
+                                  ? AppointmentCalendarDisplay.closedDatesInMonth(
+                                      schedule,
+                                      state.focusDate,
+                                    )
                                   : const [],
                               timeSlotViewSettings: TimeSlotViewSettings(
                                 startHour: slotLayout.startHour,
                                 endHour: slotLayout.endHour,
-                                timeInterval: Duration(minutes: slotLayout.timeIntervalMinutes),
-                                timeIntervalHeight: slotLayout.timeIntervalHeight,
+                                timeInterval: Duration(
+                                  minutes: slotLayout.timeIntervalMinutes,
+                                ),
+                                timeIntervalHeight:
+                                    slotLayout.timeIntervalHeight,
                                 timeIntervalWidth: slotLayout.timeIntervalWidth,
-                                timelineAppointmentHeight: _timelineResourceRowHeight,
+                                timelineAppointmentHeight:
+                                    _timelineResourceRowHeight,
                                 nonWorkingDays: slotLayout.nonWorkingDays,
                                 timeFormat: 'HH:mm',
                                 dateFormat: '',
@@ -430,22 +516,30 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                               ),
                               monthViewSettings: const MonthViewSettings(
                                 showAgenda: true,
-                                appointmentDisplayMode: MonthAppointmentDisplayMode.indicator,
+                                appointmentDisplayMode:
+                                    MonthAppointmentDisplayMode.indicator,
                                 agendaItemHeight: 56,
                               ),
-                              scheduleViewSettings: const ScheduleViewSettings(appointmentItemHeight: 56),
+                              scheduleViewSettings: const ScheduleViewSettings(
+                                appointmentItemHeight: 56,
+                              ),
                               specialRegions: [
                                 for (final region in slotLayout.shadeRegions)
                                   TimeRegion(
                                     startTime: region.start,
                                     endTime: region.end,
                                     enablePointerInteraction: false,
-                                    color: colors.surfaceMuted.withValues(alpha: 0.45),
+                                    color: colors.surfaceMuted.withValues(
+                                      alpha: 0.45,
+                                    ),
                                   ),
-                                if (state.mode == AppointmentCalendarMode.doctors)
+                                if (state.mode ==
+                                    AppointmentCalendarMode.doctors)
                                   ...AppointmentCalendarDisplay.resourceRowStripeRegions(
                                     resourceIds: [
-                                      for (final resource in _dataSource.resources ?? const <CalendarResource>[])
+                                      for (final resource
+                                          in _dataSource.resources ??
+                                              const <CalendarResource>[])
                                         resource.id,
                                     ],
                                     focusDate: state.focusDate,
@@ -455,22 +549,32 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                   ),
                               ],
                               appointmentBuilder: (context, details) {
-                                final id = appointmentIdFromAppointmentDetails(details);
+                                final id = appointmentIdFromAppointmentDetails(
+                                  details,
+                                );
                                 if (id != null &&
-                                    (_dragSession?.item.id == id || _resizeSession?.item.id == id) &&
+                                    (_dragSession?.item.id == id ||
+                                        _resizeSession?.item.id == id) &&
                                     !AppointmentCalendarDisplay.isAlignedToSlotGrid(
                                       details.bounds,
-                                      state.mode == AppointmentCalendarMode.doctors
+                                      state.mode ==
+                                              AppointmentCalendarMode.doctors
                                           ? slotLayout.timeIntervalWidth
                                           : slotLayout.timeIntervalHeight,
-                                      timelineAxisIsHorizontal: state.mode == AppointmentCalendarMode.doctors,
+                                      timelineAxisIsHorizontal:
+                                          state.mode ==
+                                          AppointmentCalendarMode.doctors,
                                     )) {
                                   return const SizedBox.shrink();
                                 }
-                                final isRevealed = id == null || _revealedAppointmentIds.contains(id);
+                                final isRevealed =
+                                    id == null ||
+                                    _revealedAppointmentIds.contains(id);
                                 final item = id == null
                                     ? null
-                                    : state.items.where((entry) => entry.id == id).firstOrNull;
+                                    : state.items
+                                          .where((entry) => entry.id == id)
+                                          .firstOrNull;
                                 final isDimmed =
                                     item != null &&
                                     !AppointmentCalendarDisplay.isStatusHighlighted(
@@ -489,13 +593,18 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                           doctors: doctors,
                                           branchName: branchesAsync.maybeWhen(
                                             data: (branches) => branches
-                                                .where((entry) => entry.id == state.selectedBranchId)
+                                                .where(
+                                                  (entry) =>
+                                                      entry.id ==
+                                                      state.selectedBranchId,
+                                                )
                                                 .firstOrNull
                                                 ?.name,
                                             orElse: () => null,
                                           ),
                                         ),
-                                        onCancel: () => _cancelAppointment(item),
+                                        onCancel: () =>
+                                            _cancelAppointment(item),
                                       )
                                     : null;
                                 return Skeletonizer(
@@ -503,7 +612,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                   enableSwitchAnimation: true,
                                   effect: ShimmerEffect(
                                     baseColor: colors.surfaceMuted,
-                                    highlightColor: colors.surfaceMuted.withValues(alpha: 0.55),
+                                    highlightColor: colors.surfaceMuted
+                                        .withValues(alpha: 0.55),
                                   ),
                                   containersColor: colors.surfaceMuted,
                                   child: AppointmentCalendarTile(
@@ -511,37 +621,54 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                     item: item,
                                     mode: state.mode,
                                     isDimmed: isDimmed,
-                                    onTap: isRevealed ? () => _onAppointmentTileTap(details, state.items) : () {},
+                                    onTap: isRevealed
+                                        ? () => _onAppointmentTileTap(
+                                            details,
+                                            state.items,
+                                          )
+                                        : () {},
                                     contextMenuEntries: menuEntries,
                                   ),
                                 );
                               },
                               onViewChanged: (details) {
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  unawaited(_onViewChanged(details, controller));
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
+                                  unawaited(
+                                    _onViewChanged(details, controller),
+                                  );
                                 });
                               },
                               allowDragAndDrop: allowDragAndDrop,
                               allowAppointmentResize: allowDragAndDrop,
-                              dragAndDropSettings: const DragAndDropSettings(showTimeIndicator: false),
+                              dragAndDropSettings: const DragAndDropSettings(
+                                showTimeIndicator: false,
+                              ),
                               onDragStart: allowDragAndDrop
                                   ? (details) => _onAppointmentDragStart(
                                       details,
                                       items: visibleItems,
-                                      slotMinutes: slotLayout.timeIntervalMinutes,
+                                      slotMinutes:
+                                          slotLayout.timeIntervalMinutes,
                                       doctors: doctors,
-                                      includeDoctorResources: _usesDoctorResources(state.mode),
-                                      evenResourceRowColor: colors.surfaceCanvas,
+                                      includeDoctorResources:
+                                          _usesDoctorResources(state.mode),
+                                      evenResourceRowColor:
+                                          colors.surfaceCanvas,
                                       oddResourceRowColor: oddResourceRowColor,
                                     )
                                   : null,
                               onDragUpdate: allowDragAndDrop
                                   ? (details) => _onAppointmentDragUpdate(
                                       details,
-                                      slotMinutes: slotLayout.timeIntervalMinutes,
+                                      slotMinutes:
+                                          slotLayout.timeIntervalMinutes,
                                       doctors: doctors,
-                                      includeDoctorResources: _usesDoctorResources(state.mode),
-                                      evenResourceRowColor: colors.surfaceCanvas,
+                                      includeDoctorResources:
+                                          _usesDoctorResources(state.mode),
+                                      evenResourceRowColor:
+                                          colors.surfaceCanvas,
                                       oddResourceRowColor: oddResourceRowColor,
                                     )
                                   : null,
@@ -566,11 +693,15 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                           items: visibleItems,
                                           schedule: schedule,
                                           mode: state.mode,
-                                          slotMinutes: slotLayout.timeIntervalMinutes,
+                                          slotMinutes:
+                                              slotLayout.timeIntervalMinutes,
                                           doctors: doctors,
-                                          includeDoctorResources: _usesDoctorResources(state.mode),
-                                          evenResourceRowColor: colors.surfaceCanvas,
-                                          oddResourceRowColor: oddResourceRowColor,
+                                          includeDoctorResources:
+                                              _usesDoctorResources(state.mode),
+                                          evenResourceRowColor:
+                                              colors.surfaceCanvas,
+                                          oddResourceRowColor:
+                                              oddResourceRowColor,
                                         ),
                                       );
                                     }
@@ -579,20 +710,26 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                   ? (details) => _onAppointmentResizeStart(
                                       details,
                                       items: visibleItems,
-                                      slotMinutes: slotLayout.timeIntervalMinutes,
+                                      slotMinutes:
+                                          slotLayout.timeIntervalMinutes,
                                       doctors: doctors,
-                                      includeDoctorResources: _usesDoctorResources(state.mode),
-                                      evenResourceRowColor: colors.surfaceCanvas,
+                                      includeDoctorResources:
+                                          _usesDoctorResources(state.mode),
+                                      evenResourceRowColor:
+                                          colors.surfaceCanvas,
                                       oddResourceRowColor: oddResourceRowColor,
                                     )
                                   : null,
                               onAppointmentResizeUpdate: allowDragAndDrop
                                   ? (details) => _onAppointmentResizeUpdate(
                                       details,
-                                      slotMinutes: slotLayout.timeIntervalMinutes,
+                                      slotMinutes:
+                                          slotLayout.timeIntervalMinutes,
                                       doctors: doctors,
-                                      includeDoctorResources: _usesDoctorResources(state.mode),
-                                      evenResourceRowColor: colors.surfaceCanvas,
+                                      includeDoctorResources:
+                                          _usesDoctorResources(state.mode),
+                                      evenResourceRowColor:
+                                          colors.surfaceCanvas,
                                       oddResourceRowColor: oddResourceRowColor,
                                     )
                                   : null,
@@ -603,11 +740,15 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
                                           details,
                                           items: visibleItems,
                                           schedule: schedule,
-                                          slotMinutes: slotLayout.timeIntervalMinutes,
+                                          slotMinutes:
+                                              slotLayout.timeIntervalMinutes,
                                           doctors: doctors,
-                                          includeDoctorResources: _usesDoctorResources(state.mode),
-                                          evenResourceRowColor: colors.surfaceCanvas,
-                                          oddResourceRowColor: oddResourceRowColor,
+                                          includeDoctorResources:
+                                              _usesDoctorResources(state.mode),
+                                          evenResourceRowColor:
+                                              colors.surfaceCanvas,
+                                          oddResourceRowColor:
+                                              oddResourceRowColor,
                                         ),
                                       );
                                     }
@@ -624,9 +765,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     );
   }
 
-  void _scheduleRevealIfNeeded(List<AppointmentListItem> items, {required bool loading}) {
+  void _scheduleRevealIfNeeded(
+    List<AppointmentListItem> items, {
+    required bool loading,
+  }) {
     if (loading) {
-      if (_revealedAppointmentIds.isEmpty && _lastRevealSourceFingerprint == -1) {
+      if (_revealedAppointmentIds.isEmpty &&
+          _lastRevealSourceFingerprint == -1) {
         return;
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -652,7 +797,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         return;
       }
       _lastRevealSourceFingerprint = sourceFingerprint;
-      _startSkeletonReveal(items.map((item) => item.id).toList(growable: false));
+      _startSkeletonReveal(
+        items.map((item) => item.id).toList(growable: false),
+      );
     });
   }
 
@@ -779,7 +926,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     }
   }
 
-  Future<void> _onViewChanged(ViewChangedDetails details, AppointmentCalendarController controller) async {
+  Future<void> _onViewChanged(
+    ViewChangedDetails details,
+    AppointmentCalendarController controller,
+  ) async {
     final visible = details.visibleDates;
     if (visible.isEmpty) {
       return;
@@ -797,17 +947,28 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
     final anchor = visible[visible.length ~/ 2];
     final normalized = DateTime(anchor.year, anchor.month, anchor.day);
-    final effectiveMode = syncedMode ?? ref.read(appointmentCalendarProvider).mode;
-    if (_isSameCalendarPeriod(normalized, ref.read(appointmentCalendarProvider).focusDate, effectiveMode)) {
+    final effectiveMode =
+        syncedMode ?? ref.read(appointmentCalendarProvider).mode;
+    if (_isSameCalendarPeriod(
+      normalized,
+      ref.read(appointmentCalendarProvider).focusDate,
+      effectiveMode,
+    )) {
       return;
     }
     await controller.setFocusDate(normalized);
   }
 
-  static bool _isSameCalendarPeriod(DateTime a, DateTime b, AppointmentCalendarMode mode) {
+  static bool _isSameCalendarPeriod(
+    DateTime a,
+    DateTime b,
+    AppointmentCalendarMode mode,
+  ) {
     return switch (mode) {
-      AppointmentCalendarMode.day => a.year == b.year && a.month == b.month && a.day == b.day,
-      AppointmentCalendarMode.doctors => a.year == b.year && a.month == b.month && a.day == b.day,
+      AppointmentCalendarMode.day =>
+        a.year == b.year && a.month == b.month && a.day == b.day,
+      AppointmentCalendarMode.doctors =>
+        a.year == b.year && a.month == b.month && a.day == b.day,
       AppointmentCalendarMode.week => _weekStart(a) == _weekStart(b),
       AppointmentCalendarMode.schedule => _weekStart(a) == _weekStart(b),
       AppointmentCalendarMode.month => a.year == b.year && a.month == b.month,
@@ -816,7 +977,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
   static DateTime _weekStart(DateTime date) {
     final dayStart = DateTime(date.year, date.month, date.day);
-    return dayStart.subtract(Duration(days: dayStart.weekday - DateTime.monday));
+    return dayStart.subtract(
+      Duration(days: dayStart.weekday - DateTime.monday),
+    );
   }
 
   void _onAppointmentDragStart(
@@ -872,7 +1035,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final snappedStart = AppointmentCalendarDisplay.snapTimeToSlot(draggingTime, slotMinutes: slotMinutes);
+    final snappedStart = AppointmentCalendarDisplay.snapTimeToSlot(
+      draggingTime,
+      slotMinutes: slotMinutes,
+    );
     if (snappedStart == session.previewStart) {
       return;
     }
@@ -958,7 +1124,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
 
     final duration = item.endTime.difference(item.startTime);
     final newStart =
-        session?.previewStart ?? AppointmentCalendarDisplay.snapTimeToSlot(droppingTime, slotMinutes: slotMinutes);
+        session?.previewStart ??
+        AppointmentCalendarDisplay.snapTimeToSlot(
+          droppingTime,
+          slotMinutes: slotMinutes,
+        );
     final newEnd = newStart.add(duration);
 
     setState(() => _dragSession = null);
@@ -974,7 +1144,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       oddResourceRowColor: oddResourceRowColor,
     );
 
-    if (AppointmentRescheduleValidation.isNoOpMove(appointment: item, newStart: newStart)) {
+    if (AppointmentRescheduleValidation.isNoOpMove(
+      appointment: item,
+      newStart: newStart,
+    )) {
       _revertCalendarItems(
         items,
         doctors: doctors,
@@ -986,10 +1159,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     }
 
     if (mode == AppointmentCalendarMode.doctors) {
-      final resourceError = AppointmentRescheduleValidation.validateDoctorResourceMove(
-        appointment: item,
-        targetDoctorId: doctorIdFromCalendarResource(details.targetResource),
-      );
+      final resourceError =
+          AppointmentRescheduleValidation.validateDoctorResourceMove(
+            appointment: item,
+            targetDoctorId: doctorIdFromCalendarResource(
+              details.targetResource,
+            ),
+          );
       if (resourceError != null) {
         _revertCalendarItems(
           items,
@@ -999,7 +1175,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
           oddResourceRowColor: oddResourceRowColor,
         );
         if (mounted) {
-          appToast(context, AppToastInput(message: resourceError, variant: AppToastVariant.danger));
+          appToast(
+            context,
+            AppToastInput(
+              message: resourceError,
+              variant: AppToastVariant.danger,
+            ),
+          );
         }
         return;
       }
@@ -1020,7 +1202,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        appToast(context, AppToastInput(message: validationError, variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: validationError,
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
       return;
     }
@@ -1058,7 +1246,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final finalStart = confirmed.start;
     final finalEnd = confirmed.end;
 
-    if (AppointmentRescheduleValidation.isNoOpMove(appointment: item, newStart: finalStart) &&
+    if (AppointmentRescheduleValidation.isNoOpMove(
+          appointment: item,
+          newStart: finalStart,
+        ) &&
         _isSameInstant(finalEnd, item.endTime)) {
       _revertCalendarItems(
         items,
@@ -1070,13 +1261,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final postEditValidationError = AppointmentRescheduleValidation.validateMove(
-      appointment: item,
-      newStart: finalStart,
-      newEnd: finalEnd,
-      schedule: schedule,
-      branchAppointments: items,
-    );
+    final postEditValidationError =
+        AppointmentRescheduleValidation.validateMove(
+          appointment: item,
+          newStart: finalStart,
+          newEnd: finalEnd,
+          schedule: schedule,
+          branchAppointments: items,
+        );
     if (postEditValidationError != null) {
       _revertCalendarItems(
         items,
@@ -1086,7 +1278,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        appToast(context, AppToastInput(message: postEditValidationError, variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: postEditValidationError,
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
       return;
     }
@@ -1095,7 +1293,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     try {
       await ref
           .read(appointmentRepositoryProvider)
-          .rescheduleAppointment(appointmentId: item.id, startTime: finalStart, endTime: finalEnd);
+          .rescheduleAppointment(
+            appointmentId: item.id,
+            startTime: finalStart,
+            endTime: finalEnd,
+          );
       if (!mounted) {
         return;
       }
@@ -1106,7 +1308,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       appToast(
         context,
         AppToastInput(
-          message: 'Appointment moved to ${_formatRange(finalStart, finalEnd)}.',
+          message:
+              'Appointment moved to ${_formatRange(finalStart, finalEnd)}.',
           variant: AppToastVariant.success,
         ),
       );
@@ -1119,7 +1322,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: appointmentMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } catch (error) {
       _revertCalendarItems(
@@ -1132,7 +1341,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       if (mounted) {
         appToast(
           context,
-          AppToastInput(message: 'Could not move the appointment. Please try again.', variant: AppToastVariant.danger),
+          AppToastInput(
+            message: 'Could not move the appointment. Please try again.',
+            variant: AppToastVariant.danger,
+          ),
         );
       }
     } finally {
@@ -1196,11 +1408,15 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final snapped = AppointmentCalendarDisplay.snapTimeToSlot(resizingTime, slotMinutes: slotMinutes);
+    final snapped = AppointmentCalendarDisplay.snapTimeToSlot(
+      resizingTime,
+      slotMinutes: slotMinutes,
+    );
     final localStart = session.item.startTime.toLocal();
     final localEnd = session.item.endTime.toLocal();
     session.resizeFromStart ??=
-        (snapped.difference(localStart).inMinutes).abs() <= (snapped.difference(localEnd).inMinutes).abs();
+        (snapped.difference(localStart).inMinutes).abs() <=
+        (snapped.difference(localEnd).inMinutes).abs();
 
     if (session.resizeFromStart!) {
       session.previewStart = snapped;
@@ -1226,7 +1442,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final previewItems = [
       for (final entry in session.baseItems)
         if (entry.id == session.item.id)
-          entry.copyWith(startTime: session.previewStart, endTime: session.previewEnd)
+          entry.copyWith(
+            startTime: session.previewStart,
+            endTime: session.previewEnd,
+          )
         else
           entry,
     ];
@@ -1272,7 +1491,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final calendarAppointment = details.appointment;
     final startTime = details.startTime;
     final endTime = details.endTime;
-    if (calendarAppointment is! Appointment || startTime == null || endTime == null) {
+    if (calendarAppointment is! Appointment ||
+        startTime == null ||
+        endTime == null) {
       _clearResizeSession(items: items);
       return;
     }
@@ -1289,8 +1510,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final newStart = AppointmentCalendarDisplay.snapTimeToSlot(startTime, slotMinutes: slotMinutes);
-    final newEnd = AppointmentCalendarDisplay.snapTimeToSlot(endTime, slotMinutes: slotMinutes);
+    final newStart = AppointmentCalendarDisplay.snapTimeToSlot(
+      startTime,
+      slotMinutes: slotMinutes,
+    );
+    final newEnd = AppointmentCalendarDisplay.snapTimeToSlot(
+      endTime,
+      slotMinutes: slotMinutes,
+    );
 
     setState(() => _resizeSession = null);
 
@@ -1305,7 +1532,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       oddResourceRowColor: oddResourceRowColor,
     );
 
-    if (AppointmentRescheduleValidation.isNoOpResize(appointment: item, newStart: newStart, newEnd: newEnd)) {
+    if (AppointmentRescheduleValidation.isNoOpResize(
+      appointment: item,
+      newStart: newStart,
+      newEnd: newEnd,
+    )) {
       _revertCalendarItems(
         items,
         doctors: doctors,
@@ -1332,7 +1563,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        appToast(context, AppToastInput(message: validationError, variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: validationError,
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
       return;
     }
@@ -1370,7 +1607,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     final finalStart = confirmed.start;
     final finalEnd = confirmed.end;
 
-    if (AppointmentRescheduleValidation.isNoOpResize(appointment: item, newStart: finalStart, newEnd: finalEnd)) {
+    if (AppointmentRescheduleValidation.isNoOpResize(
+      appointment: item,
+      newStart: finalStart,
+      newEnd: finalEnd,
+    )) {
       _revertCalendarItems(
         items,
         doctors: doctors,
@@ -1381,13 +1622,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    final postEditValidationError = AppointmentRescheduleValidation.validateMove(
-      appointment: item,
-      newStart: finalStart,
-      newEnd: finalEnd,
-      schedule: schedule,
-      branchAppointments: items,
-    );
+    final postEditValidationError =
+        AppointmentRescheduleValidation.validateMove(
+          appointment: item,
+          newStart: finalStart,
+          newEnd: finalEnd,
+          schedule: schedule,
+          branchAppointments: items,
+        );
     if (postEditValidationError != null) {
       _revertCalendarItems(
         items,
@@ -1397,7 +1639,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        appToast(context, AppToastInput(message: postEditValidationError, variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: postEditValidationError,
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
       return;
     }
@@ -1406,7 +1654,11 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     try {
       await ref
           .read(appointmentRepositoryProvider)
-          .rescheduleAppointment(appointmentId: item.id, startTime: finalStart, endTime: finalEnd);
+          .rescheduleAppointment(
+            appointmentId: item.id,
+            startTime: finalStart,
+            endTime: finalEnd,
+          );
       if (!mounted) {
         return;
       }
@@ -1417,7 +1669,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       appToast(
         context,
         AppToastInput(
-          message: 'Appointment updated to ${_formatRange(finalStart, finalEnd)}.',
+          message:
+              'Appointment updated to ${_formatRange(finalStart, finalEnd)}.',
           variant: AppToastVariant.success,
         ),
       );
@@ -1430,7 +1683,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         oddResourceRowColor: oddResourceRowColor,
       );
       if (mounted) {
-        appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: appointmentMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } catch (error) {
       _revertCalendarItems(
@@ -1484,7 +1743,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   }) {
     final previewItems = [
       for (final entry in items)
-        if (entry.id == appointmentId) entry.copyWith(startTime: newStart, endTime: newEnd) else entry,
+        if (entry.id == appointmentId)
+          entry.copyWith(startTime: newStart, endTime: newEnd)
+        else
+          entry,
     ];
     _revertCalendarItems(
       previewItems,
@@ -1504,7 +1766,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     };
   }
 
-  void _onCalendarSelectionTap(CalendarTapDetails details, AppointmentCalendarMode mode) {
+  void _onCalendarSelectionTap(
+    CalendarTapDetails details,
+    AppointmentCalendarMode mode,
+  ) {
     if (details.targetElement == CalendarElement.appointment) {
       return;
     }
@@ -1512,8 +1777,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     if (mode == AppointmentCalendarMode.month) {
       final tappedDate = details.date;
       if (tappedDate != null &&
-          (details.targetElement == CalendarElement.calendarCell || details.targetElement == CalendarElement.agenda)) {
-        _calendarController.selectedDate = DateTime(tappedDate.year, tappedDate.month, tappedDate.day);
+          (details.targetElement == CalendarElement.calendarCell ||
+              details.targetElement == CalendarElement.agenda)) {
+        _calendarController.selectedDate = DateTime(
+          tappedDate.year,
+          tappedDate.month,
+          tappedDate.day,
+        );
       }
       return;
     }
@@ -1541,11 +1811,13 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       return;
     }
 
-    if (mode != AppointmentCalendarMode.day && mode != AppointmentCalendarMode.week) {
+    if (mode != AppointmentCalendarMode.day &&
+        mode != AppointmentCalendarMode.week) {
       return;
     }
 
-    if (details.targetElement != CalendarElement.calendarCell && details.targetElement != CalendarElement.agenda) {
+    if (details.targetElement != CalendarElement.calendarCell &&
+        details.targetElement != CalendarElement.agenda) {
       return;
     }
 
@@ -1568,7 +1840,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
         slotStart: slotRange.start,
         slotEnd: slotRange.end,
         initialDoctorId:
-            doctorIdFromCalendarResource(details.resource) ?? ref.read(appointmentCalendarProvider).selectedDoctorId,
+            doctorIdFromCalendarResource(details.resource) ??
+            ref.read(appointmentCalendarProvider).selectedDoctorId,
         doctors: doctors,
       ),
     );
@@ -1580,7 +1853,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required BranchWorkingSchedule schedule,
     required List<StaffListItem> doctors,
   }) {
-    if (!canCreate || state.selectedBranchId == null || state.selectedBranchId!.isEmpty) {
+    if (!canCreate ||
+        state.selectedBranchId == null ||
+        state.selectedBranchId!.isEmpty) {
       return null;
     }
 
@@ -1623,7 +1898,8 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       branchName: ref
           .read(appointmentCalendarBranchesProvider)
           .maybeWhen(
-            data: (branches) => branches.where((item) => item.id == branchId).firstOrNull?.name,
+            data: (branches) =>
+                branches.where((item) => item.id == branchId).firstOrNull?.name,
             orElse: () => null,
           ),
     );
@@ -1632,7 +1908,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     }
   }
 
-  void _onAppointmentTileTap(CalendarAppointmentDetails details, List<AppointmentListItem> items) {
+  void _onAppointmentTileTap(
+    CalendarAppointmentDetails details,
+    List<AppointmentListItem> items,
+  ) {
     _openAppointmentById(appointmentIdFromAppointmentDetails(details), items);
   }
 
@@ -1659,7 +1938,9 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     }
 
     try {
-      final detail = await ref.read(appointmentRepositoryProvider).getAppointment(appointmentId: item.id);
+      final detail = await ref
+          .read(appointmentRepositoryProvider)
+          .getAppointment(appointmentId: item.id);
       if (!mounted) {
         return;
       }
@@ -1680,14 +1961,21 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       }
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: appointmentMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {
         appToast(
           context,
           const AppToastInput(
-            message: 'Could not open the appointment for editing. Please try again.',
+            message:
+                'Could not open the appointment for editing. Please try again.',
             variant: AppToastVariant.danger,
           ),
         );
@@ -1696,13 +1984,18 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
   }
 
   Future<void> _cancelAppointment(AppointmentListItem item) async {
-    final reason = await AppointmentCancelDialog.show(context, appointment: item);
+    final reason = await AppointmentCancelDialog.show(
+      context,
+      appointment: item,
+    );
     if (reason == null || !mounted) {
       return;
     }
 
     try {
-      await ref.read(appointmentRepositoryProvider).cancelAppointment(appointmentId: item.id, reason: reason);
+      await ref
+          .read(appointmentRepositoryProvider)
+          .cancelAppointment(appointmentId: item.id, reason: reason);
       if (!mounted) {
         return;
       }
@@ -1712,11 +2005,20 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
       }
       appToast(
         context,
-        AppToastInput(message: '${item.patientName}\'s appointment was cancelled.', variant: AppToastVariant.success),
+        AppToastInput(
+          message: '${item.patientName}\'s appointment was cancelled.',
+          variant: AppToastVariant.success,
+        ),
       );
     } on RpcFailure catch (error) {
       if (mounted) {
-        appToast(context, AppToastInput(message: appointmentMessageForRpc(error), variant: AppToastVariant.danger));
+        appToast(
+          context,
+          AppToastInput(
+            message: appointmentMessageForRpc(error),
+            variant: AppToastVariant.danger,
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -1740,10 +2042,14 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     required String? selectedDoctorId,
     required AppointmentCalendarMode mode,
   }) {
-    if (mode != AppointmentCalendarMode.doctors || selectedDoctorId == null || selectedDoctorId.isEmpty) {
+    if (mode != AppointmentCalendarMode.doctors ||
+        selectedDoctorId == null ||
+        selectedDoctorId.isEmpty) {
       return doctors;
     }
-    return doctors.where((doctor) => doctor.id == selectedDoctorId).toList(growable: false);
+    return doctors
+        .where((doctor) => doctor.id == selectedDoctorId)
+        .toList(growable: false);
   }
 
   static CalendarView _calendarViewFor(AppointmentCalendarMode mode) {
@@ -1756,7 +2062,10 @@ class _AppointmentCalendarPageState extends ConsumerState<AppointmentCalendarPag
     };
   }
 
-  static double _syncfusionViewHeaderHeight(AppointmentCalendarMode mode, bool usesCustomViewHeader) {
+  static double _syncfusionViewHeaderHeight(
+    AppointmentCalendarMode mode,
+    bool usesCustomViewHeader,
+  ) {
     if (usesCustomViewHeader) {
       return 0;
     }
@@ -1848,7 +2157,9 @@ class _CalendarPermissionDenied extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AppointmentPageShell(child: AppEmptyState(variant: AppEmptyStateVariant.noAccess));
+    return const AppointmentPageShell(
+      child: AppEmptyState(variant: AppEmptyStateVariant.noAccess),
+    );
   }
 }
 
@@ -1858,7 +2169,11 @@ class _CalendarSkeletonBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const AppSkeletonizerZone(
-      child: SizedBox.expand(child: Bone(borderRadius: BorderRadius.all(Radius.circular(AppRadius.xl)))),
+      child: SizedBox.expand(
+        child: Bone(
+          borderRadius: BorderRadius.all(Radius.circular(AppRadius.xl)),
+        ),
+      ),
     );
   }
 }

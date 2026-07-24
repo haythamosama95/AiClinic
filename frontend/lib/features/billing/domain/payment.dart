@@ -33,7 +33,12 @@ class Payment {
     final amount = _parseAmount(row['amount']);
     final recordedBy = _parseRecordedBy(row['recorded_by']);
     final recordedAtRaw = row['recorded_at']?.toString();
-    if (id == null || id.isEmpty || method == null || amount == null || recordedBy == null || recordedAtRaw == null) {
+    if (id == null ||
+        id.isEmpty ||
+        method == null ||
+        amount == null ||
+        recordedBy == null ||
+        recordedAtRaw == null) {
       return null;
     }
 

@@ -52,8 +52,12 @@ class _InvoiceDetailActionsState extends State<InvoiceDetailActions> {
 
     final canEdit = invoice.status.isDraft && view.canCreate;
     final canVoid = view.canVoid && invoice.status.isVoidable;
-    final canPay = view.canRecordPayment && !invoice.status.isDraft && !invoice.status.isTerminal;
-    final canRefund = view.canRefund && invoice.payments.any((payment) => !payment.isRefund);
+    final canPay =
+        view.canRecordPayment &&
+        !invoice.status.isDraft &&
+        !invoice.status.isTerminal;
+    final canRefund =
+        view.canRefund && invoice.payments.any((payment) => !payment.isRefund);
 
     final entries = <AppMenuEntry>[];
 
@@ -134,7 +138,9 @@ class _InvoiceDetailActionsState extends State<InvoiceDetailActions> {
         elevation: const WidgetStatePropertyAll(0),
         backgroundColor: WidgetStatePropertyAll(colors.surfaceRaised),
         surfaceTintColor: WidgetStatePropertyAll(colors.surfaceRaised),
-        padding: const WidgetStatePropertyAll(EdgeInsets.all(AppSpacing.space1)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.all(AppSpacing.space1),
+        ),
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -183,15 +189,29 @@ class _InvoiceDetailActionsState extends State<InvoiceDetailActions> {
           items.add(
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.space1),
-              child: Divider(height: 1, thickness: 1, color: colors.borderSubtle),
+              child: Divider(
+                height: 1,
+                thickness: 1,
+                color: colors.borderSubtle,
+              ),
             ),
           );
         case AppMenuSection(:final label, items: final sectionItems):
           if (label != null) {
             items.add(
               Padding(
-                padding: const EdgeInsets.fromLTRB(AppSpacing.space2, AppSpacing.space1, AppSpacing.space2, 0),
-                child: Text(label, style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.space2,
+                  AppSpacing.space1,
+                  AppSpacing.space2,
+                  0,
+                ),
+                child: Text(
+                  label,
+                  style: AppTypography.caption(
+                    context,
+                  ).copyWith(color: colors.textTertiary),
+                ),
               ),
             );
           }
@@ -212,7 +232,9 @@ class _InvoiceDetailActionsState extends State<InvoiceDetailActions> {
     bool isDark,
     AppMenuItem item,
   ) {
-    final dangerSurface = isDark ? AppColorPrimitives.statusDangerSurfaceDark : AppColorPrimitives.red50;
+    final dangerSurface = isDark
+        ? AppColorPrimitives.statusDangerSurfaceDark
+        : AppColorPrimitives.red50;
 
     return MenuItemButton(
       onPressed: item.disabled
@@ -235,7 +257,8 @@ class _InvoiceDetailActionsState extends State<InvoiceDetailActions> {
           if (item.disabled) {
             return Colors.transparent;
           }
-          if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
+          if (states.contains(WidgetState.hovered) ||
+              states.contains(WidgetState.focused)) {
             return item.destructive ? dangerSurface : colors.surfaceHover;
           }
           return Colors.transparent;
@@ -244,7 +267,11 @@ class _InvoiceDetailActionsState extends State<InvoiceDetailActions> {
         padding: const WidgetStatePropertyAll(
           EdgeInsets.symmetric(horizontal: AppSpacing.space2, vertical: 6),
         ),
-        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md))),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+        ),
         textStyle: WidgetStatePropertyAll(AppTypography.body(context)),
       ),
       leadingIcon: item.icon == null
@@ -254,7 +281,9 @@ class _InvoiceDetailActionsState extends State<InvoiceDetailActions> {
                 size: 16,
                 color: item.disabled
                     ? colors.textDisabled
-                    : (item.destructive ? colors.statusDangerFg : colors.iconDefault),
+                    : (item.destructive
+                          ? colors.statusDangerFg
+                          : colors.iconDefault),
               ),
               child: item.icon!,
             ),

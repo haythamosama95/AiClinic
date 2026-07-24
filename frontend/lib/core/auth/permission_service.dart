@@ -42,7 +42,8 @@ class PermissionService {
 
   bool canDeletePatients() => hasPermission(PermissionKeys.patientsDelete);
 
-  bool canReassignPatientMrn() => hasPermission(PermissionKeys.patientsReassignMrn);
+  bool canReassignPatientMrn() =>
+      hasPermission(PermissionKeys.patientsReassignMrn);
 
   bool canAccessAppointments() => hasAnyPermission([
     PermissionKeys.appointmentsCreate,
@@ -50,9 +51,11 @@ class PermissionService {
     PermissionKeys.appointmentsRead,
   ]);
 
-  bool canCreateAppointments() => hasPermission(PermissionKeys.appointmentsCreate);
+  bool canCreateAppointments() =>
+      hasPermission(PermissionKeys.appointmentsCreate);
 
-  bool canCancelAppointments() => hasPermission(PermissionKeys.appointmentsCancel);
+  bool canCancelAppointments() =>
+      hasPermission(PermissionKeys.appointmentsCancel);
 
   bool canCreateVisits() => hasPermission(PermissionKeys.visitsCreate);
 
@@ -64,13 +67,17 @@ class PermissionService {
     PermissionKeys.visitsEditSoap,
   ]);
 
-  bool canViewVisitClinicalDetail() => hasAnyPermission([PermissionKeys.visitsCreate, PermissionKeys.visitsEditSoap]);
+  bool canViewVisitClinicalDetail() => hasAnyPermission([
+    PermissionKeys.visitsCreate,
+    PermissionKeys.visitsEditSoap,
+  ]);
 
   bool canViewInvoices() => hasPermission(PermissionKeys.invoicesView);
 
   bool canCreateInvoices() => hasPermission(PermissionKeys.invoicesCreate);
 
-  bool canApplyDiscount() => hasPermission(PermissionKeys.invoicesApplyDiscount);
+  bool canApplyDiscount() =>
+      hasPermission(PermissionKeys.invoicesApplyDiscount);
 
   bool canVoidInvoice() => hasPermission(PermissionKeys.invoicesVoid);
 
@@ -80,7 +87,8 @@ class PermissionService {
 
   bool canManageInsurance() => hasPermission(PermissionKeys.insuranceManage);
 
-  bool canManageBillingSettings() => hasPermission(PermissionKeys.settingsBillingManage);
+  bool canManageBillingSettings() =>
+      hasPermission(PermissionKeys.settingsBillingManage);
 
   bool canManageShifts() => hasPermission(PermissionKeys.shiftsManage);
 
@@ -99,7 +107,9 @@ class PermissionService {
 
   void requirePermission(String key) {
     if (!hasPermission(key)) {
-      throw const PermissionDeniedException('You do not have permission to perform this action.');
+      throw const PermissionDeniedException(
+        'You do not have permission to perform this action.',
+      );
     }
   }
 }

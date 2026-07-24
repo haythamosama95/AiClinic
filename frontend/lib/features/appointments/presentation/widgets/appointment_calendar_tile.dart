@@ -83,7 +83,11 @@ class AppointmentCalendarTile extends StatelessWidget {
                     right: 0,
                     top: 0,
                     height: 1,
-                    child: ColoredBox(color: AppointmentCalendarStatusSwatch.highlightSheen(brightness)),
+                    child: ColoredBox(
+                      color: AppointmentCalendarStatusSwatch.highlightSheen(
+                        brightness,
+                      ),
+                    ),
                   ),
                   if (hasRoomForContent)
                     if (_usesHorizontalLayout)
@@ -98,22 +102,20 @@ class AppointmentCalendarTile extends StatelessWidget {
                     else
                       Padding(
                         padding: EdgeInsets.symmetric(
-                          horizontal: isCompact ? AppSpacing.space1 : AppSpacing.space2,
+                          horizontal: isCompact
+                              ? AppSpacing.space1
+                              : AppSpacing.space2,
                           vertical: isCompact ? 1 : AppSpacing.space1,
                         ),
                         child: SelectionContainer.disabled(
                           child: Align(
                             alignment: Alignment.centerLeft,
-                            child: Text(
-                              appointment.subject,
-                              maxLines: isCompact ? 1 : 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.caption(context).copyWith(
-                                color: textColor,
-                                fontWeight: FontWeight.w600,
-                                height: 1.0,
-                                decoration: TextDecoration.none,
-                              ),
+                            child: _PatientNameLabel(
+                              patientMrn: item?.patientMrn,
+                              patientName:
+                                  item?.patientName ?? appointment.subject,
+                              textColor: textColor,
+                              compact: isCompact,
                             ),
                           ),
                         ),
@@ -152,16 +154,23 @@ class _HorizontalEncounterStrip extends StatelessWidget {
   final Color textColor;
   final Color mutedTextColor;
 
-  bool get _isTightHeight => bounds.height < AppointmentCalendarTile._horizontalMinHeight;
+  bool get _isTightHeight =>
+      bounds.height < AppointmentCalendarTile._horizontalMinHeight;
 
   /// Width available to the encounter strip after the accent bar and padding.
   double get _contentWidth {
     final accentWidth = _isTightHeight ? 2.0 : 3.0;
-    final horizontalPadding = _isTightHeight ? AppSpacing.space1 * 2 : AppSpacing.space2 * 2;
-    return (bounds.width - accentWidth - horizontalPadding).clamp(0.0, double.infinity);
+    final horizontalPadding = _isTightHeight
+        ? AppSpacing.space1 * 2
+        : AppSpacing.space2 * 2;
+    return (bounds.width - accentWidth - horizontalPadding).clamp(
+      0.0,
+      double.infinity,
+    );
   }
 
-  bool get _showFullStrip => _contentWidth >= AppointmentCalendarTile._horizontalFullWidth;
+  bool get _showFullStrip =>
+      _contentWidth >= AppointmentCalendarTile._horizontalFullWidth;
   bool get _showMediumStrip =>
       _contentWidth >= AppointmentCalendarTile._horizontalMediumWidth &&
       bounds.height >= AppointmentCalendarTile._horizontalMinHeight;
@@ -169,7 +178,9 @@ class _HorizontalEncounterStrip extends StatelessWidget {
       _contentWidth >= AppointmentCalendarTile._horizontalMediumWithStatusWidth;
 
   String get _patientName => item?.patientName ?? appointment.subject;
-  String get _doctorName => item?.doctorDisplayName ?? appointment.notes ?? 'Unassigned';
+  String? get _patientMrn => item?.patientMrn;
+  String get _doctorName =>
+      item?.doctorDisplayName ?? appointment.notes ?? 'Unassigned';
   AppointmentStatus get _status => item?.status ?? AppointmentStatus.unknown;
 
   String get _timeRangeLabel {
@@ -199,7 +210,9 @@ class _HorizontalEncounterStrip extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: _isTightHeight ? AppSpacing.space1 : AppSpacing.space2,
+                horizontal: _isTightHeight
+                    ? AppSpacing.space1
+                    : AppSpacing.space2,
                 vertical: _isTightHeight ? 2 : AppSpacing.space1,
               ),
               child: _showFullStrip
@@ -222,7 +235,12 @@ class _HorizontalEncounterStrip extends StatelessWidget {
         _StripDivider(color: mutedTextColor),
         Expanded(
           flex: 3,
-          child: _LabeledStripSection(icon: Icons.person_outline, label: _patientName, textColor: textColor),
+          child: _LabeledStripSection(
+            icon: Icons.person_outline,
+            label: _patientName,
+            mrn: _patientMrn,
+            textColor: textColor,
+          ),
         ),
         _StripDivider(color: mutedTextColor),
         Expanded(
@@ -246,7 +264,11 @@ class _HorizontalEncounterStrip extends StatelessWidget {
       children: [
         Flexible(
           flex: 2,
-          child: _TimeBlock(label: _timeRangeLabel, textColor: textColor, compact: true),
+          child: _TimeBlock(
+            label: _timeRangeLabel,
+            textColor: textColor,
+            compact: true,
+          ),
         ),
         const SizedBox(width: AppSpacing.space2),
         Expanded(
@@ -254,6 +276,7 @@ class _HorizontalEncounterStrip extends StatelessWidget {
           child: _LabeledStripSection(
             icon: Icons.person_outline,
             label: _patientName,
+            mrn: _patientMrn,
             textColor: textColor,
             compact: true,
           ),
@@ -267,12 +290,22 @@ class _HorizontalEncounterStrip extends StatelessWidget {
   }
 
   Widget _buildCompactStrip(BuildContext context) {
-    return _LabeledStripSection(icon: Icons.person_outline, label: _patientName, textColor: textColor, compact: true);
+    return _LabeledStripSection(
+      icon: Icons.person_outline,
+      label: _patientName,
+      mrn: _patientMrn,
+      textColor: textColor,
+      compact: true,
+    );
   }
 }
 
 class _TimeBlock extends StatelessWidget {
-  const _TimeBlock({required this.label, required this.textColor, this.compact = false});
+  const _TimeBlock({
+    required this.label,
+    required this.textColor,
+    this.compact = false,
+  });
 
   final String label;
   final Color textColor;
@@ -285,7 +318,11 @@ class _TimeBlock extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.schedule_outlined, size: iconSize, color: textColor.withValues(alpha: 0.88)),
+        Icon(
+          Icons.schedule_outlined,
+          size: iconSize,
+          color: textColor.withValues(alpha: 0.88),
+        ),
         const SizedBox(width: AppSpacing.space1),
         Flexible(
           child: Text(
@@ -294,16 +331,69 @@ class _TimeBlock extends StatelessWidget {
             softWrap: false,
             overflow: TextOverflow.ellipsis,
             style: AppTypography.mono(context).copyWith(
-            color: textColor,
-            fontWeight: FontWeight.w600,
-            fontSize: compact ? 12 : 13,
-            fontFeatures: const [FontFeature.tabularFigures()],
-            height: 1.15,
-            decoration: TextDecoration.none,
+              color: textColor,
+              fontWeight: FontWeight.w600,
+              fontSize: compact ? 12 : 13,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              height: 1.15,
+              decoration: TextDecoration.none,
+            ),
           ),
         ),
-        ),
       ],
+    );
+  }
+}
+
+class _PatientNameLabel extends StatelessWidget {
+  const _PatientNameLabel({
+    required this.patientMrn,
+    required this.patientName,
+    required this.textColor,
+    this.compact = false,
+  });
+
+  final String? patientMrn;
+  final String patientName;
+  final Color textColor;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final nameStyle = AppTypography.caption(context).copyWith(
+      color: textColor,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+      decoration: TextDecoration.none,
+    );
+
+    if (patientMrn == null) {
+      return Text(
+        patientName,
+        maxLines: compact ? 1 : 2,
+        overflow: TextOverflow.ellipsis,
+        style: nameStyle,
+      );
+    }
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: patientMrn,
+            style: AppTypography.mono(context).copyWith(
+              color: textColor,
+              fontWeight: FontWeight.w600,
+              fontSize: compact ? 12 : null,
+              height: 1.0,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          TextSpan(text: ' · $patientName', style: nameStyle),
+        ],
+      ),
+      maxLines: compact ? 1 : 2,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }
@@ -313,12 +403,14 @@ class _LabeledStripSection extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.textColor,
+    this.mrn,
     this.fontWeight = FontWeight.w600,
     this.compact = false,
   });
 
   final IconData icon;
   final String label;
+  final String? mrn;
   final Color textColor;
   final FontWeight fontWeight;
   final bool compact;
@@ -326,28 +418,59 @@ class _LabeledStripSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconSize = compact ? 12.0 : 14.0;
+    final labelStyle = AppTypography.caption(context).copyWith(
+      color: textColor,
+      fontWeight: fontWeight,
+      height: 1.15,
+      decoration: TextDecoration.none,
+    );
+
+    Widget labelWidget;
+    if (mrn != null) {
+      labelWidget = Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: mrn,
+              style: AppTypography.mono(context).copyWith(
+                color: textColor,
+                fontWeight: fontWeight,
+                fontSize: compact ? 12 : null,
+                height: 1.15,
+                decoration: TextDecoration.none,
+              ),
+            ),
+            TextSpan(text: ' · $label', style: labelStyle),
+          ],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    } else {
+      labelWidget = Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: labelStyle,
+      );
+    }
 
     return Row(
       children: [
         Icon(icon, size: iconSize, color: textColor.withValues(alpha: 0.88)),
         const SizedBox(width: AppSpacing.space1),
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.caption(
-              context,
-            ).copyWith(color: textColor, fontWeight: fontWeight, height: 1.15, decoration: TextDecoration.none),
-          ),
-        ),
+        Expanded(child: labelWidget),
       ],
     );
   }
 }
 
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status, required this.textColor, this.compact = false});
+  const _StatusChip({
+    required this.status,
+    required this.textColor,
+    this.compact = false,
+  });
 
   final AppointmentStatus status;
   final Color textColor;
@@ -384,7 +507,11 @@ class _StatusChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_iconFor(status), size: iconSize, color: textColor.withValues(alpha: 0.92)),
+            Icon(
+              _iconFor(status),
+              size: iconSize,
+              color: textColor.withValues(alpha: 0.92),
+            ),
             const SizedBox(width: AppSpacing.space1),
             Text(
               status.label,
@@ -414,7 +541,10 @@ class _StripDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space2),
-      child: SizedBox(width: 1, child: ColoredBox(color: color.withValues(alpha: 0.35))),
+      child: SizedBox(
+        width: 1,
+        child: ColoredBox(color: color.withValues(alpha: 0.35)),
+      ),
     );
   }
 }
