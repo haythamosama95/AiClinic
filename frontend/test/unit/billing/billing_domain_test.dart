@@ -1,4 +1,5 @@
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_list_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
@@ -81,6 +82,87 @@ void main() {
           'amount': '50.00',
           'recorded_by': {'display_name': 'Reception'},
           'recorded_at': '2026-06-01T12:00:00.000Z',
+        }),
+        isNull,
+      );
+    });
+  });
+
+  group('InvoiceDetail', () {
+    Map<String, dynamic> minimalEnvelope({Map<String, dynamic>? invoiceOverrides, Map<String, dynamic>? envelopeOverrides}) {
+      return {
+        'invoice': {
+          'id': 'inv-1',
+          'status': 'issued',
+          'branch_id': 'branch-1',
+          'patient_id': 'patient-1',
+          'visit_id': 'visit-1',
+          'subtotal': '100.00',
+          'discount_amount': '0.00',
+          'insurance_covered_amount': '0.00',
+          'balance': '100.00',
+          'updated_at': '2026-06-02T12:00:00.000Z',
+          ...?invoiceOverrides,
+        },
+        'items': const [],
+        'payments': const [],
+        'patient': {'id': 'patient-1', 'display_name': 'Test Patient'},
+        'branch': {'id': 'branch-1', 'code': 'MAIN', 'name': 'Main'},
+        ...?envelopeOverrides,
+      };
+    }
+
+    test('fromRpcData parses enrichment fields when present', () {
+      final detail = InvoiceDetail.fromRpcData(
+        minimalEnvelope(
+          invoiceOverrides: {
+            'created_at': '2026-06-01T10:00:00.000Z',
+            'voided_at': '2026-06-02T11:00:00.000Z',
+            'void_reason': 'Duplicate',
+            'voided_by': {'id': 'staff-1', 'display_name': 'Front Desk'},
+          },
+          envelopeOverrides: {
+            'patient': {
+              'id': 'patient-1',
+              'display_name': 'Test Patient',
+              'mrn': 'MRN-10482',
+              'phone': '+20 100 000 0000',
+            },
+            'visit': {
+              'visit_date': '2026-06-01',
+              'doctor_name': 'Dr. Smith',
+              'branch_name': 'Main',
+            },
+          },
+        ),
+      );
+
+      expect(detail, isNotNull);
+      expect(detail!.createdAt, DateTime.parse('2026-06-01T10:00:00.000Z'));
+      expect(detail.voidedByName, 'Front Desk');
+      expect(detail.patientMrn, 'MRN-10482');
+      expect(detail.patientPhone, '+20 100 000 0000');
+      expect(detail.visitSummary?.doctor, 'Dr. Smith');
+      expect(detail.visitSummary?.branch, 'Main');
+      expect(detail.visitSummary?.date, DateTime.utc(2026, 6, 1));
+    });
+
+    test('fromRpcData degrades when enrichment fields are absent', () {
+      final detail = InvoiceDetail.fromRpcData(minimalEnvelope());
+
+      expect(detail, isNotNull);
+      expect(detail!.createdAt, DateTime.parse('2026-06-02T12:00:00.000Z'));
+      expect(detail.voidedByName, isNull);
+      expect(detail.patientMrn, isNull);
+      expect(detail.patientPhone, isNull);
+      expect(detail.visitSummary, isNull);
+    });
+
+    test('VisitSummary.fromRpcData rejects partial visit payloads', () {
+      expect(
+        VisitSummary.fromRpcData({
+          'visit_date': '2026-06-01',
+          'doctor_name': 'Dr. Smith',
         }),
         isNull,
       );

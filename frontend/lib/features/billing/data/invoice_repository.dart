@@ -192,6 +192,10 @@ class InvoiceRepository with AppRpcInvoker {
   Future<InvoiceDetail> getDetail({required String invoiceId}) async {
     _assertNonEmpty('invoiceId', invoiceId);
 
+    // `get_invoice_detail` does not yet emit `invoice.created_at`, `voided_by`,
+    // patient `mrn`/`phone`, or a `visit` summary block — see
+    // invoices-detail-page-implementation-plan.md §5. `InvoiceDetail.fromRpcData`
+    // parses them when present and degrades gracefully when absent.
     final result = await invokeRpc('get_invoice_detail', {'p_invoice_id': invoiceId.trim()});
     final detail = InvoiceDetail.fromRpcData(result.data);
     if (detail == null) {

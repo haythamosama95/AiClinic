@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
@@ -55,6 +56,22 @@ abstract final class BillingFormatting {
       PaymentMethod.card => Icons.credit_card_outlined,
       PaymentMethod.bankTransfer => Icons.account_balance_outlined,
       PaymentMethod.insuranceSettlement => Icons.health_and_safety_outlined,
+    };
+  }
+
+  static String discountLabel(DiscountKind? kind, String? value) {
+    if (kind == null || value == null || value.trim().isEmpty) {
+      return '—';
+    }
+
+    final parsed = double.tryParse(value);
+    if (parsed == null) {
+      return '—';
+    }
+
+    return switch (kind) {
+      DiscountKind.percentage => '${parsed.round()}% off',
+      DiscountKind.fixed => '${parsed.toStringAsFixed(2)} off',
     };
   }
 }
