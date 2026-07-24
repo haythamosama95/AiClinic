@@ -110,6 +110,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     if (detail != null) {
       return _PatientIdentityView(
         fullName: detail.fullName,
+        mrn: detail.mrn,
         phone: detail.phone,
         dateOfBirth: detail.dateOfBirth,
         gender: detail.gender,
@@ -120,6 +121,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     if (preview != null) {
       return _PatientIdentityView(
         fullName: preview.fullName,
+        mrn: preview.mrn,
         phone: preview.phone,
         dateOfBirth: preview.dateOfBirth,
         gender: preview.gender,
@@ -495,6 +497,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
 class _PatientIdentityView {
   const _PatientIdentityView({
     required this.fullName,
+    this.mrn,
     this.phone,
     this.dateOfBirth,
     this.gender,
@@ -503,6 +506,7 @@ class _PatientIdentityView {
   });
 
   final String fullName;
+  final String? mrn;
   final String? phone;
   final DateTime? dateOfBirth;
   final PatientGender? gender;
@@ -604,6 +608,20 @@ class _PatientIdentityCard extends StatelessWidget {
                   runSpacing: AppSpacing.space3,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    if (identity.mrn != null)
+                      AppBadge(
+                        size: BadgeSize.md,
+                        variant: BadgeVariant.soft,
+                        color: BadgeColor.teal,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.badge_outlined, size: 14, color: colors.iconMuted),
+                            const SizedBox(width: AppSpacing.space1),
+                            Text(identity.mrn!, style: AppTypography.mono(context)),
+                          ],
+                        ),
+                      ),
                     AppBadge(
                       size: BadgeSize.md,
                       variant: BadgeVariant.soft,

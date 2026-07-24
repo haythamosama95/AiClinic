@@ -11,6 +11,7 @@ class PatientListItem {
     required this.fullName,
     required this.registeringBranchId,
     required this.registeringBranchName,
+    this.mrn,
     this.phone,
     this.dateOfBirth,
     this.gender,
@@ -19,6 +20,7 @@ class PatientListItem {
   });
 
   final String id;
+  final String? mrn;
   final String fullName;
   final String? phone;
   final DateTime? dateOfBirth;
@@ -46,6 +48,7 @@ class PatientListItem {
 
     return PatientListItem(
       id: id,
+      mrn: parsePatientMrn(row),
       fullName: fullName,
       phone: optionalPatientString(row['phone']),
       dateOfBirth: parsePatientDate(row['date_of_birth']),
@@ -59,6 +62,7 @@ class PatientListItem {
 
   PatientListItem copyWith({
     String? id,
+    Object? mrn = copyWithSentinel,
     String? fullName,
     Object? phone = copyWithSentinel,
     Object? dateOfBirth = copyWithSentinel,
@@ -70,6 +74,7 @@ class PatientListItem {
   }) {
     return PatientListItem(
       id: id ?? this.id,
+      mrn: identical(mrn, copyWithSentinel) ? this.mrn : mrn as String?,
       fullName: fullName ?? this.fullName,
       phone: identical(phone, copyWithSentinel) ? this.phone : phone as String?,
       dateOfBirth: identical(dateOfBirth, copyWithSentinel) ? this.dateOfBirth : dateOfBirth as DateTime?,
@@ -89,6 +94,7 @@ class PatientListItem {
         other is PatientListItem &&
             runtimeType == other.runtimeType &&
             id == other.id &&
+            mrn == other.mrn &&
             fullName == other.fullName &&
             phone == other.phone &&
             dateOfBirth == other.dateOfBirth &&
@@ -102,6 +108,7 @@ class PatientListItem {
   @override
   int get hashCode => Object.hash(
     id,
+    mrn,
     fullName,
     phone,
     dateOfBirth,

@@ -26,6 +26,7 @@ DECLARE
   v_patient_main uuid;
   v_patient_second uuid;
   v_patient_wildcard uuid;
+  v_patient_mrn text;
   v_updated_at timestamptz;
   v_total int;
   v_items jsonb;
@@ -182,6 +183,7 @@ BEGIN
     false
   );
   v_patient_main := (v_result.data ->> 'patient_id')::uuid;
+  v_patient_mrn := v_result.data ->> 'mrn';
   PERFORM set_config('role', 'postgres', true);
   INSERT INTO patient_crud_results VALUES (
     'create_patient_success',
@@ -225,6 +227,19 @@ BEGIN
       AND (v_result.data ->> 'created_at') IS NOT NULL
       AND (v_result.data ->> 'updated_at') IS NOT NULL,
     COALESCE(v_result.error_code, v_result.data ->> 'full_name')
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US4: get_patient returns MRN matching stored value.
+  v_result := public.get_patient(v_patient_main);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'get_patient_includes_mrn',
+    v_result.success
+      AND (v_result.data ->> 'mrn') IS NOT NULL
+      AND (v_result.data ->> 'mrn') = v_patient_mrn
+      AND (v_result.data ->> 'mrn') ~ '^MRN-\d{6,}$',
+    COALESCE(v_result.data ->> 'mrn', v_result.error_code, '<null>')
   );
   PERFORM set_config('role', 'authenticated', true);
 
@@ -442,6 +457,30 @@ BEGIN
     'search_organization_scope_includes_all_branches',
     v_result.success AND v_total >= 3,
     'total=' || v_total::text
+  );
+  PERFORM set_config('role', 'authenticated', true);
+
+  -- US3: search_patients rows include non-null MRN matching format.
+  v_result := public.search_patients(NULL, 'organization', NULL, 25, 0);
+  v_items := COALESCE(v_result.data -> 'items', '[]'::jsonb);
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO patient_crud_results VALUES (
+    'search_patients_includes_mrn',
+    v_result.success
+      AND jsonb_array_length(v_items) >= 1
+      AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_items) item
+        WHERE (item ->> 'mrn') IS NULL
+          OR (item ->> 'mrn') !~ '^MRN-\d{6,}$'
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_items) item
+        WHERE (item ->> 'id')::uuid = v_patient_main
+          AND (item ->> 'mrn') = v_patient_mrn
+      ),
+    'items=' || jsonb_array_length(v_items)::text
   );
   PERFORM set_config('role', 'authenticated', true);
 

@@ -83,15 +83,15 @@ description: "Task list for Patient MRN (Medical Record Number) feature implemen
 
 ### Tests for User Story 3
 
-- [ ] T015 [P] [US3] Add pgTAP assertions to `backend/tests/patient_management_crud.sql` (or new `backend/tests/search_patients_mrn_test.sql`) that `search_patients` row objects include a non-null `mrn` matching `^MRN-\d{6,}$` for every returned patient; wire into `run_patient_management_tests.sh`
-- [ ] T016 [P] [US3] Create Flutter unit test `frontend/test/unit/patients/patient_list_item_mrn_test.dart` asserting `PatientListItem.fromJson` parses `mrn` from `row['mrn']` (with fallback to `row['patient_mrn']`); add a list-notifier test fixture row containing `mrn` and confirm it flows into `PatientListUiState` rows
-- [ ] T017 [P] [US3] Create Flutter widget test `frontend/test/widget/patients/patient_table_mrn_column_test.dart` asserting the `MRN` header is rendered as the first column and the cell text equals the row's `mrn`
+- [X] T015 [P] [US3] Add pgTAP assertions to `backend/tests/patient_management_crud.sql` (or new `backend/tests/search_patients_mrn_test.sql`) that `search_patients` row objects include a non-null `mrn` matching `^MRN-\d{6,}$` for every returned patient; wire into `run_patient_management_tests.sh`
+- [X] T016 [P] [US3] Create Flutter unit test `frontend/test/unit/patients/patient_list_item_mrn_test.dart` asserting `PatientListItem.fromJson` parses `mrn` from `row['mrn']` (with fallback to `row['patient_mrn']`); add a list-notifier test fixture row containing `mrn` and confirm it flows into `PatientListUiState` rows
+- [X] T017 [P] [US3] Create Flutter widget test `frontend/test/widget/patients/patient_table_mrn_column_test.dart` asserting the `MRN` header is rendered as the first column and the cell text equals the row's `mrn`
 
 ### Implementation for User Story 3
 
-- [ ] T018 [P] [US3] Extend `search_patients` RPC SELECT in `backend/supabase/migrations/20260724121000_search_patients_include_mrn.sql` to include `mrn` in each row's `jsonb_build_object(...)` output (add the field alongside the existing `full_name`, `phone`, `date_of_birth`, `branch_id`, `branch_name`); run the migration and confirm via psql
-- [ ] T019 [P] [US3] Add `mrn: String?` field to `PatientListItem` in `frontend/lib/features/patients/domain/patient_list_item.dart` and parse it in the row parser; add a corresponding case to `frontend/lib/features/patients/domain/patient_row_parsing.dart` (key `mrn`, fallback `patient_mrn`)
-- [ ] T020 [US3] Add a `TableColumn(id: 'mrn', header: 'MRN', accessor: (row) => Text(row.mrn ?? '—', style: AppTypography.mono))` as the FIRST column in `frontend/lib/features/patients/presentation/widgets/patient_table.dart` (before the patient name column); use an explicit width (~140) so the column doesn't collapse; shift existing columns right by one
+- [X] T018 [P] [US3] Extend `search_patients` RPC SELECT in `backend/supabase/migrations/20260724121000_search_patients_include_mrn.sql` to include `mrn` in each row's `jsonb_build_object(...)` output (add the field alongside the existing `full_name`, `phone`, `date_of_birth`, `branch_id`, `branch_name`); run the migration and confirm via psql
+- [X] T019 [P] [US3] Add `mrn: String?` field to `PatientListItem` in `frontend/lib/features/patients/domain/patient_list_item.dart` and parse it in the row parser; add a corresponding case to `frontend/lib/features/patients/domain/patient_row_parsing.dart` (key `mrn`, fallback `patient_mrn`)
+- [X] T020 [US3] Add a `TableColumn(id: 'mrn', header: 'MRN', accessor: (row) => Text(row.mrn ?? '—', style: AppTypography.mono))` as the FIRST column in `frontend/lib/features/patients/presentation/widgets/patient_table.dart` (before the patient name column); use an explicit width (~140) so the column doesn't collapse; shift existing columns right by one
 
 **Checkpoint**: User Stories 1 AND 3 both work independently. Staff can create a patient (US1) AND see MRNs in the list (US3) without needing other stories.
 
@@ -105,15 +105,15 @@ description: "Task list for Patient MRN (Medical Record Number) feature implemen
 
 ### Tests for User Story 4
 
-- [ ] T021 [P] [US4] Add pgTAP assertions (extend `backend/tests/patient_management_crud.sql` or new `backend/tests/get_patient_mrn_test.sql`) that `get_patient` response includes a non-null `mrn` matching the patient's stored value; include in `run_patient_management_tests.sh`
-- [ ] T022 [P] [US4] Create Flutter unit test `frontend/test/unit/patients/patient_detail_mrn_test.dart` asserting `PatientDetail.fromJson` parses `mrn` (key `mrn`, fallback `patient_mrn`) and exposes it as a non-null field
-- [ ] T023 [P] [US4] Create Flutter widget test `frontend/test/widget/patients/patient_identity_mrn_chip_test.dart` asserting `_PatientIdentityCard` renders an `AppBadge` whose text equals the patient's `mrn`, placed first in the identity `Wrap`
+- [X] T021 [P] [US4] Add pgTAP assertions (extend `backend/tests/patient_management_crud.sql` or new `backend/tests/get_patient_mrn_test.sql`) that `get_patient` response includes a non-null `mrn` matching the patient's stored value; include in `run_patient_management_tests.sh`
+- [X] T022 [P] [US4] Create Flutter unit test `frontend/test/unit/patients/patient_detail_mrn_test.dart` asserting `PatientDetail.fromJson` parses `mrn` (key `mrn`, fallback `patient_mrn`) and exposes it as a non-null field
+- [X] T023 [P] [US4] Create Flutter widget test `frontend/test/widget/patients/patient_identity_mrn_chip_test.dart` asserting `_PatientIdentityCard` renders an `AppBadge` whose text equals the patient's `mrn`, placed first in the identity `Wrap`
 
 ### Implementation for User Story 4
 
-- [ ] T024 [P] [US4] Extend `get_patient` RPC SELECT in `backend/supabase/migrations/20260724122000_get_patient_include_mrn.sql` to include `mrn` in the returned detail object (alongside existing profile fields)
-- [ ] T025 [P] [US4] Add `mrn: String?` field to `PatientDetail` in `frontend/lib/features/patients/domain/patient_detail.dart` and parse it from the RPC payload
-- [ ] T026 [US4] Add an MRN `AppBadge` to `_PatientIdentityCard` in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`: place it FIRST in the existing identity `Wrap` of `AppBadge`s, use `AppBadge(size: BadgeSize.md, variant: BadgeVariant.soft, color: <distinct identifier color, e.g., BadgeColor.primary/teal>, child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(identity_icon, size: 14), SizedBox(width:4), Text(patient.mrn, style: AppTypography.mono)]))`; ensure the value matches `patient.mrn` exactly (US-4 acceptance 2)
+- [X] T024 [P] [US4] Extend `get_patient` RPC SELECT in `backend/supabase/migrations/20260724122000_get_patient_include_mrn.sql` to include `mrn` in the returned detail object (alongside existing profile fields)
+- [X] T025 [P] [US4] Add `mrn: String?` field to `PatientDetail` in `frontend/lib/features/patients/domain/patient_detail.dart` and parse it from the RPC payload
+- [X] T026 [US4] Add an MRN `AppBadge` to `_PatientIdentityCard` in `frontend/lib/features/patients/presentation/pages/patient_detail_page.dart`: place it FIRST in the existing identity `Wrap` of `AppBadge`s, use `AppBadge(size: BadgeSize.md, variant: BadgeVariant.soft, color: <distinct identifier color, e.g., BadgeColor.primary/teal>, child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(identity_icon, size: 14), SizedBox(width:4), Text(patient.mrn, style: AppTypography.mono)]))`; ensure the value matches `patient.mrn` exactly (US-4 acceptance 2)
 
 **Checkpoint**: User Story 4 delivers the durable per-patient MRN surface. Combined with US1, the Add-Patient success flow now lands on a detail page that confirms the MRN visibly.
 

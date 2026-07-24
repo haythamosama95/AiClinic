@@ -46,3 +46,8 @@ String? optionalPatientString(Object? value) {
   final text = value?.toString().trim();
   return text == null || text.isEmpty ? null : text;
 }
+
+/// Parses MRN from RPC row keys (`mrn` preferred, `patient_mrn` fallback).
+String? parsePatientMrn(Map<String, dynamic> row) {
+  return optionalPatientString(row['mrn'] ?? row['patient_mrn']);
+}

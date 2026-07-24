@@ -40,6 +40,12 @@ class PatientTable extends StatelessWidget {
       headerTextStyle: AppTypography.caption(context).copyWith(fontWeight: FontWeight.w600, color: colors.textTertiary),
       columns: [
         TableColumn(
+          id: 'mrn',
+          header: 'MRN',
+          width: 140,
+          accessor: (row) => Text(row.item.mrn ?? '—', style: AppTypography.mono(context)),
+        ),
+        TableColumn(
           id: 'patient',
           header: 'Patient',
           accessor: (row) => _PatientCell(name: row.item.fullName),
