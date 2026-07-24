@@ -14,6 +14,7 @@ import 'package:ai_clinic/features/patients/domain/patient_gender.dart';
 import 'package:ai_clinic/features/patients/domain/patient_list_item.dart';
 import 'package:ai_clinic/features/patients/domain/patient_marital_status.dart';
 import 'package:ai_clinic/features/patients/presentation/edit_patient/edit_patient_dialog.dart';
+import 'package:ai_clinic/features/patients/presentation/pages/mrn_reassignment_dialog.dart';
 import 'package:ai_clinic/features/patients/presentation/navigation/patient_detail_route_extra.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/active_branch_name_provider.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_history_provider.dart';
@@ -86,6 +87,18 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
       context: context,
       builder: (_) => EditPatientDialog(patientId: widget.patientId),
     );
+  }
+
+  Future<void> _openReassignMrn(String currentMrn) async {
+    final success = await MrnReassignmentDialog.show(
+      context,
+      patientId: widget.patientId,
+      currentMrn: currentMrn,
+    );
+    if (!mounted || !success) {
+      return;
+    }
+    ref.invalidate(patientDetailProvider(widget.patientId));
   }
 
   void _openPatientNotes(String notes) {
@@ -396,6 +409,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
     required _PatientIdentityView identity,
     required bool skeletonizeHeader,
     required bool showTabSkeleton,
+    required bool canReassignMrn,
     Widget? tabBodyOverride,
     PatientDetail? detail,
   }) {
@@ -420,6 +434,9 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
                   ? () => _openPatientNotes(detail.notes!)
                   : null,
               onEdit: detail != null ? _openEditPatient : null,
+              onReassignMrn: detail != null && canReassignMrn && detail.mrn != null
+                  ? () => _openReassignMrn(detail.mrn!)
+                  : null,
             ),
           ],
         ),
@@ -436,6 +453,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(patientDetailProvider(widget.patientId));
+    final canReassignMrn = ref.watch(permissionServiceProvider).canReassignPatientMrn();
     final preview = _preview;
 
     Widget content;
@@ -450,6 +468,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
               identity: identity,
               skeletonizeHeader: false,
               showTabSkeleton: false,
+              canReassignMrn: canReassignMrn,
               tabBodyOverride: _buildCenteredTabPlaceholder(
                 AppErrorState(message: _errorMessage(detailAsync.error!), onRetry: _invalidateDetail),
               ),
@@ -461,6 +480,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
         identity: identity,
         skeletonizeHeader: preview == null,
         showTabSkeleton: true,
+        canReassignMrn: canReassignMrn,
       );
     } else {
       final detail = detailAsync.value;
@@ -473,6 +493,7 @@ class _PatientDetailPageState extends ConsumerState<PatientDetailPage> with Sing
           identity: identity,
           skeletonizeHeader: false,
           showTabSkeleton: false,
+          canReassignMrn: canReassignMrn,
           detail: detail,
         );
       }
@@ -523,6 +544,7 @@ class _PatientIdentityCard extends StatelessWidget {
     this.skeletonize = false,
     this.onViewNotes,
     this.onEdit,
+    this.onReassignMrn,
   });
 
   final _PatientIdentityView identity;
@@ -532,6 +554,7 @@ class _PatientIdentityCard extends StatelessWidget {
   final bool skeletonize;
   final VoidCallback? onViewNotes;
   final VoidCallback? onEdit;
+  final VoidCallback? onReassignMrn;
 
   @override
   Widget build(BuildContext context) {
@@ -673,7 +696,7 @@ class _PatientIdentityCard extends StatelessWidget {
               ],
             ),
           ),
-          if (onViewNotes != null || onEdit != null)
+          if (onViewNotes != null || onEdit != null || onReassignMrn != null)
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -684,6 +707,16 @@ class _PatientIdentityCard extends StatelessWidget {
                     leadingIcon: const Icon(Icons.notes_outlined, size: 16),
                     onPressed: onViewNotes,
                     child: Text(l10n.notesLabel),
+                  ),
+                  if (onEdit != null || onReassignMrn != null) const SizedBox(width: AppSpacing.space2),
+                ],
+                if (onReassignMrn != null) ...[
+                  AppButton(
+                    variant: AppButtonVariant.secondary,
+                    size: AppButtonSize.md,
+                    leadingIcon: const Icon(Icons.badge_outlined, size: 16),
+                    onPressed: onReassignMrn,
+                    child: const Text('Reassign MRN'),
                   ),
                   if (onEdit != null) const SizedBox(width: AppSpacing.space2),
                 ],

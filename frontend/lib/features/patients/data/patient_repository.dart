@@ -25,7 +25,7 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   SupabaseClient get rpcClient => _client;
 
   @override
-  String get migrationHint => '20260724120000_patient_mrn_field.sql';
+  String get migrationHint => '20260724120100_reassign_patient_mrn_rpc.sql';
 
   @override
   String get rpcLogDomain => 'patients';
@@ -178,6 +178,29 @@ class PatientRepositoryImpl with AppRpcInvoker implements PatientRepository {
   @override
   Future<void> archivePatient(String patientId) async {
     await invokeRpc('archive_patient', {'p_patient_id': patientId});
+  }
+
+  @override
+  Future<String> reassignPatientMrn({required String patientId, required String newMrn}) async {
+    final id = patientId.trim();
+    final mrn = newMrn.trim();
+    if (id.isEmpty) {
+      throw RpcFailure(
+        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'Patient id is required.'),
+      );
+    }
+    if (mrn.isEmpty) {
+      throw RpcFailure(
+        const RpcResult(success: false, errorCode: 'INVALID_INPUT', errorMessage: 'MRN is required.'),
+      );
+    }
+
+    final result = await invokeRpc('reassign_patient_mrn', {'p_patient_id': id, 'p_new_mrn': mrn});
+    final assignedMrn = result.data?['mrn']?.toString();
+    if (assignedMrn == null || assignedMrn.isEmpty) {
+      throw StateError('MRN was reassigned but no mrn was returned.');
+    }
+    return assignedMrn;
   }
 
   /// Parses `candidates` from RPC success or `DUPLICATE_WARNING` error payloads.

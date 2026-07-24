@@ -33,4 +33,6 @@ abstract class PatientRepository {
   Future<DateTime> updatePatient(UpdatePatientInput input);
 
   Future<void> archivePatient(String patientId);
+
+  Future<String> reassignPatientMrn({required String patientId, required String newMrn});
 }

@@ -312,4 +312,7 @@ class _TrackingPatientRepository implements PatientRepository {
 
   @override
   Future<DateTime> updatePatient(UpdatePatientInput input) => throw UnimplementedError();
+
+  @override
+  Future<String> reassignPatientMrn({required String patientId, required String newMrn}) => throw UnimplementedError();
 }

@@ -7,6 +7,7 @@ import 'package:ai_clinic/features/patients/domain/usecases/check_duplicates.dar
 import 'package:ai_clinic/features/patients/domain/usecases/create_patient.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/update_patient.dart';
 import 'package:ai_clinic/features/patients/domain/usecases/archive_patient.dart';
+import 'package:ai_clinic/features/patients/domain/usecases/reassign_patient_mrn.dart';
 
 final searchPatientsUseCaseProvider = Provider((ref) => SearchPatients(ref.watch(patientRepositoryProvider)));
 final getPatientUseCaseProvider = Provider((ref) => GetPatient(ref.watch(patientRepositoryProvider)));
@@ -14,3 +15,4 @@ final checkDuplicatesUseCaseProvider = Provider((ref) => CheckDuplicates(ref.wat
 final createPatientUseCaseProvider = Provider((ref) => CreatePatient(ref.watch(patientRepositoryProvider)));
 final updatePatientUseCaseProvider = Provider((ref) => UpdatePatient(ref.watch(patientRepositoryProvider)));
 final archivePatientUseCaseProvider = Provider((ref) => ArchivePatient(ref.watch(patientRepositoryProvider)));
+final reassignPatientMrnUseCaseProvider = Provider((ref) => ReassignPatientMrn(ref.watch(patientRepositoryProvider)));

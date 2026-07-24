@@ -275,4 +275,9 @@ class FakePatientRepository implements PatientRepository {
       patients.removeWhere((patient) => patient.id == patientId);
     }
   }
+
+  @override
+  Future<String> reassignPatientMrn({required String patientId, required String newMrn}) async {
+    return newMrn;
+  }
 }

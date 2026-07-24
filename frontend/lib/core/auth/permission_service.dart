@@ -42,6 +42,8 @@ class PermissionService {
 
   bool canDeletePatients() => hasPermission(PermissionKeys.patientsDelete);
 
+  bool canReassignPatientMrn() => hasPermission(PermissionKeys.patientsReassignMrn);
+
   bool canAccessAppointments() => hasAnyPermission([
     PermissionKeys.appointmentsCreate,
     PermissionKeys.appointmentsCancel,

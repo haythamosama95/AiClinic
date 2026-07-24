@@ -68,6 +68,13 @@ class PatientRpcTestClient extends RpcCaptureSupabaseClient {
         'success': true,
         'data': {'patient_id': _param('p_patient_id')},
       },
+      'reassign_patient_mrn' => {
+        'success': true,
+        'data': {
+          'patient_id': _param('p_patient_id'),
+          'mrn': _param('p_new_mrn'),
+        },
+      },
       _ => {'success': true, 'data': {}},
     };
   }
