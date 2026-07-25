@@ -35,6 +35,19 @@ void main() {
       expect(client.lastParams?['p_acknowledge_duplicate'], false);
     });
 
+    test('optional mrn is forwarded as p_mrn', () async {
+      await repository.createPatient(
+        const CreatePatientInput(
+          activeBranchId: '44444444-4444-4444-8444-444444444444',
+          fullName: 'Dev Seed Patient',
+          phone: '201005551234',
+          mrn: 'MRN-000099',
+        ),
+      );
+
+      expect(client.lastParams?['p_mrn'], 'MRN-000099');
+    });
+
     test('advanced: optional fields are trimmed and encoded', () async {
       await repository.createPatient(
         CreatePatientInput(

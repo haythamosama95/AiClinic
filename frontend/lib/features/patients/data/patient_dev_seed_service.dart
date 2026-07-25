@@ -57,9 +57,7 @@ class PatientDevSeedService {
   }) async {
     final organizationId = auth.organizationId;
     final mainBranchId = auth.activeBranchId ?? auth.branchIds.firstOrNull;
-    if (organizationId == null ||
-        organizationId.isEmpty ||
-        mainBranchId == null) {
+    if (organizationId == null || organizationId.isEmpty || mainBranchId == null) {
       return const PatientDevSeedOutcome(
         created: 0,
         archived: 0,
@@ -74,24 +72,14 @@ class PatientDevSeedService {
       limit: 1,
     );
     if (existing.totalCount > 0) {
-      AppLog.info(
-        'patients.dev_seed.skip_already_present count=${existing.totalCount}',
-      );
-      return PatientDevSeedOutcome(
-        created: 0,
-        archived: 0,
-        skippedBecauseAlreadySeeded: true,
-        otherBranchName: null,
-      );
+      AppLog.info('patients.dev_seed.skip_already_present count=${existing.totalCount}');
+      return PatientDevSeedOutcome(created: 0, archived: 0, skippedBecauseAlreadySeeded: true, otherBranchName: null);
     }
 
     AppLog.info('patients.dev_seed.start main_branch=$mainBranchId');
 
     try {
-      final orgBranches = await _branches.listBranches(
-        organizationId: organizationId,
-        filter: BranchListFilter.active,
-      );
+      final orgBranches = await _branches.listBranches(organizationId: organizationId, filter: BranchListFilter.active);
       var otherBranchId = _pickOtherBranchId(orgBranches, mainBranchId);
 
       if (otherBranchId == null) {
@@ -103,15 +91,10 @@ class PatientDevSeedService {
             address: 'Dev seed address',
           ),
         );
-        AppLog.info(
-          'patients.dev_seed.second_branch_created id=$otherBranchId',
-        );
+        AppLog.info('patients.dev_seed.second_branch_created id=$otherBranchId');
       }
 
-      final assignmentChanged = await _ensureStaffAssignedToBranch(
-        auth,
-        otherBranchId,
-      );
+      final assignmentChanged = await _ensureStaffAssignedToBranch(auth, otherBranchId);
       if (assignmentChanged) {
         await reloadAuthContext();
       }
@@ -127,12 +110,11 @@ class PatientDevSeedService {
       }
       otherBranchLabel ??= _secondBranchName;
 
-      for (final spec in PatientDevSeedData.patients) {
-        final branchId = spec.branchTarget == PatientDevSeedBranchTarget.other
-            ? otherBranchId
-            : mainBranchId;
+      for (var index = 0; index < PatientDevSeedData.patients.length; index++) {
+        final spec = PatientDevSeedData.patients[index];
+        final branchId = spec.branchTarget == PatientDevSeedBranchTarget.other ? otherBranchId : mainBranchId;
 
-        final patientId = await _createWithDuplicateAck(spec, branchId);
+        final patientId = await _createWithDuplicateAck(spec, branchId, seedOrder: index + 1);
         created++;
 
         if (spec.archiveAfterCreate) {
@@ -154,8 +136,7 @@ class PatientDevSeedService {
         created: 0,
         archived: 0,
         skippedBecauseAlreadySeeded: false,
-        errorMessage:
-            error.result.errorMessage ?? 'Patient seed failed (${error.code}).',
+        errorMessage: error.result.errorMessage ?? 'Patient seed failed (${error.code}).',
       );
     } catch (error, stack) {
       AppLog.warning('patients.dev_seed.failed reason=${error.runtimeType}');
@@ -169,10 +150,7 @@ class PatientDevSeedService {
     }
   }
 
-  Future<String> _createWithDuplicateAck(
-    PatientDevSeedSpec spec,
-    String branchId,
-  ) async {
+  Future<String> _createWithDuplicateAck(PatientDevSeedSpec spec, String branchId, {required int seedOrder}) async {
     final input = CreatePatientInput(
       activeBranchId: branchId,
       fullName: spec.fullName,
@@ -181,6 +159,7 @@ class PatientDevSeedService {
       gender: spec.gender,
       maritalStatus: spec.maritalStatus,
       notes: spec.notes,
+      mrn: PatientDevSeedSpec.mrnForSeedOrder(seedOrder),
     );
 
     try {
@@ -190,26 +169,12 @@ class PatientDevSeedService {
       if (!error.isDuplicateWarning) {
         rethrow;
       }
-      final result = await _patients.createPatient(
-        CreatePatientInput(
-          activeBranchId: branchId,
-          fullName: spec.fullName,
-          phone: spec.phone,
-          dateOfBirth: spec.dateOfBirth,
-          gender: spec.gender,
-          maritalStatus: spec.maritalStatus,
-          notes: spec.notes,
-          acknowledgeDuplicate: true,
-        ),
-      );
+      final result = await _patients.createPatient(input.copyWith(acknowledgeDuplicate: true));
       return result.patientId;
     }
   }
 
-  Future<bool> _ensureStaffAssignedToBranch(
-    AuthSessionContext auth,
-    String branchId,
-  ) async {
+  Future<bool> _ensureStaffAssignedToBranch(AuthSessionContext auth, String branchId) async {
     if (auth.branchIds.contains(branchId)) {
       return false;
     }
@@ -217,9 +182,7 @@ class PatientDevSeedService {
     final staffId = auth.staffProfile.staffMemberId;
     final detail = await _staffAdmin.fetchStaffMember(staffId);
     if (detail == null) {
-      throw StateError(
-        'Could not load your staff profile to assign the second branch.',
-      );
+      throw StateError('Could not load your staff profile to assign the second branch.');
     }
 
     final branchIds = [...detail.branchIds];
@@ -237,16 +200,11 @@ class PatientDevSeedService {
         primaryBranchId: detail.primaryBranchId ?? auth.activeBranchId,
       ),
     );
-    AppLog.info(
-      'patients.dev_seed.staff_assigned_second_branch branch_id=$branchId',
-    );
+    AppLog.info('patients.dev_seed.staff_assigned_second_branch branch_id=$branchId');
     return true;
   }
 
-  static String? _pickOtherBranchId(
-    List<BranchListItem> orgBranches,
-    String mainBranchId,
-  ) {
+  static String? _pickOtherBranchId(List<BranchListItem> orgBranches, String mainBranchId) {
     for (final branch in orgBranches) {
       if (branch.id != mainBranchId) {
         return branch.id;

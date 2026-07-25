@@ -897,6 +897,7 @@ class DevClinicSeedService {
     required int patientIndex,
   }) async {
     final seedKey = branchIndex * 1000 + patientIndex;
+    final globalIndex = DevClinicSeedSpec.patientGlobalIndex(branchIndex: branchIndex, patientIndex: patientIndex);
     final input = CreatePatientInput(
       activeBranchId: branchId,
       fullName: DevClinicSeedSpec.patientFullName(branchCode: branchCode, index: patientIndex),
@@ -905,6 +906,7 @@ class DevClinicSeedService {
       gender: DevClinicSeedSchedule.patientGender(seedKey),
       maritalStatus: DevClinicSeedSchedule.patientMaritalStatus(seedKey),
       notes: DevClinicSeedSchedule.patientNotes(branchCode: branchCode, patientIndex: patientIndex),
+      mrn: DevClinicSeedSpec.patientMrn(globalIndex),
     );
 
     try {
@@ -914,18 +916,7 @@ class DevClinicSeedService {
       if (!error.isDuplicateWarning) {
         rethrow;
       }
-      final result = await _patients.createPatient(
-        CreatePatientInput(
-          activeBranchId: branchId,
-          fullName: input.fullName,
-          phone: input.phone,
-          dateOfBirth: input.dateOfBirth,
-          gender: input.gender,
-          maritalStatus: input.maritalStatus,
-          notes: input.notes,
-          acknowledgeDuplicate: true,
-        ),
-      );
+      final result = await _patients.createPatient(input.copyWith(acknowledgeDuplicate: true));
       return result.patientId;
     }
   }

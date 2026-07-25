@@ -36,5 +36,22 @@ void main() {
         startsWith(DevClinicSeedSpec.patientNamePrefix),
       );
     });
+
+    test('patient MRNs are unique and sequential across branches', () {
+      final mrns = <String>{};
+      for (var branchIndex = 1; branchIndex <= 3; branchIndex++) {
+        for (var patientIndex = 1; patientIndex <= DevClinicSeedSpec.patientsPerBranch; patientIndex++) {
+          final globalIndex = DevClinicSeedSpec.patientGlobalIndex(
+            branchIndex: branchIndex,
+            patientIndex: patientIndex,
+          );
+          mrns.add(DevClinicSeedSpec.patientMrn(globalIndex));
+        }
+      }
+
+      expect(mrns, hasLength(3 * DevClinicSeedSpec.patientsPerBranch));
+      expect(DevClinicSeedSpec.patientMrn(1), 'MRN-000001');
+      expect(DevClinicSeedSpec.patientMrn(DevClinicSeedSpec.patientsPerBranch), 'MRN-000016');
+    });
   });
 }

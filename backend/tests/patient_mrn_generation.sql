@@ -130,6 +130,41 @@ BEGIN
     'mrn1=' || COALESCE(v_mrn_1, '<null>') || ' mrn2=' || COALESCE(v_mrn_2, '<null>')
   );
 
+  -- Explicit p_mrn (dev seed) is accepted when valid and unused.
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', v_owner_user::text,
+      'role', 'authenticated',
+      'organization_id', v_org_id::text,
+      'branch_ids', v_branch_main::text,
+      'staff_member_id', v_owner_staff::text,
+      'staff_role', 'administrator',
+      'setup_required', false
+    )::text,
+    true
+  );
+
+  v_result := public.create_patient(
+    v_branch_main,
+    'Dev Seed Explicit MRN',
+    '201000000198',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    false,
+    'MRN-000099'
+  );
+
+  PERFORM set_config('role', 'postgres', true);
+  INSERT INTO mrn_generation_results VALUES (
+    'create_patient_accepts_explicit_p_mrn',
+    v_result.success AND (v_result.data ->> 'mrn') = 'MRN-000099',
+    'payload_mrn=' || COALESCE(v_result.data ->> 'mrn', '<null>')
+  );
+
   -- Manual duplicate INSERT rejected by unique index.
   v_dup_failed := false;
   BEGIN
