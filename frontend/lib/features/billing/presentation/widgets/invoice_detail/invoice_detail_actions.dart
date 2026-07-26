@@ -19,8 +19,6 @@ class InvoiceDetailActions extends StatefulWidget {
     required this.onVoid,
     required this.onRecordPayment,
     required this.onRecordRefund,
-    required this.onViewPatient,
-    required this.onViewVisit,
     super.key,
   });
 
@@ -30,8 +28,6 @@ class InvoiceDetailActions extends StatefulWidget {
   final VoidCallback onVoid;
   final VoidCallback onRecordPayment;
   final VoidCallback onRecordRefund;
-  final VoidCallback onViewPatient;
-  final VoidCallback onViewVisit;
 
   @override
   State<InvoiceDetailActions> createState() => _InvoiceDetailActionsState();
@@ -102,25 +98,6 @@ class _InvoiceDetailActionsState extends State<InvoiceDetailActions> {
         ),
       );
     }
-
-    if (entries.isNotEmpty) {
-      entries.add(const AppMenuSeparator());
-    }
-
-    entries.addAll([
-      AppMenuItem(
-        id: 'view-patient',
-        label: 'View patient profile',
-        icon: const Icon(Icons.person_outline, size: 16),
-        onSelect: widget.onViewPatient,
-      ),
-      AppMenuItem(
-        id: 'view-visit',
-        label: 'View visit',
-        icon: const Icon(Icons.event_note_outlined, size: 16),
-        onSelect: widget.onViewVisit,
-      ),
-    ]);
 
     return entries;
   }

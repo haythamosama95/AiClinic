@@ -8,6 +8,7 @@ import 'package:ai_clinic/core/ui/components/app_breadcrumb.dart';
 import 'package:ai_clinic/core/ui/components/app_card.dart';
 import 'package:ai_clinic/core/ui/components/app_dialog.dart';
 import 'package:ai_clinic/core/ui/components/app_empty_state.dart';
+import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
 import 'package:ai_clinic/core/ui/components/app_page_header.dart';
 import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
@@ -30,6 +31,8 @@ import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/i
 import 'package:ai_clinic/features/billing/presentation/widgets/payment_form.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/refund_form.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/void_invoice_dialog.dart';
+import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
+import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
 
 /// Invoice detail surface (`/billing/invoices/:id`).
 class InvoiceDetailPage extends ConsumerStatefulWidget {
@@ -281,9 +284,25 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
     );
   }
 
+  String? _resolvePatientPhone(AsyncValue<PatientDetail> patientAsync) {
+    final invoicePhone = invoice.patientPhone?.trim();
+    if (invoicePhone != null && invoicePhone.isNotEmpty) {
+      return invoicePhone;
+    }
+
+    return patientAsync.maybeWhen(
+      data: (patient) {
+        final phone = patient.phone?.trim();
+        return phone == null || phone.isEmpty ? null : phone;
+      },
+      orElse: () => null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final patientAsync = ref.watch(patientDetailProvider(invoice.patientId));
     final displayNumber = BillingFormatting.invoiceDisplayNumber(
       invoice.invoiceNumber,
       invoice.id,
@@ -292,7 +311,7 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
         ? invoice.patientDisplayName!.trim()
         : 'Unknown patient';
     final patientMrn = _displayOrDash(invoice.patientMrn);
-    final patientPhone = _displayOrDash(invoice.patientPhone);
+    final patientPhone = _displayOrDash(_resolvePatientPhone(patientAsync));
     final amountDue = _amountDue();
     final netPaid = _netPaid();
 
@@ -327,7 +346,6 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
           patientName: patientName,
           mrn: patientMrn,
           branchName: invoice.branchName,
-          insuranceProviderName: invoice.insuranceProviderName,
           balance: invoice.balance,
           onPatientTap: () => context.nav.pushPatientDetail(invoice.patientId),
           actions: InvoiceDetailActions(
@@ -337,28 +355,27 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
             onVoid: _voidInvoice,
             onRecordPayment: _showRecordPaymentDialog,
             onRecordRefund: _showRecordRefundDialog,
-            onViewPatient: () =>
-                context.nav.pushPatientDetail(invoice.patientId),
-            onViewVisit: () => context.nav.pushVisitDocument(invoice.visitId),
           ),
         ),
         if (invoice.status.isVoided) InvoiceVoidedNotice(invoice: invoice),
         LayoutBuilder(
           builder: (context, constraints) {
             if (constraints.maxWidth >= 600) {
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var index = 0; index < linkCards.length; index++) ...[
-                    if (index > 0) const SizedBox(width: AppSpacing.space4),
-                    Expanded(
-                      child: _StaggeredLinkCard(
-                        index: index,
-                        child: linkCards[index],
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var index = 0; index < linkCards.length; index++) ...[
+                      if (index > 0) const SizedBox(width: AppSpacing.space4),
+                      Expanded(
+                        child: _StaggeredLinkCard(
+                          index: index,
+                          child: linkCards[index],
+                        ),
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               );
             }
 
@@ -494,34 +511,72 @@ class _VisitUnavailableCard extends StatelessWidget {
     return AppCard(
       variant: CardVariant.flat,
       padding: CardPadding.lg,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceMuted,
-              borderRadius: BorderRadius.circular(AppRadius.xl),
-            ),
-            child: SizedBox(
-              width: 40,
-              height: 40,
-              child: Icon(
-                Icons.event_busy_outlined,
-                size: 18,
-                color: colors.iconMuted,
+      child: SizedBox(
+        width: double.infinity,
+        height: double.infinity,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.surfaceMuted,
+                borderRadius: BorderRadius.circular(AppRadius.xl),
+              ),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(
+                  Icons.event_busy_outlined,
+                  size: 18,
+                  color: colors.iconMuted,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: AppSpacing.space3),
-          Expanded(
-            child: Text(
-              'The source visit for this invoice is no longer available.',
-              style: AppTypography.bodySm(
-                context,
-              ).copyWith(color: colors.textSecondary),
+            const SizedBox(width: AppSpacing.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Visit',
+                    style: AppTypography.overline(
+                      context,
+                    ).copyWith(color: colors.textTertiary),
+                  ),
+                  const SizedBox(height: AppSpacing.space1),
+                  Text(
+                    'Visit unavailable',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodyStrong(
+                      context,
+                    ).copyWith(color: colors.textPrimary),
+                  ),
+                  Text(
+                    'The source visit for this invoice is no longer available.',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodySm(
+                      context,
+                    ).copyWith(color: colors.textSecondary),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: AppSpacing.space3),
+            Opacity(
+              opacity: 0.4,
+              child: AppIconButton(
+                variant: AppIconButtonVariant.secondary,
+                size: AppIconButtonSize.lg,
+                label: 'Visit unavailable',
+                onPressed: null,
+                icon: const Icon(Icons.arrow_forward, size: 18),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

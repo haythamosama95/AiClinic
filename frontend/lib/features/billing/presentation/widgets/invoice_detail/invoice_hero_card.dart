@@ -23,7 +23,6 @@ class InvoiceHeroCard extends StatelessWidget {
     required this.onPatientTap,
     this.mrn,
     this.branchName,
-    this.insuranceProviderName,
     this.actions,
     super.key,
   });
@@ -32,7 +31,6 @@ class InvoiceHeroCard extends StatelessWidget {
   final String patientName;
   final String? mrn;
   final String? branchName;
-  final String? insuranceProviderName;
   final Money balance;
   final VoidCallback onPatientTap;
   final Widget? actions;
@@ -70,98 +68,107 @@ class InvoiceHeroCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final titleBlock = Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          AppAvatar(name: patientName, size: AvatarSize.lg),
-                          const SizedBox(width: AppSpacing.space4),
-                          Flexible(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Wrap(
-                                  spacing: AppSpacing.space2,
-                                  runSpacing: AppSpacing.space2,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    Text(
-                                      displayNumber,
-                                      style: AppTypography.mono(context)
-                                          .copyWith(
-                                            fontSize: AppTypography.h1(
-                                              context,
-                                            ).fontSize,
-                                            fontWeight: FontWeight.w600,
-                                            letterSpacing: 0.02,
-                                            color: colors.textPrimary,
-                                            fontFeatures: const [
-                                              FontFeature.tabularFigures(),
-                                            ],
-                                          ),
-                                    ),
-                                    InvoiceStatusBadge(
-                                      status: invoice.status,
-                                      size: BadgeSize.md,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: AppSpacing.space2),
-                                Text.rich(
-                                  TextSpan(
-                                    style: AppTypography.body(
-                                      context,
-                                    ).copyWith(color: colors.textSecondary),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            AppAvatar(name: patientName, size: AvatarSize.lg),
+                            const SizedBox(width: AppSpacing.space4),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Wrap(
+                                    spacing: AppSpacing.space2,
+                                    runSpacing: AppSpacing.space2,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
                                     children: [
-                                      const TextSpan(text: 'Billed to '),
-                                      WidgetSpan(
-                                        alignment:
-                                            PlaceholderAlignment.baseline,
-                                        baseline: TextBaseline.alphabetic,
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            onTap: onPatientTap,
-                                            borderRadius: BorderRadius.circular(
-                                              AppRadius.sm,
-                                            ),
-                                            child: Text(
-                                              patientName,
-                                              style: AppTypography.body(context)
-                                                  .copyWith(
-                                                    color: colors.textLink,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      TextSpan(
-                                        text: ' · $mrnDisplay',
-                                        style: AppTypography.caption(context)
+                                      Text(
+                                        displayNumber,
+                                        style: AppTypography.mono(context)
                                             .copyWith(
-                                              color: colors.textTertiary,
+                                              fontSize: AppTypography.h1(
+                                                context,
+                                              ).fontSize,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.02,
+                                              color: colors.textPrimary,
                                               fontFeatures: const [
                                                 FontFeature.tabularFigures(),
                                               ],
                                             ),
                                       ),
+                                      InvoiceStatusBadge(
+                                        status: invoice.status,
+                                        size: BadgeSize.md,
+                                      ),
                                     ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: AppSpacing.space2),
+                                  Text.rich(
+                                    TextSpan(
+                                      style: AppTypography.body(
+                                        context,
+                                      ).copyWith(color: colors.textSecondary),
+                                      children: [
+                                        const TextSpan(text: 'Billed to '),
+                                        WidgetSpan(
+                                          alignment:
+                                              PlaceholderAlignment.baseline,
+                                          baseline: TextBaseline.alphabetic,
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              onTap: onPatientTap,
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                AppRadius.sm,
+                                              ),
+                                              child: Text(
+                                                patientName,
+                                                style:
+                                                    AppTypography.body(context)
+                                                        .copyWith(
+                                                          color:
+                                                              colors.textLink,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: ' · $mrnDisplay',
+                                          style: AppTypography.caption(context)
+                                              .copyWith(
+                                                color: colors.textTertiary,
+                                                fontFeatures: const [
+                                                  FontFeature.tabularFigures(),
+                                                ],
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
-                      );
-
-                      final balanceBlock = Column(
+                          ],
+                        ),
+                      ),
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          ?actions,
+                          if (actions != null)
+                            const SizedBox(height: AppSpacing.space2),
                           Text(
                             balanceLabel,
                             style: AppTypography.overline(
@@ -169,7 +176,7 @@ class InvoiceHeroCard extends StatelessWidget {
                             ).copyWith(color: colors.textTertiary),
                           ),
                           DefaultTextStyle(
-                            style: AppTypography.display(context).copyWith(
+                            style: AppTypography.displayLg(context).copyWith(
                               color: balanceColor,
                               fontFeatures: const [
                                 FontFeature.tabularFigures(),
@@ -183,36 +190,8 @@ class InvoiceHeroCard extends StatelessWidget {
                             ),
                           ),
                         ],
-                      );
-
-                      if (constraints.maxWidth < 600) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            titleBlock,
-                            const SizedBox(height: AppSpacing.space4),
-                            balanceBlock,
-                            if (actions != null) ...[
-                              const SizedBox(height: AppSpacing.space2),
-                              actions!,
-                            ],
-                          ],
-                        );
-                      }
-
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Flexible(child: titleBlock),
-                          const Spacer(),
-                          balanceBlock,
-                          if (actions != null) ...[
-                            const SizedBox(width: AppSpacing.space2),
-                            actions!,
-                          ],
-                        ],
-                      );
-                    },
+                      ),
+                    ],
                   ),
                   const SizedBox(height: AppSpacing.space5),
                   DecoratedBox(
@@ -245,14 +224,6 @@ class InvoiceHeroCard extends StatelessWidget {
                                 : BillingFormatting.formatDate(
                                     invoice.issuedAt!,
                                   ),
-                          ),
-                          InvoiceMetaItem(
-                            label: 'Insurance',
-                            icon: Icons.shield_outlined,
-                            value:
-                                insuranceProviderName?.trim().isNotEmpty == true
-                                ? insuranceProviderName!.trim()
-                                : 'None on file',
                           ),
                         ],
                       ),

@@ -58,6 +58,20 @@ class InvoiceListNotifier extends AsyncNotifier<InvoiceListUiState> {
 
   Future<void> applyFilters(InvoiceListFilters filters) async {
     _filters = filters;
+    // Reflect filter changes immediately so list controls and open filter
+    // popovers rebuild while the next page is loading.
+    final previous = state.value;
+    if (previous != null) {
+      state = AsyncData(
+        InvoiceListUiState(
+          items: previous.items,
+          hasMore: previous.hasMore,
+          filters: filters,
+          estimatedTotal: previous.estimatedTotal,
+          hasInvoices: previous.hasInvoices,
+        ),
+      );
+    }
     state = await AsyncValue.guard(() => _load(filters));
   }
 

@@ -214,7 +214,9 @@ class InvoiceDetail {
           ? _parseOptionalString(patientRaw['mrn'] ?? patientRaw['patient_mrn'])
           : null,
       patientPhone: patientRaw is Map
-          ? _parseOptionalString(patientRaw['phone'])
+          ? _parseOptionalString(
+              patientRaw['phone'] ?? patientRaw['mobile'],
+            )
           : null,
       branchCode: branchRaw is Map ? branchRaw['code']?.toString() : null,
       branchName: branchRaw is Map ? branchRaw['name']?.toString() : null,

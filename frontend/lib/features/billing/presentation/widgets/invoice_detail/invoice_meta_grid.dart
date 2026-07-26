@@ -67,7 +67,7 @@ class _MetaItem extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.space1),
         DefaultTextStyle(
-          style: AppTypography.bodySm(context),
+          style: AppTypography.body(context),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           child: item.icon == null

@@ -36,77 +36,81 @@ class InvoiceLinkCard extends StatelessWidget {
     return AppCard(
       variant: CardVariant.flat,
       padding: CardPadding.lg,
-      child: Row(
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceSelected,
-              borderRadius: BorderRadius.circular(AppRadius.xl),
+      child: SizedBox(
+        width: double.infinity,
+        height: double.infinity,
+        child: Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.surfaceSelected,
+                borderRadius: BorderRadius.circular(AppRadius.xl),
+              ),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(icon, size: 18, color: colors.textLink),
+              ),
             ),
-            child: SizedBox(
-              width: 40,
-              height: 40,
-              child: Icon(icon, size: 18, color: colors.textLink),
+            const SizedBox(width: AppSpacing.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Wrap(
+                    spacing: AppSpacing.space2,
+                    runSpacing: AppSpacing.space1,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        eyebrow,
+                        style: AppTypography.overline(
+                          context,
+                        ).copyWith(color: colors.textTertiary),
+                      ),
+                      ?badge,
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.space1),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodyStrong(
+                      context,
+                    ).copyWith(color: colors.textPrimary),
+                  ),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodySm(
+                      context,
+                    ).copyWith(color: colors.textSecondary),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: AppSpacing.space3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Wrap(
-                  spacing: AppSpacing.space2,
-                  runSpacing: AppSpacing.space1,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      eyebrow,
-                      style: AppTypography.overline(
-                        context,
-                      ).copyWith(color: colors.textTertiary),
-                    ),
-                    ?badge,
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.space1),
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodyStrong(
-                    context,
-                  ).copyWith(color: colors.textPrimary),
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodySm(
-                    context,
-                  ).copyWith(color: colors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onAction,
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-              child: AppIconButton(
-                variant: AppIconButtonVariant.secondary,
-                size: AppIconButtonSize.lg,
-                label: actionLabel,
-                onPressed: onAction,
-                icon: Transform.flip(
-                  flipX: isRtl,
-                  child: const Icon(Icons.arrow_forward, size: 18),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onAction,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                child: AppIconButton(
+                  variant: AppIconButtonVariant.secondary,
+                  size: AppIconButtonSize.lg,
+                  label: actionLabel,
+                  onPressed: onAction,
+                  icon: Transform.flip(
+                    flipX: isRtl,
+                    child: const Icon(Icons.arrow_forward, size: 18),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

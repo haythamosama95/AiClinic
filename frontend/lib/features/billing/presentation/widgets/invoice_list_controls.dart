@@ -49,6 +49,28 @@ class InvoiceListControlsBar extends ConsumerWidget {
   final InvoiceListControls controls;
   final ValueChanged<InvoiceListControls> onApply;
 
+  InvoiceListControls _controlsWithStatus(
+    InvoiceListControls controls,
+    String value,
+  ) {
+    if (value == 'all') {
+      return controls.copyWith(clearStatus: true, page: 1);
+    }
+    final status = InvoiceStatus.tryParse(value);
+    if (status == null) return controls;
+    return controls.copyWith(status: status, page: 1);
+  }
+
+  InvoiceListControls _controlsWithBranch(
+    InvoiceListControls controls,
+    String value,
+  ) {
+    if (value == 'all') {
+      return controls.copyWith(clearBranch: true, page: 1);
+    }
+    return controls.copyWith(branch: value, page: 1);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authSessionProvider);
@@ -111,12 +133,7 @@ class InvoiceListControlsBar extends ConsumerWidget {
                   label: status.label,
                 ),
             ],
-            onChange: (value) {
-              final status = value == 'all'
-                  ? null
-                  : InvoiceStatus.tryParse(value);
-              onApply(controls.copyWith(status: status, page: 1));
-            },
+            onChange: (value) => onApply(_controlsWithStatus(controls, value)),
           ),
           if (multiBranch)
             AppFilterMenuSection(
@@ -128,10 +145,7 @@ class InvoiceListControlsBar extends ConsumerWidget {
                 for (final branch in branches)
                   AppFilterMenuOption(value: branch.id, label: branch.name),
               ],
-              onChange: (value) {
-                final branch = value == 'all' ? null : value;
-                onApply(controls.copyWith(branch: branch, page: 1));
-              },
+              onChange: (value) => onApply(_controlsWithBranch(controls, value)),
             ),
         ],
       ),
