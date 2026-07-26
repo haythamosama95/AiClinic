@@ -17,7 +17,7 @@ from gateway.runners.openai_client import (
 from tests.fixtures.fake_runner import ChatScriptMode, FakeRunner
 
 RUNNER_URL = "http://runner-stream.test:11434"
-CHAT_URL = f"{RUNNER_URL}/v1/chat/completions"
+CHAT_URL = f"{RUNNER_URL}/api/chat"
 
 
 def test_extract_json_matching_schema_prefers_last_valid_object() -> None:
@@ -58,7 +58,7 @@ async def test_chat_completion_grammar_stream_assembles_scripted_envelope() -> N
         return_value=httpx.Response(
             200,
             content=fake.chat_completion_stream_body().encode(),
-            headers={"Content-Type": "text/event-stream"},
+            headers={"Content-Type": "application/x-ndjson"},
         )
     )
 

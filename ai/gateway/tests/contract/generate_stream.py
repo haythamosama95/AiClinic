@@ -26,7 +26,7 @@ from tests.fixtures.jwt_tokens import make_hs256_token
 TEST_SECRET = "generate-stream-secret"
 GENERATE_PATH = "/v1/ai/generate"
 RUNNER_URL = "http://runner-a.test:11434"
-CHAT_URL = f"{RUNNER_URL}/v1/chat/completions"
+CHAT_URL = f"{RUNNER_URL}/api/chat"
 
 ENVELOPE_SCHEMA = build_envelope_schema()
 MVP_CONTEXT = {
@@ -50,8 +50,11 @@ EQUIVALENCE_FIELDS = (
 def _chat_response_from_envelope(envelope: dict[str, Any] | str) -> dict[str, Any]:
     content = envelope if isinstance(envelope, str) else json.dumps(envelope)
     return {
-        "choices": [{"message": {"role": "assistant", "content": content}}],
-        "usage": {"prompt_tokens": 100, "completion_tokens": 60},
+        "model": "fake",
+        "message": {"role": "assistant", "content": content},
+        "done": True,
+        "prompt_eval_count": 100,
+        "eval_count": 60,
     }
 
 

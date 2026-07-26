@@ -86,7 +86,11 @@ class HealthPoller:
                         request_id=poll_request_id,
                         request_summary="health poll",
                     )
-                result = await poll_runner(entry.base_url, client=client)
+                result = await poll_runner(
+                    entry.base_url,
+                    client=client,
+                    preferred_models=[model.name for model in entry.declared_models],
+                )
 
                 response_summary: str | None = None
                 response_body: str | None = None

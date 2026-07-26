@@ -92,8 +92,12 @@ async def poll_runner(
     *,
     timeout_s: float = POLL_TIMEOUT_S,
     client: httpx.AsyncClient | None = None,
+    preferred_models: list[str] | None = None,
 ) -> PollResult:
     """Poll a runner via GET /v1/models (and optional GET /health).
+
+    When ``preferred_models`` is set, the first listed model present in the
+    runner catalog is treated as loaded; otherwise the first catalog entry is used.
 
     Bounded timeout (default ≤2 s). Returns ok/loading/error/timeout outcomes.
     """
@@ -115,14 +119,23 @@ async def poll_runner(
         if not models:
             return PollResult(outcome=PollOutcome.LOADING, latency_ms=latency_ms)
 
-        first = models[0]
-        if not isinstance(first, dict) or not first.get("id"):
+        chosen: dict[str, Any] | None = None
+        if preferred_models:
+            preferred = set(preferred_models)
+            for item in models:
+                if isinstance(item, dict) and item.get("id") in preferred:
+                    chosen = item
+                    break
+        if chosen is None:
+            first = models[0]
+            chosen = first if isinstance(first, dict) else None
+        if chosen is None or not chosen.get("id"):
             return PollResult(outcome=PollOutcome.LOADING, latency_ms=latency_ms)
 
-        digest = first.get("digest") or ""
-        context = first.get("context_length")
+        digest = chosen.get("digest") or ""
+        context = chosen.get("context_length")
         loaded = LoadedModel(
-            name=str(first["id"]),
+            name=str(chosen["id"]),
             digest=str(digest),
             context_tokens=int(context) if context is not None else None,
         )
@@ -213,6 +226,67 @@ def _extract_json_matching_schema(
     return None
 
 
+def _ollama_root(base_url: str) -> str:
+    """Strip OpenAI-compatible /v1 suffix to reach the Ollama root."""
+    root = base_url.rstrip("/")
+    if root.endswith("/v1"):
+        return root[:-3]
+    return root
+
+
+def _ollama_chat_url(base_url: str) -> str:
+    return _ollama_root(base_url).rstrip("/") + "/api/chat"
+
+
+def _grammar_chat_body(
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    format_schema: dict[str, Any],
+    stream: bool,
+) -> dict[str, Any]:
+    """Ollama native chat body — ``think: false`` for reliable JSON schema output."""
+    return {
+        "model": model,
+        "messages": messages,
+        "stream": stream,
+        "format": format_schema,
+        "think": False,
+    }
+
+
+def _content_from_ollama_chat_payload(payload: dict[str, Any]) -> str:
+    message = payload.get("message")
+    if isinstance(message, dict):
+        content = message.get("content")
+        if content:
+            return str(content)
+    return ""
+
+
+def _usage_from_ollama_chat_payload(payload: dict[str, Any]) -> tuple[int, int]:
+    return (
+        int(payload.get("prompt_eval_count") or 0),
+        int(payload.get("eval_count") or 0),
+    )
+
+
+async def _iter_ollama_ndjson(
+    response: httpx.Response,
+) -> AsyncIterator[dict[str, Any]]:
+    """Parse newline-delimited JSON from Ollama ``/api/chat`` streaming."""
+    async for line in response.aiter_lines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            yield payload
+
+
 def _delta_from_openai_chunk(payload: dict[str, Any]) -> str:
     choices = payload.get("choices")
     if not choices or not isinstance(choices, list):
@@ -258,19 +332,19 @@ async def chat_completion_grammar(
     timeout_s: float = GENERATION_TIMEOUT_S,
     client: httpx.AsyncClient | None = None,
 ) -> GenerationResult:
-    """Grammar-constrained non-streaming chat completion via Ollama OpenAI API."""
-    url = base_url.rstrip("/") + "/v1/chat/completions"
+    """Grammar-constrained non-streaming chat completion via Ollama native ``/api/chat``."""
+    url = _ollama_chat_url(base_url)
     started = time.perf_counter()
 
     owns_client = client is None
     http = client or httpx.AsyncClient()
 
-    body = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "format": format_schema,
-    }
+    body = _grammar_chat_body(
+        model=model,
+        messages=messages,
+        format_schema=format_schema,
+        stream=False,
+    )
 
     try:
         response = await http.post(url, json=body, timeout=timeout_s)
@@ -284,17 +358,12 @@ async def chat_completion_grammar(
             )
 
         payload = response.json()
-        choices = payload.get("choices") if isinstance(payload, dict) else None
-        if not choices or not isinstance(choices, list):
-            raise ValueError("runner response missing choices")
+        if not isinstance(payload, dict):
+            raise ValueError("runner response must be a JSON object")
 
-        message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
-        content = message.get("content", "") if isinstance(message, dict) else ""
-        parsed = _extract_json_content(str(content))
-
-        usage = payload.get("usage", {}) if isinstance(payload, dict) else {}
-        prompt_tokens = int(usage.get("prompt_tokens") or 0)
-        completion_tokens = int(usage.get("completion_tokens") or 0)
+        content = _content_from_ollama_chat_payload(payload)
+        parsed = _extract_json_content(content)
+        prompt_tokens, completion_tokens = _usage_from_ollama_chat_payload(payload)
 
         return GenerationResult(
             parsed=parsed,
@@ -320,25 +389,25 @@ async def chat_completion_grammar_stream(
     timeout_s: float = GENERATION_TIMEOUT_S,
     client: httpx.AsyncClient | None = None,
 ) -> AsyncIterator[tuple[StreamDelta, GrammarStreamSession]]:
-    """Grammar-constrained streaming chat completion via Ollama OpenAI API.
+    """Grammar-constrained streaming chat completion via Ollama native ``/api/chat``.
 
     Yields ``(delta, session)`` pairs where ``session`` accumulates the full
     buffered content. After iteration completes, call
     ``session.parsed_json_matching_schema(format_schema)`` for command tasks.
     """
-    url = base_url.rstrip("/") + "/v1/chat/completions"
+    url = _ollama_chat_url(base_url)
     started = time.perf_counter()
     first_token_at: float | None = None
 
     owns_client = client is None
     http = client or httpx.AsyncClient()
 
-    body = {
-        "model": model,
-        "messages": messages,
-        "stream": True,
-        "format": format_schema,
-    }
+    body = _grammar_chat_body(
+        model=model,
+        messages=messages,
+        format_schema=format_schema,
+        stream=True,
+    )
 
     session = GrammarStreamSession(model=model, digest=digest)
 
@@ -352,19 +421,17 @@ async def chat_completion_grammar_stream(
                     response=response,
                 )
 
-            async for chunk in _iter_openai_sse_chunks(response):
-                delta_text = _delta_from_openai_chunk(chunk)
+            async for chunk in _iter_ollama_ndjson(response):
+                delta_text = _content_from_ollama_chat_payload(chunk)
                 if delta_text and first_token_at is None:
                     first_token_at = time.perf_counter()
 
-                usage = chunk.get("usage")
-                if isinstance(usage, dict):
-                    session.prompt_tokens = int(
-                        usage.get("prompt_tokens") or session.prompt_tokens
+                if chunk.get("done"):
+                    prompt_tokens, completion_tokens = _usage_from_ollama_chat_payload(
+                        chunk
                     )
-                    session.completion_tokens = int(
-                        usage.get("completion_tokens") or session.completion_tokens
-                    )
+                    session.prompt_tokens = prompt_tokens
+                    session.completion_tokens = completion_tokens
 
                 if delta_text:
                     session.feed(delta_text)

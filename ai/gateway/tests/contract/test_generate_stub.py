@@ -24,7 +24,7 @@ MVP_CONTEXT = {"now": "2026-07-18T12:00:00+03:00"}
 
 RUNNER_A_URL = "http://runner-a.test:11434"
 RUNNER_B_URL = "http://runner-b.test:11434"
-CHAT_URL = f"{RUNNER_A_URL}/v1/chat/completions"
+CHAT_URL = f"{RUNNER_A_URL}/api/chat"
 
 
 def _assert_not_implemented_envelope(body: dict[str, Any]) -> None:
@@ -92,8 +92,11 @@ async def test_generate_returns_200_for_command_non_streaming(generate_client) -
         return_value=httpx.Response(
             200,
             json={
-                "choices": [{"message": {"content": json.dumps(envelope)}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+                "model": "fake",
+                "message": {"role": "assistant", "content": json.dumps(envelope)},
+                "done": True,
+                "prompt_eval_count": 10,
+                "eval_count": 20,
             },
         )
     )
@@ -153,8 +156,11 @@ async def test_generate_valid_body_non_streaming_returns_200(generate_client, pa
         return_value=httpx.Response(
             200,
             json={
-                "choices": [{"message": {"content": json.dumps(envelope)}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+                "model": "fake",
+                "message": {"role": "assistant", "content": json.dumps(envelope)},
+                "done": True,
+                "prompt_eval_count": 10,
+                "eval_count": 20,
             },
         )
     )

@@ -37,7 +37,7 @@ TEST_SECRET = "quickstart-smoke-secret"
 GENERATE_PATH = "/v1/ai/generate"
 CAPABILITIES_PATH = "/v1/capabilities"
 RUNNER_URL = "http://runner-a.test:11434"
-CHAT_URL = f"{RUNNER_URL}/v1/chat/completions"
+CHAT_URL = f"{RUNNER_URL}/api/chat"
 ENVELOPE_SCHEMA = build_envelope_schema()
 QUICKSTART_CONTEXT = {
     "branch_name": "Main",
@@ -54,8 +54,11 @@ def _load_fixture(name: str) -> Any:
 def _chat_response_from_envelope(envelope: dict[str, Any] | str) -> dict[str, Any]:
     content = envelope if isinstance(envelope, str) else json.dumps(envelope)
     return {
-        "choices": [{"message": {"role": "assistant", "content": content}}],
-        "usage": {"prompt_tokens": 100, "completion_tokens": 60},
+        "model": "fake",
+        "message": {"role": "assistant", "content": content},
+        "done": True,
+        "prompt_eval_count": 100,
+        "eval_count": 60,
     }
 
 

@@ -153,7 +153,12 @@ async def wait_for_runner_ready(
             if entry.status == RunnerStatus.UNREACHABLE:
                 return None
 
-            poll_result = await poll_runner(entry.base_url, client=http)
+            preferred_models = [model.name for model in entry.declared_models]
+            poll_result = await poll_runner(
+                entry.base_url,
+                client=http,
+                preferred_models=preferred_models,
+            )
             if poll_result.outcome == PollOutcome.OK and poll_result.loaded_model is not None:
                 registry.update_entry(
                     runner_id,

@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from gateway.agents.base import Agent
 from gateway.agents.scheduling import get_scheduling_agent
+from gateway.agents.scheduling.normalize import normalize_scheduling_envelope
 from gateway.api.errors import ErrorCode, GatewayError, envelope_dict, error_response
 from gateway.api.sse import format_event
 from gateway.auth.dependencies import require_ai_access
@@ -184,6 +185,7 @@ def _build_envelope_from_parsed(
     request_id: str,
     confidence_threshold: float,
 ) -> dict[str, Any]:
+    parsed = normalize_scheduling_envelope(parsed)
     command_type = str(parsed.get("command_type", ""))
 
     validate_envelope_schema(

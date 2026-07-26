@@ -24,9 +24,9 @@ GENERATE_PATH = "/v1/ai/generate"
 
 RUNNER_A_URL = "http://runner-a.test:11434"
 RUNNER_B_URL = "http://runner-b.test:11434"
-CHAT_URL = f"{RUNNER_A_URL}/v1/chat/completions"
+CHAT_URL = f"{RUNNER_A_URL}/api/chat"
 SUPABASE_PROBE_URL = "https://project-ref.supabase.co/rest/v1/"
-OFF_LAN_PROBE_URL = "https://api.example.com/v1/chat/completions"
+OFF_LAN_PROBE_URL = "https://api.example.com/api/chat"
 
 MVP_CONTEXT = {
     "now": "2026-07-18T12:00:00+03:00",
@@ -117,8 +117,11 @@ def _tracking_async_client_init(self, *args: Any, **kwargs: Any) -> None:
 def _chat_response(envelope: dict[str, Any] | str) -> dict[str, Any]:
     content = envelope if isinstance(envelope, str) else json.dumps(envelope)
     return {
-        "choices": [{"message": {"role": "assistant", "content": content}}],
-        "usage": {"prompt_tokens": 100, "completion_tokens": 60},
+        "model": "fake",
+        "message": {"role": "assistant", "content": content},
+        "done": True,
+        "prompt_eval_count": 100,
+        "eval_count": 60,
     }
 
 

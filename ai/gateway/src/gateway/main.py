@@ -67,7 +67,8 @@ def get_generation_queue() -> GenerationQueue:
 async def _graceful_shutdown(generation_queue: GenerationQueue, grace_s: float) -> None:
     """Drain in-flight requests; reject queued; cancel stragglers after grace."""
     coordinator = generation_queue.shutdown
-    coordinator.begin_shutdown()
+    if not coordinator.shutting_down:
+        coordinator.begin_shutdown()
 
     rejected = await generation_queue.reject_queued_not_started()
     for entry in rejected:
@@ -88,10 +89,20 @@ def _install_shutdown_signals(
     generation_queue: GenerationQueue,
     grace_s: float,
 ) -> None:
-    """Register SIGTERM/SIGINT to begin graceful drain."""
+    """Register SIGTERM/SIGINT to begin graceful drain then exit the process.
+
+    Uvicorn's own handlers are replaced by ``add_signal_handler``. Without an
+    explicit process exit after drain, the server keeps serving ``/health`` while
+    rejecting generation with ``503 ai_busy`` — ``start.sh`` then treats the
+    zombie as healthy and skips restart.
+    """
 
     def _on_signal() -> None:
-        asyncio.create_task(_graceful_shutdown(generation_queue, grace_s))
+        async def _shutdown_and_exit() -> None:
+            await _graceful_shutdown(generation_queue, grace_s)
+            os._exit(0)
+
+        asyncio.create_task(_shutdown_and_exit())
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         with suppress(AttributeError, NotImplementedError, ValueError):

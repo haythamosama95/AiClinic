@@ -468,20 +468,11 @@ class FakeRunner:
         return httpx.Response(
             200,
             json={
-                "id": "chatcmpl-fake",
-                "object": "chat.completion",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": content},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": 120,
-                    "completion_tokens": 80,
-                    "total_tokens": 200,
-                },
+                "model": "fake",
+                "message": {"role": "assistant", "content": content},
+                "done": True,
+                "prompt_eval_count": 120,
+                "eval_count": 80,
             },
         )
 
@@ -531,7 +522,7 @@ class FakeRunner:
         return httpx.Response(
             200,
             content=b"".join(line.encode() for line in lines),
-            headers={"Content-Type": "text/event-stream"},
+            headers={"Content-Type": "application/x-ndjson"},
         )
 
     def chat_completion_response(self) -> dict[str, Any]:
@@ -557,6 +548,18 @@ class FakeRunner:
         return [content[i : i + chunk_size] for i in range(0, len(content), chunk_size)]
 
     @staticmethod
+    def ollama_stream_line(content: str, *, done: bool = False) -> str:
+        payload: dict[str, Any] = {
+            "model": "fake",
+            "message": {"role": "assistant", "content": content},
+            "done": done,
+        }
+        if done:
+            payload["prompt_eval_count"] = 120
+            payload["eval_count"] = 80
+        return json.dumps(payload) + "\n"
+
+    @staticmethod
     def openai_stream_chunk(content: str, *, finish: bool = False) -> str:
         payload = {
             "id": "chatcmpl-fake",
@@ -579,15 +582,14 @@ class FakeRunner:
         summary_prefix: str | None = None,
         inter_token_delay_s: float = 0.0,
     ) -> list[str]:
-        """Build OpenAI-compatible SSE lines that assemble to ``content``."""
+        """Build Ollama-native NDJSON lines that assemble to ``content``."""
         full_text = f"{summary_prefix or ''}{content}"
         lines: list[str] = []
         for offset in range(0, len(full_text), chunk_size):
             if inter_token_delay_s > 0 and lines:
                 time.sleep(inter_token_delay_s)
-            lines.append(FakeRunner.openai_stream_chunk(full_text[offset : offset + chunk_size]))
-        lines.append(FakeRunner.openai_stream_chunk("", finish=True))
-        lines.append("data: [DONE]\n\n")
+            lines.append(FakeRunner.ollama_stream_line(full_text[offset : offset + chunk_size]))
+        lines.append(FakeRunner.ollama_stream_line("", done=True))
         return lines
 
     def _stream_lines_for_tokens(
@@ -599,13 +601,12 @@ class FakeRunner:
     ) -> list[str]:
         lines: list[str] = []
         if summary_prefix:
-            lines.append(FakeRunner.openai_stream_chunk(summary_prefix))
+            lines.append(FakeRunner.ollama_stream_line(summary_prefix))
         for index, token in enumerate(tokens):
             if inter_token_delay_s > 0 and index > 0:
                 time.sleep(inter_token_delay_s)
-            lines.append(FakeRunner.openai_stream_chunk(token))
-        lines.append(FakeRunner.openai_stream_chunk("", finish=True))
-        lines.append("data: [DONE]\n\n")
+            lines.append(FakeRunner.ollama_stream_line(token))
+        lines.append(FakeRunner.ollama_stream_line("", done=True))
         return lines
 
     def chat_completion_stream_body(self) -> str:

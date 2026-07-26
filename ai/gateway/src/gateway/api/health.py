@@ -20,8 +20,11 @@ def _registry(request: Request) -> RunnerRegistry:
 
 
 @router.get("/health")
-async def health() -> JSONResponse:
-    """Unauthenticated liveness — always 200 when the Gateway process is up."""
+async def health(request: Request) -> JSONResponse:
+    """Unauthenticated liveness — 200 when accepting work, 503 during graceful shutdown."""
+    coordinator = getattr(request.app.state, "shutdown_coordinator", None)
+    if coordinator is not None and coordinator.shutting_down:
+        return JSONResponse(status_code=503, content={"status": "shutting_down"})
     return JSONResponse({"status": "ok"})
 
 

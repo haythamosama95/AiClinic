@@ -47,7 +47,9 @@ def _replay_receive(body: bytes, receive: Receive) -> Receive:
         if not sent:
             sent = True
             return {"type": "http.request", "body": body, "more_body": False}
-        return {"type": "http.disconnect"}
+        # Forward subsequent reads to the real client channel so streaming
+        # responses (SSE) are not cancelled by a synthetic disconnect.
+        return await receive()
 
     return replay
 

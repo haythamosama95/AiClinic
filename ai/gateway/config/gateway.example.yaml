@@ -11,8 +11,8 @@ runners: []
 #     capabilities:
 #       - json_grammar
 #     models:
-#       - name: qwen3:4b
-#         source: qwen3:4b
+#       - name: qwen3:4b-instruct
+#         source: qwen3:4b-instruct
 #         digest: sha256:REPLACE_WITH_PINNED_DIGEST
 #         context_tokens: 8192
 #         capabilities:

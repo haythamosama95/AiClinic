@@ -32,7 +32,7 @@ Tokens are stored in `localStorage` on this origin only.
 | Capabilities | `GET /v1/capabilities` | JWT |
 | Metrics | `GET /metrics` | None |
 | Endpoint workbench | Any catalog route | JWT when required |
-| Generate stub | `POST /v1/ai/generate` | JWT |
+| Scheduling proposals | `POST /v1/ai/generate` | JWT |
 | Runner models | `GET /v1/runners/{id}/models` | JWT |
 | Dashboard auth | `/v1/dashboard/sign-in`, token paste | Mixed |
 | Security snapshot | `/v1/status` `config_safe` | JWT |
@@ -54,7 +54,7 @@ Bodies are PHI-redacted using the same rules as structured logs.
 | --- | --- |
 | `index.html` | Panel shell |
 | `styles.css` | Oscilloscope-inspired layout (no build step) |
-| `app.js` | Polling, auth, trace stream, workbench |
+| `app.js` | Polling, auth, trace stream, workbench, feature matrix |
 
 ## Contract tests
 

@@ -26,7 +26,7 @@ from tests.fixtures.jwt_tokens import make_hs256_token
 TEST_SECRET = "phi-redaction-secret"
 GENERATE_PATH = "/v1/ai/generate"
 RUNNER_URL = "http://runner-a.test:11434"
-CHAT_URL = f"{RUNNER_URL}/v1/chat/completions"
+CHAT_URL = f"{RUNNER_URL}/api/chat"
 METRICS_PATH = "/metrics"
 
 PATIENT_NAME_FIXTURES: list[str] = [
@@ -55,8 +55,11 @@ PATIENT_FIXTURES: list[tuple[str, str]] = [
 
 def _chat_response(envelope: dict) -> dict:
     return {
-        "choices": [{"message": {"role": "assistant", "content": json.dumps(envelope)}}],
-        "usage": {"prompt_tokens": 80, "completion_tokens": 40},
+        "model": "fake",
+        "message": {"role": "assistant", "content": json.dumps(envelope)},
+        "done": True,
+        "prompt_eval_count": 80,
+        "eval_count": 40,
     }
 
 

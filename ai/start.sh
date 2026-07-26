@@ -29,7 +29,7 @@ Start the Ollama model runner, AI Gateway, and runner console from one command.
 
 Options:
   --no-setup     Skip first-time gateway venv bootstrap
-  --pull-model   Pull the default model (qwen3:4b) after Ollama is up
+  --pull-model   Pull the default model (qwen3:4b-instruct) after Ollama is up
   -h, --help     Show this help
 
 Environment:
@@ -85,6 +85,42 @@ pids_on_port() {
   ss -tlnpH "sport = :${port}" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u
 }
 
+# ss often omits owners for root-owned listeners; fall back to pgrep by cmdline.
+pids_for_kind() {
+  local port="$1"
+  local kind="$2"
+  local pid cmdline seen="|"
+  for pid in $(pids_on_port "${port}"); do
+    cmdline="$(process_cmdline "${pid}")"
+    if is_known_ai_process "${kind}" "${cmdline}"; then
+      if [[ "${seen}" != *"|${pid}|"* ]]; then
+        echo "${pid}"
+        seen="${seen}${pid}|"
+      fi
+    fi
+  done
+  case "${kind}" in
+    gateway)
+      while IFS= read -r pid; do
+        [[ -n "${pid}" ]] || continue
+        if [[ "${seen}" != *"|${pid}|"* ]]; then
+          echo "${pid}"
+          seen="${seen}${pid}|"
+        fi
+      done < <(pgrep -f "uvicorn gateway\\.main.*--port ${port}" 2>/dev/null || true)
+      ;;
+    console)
+      while IFS= read -r pid; do
+        [[ -n "${pid}" ]] || continue
+        if [[ "${seen}" != *"|${pid}|"* ]]; then
+          echo "${pid}"
+          seen="${seen}${pid}|"
+        fi
+      done < <(pgrep -f "console_server\\.py" 2>/dev/null || true)
+      ;;
+  esac
+}
+
 process_cmdline() {
   ps -p "$1" -o args= 2>/dev/null || true
 }
@@ -112,14 +148,113 @@ is_known_ai_process() {
 port_held_by_kind() {
   local port="$1"
   local kind="$2"
-  local pid cmdline
-  for pid in $(pids_on_port "${port}"); do
-    cmdline="$(process_cmdline "${pid}")"
-    if is_known_ai_process "${kind}" "${cmdline}"; then
-      return 0
-    fi
+  local pid
+  for pid in $(pids_for_kind "${port}" "${kind}"); do
+    [[ -n "${pid}" ]] && return 0
   done
   return 1
+}
+
+track_pid() {
+  local pid="$1"
+  local existing
+  for existing in "${PIDS[@]}"; do
+    [[ "${existing}" == "${pid}" ]] && return 0
+  done
+  PIDS+=("${pid}")
+}
+
+process_alive() {
+  kill -0 "$1" 2>/dev/null
+}
+
+stop_pid() {
+  local pid="$1"
+  local label="$2"
+  local i
+
+  if ! process_alive "${pid}"; then
+    return 0
+  fi
+
+  kill "${pid}" 2>/dev/null || true
+
+  for ((i = 1; i <= 20; i++)); do
+    if ! process_alive "${pid}"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  # Pre-fix gateways treat SIGTERM as graceful shutdown but never exit.
+  log "Force-stopping ${label} (pid ${pid})"
+  kill -9 "${pid}" 2>/dev/null || true
+
+  for ((i = 1; i <= 8; i++)); do
+    if ! process_alive "${pid}"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  if process_alive "${pid}"; then
+    if [[ "${EUID}" -ne 0 ]]; then
+      echo "error: could not stop ${label} (pid ${pid}); re-run with sudo or: sudo kill -9 ${pid}" >&2
+    else
+      echo "error: could not stop ${label} (pid ${pid})" >&2
+    fi
+    return 1
+  fi
+  return 0
+}
+
+gateway_health_ok() {
+  local health_url="$1"
+  local response code body
+  response="$(curl -s -w $'\n%{http_code}' "${health_url}" 2>/dev/null || true)"
+  code="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+  [[ "${code}" == "200" ]] || return 1
+  grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' <<<"${body}" || return 1
+  ! grep -q 'shutting_down' <<<"${body}"
+}
+
+# Detect zombies that still pass /health but reject generation (stuck in shutdown).
+gateway_accepts_work() {
+  local port="$1"
+  local base="http://127.0.0.1:${port}"
+  local token response code body
+  response="$(curl -sf -X POST "${base}/v1/dashboard/auto-sign-in" 2>/dev/null || true)"
+  if [[ -z "${response}" ]]; then
+    return 0
+  fi
+  token="$(RESPONSE="${response}" python3 - <<'PY' 2>/dev/null || true
+import json, os
+try:
+    print(json.loads(os.environ["RESPONSE"]).get("access_token", ""))
+except Exception:
+    pass
+PY
+)"
+  if [[ -z "${token}" ]]; then
+    return 0
+  fi
+  response="$(curl -s -w $'\n%{http_code}' -X POST "${base}/v1/ai/generate" \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: application/json" \
+    -d '{"task":"command","prompt":"start.sh probe","context":{}}' 2>/dev/null || true)"
+  code="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+  if [[ "${code}" == "503" ]] && grep -q 'Gateway is shutting down' <<<"${body}"; then
+    return 1
+  fi
+  return 0
+}
+
+gateway_is_operational() {
+  local port="$1"
+  local health_url="http://127.0.0.1:${port}/health"
+  gateway_health_ok "${health_url}" && gateway_accepts_work "${port}"
 }
 
 wait_for_port_free() {
@@ -147,18 +282,30 @@ reclaim_port() {
   fi
 
   local pid cmdline stopped=0 foreign=0
-  for pid in $(pids_on_port "${port}"); do
-    cmdline="$(process_cmdline "${pid}")"
-    if is_known_ai_process "${kind}" "${cmdline}"; then
+  local known_pids=()
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] && known_pids+=("${pid}")
+  done < <(pids_for_kind "${port}" "${kind}")
+
+  if [[ "${#known_pids[@]}" -gt 0 ]]; then
+    for pid in "${known_pids[@]}"; do
       log "Stopping stale ${label} (pid ${pid})"
-      kill "${pid}" 2>/dev/null || true
+      stop_pid "${pid}" "${label}" || exit 1
       stopped=1
-    else
+    done
+  else
+    for pid in $(pids_on_port "${port}"); do
+      cmdline="$(process_cmdline "${pid}")"
       foreign=1
       echo "error: port ${port} is in use by another process (pid ${pid})" >&2
       echo "       ${cmdline}" >&2
+    done
+    if [[ "${foreign}" -eq 0 && "$(ss -tlnH "sport = :${port}" 2>/dev/null | wc -l)" -gt 0 ]]; then
+      foreign=1
+      echo "error: port ${port} is in use but the owning process could not be identified." >&2
+      echo "       Re-run with sudo or free the port manually." >&2
     fi
-  done
+  fi
 
   if [[ "${foreign}" -eq 1 ]]; then
     echo "Free the port or choose another:" >&2
@@ -181,7 +328,29 @@ ensure_service() {
   local label="$4"
   shift 4
 
-  if curl -sf "${health_url}" >/dev/null 2>&1 && port_held_by_kind "${port}" "${kind}"; then
+  local reuse_ok=0
+  if port_held_by_kind "${port}" "${kind}"; then
+    case "${kind}" in
+      gateway)
+        if gateway_is_operational "${port}"; then
+          reuse_ok=1
+        else
+          log "Gateway on port ${port} is unhealthy or shutting down — restarting"
+        fi
+        ;;
+      *)
+        if curl -sf "${health_url}" >/dev/null 2>&1; then
+          reuse_ok=1
+        fi
+        ;;
+    esac
+  fi
+
+  if [[ "${reuse_ok}" -eq 1 ]]; then
+    local pid
+    for pid in $(pids_for_kind "${port}" "${kind}"); do
+      track_pid "${pid}"
+    done
     echo "    ${label} already running (${health_url})"
     return 0
   fi
@@ -249,10 +418,10 @@ maybe_pull_model() {
   if [[ "${PULL_MODEL}" -eq 0 ]]; then
     return 0
   fi
-  log "Pulling default model (qwen3:4b)..."
+  log "Pulling default model (qwen3:4b-instruct)..."
   local compose_dir
   compose_dir="$(bash "${RUNNERS_DIR}/scripts/ollama_compose.sh" compose-dir)"
-  docker compose -f "${compose_dir}/docker-compose.yaml" exec -T ollama ollama pull qwen3:4b
+  docker compose -f "${compose_dir}/docker-compose.yaml" exec -T ollama ollama pull qwen3:4b-instruct
 }
 
 warn_if_no_models() {
@@ -261,9 +430,26 @@ warn_if_no_models() {
   if [[ -z "${raw}" ]] || ! grep -q '"id"' <<<"${raw}"; then
     echo "warning: no models found in Ollama." >&2
     echo "Pull the default model:" >&2
-    echo "  cd ${RUNNERS_DIR} && docker compose -f ollama/docker-compose.yaml exec ollama ollama pull qwen3:4b" >&2
+    echo "  cd ${RUNNERS_DIR} && docker compose -f ollama/docker-compose.yaml exec ollama ollama pull qwen3:4b-instruct" >&2
     echo "Or re-run: ./start.sh --pull-model" >&2
     echo >&2
+  fi
+}
+
+gateway_warmup_model() {
+  local model="${OLLAMA_WARMUP_MODEL:-}"
+  if [[ -z "${model}" && -f "${GATEWAY_DIR}/config/gateway.yaml" ]]; then
+    model="$(grep -A20 '^runners:' "${GATEWAY_DIR}/config/gateway.yaml" | grep -m1 'name:' | sed -E 's/.*name:[[:space:]]*//')"
+  fi
+  model="${model:-qwen3:4b-instruct}"
+
+  log "Warming up Ollama model (${model}) — first load can take ~1 min on CPU..."
+  if curl -sf "${OLLAMA_URL}/api/generate" \
+    -H 'Content-Type: application/json' \
+    -d "{\"model\":\"${model}\",\"prompt\":\"hi\",\"stream\":false}" >/dev/null; then
+    echo "    model ${model} loaded in Ollama"
+  else
+    echo "warning: Ollama warmup for ${model} failed; first gateway request may time out on CPU" >&2
   fi
 }
 
@@ -304,6 +490,7 @@ bash "${RUNNERS_DIR}/scripts/ollama_compose.sh" up
 wait_for_url "${OLLAMA_URL}/api/version" "Ollama"
 maybe_pull_model
 warn_if_no_models
+gateway_warmup_model
 
 log "Starting AI Gateway on http://localhost:${GATEWAY_PORT}"
 ensure_service gateway "${GATEWAY_PORT}" "http://127.0.0.1:${GATEWAY_PORT}/health" "gateway" \
