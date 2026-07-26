@@ -21,7 +21,6 @@ import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_list_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_footer.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_hero_card.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_line_items_card.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_link_card.dart';
@@ -382,7 +381,6 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
             hasPayments: invoice.payments.isNotEmpty,
           ),
         ),
-        InvoiceDetailFooter(updatedAt: invoice.updatedAt),
       ],
     );
   }

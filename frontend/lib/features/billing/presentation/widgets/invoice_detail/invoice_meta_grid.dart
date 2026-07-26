@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:ai_clinic/core/ui/components/app_badge.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
@@ -13,75 +14,62 @@ class InvoiceMetaItem {
   final IconData? icon;
 }
 
-/// Responsive 2-up → 4-up meta grid for the invoice hero card.
+/// Horizontal wrap of meta badges for the invoice hero card.
 class InvoiceMetaGrid extends StatelessWidget {
   const InvoiceMetaGrid({required this.items, super.key});
 
   final List<InvoiceMetaItem> items;
 
-  static const _smBreakpoint = 600.0;
-
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= _smBreakpoint;
-        final itemWidth = isWide
-            ? (constraints.maxWidth - AppSpacing.space4 * 3) / 4
-            : (constraints.maxWidth - AppSpacing.space4) / 2;
-
-        return Wrap(
-          spacing: AppSpacing.space4,
-          runSpacing: AppSpacing.space4,
-          children: [
-            for (final item in items)
-              SizedBox(
-                width: itemWidth.clamp(0, constraints.maxWidth),
-                child: _MetaItem(item: item),
-              ),
-          ],
-        );
-      },
+    return Wrap(
+      spacing: AppSpacing.space2,
+      runSpacing: AppSpacing.space2,
+      children: [for (final item in items) _MetaBadgeChip(item: item)],
     );
   }
 }
 
-class _MetaItem extends StatelessWidget {
-  const _MetaItem({required this.item});
+class _MetaBadgeChip extends StatelessWidget {
+  const _MetaBadgeChip({required this.item});
 
   final InvoiceMetaItem item;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final isPendingIssue = item.label == 'Issued' && item.value == 'Not yet issued';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          item.label,
-          style: AppTypography.overline(
-            context,
-          ).copyWith(color: colors.textTertiary),
-        ),
-        const SizedBox(height: AppSpacing.space1),
-        DefaultTextStyle(
-          style: AppTypography.body(context),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          child: item.icon == null
-              ? Text(item.value)
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(item.icon, size: 14, color: colors.iconMuted),
-                    const SizedBox(width: 6),
-                    Flexible(child: Text(item.value)),
-                  ],
+    return AppBadge(
+      size: BadgeSize.md,
+      variant: BadgeVariant.soft,
+      color: isPendingIssue ? BadgeColor.warning : BadgeColor.neutral,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (item.icon != null) ...[
+            Icon(item.icon, size: 14, color: colors.iconMuted),
+            const SizedBox(width: AppSpacing.space1),
+          ],
+          Text.rich(
+            TextSpan(
+              style: AppTypography.bodySm(context),
+              children: [
+                TextSpan(
+                  text: '${item.label} · ',
+                  style: TextStyle(color: colors.textTertiary, fontWeight: FontWeight.w500),
                 ),
-        ),
-      ],
+                TextSpan(
+                  text: item.value,
+                  style: TextStyle(color: colors.textSecondary),
+                ),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 }
