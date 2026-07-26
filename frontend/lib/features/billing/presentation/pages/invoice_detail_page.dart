@@ -20,7 +20,7 @@ import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_list_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_actions.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_footer.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_hero_card.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_line_items_card.dart';
@@ -29,7 +29,7 @@ import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/i
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_totals_panel.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_voided_notice.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/payment_form.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/refund_form.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/receipt_print_preview.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/void_invoice_dialog.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
@@ -44,8 +44,7 @@ class InvoiceDetailPage extends ConsumerStatefulWidget {
   ConsumerState<InvoiceDetailPage> createState() => _InvoiceDetailPageState();
 }
 
-class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage>
-    with SingleTickerProviderStateMixin {
+class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage> with SingleTickerProviderStateMixin {
   late final AnimationController _enterController;
   CurvedAnimation? _enterAnimation;
   var _enterStarted = false;
@@ -53,10 +52,7 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage>
   @override
   void initState() {
     super.initState();
-    _enterController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
+    _enterController = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
   }
 
   @override
@@ -65,15 +61,10 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage>
     if (!_enterStarted) {
       _enterStarted = true;
       final reducedMotion = AppMotion.prefersReducedMotion(context);
-      _enterController.duration = reducedMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 220);
+      _enterController.duration = reducedMotion ? Duration.zero : const Duration(milliseconds: 220);
       _enterAnimation = CurvedAnimation(
         parent: _enterController,
-        curve: AppMotion.resolveCurve(
-          AppMotionPreset.slideUp,
-          reducedMotion: reducedMotion,
-        ),
+        curve: AppMotion.resolveCurve(AppMotionPreset.slideUp, reducedMotion: reducedMotion),
       );
       if (reducedMotion) {
         _enterController.value = 1;
@@ -107,8 +98,7 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage>
     final detailAsync = ref.watch(invoiceDetailViewProvider(widget.invoiceId));
 
     final content = detailAsync.when(
-      loading: () =>
-          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       error: (error, _) {
         if (_isInvoiceNotFound(error)) {
           return _InvoiceNotFoundView(onBack: _popToInvoicesList);
@@ -121,16 +111,12 @@ class _InvoiceDetailPageState extends ConsumerState<InvoiceDetailPage>
             description: error.toString(),
             action: EmptyStateAction(
               label: 'Retry',
-              onPressed: () =>
-                  ref.invalidate(invoiceDetailViewProvider(widget.invoiceId)),
+              onPressed: () => ref.invalidate(invoiceDetailViewProvider(widget.invoiceId)),
             ),
           ),
         );
       },
-      data: (view) => _InvoiceDetailBody(
-        view: view,
-        onPopToInvoicesList: _popToInvoicesList,
-      ),
+      data: (view) => _InvoiceDetailBody(view: view, onPopToInvoicesList: _popToInvoicesList),
     );
 
     return FadeTransition(
@@ -167,12 +153,8 @@ class _InvoiceNotFoundView extends StatelessWidget {
         AppEmptyState(
           variant: AppEmptyStateVariant.error,
           title: 'Invoice not found',
-          description:
-              'The invoice you requested does not exist or has been removed.',
-          action: EmptyStateAction(
-            label: 'Back to invoices',
-            onPressed: onBack,
-          ),
+          description: 'The invoice you requested does not exist or has been removed.',
+          action: EmptyStateAction(label: 'Back to invoices', onPressed: onBack),
         ),
       ],
     );
@@ -180,10 +162,7 @@ class _InvoiceNotFoundView extends StatelessWidget {
 }
 
 class _InvoiceDetailBody extends ConsumerStatefulWidget {
-  const _InvoiceDetailBody({
-    required this.view,
-    required this.onPopToInvoicesList,
-  });
+  const _InvoiceDetailBody({required this.view, required this.onPopToInvoicesList});
 
   final InvoiceDetailViewState view;
   final VoidCallback onPopToInvoicesList;
@@ -195,16 +174,10 @@ class _InvoiceDetailBody extends ConsumerStatefulWidget {
 class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
   InvoiceDetail get invoice => widget.view.invoice;
 
-  Money _amountDue() =>
-      invoice.subtotal -
-      invoice.discountAmount -
-      invoice.insuranceCoveredAmount;
+  Money _amountDue() => invoice.subtotal - invoice.discountAmount - invoice.insuranceCoveredAmount;
 
   Money _netPaid() {
-    return invoice.payments.fold(
-      Money.zero,
-      (sum, payment) => sum + payment.amount,
-    );
+    return invoice.payments.fold(Money.zero, (sum, payment) => sum + payment.amount);
   }
 
   String _displayOrDash(String? value) {
@@ -244,24 +217,6 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
     );
   }
 
-  Future<void> _showRecordRefundDialog() async {
-    await AppDialog.show<void>(
-      context,
-      title: 'Record refund',
-      size: AppDialogSize.lg,
-      child: Builder(
-        builder: (dialogContext) => RefundForm(
-          invoice: invoice,
-          onRecorded: () {
-            Navigator.of(dialogContext).pop();
-            ref.invalidate(invoiceDetailViewProvider(invoice.id));
-            ref.invalidate(invoiceListProvider);
-          },
-        ),
-      ),
-    );
-  }
-
   Widget _buildVisitLinkCard(AppSemanticColors colors) {
     final summary = _visitSummary;
     if (!_hasResolvableVisit || summary == null) {
@@ -280,6 +235,7 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
         label: 'Completed',
       ),
       actionLabel: 'View visit in patient record',
+      tooltip: 'Open the completed visit linked to this invoice',
       onAction: () => context.nav.pushVisitDocument(invoice.visitId),
     );
   }
@@ -303,10 +259,7 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final patientAsync = ref.watch(patientDetailProvider(invoice.patientId));
-    final displayNumber = BillingFormatting.invoiceDisplayNumber(
-      invoice.invoiceNumber,
-      invoice.id,
-    );
+    final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
     final patientName = invoice.patientDisplayName?.trim().isNotEmpty == true
         ? invoice.patientDisplayName!.trim()
         : 'Unknown patient';
@@ -314,6 +267,21 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
     final patientPhone = _displayOrDash(_resolvePatientPhone(patientAsync));
     final amountDue = _amountDue();
     final netPaid = _netPaid();
+    final canEdit = invoice.status.isDraft && widget.view.canCreate;
+    final canAddPayment = widget.view.canRecordPayment && !invoice.status.isDraft && !invoice.status.isTerminal;
+    final canVoid = widget.view.canVoid && invoice.status.isVoidable;
+    final editDisabledReason = InvoiceDetailActionTooltips.editDisabledReason(
+      canCreate: widget.view.canCreate,
+      status: invoice.status,
+    );
+    final addPaymentDisabledReason = InvoiceDetailActionTooltips.addPaymentDisabledReason(
+      canRecordPayment: widget.view.canRecordPayment,
+      status: invoice.status,
+    );
+    final voidDisabledReason = InvoiceDetailActionTooltips.voidDisabledReason(
+      canVoid: widget.view.canVoid,
+      status: invoice.status,
+    );
 
     final linkCards = [
       InvoiceLinkCard(
@@ -322,6 +290,7 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
         title: patientName,
         subtitle: '$patientMrn · $patientPhone',
         actionLabel: 'View patient profile',
+        tooltip: 'Open the patient profile for $patientName',
         onAction: () => context.nav.pushPatientDetail(invoice.patientId),
       ),
       _buildVisitLinkCard(colors),
@@ -334,10 +303,7 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
       children: [
         AppBreadcrumb(
           items: [
-            AppBreadcrumbItem(
-              label: 'Invoices',
-              onTap: widget.onPopToInvoicesList,
-            ),
+            AppBreadcrumbItem(label: 'Invoices', onTap: widget.onPopToInvoicesList),
             AppBreadcrumbItem(label: displayNumber),
           ],
         ),
@@ -348,14 +314,10 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
           branchName: invoice.branchName,
           balance: invoice.balance,
           onPatientTap: () => context.nav.pushPatientDetail(invoice.patientId),
-          actions: InvoiceDetailActions(
-            invoice: invoice,
-            view: widget.view,
-            onEdit: () => context.nav.pushBillingInvoiceEdit(invoice.id),
-            onVoid: _voidInvoice,
-            onRecordPayment: _showRecordPaymentDialog,
-            onRecordRefund: _showRecordRefundDialog,
-          ),
+          canVoid: canVoid,
+          voidTooltip: InvoiceDetailActionTooltips.voidMessage(disabledReason: voidDisabledReason),
+          onVoid: _voidInvoice,
+          onPrint: () => ReceiptPrintPreview.show(context, invoice),
         ),
         if (invoice.status.isVoided) InvoiceVoidedNotice(invoice: invoice),
         LayoutBuilder(
@@ -368,10 +330,7 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
                     for (var index = 0; index < linkCards.length; index++) ...[
                       if (index > 0) const SizedBox(width: AppSpacing.space4),
                       Expanded(
-                        child: _StaggeredLinkCard(
-                          index: index,
-                          child: linkCards[index],
-                        ),
+                        child: _StaggeredLinkCard(index: index, child: linkCards[index]),
                       ),
                     ],
                   ],
@@ -393,6 +352,9 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
         InvoiceLineItemsCard(
           items: invoice.items,
           currency: invoice.currency,
+          canEdit: canEdit,
+          editTooltip: InvoiceDetailActionTooltips.editMessage(disabledReason: editDisabledReason),
+          onEdit: () => context.nav.pushBillingInvoiceEdit(invoice.id),
           totals: InvoiceTotalsModel.lineItems(
             subtotal: invoice.subtotal,
             discountAmount: invoice.discountAmount,
@@ -408,6 +370,9 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
           payments: invoice.payments,
           currency: invoice.currency,
           status: invoice.status,
+          canAddPayment: canAddPayment,
+          addPaymentTooltip: InvoiceDetailActionTooltips.addPaymentMessage(disabledReason: addPaymentDisabledReason),
+          onAddPayment: _showRecordPaymentDialog,
           totals: InvoiceTotalsModel.payments(
             amountDue: amountDue,
             netPaid: netPaid,
@@ -433,8 +398,7 @@ class _StaggeredLinkCard extends StatefulWidget {
   State<_StaggeredLinkCard> createState() => _StaggeredLinkCardState();
 }
 
-class _StaggeredLinkCardState extends State<_StaggeredLinkCard>
-    with SingleTickerProviderStateMixin {
+class _StaggeredLinkCardState extends State<_StaggeredLinkCard> with SingleTickerProviderStateMixin {
   static const _staggerStepMs = 60;
 
   late final AnimationController _controller;
@@ -456,21 +420,13 @@ class _StaggeredLinkCardState extends State<_StaggeredLinkCard>
     _configured = true;
 
     final reducedMotion = AppMotion.prefersReducedMotion(context);
-    _controller.duration = AppMotion.resolveDuration(
-      AppMotionPreset.rowEnter,
-      reducedMotion: reducedMotion,
-    );
+    _controller.duration = AppMotion.resolveDuration(AppMotionPreset.rowEnter, reducedMotion: reducedMotion);
     _animation = CurvedAnimation(
       parent: _controller,
-      curve: AppMotion.resolveCurve(
-        AppMotionPreset.rowEnter,
-        reducedMotion: reducedMotion,
-      ),
+      curve: AppMotion.resolveCurve(AppMotionPreset.rowEnter, reducedMotion: reducedMotion),
     );
 
-    final delay = reducedMotion
-        ? Duration.zero
-        : Duration(milliseconds: widget.index * _staggerStepMs);
+    final delay = reducedMotion ? Duration.zero : Duration(milliseconds: widget.index * _staggerStepMs);
 
     if (delay == Duration.zero) {
       _controller.forward();
@@ -518,18 +474,11 @@ class _VisitUnavailableCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.surfaceMuted,
-                borderRadius: BorderRadius.circular(AppRadius.xl),
-              ),
+              decoration: BoxDecoration(color: colors.surfaceMuted, borderRadius: BorderRadius.circular(AppRadius.xl)),
               child: SizedBox(
                 width: 40,
                 height: 40,
-                child: Icon(
-                  Icons.event_busy_outlined,
-                  size: 18,
-                  color: colors.iconMuted,
-                ),
+                child: Icon(Icons.event_busy_outlined, size: 18, color: colors.iconMuted),
               ),
             ),
             const SizedBox(width: AppSpacing.space3),
@@ -538,41 +487,36 @@ class _VisitUnavailableCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    'Visit',
-                    style: AppTypography.overline(
-                      context,
-                    ).copyWith(color: colors.textTertiary),
-                  ),
+                  Text('Visit', style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
                   const SizedBox(height: AppSpacing.space1),
                   Text(
                     'Visit unavailable',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodyStrong(
-                      context,
-                    ).copyWith(color: colors.textPrimary),
+                    style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
                   ),
                   Text(
                     'The source visit for this invoice is no longer available.',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodySm(
-                      context,
-                    ).copyWith(color: colors.textSecondary),
+                    style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: AppSpacing.space3),
-            Opacity(
-              opacity: 0.4,
-              child: AppIconButton(
-                variant: AppIconButtonVariant.secondary,
-                size: AppIconButtonSize.lg,
-                label: 'Visit unavailable',
-                onPressed: null,
-                icon: const Icon(Icons.arrow_forward, size: 18),
+            InvoiceDetailTooltip(
+              message: 'The source visit for this invoice is no longer available.',
+              child: Opacity(
+                opacity: 0.4,
+                child: AppIconButton(
+                  variant: AppIconButtonVariant.secondary,
+                  size: AppIconButtonSize.lg,
+                  label: 'Visit unavailable',
+                  tooltipDisabled: true,
+                  onPressed: null,
+                  icon: const Icon(Icons.arrow_forward, size: 18),
+                ),
               ),
             ),
           ],

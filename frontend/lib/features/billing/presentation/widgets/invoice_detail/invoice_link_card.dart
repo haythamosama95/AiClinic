@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/components/app_card.dart';
 import 'package:ai_clinic/core/ui/components/app_icon_button.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
@@ -17,6 +18,7 @@ class InvoiceLinkCard extends StatelessWidget {
     required this.actionLabel,
     required this.onAction,
     this.badge,
+    this.tooltip,
     super.key,
   });
 
@@ -25,8 +27,9 @@ class InvoiceLinkCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final String actionLabel;
-  final VoidCallback onAction;
+  final VoidCallback? onAction;
   final Widget? badge;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -46,11 +49,7 @@ class InvoiceLinkCard extends StatelessWidget {
                 color: colors.surfaceSelected,
                 borderRadius: BorderRadius.circular(AppRadius.xl),
               ),
-              child: SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(icon, size: 18, color: colors.textLink),
-              ),
+              child: SizedBox(width: 40, height: 40, child: Icon(icon, size: 18, color: colors.textLink)),
             ),
             const SizedBox(width: AppSpacing.space3),
             Expanded(
@@ -63,12 +62,7 @@ class InvoiceLinkCard extends StatelessWidget {
                     runSpacing: AppSpacing.space1,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Text(
-                        eyebrow,
-                        style: AppTypography.overline(
-                          context,
-                        ).copyWith(color: colors.textTertiary),
-                      ),
+                      Text(eyebrow, style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
                       ?badge,
                     ],
                   ),
@@ -77,34 +71,31 @@ class InvoiceLinkCard extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodyStrong(
-                      context,
-                    ).copyWith(color: colors.textPrimary),
+                    style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary),
                   ),
                   Text(
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AppTypography.bodySm(
-                      context,
-                    ).copyWith(color: colors.textSecondary),
+                    style: AppTypography.bodySm(context).copyWith(color: colors.textSecondary),
                   ),
                 ],
               ),
             ),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onAction,
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-                child: AppIconButton(
-                  variant: AppIconButtonVariant.secondary,
-                  size: AppIconButtonSize.lg,
-                  label: actionLabel,
-                  onPressed: onAction,
-                  icon: Transform.flip(
-                    flipX: isRtl,
-                    child: const Icon(Icons.arrow_forward, size: 18),
+            InvoiceDetailTooltip(
+              message: tooltip ?? actionLabel,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onAction,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  child: AppIconButton(
+                    variant: AppIconButtonVariant.secondary,
+                    size: AppIconButtonSize.lg,
+                    label: actionLabel,
+                    tooltipDisabled: true,
+                    onPressed: onAction,
+                    icon: Transform.flip(flipX: isRtl, child: const Icon(Icons.arrow_forward, size: 18)),
                   ),
                 ),
               ),
