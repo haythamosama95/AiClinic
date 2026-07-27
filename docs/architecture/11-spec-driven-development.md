@@ -67,7 +67,6 @@ specs/
 │   ├── patients.spec.md
 │   └── ...
 │
-├── ai/                         # future V2 specs
 └── analytics/
 ```
 
@@ -102,10 +101,6 @@ specs/
 │   ├── shifts.spec.md
 │   └── advanced-billing.spec.md
 │
-├── ai/
-│   ├── ai_service.spec.md
-│   └── ...
-│
 └── analytics/
     └── dashboards.spec.md
 ```
@@ -126,7 +121,6 @@ Every specification document must contain:
 | **API Contracts**               | Every Supabase SDK call the Flutter app will make (table reads, RPC calls, storage operations)     |
 | **UI States**                   | Every distinct screen/view state (empty, loading, loaded, error, permission-denied)                |
 | **Validation Rules**            | Client-side and server-side validation rules with exact constraints                                |
-| **AI Hooks**                    | What AI commands can target this module, command schema, required context                          |
 | **Audit Requirements**          | Which operations are logged to audit_log, what data is captured                                    |
 | **Edge Cases**                  | Numbered list of edge cases and how each is handled                                                |
 | **Acceptance Criteria**         | Numbered list of testable criteria that prove the module works correctly                           |
@@ -160,7 +154,6 @@ For each feature:
 1. **One feature at a time.** The spec for a feature is written immediately before its implementation, not in a bulk authoring phase.
 2. **Backend first.** For every feature, the backend (schema, RPC functions, RLS policies) is implemented and tested before any frontend code is written. Backend testing uses utilities and scripts that directly call the Supabase API to verify correctness.
 3. **Frontend second.** The Flutter feature module is implemented after the backend is confirmed working. Frontend is tested with the backend to ensure end-to-end correctness.
-4. **AI service last.** AI capabilities are layered on only after a concrete, tested frontend and backend exist. See `docs/architecture/12-roadmap-phases.md` → `V2 -- AI Integration`.
 
 ### Implementation Inputs
 

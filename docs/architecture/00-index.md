@@ -18,7 +18,6 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
 - `docs/architecture/03-deployment-networking.md`: deployment tiers, Docker, LAN topology, and installer-facing infrastructure.
 - `docs/architecture/04-backend.md`: Supabase backend ownership and API access patterns.
 - `docs/architecture/05-database.md`: tenancy model, schema conventions, core domains, RLS, and RPC patterns.
-- `docs/architecture/06-ai.md`: AI service isolation, structured commands, and context strategy.
 - `docs/architecture/07-frontend.md`: Flutter project structure, Riverpod state, UX principles, and navigation.
 - `docs/architecture/08-automation.md`: future workflow automation architecture (not implemented).
 - `docs/architecture/09-security-rbac.md`: authentication, RBAC, audit, soft delete, and security principles.
@@ -40,9 +39,8 @@ This directory replaces the legacy monolithic `docs/architecture_overview.md` wi
   - Visits / encounter workspace: `14-visits-encounter-workspace.md`, `specs/013-visits/`, `specs/014-visit-encounter-workspace/`
   - Billing: `15-billing.md`, `specs/007-billing/`
   - Shifts: `specs/008-shift-management/`
-- AI features: `02-system-overview.md`, `06-ai.md`, `07-frontend.md`, optionally `04-backend.md` or `05-database.md`, plus future `specs/ai/`.
 - Deployment and installer work: `03-deployment-networking.md`, `07-frontend.md`, `10-resilience-and-scale.md`.
-- Analytics: `04-backend.md`, `05-database.md`, `06-ai.md`, `07-frontend.md`, `09-security-rbac.md`, `10-resilience-and-scale.md` (V3-1).
+- Analytics: `04-backend.md`, `05-database.md`, `07-frontend.md`, `09-security-rbac.md`, `10-resilience-and-scale.md` (V3-1).
 
 ## Feature Routing Summary
 

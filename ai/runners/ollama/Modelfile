@@ -1,5 +1,0 @@
-# Qwen3-4B Q4_K_M — default clinic model (CPU-realistic, digest-pinned)
-FROM qwen3:4b
-
-PARAMETER temperature 0.7
-PARAMETER num_ctx 8192

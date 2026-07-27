@@ -38,11 +38,10 @@
 | M2 | `roles_permissions` seed / billing RPCs | Legacy `owner` role rows and `invoices.apply_discount_above_threshold` may remain in DB; role enum dropped | Confusion in permission matrix UI; dead keys | Migration to purge owner rows and document canonical keys in `09-security-rbac.md` |
 | M3 | V1-7 Shifts | Backend complete (`008-shift-management`); frontend routes are placeholders | Shift management unavailable to users | Track as V1-7 frontend; update status table (done in `12-roadmap-phases.md`) |
 | M4 | `specs/common/*`, `specs/operations/*` | Placeholder specs referenced by roadmap but **unauthored**; numbered specs are authoritative | Agents load wrong or empty specs | Point roadmap required specs to `002`–`014` paths (partially done) |
-| M5 | Tier 2 backup (`01-principles.md` A6) | Backup-only cloud sync **not implemented** — no scheduler | Tier 2 deployment story incomplete | V1-8 installer scope or defer Tier 2 marketing |
-| M6 | AI layer (`06-ai.md`) | Documented but **zero implementation** (no Ollama, no chat UI) | `ai.access` permission seeded without feature | Keep docs labeled V2; hide AI nav item until built |
-| M7 | Schema churn 014 P3 | Tables created then dropped within days (diagnosis catalog, structured plan) | Wasted migration complexity; test fixtures may reference dropped objects | Document final state in `14-visits-encounter-workspace.md` (done); avoid re-adding without new spec |
-| M8 | LAN security | No TLS on self-hosted Supabase (HTTP :54321) | JWT and PHI traverse clinic LAN in cleartext | Accept for trusted LAN or terminate TLS at Kong in V1-8 |
-| M9 | `GOTRUE_DISABLE_SIGNUP: "false"` in Compose | Open signup on local stack if exposed | Unintended account creation on misconfigured LAN | Set `true` in production compose; document dev-only default |
+| M5 | Tier 2 backup (`01-principles.md` A5) | Backup-only cloud sync **not implemented** — no scheduler | Tier 2 deployment story incomplete | V1-8 installer scope or defer Tier 2 marketing |
+| M6 | Schema churn 014 P3 | Tables created then dropped within days (diagnosis catalog, structured plan) | Wasted migration complexity; test fixtures may reference dropped objects | Document final state in `14-visits-encounter-workspace.md` (done); avoid re-adding without new spec |
+| M7 | LAN security | No TLS on self-hosted Supabase (HTTP :54321) | JWT and PHI traverse clinic LAN in cleartext | Accept for trusted LAN or terminate TLS at Kong in V1-8 |
+| M8 | `GOTRUE_DISABLE_SIGNUP: "false"` in Compose | Open signup on local stack if exposed | Unintended account creation on misconfigured LAN | Set `true` in production compose; document dev-only default |
 
 ---
 

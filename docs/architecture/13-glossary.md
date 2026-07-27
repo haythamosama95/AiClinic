@@ -24,7 +24,7 @@
 | **Kong**                 | API gateway used by self-hosted Supabase as the single entry point for all services.                                                           |
 | **auth_internal**        | Private PostgreSQL schema holding SECURITY DEFINER business logic. Not exposed via PostgREST.                                                  |
 | **Bootstrap Admin**      | The first staff account (seeded in migrations) with `is_bootstrap_admin = true`. Can create the organization and first branch.                 |
-| **Deployment Profile**   | A JSON file (`deployment-profile.json`) defining the Supabase URL, anon key, AI service URL, and device role for the Flutter app.              |
+| **Deployment Profile**   | A JSON file (`deployment-profile.json`) defining the Supabase URL and anon key, and device role for the Flutter app.              |
 | **rpc_result**           | PostgreSQL composite type `(success boolean, data jsonb, error_code text, error_message text)` returned by all domain RPC functions.           |
 | **Username**             | Staff login identifier stored in GoTrue's `email` field. No `@` allowed; 3–32 chars, `[a-z0-9_-]`.                                             |
 | **Idle Timeout**         | Configurable inactivity timer that auto-signs-out the staff user from the workstation (default 15 minutes).                                    |

@@ -25,7 +25,6 @@ behavior such as RLS, RPC validation, auditability, or AI approval gating.
 
 - **Flutter desktop app**: `frontend/lib/`, `frontend/test/`
 - **Supabase backend**: `backend/migrations/`, `backend/functions/`, `backend/tests/`
-- **AI service**: `ai/src/`, `ai/tests/`
 - Paths shown below assume the canonical AiClinic architecture - adjust to match
   `plan.md` while preserving layer boundaries
 
@@ -68,7 +67,7 @@ Examples of foundational tasks (adjust based on your project):
 
 - [ ] T004 Setup branch-aware PostgreSQL schema, migrations, and shared table conventions
 - [ ] T005 [P] Implement authentication, authorization, and RLS framework
-- [ ] T006 [P] Define Flutter-to-Supabase and Flutter-to-AI service interfaces
+- [ ] T006 [P] Define Flutter-to-Supabase interfaces
 - [ ] T007 Create base RPC/functions, entities, and policies that all stories depend on
 - [ ] T008 Configure audit logging, soft deletion, and error handling infrastructure
 - [ ] T009 Setup environment, local AI connectivity, and backup-safe operational defaults
@@ -94,7 +93,7 @@ Examples of foundational tasks (adjust based on your project):
 
 - [ ] T012 [P] [US1] Add schema or policy changes in `backend/migrations/[timestamp]_[name].sql`
 - [ ] T013 [P] [US1] Add Flutter models/state in `frontend/lib/features/[feature]/`
-- [ ] T014 [US1] Implement RPC/function or AI interface changes in `backend/functions/` or `ai/src/` (depends on T012, T013)
+- [ ] T014 [US1] Implement RPC/function changes in `backend/functions/` (depends on T012, T013)
 - [ ] T015 [US1] Implement desktop workflow in `frontend/lib/features/[feature]/[file].dart`
 - [ ] T016 [US1] Add approval gating, validation, and degraded-state handling
 - [ ] T017 [US1] Add audit logging and operational telemetry for user story 1
@@ -138,7 +137,7 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Implementation for User Story 3
 
-- [ ] T026 [P] [US3] Add schema, RPC, or AI service changes in the responsible layer
+- [ ] T026 [P] [US3] Add schema or RPC changes in the responsible layer
 - [ ] T027 [US3] Implement Flutter workflow or supporting backend function changes
 - [ ] T028 [US3] Validate permissions, audit behavior, and degraded operation paths
 

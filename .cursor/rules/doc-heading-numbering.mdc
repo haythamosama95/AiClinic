@@ -12,7 +12,7 @@ Use hierarchical decimal numbering in all markdown docs under `docs/` and `specs
 
 | Markdown level | Example | Notes |
 |---|---|---|
-| `#` (title) | `AI Gateway Reference` | Document title only — **no number** |
+| `#` (title) | `Architecture Reference` | Document title only — **no number** |
 | `##` (section) | `## 1. High-Level Architecture` | Top-level sections: `{n}.` |
 | `###` (subsection) | `### 1.1 Gateway` | `{n}.{m}` — no trailing period |
 | `####` (subsubsection) | `#### 1.1.1 Responsibilities` | `{n}.{m}.{k}` — no trailing period |

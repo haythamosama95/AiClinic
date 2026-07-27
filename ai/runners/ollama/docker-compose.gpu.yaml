@@ -1,9 +1,0 @@
-# GPU overlay — use with: docker compose -f docker-compose.yaml -f docker-compose.gpu.yaml up -d
-# Requires NVIDIA Container Toolkit on the host.
-
-services:
-  ollama:
-    gpus: all
-    environment:
-      - OLLAMA_HOST=0.0.0.0:11434
-      - NVIDIA_VISIBLE_DEVICES=all

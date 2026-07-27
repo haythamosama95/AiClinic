@@ -10,11 +10,11 @@
 
 ## Project Phases
 
-The project is divided into three versions (V1, V2, V3). Development follows the feature-by-feature workflow defined in `docs/architecture/11-spec-driven-development.md` → `Development Workflow`. For each feature: define the spec, implement the backend, test the backend, implement the frontend, test end-to-end, then move to the next feature. AI service capabilities are added only after a concrete, tested frontend and backend exist.
+The project is divided into three versions (V1, V2, V3). Development follows the feature-by-feature workflow defined in `docs/architecture/11-spec-driven-development.md` → `Development Workflow`. For each feature: define the spec, implement the backend, test the backend, implement the frontend, test end-to-end, then move to the next feature.
 
 ## V1 -- Foundation and Core Operations
 
-V1 delivers a fully functional clinic management system with no AI. This is the MVP. Each feature below follows the cycle: **spec → backend → test → frontend → test**.
+V1 delivers a fully functional clinic management system. This is the MVP. Each feature below follows the cycle: **spec → backend → test → frontend → test**.
 
 ### Implementation Status
 
@@ -272,115 +272,19 @@ Deliverables:
   - Branch creation
 - Documentation: installation guide for clinic IT staff
 
-## V2 -- AI Integration
+## V2 -- Future Capabilities
 
-V2 adds the AI interaction layer on top of the concrete, tested V1 foundation. The standard UI from V1 continues to work unchanged. Development follows: backend (AI service infra) → frontend (AI chat UI) → AI layer (agent tuning).
-
-### V2-1: AI Service Infrastructure
-
-Required architecture docs:
-- `docs/architecture/02-system-overview.md` → `Critical Data Flow: AI Command Execution`
-- `docs/architecture/03-deployment-networking.md`
-- `docs/architecture/04-backend.md` → `API Access Patterns`
-- `docs/architecture/06-ai.md`
-- `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
-
-Required specs:
-- `specs/ai/ai_service.spec.md`
-- `specs/ai/scheduling_agent.spec.md`
-- `specs/ai/billing_agent.spec.md`
-- `specs/ai/soap_summarizer.spec.md`
-- `specs/ai/analytics_agent.spec.md`
-
-Backend deliverables (AI service is backend infra):
-- Write specifications for AI modules:
-  - `specs/ai/ai_service.spec.md`
-  - `specs/ai/scheduling_agent.spec.md`
-  - `specs/ai/billing_agent.spec.md`
-  - `specs/ai/soap_summarizer.spec.md`
-  - `specs/ai/analytics_agent.spec.md`
-- Define the structured command protocol (JSON schemas for all command types)
-- Define the AI HTTP API contract (endpoints, request/response formats)
-- Ollama installation script/Docker container for the receptionist PC
-- HTTP wrapper service (lightweight Python or Go service) that:
-  - Receives prompt + context from Flutter
-  - Routes to the correct agent (based on intent classification)
-  - Loads the appropriate system prompt
-  - Calls Ollama inference API
-  - Parses and validates structured output
-  - Returns structured JSON command
-- Health check endpoint (`GET /health`)
-- Configuration: model selection, port, allowed origins
-- Test utilities to verify AI service endpoints and structured output parsing
-
-### V2-2: AI Chat Frontend
-
-Required architecture docs:
-- `docs/architecture/02-system-overview.md` → `Critical Data Flow: AI Command Execution`, `Critical Data Flow: Standard UI Operation`
-- `docs/architecture/06-ai.md` → `Structured Command Protocol`, `Context Strategy`
-- `docs/architecture/07-frontend.md`
-- `docs/architecture/09-security-rbac.md` → `Role-Based Access Control (RBAC)`
-- `docs/architecture/11-spec-driven-development.md` → `Development Workflow`
-
-Required specs:
-- `specs/ai/ai_chat_frontend.spec.md`
-
-Frontend deliverables:
-- AI chat panel (can be opened as an overlay or sidebar from any screen)
-- Chat message history (session-only, not persisted)
-- Prompt input with send button
-- AI response rendering:
-  - Text responses displayed as chat bubbles
-  - Structured commands rendered as approval cards
-- Approval card UI:
-  - Shows action summary (e.g., "Book Ahmed with Dr. Ali tomorrow at 5 PM")
-  - Shows resolved parameters
-  - Approve / Reject buttons
-  - On approve: executes the Supabase RPC call, shows result
-  - On reject: discards command, shows "cancelled" message
-- Entity resolution:
-  - When AI returns `lookup_required`, Flutter searches and presents disambiguation
-- Context assembly:
-  - Reads current branch, current patient (if applicable), current date/time
-  - Pre-fetches doctor list for the branch
-  - Sends assembled context with each prompt
-
-### V2-3: AI Agent Integration
-
-Required architecture docs:
-- `docs/architecture/02-system-overview.md` → `Critical Data Flow: AI Command Execution`
-- `docs/architecture/05-database.md` → `Core Schema Domains`
-- `docs/architecture/06-ai.md`
-- `docs/architecture/07-frontend.md`
-- `docs/architecture/09-security-rbac.md` → `Role-Based Access Control (RBAC)`
-- `docs/architecture/11-spec-driven-development.md` → `Specification Directory Structure`, `Required Specification Sections`, `Development Workflow`
-
-Required specs:
-- `specs/ai/scheduling_agent.spec.md`
-- `specs/ai/billing_agent.spec.md`
-- `specs/ai/soap_summarizer.spec.md`
-- `specs/ai/analytics_agent.spec.md`
-
-AI layer deliverables:
-- Define and tune system prompts for each agent
-- Select and document recommended models per agent
-- Scheduling agent: create/cancel appointments via AI
-- Billing agent: create invoices via AI
-- SOAP summarizer: generate SOAP draft from free-text, present for doctor approval
-- Shift agent: create shifts and assign staff via AI
-- Analytics agent: answer operational questions with pre-built query templates
-- End-to-end testing of each agent through the full pipeline (prompt → AI service → Flutter approval → Supabase execution)
+V2 scope is pending a new architecture definition. The previous AI integration plan has been removed. V2 will be redefined once the replacement architecture is finalized.
 
 ## V3 -- Analytics, Advanced Features, and Polish
 
-V3 adds dashboards, AI-powered analytics, and remaining features. Each feature follows: backend → test → frontend → test.
+V3 adds dashboards and remaining features. Each feature follows: backend → test → frontend → test.
 
 ### V3-1: Analytics
 
 Required architecture docs:
 - `docs/architecture/04-backend.md` → `Business Logic Distribution`, `Supabase Edge Functions (Cloud-Only, Optional)`, `API Access Patterns`
 - `docs/architecture/05-database.md` → `Core Schema Domains`, `Row Level Security (RLS) Strategy`, `PostgreSQL Functions (RPC Layer)`
-- `docs/architecture/06-ai.md` → `Structured Command Protocol`, `Context Strategy`
 - `docs/architecture/07-frontend.md`
 - `docs/architecture/09-security-rbac.md` → `Role-Based Access Control (RBAC)`
 - `docs/architecture/10-resilience-and-scale.md` → `Scalability Boundaries`
@@ -409,11 +313,6 @@ Frontend deliverables:
 - Doctor performance page
 - Date range picker, branch filter, export to CSV
 - Chart library integration (e.g., fl_chart or syncfusion)
-
-AI layer deliverables:
-- Natural language queries in AI chat that return analytics results
-- AI maps questions to pre-built analytics query identifiers
-- Results rendered as inline charts or tables in the chat
 
 ### V3-2: Advanced Billing
 
@@ -496,14 +395,7 @@ V1-0 (Scaffolding)
   │       │       │       │       │       │               └──► V1-8 (Deployment/Installer)
   │
   ▼ (V1 stable)
-V2-1 (AI Service Infra: spec → backend → test)
-  │
-  ├──► V2-2 (AI Chat Frontend: implement → test)
-  │       │
-  │       └──► V2-3 (AI Agent Integration: tune → test end-to-end)
-  │
-  ▼ (V2 stable)
-V3-1 (Analytics: spec → backend → test → frontend → test → AI layer)
+V3-1 (Analytics: spec → backend → test → frontend → test)
   │
   ├──► V3-2 (Advanced Billing: backend → test → frontend → test)
   │
@@ -514,5 +406,5 @@ V3-1 (Analytics: spec → backend → test → frontend → test → AI layer)
 
 Notes:
 - V1 features are strictly sequential. Each feature's backend is completed and tested before its frontend begins. Each feature is fully done before the next starts.
-- V2 begins only after V1 is stable. AI service infrastructure (backend) is built and tested first, then the Flutter AI chat UI, then agent tuning.
-- V3 begins only after V2 is stable. V3-2 through V3-4 can be parallelized after V3-1 is complete.
+- V2 scope is pending architecture redesign.
+- V3 begins after V1 is stable. V3-2 through V3-4 can be parallelized after V3-1 is complete.

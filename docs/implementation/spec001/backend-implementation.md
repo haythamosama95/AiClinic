@@ -468,7 +468,6 @@ Aligned with `specs/001-project-scaffolding/` and constitution checks:
 - Edge Functions in Compose
 - Email (Inbucket) in Compose
 - Connection pooler
-- AI service container (AI talks to Flutter only)
 - Cloud Supabase linking and sync
 
 ## Extension points

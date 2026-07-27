@@ -13,8 +13,6 @@ The server node:
 3. Holds authoritative secrets in `backend/local/.env` (never commit `.env` to git).
 4. Supplies `supabase_url` and `supabase_anon_key` values distributed to client profiles.
 
-V1-0 does **not** include the AI service container; `ai_service_url` in profiles is optional and ignored by startup logic.
-
 ## 1. Hardware and OS
 
 Meet the minimums in [deployment and networking](../../docs/architecture/03-deployment-networking.md):

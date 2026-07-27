@@ -62,18 +62,13 @@ app.*.map.json
 Thumbs.db
 *.tmp
 
-# Python / AI Gateway
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
 dist/
-ai/gateway/logs/
-ai/logs/
-ai/runners/logs/
 *.egg
 
-# Runner console
-ai/runner-console/node_modules/
 web-reference/node_modules

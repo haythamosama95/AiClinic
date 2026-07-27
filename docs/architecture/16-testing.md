@@ -149,7 +149,7 @@ File: `.github/workflows/ci.yml`
 
 Triggers: push/PR to `main`, `master`, `001-*`, `feature/*`.
 
-**Not in CI today:** backend SQL tests, Linux/macOS builds, AI service tests.
+**Not in CI today:** backend SQL tests, Linux/macOS builds.
 
 ---
 

@@ -46,7 +46,6 @@ Example for a LAN client:
 | `deployment_mode`    | Yes      | Must be `local` in V1-0.                                        |
 | `supabase_url`       | Yes      | Server gateway URL (LAN IP, not `127.0.0.1` on remote clients). |
 | `supabase_anon_key`  | Yes      | Must match server `SUPABASE_ANON_KEY`.                          |
-| `ai_service_url`     | No       | Reserved; startup ignores it in V1-0.                           |
 | `source_device_role` | No       | `server-node` or `client-node` for documentation only.          |
 
 Full rules: [deployment-profile contract](../../specs/001-project-scaffolding/contracts/deployment-profile.md).

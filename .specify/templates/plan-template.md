@@ -18,22 +18,18 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Dart/Flutter stable, PostgreSQL SQL, AI service runtime or
-NEEDS CLARIFICATION]
+**Language/Version**: [e.g., Dart/Flutter stable, PostgreSQL SQL or NEEDS CLARIFICATION]
 
-**Primary Dependencies**: [e.g., Flutter desktop, Supabase, PostgreSQL, local AI runtime
-or NEEDS CLARIFICATION]
+**Primary Dependencies**: [e.g., Flutter desktop, Supabase, PostgreSQL or NEEDS CLARIFICATION]
 
 **Storage**: [if applicable, e.g., Supabase PostgreSQL, local files/cache, or N/A]
 
 **Testing**: [e.g., flutter test, integration tests, SQL/RPC validation, or NEEDS
 CLARIFICATION]
 
-**Target Platform**: [e.g., Windows desktop, clinic LAN, Supabase-hosted backend, local
-AI service or NEEDS CLARIFICATION]
+**Target Platform**: [e.g., Windows desktop, clinic LAN, Supabase-hosted backend or NEEDS CLARIFICATION]
 
-**Project Type**: [e.g., desktop application with managed backend and isolated AI service
-or NEEDS CLARIFICATION]
+**Project Type**: [e.g., desktop application with managed backend or NEEDS CLARIFICATION]
 
 **Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
 
@@ -98,14 +94,10 @@ backend/
 ├── functions/
 ├── seed/
 └── tests/
-
-ai/
-├── src/
-└── tests/
 ```
 
 **Structure Decision**: [Document the selected structure and reference the real
-directories captured above; preserve replaceable Flutter, Supabase/PostgreSQL, and AI
+directories captured above; preserve replaceable Flutter and Supabase/PostgreSQL
 boundaries]
 
 ## Complexity Tracking
@@ -115,4 +107,3 @@ boundaries]
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
 | [e.g., Custom backend service] | [current need] | [why Supabase/RPC/PostgreSQL is insufficient] |
-| [e.g., AI direct write path] | [specific problem] | [why human-gated app-mediated flow is insufficient] |

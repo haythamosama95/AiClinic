@@ -6,7 +6,7 @@ Modified principles:
 - Template principle 2 -> II. Replaceable Layer Boundaries
 - Template principle 3 -> III. Backend Authority and Data Integrity
 - Template principle 4 -> IV. Secure and Human-Gated Operations
-- Template principle 5 -> V. Local AI, Graceful Failure, and Operational Continuity
+- Template principle 5 -> V. Operational Continuity
 Added sections:
 - Operating Constraints
 - Change Guardrails
@@ -47,7 +47,6 @@ AiClinic MUST preserve clear layer boundaries:
 - Supabase owns backend capabilities such as auth, storage, realtime, RPC access, and
   authorization enforcement
 - PostgreSQL owns schema, constraints, triggers, and transactional business rules
-- AI runs as an isolated service that communicates only with the Flutter app
 
 Each layer MUST communicate only through defined interfaces and remain replaceable
 without forcing cascading redesign in other layers. There MUST NOT be a custom core
@@ -81,20 +80,7 @@ Security MUST use defense in depth:
 Hard deletes MUST NOT be used by application flows. Auditability MUST be preserved
 through audit fields and audit logs for sensitive operations.
 
-AI-generated actions MUST always be approval-gated by a human before execution. No AI
-capability may bypass permission checks, audit requirements, or branch isolation. This
-protects patient-adjacent operations from silent or unreviewable automation.
-
-### V. Local AI, Graceful Failure, and Operational Continuity
-AI is an assistant, not an actor. The AI service:
-- MUST be isolated from Supabase
-- MUST have no database credentials
-- MUST not execute writes directly
-- MUST return structured outputs for actionable operations
-
-Standard clinic workflows MUST continue without AI. If AI is unavailable, the
-application MUST degrade to normal manual operation rather than block the user.
-
+### V. Operational Continuity
 Deployment and resilience decisions MUST support low-cost clinic hardware, LAN-based
 operation, scheduled backups, and graceful degradation. Subscription enforcement MUST
 never hard-lock the system or delete data; the worst allowed operational mode is
@@ -107,14 +93,12 @@ The canonical operating model is:
 - Flutter desktop application
 - Supabase backend
 - PostgreSQL data layer
-- local AI service over HTTP
 
 All deployment tiers MUST preserve the same application code, schema shape, and backend
 logic. Tier differences may change hosting location and connectivity assumptions, but
 MUST NOT introduce a second architecture.
 
-The system SHOULD run within modest clinic hardware limits, including CPU-only AI
-inference and RAM-conscious service choices.
+The system SHOULD run within modest clinic hardware limits and RAM-conscious service choices.
 
 Workflow automation, when implemented, MUST remain lightweight and understandable:
 - simple trigger-action rules
@@ -128,7 +112,6 @@ Workflow automation, when implemented, MUST remain lightweight and understandabl
 The following changes MUST NOT be adopted without a formal constitutional amendment:
 - introducing a custom primary backend service
 - bypassing RLS or RPC validation for protected operations
-- giving AI direct database or backend access
 - replacing soft delete with hard delete in normal workflows
 - introducing infrastructure that assumes enterprise scale or hardware
 - coupling unrelated feature domains in ways that reduce replaceability
@@ -165,11 +148,10 @@ Compliance review for any significant design or implementation proposal MUST ver
 - layer boundaries remain intact
 - backend authority is preserved
 - security and audit guarantees still hold
-- AI remains isolated and human-gated
 - failure modes still degrade safely
 
 Constitution compliance MUST be checked in feature plans before research, re-checked
 after design, and reflected in implementation tasks whenever security, data integrity,
-AI behavior, or operational continuity are affected.
+or operational continuity are affected.
 
 **Version**: 1.0.0 | **Ratified**: 2026-05-13 | **Last Amended**: 2026-05-13
