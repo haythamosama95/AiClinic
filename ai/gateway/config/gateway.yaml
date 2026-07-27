@@ -9,9 +9,9 @@ runners:
     capabilities:
       - json_grammar
     models:
-      - name: qwen3:4b
-        source: qwen3:4b
-        digest: sha256:3e4cb14174460404e7a233e531675303b2fbf7749c02f91864fe311ab6344e4f
+      - name: qwen3:4b-instruct
+        source: qwen3:4b-instruct
+        digest: sha256:0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0
         context_tokens: 8192
         capabilities:
           - json_grammar
@@ -22,8 +22,8 @@ unreachable_after_failures: 3
 queue_max_depth: 16
 queue_max_wait_s: 20
 max_inflight_per_caller: 2
-timeout_total_s: 45
-timeout_first_token_s: 15
+timeout_total_s: 120
+timeout_first_token_s: 90
 confidence_threshold: 0.6
 
 jwt_secret: your-super-secret-jwt-token-with-at-least-32-characters-long
@@ -34,7 +34,8 @@ allowed_origins:
   - http://localhost:3000
   - http://localhost:8090
 
-log_verbatim: false
+log_verbatim: true
+log_verbatim_retention_hours: 24
 enable_push_registration: false
 internal_shared_secret: null
 

@@ -1,0 +1,52 @@
+---
+description: Hierarchical numbered headings for markdown documentation
+globs: docs/**/*.md,specs/**/*.md
+alwaysApply: false
+---
+
+# Documentation Heading Numbering
+
+Use hierarchical decimal numbering in all markdown docs under `docs/` and `specs/`.
+
+## Format
+
+| Markdown level | Example | Notes |
+|---|---|---|
+| `#` (title) | `AI Gateway Reference` | Document title only — **no number** |
+| `##` (section) | `## 1. High-Level Architecture` | Top-level sections: `{n}.` |
+| `###` (subsection) | `### 1.1 Gateway` | `{n}.{m}` — no trailing period |
+| `####` (subsubsection) | `#### 1.1.1 Responsibilities` | `{n}.{m}.{k}` — no trailing period |
+| `#####` and deeper | `##### 1.1.1.1 runners` | Continue the pattern |
+
+## Rules
+
+1. Number every heading except the document title (`#`) and `## Table of Contents`.
+2. Reset child counters when a parent section changes (e.g. after `### 1.2`, the next `####` is `#### 1.2.1`, not `#### 1.1.4`).
+3. Strip and replace old numbers when renumbering — never stack numbers (`### 1.1 1.1 Gateway` is wrong).
+4. Do not number lines inside fenced code blocks.
+5. Keep anchor links in the TOC consistent with heading text (e.g. `### 1.1 Gateway` → `#11-gateway`).
+
+## Example
+
+```markdown
+# Feature Name
+
+## Table of Contents
+
+1. [Overview](#1-overview)
+   - [Goals](#11-goals)
+
+---
+
+## 1. Overview
+
+### 1.1 Goals
+
+#### 1.1.1 Primary goal
+
+Content here.
+
+### 1.2 Scope
+
+#### 1.2.1 In scope
+```

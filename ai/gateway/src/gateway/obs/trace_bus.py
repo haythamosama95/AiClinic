@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import re
 import uuid
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
+
+from ai_common.verbose_logging import get_logger, health_poll_verbose_enabled
 
 Direction = Literal[
     "client_to_gateway",
@@ -24,14 +24,7 @@ _MAX_EVENTS = 500
 _SUMMARY_MAX_LEN = 240
 _BODY_MAX_LEN = 8192
 
-_PHI_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bpatient[_\s]?name\b", re.IGNORECASE),
-    re.compile(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"),
-]
-
-
-def _hash_value(value: str) -> str:
-    return f"sha256:{hashlib.sha256(value.encode()).hexdigest()[:16]}"
+vlog = get_logger(__name__)
 
 
 def _redact_text(
@@ -40,20 +33,8 @@ def _redact_text(
     max_len: int,
     log_verbatim: bool,
 ) -> str:
-    if log_verbatim:
-        return text[:max_len] + ("…" if len(text) > max_len else "")
-
-    redacted = False
-    result = text
-    for pattern in _PHI_PATTERNS:
-        if pattern.search(result):
-            result = pattern.sub(lambda m: _hash_value(m.group(0)), result)
-            redacted = True
-    if len(result) > max_len:
-        result = result[:max_len] + "…"
-    if redacted and not result.endswith("…"):
-        result = result + " [redacted]"
-    return result
+    del log_verbatim
+    return text[:max_len] + ("…" if len(text) > max_len else "")
 
 
 def redact_summary(text: str | None, *, log_verbatim: bool = False) -> str | None:
@@ -126,6 +107,16 @@ class TraceBus:
         event_id: str | None = None,
         ts: str | None = None,
     ) -> TraceEvent:
+        poll_verbose = kind == "poll" and health_poll_verbose_enabled()
+        if kind != "poll" or poll_verbose:
+            vlog.v2(
+                "Recording trace event",
+                direction=direction,
+                kind=kind,
+                path=path,
+                runner_id=runner_id,
+                status_code=status_code,
+            )
         event = TraceEvent(
             id=event_id or str(uuid.uuid4()),
             ts=ts or datetime.now(UTC).isoformat(),
@@ -154,6 +145,8 @@ class TraceBus:
                     dead.append(queue)
             for queue in dead:
                 self._subscribers.discard(queue)
+        if kind != "poll" or poll_verbose:
+            vlog.v2("Trace event recorded", event_id=event.id, buffer_size=len(self._events))
         return event
 
     async def history(
@@ -166,6 +159,7 @@ class TraceBus:
         status_class: str | None = None,
         path_prefix: str | None = None,
     ) -> list[dict[str, Any]]:
+        vlog.v0("Fetching trace event history", limit=limit)
         async with self._lock:
             events = list(self._events)
         filtered = _apply_filters(
@@ -177,15 +171,19 @@ class TraceBus:
             path_prefix=path_prefix,
         )
         tail = filtered[-limit:] if limit > 0 else filtered
-        return [e.to_dict() for e in reversed(tail)]
+        result = [e.to_dict() for e in reversed(tail)]
+        vlog.v1("Fetched trace event history", count=len(result))
+        return result
 
     def subscribe(self, *, max_queue: int = 64) -> asyncio.Queue[TraceEvent | None]:
         queue: asyncio.Queue[TraceEvent | None] = asyncio.Queue(maxsize=max_queue)
         self._subscribers.add(queue)
+        vlog.v2("Subscribed to live trace events", subscriber_count=len(self._subscribers))
         return queue
 
     def unsubscribe(self, queue: asyncio.Queue[TraceEvent | None]) -> None:
         self._subscribers.discard(queue)
+        vlog.v2("Unsubscribed from live trace events", subscriber_count=len(self._subscribers))
 
     async def stream(
         self,

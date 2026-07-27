@@ -3,7 +3,12 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_verbose_log.sh
+. "${SCRIPT_DIR}/_verbose_log.sh"
+RUNNER_LOG_NAME="ollama_compose"
+
+ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 OLLAMA_DIR="${ROOT}/ollama"
 GPU_PREF="${OLLAMA_DIR}/.gpu-enabled"
 HOST_MODELS="${OLLAMA_HOST_MODELS:-/usr/share/ollama/.ollama}"
@@ -12,17 +17,26 @@ HOST_MODELS_OVERLAY=()
 if [[ -d "${HOST_MODELS}/models" ]]; then
   export OLLAMA_HOST_MODELS="${HOST_MODELS}"
   HOST_MODELS_OVERLAY=(-f "${OLLAMA_DIR}/docker-compose.host-models.yaml")
+  _runner_log_v1 "Using host Ollama model store" "path=${HOST_MODELS}"
+else
+  _runner_log_v2 "Host model store not found, using Docker volume" "path=${HOST_MODELS}"
 fi
 
 BASE=(docker compose -f "${OLLAMA_DIR}/docker-compose.yaml" "${HOST_MODELS_OVERLAY[@]}")
 GPU=(docker compose -f "${OLLAMA_DIR}/docker-compose.yaml" "${HOST_MODELS_OVERLAY[@]}" -f "${OLLAMA_DIR}/docker-compose.gpu.yaml")
 
 gpu_enabled() {
-  [[ -f "${GPU_PREF}" ]] && [[ "$(tr -d ' \n\r' < "${GPU_PREF}")" == "1" ]]
+  local enabled=0
+  if [[ -f "${GPU_PREF}" ]] && [[ "$(tr -d ' \n\r' < "${GPU_PREF}")" == "1" ]]; then
+    enabled=1
+  fi
+  _runner_log_v2 "Checking GPU preference flag" "enabled=${enabled}"
+  [[ "${enabled}" -eq 1 ]]
 }
 
 set_gpu_enabled() {
   local value="$1"
+  _runner_log_v1 "Saving GPU preference" "value=${value}"
   if [[ "${value}" == "1" ]]; then
     echo "1" > "${GPU_PREF}"
   else
@@ -32,27 +46,57 @@ set_gpu_enabled() {
 
 compose_cmd() {
   if gpu_enabled; then
+    _runner_log_v2 "Selected GPU-enabled compose configuration" "mode=gpu"
     echo "${GPU[@]}"
   else
+    _runner_log_v2 "Selected CPU-only compose configuration" "mode=cpu"
     echo "${BASE[@]}"
   fi
 }
 
 port_11434_in_use() {
-  ss -tln 2>/dev/null | grep -q '127.0.0.1:11434'
+  ss -tlnH 2>/dev/null | awk '{print $4}' | grep -qE '(:|\])11434$'
 }
 
 docker_ollama_running() {
   $(compose_cmd) ps --status running -q ollama 2>/dev/null | grep -q .
 }
 
+docker_ollama_ports_published() {
+  local cid
+  cid="$($(compose_cmd) ps -q ollama 2>/dev/null | head -1 || true)"
+  [[ -n "${cid}" ]] || return 1
+  docker port "${cid}" 11434/tcp 2>/dev/null | grep -q '127.0.0.1:11434'
+}
+
 ollama_reachable() {
   curl -sf http://127.0.0.1:11434/api/version >/dev/null 2>&1
+}
+
+ollama_healthy() {
+  docker_ollama_running && ollama_reachable && docker_ollama_ports_published
+}
+
+wait_for_ollama() {
+  local attempts="${1:-30}"
+  local i
+  _runner_log_v1 "Waiting for Ollama API to respond" "attempts=${attempts}"
+  for i in $(seq 1 "${attempts}"); do
+    _runner_log_v2 "Checking Ollama API availability" "attempt=${i}"
+    if ollama_reachable; then
+      _runner_log_v1 "Ollama API is responding" "attempt=${i}"
+      return 0
+    fi
+    sleep 0.5
+  done
+  _runner_log_v0 "Ollama API did not respond in time" "attempts=${attempts}"
+  return 1
 }
 
 stop_conflicting_ollama() {
   local serve_pid_file="${XDG_RUNTIME_DIR:-/tmp}/ollama-native-serve.pid"
   local stopped=0
+  _runner_log_v1 "Stopping conflicting Ollama services on port 11434"
 
   if systemctl is-active --quiet ollama 2>/dev/null; then
     echo "==> Stopping system ollama.service (frees port 11434)"
@@ -92,47 +136,69 @@ stop_conflicting_ollama() {
 }
 
 ensure_port_available() {
+  _runner_log_v2 "Ensuring port 11434 is available"
+  if ollama_healthy; then
+    _runner_log_v1 "Ollama is already healthy on port 11434" "state=already_healthy"
+    return 0
+  fi
+
   if docker_ollama_running; then
-    if ollama_reachable; then
-      return 0
-    fi
-    echo "warning: Ollama container is running but 127.0.0.1:11434 is not responding — recreating" >&2
+    echo "warning: Ollama container is running but 127.0.0.1:11434 is not healthy — recreating" >&2
     $(compose_cmd) down
   fi
+
+  # Stop host-native Ollama before Docker binds 11434 (systemd often holds the port).
+  stop_conflicting_ollama || {
+    echo "error: could not stop host Ollama services." >&2
+    exit 1
+  }
+
   if port_11434_in_use; then
-    stop_conflicting_ollama || {
-      echo "error: 127.0.0.1:11434 is still in use after stopping known Ollama services." >&2
-      echo "Find the process with: ss -tlnp | grep 11434" >&2
-      exit 1
-    }
-  fi
-  if port_11434_in_use; then
-    echo "error: 127.0.0.1:11434 is already in use by an unknown process." >&2
+    echo "error: port 11434 is still in use after stopping known Ollama services." >&2
     echo "Find the process with: ss -tlnp | grep 11434" >&2
     exit 1
   fi
 }
 
 ollama_up() {
+  local started
+  started="$(_runner_job_start "Starting Ollama compose stack")"
   ensure_port_available
   if [[ ${#HOST_MODELS_OVERLAY[@]} -gt 0 ]]; then
     echo "==> Using host model store: ${OLLAMA_HOST_MODELS}"
+    _runner_log_v1 "Mounting host model store for compose" "path=${OLLAMA_HOST_MODELS}"
   fi
+  _runner_log_v1 "Starting Ollama via Docker Compose" "action=up"
   $(compose_cmd) up -d "$@"
-  for _ in $(seq 1 30); do
-    if ollama_reachable; then
-      return 0
-    fi
-    sleep 0.5
-  done
+  if wait_for_ollama; then
+    _runner_job_end "Ollama compose stack is up" "${started}" true
+    return 0
+  fi
+
+  echo "warning: Ollama did not become reachable — force-recreating container" >&2
+  _runner_log_v1 "Force-recreating Ollama container"
+  $(compose_cmd) down
+  ensure_port_available
+  $(compose_cmd) up -d --force-recreate "$@"
+  if wait_for_ollama; then
+    _runner_job_end "Ollama compose stack is up after recreate" "${started}" true "recreate=true"
+    return 0
+  fi
+
+  _runner_job_end "Ollama compose stack failed to start" "${started}" false "error=unreachable"
   echo "error: Ollama did not become reachable at http://127.0.0.1:11434" >&2
   echo "Try: bash scripts/ollama_compose.sh down && bash scripts/ollama_compose.sh up" >&2
+  echo "Logs: bash scripts/ollama_compose.sh logs-tail" >&2
   exit 1
 }
 
 ollama_down() {
+  local started
+  started="$(_runner_job_start "Stopping Ollama compose stack")"
+  _runner_log_v1 "Stopping Ollama via Docker Compose"
   "${GPU[@]}" down "$@" 2>/dev/null || true
   "${BASE[@]}" down "$@" 2>/dev/null || true
+  _runner_job_end "Ollama compose stack is stopped" "${started}" true
 }
 
 ollama_ps_json() {
@@ -196,8 +262,14 @@ docker_gpu_ready() {
 }
 
 case "${1:-}" in
-  gpu-enabled) gpu_enabled && echo 1 || echo 0 ;;
-  set-gpu) set_gpu_enabled "${2:-0}" ;;
+  gpu-enabled)
+    _runner_log_v2 "Reporting GPU preference status"
+    gpu_enabled && echo 1 || echo 0
+    ;;
+  set-gpu)
+    _runner_log_v0 "Setting GPU preference" "value=${2:-0}"
+    set_gpu_enabled "${2:-0}"
+    ;;
   host-models)
     if [[ ${#HOST_MODELS_OVERLAY[@]} -gt 0 ]]; then
       echo "enabled:${OLLAMA_HOST_MODELS}"
@@ -207,8 +279,14 @@ case "${1:-}" in
     ;;
   up) shift; ollama_up "$@" ;;
   down) shift; ollama_down "$@" ;;
-  ps-json) ollama_ps_json ;;
-  gpu-available) docker_gpu_ready && echo yes || echo no ;;
+  ps-json)
+    _runner_log_v2 "Listing loaded Ollama models"
+    ollama_ps_json
+    ;;
+  gpu-available)
+    _runner_log_v2 "Checking NVIDIA GPU availability for Docker"
+    docker_gpu_ready && echo yes || echo no
+    ;;
   compose-dir) echo "${OLLAMA_DIR}" ;;
   container-running) docker_ollama_running && echo yes || echo no ;;
   status-json)
@@ -233,7 +311,12 @@ PY
   logs-tail)
     shift
     lines="${1:-80}"
+    _runner_log_v1 "Fetching Ollama container logs" "lines=${lines}"
     $(compose_cmd) logs --tail "${lines}" ollama 2>/dev/null || true
     ;;
-  *) echo "usage: $0 {gpu-enabled|set-gpu 0|1|host-models|up|down|ps-json|gpu-available|compose-dir|container-running|status-json|logs-tail [N]}" >&2; exit 1 ;;
+  *)
+    _runner_log_v0 "Unrecognized ollama_compose command" "arg=${1:-}"
+    echo "usage: $0 {gpu-enabled|set-gpu 0|1|host-models|up|down|ps-json|gpu-available|compose-dir|container-running|status-json|logs-tail [N]}" >&2
+    exit 1
+    ;;
 esac

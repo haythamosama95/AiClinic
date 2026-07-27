@@ -54,6 +54,15 @@ async def test_health_always_returns_200(ready_client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_health_returns_503_during_shutdown(ready_client) -> None:
+    client, app = ready_client
+    app.state.shutdown_coordinator.begin_shutdown()
+    response = await client.get("/health")
+    assert response.status_code == 503
+    assert response.json()["status"] == "shutting_down"
+
+
+@pytest.mark.asyncio
 @respx.mock
 async def test_ready_returns_503_when_no_runner_is_ready(ready_client) -> None:
     client, app = ready_client

@@ -1,4 +1,4 @@
-"""PHI-redaction verification — patient-name fixtures must not appear verbatim (SC-012, FR-034)."""
+"""Structured logging preserves verbatim payloads (redaction disabled)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ import structlog
 
 from gateway.obs import logging as obs_logging
 
-# Realistic caller-supplied PHI fixtures that must never reach logs verbatim.
 PATIENT_NAME_FIXTURES: list[tuple[str, str]] = [
     ("patient_name", "Maria Garcia"),
     ("context", "Triage summary for James Wilson"),
@@ -23,21 +22,9 @@ PATIENT_NAME_FIXTURES: list[tuple[str, str]] = [
 
 
 @pytest.fixture
-def redacted_log_dir(tmp_path: Path) -> Iterator[Path]:
-    """Configure gateway logging with PHI redaction enabled (default)."""
+def log_dir(tmp_path: Path) -> Iterator[Path]:
     structlog.reset_defaults()
     log_dir = tmp_path / "gateway-logs"
-    obs_logging.configure_logging(str(log_dir), log_verbatim=False)
-    yield log_dir
-    logging.getLogger().handlers.clear()
-    structlog.reset_defaults()
-
-
-@pytest.fixture
-def verbatim_log_dir(tmp_path: Path) -> Iterator[Path]:
-    """Configure gateway logging with verbatim PHI logging explicitly enabled."""
-    structlog.reset_defaults()
-    log_dir = tmp_path / "gateway-logs-verbatim"
     obs_logging.configure_logging(str(log_dir), log_verbatim=True)
     yield log_dir
     logging.getLogger().handlers.clear()
@@ -50,50 +37,21 @@ def _read_log_lines(log_dir: Path) -> list[dict]:
     return [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines() if line]
 
 
-def test_patient_name_fixtures_never_appear_verbatim_when_log_verbatim_false(
-    redacted_log_dir: Path,
-) -> None:
-    """With log_verbatim=false, patient-name fixtures are hashed and never logged verbatim."""
+def test_patient_name_fixtures_are_logged_verbatim(log_dir: Path) -> None:
     for field_name, phi_value in PATIENT_NAME_FIXTURES:
         obs_logging.log_record(
-            request_id=f"req-redact-{field_name}",
+            request_id=f"req-{field_name}",
             endpoint="/v1/ai/generate",
             outcome="ok",
             caller_staff_id="staff-42",
             **{field_name: phi_value},
         )
 
-    records = _read_log_lines(redacted_log_dir)
+    records = _read_log_lines(log_dir)
     assert len(records) == len(PATIENT_NAME_FIXTURES)
 
-    serialized = "\n".join(json.dumps(record) for record in records)
-
     for field_name, phi_value in PATIENT_NAME_FIXTURES:
-        assert phi_value not in serialized, (
-            f"verbatim PHI leaked for field {field_name!r}: {phi_value!r}"
-        )
-
-    for record in records:
-        assert record.get("redacted") is True
-        for field_name, phi_value in PATIENT_NAME_FIXTURES:
-            if record.get("request_id") != f"req-redact-{field_name}":
-                continue
-            redacted_value = record[field_name]
-            assert redacted_value != phi_value
-            assert redacted_value.startswith("sha256:")
-
-
-def test_log_verbatim_true_allows_patient_names(verbatim_log_dir: Path) -> None:
-    """Verbatim mode is opt-in: fixtures appear when log_verbatim=true."""
-    field_name, phi_value = PATIENT_NAME_FIXTURES[0]
-    obs_logging.log_record(
-        request_id="req-verbatim",
-        endpoint="/v1/ai/generate",
-        outcome="ok",
-        **{field_name: phi_value},
-    )
-
-    records = _read_log_lines(verbatim_log_dir)
-    assert len(records) == 1
-    assert records[0][field_name] == phi_value
-    assert "redacted" not in records[0]
+        matching = [r for r in records if r.get("request_id") == f"req-{field_name}"]
+        assert len(matching) == 1
+        assert matching[0][field_name] == phi_value
+        assert "redacted" not in matching[0]

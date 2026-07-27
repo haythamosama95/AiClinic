@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+import httpx
+from ai_common.verbose_logging import get_logger
+
+from gateway.config.settings import GatewayConfig
 from gateway.routing.lifecycle import RunnerStatus
 from gateway.routing.registry import RunnerRegistry, RunnerRegistryEntry
+
+if TYPE_CHECKING:
+    pass
+
+vlog = get_logger(__name__)
 
 _HEALTH_PRIORITY: dict[RunnerStatus, int] = {
     RunnerStatus.READY: 0,
@@ -63,6 +74,23 @@ class RunnerSelector:
 
         chosen = least_busy[self._round_robin_counter % len(least_busy)]
         self._round_robin_counter += 1
+        vlog.v0(
+            "Selected runner for request",
+            runner_id=chosen.id,
+            status=chosen.status.value,
+            in_flight=chosen.in_flight,
+        )
+        vlog.v1(
+            "Runner selection details",
+            required_capabilities=required_capabilities,
+            capable_count=len(capable),
+            healthy_count=len(healthy),
+            tie_break_index=self._round_robin_counter - 1,
+        )
+        vlog.v2(
+            "Runner selection candidate pool",
+            candidate_ids=[entry.id for entry in least_busy],
+        )
         return chosen
 
 
@@ -84,3 +112,57 @@ def select_runner(
         registry.snapshot(),
         required_capabilities=required_capabilities,
     )
+
+
+async def select_runner_with_swap(
+    registry: RunnerRegistry,
+    *,
+    required_capabilities: list[str],
+    round_robin_state: SelectorState,
+    config: GatewayConfig,
+    request_id: str,
+    client: httpx.AsyncClient | None = None,
+) -> RunnerRegistryEntry:
+    """Select a runner, auto-triggering model swap when no READY match exists."""
+    from gateway.pipeline.swap import ensure_capable_runner
+
+    entry = select_runner(
+        registry,
+        required_capabilities=required_capabilities,
+        round_robin_state=round_robin_state,
+    )
+    if entry is not None:
+        vlog.v1(
+            "Found ready runner without model swap",
+            request_id=request_id,
+            runner_id=entry.id,
+        )
+        return entry
+
+    vlog.v0(
+        "No ready runner; triggering model swap",
+        request_id=request_id,
+        required_capabilities=required_capabilities,
+    )
+
+    await ensure_capable_runner(
+        registry,
+        required_capabilities=required_capabilities,
+        config=config,
+        client=client,
+        request_id=request_id,
+    )
+
+    entry = select_runner(
+        registry,
+        required_capabilities=required_capabilities,
+        round_robin_state=round_robin_state,
+    )
+    if entry is not None:
+        return entry
+
+    ready = registry.snapshot()
+    for candidate in ready:
+        if candidate.status == RunnerStatus.READY:
+            return candidate
+    raise RuntimeError("ensure_capable_runner succeeded but no READY runner found")

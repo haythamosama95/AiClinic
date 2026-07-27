@@ -2,22 +2,24 @@
 
 from __future__ import annotations
 
-import json
+import asyncio
 import os
+import signal
 import time
-import uuid
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from ai_common.verbose_logging import configure as configure_verbose_logging
+from ai_common.verbose_logging import get_logger
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from gateway.api.capabilities import router as capabilities_router
 from gateway.api.dashboard_auth import router as dashboard_auth_router
 from gateway.api.errors import install_exception_handlers
-from gateway.api.generate_stub import router as generate_stub_router
+from gateway.api.generate import router as generate_router
 from gateway.api.health import router as health_router
 from gateway.api.internal_runners import router as internal_runners_router
 from gateway.api.metrics import router as metrics_router
@@ -27,16 +29,11 @@ from gateway.api.trace import router as trace_router
 from gateway.auth.jwt_validator import JwtValidator
 from gateway.auth.role_map import RoleMapReloader, RoleMapStore
 from gateway.config.settings import GatewayConfig, load_config
+from gateway.middleware.observability import ObservabilityMiddleware
 from gateway.obs import logging as obs_logging
-from gateway.obs.logging import log_record
-from gateway.obs.metrics import record_request
 from gateway.obs.trace_bus import TraceBus
-from gateway.obs.trace_helpers import (
-    body_text_for_trace,
-    emit_client_trace,
-    should_emit_client_trace,
-    summarize_body,
-)
+from gateway.pipeline.cancel import log_cancelled
+from gateway.pipeline.queue import GenerationQueue, create_generation_queue
 from gateway.routing.health_poller import HealthPoller
 from gateway.routing.registry import RunnerRegistry
 
@@ -44,6 +41,9 @@ _config: GatewayConfig | None = None
 _poller: HealthPoller | None = None
 _registry: RunnerRegistry | None = None
 _role_map_reloader: RoleMapReloader | None = None
+_generation_queue: GenerationQueue | None = None
+
+_vlog = get_logger(__name__)
 
 
 def get_config() -> GatewayConfig:
@@ -62,6 +62,65 @@ def get_poller() -> HealthPoller | None:
     return _poller
 
 
+def get_generation_queue() -> GenerationQueue:
+    if _generation_queue is None:
+        raise RuntimeError("Gateway not initialized")
+    return _generation_queue
+
+
+async def _graceful_shutdown(generation_queue: GenerationQueue, grace_s: float) -> None:
+    """Drain in-flight requests; reject queued; cancel stragglers after grace."""
+    _vlog.v0("Beginning graceful shutdown", grace_s=grace_s)
+    coordinator = generation_queue.shutdown
+    if not coordinator.shutting_down:
+        coordinator.begin_shutdown()
+
+    rejected = await generation_queue.reject_queued_not_started()
+    for entry in rejected:
+        log_cancelled(
+            request_id=entry.request_id,
+            caller_staff_id=entry.caller_staff_id,
+        )
+
+    await generation_queue.drain_in_flight(grace_s)
+
+    cancelled_ids = await generation_queue.cancel_stragglers_after_grace()
+    for request_id in cancelled_ids:
+        log_cancelled(request_id=request_id)
+    _vlog.v0(
+        "Graceful shutdown finished",
+        rejected_count=len(rejected),
+        cancelled_count=len(cancelled_ids),
+    )
+
+
+def _install_shutdown_signals(
+    loop: asyncio.AbstractEventLoop,
+    generation_queue: GenerationQueue,
+    grace_s: float,
+) -> None:
+    """Register SIGTERM/SIGINT to begin graceful drain then exit the process.
+
+    Uvicorn's own handlers are replaced by ``add_signal_handler``. Without an
+    explicit process exit after drain, the server keeps serving ``/health`` while
+    rejecting generation with ``503 ai_busy`` — ``start.sh`` then treats the
+    zombie as healthy and skips restart.
+    """
+    _vlog.v0("Installing shutdown signal handlers", grace_s=grace_s)
+
+    def _on_signal() -> None:
+        async def _shutdown_and_exit() -> None:
+            await _graceful_shutdown(generation_queue, grace_s)
+            os._exit(0)
+
+        asyncio.create_task(_shutdown_and_exit())
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with suppress(AttributeError, NotImplementedError, ValueError):
+            loop.add_signal_handler(sig, _on_signal)
+    _vlog.v1("Shutdown signal handlers registered", signals=["SIGTERM", "SIGINT"])
+
+
 def _resolve_dashboard_dir(cfg: GatewayConfig) -> Path:
     if cfg.dashboard_dir:
         return Path(cfg.dashboard_dir)
@@ -78,24 +137,6 @@ def _resolve_role_map_path(cfg: GatewayConfig) -> Path | None:
     return None
 
 
-def _request_outcome(status: int, error_code: str | None) -> str:
-    if status < 400:
-        return "ok"
-    if error_code == "unauthenticated":
-        return "unauthenticated"
-    if error_code == "forbidden":
-        return "forbidden"
-    if error_code == "not_implemented":
-        return "not_implemented"
-    if status == 401:
-        return "unauthenticated"
-    if status == 403:
-        return "forbidden"
-    if status == 501:
-        return "not_implemented"
-    return "error"
-
-
 def _resolve_config_path(path: str | None) -> Path | None:
     if path:
         return Path(path)
@@ -110,7 +151,8 @@ def _resolve_config_path(path: str | None) -> Path | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    global _poller, _role_map_reloader
+    global _poller, _role_map_reloader, _generation_queue
+    _vlog.v0("Starting gateway application lifespan")
     app.state.jwt_validator = JwtValidator(app.state.config)
     app.state.role_map_store = RoleMapStore(dict(app.state.config.role_ai_access))
     role_map_path = _resolve_role_map_path(app.state.config)
@@ -120,29 +162,56 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         interval_s=60,
     )
     _role_map_reloader.start()
+
+    _generation_queue = create_generation_queue(app.state.config)
+    app.state.generation_queue = _generation_queue
+    app.state.shutdown_coordinator = _generation_queue.shutdown
+
+    loop = asyncio.get_running_loop()
+    _install_shutdown_signals(
+        loop,
+        _generation_queue,
+        float(app.state.config.shutdown_grace_s),
+    )
+
     _poller = HealthPoller(
         app.state.config,
         app.state.registry,
         trace_bus=app.state.trace_bus,
     )
     await _poller.start()
+    _vlog.v1("Gateway application lifespan started", runner_count=len(app.state.registry.runner_ids()))
     yield
+    _vlog.v0("Shutting down gateway application")
+    await _graceful_shutdown(
+        _generation_queue,
+        float(app.state.config.shutdown_grace_s),
+    )
     if _poller is not None:
         await _poller.stop()
         _poller = None
     if _role_map_reloader is not None:
         _role_map_reloader.stop()
         _role_map_reloader = None
+    _generation_queue = None
+    _vlog.v0("Gateway application lifespan ended")
 
 
 def create_app(config: GatewayConfig | None = None) -> FastAPI:
     """Factory for the FastAPI application (used by tests and production)."""
     global _config, _registry
+    _vlog.v0("Creating gateway application")
     cfg = config or load_config()
     _config = cfg
     _registry = RunnerRegistry(cfg)
 
-    obs_logging.configure_logging(cfg.log_dir, cfg.log_verbatim)
+    obs_logging.configure_logging(
+        cfg.log_dir,
+        cfg.log_verbatim,
+        log_verbatim_retention_hours=cfg.log_verbatim_retention_hours,
+        development_profile=cfg.dashboard_auto_sign_in,
+    )
+    configure_verbose_logging(source="gateway")
 
     app = FastAPI(title="AI Gateway", version="0.1.0", lifespan=lifespan)
     app.state.config = cfg
@@ -159,88 +228,7 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    @app.middleware("http")
-    async def observability_middleware(request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-        request.state.request_id = request_id
-        started = time.monotonic()
-
-        request_body_text: str | None = None
-        if request.method in ("POST", "PUT", "PATCH"):
-            raw_body = await request.body()
-
-            async def receive():
-                return {"type": "http.request", "body": raw_body, "more_body": False}
-
-            request._receive = receive  # noqa: SLF001
-            if raw_body:
-                try:
-                    request_body_text = body_text_for_trace(json.loads(raw_body))
-                except (json.JSONDecodeError, TypeError):
-                    request_body_text = body_text_for_trace(raw_body)
-
-        response = await call_next(request)
-        latency_ms = (time.monotonic() - started) * 1000.0
-        status = response.status_code
-        endpoint = request.url.path
-
-        response.headers["X-Request-ID"] = request_id
-        record_request(request.method, endpoint, status)
-
-        error_code: str | None = None
-        response_body_text: str | None = None
-        body_bytes = getattr(response, "body", None)
-        if body_bytes:
-            try:
-                parsed_body = json.loads(body_bytes)
-                response_body_text = body_text_for_trace(parsed_body)
-                if status >= 400 and isinstance(parsed_body, dict):
-                    err = parsed_body.get("error")
-                    if isinstance(err, dict):
-                        error_code = err.get("code")
-            except (json.JSONDecodeError, TypeError):
-                response_body_text = body_text_for_trace(body_bytes)
-
-        outcome = _request_outcome(status, error_code)
-        log_record(
-            request_id=request_id,
-            endpoint=endpoint,
-            outcome=outcome,
-            caller_staff_id=getattr(request.state, "caller_staff_id", None),
-            error_code=error_code,
-            latency_ms=latency_ms,
-        )
-
-        trace_bus: TraceBus | None = getattr(request.app.state, "trace_bus", None)
-        if trace_bus is not None and should_emit_client_trace(endpoint):
-            response_summary = summarize_body(response_body_text) if response_body_text else None
-            request_summary = summarize_body(request_body_text) if request_body_text else None
-            await emit_client_trace(
-                trace_bus,
-                direction="client_to_gateway",
-                method=request.method,
-                path=endpoint,
-                status_code=status,
-                latency_ms=latency_ms,
-                request_id=request_id,
-                kind="api",
-                request_summary=request_summary,
-                request_body=request_body_text,
-            )
-            await emit_client_trace(
-                trace_bus,
-                direction="gateway_to_client",
-                method=request.method,
-                path=endpoint,
-                status_code=status,
-                latency_ms=latency_ms,
-                request_id=request_id,
-                kind="api",
-                response_summary=response_summary,
-                response_body=response_body_text,
-            )
-        return response
+    app.add_middleware(ObservabilityMiddleware)
 
     app.include_router(health_router)
     app.include_router(dashboard_auth_router)
@@ -248,7 +236,7 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
     app.include_router(runners_router)
     app.include_router(status_router)
     app.include_router(capabilities_router)
-    app.include_router(generate_stub_router)
+    app.include_router(generate_router)
     app.include_router(trace_router)
     if cfg.enable_push_registration:
         app.include_router(internal_runners_router)
@@ -263,11 +251,18 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
             name="dashboard",
         )
 
+    _vlog.v0(
+        "Gateway application created",
+        port=cfg.port,
+        runner_count=len(cfg.runners),
+        dashboard_mounted=dashboard_mounted,
+    )
     return app
 
 
 def run() -> None:
     import uvicorn
 
+    _vlog.v0("Starting gateway server")
     cfg = load_config()
     uvicorn.run(create_app(cfg), host="0.0.0.0", port=cfg.port, reload=False)

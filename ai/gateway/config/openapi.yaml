@@ -1,0 +1,459 @@
+openapi: 3.1.0
+info:
+  title: AI Gateway — Control Plane (Feature 016 / Phase 2)
+  version: "1.0.0-phase2"
+  description: >
+    Client-facing contract for the AI Gateway control plane. Phase 2 delivers real
+    POST /v1/ai/generate (non-streaming JSON and SSE streaming), the scheduling agent,
+    the resilience envelope, and an extended GET /v1/capabilities shape. Phase 1 endpoints
+    (/health, /ready, /metrics, internal runner endpoints) are unchanged except where
+    explicitly extended here. All endpoints except /health and /metrics require a valid
+    Supabase JWT (Bearer), validated OFFLINE (no call to Supabase). The Gateway holds NO
+    clinic-database credentials.
+servers:
+  - url: http://SERVER_NODE:8090
+    description: Clinic LAN server node (plaintext HTTP acceptable on trusted LAN in V2)
+tags:
+  - name: health
+  - name: capabilities
+  - name: generate
+  - name: observability
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness — process is up
+      security: []
+      responses:
+        "200":
+          description: Gateway process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [ok] }
+
+  /ready:
+    get:
+      tags: [health]
+      summary: Readiness — at least one runner is READY
+      description: Requires a valid JWT (per §10 all client-facing endpoints except /health).
+      responses:
+        "200":
+          description: Ready — >= 1 runner in READY state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready, ready_runners]
+                properties:
+                  ready: { type: boolean, enum: [true] }
+                  ready_runners: { type: integer, minimum: 1 }
+        "503":
+          description: Not ready — no runner is READY
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/capabilities:
+    get:
+      tags: [capabilities]
+      summary: Aggregate AI-layer capability (mirrors live registry)
+      description: >
+        Extended in Phase 2 to advertise streaming, the command task, and the four
+        scheduling command types.
+      responses:
+        "200":
+          description: Capability snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Capabilities" }
+              example:
+                schema_version: "1.0"
+                streaming: true
+                tasks: ["command"]
+                commands:
+                  - create_appointment
+                  - reschedule_appointment
+                  - cancel_appointment
+                  - update_appointment_status
+                runners:
+                  - id: runnerA
+                    model: qwen3:4b
+                    digest: "sha256:..."
+                    status: READY
+                    features: [json_grammar]
+                    context_tokens: 8192
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/ai/generate:
+    post:
+      tags: [generate]
+      summary: Scheduling command generation (non-streaming + SSE)
+      description: >
+        Real generation endpoint (replaces the Phase 1 stub). Two response content types are
+        negotiated via options.stream (not Accept). options.stream=false (default), or
+        options.stream=true while streaming_enabled=false Gateway-wide, serves application/json
+        with the Command Protocol envelope. options.stream=true and streaming_enabled=true
+        serves text/event-stream of SSE events. Only task=command is supported this phase.
+        The Gateway is proposal-only: it never calls Supabase or fabricates entity ids.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GenerateRequest" }
+            example:
+              task: command
+              prompt: "book Ahmed with Dr Ali tomorrow 5pm"
+              context:
+                branch_id: "550e8400-e29b-41d4-a716-446655440000"
+                branch_name: Main
+                now: "2026-05-13T17:00:00+03:00"
+                active_patient:
+                  id: "550e8400-e29b-41d4-a716-446655440001"
+                  name: Ahmed Hassan
+                doctors:
+                  - id: "550e8400-e29b-41d4-a716-446655440002"
+                    name: "Dr. Ali"
+              options:
+                stream: false
+                confidence_hint: true
+                plan_mode: single
+      responses:
+        "200":
+          description: >
+            Success. Content type depends on options.stream and streaming_enabled config:
+            application/json (non-streaming) or text/event-stream (streaming).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommandProtocolEnvelope" }
+            text/event-stream:
+              schema:
+                type: string
+                description: >
+                  SSE event stream. Event types: summary (optional, zero or more),
+                  output (optional, zero or more — raw runner command JSON as it is
+                  generated; never a validated envelope), final (exactly one on success),
+                  error (exactly one on failure). For task=command, token events are never
+                  emitted. Exactly one terminal event per stream.
+              example: |
+                event: summary
+                data: {"delta":"Looking up tomorrow's availability..."}
+
+                event: final
+                data: {"schema_version":"1.0","task":"command","command_type":"create_appointment",...}
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422":
+          description: Output failed schema or semantic validation (not retried)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              example:
+                error:
+                  code: ai_unusable
+                  message: "display_summary is inconsistent with params."
+                  request_id: "req_01H..."
+        "429":
+          description: Per-caller in-flight cap exceeded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              example:
+                error:
+                  code: rate_limited
+                  message: "Too many concurrent generation requests."
+                  request_id: "req_01H..."
+        "503":
+          description: Queue full, wait timeout, or no runner capacity
+          headers:
+            Retry-After:
+              description: Seconds until retry is advised (ai_busy only)
+              schema: { type: integer }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              examples:
+                ai_busy:
+                  value:
+                    error:
+                      code: ai_busy
+                      message: "Generation queue is full."
+                      request_id: "req_01H..."
+                ai_no_capacity:
+                  value:
+                    error:
+                      code: ai_no_capacity
+                      message: "No runner can serve this capability."
+                      request_id: "req_01H..."
+        "504":
+          description: Inference timeout (first-token, total, or model-swap)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+              example:
+                error:
+                  code: ai_timeout
+                  message: "First token not received within timeout."
+                  request_id: "req_01H..."
+
+  /metrics:
+    get:
+      tags: [observability]
+      summary: Prometheus metrics exposition
+      security: []
+      responses:
+        "200":
+          description: Prometheus text exposition format
+          content:
+            text/plain:
+              schema: { type: string }
+
+components:
+  securitySchemes:
+    supabaseJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Supabase-issued JWT, validated OFFLINE via shared secret (HS256) or JWKS (RS/ES).
+        Requires the caller's role to hold ai.access (coarse gate; authoritative enforcement
+        remains at Supabase RPC in later phases).
+
+  responses:
+    Unauthenticated:
+      description: Missing/invalid/expired/not-yet-valid token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error:
+              code: unauthenticated
+              message: "Invalid or expired token."
+              request_id: "req_..."
+    Forbidden:
+      description: Valid token but role lacks ai.access
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error:
+              code: forbidden
+              message: "Caller lacks ai.access."
+              request_id: "req_..."
+    BadRequest:
+      description: Malformed or oversized request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example:
+            error:
+              code: bad_request
+              message: "Malformed request body."
+              request_id: "req_..."
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              enum:
+                - bad_request
+                - unauthenticated
+                - forbidden
+                - not_implemented
+                - rate_limited
+                - ai_unusable
+                - ai_busy
+                - ai_no_capacity
+                - ai_timeout
+            message: { type: string }
+            request_id: { type: string }
+
+    Capabilities:
+      type: object
+      required: [schema_version, streaming, tasks, commands, runners]
+      properties:
+        schema_version: { type: string, example: "1.0" }
+        streaming:
+          type: boolean
+          description: Reflects streaming_enabled config.
+        tasks:
+          type: array
+          items: { type: string }
+          description: Lists "command" (the only in-scope task this phase).
+          example: ["command"]
+        commands:
+          type: array
+          items:
+            type: string
+            enum:
+              - create_appointment
+              - reschedule_appointment
+              - cancel_appointment
+              - update_appointment_status
+          description: The four scheduling command types.
+        runners:
+          type: array
+          items: { $ref: "#/components/schemas/RunnerCapability" }
+
+    RunnerCapability:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string, example: runnerA }
+        model: { type: string, nullable: true, example: "qwen3:4b" }
+        digest: { type: string, nullable: true, example: "sha256:..." }
+        status:
+          type: string
+          enum: [UNKNOWN, STARTING, READY, BUSY, DEGRADED, UNREACHABLE]
+        features:
+          type: array
+          items: { type: string }
+          example: ["json_grammar"]
+        context_tokens: { type: integer, nullable: true, example: 8192 }
+
+    GenerateOptions:
+      type: object
+      properties:
+        stream:
+          type: boolean
+          default: false
+          description: >
+            When true and streaming_enabled=true, response is text/event-stream.
+            When streaming_enabled=false, silently serves non-streaming path.
+        confidence_hint:
+          type: boolean
+          default: true
+          description: Advisory this phase — confidence is always populated.
+        plan_mode:
+          type: string
+          enum: [single, multi]
+          default: single
+          description: '"multi" accepted and ignored this phase (single commands emitted).'
+
+    GenerateRequest:
+      type: object
+      required: [task, prompt, context]
+      properties:
+        task:
+          type: string
+          enum: [command, plan, text, clinical_note, analytics]
+          description: In-scope this phase — command only.
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          description: Non-empty, at most 8 KB (UTF-8).
+        context:
+          $ref: "#/components/schemas/GenerationContext"
+        conversation_id:
+          type: string
+          format: uuid
+          description: Optional, reserved — accepted and ignored this phase.
+        turn:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Optional, reserved — accepted and ignored this phase.
+        options:
+          $ref: "#/components/schemas/GenerateOptions"
+
+    GenerationContext:
+      type: object
+      required: [now]
+      additionalProperties: true
+      properties:
+        now:
+          type: string
+          format: date-time
+          description: >
+            Required ISO-8601 timestamp with timezone offset. Anchors relative date
+            semantics for the model and post-generation validation.
+        branch_id:
+          type: string
+          format: uuid
+        branch_name:
+          type: string
+        active_patient:
+          type: object
+          additionalProperties: true
+        doctors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    Warning:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+
+    CommandProtocolEnvelope:
+      type: object
+      required:
+        - schema_version
+        - task
+        - command_type
+        - confidence
+        - display_summary
+        - params
+        - requires_resolution
+        - warnings
+        - needs_clarification
+      properties:
+        schema_version:
+          type: string
+          enum: ["1.0"]
+        task:
+          type: string
+          enum: [command]
+        command_type:
+          type: string
+          enum:
+            - create_appointment
+            - reschedule_appointment
+            - cancel_appointment
+            - update_appointment_status
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        display_summary:
+          type: string
+          minLength: 1
+        params:
+          type: object
+          description: Command-specific params (see scheduling-schema.md).
+        requires_resolution:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [lookup_required]
+          description: Bare-string lookup_required directives only this phase.
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/Warning" }
+        needs_clarification:
+          type: boolean
+          description: >
+            true when confidence < confidence_threshold, or destructive command with
+            ambiguous resolved fields.
+
+security:
+  - supabaseJwt: []

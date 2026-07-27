@@ -6,6 +6,7 @@ import asyncio
 import json
 from typing import Annotated, Any
 
+from ai_common.verbose_logging import get_logger
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -14,6 +15,8 @@ from gateway.auth.jwt_validator import CallerIdentity
 from gateway.obs.trace_bus import TraceBus, matches_trace_filters
 
 router = APIRouter(prefix="/v1/trace", tags=["trace"])
+
+vlog = get_logger(__name__)
 
 
 def _trace_bus(request: Request) -> TraceBus:
@@ -33,8 +36,10 @@ async def get_trace_config(
     _caller: Annotated[CallerIdentity, Depends(require_ai_access)],
 ) -> JSONResponse:
     """Available filter dimensions for the live trace panel."""
+    vlog.v0("Fetching trace filter configuration")
     bus = _trace_bus(request)
     body = bus.filter_config(_registry_runner_ids(request))
+    vlog.v1("Returned trace filter configuration", runner_count=len(body.get("runner_ids", [])))
     return JSONResponse(body)
 
 
@@ -50,6 +55,7 @@ async def get_trace_events(
     path_prefix: str | None = None,
 ) -> JSONResponse:
     """Historical trace events from the in-memory ring buffer."""
+    vlog.v0("Fetching trace event history", limit=limit)
     bus = _trace_bus(request)
     events = await bus.history(
         limit=limit,
@@ -58,6 +64,13 @@ async def get_trace_events(
         runner_id=runner_id,
         status_class=status_class,
         path_prefix=path_prefix,
+    )
+    vlog.v1(
+        "Returned trace event history",
+        count=len(events),
+        direction=direction,
+        kind=kind,
+        runner_id=runner_id,
     )
     return JSONResponse({"events": events, "count": len(events)})
 
@@ -73,6 +86,12 @@ async def stream_trace_events(
     path_prefix: str | None = None,
 ) -> StreamingResponse:
     """Server-sent events stream of live trace events (filtered)."""
+    vlog.v0(
+        "Starting live trace event stream",
+        direction=direction,
+        kind=kind,
+        runner_id=runner_id,
+    )
     bus = _trace_bus(request)
     queue = bus.subscribe()
 
@@ -81,10 +100,12 @@ async def stream_trace_events(
             yield ": connected\n\n"
             while True:
                 if await request.is_disconnected():
+                    vlog.v1("Live trace stream client disconnected")
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=1.0)
                 except TimeoutError:
+                    vlog.v2("Sending trace stream keepalive")
                     yield ": keepalive\n\n"
                     continue
                 if event is None:

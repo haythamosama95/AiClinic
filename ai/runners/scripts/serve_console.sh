@@ -4,13 +4,19 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_verbose_log.sh
+. "${SCRIPT_DIR}/_verbose_log.sh"
+RUNNER_LOG_NAME="serve_console"
+
+ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONSOLE_DIR="$(cd "${ROOT}/../runner-console" && pwd)"
 PORT="${RUNNER_CONSOLE_PORT:-11435}"
 HOST="${RUNNER_CONSOLE_HOST:-127.0.0.1}"
 SERVER="${ROOT}/scripts/console_server.py"
 
 if [[ ! -d "${CONSOLE_DIR}" ]]; then
+  _runner_log_v0 "Runner console directory not found" "path=${CONSOLE_DIR}"
   echo "error: runner console not found at ${CONSOLE_DIR}" >&2
   exit 1
 fi
@@ -39,10 +45,12 @@ export RUNNER_CONSOLE_PORT="${PORT}"
 export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
 
 if ! curl -sf "${OLLAMA_BASE_URL}/api/version" >/dev/null 2>&1; then
+  _runner_log_v1 "Ollama API unreachable before console start" "url=${OLLAMA_BASE_URL}"
   echo "warning: Ollama is not responding at ${OLLAMA_BASE_URL}" >&2
   echo "Start the runner first: ./start.sh" >&2
   echo "If system ollama.service owns port 11434: sudo systemctl stop ollama" >&2
   echo >&2
 fi
 
+_runner_log_v0 "Starting runner console HTTP server" "host=${HOST}" "port=${PORT}" "ollama_url=${OLLAMA_BASE_URL}"
 exec python3 "${SERVER}"

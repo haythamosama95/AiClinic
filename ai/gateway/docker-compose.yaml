@@ -1,5 +1,7 @@
 # AI Gateway — supervised deployment (FR-005/FR-022).
 # Mount config read-only; persist logs via named volume only.
+# Phase 2 generation pipeline keys (queue, timeouts, streaming, confidence_threshold, etc.)
+# live in config/gateway.yaml — see config/gateway.example.yaml for all §14 keys.
 services:
   gateway:
     build:
@@ -15,6 +17,12 @@ services:
       GATEWAY_CONFIG_PATH: /app/config/gateway.yaml
       GATEWAY_LOG_DIR: /var/log/gateway
       GATEWAY_DASHBOARD_DIR: /app/dashboard
+      GATEWAY_LOG_VERBATIM: "false"
+      GATEWAY_LOG_VERBATIM_RETENTION_HOURS: "24"
+      # Optional overrides for Phase 2 pipeline (defaults come from gateway.yaml):
+      # GATEWAY_STREAMING_ENABLED: "true"
+      # GATEWAY_QUEUE_MAX_DEPTH: "16"
+      # GATEWAY_TIMEOUT_TOTAL_S: "45"
     security_opt:
       - no-new-privileges:true
     healthcheck:

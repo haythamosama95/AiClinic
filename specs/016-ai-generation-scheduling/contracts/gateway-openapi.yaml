@@ -1,0 +1,136 @@
+# Gateway OpenAPI — Phase 2 additions (feature 016)
+
+**Extends**: `specs/015-ai-layer-foundation/contracts/gateway-openapi.yaml`
+**Spec**: `specs/016-ai-generation-scheduling/spec.md` (§10)
+
+This document records the **Phase 2 additions** to the Gateway OpenAPI: the real
+`POST /v1/ai/generate` endpoint (both non-streaming and SSE) and the extended
+`GET /v1/capabilities` shape. All Phase 1 endpoints (`/health`, `/ready`,
+`POST /v1/ai/generate` stub, `/metrics`, internal runner endpoints) remain unchanged except where
+explicitly extended here.
+
+The base path `/v1`, the JWT auth requirement on all client-facing endpoints except `/health`,
+and the typed error contract are inherited from Phase 1. New error codes
+(`ai_busy`/`ai_no_capacity`/`ai_timeout`/`ai_unusable`) are documented in
+`error-contract.md`. The Command Protocol envelope is documented in `command-protocol.md`.
+
+> This is the contract source. The full OpenAPI YAML is updated in
+> `ai/gateway/config/openapi.yaml` (or equivalent) at implementation time and is validated by
+> contract tests.
+
+---
+
+## `POST /v1/ai/generate` — real implementation
+
+Replaces the Phase 1 **stub**. Two response content types are negotiated via `options.stream`
+(not via `Accept` — `Accept` is not used here):
+
+- `options.stream=false` (default), **or** `options.stream=true` while `streaming_enabled=false`
+  Gateway-wide (per /clarify Q2 — silently serves the non-streaming path) →
+  `application/json` with the Command Protocol envelope.
+- `options.stream=true` **and** `streaming_enabled=true` → `text/event-stream` of SSE events.
+
+### Request body
+
+```json
+{
+  "task": "command",
+  "prompt": "book Ahmed with Dr Ali tomorrow 5pm",
+  "context": {
+    "branch_id": "uuid",
+    "branch_name": "Main",
+    "now": "2026-05-13T17:00:00+03:00",
+    "active_patient": { "id": "uuid", "name": "Ahmed Hassan" },
+    "doctors": [ { "id": "uuid", "name": "Dr. Ali" } ]
+  },
+  "conversation_id": "uuid (optional, reserved — accepted and ignored this phase)",
+  "turn": 0,
+  "options": { "stream": false, "confidence_hint": true, "plan_mode": "single" }
+}
+```
+
+| Field            | Required | Default        | Validation                                                       |
+| ---------------- | -------- | -------------- | ---------------------------------------------------------------- |
+| `task`           | yes      | —              | Enum: `command` \| `plan` \| `text` \| `clinical_note` \| `analytics`. In-scope this phase: `command`. |
+| `prompt`         | yes      | —              | Non-empty, ≤ 8 KB.                                               |
+| `context`        | no       | `{}`           | Field-by-field validated when present (see `data-model.md` §1.2). |
+| `conversation_id`| no       | —              | UUID when present. Ignored.                                      |
+| `turn`           | no       | `0`            | Non-negative int. Ignored.                                       |
+| `options.stream` | no       | `false`        | Bool.                                                            |
+| `options.confidence_hint` | no | `true` | Bool (advisory this phase — `confidence` is always populated). |
+| `options.plan_mode` | no   | `"single"`     | Enum. `"multi"` accepted and ignored this phase (single commands emitted). |
+
+### Authentication
+
+`Authorization: Bearer <Supabase JWT>` — validated offline (Phase 1 mechanisms: HS256
+shared-secret **or** JWKS/RS256, selectable by config). `ai.access` role gate enforced. Missing /
+invalid / expired → `401 unauthenticated`. Authenticated but role lacks `ai.access` →
+`403 forbidden`.
+
+### Response — non-streaming (`200`, `application/json`)
+
+The Command Protocol envelope (see `command-protocol.md` §1).
+
+### Response — streaming (`200`, `text/event-stream`)
+
+A sequence of SSE events (see `research.md` R-102 and `command-protocol.md`):
+
+```
+event: summary
+data: {"delta":"Looking up tomorrow's availability..."}
+
+event: final
+data: { ...full Command Protocol envelope... }
+```
+
+Event types: `token` (free-text tasks only; never for `command` tasks), `summary` (optional,
+human-readable thinking/feedback; zero or more), `final` (exactly one, on success), `error`
+(exactly one, on failure). Exactly one terminal event per stream.
+
+### Errors (either mode)
+
+Typed error body per `error-contract.md`. On streams the error is a terminal `error` SSE event
+with the same body.
+
+---
+
+## `GET /v1/capabilities` — extended shape (Phase 2)
+
+Same path and auth as Phase 1. The response shape is extended to advertise streaming + the
+scheduling task and command types:
+
+```json
+{
+  "schema_version": "1.0",
+  "streaming": true,
+  "tasks": ["command"],
+  "commands": ["create_appointment", "reschedule_appointment", "cancel_appointment", "update_appointment_status"],
+  "runners": [
+    {
+      "id": "runnerA",
+      "model": "qwen3:4b",
+      "digest": "sha256:…",
+      "status": "READY",
+      "features": ["json_grammar"],
+      "context_tokens": 8192
+    }
+  ]
+}
+```
+
+| Field        | Notes                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------- |
+| `streaming`  | Reflects `streaming_enabled` config.                                                        |
+| `tasks`      | Lists `"command"` (the only in-scope task this phase). Other tasks reserved, not advertised. |
+| `commands`   | Lists the four scheduling command types.                                                    |
+| `runners[]`  | Mirrors the live registry (Phase 1 shape unchanged: id, model, digest, status, features, context_tokens). |
+
+---
+
+## `/health`, `/ready`, `/metrics` — unchanged from Phase 1
+
+See `specs/015-ai-layer-foundation/contracts/gateway-openapi.yaml`. No changes here.
+
+## Internal runner endpoints — unchanged from Phase 1
+
+Pull-based registry only this phase (push registration remains config-off; spec §6.2).

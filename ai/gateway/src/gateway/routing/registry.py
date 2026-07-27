@@ -6,8 +6,12 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from ai_common.verbose_logging import get_logger
+
 from gateway.config.settings import GatewayConfig, ModelDef, RunnerConfig
 from gateway.routing.lifecycle import RunnerStatus
+
+vlog = get_logger(__name__)
 
 
 @dataclass
@@ -41,8 +45,10 @@ class RunnerRegistry:
         self._entries: dict[str, RunnerRegistryEntry] = {}
         self._dynamic_ids: set[str] = set()
         self.reload_from_config(config)
+        vlog.v1("Initialized runner registry", runner_count=len(self._entries))
 
     def reload_from_config(self, config: GatewayConfig) -> None:
+        vlog.v0("Reloading runner registry from config")
         with self._lock:
             config_ids = {runner.id for runner in config.runners}
             next_entries: dict[str, RunnerRegistryEntry] = {}
@@ -59,6 +65,8 @@ class RunnerRegistry:
                 if runner_id in self._dynamic_ids and runner_id not in config_ids:
                     next_entries[runner_id] = entry
             self._entries = next_entries
+            runner_count = len(next_entries)
+        vlog.v1("Runner registry reloaded from config", runner_count=runner_count)
 
     def register_runner(
         self,
@@ -70,6 +78,7 @@ class RunnerRegistry:
         dynamic: bool = True,
     ) -> None:
         """Register or update a runner (push mode)."""
+        vlog.v0("Registering runner in registry", runner_id=runner_id, dynamic=dynamic)
         with self._lock:
             existing = self._entries.get(runner_id)
             if existing is not None:
@@ -85,6 +94,7 @@ class RunnerRegistry:
                 )
             if dynamic:
                 self._dynamic_ids.add(runner_id)
+        vlog.v1("Runner registered in registry", runner_id=runner_id)
 
     def apply_heartbeat(
         self,
@@ -93,15 +103,18 @@ class RunnerRegistry:
         loaded_model: LoadedModel | None = None,
     ) -> bool:
         """Apply a push heartbeat. Returns False when the runner is unknown."""
+        vlog.v0("Applying runner heartbeat", runner_id=runner_id, status=status.value)
         with self._lock:
             entry = self._entries.get(runner_id)
             if entry is None:
+                vlog.v0("Heartbeat received for unknown runner", runner_id=runner_id)
                 return False
             entry.status = status
             entry.last_seen_at = utc_now()
             entry.consecutive_failures = 0
             if loaded_model is not None:
                 entry.loaded_model = loaded_model
+            vlog.v1("Runner heartbeat applied", runner_id=runner_id)
             return True
 
     def snapshot(self) -> list[RunnerRegistryEntry]:
@@ -114,9 +127,11 @@ class RunnerRegistry:
             return _clone_entry(entry) if entry is not None else None
 
     def update_entry(self, runner_id: str, **changes: object) -> None:
+        vlog.v2("Updating runner registry entry", runner_id=runner_id, changes=list(changes.keys()))
         with self._lock:
             entry = self._entries.get(runner_id)
             if entry is None:
+                vlog.v2("Cannot update missing runner entry", runner_id=runner_id)
                 return
             for key, value in changes.items():
                 setattr(entry, key, value)

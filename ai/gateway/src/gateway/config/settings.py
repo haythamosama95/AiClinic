@@ -7,8 +7,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from ai_common.verbose_logging import get_logger
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+vlog = get_logger(__name__)
 
 
 class ModelDef(BaseSettings):
@@ -74,12 +77,14 @@ class GatewayConfig(BaseSettings):
     jwt_secret: str | None = None
     jwks_url: str | None = None
     allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
-    log_verbatim: bool = False
+    log_verbatim: bool = True
     enable_push_registration: bool = False
     internal_shared_secret: str | None = None
     streaming_enabled: bool = True
     enable_multi_command_plans: bool = False
     model_swap_first_token_timeout_s: int = Field(default=60, gt=0)
+    shutdown_grace_s: int = Field(default=10, gt=0)
+    log_verbatim_retention_hours: int = Field(default=24, gt=0)
     models_dir: str | None = None
     role_ai_access: dict[str, bool] = Field(default_factory=lambda: dict(RoleAiAccessMap.DEFAULTS))
     log_dir: str = "./logs"
@@ -115,9 +120,17 @@ class GatewayConfig(BaseSettings):
 
     @classmethod
     def from_yaml(cls, path: str) -> GatewayConfig:
+        vlog.v0("Loading gateway config from YAML", path=path)
         with open(path, encoding="utf-8") as fh:
             raw = yaml.safe_load(fh) or {}
-        return cls.model_validate(raw)
+        config = cls.model_validate(raw)
+        vlog.v1(
+            "Loaded gateway config from YAML",
+            path=path,
+            runner_count=len(config.runners),
+            port=config.port,
+        )
+        return config
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> GatewayConfig:
@@ -142,7 +155,17 @@ def _resolve_config_path(path: str | None) -> Path | None:
 
 def load_config(path: str | None = None) -> GatewayConfig:
     """Load gateway config from YAML (if present) or environment variables."""
+    vlog.v0("Loading gateway configuration", path=path)
     config_path = _resolve_config_path(path)
     if config_path is not None:
-        return GatewayConfig.from_yaml(str(config_path))
-    return GatewayConfig()
+        config = GatewayConfig.from_yaml(str(config_path))
+    else:
+        vlog.v1("Using default gateway configuration from environment")
+        config = GatewayConfig()
+    vlog.v1(
+        "Gateway configuration loaded",
+        runner_count=len(config.runners),
+        port=config.port,
+        config_path=str(config_path) if config_path else None,
+    )
+    return config

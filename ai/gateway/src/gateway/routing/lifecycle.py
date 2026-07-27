@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from ai_common.verbose_logging import get_logger
+
 DEFAULT_DEGRADED_LATENCY_MS = 2000.0
+
+vlog = get_logger(__name__)
 
 
 class RunnerStatus(str, Enum):
@@ -98,9 +102,16 @@ def transition(
     Pure function: (status, outcome, counters, config) → next_status.
     Covers the full state machine in data-model §3.
     """
+    vlog.v2(
+        "Evaluating runner lifecycle transition",
+        current=current.value,
+        outcome=outcome.value,
+        consecutive_failures=counters.consecutive_failures,
+    )
     if outcome in (PollOutcome.ERROR, PollOutcome.TIMEOUT):
         failures = counters.consecutive_failures + 1
         if failures >= unreachable_after_failures:
+            vlog.v2("Runner marked unreachable after repeated failures", failures=failures)
             return LifecycleTransition(
                 status=RunnerStatus.UNREACHABLE,
                 consecutive_failures=failures,

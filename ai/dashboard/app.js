@@ -6,6 +6,7 @@
   'use strict';
 
   const TOKEN_KEY = 'dashboard_jwt_token';
+  const TOKEN_NO_AI_KEY = 'dashboard_jwt_no_ai';
   const USERNAME_KEY = 'dashboard_auth_username';
   const DEFAULT_POLL_S = 0;
   const TRACE_MAX_ROWS = 200;
@@ -62,8 +63,8 @@
       method: 'POST',
       path: '/v1/ai/generate',
       auth: true,
-      desc: 'Generation stub — expect 501 in this phase',
-      defaultBody: '{"prompt":"hello from dashboard client"}',
+      desc: 'Scheduling command proposals (non-streaming + SSE streaming)',
+      defaultBody: JSON.stringify(defaultGenerateBody('book Ahmed with Dr Ali tomorrow 5pm')),
     },
     {
       id: 'runner-models',
@@ -74,6 +75,36 @@
       runnerId: true,
     },
   ];
+
+  const CATALOG_COMMAND_TYPES = [
+    'create_appointment',
+    'reschedule_appointment',
+    'cancel_appointment',
+    'update_appointment_status',
+  ];
+
+  const GENERATE_PRESETS = {
+    create: 'book Ahmed Hassan with Dr Ali tomorrow 5pm',
+    reschedule: "move Ahmed's appointment to Thursday 3pm",
+    cancel: "cancel Ahmed's appointment tomorrow",
+    status: "mark Ahmed's visit as checked in",
+  };
+
+  function defaultGenerateContext(extra = {}) {
+    return {
+      now: new Date().toISOString(),
+      ...extra,
+    };
+  }
+
+  function defaultGenerateBody(prompt = GENERATE_PRESETS.create, extra = {}) {
+    return {
+      task: 'command',
+      prompt,
+      context: defaultGenerateContext(extra.context),
+      options: { stream: false, ...(extra.options || {}) },
+    };
+  }
 
   const $ = (id) => document.getElementById(id);
 
@@ -111,6 +142,15 @@
     traceStreamConnected: false,
     roleMap: { ...DEFAULT_AI_ACCESS },
     authConfig: null,
+    tokenNoAi: null,
+    probeResults: {},
+    probeAbort: null,
+    matrixResults: {},
+    matrixRunning: false,
+    matrixSelectedFeatures: new Set(),
+    matrixActiveTab: 'features',
+    matrixHeaderCaptureAll: false,
+    generateAbort: null,
   };
 
   /* ── Auth ─────────────────────────────────────────────── */
@@ -127,6 +167,21 @@
     try {
       if (token) localStorage.setItem(TOKEN_KEY, token);
       else localStorage.removeItem(TOKEN_KEY);
+    } catch { /* ignore */ }
+  }
+
+  function loadTokenNoAi() {
+    try {
+      return localStorage.getItem(TOKEN_NO_AI_KEY) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveTokenNoAi(token) {
+    try {
+      if (token) localStorage.setItem(TOKEN_NO_AI_KEY, token);
+      else localStorage.removeItem(TOKEN_NO_AI_KEY);
     } catch { /* ignore */ }
   }
 
@@ -167,6 +222,7 @@
       vital.dataset.state = 'warn';
       val.textContent = 'Unsigned';
       role.textContent = 'Sign in to call protected client routes';
+      renderGenerateAuthHint();
       return;
     }
     vital.dataset.state = state.hasAiAccess ? 'ok' : 'warn';
@@ -177,6 +233,7 @@
     $('auth-expires').textContent = state.tokenExpiresAt
       ? new Date(state.tokenExpiresAt).toLocaleString()
       : '—';
+    renderGenerateAuthHint();
   }
 
   function isProtected(path) {
@@ -269,6 +326,110 @@
       body = await res.text();
     }
     return { res, body, requestId };
+  }
+
+  function getByPath(obj, path) {
+    if (!path) return obj;
+    return String(path).split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+  }
+
+  async function probeFetch(probe, options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (probe.auth === 'jwt' && state.token) {
+      headers.Authorization = `Bearer ${state.token}`;
+    } else if (probe.auth === 'jwt_no_ai' && state.tokenNoAi) {
+      headers.Authorization = `Bearer ${state.tokenNoAi}`;
+    }
+    const res = await fetch(probe.path, { ...options, headers });
+    const requestId = res.headers.get('X-Request-ID');
+    let body = null;
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      body = await res.json().catch(() => null);
+    } else if (ct.includes('text/')) {
+      body = await res.text();
+    }
+    return { res, body, requestId };
+  }
+
+  function evaluateExpect(expect, res, body) {
+    if (!expect) return { pass: null, results: [] };
+    const results = [];
+    let pass = true;
+
+    if (expect.status != null) {
+      const allowed = Array.isArray(expect.status) ? expect.status : [expect.status];
+      const ok = allowed.includes(res.status);
+      results.push({
+        label: `HTTP ${allowed.join(' or ')}`,
+        ok,
+        actual: String(res.status),
+      });
+      if (!ok) pass = false;
+    }
+
+    if (expect.error_code != null) {
+      const actual = body?.error?.code;
+      const ok = actual === expect.error_code;
+      results.push({
+        label: `error.code == ${expect.error_code}`,
+        ok,
+        actual: actual ?? '—',
+      });
+      if (!ok) pass = false;
+    }
+
+    if (expect.body_status != null) {
+      const actual = body?.status;
+      const ok = actual === expect.body_status;
+      results.push({
+        label: `body.status == ${expect.body_status}`,
+        ok,
+        actual: actual ?? '—',
+      });
+      if (!ok) pass = false;
+    }
+
+    if (expect.fields) {
+      for (const [path, expected] of Object.entries(expect.fields)) {
+        const actual = getByPath(body, path);
+        const ok = JSON.stringify(actual) === JSON.stringify(expected);
+        results.push({
+          label: `${path} matches expected`,
+          ok,
+          actual: actual === undefined ? '—' : JSON.stringify(actual),
+        });
+        if (!ok) pass = false;
+      }
+    }
+
+    if (expect.body_contains) {
+      for (const [path, expected] of Object.entries(expect.body_contains)) {
+        const actual = getByPath(body, path);
+        const ok = actual === expected;
+        results.push({
+          label: `${path} == ${JSON.stringify(expected)}`,
+          ok,
+          actual: actual === undefined ? '—' : JSON.stringify(actual),
+        });
+        if (!ok) pass = false;
+      }
+    }
+
+    if (expect.min_array_length) {
+      for (const [path, min] of Object.entries(expect.min_array_length)) {
+        const arr = getByPath(body, path);
+        const ok = Array.isArray(arr) && arr.length >= min;
+        results.push({
+          label: `${path}.length >= ${min}`,
+          ok,
+          actual: Array.isArray(arr) ? String(arr.length) : 'not an array',
+        });
+        if (!ok) pass = false;
+      }
+    }
+
+    return { pass, results };
   }
 
   /* ── Metrics parser ───────────────────────────────────── */
@@ -430,6 +591,7 @@
       pollMetrics(),
       pollTraceConfig(),
     ]);
+    renderFeatureMatrix();
     $('last-refresh').textContent = new Date().toLocaleTimeString();
   }
 
@@ -1088,13 +1250,13 @@
       return;
     }
     const body = cap.body;
-    $('capabilities-meta').textContent = `schema ${body.schema_version || '—'} · streaming ${body.streaming_enabled ? 'on' : 'off'}`;
+    $('capabilities-meta').textContent = `schema ${body.schema_version || '—'} · streaming ${body.streaming ? 'on' : 'off'}`;
     const runners = body.runners || [];
-    const tasks = (body.tasks || []).length;
-    const commands = (body.commands || []).length;
+    const tasks = (body.tasks || []).join(', ') || '—';
+    const commands = (body.commands || []).join(', ') || '—';
 
     el.innerHTML = `
-      <p class="panel__desc">Tasks stub: ${tasks} · Commands stub: ${commands}</p>
+      <p class="panel__desc">Tasks: ${escapeHtml(tasks)} · Commands: ${escapeHtml(commands)}</p>
       ${runners.map((r) => `
         <div class="cap-runner">
           <p class="cap-runner__name">${escapeHtml(r.id)} <span class="mono">(${r.status})</span></p>
@@ -1116,12 +1278,18 @@
     const errors = sumByName(p, 'gateway_errors_total');
     const health = gaugesByLabel(p, 'gateway_runner_health', 'runner_id');
     const inflight = gaugesByLabel(p, 'gateway_inflight_requests', 'runner_id');
+    const aiQueue = gaugesByLabel(p, 'ai_queue_depth', 'capability');
+    const aiInflight = gaugesByLabel(p, 'ai_inflight', 'capability');
+    const modelSwaps = sumByName(p, 'ai_model_swaps_total');
 
     const cards = [
       { label: 'Total requests', value: requests, sub: 'gateway_requests_total' },
       { label: 'Total errors', value: errors, sub: 'gateway_errors_total' },
       { label: 'Healthy runners', value: Object.values(health).filter((v) => v === 1).length, sub: `of ${Object.keys(health).length}` },
       { label: 'In-flight total', value: Object.values(inflight).reduce((a, b) => a + b, 0), sub: 'across runners' },
+      { label: 'AI queue depth', value: Object.values(aiQueue).reduce((a, b) => a + b, 0), sub: 'per capability class' },
+      { label: 'AI in-flight', value: Object.values(aiInflight).reduce((a, b) => a + b, 0), sub: 'generation pipeline' },
+      { label: 'Model swaps', value: modelSwaps, sub: 'auto-triggered' },
     ];
 
     grid.innerHTML = cards.map((c) => `
@@ -1370,6 +1538,822 @@
     connectTrace();
   }
 
+  /* ── Probe execution (feature matrix) ────────────────── */
+
+
+  function classifySseLine(line) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('event: final')) return 'final';
+    if (trimmed.startsWith('event: summary')) return 'summary';
+    if (trimmed.startsWith('event: error')) return 'error';
+    if (trimmed.startsWith('event:')) return 'event';
+    return '';
+  }
+
+  function formatSseHtml(rawText) {
+    return (rawText || '').split('\n').map((line) => {
+      const kind = classifySseLine(line);
+      const cls = kind ? ` phase-probe-sse__line--${kind}` : '';
+      return `<span class="phase-probe-sse__line${cls}">${escapeHtml(line)}</span>`;
+    }).join('');
+  }
+
+  function concurrentRowHighlight(status, errorCode) {
+    if (status === 429 || errorCode === 'rate_limited') return 'rate_limited';
+    if (status === 503 && errorCode === 'ai_busy') return 'ai_busy';
+    if (status >= 200 && status < 300) return 'ok';
+    return '';
+  }
+
+  function formatConcurrentTableHtml(results) {
+    const rows = results.map((row) => {
+      const highlight = concurrentRowHighlight(row.status, row.errorCode);
+      const notes = [];
+      if (row.retryAfter) notes.push(`Retry-After: ${row.retryAfter}s`);
+      if (row.networkError) notes.push(row.networkError);
+      return `
+        <tr data-highlight="${highlight}">
+          <td class="mono">${row.index}</td>
+          <td class="mono">${row.status ?? '—'}</td>
+          <td class="mono">${escapeHtml(row.errorCode || '—')}</td>
+          <td>${escapeHtml(notes.join(' · ') || '—')}</td>
+        </tr>
+      `;
+    }).join('');
+    return `
+      <table class="phase-probe-table">
+        <thead>
+          <tr>
+            <th scope="col">Req #</th>
+            <th scope="col">HTTP</th>
+            <th scope="col">error.code</th>
+            <th scope="col">Notes</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  async function parseGenerateErrorCode(res) {
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) return null;
+    try {
+      const body = await res.clone().json();
+      return body?.error?.code || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchGenerateOnce(path, body, signal) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (state.token) headers.Authorization = `Bearer ${state.token}`;
+    const res = await fetch(path, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+    const errorCode = await parseGenerateErrorCode(res);
+    return {
+      status: res.status,
+      errorCode,
+      retryAfter: res.headers.get('Retry-After'),
+      requestId: res.headers.get('X-Request-ID'),
+    };
+  }
+
+  async function readSseResponseBody(res, onPartial) {
+    if (!res.body) return '';
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let raw = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      raw += decoder.decode(value, { stream: true });
+      if (onPartial) onPartial(raw);
+    }
+    return raw;
+  }
+
+  function evaluateBurstExpect(expect, results) {
+    if (!expect) return { pass: null, results: [] };
+    const out = [];
+    let pass = true;
+
+    if (expect.status != null || expect.error_code != null) {
+      const statusMatch = expect.status == null || results.some((r) => r.status === expect.status);
+      const codeMatch = expect.error_code == null || results.some((r) => r.errorCode === expect.error_code);
+      const ok = statusMatch && codeMatch;
+      const labelParts = [];
+      if (expect.status != null) labelParts.push(`HTTP ${expect.status}`);
+      if (expect.error_code != null) labelParts.push(`error.code ${expect.error_code}`);
+      out.push({
+        label: `At least one request: ${labelParts.join(' + ')}`,
+        ok,
+        actual: results.map((r) => `#${r.index}→${r.status ?? '?'}/${r.errorCode || '—'}`).join(', '),
+      });
+      if (!ok) pass = false;
+    }
+
+    return { pass, results: out };
+  }
+
+  function evaluateSseExpect(expect, res, raw, contentType) {
+    const results = [];
+    let pass = true;
+
+    if (expect?.status != null) {
+      const ok = res.status === expect.status;
+      results.push({ label: `HTTP ${expect.status}`, ok, actual: String(res.status) });
+      if (!ok) pass = false;
+    }
+
+    const isSse = contentType.includes('text/event-stream');
+    results.push({
+      label: 'Content-Type is text/event-stream',
+      ok: isSse,
+      actual: contentType || '—',
+    });
+    if (!isSse) pass = false;
+
+    const hasFinal = /event:\s*final/m.test(raw);
+    results.push({
+      label: 'event:final present',
+      ok: hasFinal,
+      actual: hasFinal ? 'yes' : 'no',
+    });
+    if (!hasFinal) pass = false;
+
+    const hasToken = /event:\s*token/m.test(raw);
+    results.push({
+      label: 'no event:token lines',
+      ok: !hasToken,
+      actual: hasToken ? 'found token events' : 'none',
+    });
+    if (hasToken) pass = false;
+
+    return { pass, results };
+  }
+
+  function probeSpecialBadge(probe) {
+    if (probe.special === 'manual') {
+      return '<span class="pv-chip pv-chip--manual" data-special="manual">Manual</span>';
+    }
+    if (probe.special === 'concurrent_burst') {
+      return `<span class="pv-chip pv-chip--burst" data-special="concurrent_burst">×${probe.concurrent_count || 3} burst</span>`;
+    }
+    if (probe.special === 'sse_stream') {
+      return '<span class="pv-chip pv-chip--sse" data-special="sse_stream">SSE</span>';
+    }
+    if (probe.special === 'abort_mid_stream') {
+      return '<span class="pv-chip pv-chip--abort" data-special="abort_mid_stream">abort @1s</span>';
+    }
+    if (probe.special === 'metrics_queue_depth') {
+      return '<span class="pv-chip pv-chip--metrics" data-special="metrics_queue_depth">queue depth</span>';
+    }
+    if (probe.special === 'info_only') {
+      return '<span class="pv-chip pv-chip--info" data-special="info_only">Info</span>';
+    }
+    return '';
+  }
+
+  const PV_SPLIT_RATIO_KEY = 'pv_split_ratio';
+  const PV_SPLIT_DEFAULT = 50;
+  const PV_SPLIT_MIN = 20;
+  const PV_SPLIT_MAX = 80;
+
+  function getPvSplitRatio() {
+    const raw = parseFloat(localStorage.getItem(PV_SPLIT_RATIO_KEY));
+    if (!Number.isFinite(raw)) return PV_SPLIT_DEFAULT;
+    return Math.min(PV_SPLIT_MAX, Math.max(PV_SPLIT_MIN, raw));
+  }
+
+  function setPvSplitRatio(ratio) {
+    localStorage.setItem(PV_SPLIT_RATIO_KEY, String(Math.round(ratio * 10) / 10));
+  }
+
+  function applyPvSplitRatio(splitEl, ratio) {
+    const clamped = Math.min(PV_SPLIT_MAX, Math.max(PV_SPLIT_MIN, ratio));
+    splitEl.style.setProperty('--pv-split-ratio', `${clamped}%`);
+    const gutter = splitEl.querySelector('.pv-split__gutter');
+    if (gutter) gutter.setAttribute('aria-valuenow', String(Math.round(clamped)));
+    return clamped;
+  }
+
+  function pvSplitIsVertical() {
+    return window.matchMedia('(min-width: 768px)').matches;
+  }
+
+  function initPvSplitters(root = document) {
+    root.querySelectorAll('[data-pv-split]:not([data-pv-split-bound])').forEach((splitEl) => {
+      splitEl.dataset.pvSplitBound = '1';
+      const gutter = splitEl.querySelector('.pv-split__gutter');
+      if (!gutter) return;
+
+      applyPvSplitRatio(splitEl, getPvSplitRatio());
+
+      const syncOrientation = () => {
+        gutter.setAttribute('aria-orientation', pvSplitIsVertical() ? 'vertical' : 'horizontal');
+      };
+      syncOrientation();
+      window.matchMedia('(min-width: 768px)').addEventListener('change', syncOrientation);
+
+      const readRatio = () => {
+        const raw = parseFloat(getComputedStyle(splitEl).getPropertyValue('--pv-split-ratio'));
+        return Number.isFinite(raw) ? raw : getPvSplitRatio();
+      };
+
+      const nudgeRatio = (delta) => {
+        const next = applyPvSplitRatio(splitEl, readRatio() + delta);
+        setPvSplitRatio(next);
+      };
+
+      gutter.addEventListener('keydown', (e) => {
+        const vertical = pvSplitIsVertical();
+        const step = e.shiftKey ? 10 : 5;
+        let handled = false;
+        if (vertical && e.key === 'ArrowLeft') { nudgeRatio(-step); handled = true; }
+        else if (vertical && e.key === 'ArrowRight') { nudgeRatio(step); handled = true; }
+        else if (!vertical && e.key === 'ArrowUp') { nudgeRatio(-step); handled = true; }
+        else if (!vertical && e.key === 'ArrowDown') { nudgeRatio(step); handled = true; }
+        else if (e.key === 'Home') { setPvSplitRatio(applyPvSplitRatio(splitEl, PV_SPLIT_MIN)); handled = true; }
+        else if (e.key === 'End') { setPvSplitRatio(applyPvSplitRatio(splitEl, PV_SPLIT_MAX)); handled = true; }
+        if (handled) e.preventDefault();
+      });
+
+      const startDrag = (clientX, clientY) => {
+        const rect = splitEl.getBoundingClientRect();
+        const vertical = pvSplitIsVertical();
+        const startRatio = readRatio();
+        const startX = clientX;
+        const startY = clientY;
+        splitEl.dataset.pvDragging = '1';
+        document.body.classList.add('pv-split-dragging', vertical ? 'pv-split-dragging--col' : 'pv-split-dragging--row');
+
+        const onMove = (ev) => {
+          ev.preventDefault();
+          const delta = vertical
+            ? ((ev.clientX - startX) / rect.width) * 100
+            : ((ev.clientY - startY) / rect.height) * 100;
+          applyPvSplitRatio(splitEl, startRatio + delta);
+        };
+
+        const onUp = () => {
+          splitEl.removeAttribute('data-pv-dragging');
+          document.body.classList.remove('pv-split-dragging', 'pv-split-dragging--col', 'pv-split-dragging--row');
+          setPvSplitRatio(readRatio());
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          document.removeEventListener('touchmove', onTouchMove);
+          document.removeEventListener('touchend', onUp);
+          document.removeEventListener('touchcancel', onUp);
+        };
+
+        const onTouchMove = (ev) => {
+          if (!ev.touches[0]) return;
+          onMove({ clientX: ev.touches[0].clientX, clientY: ev.touches[0].clientY, preventDefault: () => ev.preventDefault() });
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+        document.addEventListener('touchmove', onTouchMove, { passive: false });
+        document.addEventListener('touchend', onUp);
+        document.addEventListener('touchcancel', onUp);
+      };
+
+      gutter.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        startDrag(e.clientX, e.clientY);
+      });
+
+      gutter.addEventListener('touchstart', (e) => {
+        if (!e.touches[0]) return;
+        e.preventDefault();
+        startDrag(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: false });
+    });
+  }
+
+  function renderProbeTranscriptSplit(probeKey, result) {
+    const hasSse = result.renderType === 'sse' && result.sseHtml;
+    const hasBurst = result.renderType === 'table' && result.tableHtml;
+    const statusClass = statusClassFromCode(result.responseStatus);
+
+    const requestLine = `${result.requestMethod || 'GET'} ${result.requestPath || '—'}`;
+    const requestPane = `
+      <div class="pv-split__pane pv-split__pane--request" data-pane="request">
+        <div class="pv-split__pane-inner">
+          <div class="pv-transcript__line pv-transcript__line--out">
+            <span class="pv-transcript__arrow" aria-hidden="true">↑</span>
+            <span class="pv-transcript__dir">Request</span>
+          </div>
+          <p class="pv-transcript__route mono">${escapeHtml(requestLine)}</p>
+          ${result.requestNote ? `<p class="pv-transcript__note">${escapeHtml(result.requestNote)}</p>` : ''}
+          <div class="pv-transcript__section">
+            <h4 class="pv-transcript__section-title">Headers</h4>
+            ${formatProbeHeadersHtml(result.requestHeaders)}
+          </div>
+          <div class="pv-transcript__section">
+            <h4 class="pv-transcript__section-title">Body</h4>
+            ${formatProbeJsonHtml(result.requestBody)}
+          </div>
+        </div>
+      </div>`;
+
+    let responseBodyHtml;
+    if (hasSse) {
+      responseBodyHtml = '<p class="pv-transcript__empty">Event stream captured below</p>';
+    } else if (hasBurst) {
+      responseBodyHtml = `<pre class="pv-transcript__code mono" tabindex="0">${escapeHtml(result.bodyText || '')}</pre>`;
+    } else {
+      responseBodyHtml = formatProbeJsonHtml(
+        result.responseBody != null ? result.responseBody : result.bodyText,
+      );
+    }
+
+    const responsePane = `
+      <div class="pv-split__pane pv-split__pane--response" data-pane="response">
+        <div class="pv-split__pane-inner">
+          <div class="pv-transcript__line pv-transcript__line--in">
+            <span class="pv-transcript__arrow" aria-hidden="true">↓</span>
+            <span class="pv-transcript__dir">Response</span>
+          </div>
+          <p class="pv-transcript__status">
+            <span class="pv-transcript__status-code" data-class="${statusClass}">
+              ${result.responseStatus != null ? escapeHtml(String(result.responseStatus)) : '—'}
+            </span>
+            <span class="pv-transcript__status-text">${escapeHtml(result.statusLine || '')}</span>
+          </p>
+          <div class="pv-transcript__section">
+            <h4 class="pv-transcript__section-title">Headers</h4>
+            ${formatProbeHeadersHtml(result.responseHeaders)}
+          </div>
+          <div class="pv-transcript__section">
+            <h4 class="pv-transcript__section-title">Body</h4>
+            ${responseBodyHtml}
+          </div>
+        </div>
+      </div>`;
+
+    const sseSection = hasSse ? `
+      <section class="pv-extra pv-extra--sse" aria-label="SSE stream">
+        <h4 class="pv-extra__title">SSE stream</h4>
+        <div class="phase-probe-sse mono" tabindex="0">${result.sseHtml}</div>
+      </section>` : '';
+
+    const burstSection = hasBurst ? `
+      <section class="pv-extra pv-extra--burst" aria-label="Burst results">
+        <h4 class="pv-extra__title">Burst table</h4>
+        <div class="phase-probe-table-wrap">${result.tableHtml}</div>
+      </section>` : '';
+
+    return `
+      <div class="pv-transcript" data-probe-transcript="${escapeHtml(probeKey)}">
+        <div class="pv-split" data-pv-split>
+          ${requestPane}
+          <div class="pv-split__gutter"
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuemin="${PV_SPLIT_MIN}"
+            aria-valuemax="${PV_SPLIT_MAX}"
+            aria-valuenow="${PV_SPLIT_DEFAULT}"
+            aria-label="Resize request and response panes"
+            tabindex="0">
+            <span class="pv-split__handle" aria-hidden="true"></span>
+          </div>
+          ${responsePane}
+        </div>
+        ${sseSection}
+        ${burstSection}
+      </div>`;
+  }
+
+
+  function parseProbeBody(probe, probeDomKey, probeKey) {
+    if (probe.body == null || probe.method === 'GET' || probe.method === 'HEAD') return null;
+    const bodyEl = $(`probe-body-${probeDomKey}`);
+    let bodyObj = probe.body;
+    if (bodyEl) {
+      try {
+        bodyObj = JSON.parse(bodyEl.value.trim());
+      } catch {
+        state.probeResults[probeKey] = {
+          ...buildProbeRequestMeta(probe, null, { 'Content-Type': 'application/json' }),
+          statusLine: 'Invalid JSON body',
+          pass: false,
+          expect: [],
+          bodyText: 'Fix the request body JSON before sending.',
+          responseStatus: null,
+          responseHeaders: {},
+          responseBody: null,
+          requestId: null,
+        };
+        return null;
+      }
+    }
+    return bodyObj;
+  }
+
+  async function executeSseStreamProbe(probeKey, probe, bodyObj) {
+    if (state.probeAbort) state.probeAbort.abort();
+    const controller = new AbortController();
+    state.probeAbort = controller;
+    const requestMeta = buildProbeRequestMeta(probe, bodyObj, { 'Content-Type': 'application/json' });
+
+    try {
+      const headers = buildProbeRequestHeaders(probe, { 'Content-Type': 'application/json' });
+      const res = await fetch(probe.path, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(bodyObj),
+        signal: controller.signal,
+      });
+      const requestId = res.headers.get('X-Request-ID');
+      const contentType = res.headers.get('content-type') || '';
+      const responseHeaders = pickResponseHeaders(res);
+
+      if (contentType.includes('text/event-stream') && res.body) {
+        const raw = await readSseResponseBody(res);
+        const evaluation = evaluateSseExpect(probe.expect, res, raw, contentType);
+        state.probeResults[probeKey] = {
+          ...requestMeta,
+          statusLine: `${res.status} SSE stream`,
+          pass: evaluation.pass,
+          expect: evaluation.results,
+          renderType: 'sse',
+          sseHtml: formatSseHtml(raw),
+          bodyText: raw,
+          responseStatus: res.status,
+          responseHeaders,
+          responseBody: raw,
+          requestId,
+        };
+        return;
+      }
+
+      const bodyText = await res.text();
+      let pretty = bodyText;
+      let parsedBody = {};
+      try {
+        parsedBody = JSON.parse(bodyText || '{}');
+        pretty = JSON.stringify(parsedBody, null, 2);
+      } catch { /* keep raw text */ }
+      const evaluation = evaluateExpect(probe.expect, res, parsedBody);
+      state.probeResults[probeKey] = {
+        ...requestMeta,
+        statusLine: `${res.status} silent fallback (JSON, not SSE)`,
+        pass: evaluation.pass,
+        expect: [
+          ...(evaluation.results || []),
+          {
+            label: 'Content-Type is application/json (fallback)',
+            ok: contentType.includes('application/json'),
+            actual: contentType || '—',
+          },
+        ],
+        bodyText: pretty,
+        responseStatus: res.status,
+        responseHeaders,
+        responseBody: parsedBody,
+        requestId,
+      };
+    } finally {
+      if (state.probeAbort === controller) state.probeAbort = null;
+    }
+  }
+
+  async function executeConcurrentBurstProbe(probeKey, probe, bodyObj) {
+    const count = probe.concurrent_count || 3;
+    const requestMeta = buildProbeRequestMeta(probe, bodyObj, { 'Content-Type': 'application/json' });
+    const tasks = Array.from({ length: count }, (_, i) =>
+      fetchGenerateOnce(probe.path, bodyObj, null)
+        .then((result) => ({ index: i + 1, ...result }))
+        .catch((err) => ({
+          index: i + 1,
+          status: null,
+          errorCode: null,
+          networkError: err.name === 'AbortError' ? 'aborted' : String(err),
+        }))
+    );
+    const results = await Promise.all(tasks);
+    const evaluation = evaluateBurstExpect(probe.expect, results);
+    const has429 = results.some((r) => r.status === 429 || r.errorCode === 'rate_limited');
+    const hasBusy = results.some((r) => r.errorCode === 'ai_busy');
+    let statusLine = `${count} parallel requests`;
+    if (has429) statusLine += ' · 429 detected';
+    if (hasBusy) statusLine += ' · ai_busy detected';
+
+    state.probeResults[probeKey] = {
+      ...requestMeta,
+      requestNote: `×${count} parallel identical requests`,
+      statusLine,
+      pass: evaluation.pass,
+      expect: evaluation.results,
+      renderType: 'table',
+      tableHtml: formatConcurrentTableHtml(results),
+      bodyText: results.map((r) => `req ${r.index}: HTTP ${r.status} ${r.errorCode || ''}`).join('\n'),
+      responseStatus: results[0]?.status ?? null,
+      responseHeaders: results.find((r) => r.requestId)
+        ? { 'X-Request-ID': results.find((r) => r.requestId).requestId }
+        : {},
+      responseBody: results,
+      requestId: results.find((r) => r.requestId)?.requestId || null,
+    };
+  }
+
+  async function executeAbortMidStreamProbe(probeKey, probe, bodyObj) {
+    if (state.probeAbort) state.probeAbort.abort();
+    const controller = new AbortController();
+    state.probeAbort = controller;
+    const requestMeta = buildProbeRequestMeta(probe, bodyObj, { 'Content-Type': 'application/json' });
+    const abortTimer = window.setTimeout(() => controller.abort(), 1000);
+    const started = Date.now();
+    let partialRaw = '';
+
+    try {
+      const headers = buildProbeRequestHeaders(probe, { 'Content-Type': 'application/json' });
+      const res = await fetch(probe.path, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(bodyObj),
+        signal: controller.signal,
+      });
+      if (res.body) {
+        partialRaw = await readSseResponseBody(res, (raw) => { partialRaw = raw; });
+      }
+      window.clearTimeout(abortTimer);
+      const elapsed = Date.now() - started;
+      const responseHeaders = pickResponseHeaders(res);
+      state.probeResults[probeKey] = {
+        ...requestMeta,
+        statusLine: `Completed in ${elapsed}ms (abort did not fire first)`,
+        pass: null,
+        expect: [],
+        renderType: 'sse',
+        sseHtml: formatSseHtml(partialRaw || '(empty stream)'),
+        bodyText: partialRaw,
+        responseStatus: res.status,
+        responseHeaders,
+        responseBody: partialRaw,
+        requestId: res.headers.get('X-Request-ID'),
+      };
+    } catch (e) {
+      window.clearTimeout(abortTimer);
+      const elapsed = Date.now() - started;
+      if (e.name === 'AbortError') {
+        state.probeResults[probeKey] = {
+          ...requestMeta,
+          statusLine: `Aborted after ~${elapsed}ms`,
+          pass: null,
+          expect: [{
+            label: 'Client disconnect logged as cancelled',
+            ok: true,
+            actual: 'Check gateway.jsonl for outcome=cancelled',
+          }],
+          renderType: 'sse',
+          sseHtml: formatSseHtml(partialRaw || '(no SSE lines before abort)'),
+          bodyText: partialRaw || '(no SSE lines before abort)',
+          responseStatus: null,
+          responseHeaders: {},
+          responseBody: partialRaw || null,
+          requestId: null,
+        };
+        return;
+      }
+      throw e;
+    } finally {
+      if (state.probeAbort === controller) state.probeAbort = null;
+    }
+  }
+
+  async function executeMetricsQueueDepthProbe(probeKey, probe) {
+    const requestMeta = buildProbeRequestMeta(probe, null);
+    const { res, body, requestId } = await probeFetch(probe, { method: 'GET' });
+    const text = typeof body === 'string' ? body : '';
+    state.metricsRaw = text;
+    state.metricsParsed = parsePrometheus(text);
+    renderMetrics();
+
+    const gauges = gaugesByLabel(state.metricsParsed, 'ai_queue_depth', 'capability');
+    const entries = Object.entries(gauges);
+    const total = entries.reduce((sum, [, v]) => sum + v, 0);
+    const lines = entries.length
+      ? entries.map(([cap, depth]) => `ai_queue_depth{capability="${cap}"} ${depth}`).join('\n')
+      : '(no ai_queue_depth samples)';
+    const excerpt = text.split('\n').filter((l) => l.includes('ai_queue')).join('\n') || '(none)';
+
+    const evaluation = evaluateExpect(probe.expect, res, body);
+    state.probeResults[probeKey] = {
+      ...requestMeta,
+      statusLine: `${res.status} · ai_queue_depth total ${total}`,
+      pass: evaluation.pass,
+      expect: [
+        ...evaluation.results,
+        {
+          label: 'ai_queue_depth gauge present',
+          ok: entries.length > 0,
+          actual: entries.length ? `${entries.length} capability class(es)` : 'none',
+        },
+      ],
+      bodyText: `${lines}\n\n--- /metrics excerpt ---\n${excerpt}`,
+      responseStatus: res.status,
+      responseHeaders: pickResponseHeaders(res),
+      responseBody: text,
+      requestId,
+    };
+  }
+
+  async function executeStandardProbe(probeKey, probe, bodyObj) {
+    const opts = { method: probe.method, headers: {} };
+    if (bodyObj != null) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(bodyObj);
+    }
+    const requestMeta = buildProbeRequestMeta(probe, bodyObj, opts.headers);
+
+    const { res, body, requestId } = await probeFetch(probe, opts);
+    let evaluation = evaluateExpect(probe.expect, res, body);
+
+    if ((probe.id === 'phase6-adversarial' || probe.id === 'safety-adversarial') && res.ok) {
+      const commandType = body?.command_type;
+      const catalogOk = CATALOG_COMMAND_TYPES.includes(commandType);
+      evaluation = {
+        pass: evaluation.pass !== false && catalogOk,
+        results: [
+          ...evaluation.results,
+          {
+            label: 'command_type in catalog (UI check)',
+            ok: catalogOk,
+            actual: commandType ?? '—',
+          },
+        ],
+      };
+    }
+
+    const code = body?.error?.code;
+    const retryAfter = res.headers.get('Retry-After');
+    const retryHint = code === 'ai_busy' && retryAfter ? ` · Retry-After: ${retryAfter}s` : '';
+    state.probeResults[probeKey] = {
+      ...requestMeta,
+      statusLine: `${res.status} ${res.statusText}${code ? ` (${code})` : ''}${retryHint}`,
+      pass: evaluation.pass,
+      expect: evaluation.results,
+      bodyText: typeof body === 'string' ? body : JSON.stringify(body, null, 2),
+      responseStatus: res.status,
+      responseHeaders: pickResponseHeaders(res),
+      responseBody: body,
+      requestId,
+    };
+
+    if ((probe.id === 'phase6-phi-generate' || probe.id === 'safety-phi-generate') && requestId) {
+      state.lastPhiRequestId = requestId;
+      state.probeResults[probeKey].requestIdProminent = true;
+    }
+
+    if (probe.path === '/health' && res.ok) {
+      state.health.ok = true;
+      $('vital-health').dataset.state = 'ok';
+      $('vital-health-value').textContent = 'Up';
+    }
+    if (probe.path === '/ready') {
+      state.ready = { ok: res.ok, status: res.status, body };
+      const el = $('vital-ready');
+      const val = $('vital-ready-value');
+      el.dataset.state = res.ok ? 'ok' : 'error';
+      val.textContent = res.ok ? 'Ready' : `Not ready (${res.status})`;
+    }
+    if (probe.path === '/v1/capabilities' && res.ok) {
+      state.capabilities = { ok: true, body };
+      renderCapabilities();
+    }
+
+    $('last-refresh').textContent = `Probe ${probe.method} ${probe.path} · ${new Date().toLocaleTimeString()}`;
+  }
+
+
+
+
+  function probeAuthLabel(auth) {
+    if (auth === 'jwt') return 'JWT';
+    if (auth === 'jwt_no_ai') return 'no ai.access';
+    return 'open';
+  }
+
+  function probeAuthBlocked(probe) {
+    if (probe.auth === 'jwt') return !state.token;
+    if (probe.auth === 'jwt_no_ai') return !state.tokenNoAi;
+    return false;
+  }
+
+  function probeAuthBlockedTitle(probe) {
+    if (probe.auth === 'jwt') return 'Save a staff JWT in Dashboard auth first';
+    if (probe.auth === 'jwt_no_ai') return 'Paste a receptionist JWT in the no ai.access field';
+    return '';
+  }
+
+  const RESPONSE_HEADER_KEYS = ['X-Request-ID', 'Content-Type', 'Retry-After'];
+
+  function redactAuthorizationHeader(value, authMode) {
+    if (!value) return value;
+    if (authMode === 'jwt_no_ai') return 'Bearer •••• (no ai.access)';
+    return 'Bearer ••••';
+  }
+
+  function buildProbeRequestHeaders(probe, extraHeaders = {}) {
+    const headers = { ...extraHeaders };
+    if (probe.auth === 'jwt' && state.token) {
+      headers.Authorization = `Bearer ${state.token}`;
+    } else if (probe.auth === 'jwt_no_ai' && state.tokenNoAi) {
+      headers.Authorization = `Bearer ${state.tokenNoAi}`;
+    }
+    return headers;
+  }
+
+  function displayProbeRequestHeaders(probe, rawHeaders) {
+    const display = { ...rawHeaders };
+    if (display.Authorization) {
+      display.Authorization = redactAuthorizationHeader(display.Authorization, probe.auth);
+    }
+    return display;
+  }
+
+  function pickResponseHeaders(res) {
+    if (!res?.headers) return {};
+    if (state.matrixHeaderCaptureAll) {
+      const out = {};
+      res.headers.forEach((v, k) => { out[k] = v; });
+      return out;
+    }
+    const out = {};
+    for (const key of RESPONSE_HEADER_KEYS) {
+      const val = res.headers.get(key);
+      if (val) out[key] = val;
+    }
+    return out;
+  }
+
+  function buildProbeRequestMeta(probe, bodyObj, extraHeaders = {}) {
+    const rawHeaders = buildProbeRequestHeaders(probe, extraHeaders);
+    return {
+      requestMethod: probe.method || 'GET',
+      requestPath: probe.path,
+      requestHeaders: displayProbeRequestHeaders(probe, rawHeaders),
+      requestBody: bodyObj != null ? bodyObj : null,
+    };
+  }
+
+  function formatProbeHeadersHtml(headers) {
+    if (!headers || !Object.keys(headers).length) {
+      return '<p class="pv-transcript__empty">No headers</p>';
+    }
+    return `<dl class="pv-headers mono">${Object.entries(headers).map(([k, v]) =>
+      `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join('')}</dl>`;
+  }
+
+  function formatProbeJsonHtml(value) {
+    if (value == null) {
+      return '<p class="pv-transcript__empty">No body</p>';
+    }
+    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    return `<pre class="pv-transcript__code mono" tabindex="0">${escapeHtml(text)}</pre>`;
+  }
+
+  function statusClassFromCode(status) {
+    if (status == null) return '';
+    if (status >= 200 && status < 300) return 'ok';
+    if (status >= 400 && status < 500) return 'warn';
+    if (status >= 500) return 'error';
+    return '';
+  }
+
+
+
+
+
+  async function dispatchProbeExecution(probeKey, probe, bodyObj) {
+    switch (probe.special) {
+      case 'sse_stream':
+        await executeSseStreamProbe(probeKey, probe, bodyObj);
+        break;
+      case 'concurrent_burst':
+        await executeConcurrentBurstProbe(probeKey, probe, bodyObj);
+        break;
+      case 'abort_mid_stream':
+        await executeAbortMidStreamProbe(probeKey, probe, bodyObj);
+        break;
+      case 'metrics_queue_depth':
+        await executeMetricsQueueDepthProbe(probeKey, probe);
+        break;
+      default:
+        await executeStandardProbe(probeKey, probe, bodyObj);
+    }
+  }
+
+
   /* ── Workbench ────────────────────────────────────────── */
 
   async function sendWorkbench(ev) {
@@ -1402,24 +2386,1105 @@
     }
   }
 
-  async function sendGenerateStub() {
-    const panel = $('generate-response');
-    panel.hidden = false;
+  async function sendGenerateRequest(ev) {
+    ev.preventDefault();
+    if (!state.token || !state.hasAiAccess) {
+      renderGenerateAuthHint();
+      $('generate-auth-hint')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+
+    let bodyObj;
     try {
-      const { res, body, requestId } = await apiFetch('/v1/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: 'dashboard probe' }),
-      });
-      $('generate-response-status').textContent = `${res.status} — expected 501 stub`;
-      $('generate-response-status').dataset.class = res.status === 501 ? 'ok' : 'error';
-      $('generate-response-body').textContent = JSON.stringify(body, null, 2) +
-        (requestId ? `\n\nX-Request-ID: ${requestId}` : '');
+      bodyObj = buildGenerateBody();
     } catch (e) {
-      $('generate-response-status').textContent = 'Probe failed';
-      $('generate-response-body').textContent = String(e);
+      renderGenerateResult({
+        ...buildGenerateRequestMeta({}),
+        statusLine: 'Invalid request',
+        ok: false,
+        responseStatus: null,
+        responseHeaders: {},
+        responseBody: { error: { code: 'bad_request', message: String(e) } },
+        requestId: null,
+      });
+      return;
+    }
+
+    if (state.generateAbort) state.generateAbort.abort();
+    const controller = new AbortController();
+    state.generateAbort = controller;
+    setGenerateLoading(true);
+
+    const started = performance.now();
+    const isStreaming = !!bodyObj.options?.stream;
+    const requestMeta = buildGenerateRequestMeta(bodyObj, { stream: isStreaming });
+    const path = '/v1/ai/generate';
+
+    if (isStreaming) {
+      resetGenerateStreamOutput();
+    } else {
+      hideGenerateStreamOutput({ force: true });
+    }
+
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (state.token) headers.Authorization = `Bearer ${state.token}`;
+
+      const res = await fetch(path, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(bodyObj),
+        signal: controller.signal,
+      });
+
+      const elapsedMs = Math.round(performance.now() - started);
+      const requestId = res.headers.get('X-Request-ID');
+      const responseHeaders = pickAllResponseHeaders(res);
+      const contentType = res.headers.get('content-type') || '';
+
+      if (contentType.includes('text/event-stream') && res.body) {
+        const raw = await readSseResponseBody(res, (partialRaw) => {
+          updateGenerateStreamOutput(partialRaw);
+        });
+        const sseEvents = parseSseEvents(raw);
+        const errorEvent = sseEvents.find((e) => e.event === 'error');
+        const finalEvent = sseEvents.find((e) => e.event === 'final');
+        const errCode = errorEvent?.data?.error?.code;
+        const retryAfter = res.headers.get('Retry-After');
+        const retryHint = errCode === 'ai_busy' && retryAfter ? ` · Retry-After: ${retryAfter}s` : '';
+        const streamOk = res.ok && !errorEvent;
+
+        updateGenerateStreamOutput(raw);
+        finishGenerateStreamOutput({
+          ok: streamOk,
+          errorMessage: errorEvent?.data?.error?.message || (streamOk ? null : 'Stream failed'),
+        });
+
+        renderGenerateResult({
+          ...requestMeta,
+          statusLine: `${res.status} SSE stream${errCode ? ` (${errCode})` : ''}${retryHint}`,
+          ok: streamOk,
+          renderType: 'sse',
+          sseHtml: formatSseHtml(raw),
+          bodyText: raw,
+          responseStatus: res.status,
+          responseHeaders,
+          responseBody: finalEvent?.data || errorEvent?.data || raw,
+          requestId,
+          elapsedMs,
+        });
+        return;
+      }
+
+      let body = null;
+      if (isStreaming) {
+        finishGenerateStreamOutput({ ok: false, errorMessage: 'No SSE stream' });
+      } else {
+        hideGenerateStreamOutput({ force: true });
+      }
+      if (contentType.includes('application/json')) {
+        body = await res.json().catch(() => null);
+      } else {
+        body = await res.text();
+      }
+
+      const errCode = body?.error?.code;
+      const retryAfter = res.headers.get('Retry-After');
+      const retryHint = errCode === 'ai_busy' && retryAfter ? ` · Retry-After: ${retryAfter}s` : '';
+
+      renderGenerateResult({
+        ...requestMeta,
+        statusLine: `${res.status} ${res.statusText}${errCode ? ` (${errCode})` : ''}${retryHint}`,
+        ok: res.ok,
+        responseStatus: res.status,
+        responseHeaders,
+        responseBody: body,
+        bodyText: typeof body === 'string' ? body : JSON.stringify(body, null, 2),
+        requestId,
+        elapsedMs,
+      });
+    } catch (e) {
+      const elapsedMs = Math.round(performance.now() - started);
+      if (e.name === 'AbortError') {
+        if (isStreaming) {
+          finishGenerateStreamOutput({ ok: false, errorMessage: 'Cancelled' });
+        }
+        renderGenerateResult({
+          ...requestMeta,
+          statusLine: 'Cancelled',
+          ok: false,
+          responseStatus: null,
+          responseHeaders: {},
+          responseBody: { error: { code: 'aborted', message: 'Request cancelled by operator' } },
+          requestId: null,
+          elapsedMs,
+          networkError: 'aborted',
+        });
+      } else {
+        if (isStreaming) {
+          finishGenerateStreamOutput({ ok: false, errorMessage: 'Network error' });
+        }
+        renderGenerateResult({
+          ...requestMeta,
+          statusLine: 'Network error',
+          ok: false,
+          responseStatus: null,
+          responseHeaders: {},
+          responseBody: null,
+          requestId: null,
+          elapsedMs,
+          networkError: String(e),
+        });
+      }
+    } finally {
+      if (state.generateAbort === controller) state.generateAbort = null;
+      setGenerateLoading(false);
     }
   }
+
+  function pickAllResponseHeaders(res) {
+    const out = {};
+    if (!res?.headers) return out;
+    res.headers.forEach((v, k) => { out[k] = v; });
+    return out;
+  }
+
+  function buildGenerateRequestMeta(bodyObj, options = {}) {
+    const rawHeaders = { 'Content-Type': 'application/json' };
+    if (state.token) rawHeaders.Authorization = `Bearer ${state.token}`;
+    const display = { ...rawHeaders };
+    if (display.Authorization) display.Authorization = 'Bearer ••••';
+    return {
+      requestMethod: 'POST',
+      requestPath: '/v1/ai/generate',
+      requestHeaders: display,
+      requestBody: bodyObj,
+      requestNote: options.stream ? 'Streaming enabled — expects text/event-stream' : null,
+    };
+  }
+
+  function buildGenerateContext() {
+    const text = $('generate-context').value.trim();
+    let context = defaultGenerateContext();
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('Context must be a JSON object.');
+        }
+        context = { ...context, ...parsed };
+        if (!context.now) {
+          context.now = new Date().toISOString();
+        }
+      } catch (e) {
+        throw new Error(`Invalid context JSON: ${e.message}`);
+      }
+    }
+    return context;
+  }
+
+  function buildGenerateBody() {
+    const prompt = $('generate-prompt').value.trim();
+    if (!prompt) throw new Error('Enter a prompt before routing.');
+
+    const body = {
+      task: 'command',
+      prompt,
+      context: buildGenerateContext(),
+    };
+
+    const stream = $('generate-stream').checked;
+    const confidenceHint = $('generate-confidence').checked;
+    const options = {};
+    if (stream) options.stream = true;
+    if (!confidenceHint) options.confidence_hint = false;
+    if (Object.keys(options).length) body.options = options;
+
+    return body;
+  }
+
+  function setGenerateLoading(loading) {
+    const submit = $('generate-submit-btn');
+    const cancel = $('generate-cancel-btn');
+    submit.disabled = loading;
+    submit.textContent = loading ? 'Routing…' : 'Route to runner';
+    cancel.hidden = !loading;
+  }
+
+  function renderGenerateAuthHint() {
+    const hint = $('generate-auth-hint');
+    if (!hint) return;
+    hint.hidden = !!(state.token && state.hasAiAccess);
+  }
+
+  function parseSseEvents(raw) {
+    const events = [];
+    const blocks = (raw || '').split(/\n\n+/);
+    for (const block of blocks) {
+      const lines = block.split('\n');
+      let event = 'message';
+      let data = '';
+      for (const line of lines) {
+        if (line.startsWith('event: ')) event = line.slice(7).trim();
+        else if (line.startsWith('data: ')) data += (data ? '\n' : '') + line.slice(6);
+      }
+      if (data) {
+        try {
+          events.push({ event, data: JSON.parse(data) });
+        } catch {
+          events.push({ event, data });
+        }
+      }
+    }
+    return events;
+  }
+
+  /** Extract runner text from output/summary/token SSE events (not wire format or final envelope). */
+  function extractRunnerOutputFromSse(raw) {
+    let output = '';
+    let hasOutputEvents = false;
+    for (const e of parseSseEvents(raw)) {
+      if (e.event === 'output' && e.data?.delta) {
+        hasOutputEvents = true;
+        output += e.data.delta;
+      }
+    }
+    if (hasOutputEvents) return output;
+    for (const e of parseSseEvents(raw)) {
+      if ((e.event === 'summary' || e.event === 'token') && e.data?.delta) {
+        output += e.data.delta;
+      }
+    }
+    return output;
+  }
+
+  function resetGenerateStreamOutput() {
+    const panel = $('generate-stream-output');
+    const body = $('generate-stream-output-body');
+    const status = $('generate-stream-output-status');
+    if (!panel || !body || !status) return;
+    panel.hidden = false;
+    panel.dataset.state = 'streaming';
+    body.textContent = '';
+    status.textContent = 'Streaming…';
+    status.dataset.state = 'streaming';
+  }
+
+  function updateGenerateStreamOutput(raw) {
+    const body = $('generate-stream-output-body');
+    if (!body) return;
+    const text = extractRunnerOutputFromSse(raw);
+    body.textContent = text;
+    if (text) body.scrollTop = body.scrollHeight;
+  }
+
+  function finishGenerateStreamOutput({ ok = true, errorMessage = null } = {}) {
+    const panel = $('generate-stream-output');
+    const status = $('generate-stream-output-status');
+    if (!panel || !status) return;
+    panel.dataset.state = ok ? 'complete' : 'error';
+    if (ok) {
+      status.textContent = 'Complete';
+      status.dataset.state = 'complete';
+    } else {
+      status.textContent = errorMessage || 'Error';
+      status.dataset.state = 'error';
+    }
+  }
+
+  function hideGenerateStreamOutput({ force = false } = {}) {
+    const panel = $('generate-stream-output');
+    const status = $('generate-stream-output-status');
+    if (!panel) return;
+    if (!force && $('generate-stream')?.checked) return;
+    panel.hidden = true;
+    if (status) {
+      status.textContent = '—';
+      status.dataset.state = 'idle';
+    }
+  }
+
+  function renderGenerateResult(result) {
+    const panel = $('generate-result');
+    panel.hidden = false;
+
+    const statusEl = $('generate-result-status');
+    const code = result.responseBody?.error?.code;
+    const statusClass = statusClassFromCode(result.responseStatus)
+      || (code === 'ai_busy' ? 'warn' : (result.ok === false ? 'error' : 'ok'));
+    statusEl.textContent = result.statusLine || '—';
+    statusEl.dataset.class = statusClass;
+
+    $('generate-result-rid').textContent = result.requestId ? `req ${result.requestId}` : '';
+
+    const errBanner = $('generate-error-banner');
+    const err = result.responseBody?.error;
+    if (err) {
+      errBanner.hidden = false;
+      $('generate-error-code').textContent = err.code || 'error';
+      $('generate-error-message').textContent = err.message || 'Request failed';
+      $('generate-error-rid').textContent = err.request_id || result.requestId || '';
+    } else if (result.networkError && result.networkError !== 'aborted') {
+      errBanner.hidden = false;
+      $('generate-error-code').textContent = 'network_error';
+      $('generate-error-message').textContent = result.networkError;
+      $('generate-error-rid').textContent = result.requestId || '';
+    } else {
+      errBanner.hidden = true;
+    }
+
+    const warnings = result.responseBody?.warnings;
+    const warnPanel = $('generate-warnings');
+    const warnList = $('generate-warnings-list');
+    if (warnings?.length) {
+      warnPanel.hidden = false;
+      warnList.innerHTML = warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join('');
+    } else {
+      warnPanel.hidden = true;
+      warnList.innerHTML = '';
+    }
+
+    $('generate-transcript').innerHTML = renderProbeTranscriptSplit('generate', result);
+    initPvSplitters(panel);
+
+    const timingEl = $('generate-timing');
+    if (result.elapsedMs != null) {
+      timingEl.hidden = false;
+      timingEl.textContent = `${result.elapsedMs} ms`;
+    } else {
+      timingEl.hidden = true;
+    }
+  }
+
+  function cancelGenerateRequest() {
+    if (state.generateAbort) state.generateAbort.abort();
+  }
+
+  function initGenerateForm() {
+    const promptEl = $('generate-prompt');
+    if (promptEl && !promptEl.value) promptEl.value = GENERATE_PRESETS.create;
+    renderGenerateAuthHint();
+  }
+
+  function bindGenerateEvents() {
+    $('generate-form').addEventListener('submit', sendGenerateRequest);
+    $('generate-cancel-btn').addEventListener('click', cancelGenerateRequest);
+    $('generate-stream')?.addEventListener('change', () => {
+      const panel = $('generate-stream-output');
+      const status = $('generate-stream-output-status');
+      if (!$('generate-stream')?.checked) {
+        if (panel) panel.hidden = true;
+        if (status) {
+          status.textContent = '—';
+          status.dataset.state = 'idle';
+        }
+        return;
+      }
+      if (panel && status?.dataset.state !== 'streaming') {
+        panel.hidden = false;
+        if (status.dataset.state === 'idle') {
+          status.textContent = 'Ready';
+        }
+      }
+    });
+    document.querySelectorAll('.generate-preset').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const preset = GENERATE_PRESETS[btn.dataset.preset];
+        if (preset) $('generate-prompt').value = preset;
+      });
+    });
+  }
+
+  /* ── Feature test matrix ─────────────────────────────── */
+
+  const MATRIX_GROUP_ICONS = {
+    health: '◉',
+    discovery: '◈',
+    commands: '⌘',
+    streaming: '≋',
+    'auth-validation': '⛨',
+    resilience: '⚡',
+    safety: '◆',
+    observability: '▤',
+  };
+
+  function getFeatureMatrix() {
+    return window.FeatureMatrix || {};
+  }
+
+  function isMatrixVerbose() {
+    const el = $('matrix-verbose');
+    return el ? el.checked : true;
+  }
+
+  function getAllMatrixFeatures() {
+    const groups = getFeatureMatrix().groups || [];
+    const features = [];
+    groups.forEach((group) => {
+      (group.features || []).forEach((feature) => {
+        features.push({ ...feature, groupId: group.id });
+      });
+    });
+    return features;
+  }
+
+  function findMatrixFeature(featureId) {
+    for (const group of getFeatureMatrix().groups || []) {
+      const feature = (group.features || []).find((f) => f.id === featureId);
+      if (feature) return { ...feature, groupId: group.id };
+    }
+    return null;
+  }
+
+  function findMatrixScenario(scenarioId) {
+    return (getFeatureMatrix().scenarios || []).find((s) => s.id === scenarioId) || null;
+  }
+
+  function matrixScenarioKey(scenarioId) {
+    return `scenario:${scenarioId}`;
+  }
+
+  function normalizeMatrixFeature(feature) {
+    return {
+      ...feature,
+      label: feature.title || feature.label || feature.id,
+      desc: feature.description || feature.desc || '',
+      title: feature.title || feature.label || feature.id,
+      description: feature.description || feature.desc || '',
+    };
+  }
+
+  function captureMatrixUiState() {
+    const openGroups = new Set();
+    document.querySelectorAll('.matrix-group[data-group-id]').forEach((el) => {
+      if (el.open) openGroups.add(el.dataset.groupId);
+    });
+    return { openGroups, selected: new Set(state.matrixSelectedFeatures) };
+  }
+
+  function renderMatrixFeatureTags(tags) {
+    if (!tags?.length) return '';
+    return tags.map((tag) => `<span class="matrix-tag">${escapeHtml(tag)}</span>`).join('');
+  }
+
+  function renderMatrixTranscript(key, result) {
+    if (!isMatrixVerbose()) return '';
+    if (!result || result.infoOnly) {
+      return `<p class="matrix-step-log__skip">${escapeHtml(result?.description || result?.statusLine || 'Info only — no request sent')}</p>`;
+    }
+    const authLine = result.authMode != null
+      ? `<span>Auth: <span class="mono">${escapeHtml(probeAuthLabel(result.authMode))}</span></span>`
+      : '';
+    const timing = result.latency_ms != null
+      ? `<span class="matrix-transcript__timing mono">${result.latency_ms} ms</span>`
+      : '';
+    const bar = (authLine || timing)
+      ? `<div class="matrix-transcript__bar">${authLine}${timing}</div>`
+      : '';
+    return `
+      <div class="matrix-transcript" data-matrix-transcript="${escapeHtml(key)}">
+        ${bar}
+        ${renderProbeTranscriptSplit(key, result)}
+      </div>
+    `;
+  }
+
+  function renderMatrixFeatureResult(featureId) {
+    const result = state.matrixResults[featureId];
+    if (!result) return '';
+    const summaryClass = result.pass === true ? 'ok' : (result.pass === false ? 'error' : '');
+    const verdictHtml = result.pass != null
+      ? `<span class="pv-verdict" data-pass="${result.pass}">
+          ${result.pass ? 'Expectations met' : 'Expectations failed'}
+        </span>`
+      : '';
+    const expectHtml = result.expect?.length
+      ? `<ul class="pv-expect" role="list">
+          ${result.expect.map((row) => `
+            <li class="pv-expect__row" data-pass="${row.ok}">
+              <span class="pv-expect__icon" aria-hidden="true">${row.ok ? '✓' : '✗'}</span>
+              <span class="pv-expect__label">${escapeHtml(row.label)}</span>
+              <span class="pv-expect__actual mono">${escapeHtml(row.actual)}</span>
+            </li>
+          `).join('')}
+        </ul>`
+      : '';
+
+    return `
+      <div class="matrix-result" data-matrix-result="${escapeHtml(featureId)}">
+        <header class="matrix-result__header">
+          <div class="matrix-result__summary">
+            <span class="matrix-result__status" data-class="${summaryClass}">
+              ${escapeHtml(result.statusLine || '—')}
+            </span>
+            ${verdictHtml}
+          </div>
+          <div class="matrix-result__meta">
+            ${result.requestId ? `<span class="mono">X-Request-ID: ${escapeHtml(result.requestId)}</span>` : ''}
+            ${result.latency_ms != null ? `<span class="mono">${result.latency_ms} ms</span>` : ''}
+          </div>
+        </header>
+        ${expectHtml}
+        ${renderMatrixTranscript(featureId, result)}
+      </div>
+    `;
+  }
+
+  function renderMatrixScenarioSteps(scenario) {
+    return (scenario.steps || []).map((step) => {
+      if (step.featureId) {
+        const feature = findMatrixFeature(step.featureId);
+        return `<li>${escapeHtml(step.label || feature?.title || step.featureId)}</li>`;
+      }
+      return `<li>${escapeHtml(step.label || `${step.method || 'GET'} ${step.path || '—'}`)}</li>`;
+    }).join('');
+  }
+
+  function renderMatrixScenarioResult(scenarioId) {
+    const result = state.matrixResults[matrixScenarioKey(scenarioId)];
+    if (!result) return '';
+    const summaryClass = result.pass === true ? 'ok' : (result.pass === false ? 'error' : '');
+    const stepsHtml = (result.steps || []).map((step, i) => `
+      <article class="matrix-step-log__item" data-step-index="${i + 1}">
+        <header class="matrix-step-log__head">
+          <span class="matrix-step-log__label">${escapeHtml(step.label || `Step ${i + 1}`)}</span>
+          ${step.latency_ms != null ? `<span class="matrix-step-log__timing mono">${step.latency_ms} ms</span>` : ''}
+        </header>
+        ${step.skipped
+        ? `<p class="matrix-step-log__skip">${escapeHtml(step.statusLine || 'Skipped')}</p>`
+        : renderMatrixTranscript(`${scenarioId}:step${i + 1}`, step)}
+      </article>
+    `).join('');
+
+    return `
+      <div class="matrix-result matrix-result--scenario" data-scenario-result="${escapeHtml(scenarioId)}">
+        <header class="matrix-result__header">
+          <div class="matrix-result__summary">
+            <span class="matrix-result__status" data-class="${summaryClass}">
+              ${escapeHtml(result.statusLine || '—')}
+            </span>
+          </div>
+          <div class="matrix-result__meta">
+            ${result.latency_ms != null ? `<span class="mono">Total ${result.latency_ms} ms</span>` : ''}
+          </div>
+        </header>
+        <div class="matrix-step-log">${stepsHtml}</div>
+      </div>
+    `;
+  }
+
+  function renderFeatureMatrix() {
+    const pane = $('matrix-features-pane');
+    if (!pane) return;
+
+    const data = getFeatureMatrix();
+    const groups = data.groups || [];
+    const { openGroups, selected } = captureMatrixUiState();
+    state.matrixSelectedFeatures = selected;
+
+    if (!groups.length) {
+      pane.innerHTML = '<p class="matrix-empty">Feature matrix catalog not loaded — ensure <span class="mono">feature-matrix.js</span> is present.</p>';
+      renderMatrixScenarios();
+      return;
+    }
+
+    pane.innerHTML = `
+      <div class="matrix-catalog" role="list">
+        ${groups.map((group) => {
+      const features = group.features || [];
+      const icon = MATRIX_GROUP_ICONS[group.id] || '◇';
+      const isOpen = openGroups.has(group.id);
+      return `
+            <details class="matrix-group" data-group-id="${escapeHtml(group.id)}"${isOpen ? ' open' : ''}>
+              <summary class="matrix-group__summary">
+                <span class="matrix-group__icon" aria-hidden="true">${icon}</span>
+                <span class="matrix-group__head">
+                  <span class="matrix-group__title">${escapeHtml(group.title || group.id)}</span>
+                  <span class="matrix-group__count mono">${features.length} feature${features.length === 1 ? '' : 's'}</span>
+                </span>
+              </summary>
+              ${group.description ? `<p class="matrix-group__desc">${escapeHtml(group.description)}</p>` : ''}
+              <div class="matrix-features" role="list">
+                ${features.map((rawFeature) => {
+        const feature = normalizeMatrixFeature(rawFeature);
+        const isInfoOnly = feature.special === 'info_only';
+        const isManual = feature.special === 'manual';
+        const blocked = probeAuthBlocked(feature);
+        const hasResult = !!state.matrixResults[feature.id];
+        const checked = state.matrixSelectedFeatures.has(feature.id);
+        return `
+                    <article class="matrix-feature${isInfoOnly ? ' matrix-feature--info' : ''}${hasResult ? ' matrix-feature--has-result' : ''}"
+                      role="listitem" data-feature-id="${escapeHtml(feature.id)}">
+                      <div class="matrix-feature__row">
+                        <label class="matrix-feature__select">
+                          <input type="checkbox" class="matrix-feature-checkbox" data-feature-id="${escapeHtml(feature.id)}"
+                            ${checked ? 'checked' : ''} ${isInfoOnly ? 'disabled' : ''}
+                            aria-label="Select ${escapeHtml(feature.title)}">
+                        </label>
+                        <div class="matrix-feature__route">
+                          <span class="matrix-feature__method">${escapeHtml(feature.method || 'GET')}</span>
+                          <span class="matrix-feature__path mono">${escapeHtml(feature.path || '—')}</span>
+                        </div>
+                        <div class="matrix-feature__tags">
+                          <span class="pv-chip pv-chip--auth" data-auth="${feature.auth || 'none'}">${probeAuthLabel(feature.auth)}</span>
+                          ${probeSpecialBadge(feature)}
+                          ${renderMatrixFeatureTags(feature.tags)}
+                        </div>
+                        <div class="matrix-feature__actions">
+                          ${isInfoOnly
+            ? ''
+            : `<button type="button" class="btn btn--trace matrix-feature-run-btn"
+                                data-feature-id="${escapeHtml(feature.id)}"
+                                ${blocked ? `disabled title="${escapeHtml(probeAuthBlockedTitle(feature))}"` : ''}>
+                                ${isManual ? 'Run feature (manual)' : 'Run feature'}
+                              </button>`}
+                        </div>
+                      </div>
+                      <div class="matrix-feature__detail">
+                        <h4 class="matrix-feature__title">${escapeHtml(feature.title)}</h4>
+                        <p class="matrix-feature__desc">${escapeHtml(feature.description)}</p>
+                      </div>
+                      ${renderMatrixFeatureResult(feature.id)}
+                    </article>
+                  `;
+      }).join('')}
+              </div>
+            </details>
+          `;
+    }).join('')}
+      </div>
+    `;
+
+    bindMatrixFeatureEvents(pane);
+    initPvSplitters(pane);
+    renderMatrixScenarios();
+  }
+
+  function renderMatrixScenarios() {
+    const pane = $('matrix-scenarios-pane');
+    if (!pane) return;
+
+    const scenarios = getFeatureMatrix().scenarios || [];
+    if (!scenarios.length) {
+      pane.innerHTML = '<p class="matrix-empty">No combination flows defined in the feature matrix catalog.</p>';
+      return;
+    }
+
+    pane.innerHTML = `
+      <div class="matrix-scenarios" role="list">
+        ${scenarios.map((scenario) => {
+      const isManual = scenario.manual || (scenario.steps || []).some((s) => {
+        const f = s.featureId ? findMatrixFeature(s.featureId) : s;
+        return f?.special === 'manual';
+      });
+      const hasResult = !!state.matrixResults[matrixScenarioKey(scenario.id)];
+      const result = state.matrixResults[matrixScenarioKey(scenario.id)];
+      const statusState = state.matrixRunning && result?.running
+        ? 'running'
+        : (result?.pass === true ? 'ok' : (result?.pass === false ? 'error' : ''));
+      return `
+            <article class="matrix-scenario${isManual ? ' matrix-scenario--manual' : ''}${hasResult ? ' matrix-scenario--has-result' : ''}"
+              role="listitem" data-scenario-id="${escapeHtml(scenario.id)}">
+              <header class="matrix-scenario__header">
+                <div>
+                  <span class="matrix-scenario__id mono">${escapeHtml(scenario.id)}</span>
+                  <h3 class="matrix-scenario__title">${escapeHtml(scenario.title || scenario.id)}</h3>
+                  ${scenario.description ? `<p class="matrix-scenario__desc">${escapeHtml(scenario.description)}</p>` : ''}
+                </div>
+                <div class="matrix-scenario__actions">
+                  <button type="button" class="btn btn--primary matrix-scenario-run-btn"
+                    data-scenario-id="${escapeHtml(scenario.id)}"
+                    ${state.matrixRunning ? 'disabled' : ''}>
+                    Run combination flow
+                  </button>
+                  ${result?.statusLine
+          ? `<span class="matrix-scenario__status" data-state="${statusState}">${escapeHtml(result.statusLine)}</span>`
+          : ''}
+                </div>
+              </header>
+              <ol class="matrix-scenario__steps">${renderMatrixScenarioSteps(scenario)}</ol>
+              ${renderMatrixScenarioResult(scenario.id)}
+            </article>
+          `;
+    }).join('')}
+      </div>
+    `;
+
+    pane.querySelectorAll('.matrix-scenario-run-btn').forEach((btn) => {
+      btn.addEventListener('click', () => runMatrixScenario(btn.dataset.scenarioId));
+    });
+    initPvSplitters(pane);
+  }
+
+  function bindMatrixFeatureEvents(root) {
+    root.querySelectorAll('.matrix-feature-checkbox').forEach((input) => {
+      input.addEventListener('change', () => {
+        const id = input.dataset.featureId;
+        if (!id) return;
+        if (input.checked) state.matrixSelectedFeatures.add(id);
+        else state.matrixSelectedFeatures.delete(id);
+      });
+    });
+
+    root.querySelectorAll('.matrix-feature-run-btn').forEach((btn) => {
+      btn.addEventListener('click', () => runMatrixFeature(btn.dataset.featureId));
+    });
+  }
+
+  function updateMatrixFeatureResult(featureId) {
+    const article = document.querySelector(`.matrix-feature[data-feature-id="${featureId}"]`);
+    if (!article) return;
+    if (state.matrixResults[featureId]) {
+      article.classList.add('matrix-feature--has-result');
+    }
+    const existing = article.querySelector('.matrix-result');
+    const html = renderMatrixFeatureResult(featureId);
+    if (html) {
+      if (existing) existing.outerHTML = html;
+      else article.insertAdjacentHTML('beforeend', html);
+      initPvSplitters(article);
+    } else if (existing) {
+      existing.remove();
+      article.classList.remove('matrix-feature--has-result');
+    }
+  }
+
+  function updateMatrixScenarioResult(scenarioId) {
+    const article = document.querySelector(`.matrix-scenario[data-scenario-id="${scenarioId}"]`);
+    if (!article) return;
+    const existing = article.querySelector('.matrix-result--scenario');
+    const html = renderMatrixScenarioResult(scenarioId);
+    const statusEl = article.querySelector('.matrix-scenario__status');
+    const result = state.matrixResults[matrixScenarioKey(scenarioId)];
+    if (statusEl && result?.statusLine) {
+      statusEl.textContent = result.statusLine;
+      statusEl.dataset.state = result.pass === true ? 'ok' : (result.pass === false ? 'error' : '');
+    }
+    if (html) {
+      if (existing) existing.outerHTML = html;
+      else article.insertAdjacentHTML('beforeend', html);
+      article.classList.add('matrix-scenario--has-result');
+      initPvSplitters(article);
+    }
+  }
+
+  async function runMatrixFeature(featureId, options = {}) {
+    const { silent = false } = options;
+    const feature = findMatrixFeature(featureId);
+    if (!feature) return false;
+
+    if (feature.special === 'info_only') {
+      state.matrixResults[featureId] = {
+        ...buildProbeRequestMeta(feature, null),
+        statusLine: 'Info only — no request sent',
+        pass: null,
+        expect: [],
+        infoOnly: true,
+        description: feature.description || feature.desc || '',
+        authMode: feature.auth || 'none',
+        latency_ms: 0,
+      };
+      if (!silent) updateMatrixFeatureResult(featureId);
+      return true;
+    }
+
+    if (feature.special === 'manual') {
+      const desc = feature.description || feature.desc || 'This feature requires manual gateway configuration.';
+      const ok = window.confirm(
+        `Manual diagnostic feature\n\n${desc}\n\nOnly continue if you have applied the required config change. Proceed?`,
+      );
+      if (!ok) return false;
+    }
+
+    if (probeAuthBlocked(feature)) {
+      if (!silent) window.alert(probeAuthBlockedTitle(feature));
+      return false;
+    }
+
+    if (state.token && state.hasAiAccess && !state.traceStreamConnected) {
+      connectTrace();
+    }
+
+    const probeKey = `mx:${featureId}`;
+    const article = document.querySelector(`.matrix-feature[data-feature-id="${featureId}"]`);
+    const runBtn = article?.querySelector('.matrix-feature-run-btn');
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.textContent = 'Running…';
+    }
+
+    const bodyObj = feature.body ?? null;
+    const started = performance.now();
+    state.matrixHeaderCaptureAll = isMatrixVerbose();
+
+    try {
+      await dispatchProbeExecution(probeKey, feature, bodyObj);
+      state.matrixResults[featureId] = {
+        ...state.probeResults[probeKey],
+        latency_ms: Math.round(performance.now() - started),
+        authMode: feature.auth || 'none',
+      };
+      delete state.probeResults[probeKey];
+      if (!silent) updateMatrixFeatureResult(featureId);
+      return state.matrixResults[featureId].pass !== false;
+    } catch (e) {
+      const requestMeta = buildProbeRequestMeta(
+        feature,
+        bodyObj,
+        bodyObj != null ? { 'Content-Type': 'application/json' } : {},
+      );
+      state.matrixResults[featureId] = {
+        ...requestMeta,
+        statusLine: 'Request failed',
+        pass: false,
+        expect: [],
+        bodyText: `Network error. Check the gateway is running.\n\n${e}`,
+        responseStatus: null,
+        responseHeaders: {},
+        responseBody: null,
+        requestId: null,
+        latency_ms: Math.round(performance.now() - started),
+        authMode: feature.auth || 'none',
+      };
+      if (!silent) updateMatrixFeatureResult(featureId);
+      return false;
+    } finally {
+      state.matrixHeaderCaptureAll = false;
+      if (runBtn) {
+        const blocked = probeAuthBlocked(feature);
+        runBtn.disabled = blocked;
+        runBtn.textContent = feature.special === 'manual' ? 'Run feature (manual)' : 'Run feature';
+      }
+    }
+  }
+
+  async function runMatrixScenario(scenarioId) {
+    const scenario = findMatrixScenario(scenarioId);
+    if (!scenario || state.matrixRunning) return;
+
+    const hasManual = (scenario.steps || []).some((step) => {
+      const f = step.featureId ? findMatrixFeature(step.featureId) : step;
+      return f?.special === 'manual';
+    });
+    if (hasManual) {
+      const ok = window.confirm(
+        `Combination flow "${scenario.title || scenarioId}" includes manual steps.\n\nOnly continue if required gateway configuration is in place. Proceed?`,
+      );
+      if (!ok) return;
+    }
+
+    state.matrixRunning = true;
+    const scenarioKey = matrixScenarioKey(scenarioId);
+    const flowStarted = performance.now();
+    const stepResults = [];
+    let allPass = true;
+    let stopped = false;
+
+    state.matrixResults[scenarioKey] = {
+      running: true,
+      statusLine: 'Running combination flow…',
+      steps: [],
+      pass: null,
+    };
+    updateMatrixScenarioResult(scenarioId);
+
+    for (let i = 0; i < (scenario.steps || []).length; i += 1) {
+      const step = scenario.steps[i];
+      const stepLabel = step.label || (step.featureId
+        ? (findMatrixFeature(step.featureId)?.title || step.featureId)
+        : `${step.method || 'GET'} ${step.path || '—'}`);
+      const stepStarted = performance.now();
+
+      if (step.featureId) {
+        const feature = findMatrixFeature(step.featureId);
+        if (!feature) {
+          stepResults.push({
+            label: stepLabel,
+            skipped: true,
+            statusLine: `Unknown feature: ${step.featureId}`,
+            pass: false,
+          });
+          allPass = false;
+          if (scenario.stopOnFail !== false) {
+            stopped = true;
+            break;
+          }
+          continue;
+        }
+
+        if (feature.special === 'info_only') {
+          stepResults.push({
+            label: stepLabel,
+            skipped: true,
+            statusLine: 'Info only — skipped in flow',
+            pass: null,
+            description: feature.description || feature.desc || '',
+            latency_ms: 0,
+          });
+          continue;
+        }
+
+        const pass = await runMatrixFeature(step.featureId, { silent: true });
+        const featureResult = state.matrixResults[step.featureId];
+        stepResults.push({
+          label: stepLabel,
+          ...featureResult,
+          latency_ms: featureResult?.latency_ms ?? Math.round(performance.now() - stepStarted),
+          pass: featureResult?.pass,
+        });
+        if (!pass) {
+          allPass = false;
+          if (scenario.stopOnFail !== false) {
+            stopped = true;
+            break;
+          }
+        }
+        continue;
+      }
+
+      const inlineProbe = normalizeMatrixFeature(step);
+      if (inlineProbe.special === 'info_only') {
+        stepResults.push({
+          label: stepLabel,
+          skipped: true,
+          statusLine: 'Info only — skipped in flow',
+          pass: null,
+          description: inlineProbe.description,
+          latency_ms: 0,
+        });
+        continue;
+      }
+
+      const inlineKey = `mx:inline:${scenarioId}:${i}`;
+      state.matrixHeaderCaptureAll = isMatrixVerbose();
+      try {
+        const bodyObj = inlineProbe.body ?? null;
+        await dispatchProbeExecution(inlineKey, inlineProbe, bodyObj);
+        const inlineResult = {
+          ...state.probeResults[inlineKey],
+          latency_ms: Math.round(performance.now() - stepStarted),
+          authMode: inlineProbe.auth || 'none',
+        };
+        delete state.probeResults[inlineKey];
+        stepResults.push({ label: stepLabel, ...inlineResult });
+        if (inlineResult.pass === false) {
+          allPass = false;
+          if (scenario.stopOnFail !== false) {
+            stopped = true;
+            break;
+          }
+        }
+      } catch (e) {
+        stepResults.push({
+          label: stepLabel,
+          statusLine: 'Request failed',
+          pass: false,
+          bodyText: String(e),
+          latency_ms: Math.round(performance.now() - stepStarted),
+        });
+        allPass = false;
+        if (scenario.stopOnFail !== false) {
+          stopped = true;
+          break;
+        }
+      } finally {
+        state.matrixHeaderCaptureAll = false;
+      }
+    }
+
+    state.matrixResults[scenarioKey] = {
+      type: 'scenario',
+      scenarioId,
+      steps: stepResults,
+      pass: allPass,
+      stopped,
+      latency_ms: Math.round(performance.now() - flowStarted),
+      statusLine: allPass
+        ? `Combination flow passed (${stepResults.length} steps)`
+        : (stopped
+          ? `Stopped on failure at step ${stepResults.length}`
+          : `Combination flow finished with failures (${stepResults.length} steps)`),
+    };
+
+    state.matrixRunning = false;
+    renderFeatureMatrix();
+    updateMatrixScenarioResult(scenarioId);
+  }
+
+  async function runMatrixSelected() {
+    if (state.matrixRunning) return;
+    const ids = [...state.matrixSelectedFeatures];
+    if (!ids.length) {
+      window.alert('Select at least one feature to run.');
+      return;
+    }
+
+    state.matrixRunning = true;
+    const btn = $('matrix-run-selected-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Running selected…';
+    }
+
+    for (const id of ids) {
+      await runMatrixFeature(id, { silent: true });
+    }
+
+    state.matrixRunning = false;
+    renderFeatureMatrix();
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Run selected';
+    }
+  }
+
+  async function runMatrixAll() {
+    if (state.matrixRunning) return;
+    const features = getAllMatrixFeatures().filter((f) => f.special !== 'info_only');
+    if (!features.length) return;
+
+    state.matrixRunning = true;
+    const btn = $('matrix-run-all-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Running all…';
+    }
+
+    for (const feature of features) {
+      await runMatrixFeature(feature.id, { silent: true });
+    }
+
+    state.matrixRunning = false;
+    renderFeatureMatrix();
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Run all features';
+    }
+  }
+
+  function switchMatrixTab(tab) {
+    state.matrixActiveTab = tab;
+    document.querySelectorAll('.matrix-tab').forEach((btn) => {
+      const active = btn.dataset.tab === tab;
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    const featuresPane = $('matrix-features-pane');
+    const scenariosPane = $('matrix-scenarios-pane');
+    if (featuresPane) featuresPane.hidden = tab !== 'features';
+    if (scenariosPane) scenariosPane.hidden = tab !== 'scenarios';
+  }
+
+  function bindMatrixEvents() {
+    document.querySelectorAll('.matrix-tab').forEach((btn) => {
+      btn.addEventListener('click', () => switchMatrixTab(btn.dataset.tab || 'features'));
+    });
+    $('matrix-run-selected-btn')?.addEventListener('click', runMatrixSelected);
+    $('matrix-run-all-btn')?.addEventListener('click', runMatrixAll);
+    $('matrix-verbose')?.addEventListener('change', () => {
+      renderFeatureMatrix();
+    });
+  }
+
 
   /* ── Utils ────────────────────────────────────────────── */
 
@@ -1439,15 +3504,21 @@
 
     $('trace-connect-btn').addEventListener('click', toggleTraceStream);
 
-    $('auth-save-btn').addEventListener('click', () => {
+    $('auth-save-btn').addEventListener('click', async () => {
       const t = $('auth-token').value.trim();
+      const tNoAi = $('auth-token-no-ai').value.trim();
       saveToken(t);
+      saveTokenNoAi(tNoAi);
+      state.tokenNoAi = tNoAi || null;
       applyToken(t);
       renderClientRequests();
     });
-    $('auth-clear-btn').addEventListener('click', () => {
+    $('auth-clear-btn').addEventListener('click', async () => {
       $('auth-token').value = '';
+      $('auth-token-no-ai').value = '';
       saveToken(null);
+      saveTokenNoAi(null);
+      state.tokenNoAi = null;
       applyToken(null);
       renderClientRequests();
     });
@@ -1507,7 +3578,8 @@
     });
 
     $('workbench-form').addEventListener('submit', sendWorkbench);
-    $('generate-btn').addEventListener('click', sendGenerateStub);
+    bindGenerateEvents();
+    bindMatrixEvents();
   }
 
   async function init() {
@@ -1517,6 +3589,11 @@
       $('auth-token').value = saved;
       applyToken(saved);
     }
+    const savedNoAi = loadTokenNoAi();
+    if (savedNoAi) {
+      $('auth-token-no-ai').value = savedNoAi;
+      state.tokenNoAi = savedNoAi;
+    }
     await fetchAuthConfig();
     renderClientRequests();
     renderRunners();
@@ -1524,6 +3601,8 @@
     renderMetrics();
     renderSecurity();
     renderTraceFilters();
+    renderFeatureMatrix();
+    initGenerateForm();
     $('last-refresh').textContent = 'Manual mode — use Client requests or Refresh panels';
   }
 

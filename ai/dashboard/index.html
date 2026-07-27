@@ -238,6 +238,129 @@
       </div>
     </section>
 
+    <section class="panel panel--generate" id="generate-panel" aria-labelledby="generate-heading">
+      <header class="panel__header panel__header--generate">
+        <div>
+          <h2 class="panel__title" id="generate-heading">Prompt console</h2>
+          <p class="panel__desc">Submit a scheduling prompt — gateway routes it to a runner and returns a validated
+            command proposal</p>
+        </div>
+        <div class="generate-rail" aria-hidden="true">
+          <span class="generate-rail__node">Client</span>
+          <span class="generate-rail__wire"></span>
+          <span class="generate-rail__node generate-rail__node--gateway">Gateway</span>
+          <span class="generate-rail__wire"></span>
+          <span class="generate-rail__node generate-rail__node--runner">Runner</span>
+        </div>
+      </header>
+
+      <p class="generate-auth-hint" id="generate-auth-hint" hidden>Sign in under Dashboard auth to route prompts.</p>
+
+      <form class="generate-form" id="generate-form">
+        <div class="generate-form__grid">
+          <div class="generate-form__primary">
+            <label class="generate-label" for="generate-prompt">Prompt</label>
+            <textarea id="generate-prompt" class="generate-prompt" rows="3" spellcheck="false"
+              placeholder="book Ahmed Hassan with Dr Ali tomorrow 5pm" required></textarea>
+
+            <div class="generate-presets" role="group" aria-label="Sample prompts">
+              <span class="generate-presets__label">Samples</span>
+              <button type="button" class="generate-preset" data-preset="create">Book</button>
+              <button type="button" class="generate-preset" data-preset="reschedule">Reschedule</button>
+              <button type="button" class="generate-preset" data-preset="cancel">Cancel</button>
+              <button type="button" class="generate-preset" data-preset="status">Status</button>
+            </div>
+          </div>
+
+          <div class="generate-form__context">
+            <label class="generate-label" for="generate-context">Clinic context <span
+                class="generate-label__hint">optional JSON — <code>now</code> auto-filled</span></label>
+            <textarea id="generate-context" class="generate-context mono" rows="8" spellcheck="false"
+              aria-describedby="generate-context-hint"></textarea>
+            <p class="generate-hint" id="generate-context-hint">Extra clinic fields (branch, patient, doctors).
+              <code>context.now</code> is always sent — use your own ISO timestamp here or leave blank for the current
+              time.
+            </p>
+          </div>
+        </div>
+
+        <div class="generate-form__footer">
+          <div class="generate-options">
+            <label class="generate-option">
+              <input type="checkbox" id="generate-stream">
+              Stream response (SSE)
+            </label>
+            <label class="generate-option">
+              <input type="checkbox" id="generate-confidence" checked>
+              Confidence hint
+            </label>
+          </div>
+          <div class="generate-actions">
+            <button type="submit" class="btn btn--primary" id="generate-submit-btn">Route to runner</button>
+            <button type="button" class="btn btn--ghost" id="generate-cancel-btn" hidden>Cancel</button>
+            <span class="generate-timing mono" id="generate-timing" hidden></span>
+          </div>
+        </div>
+      </form>
+
+      <section class="generate-stream-output" id="generate-stream-output" hidden aria-label="Runner stream output">
+        <header class="generate-stream-output__header">
+          <h3 class="generate-stream-output__title">Runner output</h3>
+          <span class="generate-stream-output__status mono" id="generate-stream-output-status"
+            data-state="idle">—</span>
+        </header>
+        <pre class="generate-stream-output__body mono" id="generate-stream-output-body" aria-live="polite"
+          tabindex="0"></pre>
+      </section>
+
+      <div class="generate-result" id="generate-result" hidden>
+        <header class="generate-result__header">
+          <div class="generate-result__summary">
+            <span class="generate-result__status" id="generate-result-status">—</span>
+            <span class="generate-result__rid mono" id="generate-result-rid"></span>
+          </div>
+          <span class="generate-result__route mono">POST /v1/ai/generate</span>
+        </header>
+
+        <div class="generate-error" id="generate-error-banner" hidden role="alert">
+          <span class="generate-error__code mono" id="generate-error-code"></span>
+          <p class="generate-error__message" id="generate-error-message"></p>
+          <p class="generate-error__rid mono" id="generate-error-rid"></p>
+        </div>
+
+        <div class="generate-warnings" id="generate-warnings" hidden>
+          <h3 class="generate-warnings__title">Warnings</h3>
+          <ul class="generate-warnings__list" id="generate-warnings-list"></ul>
+        </div>
+
+        <div id="generate-transcript"></div>
+      </div>
+    </section>
+
+    <section class="panel panel--matrix" id="feature-matrix-panel" aria-labelledby="feature-matrix-heading">
+      <header class="panel__header panel__header--matrix">
+        <div>
+          <h2 class="panel__title" id="feature-matrix-heading">Feature test matrix</h2>
+          <p class="panel__desc">All Feature 016 capabilities grouped by function — run individually or as combination
+            flows with full request/response transcripts</p>
+        </div>
+        <div class="matrix-controls">
+          <button type="button" class="btn btn--primary" id="matrix-run-selected-btn">Run selected</button>
+          <button type="button" class="btn btn--ghost" id="matrix-run-all-btn">Run all features</button>
+          <label class="matrix-verbose-toggle">
+            <input type="checkbox" id="matrix-verbose" checked>
+            Verbose transcripts
+          </label>
+        </div>
+      </header>
+      <div class="matrix-tabs" role="tablist">
+        <button role="tab" class="matrix-tab" data-tab="features" aria-selected="true">Features</button>
+        <button role="tab" class="matrix-tab" data-tab="scenarios" aria-selected="false">Combination flows</button>
+      </div>
+      <div id="matrix-features-pane" class="matrix-pane" role="tabpanel"></div>
+      <div id="matrix-scenarios-pane" class="matrix-pane" role="tabpanel" hidden></div>
+    </section>
+
     <div class="layout__grid layout__grid--2">
       <section class="panel" id="runners-panel" aria-labelledby="runners-heading">
         <header class="panel__header">
@@ -320,6 +443,10 @@
         <label for="auth-token">Or paste token</label>
         <textarea id="auth-token" class="mono" rows="3" spellcheck="false"
           placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…"></textarea>
+        <label for="auth-token-no-ai">No ai.access token</label>
+        <textarea id="auth-token-no-ai" class="mono" rows="2" spellcheck="false"
+          placeholder="Receptionist or lab_staff JWT for 403 probes"></textarea>
+        <p class="auth-hint">Receptionist token for 403 tests (Phase 2 forbidden probe)</p>
         <div class="auth-actions">
           <button type="button" class="btn btn--primary" id="auth-save-btn">Save token</button>
           <button type="button" class="btn btn--ghost" id="auth-clear-btn">Clear</button>
@@ -349,42 +476,28 @@
       </section>
     </div>
 
-    <div class="layout__grid layout__grid--2">
-      <section class="panel" id="generate-panel" aria-labelledby="generate-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="generate-heading">Generate stub</h2>
-          <p class="panel__desc"><span class="mono">POST /v1/ai/generate</span> · expect 501</p>
+    <section class="panel" id="models-panel" aria-labelledby="models-heading">
+      <header class="panel__header">
+        <h2 class="panel__title" id="models-heading">Runner models</h2>
+        <p class="panel__desc">Proxy <span class="mono">GET /v1/runners/{id}/models</span></p>
+      </header>
+      <div class="models-actions" id="models-actions"></div>
+      <div class="workbench-response" id="models-response" hidden>
+        <header class="workbench-response__header">
+          <span id="models-response-status" class="workbench-response__status">—</span>
         </header>
-        <button type="button" class="btn btn--primary" id="generate-btn">Send stub probe</button>
-        <div class="workbench-response" id="generate-response" hidden>
-          <header class="workbench-response__header">
-            <span id="generate-response-status" class="workbench-response__status">—</span>
-          </header>
-          <pre id="generate-response-body" class="workbench-response__body mono" tabindex="0"></pre>
-        </div>
-      </section>
+        <pre id="models-response-body" class="workbench-response__body mono" tabindex="0"></pre>
+      </div>
+    </section>
 
-      <section class="panel" id="models-panel" aria-labelledby="models-heading">
-        <header class="panel__header">
-          <h2 class="panel__title" id="models-heading">Runner models</h2>
-          <p class="panel__desc">Proxy <span class="mono">GET /v1/runners/{id}/models</span></p>
-        </header>
-        <div class="models-actions" id="models-actions"></div>
-        <div class="workbench-response" id="models-response" hidden>
-          <header class="workbench-response__header">
-            <span id="models-response-status" class="workbench-response__status">—</span>
-          </header>
-          <pre id="models-response-body" class="workbench-response__body mono" tabindex="0"></pre>
-        </div>
-      </section>
-    </div>
   </main>
 
   <footer class="site-footer">
     <p>AI Gateway control plane · served at <span class="mono">/dashboard</span></p>
   </footer>
 
-  <script src="app.js" defer></script>
+  <script src="feature-matrix.js?v=20260727"></script>
+  <script src="app.js?v=20260727" defer></script>
 </body>
 
 </html>

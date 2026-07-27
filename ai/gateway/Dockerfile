@@ -7,10 +7,12 @@ RUN groupadd --gid 1000 gateway \
 
 WORKDIR /app
 
+COPY common/ /common/
 COPY gateway/pyproject.toml ./
 COPY gateway/src/ ./src/
 
 RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir /common \
     && pip install --no-cache-dir .
 
 COPY dashboard/ /app/dashboard/
