@@ -1,11 +1,11 @@
-import 'package:ai_clinic/features/billing/domain/money.dart';
-import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
+import 'package:ai_clinic/core/money/money.dart';
+import 'package:ai_clinic/core/money/money_formatter.dart';
 import 'package:ai_clinic/features/service_catalog/domain/effective_price.dart';
 
 /// Pure price-preview formatter reused across catalog flows (NFR-008).
 abstract final class ServicePricePreview {
   static String formatUnitPrice(Money unitPrice, {String currency = 'USD'}) {
-    return BillingFormatting.formatMoney(unitPrice, currency: currency);
+    return MoneyFormatter.format(unitPrice, currency: currency);
   }
 
   static String formatWithRule(EffectivePrice price, {String currency = 'USD'}) {

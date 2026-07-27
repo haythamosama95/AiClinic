@@ -13,12 +13,14 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_list_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
+import 'package:ai_clinic/features/billing/presentation/utils/invoice_labels.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_status_badge.dart';
 
 /// Invoices ledger table backed by [AppDataTable].
 class InvoiceLedgerTable extends StatelessWidget {
   const InvoiceLedgerTable({
     required this.items,
+    required this.currency,
     this.loading = false,
     this.loadingRows = 10,
     this.onRowClick,
@@ -28,6 +30,7 @@ class InvoiceLedgerTable extends StatelessWidget {
   });
 
   final List<InvoiceListItem> items;
+  final String currency;
   final bool loading;
   final int loadingRows;
   final ValueChanged<InvoiceListItem>? onRowClick;
@@ -103,8 +106,8 @@ class InvoiceLedgerTable extends StatelessWidget {
               context,
             ).copyWith(fontFeatures: _tabularFigures),
             child: AppMoneyDisplay(
-              amount: item.subtotal.asDouble,
-              currency: item.currency,
+              amount: item.subtotal,
+              currency: currency,
             ),
           ),
         ),
@@ -114,14 +117,14 @@ class InvoiceLedgerTable extends StatelessWidget {
           align: TableAlign.end,
           accessor: (item) => DefaultTextStyle.merge(
             style: AppTypography.bodySm(context).copyWith(
-              color: item.paidAmount.asDouble <= 0
-                  ? colors.textTertiary
-                  : colors.textSecondary,
+              color: item.paidAmount.isPositive
+                  ? colors.textSecondary
+                  : colors.textTertiary,
               fontFeatures: _tabularFigures,
             ),
             child: AppMoneyDisplay(
-              amount: item.paidAmount.asDouble,
-              currency: item.currency,
+              amount: item.paidAmount,
+              currency: currency,
               negative: false,
             ),
           ),
@@ -130,7 +133,7 @@ class InvoiceLedgerTable extends StatelessWidget {
           id: 'remaining',
           header: 'Remaining',
           align: TableAlign.end,
-          accessor: (item) => _RemainingCell(item: item),
+          accessor: (item) => _RemainingCell(item: item, currency: currency),
         ),
       ],
       data: items,
@@ -216,7 +219,7 @@ class _PatientCell extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
-                item.patientMrn ?? '—',
+                item.branchCode ?? '—',
                 style: AppTypography.caption(context).copyWith(
                   color: colors.textTertiary,
                   fontFeatures: _tabularFigures,
@@ -232,18 +235,22 @@ class _PatientCell extends StatelessWidget {
 }
 
 class _RemainingCell extends StatelessWidget {
-  const _RemainingCell({required this.item});
+  const _RemainingCell({required this.item, required this.currency});
 
   final InvoiceListItem item;
+  final String currency;
 
   static const _tabularFigures = [FontFeature.tabularFigures()];
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final balance = item.balance.asDouble;
-    final isVoided = item.status == InvoiceStatus.voided;
-    final isPaidGreen = balance <= 0 && !isVoided;
+    final balance = item.balance;
+    final isVoided = item.status.isVoided;
+    final isPaidGreen = InvoiceLabels.showsSettledStyling(
+      balance: balance,
+      isVoided: isVoided,
+    );
 
     return DefaultTextStyle.merge(
       style: AppTypography.bodySm(context).copyWith(
@@ -256,9 +263,9 @@ class _RemainingCell extends StatelessWidget {
       ),
       child: AppMoneyDisplay(
         amount: balance,
-        currency: item.currency,
-        emphasis: balance > 0 && !isVoided,
-        negative: balance < 0,
+        currency: currency,
+        emphasis: balance.isPositive && !isVoided,
+        negative: balance.isNegative,
       ),
     );
   }

@@ -20,7 +20,7 @@
 
 | ID | Location | Issue | Impact | Recommendation |
 | -- | -------- | ----- | ------ | -------------- |
-| H1 | Roadmap V1-6 vs `frontend/lib/features/billing/` | Billing marked complete in historical docs; **no presentation layer** — routes use placeholders | Operators cannot manage invoices in UI despite complete backend | Update roadmap status (done); prioritize billing UI or downgrade V1-6 gate |
+| H1 | Roadmap V1-6 vs `frontend/lib/features/billing/` | ~~Billing marked complete… no presentation layer~~ **Resolved** — presentation layer shipped (list, detail, editor, settings) | Operators can manage invoices in UI | Mark resolved; keep roadmap status aligned |
 | H2 | `docs/specs/014-visit-encounter-workspace/` contracts vs migrations `20260702120000`, `20260705120000` | Spec/plan describe `diagnosis_codes`, `visit_plan_details`, related RPCs that were **removed from code** | Agents implementing from stale contracts will build wrong features | Revise spec 014 contracts to match reverted schema; archive dropped contract files |
 | H3 | `.github/workflows/ci.yml` | **No backend/SQL tests in CI** — 149 migrations untested on push | Schema/RPC regressions reach main undetected | Add Postgres service job running `run_all_backend_tests.sh` |
 | H4 | Multiple docs (historical) | **Offline-first** language contradicted by online-only visit saves and LAN-write-block behavior | Misleading non-functional requirements for clinical features | Resolved in `01-principles.md` (online-first); verify specs still say offline |

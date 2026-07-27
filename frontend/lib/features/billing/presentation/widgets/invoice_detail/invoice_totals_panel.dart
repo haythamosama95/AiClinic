@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/components/app_money_display.dart';
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
+import 'package:ai_clinic/features/billing/presentation/utils/invoice_labels.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
@@ -88,9 +90,7 @@ class InvoiceTotalsPanel extends StatelessWidget {
     final colors = context.appColors;
 
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceSunken.withValues(alpha: 0.2),
-      ),
+      decoration: BoxDecoration(color: colors.surfaceSunken.withValues(alpha: 0.2)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -179,7 +179,7 @@ class _LineItemsTotalsContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final discountSuffix = discountKind != null
-        ? ' (${_discountKindLabel(discountKind, discountValue)})'
+        ? ' (${BillingFormatting.discountLabel(discountKind, discountValue, currency: currency)})'
         : '';
     final providerSuffix = insuranceProviderName?.trim().isNotEmpty == true
         ? ' (${insuranceProviderName!.trim()})'
@@ -191,7 +191,7 @@ class _LineItemsTotalsContent extends StatelessWidget {
       children: [
         _TotalsRow(
           label: 'Subtotal',
-          value: AppMoneyDisplay(amount: subtotal.asDouble, currency: currency),
+          value: AppMoneyDisplay(amount: subtotal, currency: currency),
         ),
         if (!discountAmount.isZero) ...[
           const SizedBox(height: AppSpacing.space2),
@@ -199,27 +199,17 @@ class _LineItemsTotalsContent extends StatelessWidget {
             labelWidget: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.local_offer_outlined,
-                  size: 13,
-                  color: colors.statusSuccessFg,
-                ),
+                Icon(Icons.local_offer_outlined, size: 13, color: colors.statusSuccessFg),
                 const SizedBox(width: AppSpacing.space1 + AppSpacing.space05),
                 Flexible(
                   child: Text(
                     'Invoice discount$discountSuffix',
-                    style: AppTypography.bodySm(
-                      context,
-                    ).copyWith(color: colors.statusSuccessFg),
+                    style: AppTypography.bodySm(context).copyWith(color: colors.statusSuccessFg),
                   ),
                 ),
               ],
             ),
-            value: AppMoneyDisplay(
-              amount: discountAmount.asDouble,
-              currency: currency,
-              negative: true,
-            ),
+            value: AppMoneyDisplay(amount: discountAmount, currency: currency, negative: true),
             valueColor: colors.statusSuccessFg,
           ),
         ],
@@ -229,27 +219,17 @@ class _LineItemsTotalsContent extends StatelessWidget {
             labelWidget: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.shield_outlined,
-                  size: 13,
-                  color: colors.statusSuccessFg,
-                ),
+                Icon(Icons.shield_outlined, size: 13, color: colors.statusSuccessFg),
                 const SizedBox(width: AppSpacing.space1 + AppSpacing.space05),
                 Flexible(
                   child: Text(
                     'Insurance covered$providerSuffix',
-                    style: AppTypography.bodySm(
-                      context,
-                    ).copyWith(color: colors.statusSuccessFg),
+                    style: AppTypography.bodySm(context).copyWith(color: colors.statusSuccessFg),
                   ),
                 ),
               ],
             ),
-            value: AppMoneyDisplay(
-              amount: insuranceCoveredAmount.asDouble,
-              currency: currency,
-              negative: true,
-            ),
+            value: AppMoneyDisplay(amount: insuranceCoveredAmount, currency: currency, negative: true),
             valueColor: colors.statusSuccessFg,
           ),
         ],
@@ -264,14 +244,8 @@ class _LineItemsTotalsContent extends StatelessWidget {
               label: 'Amount due',
               labelEmphasized: true,
               value: DefaultTextStyle(
-                style: AppTypography.h2(
-                  context,
-                ).copyWith(color: colors.textPrimary),
-                child: AppMoneyDisplay(
-                  amount: amountDue.asDouble,
-                  currency: currency,
-                  emphasis: true,
-                ),
+                style: AppTypography.h2(context).copyWith(color: colors.textPrimary),
+                child: AppMoneyDisplay(amount: amountDue, currency: currency, emphasis: true),
               ),
               valueEmphasized: true,
             ),
@@ -302,8 +276,8 @@ class _PaymentsTotalsContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final balanceLabel = isVoided ? 'Balance at void' : 'Balance due';
-    final balanceColor = !isVoided && balance.asDouble <= 0
+    final balanceLabel = InvoiceLabels.balanceLabel(isVoided: isVoided);
+    final balanceColor = InvoiceLabels.showsSettledStyling(balance: balance, isVoided: isVoided)
         ? colors.statusSuccessFg
         : colors.textPrimary;
 
@@ -313,20 +287,13 @@ class _PaymentsTotalsContent extends StatelessWidget {
       children: [
         _TotalsRow(
           label: 'Amount due',
-          value: AppMoneyDisplay(
-            amount: amountDue.asDouble,
-            currency: currency,
-            emphasis: true,
-          ),
+          value: AppMoneyDisplay(amount: amountDue, currency: currency, emphasis: true),
         ),
         if (hasPayments) ...[
           const SizedBox(height: AppSpacing.space2),
           _TotalsRow(
             label: 'Net paid',
-            value: AppMoneyDisplay(
-              amount: netPaid.asDouble,
-              currency: currency,
-            ),
+            value: AppMoneyDisplay(amount: netPaid, currency: currency),
           ),
         ],
         const SizedBox(height: AppSpacing.space3),
@@ -341,11 +308,7 @@ class _PaymentsTotalsContent extends StatelessWidget {
               labelEmphasized: true,
               value: DefaultTextStyle(
                 style: AppTypography.h2(context).copyWith(color: balanceColor),
-                child: AppMoneyDisplay(
-                  amount: balance.asDouble,
-                  currency: currency,
-                  emphasis: true,
-                ),
+                child: AppMoneyDisplay(amount: balance, currency: currency, emphasis: true),
               ),
               valueEmphasized: true,
               valueColor: balanceColor,
@@ -389,12 +352,8 @@ class _TotalsRow extends StatelessWidget {
         const SizedBox(width: AppSpacing.space4),
         DefaultTextStyle(
           style: valueEmphasized
-              ? AppTypography.bodyStrong(
-                  context,
-                ).copyWith(color: valueColor ?? colors.textPrimary)
-              : AppTypography.bodySm(
-                  context,
-                ).copyWith(color: valueColor ?? colors.textPrimary),
+              ? AppTypography.bodyStrong(context).copyWith(color: valueColor ?? colors.textPrimary)
+              : AppTypography.bodySm(context).copyWith(color: valueColor ?? colors.textPrimary),
           child: value,
         ),
       ],
@@ -439,22 +398,5 @@ class _DashedTopLinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DashedTopLinePainter oldDelegate) =>
-      color != oldDelegate.color;
-}
-
-String _discountKindLabel(DiscountKind? kind, String? value) {
-  if (kind == null || value == null) {
-    return '—';
-  }
-
-  final parsed = double.tryParse(value);
-  if (parsed == null) {
-    return '—';
-  }
-
-  return switch (kind) {
-    DiscountKind.percentage => '${parsed.round()}% off',
-    DiscountKind.fixed => '${parsed.toStringAsFixed(2)} off',
-  };
+  bool shouldRepaint(covariant _DashedTopLinePainter oldDelegate) => color != oldDelegate.color;
 }

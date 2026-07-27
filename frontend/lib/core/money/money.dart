@@ -56,6 +56,25 @@ class Money implements Comparable<Money> {
 
   Money operator -(Money other) => Money._(_value - other._value);
 
+  Money operator *(int quantity) => Money._(_value * Decimal.fromInt(quantity));
+
+  Money percentageOf(Decimal percent) {
+    final amount = (_value * percent / Decimal.fromInt(100))
+        .toDecimal(scaleOnInfinitePrecision: 2)
+        .round(scale: 2);
+    return Money._(amount);
+  }
+
+  Money clampToZeroAnd(Money max) {
+    if (_value < Decimal.zero) {
+      return zero;
+    }
+    if (_value > max._value) {
+      return max;
+    }
+    return this;
+  }
+
   @override
   int compareTo(Money other) => _value.compareTo(other._value);
 

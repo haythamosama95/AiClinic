@@ -7,6 +7,7 @@ import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_list_item.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 
 /// Paginated invoice list envelope from `list_invoices` (V1-6).
 class InvoiceListPageResult {
@@ -201,6 +202,8 @@ class InvoiceRepository with AppRpcInvoker {
   }
 
   Future<InvoiceListPageResult> listInvoices({Map<String, dynamic>? filters, int limit = 50, int offset = 0}) async {
+    // `sort_field` / `sort_direction` are forwarded via `p_filters` when present.
+    // The client no longer compensates client-side; unsupported sort fields are ignored by the server.
     final result = await invokeRpc('list_invoices', {
       'p_filters': filters ?? const {},
       'p_limit': limit,
@@ -220,6 +223,44 @@ class InvoiceRepository with AppRpcInvoker {
     });
 
     return _parseListPage(result.data);
+  }
+
+  static const _paymentEnrichmentBatchSize = 5;
+
+  /// Patient invoice list with payment rows hydrated from detail when needed.
+  Future<InvoiceListPageResult> listPatientInvoicesWithPayments({
+    required String patientId,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final page = await listPatientInvoices(patientId: patientId, limit: limit, offset: offset);
+    final enrichedItems = <InvoiceListItem>[];
+
+    for (var index = 0; index < page.items.length; index += _paymentEnrichmentBatchSize) {
+      final end = index + _paymentEnrichmentBatchSize;
+      final batch = page.items.sublist(index, end > page.items.length ? page.items.length : end);
+      final batchResults = await Future.wait(batch.map(_withPayments));
+      enrichedItems.addAll(batchResults);
+    }
+
+    return InvoiceListPageResult(items: enrichedItems, hasMore: page.hasMore);
+  }
+
+  Future<InvoiceListItem> _withPayments(InvoiceListItem item) async {
+    if (item.payments.isNotEmpty || item.status == InvoiceStatus.draft) {
+      return item;
+    }
+
+    final needsPayments = !item.paidAmount.isZero || !item.insuranceCoveredAmount.isZero;
+    if (!needsPayments) {
+      return item;
+    }
+
+    final detail = await getDetail(invoiceId: item.id);
+    if (detail.payments.isEmpty) {
+      return item;
+    }
+    return item.copyWith(payments: detail.payments);
   }
 
   InvoiceListPageResult _parseListPage(Map<String, dynamic>? data) {

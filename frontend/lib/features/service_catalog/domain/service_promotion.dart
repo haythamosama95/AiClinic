@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 
 /// Time-boxed promotion window for a (service, branch) pair (Service Catalog 015 US4).
 @immutable

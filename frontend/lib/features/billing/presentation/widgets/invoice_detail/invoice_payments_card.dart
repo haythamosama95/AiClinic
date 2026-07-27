@@ -26,6 +26,9 @@ class InvoicePaymentsCard extends StatelessWidget {
     this.onAddPayment,
     this.canAddPayment = false,
     this.addPaymentTooltip,
+    this.onRefund,
+    this.canRefund = false,
+    this.refundTooltip,
     super.key,
   });
 
@@ -36,6 +39,9 @@ class InvoicePaymentsCard extends StatelessWidget {
   final VoidCallback? onAddPayment;
   final bool canAddPayment;
   final String? addPaymentTooltip;
+  final VoidCallback? onRefund;
+  final bool canRefund;
+  final String? refundTooltip;
 
   static const _smBreakpoint = 600.0;
   static const _mdBreakpoint = 768.0;
@@ -58,6 +64,18 @@ class InvoicePaymentsCard extends StatelessWidget {
               disabled: !canAddPayment,
               onPressed: canAddPayment ? onAddPayment : null,
               child: const Text('Add payment'),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.space2),
+          InvoiceDetailTooltip(
+            message: refundTooltip ?? InvoiceDetailActionTooltips.refundMessage(disabledReason: null),
+            child: AppButton(
+              variant: AppButtonVariant.secondary,
+              size: AppButtonSize.sm,
+              leadingIcon: const Icon(Icons.undo, size: 16),
+              disabled: !canRefund,
+              onPressed: canRefund ? onRefund : null,
+              child: const Text('Record refund'),
             ),
           ),
         ],
@@ -227,7 +245,7 @@ class _PaymentLedgerRow extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: DefaultTextStyle(
                 style: AppTypography.bodySm(context).copyWith(color: amountColor),
-                child: AppMoneyDisplay(amount: payment.amount.asDouble, currency: currency, negative: payment.isRefund),
+                child: AppMoneyDisplay(amount: payment.amount, currency: currency, negative: payment.isRefund),
               ),
             ),
           ),

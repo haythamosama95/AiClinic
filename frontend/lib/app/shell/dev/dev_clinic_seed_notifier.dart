@@ -15,6 +15,7 @@ import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/visits/data/visit_repository.dart';
 import 'package:ai_clinic/features/billing/data/billing_settings_repository.dart';
 import 'package:ai_clinic/features/billing/data/insurance_provider_repository.dart';
+import 'package:ai_clinic/features/billing/data/invoice_item_repository.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/data/payment_repository.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
@@ -62,6 +63,7 @@ final devClinicSeedServiceProvider = Provider<DevClinicSeedService>((ref) {
     insuranceProviders: ref.watch(insuranceProviderRepositoryProvider),
     billingSettings: ref.watch(billingSettingsRepositoryProvider),
     serviceCatalog: ref.watch(serviceCatalogRepositoryProvider),
+    invoiceItems: ref.watch(invoiceItemRepositoryProvider),
   );
 });
 

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
-import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
+import 'package:ai_clinic/core/money/money_formatter.dart';
 
 /// Modal invoice summary for a completed visit.
 class VisitInvoiceSummaryDialog {
@@ -23,7 +23,7 @@ class VisitInvoiceSummaryDialog {
           const SizedBox(height: 8),
           Text('Status: ${invoice.status.label}'),
           const SizedBox(height: 8),
-          Text('Total: ${BillingFormatting.formatMoney(invoice.subtotal, currency: invoice.currency)}'),
+          Text('Total: ${MoneyFormatter.format(invoice.subtotal, currency: invoice.currency)}'),
           if (invoice.items.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text('${invoice.items.length} line item(s)', style: Theme.of(context).textTheme.bodySmall),

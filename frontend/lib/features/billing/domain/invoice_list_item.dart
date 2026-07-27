@@ -1,5 +1,5 @@
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:flutter/foundation.dart';
 
@@ -37,7 +37,9 @@ class InvoiceListItem {
   final List<Payment> payments;
 
   /// Subtotal minus invoice-level discount (line discounts are reflected in subtotal server-side).
-  String get displayTotal => (subtotal - discountAmount).wireValue;
+  Money get netTotal => subtotal - discountAmount;
+
+  Money get originalDue => subtotal - discountAmount - insuranceCoveredAmount;
 
   static InvoiceListItem? fromRow(Map<String, dynamic> row) {
     final id = row['id']?.toString();

@@ -5,6 +5,7 @@ import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_money_display.dart';
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
+import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_section_title.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_totals_panel.dart';
@@ -36,7 +37,7 @@ class InvoiceLineItemsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasLineDiscounts = items.any((item) => item.lineDiscountAmount.asDouble > 0);
+    final hasLineDiscounts = items.any((item) => item.lineDiscountAmount.isPositive);
 
     return AppCard(
       variant: CardVariant.raised,
@@ -159,8 +160,8 @@ class _LineItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final discountText = item.lineDiscountAmount.asDouble > 0
-        ? DiscountKind.labelFor(item.lineDiscountKind, item.lineDiscountValue)
+    final discountText = item.lineDiscountAmount.isPositive
+        ? BillingFormatting.discountLabel(item.lineDiscountKind, item.lineDiscountValue, currency: currency)
         : '—';
 
     return Padding(
@@ -175,7 +176,7 @@ class _LineItemRow extends StatelessWidget {
             Expanded(
               child: Align(
                 alignment: Alignment.centerRight,
-                child: AppMoneyDisplay(amount: item.unitPrice.asDouble, currency: currency),
+                child: AppMoneyDisplay(amount: item.unitPrice, currency: currency),
               ),
             ),
           SizedBox(
@@ -201,7 +202,7 @@ class _LineItemRow extends StatelessWidget {
           Expanded(
             child: Align(
               alignment: Alignment.centerRight,
-              child: AppMoneyDisplay(amount: item.lineTotal.asDouble, currency: currency),
+              child: AppMoneyDisplay(amount: item.lineTotal, currency: currency),
             ),
           ),
         ],

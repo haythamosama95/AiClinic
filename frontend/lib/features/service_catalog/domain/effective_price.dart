@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 
 /// Which pricing rule produced the resolved unit price (Service Catalog 015).
 enum AppliedPriceRule {

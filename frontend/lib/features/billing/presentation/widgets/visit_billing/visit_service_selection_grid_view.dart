@@ -53,12 +53,10 @@ class VisitServiceSelectionGridView extends StatelessWidget {
           itemBuilder: (context, index) {
             final service = services[index];
             final isSelected = selectedIds.contains(service.serviceId);
-            final line = selectedLines
-                .cast<VisitSelectedServiceLine?>()
-                .firstWhere(
-                  (entry) => entry?.serviceId == service.serviceId,
-                  orElse: () => null,
-                );
+            final line = selectedLines.cast<VisitSelectedServiceLine?>().firstWhere(
+              (entry) => entry?.serviceId == service.serviceId,
+              orElse: () => null,
+            );
             final quantity = line?.quantity ?? 1;
 
             return _AnimatedGridTile(
@@ -69,12 +67,8 @@ class VisitServiceSelectionGridView extends StatelessWidget {
                 isSelected: isSelected,
                 quantity: quantity,
                 onToggle: () => onToggle(service, !isSelected),
-                onDecrease: quantity > 1
-                    ? () => onQuantityChange(service.serviceId, quantity - 1)
-                    : null,
-                onIncrease: quantity < 99
-                    ? () => onQuantityChange(service.serviceId, quantity + 1)
-                    : null,
+                onDecrease: quantity > 1 ? () => onQuantityChange(service.serviceId, quantity - 1) : null,
+                onIncrease: quantity < 99 ? () => onQuantityChange(service.serviceId, quantity + 1) : null,
               ),
             );
           },
@@ -94,8 +88,7 @@ class _AnimatedGridTile extends StatefulWidget {
   State<_AnimatedGridTile> createState() => _AnimatedGridTileState();
 }
 
-class _AnimatedGridTileState extends State<_AnimatedGridTile>
-    with SingleTickerProviderStateMixin {
+class _AnimatedGridTileState extends State<_AnimatedGridTile> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _animation;
 
@@ -105,28 +98,13 @@ class _AnimatedGridTileState extends State<_AnimatedGridTile>
   @override
   void initState() {
     super.initState();
-    final reducedMotion = WidgetsBinding
-        .instance
-        .platformDispatcher
-        .accessibilityFeatures
-        .disableAnimations;
-    _controller = AnimationController(
-      vsync: this,
-      duration: reducedMotion ? Duration.zero : AppMotionDuration.quick,
-    );
-    _animation = CurvedAnimation(
-      parent: _controller,
-      curve: AppMotion.outCurve,
-    );
+    final reducedMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    _controller = AnimationController(vsync: this, duration: reducedMotion ? Duration.zero : AppMotionDuration.quick);
+    _animation = CurvedAnimation(parent: _controller, curve: AppMotion.outCurve);
 
     final delay = reducedMotion
         ? Duration.zero
-        : Duration(
-            milliseconds: (widget.index * _staggerStepMs).clamp(
-              0,
-              _maxStaggerMs,
-            ),
-          );
+        : Duration(milliseconds: (widget.index * _staggerStepMs).clamp(0, _maxStaggerMs));
 
     if (delay == Duration.zero) {
       _controller.forward();
@@ -180,26 +158,18 @@ class _ServiceGridCard extends StatelessWidget {
     final colors = context.appColors;
 
     return AnimatedContainer(
-      duration: AppMotion.prefersReducedMotion(context)
-          ? Duration.zero
-          : AppMotionDuration.fast,
+      duration: AppMotion.prefersReducedMotion(context) ? Duration.zero : AppMotionDuration.fast,
       curve: AppMotion.standardCurve,
       decoration: BoxDecoration(
         color: isSelected ? colors.surfaceSelected : colors.surfaceDefault,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(
-          color: isSelected ? colors.actionPrimary : colors.borderDefault,
-        ),
+        border: Border.all(color: isSelected ? colors.actionPrimary : colors.borderDefault),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (isSelected)
-            ColoredBox(
-              color: colors.actionPrimary,
-              child: const SizedBox(height: 2),
-            ),
+          if (isSelected) ColoredBox(color: colors.actionPrimary, child: const SizedBox(height: 2)),
           Expanded(
             child: Material(
               color: Colors.transparent,
@@ -218,17 +188,11 @@ class _ServiceGridCard extends StatelessWidget {
                               service.name,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: AppTypography.bodyStrong(context).copyWith(
-                                color: colors.textPrimary,
-                                height: 1.3,
-                              ),
+                              style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary, height: 1.3),
                             ),
                           ),
                           const SizedBox(width: AppSpacing.space2),
-                          _SelectionIndicator(
-                            isSelected: isSelected,
-                            colors: colors,
-                          ),
+                          _SelectionIndicator(isSelected: isSelected, colors: colors),
                         ],
                       ),
                       const Spacer(),
@@ -238,10 +202,7 @@ class _ServiceGridCard extends StatelessWidget {
                           fontFamily: 'monospace',
                           fontFeatures: const [FontFeature.tabularFigures()],
                         ),
-                        child: AppMoneyDisplay(
-                          amount: service.unitPrice.asDouble,
-                          currency: currency,
-                        ),
+                        child: AppMoneyDisplay(amount: service.unitPrice, currency: currency),
                       ),
                     ],
                   ),
@@ -255,18 +216,10 @@ class _ServiceGridCard extends StatelessWidget {
                 border: Border(top: BorderSide(color: colors.borderSubtle)),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.space3,
-                  vertical: AppSpacing.space2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3, vertical: AppSpacing.space2),
                 child: Row(
                   children: [
-                    Text(
-                      'Qty',
-                      style: AppTypography.caption(
-                        context,
-                      ).copyWith(color: colors.textTertiary),
-                    ),
+                    Text('Qty', style: AppTypography.caption(context).copyWith(color: colors.textTertiary)),
                     const Spacer(),
                     AppIconButton(
                       icon: const Icon(Icons.remove_rounded, size: 14),
@@ -279,10 +232,9 @@ class _ServiceGridCard extends StatelessWidget {
                       child: Text(
                         '$quantity',
                         textAlign: TextAlign.center,
-                        style: AppTypography.bodySm(context).copyWith(
-                          fontFamily: 'monospace',
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+                        style: AppTypography.bodySm(
+                          context,
+                        ).copyWith(fontFamily: 'monospace', fontFeatures: const [FontFeature.tabularFigures()]),
                       ),
                     ),
                     AppIconButton(
@@ -310,21 +262,15 @@ class _SelectionIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: AppMotion.prefersReducedMotion(context)
-          ? Duration.zero
-          : AppMotionDuration.fast,
+      duration: AppMotion.prefersReducedMotion(context) ? Duration.zero : AppMotionDuration.fast,
       width: 20,
       height: 20,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: isSelected ? colors.actionPrimary : colors.surfaceDefault,
-        border: Border.all(
-          color: isSelected ? colors.actionPrimary : colors.borderDefault,
-        ),
+        border: Border.all(color: isSelected ? colors.actionPrimary : colors.borderDefault),
       ),
-      child: isSelected
-          ? Icon(Icons.check_rounded, size: 12, color: colors.actionPrimaryFg)
-          : null,
+      child: isSelected ? Icon(Icons.check_rounded, size: 12, color: colors.actionPrimaryFg) : null,
     );
   }
 }

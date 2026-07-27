@@ -1,5 +1,5 @@
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:flutter/foundation.dart';
 
 /// Payment or refund row on an invoice (`get_invoice_detail`, V1-6).

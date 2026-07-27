@@ -4,9 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ai_clinic/app/providers/auth_session_provider.dart';
 import 'package:ai_clinic/core/auth/auth_route_guard.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_actions.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
-import 'package:ai_clinic/features/billing/domain/invoice_list_item.dart';
-import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
 
 /// Permission-aware invoice detail for billing screens (V1-6).
 @immutable
@@ -26,6 +25,16 @@ class InvoiceDetailViewState {
   final bool canVoid;
   final bool canRecordPayment;
   final bool canRefund;
+
+  /// Combined status/permission gates for invoice detail actions.
+  InvoiceActionPolicy get actions => InvoiceActionPolicy(
+    status: invoice.status,
+    canCreate: canCreate,
+    canApplyDiscount: canApplyDiscount,
+    canVoidPermission: canVoid,
+    canRecordPaymentPermission: canRecordPayment,
+    canRefundPermission: canRefund,
+  );
 }
 
 /// Backend-first invoice detail with permission flags.
@@ -61,30 +70,5 @@ final patientInvoicesProvider = FutureProvider.autoDispose.family<InvoiceListPag
     return const InvoiceListPageResult(items: [], hasMore: false);
   }
 
-  final repo = ref.read(invoiceRepositoryProvider);
-  final page = await repo.listPatientInvoices(patientId: patientId);
-  final enrichedItems = await Future.wait(page.items.map((item) => _enrichInvoicePayments(repo, item)));
-
-  return InvoiceListPageResult(items: enrichedItems, hasMore: page.hasMore);
+  return ref.read(invoiceRepositoryProvider).listPatientInvoicesWithPayments(patientId: patientId);
 });
-
-Future<InvoiceListItem> _enrichInvoicePayments(InvoiceRepository repo, InvoiceListItem item) async {
-  if (item.payments.isNotEmpty || item.status == InvoiceStatus.draft) {
-    return item;
-  }
-
-  final needsPayments = !item.paidAmount.isZero || !item.insuranceCoveredAmount.isZero;
-  if (!needsPayments) {
-    return item;
-  }
-
-  try {
-    final detail = await repo.getDetail(invoiceId: item.id);
-    if (detail.payments.isEmpty) {
-      return item;
-    }
-    return item.copyWith(payments: detail.payments);
-  } on Object {
-    return item;
-  }
-}

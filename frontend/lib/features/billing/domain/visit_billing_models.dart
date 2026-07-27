@@ -1,5 +1,7 @@
+import 'package:decimal/decimal.dart';
 import 'package:flutter/foundation.dart';
 
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
 
 /// Billing sub-step within the post-review visit workflow (web `BillingStep`).
@@ -22,10 +24,10 @@ class VisitSelectedServiceLine {
   final String id;
   final String serviceId;
   final String name;
-  final double unitPrice;
+  final Money unitPrice;
   final int quantity;
 
-  double get lineTotal => unitPrice * quantity;
+  Money get lineTotal => unitPrice * quantity;
 
   VisitSelectedServiceLine copyWith({int? quantity}) {
     return VisitSelectedServiceLine(
@@ -42,7 +44,7 @@ class VisitSelectedServiceLine {
       id: 'line-${service.serviceId}-${DateTime.now().microsecondsSinceEpoch}',
       serviceId: service.serviceId,
       name: service.name,
-      unitPrice: service.unitPrice.asDouble,
+      unitPrice: service.unitPrice,
       quantity: 1,
     );
   }
@@ -57,30 +59,30 @@ class VisitBillingTotals {
     required this.total,
   });
 
-  final double subtotal;
-  final double discountAmount;
-  final double total;
+  final Money subtotal;
+  final Money discountAmount;
+  final Money total;
 }
 
-double visitBillingLineTotal(VisitSelectedServiceLine line) => line.lineTotal;
+Money visitBillingLineTotal(VisitSelectedServiceLine line) => line.lineTotal;
 
 VisitBillingTotals computeVisitBillingTotals(
   List<VisitSelectedServiceLine> lines,
   VisitBillingDiscountType discountType,
-  double discountValue,
+  Decimal discountValue,
 ) {
-  final subtotal = lines.fold<double>(
-    0,
+  final subtotal = lines.fold<Money>(
+    Money.zero,
     (sum, line) => sum + visitBillingLineTotal(line),
   );
-  var discountAmount = 0.0;
+  var discountAmount = Money.zero;
 
   if (discountType == VisitBillingDiscountType.percentage &&
-      discountValue > 0) {
-    discountAmount = (subtotal * discountValue / 100).clamp(0, subtotal);
+      discountValue > Decimal.zero) {
+    discountAmount = subtotal.percentageOf(discountValue).clampToZeroAnd(subtotal);
   } else if (discountType == VisitBillingDiscountType.fixed &&
-      discountValue > 0) {
-    discountAmount = discountValue.clamp(0, subtotal);
+      discountValue > Decimal.zero) {
+    discountAmount = Money.parse(discountValue.toString()).clampToZeroAnd(subtotal);
   }
 
   return VisitBillingTotals(
@@ -106,10 +108,10 @@ class VisitBillingInvoicePreview {
   final String number;
   final List<VisitSelectedServiceLine> lines;
   final VisitBillingDiscountType discountType;
-  final double discountValue;
-  final double subtotal;
-  final double discountAmount;
-  final double total;
+  final Decimal discountValue;
+  final Money subtotal;
+  final Money discountAmount;
+  final Money total;
 }
 
 String generateVisitBillingInvoicePreviewNumber() {

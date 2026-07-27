@@ -171,6 +171,13 @@ abstract final class AuthRouteGuard {
     return canAccessInvoiceList(auth);
   }
 
+  static bool canAccessInvoiceEdit(AuthSessionState auth) {
+    if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
+      return false;
+    }
+    return PermissionService(auth.context).canCreateInvoices();
+  }
+
   static bool canAccessInsuranceProviders(AuthSessionState auth) {
     if (!auth.isAuthenticated || (auth.context?.needsClinicSetup ?? true)) {
       return false;
@@ -183,7 +190,7 @@ abstract final class AuthRouteGuard {
       return false;
     }
     final permissions = PermissionService(auth.context);
-    return permissions.canViewInvoices() || permissions.canRecordPayment();
+    return permissions.canManageBillingSettings();
   }
 
   /// V1-7 shift routes under `/shifts`.
@@ -255,6 +262,7 @@ abstract final class AuthRouteGuard {
       AppRoutes.billingInvoices => canAccessInvoiceList(auth),
       AppRoutes.billingInsuranceProviders => canAccessInsuranceProviders(auth),
       AppRoutes.settingsBilling => canAccessBillingSettings(auth),
+      _ when location.endsWith('/${AppRoutes.billingInvoiceEditSegment}') => canAccessInvoiceEdit(auth),
       _ when location.startsWith('${AppRoutes.billingInvoices}/') => canAccessInvoiceDetail(auth),
       _ => false,
     };

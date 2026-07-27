@@ -8,6 +8,7 @@ import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
 import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 
 /// Sticky selected-services summary (web `ServiceSelectionSidebar`).
@@ -20,7 +21,7 @@ class VisitServiceSelectionSidebar extends StatefulWidget {
   });
 
   final List<VisitSelectedServiceLine> selectedLines;
-  final double subtotal;
+  final Money subtotal;
   final String currency;
 
   @override

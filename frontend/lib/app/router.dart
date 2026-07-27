@@ -25,6 +25,7 @@ import 'package:ai_clinic/features/patients/presentation/pages/patients_page.dar
 import 'package:ai_clinic/features/appointments/presentation/navigation/appointment_detail_route_extra.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_calendar_page.dart';
 import 'package:ai_clinic/features/appointments/presentation/pages/appointment_detail_page.dart';
+import 'package:ai_clinic/features/billing/presentation/pages/billing_settings_page.dart';
 
 String _redirectToClinicManagement(BuildContext context, GoRouterState state) => AppRoutes.clinicManagement;
 
@@ -129,7 +130,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '${AppRoutes.billingInvoices}/:invoiceId', builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.billingInsuranceProviders, builder: shellPlaceholderPage),
-          GoRoute(path: AppRoutes.settingsBilling, builder: shellPlaceholderPage),
+          GoRoute(path: AppRoutes.settingsBilling, builder: (context, state) => const BillingSettingsPage()),
           GoRoute(path: AppRoutes.settingsServices, builder: shellPlaceholderPage),
           GoRoute(path: AppRoutes.settingsServicesNew, builder: shellPlaceholderPage),
           GoRoute(path: '/settings/services/:serviceId/edit', builder: shellPlaceholderPage),

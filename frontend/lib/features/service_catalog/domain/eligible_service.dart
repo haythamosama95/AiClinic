@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/effective_price.dart';
 
 /// Eligible catalog row returned by `search_eligible_services` (Service Catalog 015 US2).

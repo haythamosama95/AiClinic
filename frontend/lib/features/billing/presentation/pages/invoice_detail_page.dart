@@ -14,9 +14,12 @@ import 'package:ai_clinic/core/ui/motion/app_motion.dart';
 import 'package:ai_clinic/core/ui/theme/app_radius.dart';
 import 'package:ai_clinic/core/ui/theme/app_semantic_colors.dart';
 import 'package:ai_clinic/core/ui/theme/app_spacing.dart';
-import 'package:ai_clinic/core/ui/theme/app_typography.dart';
+import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
+import 'package:ai_clinic/features/billing/application/billing_rpc_messages.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_stale_exception.dart';
+import 'package:ai_clinic/features/billing/presentation/providers/invoice_ledger_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
@@ -27,7 +30,8 @@ import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/i
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_totals_panel.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_voided_notice.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/payment_form.dart';
-import 'package:ai_clinic/features/billing/presentation/widgets/receipt_print_preview.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/refund_form.dart';
+import 'package:ai_clinic/features/billing/presentation/widgets/receipt/receipt_print_preview.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/void_invoice_dialog.dart';
 import 'package:ai_clinic/features/patients/domain/patient_detail.dart';
 import 'package:ai_clinic/features/patients/presentation/providers/patient_detail_provider.dart';
@@ -172,12 +176,6 @@ class _InvoiceDetailBody extends ConsumerStatefulWidget {
 class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
   InvoiceDetail get invoice => widget.view.invoice;
 
-  Money _amountDue() => invoice.subtotal - invoice.discountAmount - invoice.insuranceCoveredAmount;
-
-  Money _netPaid() {
-    return invoice.payments.fold(Money.zero, (sum, payment) => sum + payment.amount);
-  }
-
   String _displayOrDash(String? value) {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? '—' : trimmed;
@@ -188,12 +186,38 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
   bool get _hasResolvableVisit => _visitSummary != null;
 
   Future<void> _voidInvoice() async {
-    final confirmed = await VoidInvoiceDialog.show(context, invoice: invoice);
-    if (!confirmed || !mounted) {
+    final reason = await VoidInvoiceDialog.show(context, invoice: invoice);
+    if (reason == null || !mounted) {
       return;
     }
 
-    await refreshInvoiceBillingSurfaces(ref, invoiceId: invoice.id, patientId: invoice.patientId);
+    try {
+      await ref.read(invoiceLedgerProvider(invoice.id)).voidInvoice(reason: reason);
+    } on InvoiceStaleException {
+      if (!mounted) {
+        return;
+      }
+      appToast(
+        context,
+        const AppToastInput(
+          message: 'This invoice was updated elsewhere. Reloading…',
+          variant: AppToastVariant.info,
+        ),
+      );
+      ref.invalidate(invoiceDetailViewProvider(invoice.id));
+    } on RpcFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      appToast(
+        context,
+        AppToastInput(message: billingMessageForRpc(error), variant: AppToastVariant.danger),
+      );
+    }
+  }
+
+  Future<void> _refreshLedgerSurfaces() {
+    return ref.read(invoiceLedgerProvider(invoice.id)).refreshSurfaces();
   }
 
   Future<void> _showRecordPaymentDialog() async {
@@ -206,7 +230,24 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
           invoice: invoice,
           onRecorded: () async {
             Navigator.of(dialogContext).pop();
-            await refreshInvoiceBillingSurfaces(ref, invoiceId: invoice.id, patientId: invoice.patientId);
+            await _refreshLedgerSurfaces();
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRefundDialog() async {
+    await AppDialog.show<void>(
+      context,
+      title: 'Record refund',
+      size: AppDialogSize.lg,
+      child: Builder(
+        builder: (dialogContext) => RefundForm(
+          invoice: invoice,
+          onRecorded: () async {
+            Navigator.of(dialogContext).pop();
+            await _refreshLedgerSurfaces();
           },
         ),
       ),
@@ -261,11 +302,13 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
         : 'Unknown patient';
     final patientMrn = _displayOrDash(invoice.patientMrn);
     final patientPhone = _displayOrDash(_resolvePatientPhone(patientAsync));
-    final amountDue = _amountDue();
-    final netPaid = _netPaid();
-    final canEdit = invoice.status.isDraft && widget.view.canCreate;
-    final canAddPayment = widget.view.canRecordPayment && !invoice.status.isDraft && !invoice.status.isTerminal;
-    final canVoid = widget.view.canVoid && invoice.status.isVoidable;
+    final actions = widget.view.actions;
+    final amountDue = invoice.originalDue;
+    final netPaid = invoice.netPaid;
+    final canEdit = actions.canEdit;
+    final canAddPayment = actions.canRecordPayment;
+    final canVoid = actions.canVoid;
+    final canRefund = actions.canRefund && invoice.payments.isNotEmpty;
     final editDisabledReason = InvoiceDetailActionTooltips.editDisabledReason(
       canCreate: widget.view.canCreate,
       status: invoice.status,
@@ -277,6 +320,11 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
     final voidDisabledReason = InvoiceDetailActionTooltips.voidDisabledReason(
       canVoid: widget.view.canVoid,
       status: invoice.status,
+    );
+    final refundDisabledReason = InvoiceDetailActionTooltips.refundDisabledReason(
+      canRefund: widget.view.canRefund,
+      status: invoice.status,
+      hasPayments: invoice.payments.isNotEmpty,
     );
 
     final linkCards = [
@@ -369,6 +417,9 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
           canAddPayment: canAddPayment,
           addPaymentTooltip: InvoiceDetailActionTooltips.addPaymentMessage(disabledReason: addPaymentDisabledReason),
           onAddPayment: _showRecordPaymentDialog,
+          canRefund: canRefund,
+          refundTooltip: InvoiceDetailActionTooltips.refundMessage(disabledReason: refundDisabledReason),
+          onRefund: _showRefundDialog,
           totals: InvoiceTotalsModel.payments(
             amountDue: amountDue,
             netPaid: netPaid,

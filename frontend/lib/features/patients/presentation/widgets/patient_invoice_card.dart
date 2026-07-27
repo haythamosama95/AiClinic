@@ -6,9 +6,10 @@ import 'package:ai_clinic/core/ui/l10n/app_localizations_x.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_list_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
+import 'package:ai_clinic/core/money/money_formatter.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/payment_method_l10n.dart';
 import 'package:ai_clinic/features/patients/presentation/utils/patient_presentation_formatting.dart';
@@ -115,7 +116,7 @@ class PatientInvoiceCard extends ConsumerWidget {
                           ),
                           const SizedBox(height: AppSpacing.space1),
                           Text(
-                            BillingFormatting.formatMoney(invoice.balance, currency: currency, locale: locale),
+                            MoneyFormatter.format(invoice.balance, currency: currency, locale: locale),
                             style: AppTypography.h2(
                               context,
                             ).copyWith(color: colors.textPrimary, fontFeatures: const [FontFeature.tabularFigures()]),
@@ -208,7 +209,7 @@ class _InvoicePaymentRow extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.space2),
         Text(
-          BillingFormatting.formatMoney(payment.amount, currency: currency, locale: locale),
+          MoneyFormatter.format(payment.amount, currency: currency, locale: locale),
           style: AppTypography.caption(context).copyWith(
             color: amountColor,
             fontWeight: FontWeight.w600,
@@ -269,7 +270,7 @@ class _InvoicePaidSummaryRow extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.space2),
         Text(
-          BillingFormatting.formatMoney(amount, currency: currency, locale: locale),
+          MoneyFormatter.format(amount, currency: currency, locale: locale),
           style: AppTypography.caption(context).copyWith(
             color: colors.statusSuccessFg,
             fontWeight: FontWeight.w600,
@@ -308,7 +309,7 @@ class _InvoiceInsuranceRow extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.space2),
         Text(
-          BillingFormatting.formatMoney(amount, currency: currency, locale: locale),
+          MoneyFormatter.format(amount, currency: currency, locale: locale),
           style: AppTypography.caption(context).copyWith(
             color: colors.textPrimary,
             fontWeight: FontWeight.w600,

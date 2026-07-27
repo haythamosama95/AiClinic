@@ -6,7 +6,7 @@ import 'package:ai_clinic/core/ui/components/app_button.dart';
 import 'package:ai_clinic/core/ui/components/app_card.dart';
 import 'package:ai_clinic/core/ui/components/app_money_display.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_meta_grid.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
@@ -51,7 +51,7 @@ class InvoiceHeroCard extends StatelessWidget {
     final displayNumber = BillingFormatting.invoiceDisplayNumber(invoice.invoiceNumber, invoice.id);
     final isVoided = invoice.status.isVoided;
     final balanceLabel = isVoided ? 'Balance at void' : 'Balance due';
-    final balanceColor = !isVoided && balance.asDouble <= 0 ? colors.statusSuccessFg : colors.textPrimary;
+    final balanceColor = !isVoided && !balance.isPositive ? colors.statusSuccessFg : colors.textPrimary;
     final mrnDisplay = mrn?.trim().isNotEmpty == true ? mrn!.trim() : '—';
 
     return AppCard(
@@ -193,14 +193,16 @@ class InvoiceHeroCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       Text(balanceLabel, style: AppTypography.overline(context).copyWith(color: colors.textTertiary)),
-                      AppMoneyDisplay(
-                        amount: balance.asDouble,
-                        currency: invoice.currency,
-                        emphasis: true,
-                        negative: balance.isNegative,
+                      DefaultTextStyle(
                         style: AppTypography.h1(
                           context,
                         ).copyWith(color: balanceColor, fontFeatures: const [FontFeature.tabularFigures()]),
+                        child: AppMoneyDisplay(
+                          amount: balance,
+                          currency: invoice.currency,
+                          emphasis: true,
+                          negative: balance.isNegative,
+                        ),
                       ),
                     ],
                   ),

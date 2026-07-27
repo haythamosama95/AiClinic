@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 
 /// Organization-scoped catalog service (Service Catalog 015).

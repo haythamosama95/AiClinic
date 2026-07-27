@@ -8,12 +8,11 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
 import 'package:ai_clinic/features/service_catalog/presentation/providers/service_selector_notifier.dart';
-import 'package:ai_clinic/features/billing/presentation/providers/organization_currency_provider.dart';
+import 'package:ai_clinic/core/money/organization_currency_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/visit_billing_flow_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_service_selection_grid_view.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_service_selection_list_view.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/visit_billing/visit_service_selection_sidebar.dart';
-import 'package:ai_clinic/features/visits/presentation/providers/visit_documentation_notifier.dart';
 
 enum _ServiceSelectionView { grid, list }
 
@@ -21,12 +20,14 @@ enum _ServiceSelectionView { grid, list }
 class VisitServiceSelectionStep extends ConsumerStatefulWidget {
   const VisitServiceSelectionStep({
     required this.visitId,
+    required this.branchId,
     required this.onBack,
     required this.onContinue,
     super.key,
   });
 
   final String visitId;
+  final String branchId;
   final VoidCallback onBack;
   final VoidCallback? onContinue;
 
@@ -53,12 +54,8 @@ class _VisitServiceSelectionStepState
   }
 
   void _loadCatalog(String query) {
-    final branchId = ref
-        .read(visitDocumentationProvider(widget.visitId))
-        .value
-        ?.visit
-        .branchId;
-    if (branchId == null || branchId.isEmpty) {
+    final branchId = widget.branchId.trim();
+    if (branchId.isEmpty) {
       return;
     }
     ref.read(serviceSelectorProvider(branchId).notifier).search(query);
@@ -72,12 +69,8 @@ class _VisitServiceSelectionStepState
     final billingNotifier = ref.read(
       visitBillingFlowProvider(widget.visitId).notifier,
     );
-    final branchId = ref
-        .watch(visitDocumentationProvider(widget.visitId))
-        .value
-        ?.visit
-        .branchId;
-    final catalogAsync = branchId == null
+    final branchId = widget.branchId.trim();
+    final catalogAsync = branchId.isEmpty
         ? const AsyncValue<List<EligibleService>>.loading()
         : ref.watch(serviceSelectorProvider(branchId));
 

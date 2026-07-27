@@ -20,6 +20,7 @@ import 'package:ai_clinic/features/setup/domain/repositories/provisioning_reposi
 import 'package:ai_clinic/features/shifts/data/shift_repository.dart';
 import 'package:ai_clinic/features/billing/data/billing_settings_repository.dart';
 import 'package:ai_clinic/features/billing/data/insurance_provider_repository.dart';
+import 'package:ai_clinic/features/billing/data/invoice_item_repository.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/data/payment_repository.dart';
 import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
@@ -94,6 +95,7 @@ class DevClinicSeedService {
     required InsuranceProviderRepository insuranceProviders,
     required BillingSettingsRepository billingSettings,
     required ServiceCatalogRepository serviceCatalog,
+    required InvoiceItemRepository invoiceItems,
   }) : _bootstrap = bootstrap,
        _branches = branches,
        _provisioning = provisioning,
@@ -107,7 +109,8 @@ class DevClinicSeedService {
        _payments = payments,
        _insuranceProviders = insuranceProviders,
        _billingSettings = billingSettings,
-       _serviceCatalog = serviceCatalog;
+       _serviceCatalog = serviceCatalog,
+       _invoiceItems = invoiceItems;
 
   final BootstrapRepository _bootstrap;
   final BranchRepository _branches;
@@ -123,6 +126,7 @@ class DevClinicSeedService {
   final InsuranceProviderRepository _insuranceProviders;
   final BillingSettingsRepository _billingSettings;
   final ServiceCatalogRepository _serviceCatalog;
+  final InvoiceItemRepository _invoiceItems;
 
   Future<void> run({
     required AuthSessionContext auth,
@@ -695,7 +699,7 @@ class DevClinicSeedService {
         throw StateError('Consultation service was not created for dev billing seed.');
       }
 
-      await _serviceCatalog.addInvoiceItemFromService(
+      await _invoiceItems.addFromService(
         invoiceId: invoiceId,
         expectedUpdatedAt: detail.updatedAt,
         serviceId: serviceId,

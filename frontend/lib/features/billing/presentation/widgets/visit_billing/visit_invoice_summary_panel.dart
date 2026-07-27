@@ -9,8 +9,8 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/core/ui/widgets/widgets.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
-import 'package:ai_clinic/features/billing/presentation/providers/organization_currency_provider.dart';
+import 'package:ai_clinic/core/money/money.dart';
+import 'package:ai_clinic/core/money/organization_currency_provider.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/domain/visit_billing_models.dart';
 
@@ -168,7 +168,7 @@ class _InvoiceDetailSummary extends StatelessWidget {
                     ),
                   ),
                   AppMoneyDisplay(
-                    amount: netTotal.asDouble,
+                    amount: netTotal,
                     currency: invoice.currency,
                     emphasis: true,
                   ),
@@ -195,7 +195,7 @@ class _PreviewSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasDiscount = preview.discountAmount > 0;
+    final hasDiscount = !preview.discountAmount.isZero;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -306,7 +306,7 @@ class _LineItemRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.space3),
-        AppMoneyDisplay(amount: item.lineTotal.asDouble, currency: currency),
+        AppMoneyDisplay(amount: item.lineTotal, currency: currency),
       ],
     );
   }
@@ -348,7 +348,7 @@ class _AmountRow extends StatelessWidget {
           ),
         ),
         AppMoneyDisplay(
-          amount: amount.asDouble,
+          amount: amount,
           currency: currency,
           emphasis: emphasis,
           negative: negative ? true : null,

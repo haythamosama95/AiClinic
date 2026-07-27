@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/global_status.dart';
 
 /// Branch-specific summary attached to a catalog list row when filtering by branch.

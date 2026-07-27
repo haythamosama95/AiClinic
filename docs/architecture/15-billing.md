@@ -95,21 +95,24 @@ There is **no** `overdue` or `cancelled` status. Voiding uses `voided` with `voi
 ```
 frontend/lib/features/billing/
 ├── data/           # InvoiceRepository, PaymentRepository, InsuranceProviderRepository, BillingSettingsRepository
-├── domain/         # Invoice, InvoiceItem, Payment, InsuranceProvider, Money, DiscountKind/Scope DTOs
-└── application/    # billing_rpc_messages.dart — RPC error-code → user-facing message mapping only
+├── domain/         # Invoice, InvoiceItem, Payment, InsuranceProvider, Money, DiscountKind/Scope, InvoiceActionPolicy
+├── application/    # billing_rpc_messages.dart — RPC error-code → user-facing message mapping
+└── presentation/   # Pages, providers, widgets (invoice list/detail/editor, payment form, visit billing flow)
 ```
 
-No use-case layer exists yet (unlike `patients`/`settings`); repositories call RPCs directly and would be wired to a future presentation layer.
+No use-case layer exists yet (unlike `patients`/`settings`); repositories call RPCs directly from notifiers.
 
-No `presentation/` layer yet. Implemented surfaces:
+Implemented surfaces:
 
 - Invoice list, editor, and detail pages
-- Insurance provider management
-- Settings → Billing (partial payments toggle)
+- Settings → Billing (`BillingSettingsPage` — partial payments toggle, permission-gated)
 - Visit detail **Create invoice** / **Open invoice** action
 - Patient profile billing section
+- Draft editor: line items, invoice/line discounts (mutually exclusive), insurance coverage, discard draft
 
-Routes exist in `app/router.dart` but render placeholders until V1-6 UI is built.
+Deferred:
+
+- Insurance provider catalog management page (`/billing/insurance-providers` remains a placeholder)
 
 ## Testing
 

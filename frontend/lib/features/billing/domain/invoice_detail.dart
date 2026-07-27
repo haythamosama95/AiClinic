@@ -1,9 +1,58 @@
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_item.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment.dart';
 import 'package:flutter/foundation.dart';
+
+/// Completed visit summary embedded in `get_invoice_detail` when available.
+@immutable
+class VisitSummary {
+  const VisitSummary({required this.date, required this.doctor, required this.branch});
+
+  final DateTime date;
+  final String doctor;
+  final String branch;
+
+  static VisitSummary? fromRpcData(Object? raw) {
+    if (raw is! Map) {
+      return null;
+    }
+
+    final map = Map<String, dynamic>.from(raw);
+    final date = _parseVisitDate(map['visit_date'] ?? map['date'] ?? map['started_at']);
+    final doctor = _parseOptionalString(map['doctor_name'] ?? map['doctor']);
+    final branch = _parseOptionalString(map['branch_name'] ?? map['branch']);
+    if (date == null || doctor == null || branch == null) {
+      return null;
+    }
+
+    return VisitSummary(date: date, doctor: doctor, branch: branch);
+  }
+
+  static DateTime? _parseVisitDate(Object? raw) {
+    if (raw == null) {
+      return null;
+    }
+    if (raw is DateTime) {
+      return DateTime.utc(raw.year, raw.month, raw.day);
+    }
+    final text = raw.toString().trim();
+    if (text.isEmpty) {
+      return null;
+    }
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null) {
+      return null;
+    }
+    return DateTime.utc(parsed.year, parsed.month, parsed.day);
+  }
+
+  static String? _parseOptionalString(Object? raw) {
+    final text = raw?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+}
 
 /// Full invoice envelope from `get_invoice_detail` (V1-6).
 @immutable
@@ -19,6 +68,7 @@ class InvoiceDetail {
     required this.insuranceCoveredAmount,
     required this.currency,
     required this.balance,
+    required this.createdAt,
     required this.updatedAt,
     required this.items,
     required this.payments,
@@ -29,10 +79,14 @@ class InvoiceDetail {
     this.issuedAt,
     this.voidedAt,
     this.voidReason,
+    this.voidedByName,
     this.patientDisplayName,
+    this.patientMrn,
+    this.patientPhone,
     this.branchCode,
     this.branchName,
     this.insuranceProviderName,
+    this.visitSummary,
   });
 
   final String id;
@@ -51,14 +105,25 @@ class InvoiceDetail {
   final DateTime? issuedAt;
   final DateTime? voidedAt;
   final String? voidReason;
+  final String? voidedByName;
   final Money balance;
+  final DateTime createdAt;
   final DateTime updatedAt;
   final List<InvoiceItem> items;
   final List<Payment> payments;
   final String? patientDisplayName;
+  final String? patientMrn;
+  final String? patientPhone;
   final String? branchCode;
   final String? branchName;
   final String? insuranceProviderName;
+  final VisitSummary? visitSummary;
+
+  Money get originalDue => subtotal - discountAmount - insuranceCoveredAmount;
+
+  Money get netPaid => payments.fold(Money.zero, (sum, payment) => sum + payment.amount);
+
+  Money get netTotal => subtotal - discountAmount;
 
   static InvoiceDetail? fromRpcData(Map<String, dynamic>? data) {
     if (data == null) {
@@ -109,6 +174,7 @@ class InvoiceDetail {
     final patientRaw = data['patient'];
     final branchRaw = data['branch'];
     final providerRaw = data['insurance_provider'];
+    final createdAt = _parseOptionalDate(invoice['created_at']?.toString()) ?? updatedAt;
 
     return InvoiceDetail(
       id: id,
@@ -127,15 +193,39 @@ class InvoiceDetail {
       issuedAt: _parseOptionalDate(invoice['issued_at']?.toString()),
       voidedAt: _parseOptionalDate(invoice['voided_at']?.toString()),
       voidReason: invoice['void_reason']?.toString(),
+      voidedByName: _parseVoidedByName(invoice, data),
       balance: balance,
+      createdAt: createdAt,
       updatedAt: updatedAt,
       items: items,
       payments: payments,
       patientDisplayName: patientRaw is Map ? patientRaw['display_name']?.toString() : null,
+      patientMrn: patientRaw is Map ? _parseOptionalString(patientRaw['mrn'] ?? patientRaw['patient_mrn']) : null,
+      patientPhone: patientRaw is Map ? _parseOptionalString(patientRaw['phone'] ?? patientRaw['mobile']) : null,
       branchCode: branchRaw is Map ? branchRaw['code']?.toString() : null,
       branchName: branchRaw is Map ? branchRaw['name']?.toString() : null,
       insuranceProviderName: providerRaw is Map ? providerRaw['name']?.toString() : null,
+      visitSummary: VisitSummary.fromRpcData(data['visit']),
     );
+  }
+
+  static String? _parseVoidedByName(Map<String, dynamic> invoice, Map<String, dynamic> data) {
+    final directName = _parseOptionalString(invoice['voided_by_name']);
+    if (directName != null) {
+      return directName;
+    }
+
+    final voidedByRaw = invoice['voided_by'] ?? data['voided_by'];
+    if (voidedByRaw is Map) {
+      return _parseOptionalString(voidedByRaw['display_name'] ?? voidedByRaw['full_name']);
+    }
+
+    return null;
+  }
+
+  static String? _parseOptionalString(Object? raw) {
+    final text = raw?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
   }
 
   static DateTime? _parseOptionalDate(String? raw) {

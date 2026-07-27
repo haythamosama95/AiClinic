@@ -36,8 +36,7 @@ class VisitServiceSelectionListView extends StatelessWidget {
     return ListView.separated(
       shrinkWrap: true,
       itemCount: services.length,
-      separatorBuilder: (_, _) =>
-          Divider(height: 1, color: colors.borderSubtle),
+      separatorBuilder: (_, _) => Divider(height: 1, color: colors.borderSubtle),
       itemBuilder: (context, index) {
         final service = services[index];
         final isSelected = selectedIds.contains(service.serviceId);
@@ -54,12 +53,8 @@ class VisitServiceSelectionListView extends StatelessWidget {
           quantity: quantity,
           onToggle: () => onToggle(service, !isSelected),
           onCheckboxChanged: (checked) => onToggle(service, checked),
-          onDecrease: quantity > 1
-              ? () => onQuantityChange(service.serviceId, quantity - 1)
-              : null,
-          onIncrease: quantity < 99
-              ? () => onQuantityChange(service.serviceId, quantity + 1)
-              : null,
+          onDecrease: quantity > 1 ? () => onQuantityChange(service.serviceId, quantity - 1) : null,
+          onIncrease: quantity < 99 ? () => onQuantityChange(service.serviceId, quantity + 1) : null,
         );
       },
     );
@@ -95,24 +90,16 @@ class _ServiceListRow extends StatelessWidget {
     return AnimatedContainer(
       duration: reducedMotion ? Duration.zero : AppMotionDuration.fast,
       curve: AppMotion.standardCurve,
-      color: isSelected
-          ? colors.surfaceSelected.withValues(alpha: 0.6)
-          : Colors.transparent,
+      color: isSelected ? colors.surfaceSelected.withValues(alpha: 0.6) : Colors.transparent,
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.space5,
-          vertical: AppSpacing.space3 + 2,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space5, vertical: AppSpacing.space3 + 2),
         child: Row(
           children: [
             Semantics(
               label: 'Select ${service.name}',
               child: AppCheckbox(
-                value: isSelected
-                    ? AppCheckboxState.checked
-                    : AppCheckboxState.unchecked,
-                onChanged: (checked) =>
-                    onCheckboxChanged(checked == AppCheckboxState.checked),
+                value: isSelected ? AppCheckboxState.checked : AppCheckboxState.unchecked,
+                onChanged: (checked) => onCheckboxChanged(checked == AppCheckboxState.checked),
               ),
             ),
             const SizedBox(width: AppSpacing.space3),
@@ -124,9 +111,7 @@ class _ServiceListRow extends StatelessWidget {
                   service.name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodyStrong(
-                    context,
-                  ).copyWith(color: colors.textPrimary, height: 1.3),
+                  style: AppTypography.bodyStrong(context).copyWith(color: colors.textPrimary, height: 1.3),
                 ),
               ),
             ),
@@ -156,10 +141,7 @@ class _ServiceListRow extends StatelessWidget {
                   fontFamily: 'monospace',
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-                child: AppMoneyDisplay(
-                  amount: service.unitPrice.asDouble,
-                  currency: currency,
-                ),
+                child: AppMoneyDisplay(amount: service.unitPrice, currency: currency),
               ),
             ),
           ],
@@ -208,10 +190,9 @@ class _InlineQuantityStepper extends StatelessWidget {
               child: Text(
                 '$quantity',
                 textAlign: TextAlign.center,
-                style: AppTypography.bodySm(context).copyWith(
-                  fontFamily: 'monospace',
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+                style: AppTypography.bodySm(
+                  context,
+                ).copyWith(fontFamily: 'monospace', fontFeatures: const [FontFeature.tabularFigures()]),
               ),
             ),
             AppIconButton(

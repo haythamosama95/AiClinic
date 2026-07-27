@@ -18,21 +18,6 @@ class CreateServiceResult {
   final List<String> assignedBranchIds;
 }
 
-/// Result of adding a catalog service to a draft invoice.
-class AddInvoiceItemFromServiceResult {
-  const AddInvoiceItemFromServiceResult({
-    required this.itemId,
-    required this.quantity,
-    required this.unitPrice,
-    required this.appliedRule,
-  });
-
-  final String itemId;
-  final String quantity;
-  final String unitPrice;
-  final String appliedRule;
-}
-
 /// Result of configuring a branch row.
 class ConfigureServiceBranchResult {
   const ConfigureServiceBranchResult({required this.serviceBranchId, required this.updatedAt});
@@ -314,36 +299,6 @@ class ServiceCatalogRepository with AppRpcInvoker {
       }
     }
     return items;
-  }
-
-  Future<AddInvoiceItemFromServiceResult> addInvoiceItemFromService({
-    required String invoiceId,
-    required DateTime expectedUpdatedAt,
-    required String serviceId,
-  }) async {
-    _assertNonEmpty('invoiceId', invoiceId);
-    _assertNonEmpty('serviceId', serviceId);
-
-    final result = await invokeRpc('add_invoice_item_from_service', {
-      'p_invoice_id': invoiceId.trim(),
-      'p_expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
-      'p_service_id': serviceId.trim(),
-    });
-
-    final itemId = result.data?['item_id']?.toString();
-    final quantity = result.data?['quantity']?.toString();
-    final unitPrice = result.data?['unit_price']?.toString();
-    final appliedRule = result.data?['applied_rule']?.toString();
-    if (itemId == null || itemId.isEmpty || quantity == null || unitPrice == null || appliedRule == null) {
-      throw StateError('add_invoice_item_from_service returned an unexpected shape.');
-    }
-
-    return AddInvoiceItemFromServiceResult(
-      itemId: itemId,
-      quantity: quantity,
-      unitPrice: unitPrice,
-      appliedRule: appliedRule,
-    );
   }
 
   Future<UpdateServiceResult> updateService({

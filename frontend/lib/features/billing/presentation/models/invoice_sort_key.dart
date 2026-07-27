@@ -1,0 +1,91 @@
+import 'package:ai_clinic/core/ui/components/app_data_table.dart';
+
+/// Server-side sort fields for `list_invoices` (`sort_field` filter key).
+enum InvoiceSortField {
+  createdAt,
+  balance,
+  subtotal;
+
+  String get wireValue => switch (this) {
+    InvoiceSortField.createdAt => 'created_at',
+    InvoiceSortField.balance => 'balance',
+    InvoiceSortField.subtotal => 'subtotal',
+  };
+}
+
+/// UI sort keys for the invoices list (web `InvoiceSortKey`).
+enum InvoiceSortKey {
+  dateDesc,
+  dateAsc,
+  balanceDesc,
+  balanceAsc,
+  amountDesc,
+  amountAsc;
+
+  String get value => switch (this) {
+    InvoiceSortKey.dateDesc => 'date-desc',
+    InvoiceSortKey.dateAsc => 'date-asc',
+    InvoiceSortKey.balanceDesc => 'balance-desc',
+    InvoiceSortKey.balanceAsc => 'balance-asc',
+    InvoiceSortKey.amountDesc => 'amount-desc',
+    InvoiceSortKey.amountAsc => 'amount-asc',
+  };
+
+  String get label => switch (this) {
+    InvoiceSortKey.dateDesc => 'Created (newest)',
+    InvoiceSortKey.dateAsc => 'Created (oldest)',
+    InvoiceSortKey.balanceDesc => 'Remaining (highest)',
+    InvoiceSortKey.balanceAsc => 'Remaining (lowest)',
+    InvoiceSortKey.amountDesc => 'Subtotal (highest)',
+    InvoiceSortKey.amountAsc => 'Subtotal (lowest)',
+  };
+
+  (InvoiceSortField field, SortDirection direction) get backendSort => switch (this) {
+    InvoiceSortKey.dateDesc => (InvoiceSortField.createdAt, SortDirection.desc),
+    InvoiceSortKey.dateAsc => (InvoiceSortField.createdAt, SortDirection.asc),
+    InvoiceSortKey.balanceDesc => (InvoiceSortField.balance, SortDirection.desc),
+    InvoiceSortKey.balanceAsc => (InvoiceSortField.balance, SortDirection.asc),
+    InvoiceSortKey.amountDesc => (InvoiceSortField.subtotal, SortDirection.desc),
+    InvoiceSortKey.amountAsc => (InvoiceSortField.subtotal, SortDirection.asc),
+  };
+
+  static InvoiceSortKey? tryParse(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+    for (final key in InvoiceSortKey.values) {
+      if (key.value == normalized) {
+        return key;
+      }
+    }
+    return null;
+  }
+
+  static InvoiceSortKey fromFilters({InvoiceSortField? sortField, SortDirection sortDirection = SortDirection.desc}) {
+    final field = sortField ?? InvoiceSortField.createdAt;
+
+    return switch ((field, sortDirection)) {
+      (InvoiceSortField.createdAt, SortDirection.asc) => InvoiceSortKey.dateAsc,
+      (InvoiceSortField.balance, SortDirection.desc) => InvoiceSortKey.balanceDesc,
+      (InvoiceSortField.balance, SortDirection.asc) => InvoiceSortKey.balanceAsc,
+      (InvoiceSortField.subtotal, SortDirection.desc) => InvoiceSortKey.amountDesc,
+      (InvoiceSortField.subtotal, SortDirection.asc) => InvoiceSortKey.amountAsc,
+      _ => InvoiceSortKey.dateDesc,
+    };
+  }
+
+  // Balance/subtotal options require `list_invoices` server-side ordering — see
+  // `InvoiceRepository.listInvoices` once the backend honours `sort_field`.
+  static const List<({String value, String label})> options = [
+    (value: 'date-desc', label: 'Created (newest)'),
+    (value: 'date-asc', label: 'Created (oldest)'),
+  ];
+}
+
+extension InvoiceSortDirectionWire on SortDirection {
+  String get wireValue => switch (this) {
+    SortDirection.asc => 'asc',
+    SortDirection.desc => 'desc',
+  };
+}

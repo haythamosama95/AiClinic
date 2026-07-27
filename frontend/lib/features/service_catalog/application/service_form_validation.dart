@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 
 /// Pure validation helpers for the service editor form (Service Catalog 015).
 abstract final class ServiceFormValidation {

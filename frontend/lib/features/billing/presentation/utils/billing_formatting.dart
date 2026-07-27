@@ -1,39 +1,15 @@
+import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:ai_clinic/core/money/money.dart';
+import 'package:ai_clinic/core/money/money_formatter.dart';
+import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_status.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/domain/payment_method.dart';
 
 /// Presentation helpers for billing amounts and dates (V1-6).
 abstract final class BillingFormatting {
-  static String formatMoney(Money amount, {String currency = 'USD', String? locale}) {
-    final formatLocale = locale ?? 'en_US';
-    final symbol = _currencySymbol(currency);
-    try {
-      if (symbol != null) {
-        return NumberFormat.currency(locale: formatLocale, symbol: symbol).format(amount.asDouble);
-      }
-      return NumberFormat.currency(locale: formatLocale, name: currency.toUpperCase()).format(amount.asDouble);
-    } on Object {
-      final value = amount.wireValue;
-      if (symbol != null) {
-        return '$symbol$value';
-      }
-      return '$value $currency';
-    }
-  }
-
-  static String? _currencySymbol(String currency) {
-    return switch (currency.toUpperCase()) {
-      'USD' => '\$',
-      'EUR' => '€',
-      'GBP' => '£',
-      'EGP' => 'E£ ',
-      _ => null,
-    };
-  }
-
   static final _dateFormat = DateFormat('MMM d, yyyy');
   static final _dateTimeFormat = DateFormat('MMM d, yyyy · h:mm a');
 
@@ -56,6 +32,33 @@ abstract final class BillingFormatting {
       PaymentMethod.bankTransfer => Icons.account_balance_outlined,
       PaymentMethod.insuranceSettlement => Icons.health_and_safety_outlined,
     };
+  }
+
+  static String discountLabel(DiscountKind? kind, String? value, {required String currency}) {
+    if (kind == null) {
+      return '';
+    }
+
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return '';
+    }
+
+    return switch (kind) {
+      DiscountKind.percentage => () {
+        final parsed = Decimal.tryParse(trimmed);
+        final display = parsed?.toString() ?? trimmed;
+        return '${_trimTrailingZero(display)}% off';
+      }(),
+      DiscountKind.fixed => '${MoneyFormatter.format(Money.parse(trimmed), currency: currency)} off',
+    };
+  }
+
+  static String _trimTrailingZero(String value) {
+    if (!value.contains('.')) {
+      return value;
+    }
+    return value.replaceFirst(RegExp(r'\.?0+$'), '');
   }
 }
 

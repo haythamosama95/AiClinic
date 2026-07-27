@@ -2,20 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
+import 'package:ai_clinic/features/billing/data/invoice_item_repository.dart';
 import 'package:ai_clinic/features/billing/data/invoice_repository.dart';
 import 'package:ai_clinic/features/billing/domain/discount_kind.dart';
 import 'package:ai_clinic/features/billing/domain/discount_scope.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
-import 'package:ai_clinic/features/service_catalog/data/service_catalog_repository.dart';
+import 'package:ai_clinic/features/billing/domain/invoice_stale_exception.dart';
 import 'package:ai_clinic/features/service_catalog/domain/eligible_service.dart';
-
-/// Thrown when optimistic concurrency detects a stale invoice revision.
-class InvoiceStaleException implements Exception {
-  const InvoiceStaleException();
-
-  @override
-  String toString() => 'Invoice was updated elsewhere.';
-}
 
 @immutable
 class InvoiceEditorState {
@@ -61,7 +54,7 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
 
   InvoiceRepository get _repo => ref.read(invoiceRepositoryProvider);
 
-  ServiceCatalogRepository get _catalogRepo => ref.read(serviceCatalogRepositoryProvider);
+  InvoiceItemRepository get _itemRepo => ref.read(invoiceItemRepositoryProvider);
 
   Future<void> reload() async {
     state = await AsyncValue.guard(() async {
@@ -96,7 +89,7 @@ class InvoiceEditorNotifier extends AsyncNotifier<InvoiceEditorState> {
 
   Future<String> addItemFromService(EligibleService service) {
     return _mutate((invoice) async {
-      final result = await _catalogRepo.addInvoiceItemFromService(
+      final result = await _itemRepo.addFromService(
         invoiceId: invoice.id,
         expectedUpdatedAt: invoice.updatedAt,
         serviceId: service.serviceId,

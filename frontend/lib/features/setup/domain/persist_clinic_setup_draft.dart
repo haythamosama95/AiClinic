@@ -1,6 +1,6 @@
 import 'package:ai_clinic/core/rpc/rpc_result.dart';
 import 'package:ai_clinic/features/auth/domain/staff_username.dart';
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_list_item.dart';
 import 'package:ai_clinic/core/domain/clinic/branch_list_item.dart';
 import 'package:ai_clinic/features/setup/domain/clinic_setup_draft_mapper.dart';

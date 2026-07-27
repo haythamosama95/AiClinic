@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 import 'package:ai_clinic/features/service_catalog/domain/pending_branch_configuration.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_branch_row.dart';
 import 'package:ai_clinic/features/service_catalog/domain/service_promotion.dart';

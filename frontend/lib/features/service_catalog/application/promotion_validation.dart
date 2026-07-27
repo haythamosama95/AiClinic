@@ -1,4 +1,4 @@
-import 'package:ai_clinic/features/billing/domain/money.dart';
+import 'package:ai_clinic/core/money/money.dart';
 
 /// Client-side promotion field validation (Service Catalog 015 US4).
 abstract final class PromotionValidation {
