@@ -29,7 +29,6 @@ export type InvoicePayment = {
   method: PaymentMethod
   /** Positive = payment, negative = refund (append-only ledger) */
   amount: number
-  reference?: string
   note?: string
   recordedByName: string
   recordedAt: string
@@ -207,7 +206,6 @@ function buildPayments(
         id: `pay-${Math.random().toString(36).slice(2, 8)}`,
         method: pick(PAYMENT_METHODS),
         amount,
-        reference: Math.random() > 0.5 ? `RCPT-${Math.floor(1000 + Math.random() * 9000)}` : undefined,
         recordedByName: pick(STAFF_NAMES),
         recordedAt: firstDate.toISOString(),
       },
@@ -221,7 +219,6 @@ function buildPayments(
           id: `pay-${Math.random().toString(36).slice(2, 8)}`,
           method: pick(PAYMENT_METHODS),
           amount: originalDue,
-          reference: Math.random() > 0.5 ? `RCPT-${Math.floor(1000 + Math.random() * 9000)}` : undefined,
           recordedByName: pick(STAFF_NAMES),
           recordedAt: firstDate.toISOString(),
         },

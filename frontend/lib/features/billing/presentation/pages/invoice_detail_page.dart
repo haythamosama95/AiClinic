@@ -18,7 +18,6 @@ import 'package:ai_clinic/core/ui/theme/app_typography.dart';
 import 'package:ai_clinic/features/billing/domain/invoice_detail.dart';
 import 'package:ai_clinic/features/billing/domain/money.dart';
 import 'package:ai_clinic/features/billing/presentation/providers/invoice_detail_provider.dart';
-import 'package:ai_clinic/features/billing/presentation/providers/invoice_list_notifier.dart';
 import 'package:ai_clinic/features/billing/presentation/utils/billing_formatting.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_detail_tooltip.dart';
 import 'package:ai_clinic/features/billing/presentation/widgets/invoice_detail/invoice_hero_card.dart';
@@ -194,8 +193,7 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
       return;
     }
 
-    ref.invalidate(invoiceDetailViewProvider(invoice.id));
-    ref.invalidate(invoiceListProvider);
+    await refreshInvoiceBillingSurfaces(ref, invoiceId: invoice.id, patientId: invoice.patientId);
   }
 
   Future<void> _showRecordPaymentDialog() async {
@@ -206,10 +204,9 @@ class _InvoiceDetailBodyState extends ConsumerState<_InvoiceDetailBody> {
       child: Builder(
         builder: (dialogContext) => PaymentForm(
           invoice: invoice,
-          onRecorded: () {
+          onRecorded: () async {
             Navigator.of(dialogContext).pop();
-            ref.invalidate(invoiceDetailViewProvider(invoice.id));
-            ref.invalidate(invoiceListProvider);
+            await refreshInvoiceBillingSurfaces(ref, invoiceId: invoice.id, patientId: invoice.patientId);
           },
         ),
       ),

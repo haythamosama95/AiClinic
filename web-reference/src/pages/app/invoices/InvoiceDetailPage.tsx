@@ -173,9 +173,6 @@ function PaymentLedgerRow({
                 <span className="ms-1.5 text-caption text-status-danger-fg">Refund</span>
               ) : null}
             </p>
-            {payment.reference ? (
-              <p className="font-mono text-caption text-text-tertiary">{payment.reference}</p>
-            ) : null}
             {payment.note ? <p className="text-caption text-text-secondary">{payment.note}</p> : null}
           </div>
         </div>

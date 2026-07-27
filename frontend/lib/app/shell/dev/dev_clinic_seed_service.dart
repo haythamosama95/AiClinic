@@ -856,7 +856,6 @@ class DevClinicSeedService {
           invoiceId: invoiceId,
           method: payment.method,
           amount: payment.amount,
-          reference: payment.reference,
           note: payment.note,
         );
       }

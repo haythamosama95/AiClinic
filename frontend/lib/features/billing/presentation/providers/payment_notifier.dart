@@ -15,16 +15,9 @@ class PaymentNotifier {
     required String invoiceId,
     required PaymentMethod method,
     required String amount,
-    String? reference,
     String? note,
   }) {
-    return _repo.recordPayment(
-      invoiceId: invoiceId,
-      method: method,
-      amount: amount,
-      reference: reference,
-      note: note,
-    );
+    return _repo.recordPayment(invoiceId: invoiceId, method: method, amount: amount, note: note);
   }
 
   Future<String> recordRefund({
@@ -33,15 +26,8 @@ class PaymentNotifier {
     required String amount,
     required String note,
   }) {
-    return _repo.recordRefund(
-      invoiceId: invoiceId,
-      method: method,
-      amount: amount,
-      note: note,
-    );
+    return _repo.recordRefund(invoiceId: invoiceId, method: method, amount: amount, note: note);
   }
 }
 
-final paymentNotifierProvider = Provider<PaymentNotifier>(
-  (ref) => PaymentNotifier(ref),
-);
+final paymentNotifierProvider = Provider<PaymentNotifier>((ref) => PaymentNotifier(ref));

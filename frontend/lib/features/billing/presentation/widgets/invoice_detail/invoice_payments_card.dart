@@ -191,15 +191,6 @@ class _PaymentLedgerRow extends StatelessWidget {
                           ],
                         ),
                       ),
-                      if (payment.reference?.trim().isNotEmpty == true) ...[
-                        const SizedBox(height: AppSpacing.space05),
-                        Text(
-                          payment.reference!.trim(),
-                          style: AppTypography.caption(
-                            context,
-                          ).copyWith(color: colors.textTertiary, fontFamily: AppTypography.mono(context).fontFamily),
-                        ),
-                      ],
                       if (payment.note?.trim().isNotEmpty == true) ...[
                         const SizedBox(height: AppSpacing.space05),
                         Text(

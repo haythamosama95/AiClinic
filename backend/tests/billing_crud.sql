@@ -1046,7 +1046,7 @@ BEGIN
   );
 
   -- US2: partial patient-tender rejected when allow_partial_payments is off (default)
-  v_result := public.record_payment(v_invoice_for_payment, 'cash', 50.00, NULL, NULL);
+  v_result := public.record_payment(v_invoice_for_payment, 'cash', 50.00, NULL);
   PERFORM pg_temp.billing_crud_record(
     'partial_patient_payment_rejected_when_setting_off',
     NOT v_result.success AND v_result.error_code = 'PARTIAL_PAYMENTS_DISABLED',
@@ -1054,7 +1054,7 @@ BEGIN
   );
 
   -- US2: full payment marks invoice paid
-  v_result := public.record_payment(v_invoice_for_payment, 'cash', 120.00, 'RCPT-1', 'Full payment');
+  v_result := public.record_payment(v_invoice_for_payment, 'cash', 120.00, 'Full payment');
   v_payment_id := (v_result.data ->> 'payment_id')::uuid;
   SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_for_payment;
   v_detail := public.get_invoice_detail(v_invoice_for_payment);
@@ -1086,10 +1086,9 @@ BEGIN
   FROM public.audit_log al
   WHERE al.action = 'payment.record'
     AND al.record_id = v_payment_id
-    AND al.new_data_json ->> 'reference' = 'RCPT-1'
     AND al.new_data_json ->> 'note' = 'Full payment';
   PERFORM pg_temp.billing_crud_record(
-    'record_payment_audit_includes_reference_and_note',
+    'record_payment_audit_includes_note',
     v_audit_count = 1,
     v_audit_count::text
   );
@@ -1129,7 +1128,7 @@ BEGIN
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_pay;
   v_result := public.issue_invoice(v_invoice_pay, v_updated_at);
 
-  v_result := public.record_payment(v_invoice_pay, 'card', 40.00, NULL, NULL);
+  v_result := public.record_payment(v_invoice_pay, 'card', 40.00, NULL);
   SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_pay;
   v_detail := public.get_invoice_detail(v_invoice_pay);
   v_balance := (v_detail.data -> 'invoice' ->> 'balance')::numeric;
@@ -1164,7 +1163,7 @@ BEGIN
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_pay;
   v_result := public.issue_invoice(v_invoice_pay, v_updated_at);
 
-  v_result := public.record_payment(v_invoice_pay, 'insurance_settlement', 30.00, 'CLM-1', NULL);
+  v_result := public.record_payment(v_invoice_pay, 'insurance_settlement', 30.00, NULL);
   SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_pay;
   PERFORM pg_temp.billing_crud_record(
     'insurance_settlement_partial_allowed_when_setting_off',
@@ -1173,7 +1172,7 @@ BEGIN
   );
 
   -- US2: overpayment rejected
-  v_result := public.record_payment(v_invoice_pay, 'cash', 80.00, NULL, NULL);
+  v_result := public.record_payment(v_invoice_pay, 'cash', 80.00, NULL);
   PERFORM pg_temp.billing_crud_record(
     'overpayment_rejected',
     NOT v_result.success AND v_result.error_code = 'OVERPAYMENT',
@@ -1474,7 +1473,7 @@ BEGIN
 
   v_detail := public.get_invoice_detail(v_invoice_pay);
   v_balance := (v_detail.data -> 'invoice' ->> 'balance')::numeric;
-  v_result := public.record_payment(v_invoice_pay, 'cash', v_balance, NULL, 'List test full pay');
+  v_result := public.record_payment(v_invoice_pay, 'cash', v_balance, 'List test full pay');
 
   v_list := public.list_invoices('{}'::jsonb, 50, 0);
   PERFORM pg_temp.billing_crud_record(
@@ -1725,7 +1724,7 @@ BEGIN
   v_result := public.add_invoice_item(v_invoice_void_partial, v_updated_at, 'Partial void test', 1, 100.00);
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_partial;
   v_result := public.issue_invoice(v_invoice_void_partial, v_updated_at);
-  v_result := public.record_payment(v_invoice_void_partial, 'cash', 40.00, NULL, 'Partial before void');
+  v_result := public.record_payment(v_invoice_void_partial, 'cash', 40.00, 'Partial before void');
   SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_void_partial;
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_void_partial;
   v_result := public.void_invoice(v_invoice_void_partial, v_updated_at, 'Patient cancelled');
@@ -1756,7 +1755,7 @@ BEGIN
   v_result := public.add_invoice_item(v_invoice_paid_void, v_updated_at, 'Paid void guard', 1, 75.00);
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_paid_void;
   v_result := public.issue_invoice(v_invoice_paid_void, v_updated_at);
-  v_result := public.record_payment(v_invoice_paid_void, 'cash', 75.00, NULL, 'Paid in full');
+  v_result := public.record_payment(v_invoice_paid_void, 'cash', 75.00, 'Paid in full');
   SELECT status INTO v_status FROM public.invoices WHERE id = v_invoice_paid_void;
   SELECT updated_at INTO v_updated_at FROM public.invoices WHERE id = v_invoice_paid_void;
   v_result := public.void_invoice(v_invoice_paid_void, v_updated_at, 'Should fail on paid');
@@ -1768,7 +1767,7 @@ BEGIN
     format('status=%s code=%s', v_status, COALESCE(v_result.error_code, '<null>'))
   );
 
-  v_result := public.record_payment(v_invoice_void_issued, 'cash', 10.00, NULL, NULL);
+  v_result := public.record_payment(v_invoice_void_issued, 'cash', 10.00, NULL);
   PERFORM pg_temp.billing_crud_record(
     'voided_invoice_rejects_payment',
     NOT v_result.success AND v_result.error_code = 'INVOICE_VOIDED',
@@ -1875,7 +1874,7 @@ BEGIN
     v_org_id,
     format('%s,%s', v_branch_main, v_branch_no_code)
   );
-  v_result := public.record_payment(v_invoice_for_payment, 'cash', 10.00, NULL, NULL);
+  v_result := public.record_payment(v_invoice_for_payment, 'cash', 10.00, NULL);
   PERFORM pg_temp.billing_crud_record(
     'record_payment_permission_denied_for_doctor',
     NOT v_result.success AND v_result.error_code = 'FORBIDDEN',
@@ -1895,14 +1894,14 @@ BEGIN
     v_org_id,
     format('%s,%s', v_branch_main, v_branch_no_code)
   );
-  v_result := public.record_payment(v_invoice_for_payment, 'cash', 0.00, NULL, NULL);
+  v_result := public.record_payment(v_invoice_for_payment, 'cash', 0.00, NULL);
   PERFORM pg_temp.billing_crud_record(
     'record_payment_rejects_zero_amount',
     NOT v_result.success AND v_result.error_code = 'INVALID_INPUT',
     COALESCE(v_result.error_code, '<null>')
   );
 
-  v_result := public.record_payment(v_draft_discard, 'cash', 10.00, NULL, NULL);
+  v_result := public.record_payment(v_draft_discard, 'cash', 10.00, NULL);
   PERFORM pg_temp.billing_crud_record(
     'record_payment_rejects_draft_invoice',
     NOT v_result.success AND v_result.error_code = 'INVOICE_NOT_PAYABLE',

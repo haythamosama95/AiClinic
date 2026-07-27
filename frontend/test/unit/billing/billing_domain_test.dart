@@ -63,7 +63,6 @@ void main() {
         'id': 'pay-1',
         'method': 'cash',
         'amount': '50.00',
-        'reference': 'RCPT-1',
         'note': 'Full payment',
         'recorded_by': {'id': 'staff-uuid', 'display_name': 'Reception'},
         'recorded_at': '2026-06-01T12:00:00.000Z',
@@ -89,7 +88,10 @@ void main() {
   });
 
   group('InvoiceDetail', () {
-    Map<String, dynamic> minimalEnvelope({Map<String, dynamic>? invoiceOverrides, Map<String, dynamic>? envelopeOverrides}) {
+    Map<String, dynamic> minimalEnvelope({
+      Map<String, dynamic>? invoiceOverrides,
+      Map<String, dynamic>? envelopeOverrides,
+    }) {
       return {
         'invoice': {
           'id': 'inv-1',
@@ -128,11 +130,7 @@ void main() {
               'mrn': 'MRN-10482',
               'phone': '+20 100 000 0000',
             },
-            'visit': {
-              'visit_date': '2026-06-01',
-              'doctor_name': 'Dr. Smith',
-              'branch_name': 'Main',
-            },
+            'visit': {'visit_date': '2026-06-01', 'doctor_name': 'Dr. Smith', 'branch_name': 'Main'},
           },
         ),
       );
@@ -159,13 +157,7 @@ void main() {
     });
 
     test('VisitSummary.fromRpcData rejects partial visit payloads', () {
-      expect(
-        VisitSummary.fromRpcData({
-          'visit_date': '2026-06-01',
-          'doctor_name': 'Dr. Smith',
-        }),
-        isNull,
-      );
+      expect(VisitSummary.fromRpcData({'visit_date': '2026-06-01', 'doctor_name': 'Dr. Smith'}), isNull);
     });
   });
 
